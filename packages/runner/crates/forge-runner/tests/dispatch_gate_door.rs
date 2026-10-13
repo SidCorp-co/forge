@@ -80,6 +80,12 @@ fn registered_gate_command(exe: &str) -> String {
 /// A socket that answers one gate frame the way a daemon with nothing declared
 /// would, and reports the frame it was actually sent.
 fn daemon_that_refuses(dir: &Path) -> std::sync::mpsc::Receiver<String> {
+    daemon_that_answers(dir, REFUSAL)
+}
+
+/// The same socket, refusing with `reason`.
+fn daemon_that_answers(dir: &Path, reason: &str) -> std::sync::mpsc::Receiver<String> {
+    let reason = reason.to_string();
     let listener = UnixListener::bind(dir.join("control.sock")).expect("bind");
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
@@ -90,7 +96,7 @@ fn daemon_that_refuses(dir: &Path) -> std::sync::mpsc::Receiver<String> {
         let mut line = String::new();
         let _ = reader.read_line(&mut line);
         let _ = tx.send(line);
-        let reply = serde_json::json!({ "ok": false, "reason": REFUSAL }).to_string();
+        let reply = serde_json::json!({ "ok": false, "reason": reason }).to_string();
         let _ = writeln!(reader.get_mut(), "{reply}");
     });
     rx
@@ -198,6 +204,39 @@ fn the_registered_command_refuses_an_undeclared_dispatch() {
     assert!(
         reason.contains("forge-runner run declare"),
         "a refusal that does not say what to do is the same silence in a louder font: {reason}"
+    );
+}
+
+/// ISS-1412. A refusal naming the run it is about is the gate's own and is
+/// denied, never read as the daemon refusing the question and let through.
+#[test]
+fn the_registered_command_denies_a_dispatch_a_declared_run_is_held_from() {
+    let scratch = Scratch::new("held");
+    let config_dir = config_dir_at(scratch.path());
+    let said = forge_runner_core::daemon::dispatch_gate::held_refusal("run-7", "toolu_01Held");
+    let _frame = daemon_that_answers(&config_dir, &said);
+
+    let command = registered_gate_command(env!("CARGO_BIN_EXE_forge-runner"));
+    let printed = run_gate(&command, scratch.path(), DISPATCH_PAYLOAD);
+
+    let decision: serde_json::Value = serde_json::from_str(&printed).expect("the gate prints json");
+    assert_eq!(
+        decision["hookSpecificOutput"]["permissionDecision"], "deny",
+        "a held run's refusal let the dispatch through: {printed}"
+    );
+    let reason = decision["hookSpecificOutput"]["permissionDecisionReason"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(
+        reason.contains("run-7")
+            && reason.contains("toolu_01Held")
+            && reason.contains("forge-runner run close run-7"),
+        "the deny must carry the run, the call and the way out: {reason}"
+    );
+    let (degraded, _) = forge_runner_core::daemon::degraded::tally(&config_dir);
+    assert_eq!(
+        degraded.count, 0,
+        "a deny is the gate working, not a degraded gate"
     );
 }
 

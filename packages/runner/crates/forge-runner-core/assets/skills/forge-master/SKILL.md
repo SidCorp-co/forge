@@ -139,7 +139,11 @@ call is refused before it runs, in these words:
 > Refused: nothing on this box has been told about the work you are handing out.
 
 One declaration, one dispatch. A declaration you decide not to use is closed with
-`forge-runner run close`, and until you close it the next dispatch is refused, naming it.
+`forge-runner run close`, and until you close it the next dispatch is refused, naming it. A
+dispatch another hook refused started no subagent, and this box frees its declaration once your
+transcript shows that call ended in an error, so dispatching the same work again takes it. Where
+that is not shown, the refusal names the run and the call holding it, and `forge-runner run close`
+is the way out.
 
 **Close a run once you will not resume its subagent**, when its report is in and you are sending it
 nothing more. That is what gives its tree and its issues back. Only your close, or this pane's end,

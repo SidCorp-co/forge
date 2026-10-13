@@ -753,7 +753,7 @@ fn dispatch_gate_reply(
     d: crate::daemon::dispatch_gate::Dispatch,
     session_id: &str,
 ) -> ClaimReply {
-    use crate::daemon::dispatch_gate::{decide, Facts, Verdict, REFUSAL};
+    use crate::daemon::dispatch_gate::{decide, held_refusal, Facts, Verdict, REFUSAL};
 
     // A resume is never refused: it starts nothing the gate counts, and the
     // subagent it reaches already exists. It is where that subagent is heard
@@ -829,6 +829,9 @@ fn dispatch_gate_reply(
         }
     }
 
+    if let Some(run) = pending.as_deref() {
+        release_a_promise_that_failed(&mut memory, run, &d);
+    }
     let promised = pending
         .as_deref()
         .and_then(|run| memory.promised.get(run).map(|p| p.tool_use.clone()));
@@ -864,6 +867,15 @@ fn dispatch_gate_reply(
                 "[control] refusing an undeclared hand-off from master session {session_id}"
             );
             ClaimReply::refused(REFUSAL)
+        }
+        Verdict::Held {
+            run_id,
+            promised_to,
+        } => {
+            tracing::warn!(
+                "[control] refusing a second hand-off of run {run_id} from master session {session_id}: it is promised to {promised_to}, which has not been seen to fail"
+            );
+            ClaimReply::refused(held_refusal(&run_id, &promised_to))
         }
         Verdict::Unknown(why) => {
             if let Some(refused) = refused_while_draining(ctl, why, Some(pending.as_deref())) {
@@ -947,6 +959,55 @@ fn dispatch_gate_reply(
             tracing::error!("[control] the dispatch gate could not decide: {why}");
             gate_allows(Some(why))
         }
+    }
+}
+
+/// Free the promise a declared run holds when the call it was promised to
+/// produced no subagent, so the master's next dispatch can take the run (ISS-1412).
+///
+/// The promise is made while the pane's `PreToolUse` hooks are still running,
+/// and a hook after this one can refuse the call: the subagent then never
+/// starts, nothing binds the run, and the promise named a call that would never
+/// bind until the box ended the run an hour later as never bound. The evidence
+/// that the call ended without a subagent is the master's own transcript, where
+/// Claude Code writes a refused or failed call as an error result before the
+/// model makes its next call. A call with no result yet may still be starting,
+/// so it keeps the run and the next dispatch is refused naming it; so does a
+/// transcript this box cannot read or was not told of. Two live dispatches
+/// still never share one run.
+#[cfg(unix)]
+fn release_a_promise_that_failed(
+    memory: &mut GateMemory,
+    run: &str,
+    asking: &crate::daemon::dispatch_gate::Dispatch,
+) {
+    if asking.agent_id.is_some() {
+        return;
+    }
+    let Some(asking_call) = asking.tool_use_id.as_deref() else {
+        return;
+    };
+    let Some(promised) = memory
+        .promised
+        .get(run)
+        .map(|p| p.tool_use.clone())
+        .filter(|t| t != asking_call)
+    else {
+        return;
+    };
+    let Some(lead) = asking
+        .transcript_path
+        .as_deref()
+        .map(Path::new)
+        .filter(|p| p.is_absolute())
+    else {
+        return;
+    };
+    if crate::daemon::transcript_age::call_failed(lead, &promised) == Some(true) {
+        memory.promised.remove(run);
+        tracing::info!(
+            "[control] run {run} was promised to {promised}, which ended in an error without starting a subagent, so the promise is released and {asking_call} may take it"
+        );
     }
 }
 
@@ -2384,13 +2445,15 @@ mod tests {
         );
 
         // 5. A DIFFERENT dispatch cannot ride the same declaration.
+        let second = gate_on(&ctl, &asking("forge:reviewer", "toolu_2"), "sess-a");
         assert!(
-            refused_as_undeclared(&gate_on(
-                &ctl,
-                &asking("forge:reviewer", "toolu_2"),
-                "sess-a"
-            )),
-            "two subagents under one declared row is two units of work with one record"
+            !allowed(&second) && !refused_as_undeclared(&second),
+            "two subagents under one declared row is two units of work with one record, and the \
+             refusal says the run is held rather than that nothing was declared: {second:?}"
+        );
+        assert!(
+            second.reason.as_deref().unwrap_or("").contains("toolu_1"),
+            "and names the call holding it: {second:?}"
         );
 
         // 7. The subagent starts: the row is bound, the promise is released, and
@@ -2413,6 +2476,203 @@ mod tests {
             &asking("forge:runner", "toolu_3"),
             "sess-a"
         )));
+    }
+
+    /// The master's transcript as Claude Code writes it around a dispatch
+    /// another `PreToolUse` hook refused (ISS-1412): the call, then its
+    /// result, which is an error naming that hook.
+    #[cfg(unix)]
+    fn transcript_with(
+        dir: &crate::test_scratch::Scratch,
+        file: &str,
+        results: &[(&str, bool)],
+    ) -> std::path::PathBuf {
+        let path = dir.join(file);
+        let mut body = String::new();
+        for (tool_use, is_error) in results {
+            body.push_str(&format!(
+                r#"{{"type":"assistant","message":{{"content":[{{"type":"tool_use","id":"{tool_use}","name":"Agent","input":{{"subagent_type":"forge:runner"}}}}]}}}}"#
+            ));
+            body.push('\n');
+            body.push_str(&format!(
+                r#"{{"type":"user","message":{{"content":[{{"type":"tool_result","tool_use_id":"{tool_use}","is_error":{is_error},"content":"PreToolUse:Agent hook error: Hold"}}]}}}}"#
+            ));
+            body.push('\n');
+        }
+        std::fs::write(&path, body).unwrap();
+        path
+    }
+
+    #[cfg(unix)]
+    fn asking_from(
+        role: &str,
+        tool_use: &str,
+        transcript: Option<&std::path::Path>,
+    ) -> crate::daemon::dispatch_gate::Dispatch {
+        crate::daemon::dispatch_gate::Dispatch {
+            transcript_path: transcript.map(|p| p.to_string_lossy().into_owned()),
+            ..asking(role, tool_use)
+        }
+    }
+
+    /// ISS-1412 criterion 1: the observed failure. The gate promised the run
+    /// to a call another hook then refused, and the master's correct next
+    /// dispatch was answered that nothing was declared.
+    #[cfg(unix)]
+    #[test]
+    fn a_run_promised_to_a_call_another_hook_refused_is_taken_by_the_next_dispatch() {
+        let (ctl, _t, dir) = declaring_control("sess-a", "proj-1");
+        ship_roles(&ctl, &["runner"]);
+        let run_id = run_declare(
+            &ctl,
+            "proj-1",
+            &["ISS-7".into()],
+            "/w/seven",
+            "sess-a",
+            None,
+        )
+        .job_id
+        .expect("declared");
+        assert!(allowed(&gate_on(
+            &ctl,
+            &asking("forge:runner", "toolu_1"),
+            "sess-a"
+        )));
+        assert_eq!(promised_to(&ctl, &run_id).as_deref(), Some("toolu_1"));
+
+        let lead = transcript_with(&dir, "lead.jsonl", &[("toolu_1", true)]);
+        let next = gate_on(
+            &ctl,
+            &asking_from("forge:runner", "toolu_2", Some(&lead)),
+            "sess-a",
+        );
+        assert!(allowed(&next), "the run was freed by the refusal: {next:?}");
+        assert_eq!(
+            named_run(&next).as_deref(),
+            Some(run_id.as_str()),
+            "the dispatch took the declared run rather than passing without it"
+        );
+        assert_eq!(promised_to(&ctl, &run_id).as_deref(), Some("toolu_2"));
+
+        // The release did not make the run free for a third: two live dispatches never share one.
+        let third = gate_on(
+            &ctl,
+            &asking_from("forge:runner", "toolu_3", Some(&lead)),
+            "sess-a",
+        );
+        assert!(!allowed(&third), "{third:?}");
+    }
+
+    /// ISS-1412 criterion 2: where the earlier call has not been seen to end
+    /// without a subagent, the run stays held, and the refusal says by whom.
+    #[cfg(unix)]
+    #[test]
+    fn a_run_promised_to_a_call_not_seen_to_fail_stays_held_and_the_refusal_names_it() {
+        let (ctl, _t, dir) = declaring_control("sess-a", "proj-1");
+        ship_roles(&ctl, &["runner"]);
+        let run_id = run_declare(
+            &ctl,
+            "proj-1",
+            &["ISS-7".into()],
+            "/w/seven",
+            "sess-a",
+            None,
+        )
+        .job_id
+        .expect("declared");
+        assert!(allowed(&gate_on(
+            &ctl,
+            &asking("forge:runner", "toolu_1"),
+            "sess-a"
+        )));
+
+        let answered_fine = transcript_with(&dir, "answered.jsonl", &[("toolu_1", false)]);
+        let another_call_failed = transcript_with(&dir, "other.jsonl", &[("toolu_9", true)]);
+        let no_result_yet = {
+            let path = dir.join("pending.jsonl");
+            std::fs::write(
+                &path,
+                r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Agent","input":{}}]}}"#,
+            )
+            .unwrap();
+            path
+        };
+        let unreadable = dir.join("missing.jsonl");
+        for (what, transcript) in [
+            ("a call answered without an error", Some(answered_fine)),
+            ("a different call's error", Some(another_call_failed)),
+            ("a call with no result yet", Some(no_result_yet)),
+            ("a transcript this box cannot read", Some(unreadable)),
+            ("a dispatch that named no transcript", None),
+        ] {
+            let held = gate_on(
+                &ctl,
+                &asking_from("forge:runner", "toolu_2", transcript.as_deref()),
+                "sess-a",
+            );
+            assert!(!allowed(&held), "{what} must not free the run: {held:?}");
+            let said = held.reason.clone().unwrap_or_default();
+            assert!(
+                said.contains(&run_id)
+                    && said.contains("toolu_1")
+                    && said.contains(&format!("forge-runner run close {run_id}")),
+                "{what}: the refusal names the run, the call and the way out: {said}"
+            );
+            assert!(
+                !refused_as_undeclared(&held),
+                "{what}: the run IS declared, so the refusal must not say nothing was: {said}"
+            );
+            assert_eq!(
+                promised_to(&ctl, &run_id).as_deref(),
+                Some("toolu_1"),
+                "{what}: the promise is untouched"
+            );
+        }
+    }
+
+    /// The way out the refusal names works: closing the run frees the
+    /// declaration, and the next declared run is not held by the closed one's
+    /// promise.
+    #[cfg(unix)]
+    #[test]
+    fn closing_a_held_run_lets_the_next_declaration_be_dispatched() {
+        let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+        ship_roles(&ctl, &["runner"]);
+        let held_run = run_declare(
+            &ctl,
+            "proj-1",
+            &["ISS-7".into()],
+            "/w/seven",
+            "sess-a",
+            None,
+        )
+        .job_id
+        .expect("declared");
+        assert!(allowed(&gate_on(
+            &ctl,
+            &asking("forge:runner", "toolu_1"),
+            "sess-a"
+        )));
+        assert!(!allowed(&gate_on(
+            &ctl,
+            &asking("forge:runner", "toolu_2"),
+            "sess-a"
+        )));
+
+        assert!(run_close(&ctl, &held_run, Some("its dispatch was refused"), "sess-a").ok);
+        let fresh = run_declare(
+            &ctl,
+            "proj-1",
+            &["ISS-7".into()],
+            "/w/seven",
+            "sess-a",
+            None,
+        )
+        .job_id
+        .expect("declared again");
+        let next = gate_on(&ctl, &asking("forge:runner", "toolu_2"), "sess-a");
+        assert!(allowed(&next), "{next:?}");
+        assert_eq!(named_run(&next).as_deref(), Some(fresh.as_str()));
     }
 
     #[cfg(unix)]

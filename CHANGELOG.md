@@ -3159,6 +3159,7 @@
 ### Fixed
 
 - **The "nobody is working it" line counts every session opened over the issue.** It counted only runs still holding it, so six runs read as one; it also lists all their statuses (ISS-1320).
+- **A dispatch another hook refused no longer blocks the master's next one.** The box frees the declared run once the call's error shows, and a held run's refusal names the run and the call.
 - **An empty product-map screen sends an admin to where it is filled.** Open Automation now lands on the Improve tab, and the words say to enable the Standing product-map refresh there, then run it.
 - **A release pane that stops on a question no longer asks it again every minute.** The question now lands on the release's issues, the release waits, a second press is refused by name, and the answer restarts it.
 - **The run drawer opened from Ops says Queued for a run nothing has started.** It read running, unlike the board, and offered Pause and Stop. It now agrees, names its issue, and offers both once work starts.
@@ -6372,6 +6373,7 @@
 
 ### Changed
 
+- **An integration run on a box with its own Postgres reuses the template database.** A run whose migrations match one already there clones it; a differing one builds its own. Concurrent runs build it once. CI still builds its own.
 - **An issue is one line of five columns that always fits.** The state says what is running, who owes an answer and for how long. Module, cost and complexity left the row; Comfortable density shows module, kind and creator.
 - **The Library is one row of tabs, and Memory is not among them.** Knowledge's readers are a grouped list, or a picker on a phone, not a second tab row. An empty product map opens Automation for an admin.
 - **The Issues screen shows issues, and the board, metrics and modules sit where they belong.** The tabs are gone: the board is the Pipeline page, throughput is on the dashboard, modules are "Group: module". Old `?tab=` links redirect.

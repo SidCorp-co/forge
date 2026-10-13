@@ -1,31 +1,59 @@
 import type { TestProject } from 'vitest/node';
 import { integrationWorkers, workerLine } from './integration-workers.js';
-import { reapAbandoned, runToken, sweepRunScratchDbs, templateDbName } from './scratch-db.js';
+import {
+  freshTemplateName,
+  mintRunToken,
+  reapAbandoned,
+  sweepRunScratchDbs,
+} from './scratch-db.js';
+import {
+  acquireSharedTemplate,
+  resolveTemplateMode,
+  type SharedTemplate,
+} from './shared-template.js';
 
 let stopContainer: (() => Promise<void>) | null = null;
-let ownedTemplate: { url: string; name: string } | null = null;
+let run: {
+  url: string;
+  token: string;
+  fresh: string | null;
+  shared: SharedTemplate | null;
+} | null = null;
 
-async function buildTemplate(adminUrl: string, name: string): Promise<void> {
+async function migrateDatabase(url: string): Promise<void> {
   const postgres = (await import('postgres')).default;
   const { drizzle } = await import('drizzle-orm/postgres-js');
   const { runMigrations } = await import('./migrate.js');
 
+  const client = postgres(url, { max: 1 });
+  try {
+    await runMigrations(drizzle(client));
+  } finally {
+    await client.end({ timeout: 5 });
+  }
+}
+
+async function reapLeftovers(adminUrl: string): Promise<void> {
+  const postgres = (await import('postgres')).default;
   const admin = postgres(adminUrl, { max: 1 });
   try {
     await reapAbandoned(admin);
+  } finally {
+    await admin.end({ timeout: 5 });
+  }
+}
+
+async function buildPrivateTemplate(adminUrl: string, name: string): Promise<void> {
+  const postgres = (await import('postgres')).default;
+  const admin = postgres(adminUrl, { max: 1 });
+  try {
     await admin.unsafe(`CREATE DATABASE "${name}"`);
   } finally {
     await admin.end({ timeout: 5 });
   }
-
-  const tplUrl = new URL(adminUrl);
-  tplUrl.pathname = `/${name}`;
-  const tplClient = postgres(tplUrl.toString(), { max: 1 });
-  try {
-    await runMigrations(drizzle(tplClient));
-  } finally {
-    await tplClient.end({ timeout: 5 });
-  }
+  const url = new URL(adminUrl);
+  url.pathname = `/${name}`;
+  await migrateDatabase(url.toString());
 }
 
 /** The count vitest resolved, read off the run that uses it, and the rule that chose it. */
@@ -37,6 +65,7 @@ function reportWorkers(project: TestProject): void {
 export async function setup(project: TestProject): Promise<void> {
   reportWorkers(project);
   let adminUrl = process.env.TEST_DATABASE_URL;
+  const { mode, rule } = resolveTemplateMode(process.env, Boolean(adminUrl));
 
   if (!adminUrl) {
     const { startPostgresContainer } = await import('./container.js');
@@ -45,33 +74,59 @@ export async function setup(project: TestProject): Promise<void> {
     stopContainer = container.stop;
   }
 
-  const name = templateDbName();
-  await buildTemplate(adminUrl, name);
-  ownedTemplate = { url: adminUrl, name };
+  const token = mintRunToken();
+  await reapLeftovers(adminUrl);
+
+  let name: string;
+  if (mode === 'shared') {
+    const { MIGRATIONS_FOLDER } = await import('./migrate.js');
+    const started = Date.now();
+    const shared = await acquireSharedTemplate({
+      adminUrl,
+      migrationsFolder: MIGRATIONS_FOLDER,
+      migrate: migrateDatabase,
+    });
+    name = shared.name;
+    run = { url: adminUrl, token, fresh: null, shared };
+    const took = ((Date.now() - started) / 1000).toFixed(1);
+    console.log(
+      `[integration] template ${name}, shared (${rule}): ${shared.built ? 'built' : 'reused'} in ${took}s`,
+    );
+  } else {
+    name = freshTemplateName(token);
+    await buildPrivateTemplate(adminUrl, name);
+    run = { url: adminUrl, token, fresh: name, shared: null };
+    console.log(`[integration] template ${name}, private (${rule}): built`);
+  }
 
   process.env.TEST_PG_ADMIN_URL = adminUrl;
   process.env.TEST_PG_TEMPLATE = name;
+  process.env.TEST_PG_RUN_TOKEN = token;
 }
 
 export async function teardown(): Promise<void> {
-  if (ownedTemplate) {
+  if (run) {
+    const finished = run;
+    run = null;
     const postgres = (await import('postgres')).default;
     // A name the drain reached first comes back as `does not exist, skipping`, which is the sweep
     // doing its job rather than anything to read. What a drop is REFUSED over, the sweep retries
     // and then names.
-    const admin = postgres(ownedTemplate.url, { max: 1, onnotice: () => {} });
+    const admin = postgres(finished.url, { max: 1, onnotice: () => {} });
     try {
-      // Every scratch database this run minted and the drain did not reach — per case, per file,
-      // and each ground's own template — and here rather than in the cases and hooks that used
-      // them: this is the only teardown in the suite with no vitest budget over it, so a
-      // `DROP DATABASE` waiting on the cluster's checkpoint costs a run its wall time and never a
-      // case or a hook its verdict.
-      await sweepRunScratchDbs(admin, runToken(ownedTemplate.name));
-      await admin.unsafe(`DROP DATABASE IF EXISTS "${ownedTemplate.name}" WITH (FORCE)`);
+      // Every scratch database this run minted and the drain did not reach — per case and per file
+      // — and here rather than in the cases and hooks that used them: this is the only teardown in
+      // the suite with no vitest budget over it, so a `DROP DATABASE` waiting on the cluster's
+      // checkpoint costs a run its wall time and never a case or a hook its verdict.
+      await sweepRunScratchDbs(admin, finished.token);
+      // Only a template this run built for itself is dropped; a shared one outlives every run.
+      if (finished.fresh) {
+        await admin.unsafe(`DROP DATABASE IF EXISTS "${finished.fresh}" WITH (FORCE)`);
+      }
     } catch {
     } finally {
       await admin.end({ timeout: 5 });
-      ownedTemplate = null;
+      await finished.shared?.release();
     }
   }
   if (stopContainer) {

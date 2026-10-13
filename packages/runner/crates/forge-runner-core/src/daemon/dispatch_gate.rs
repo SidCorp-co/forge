@@ -29,6 +29,31 @@ declaration for the next dispatch. Each verb's own `-h` says what it takes. \
 Without that row this box holds no record of what you handed out, so if this pane dies the issues \
 stay marked as being worked on with nobody working on them.";
 
+/// How a refusal that names the run it is about opens, so the pane's hook can
+/// tell it from any other `ok: false` the socket answers (see [`is_refusal`]).
+const HELD_OPENING: &str = "Refused: run ";
+
+/// The refusal for a dispatch whose declared run is promised to an earlier
+/// call that this box has not seen end without a subagent: the run and the
+/// call holding it, and how to free it.
+pub fn held_refusal(run_id: &str, promised_to: &str) -> String {
+    format!(
+        "{HELD_OPENING}{run_id} is declared, and it is promised to the earlier dispatch \
+{promised_to}, so a second subagent under it would be two units of work with one record. \
+That dispatch has not started a subagent, and this box has not seen it fail either. If it was \
+refused by another hook or failed before its subagent started, nothing will ever bind the run: \
+free it with `forge-runner run close {run_id}`, declare the work again with `forge-runner run \
+declare`, then dispatch again. If it is still starting, wait for it."
+    )
+}
+
+/// Whether a daemon's `ok: false` reason is one of this gate's own refusals,
+/// which the hook turns into a deny. Any other reason is the daemon refusing
+/// the question itself, which the hook lets through and marks.
+pub fn is_refusal(reason: &str) -> bool {
+    reason == REFUSAL || reason.starts_with(HELD_OPENING)
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct Dispatch {
     /// Present when this tool call was made INSIDE a subagent rather than by the master.
@@ -71,6 +96,11 @@ pub enum Verdict {
     },
     /// Nothing was declared for it.
     Undeclared,
+    /// A run was declared, and an earlier tool call holds its promise.
+    Held {
+        run_id: String,
+        promised_to: String,
+    },
     Unknown(&'static str),
 }
 
@@ -102,7 +132,10 @@ pub fn decide(d: &Dispatch, f: &Facts<'_>) -> Verdict {
         Some(t) if Some(t) == d.tool_use_id.as_deref() => Verdict::Replay {
             run_id: run_id.to_string(),
         },
-        Some(_) => Verdict::Undeclared,
+        Some(t) => Verdict::Held {
+            run_id: run_id.to_string(),
+            promised_to: t.to_string(),
+        },
     }
 }
 
@@ -332,8 +365,31 @@ mod tests {
         let f = facts(Some(&r), Some("run-7"), Some("toolu_1"));
         assert_eq!(
             decide(&dispatch("forge:runner", "toolu_2"), &f),
-            Verdict::Undeclared,
+            Verdict::Held {
+                run_id: "run-7".into(),
+                promised_to: "toolu_1".into()
+            },
             "two subagents under one declared row is two units of work with one record"
+        );
+    }
+
+    /// ISS-1412. A master told only that nothing was declared, when the run IS
+    /// declared and held by a call that never started, cannot tell what to do.
+    #[test]
+    fn the_refusal_for_a_held_run_names_the_run_the_call_and_the_close() {
+        let said = held_refusal("run-7", "toolu_1");
+        for needed in ["run-7", "toolu_1", "forge-runner run close run-7"] {
+            assert!(said.contains(needed), "`{needed}` is missing from: {said}");
+        }
+        assert!(
+            !said.contains("nothing on this box has been told"),
+            "the run IS declared, and saying it is not is the defect: {said}"
+        );
+        assert!(is_refusal(&said), "the hook must deny it: {said}");
+        assert!(is_refusal(REFUSAL));
+        assert!(
+            !is_refusal("this daemon has no ledger open, so it can record nothing"),
+            "any other refusal is the daemon refusing the question itself, which the hook lets through"
         );
     }
 
