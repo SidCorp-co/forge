@@ -6,7 +6,6 @@ export type JsonAnswer = {
   readonly kind: 'json';
   readonly schema: ZodType;
   readonly description: string;
-  /** A second body this status can carry, chosen by the request, that is not JSON. */
   readonly alsoAs?: string;
 };
 

@@ -1,6 +1,11 @@
 import { PAT_DOOR_REFUSALS } from '../../middleware/pat-rest-surface.js';
 import { type Answer, codeFor } from '../declare/describe.js';
-import { ERROR_ENVELOPE, ERROR_ENVELOPE_NAME, errorResponse } from '../declare/errors.js';
+import {
+  ERROR_ENVELOPE,
+  ERROR_ENVELOPE_NAME,
+  errorResponse,
+  withLibraryRefusal,
+} from '../declare/errors.js';
 import { type JsonSchema, renderSchema } from '../declare/schema.js';
 import type { ValidatorDeclaration } from '../declare/validator.js';
 import { type Access, accessOf } from './access.js';
@@ -250,25 +255,6 @@ async function refusalOf(entry: RouteEntry, declaration: ValidatorDeclaration, d
   return refusal;
 }
 
-const LIBRARY_DEFAULT_REFUSAL: JsonSchema = {
-  description:
-    'The input failed the schema and this validator has no hook, so the library answers with the failed parse.',
-  content: {
-    'application/json': {
-      schema: {
-        type: 'object',
-        required: ['success', 'error'],
-        properties: { success: { const: false }, error: {} },
-      },
-    },
-  },
-};
-
-function jsonSchemaOf(response: JsonSchema): JsonSchema {
-  const content = response.content as Record<string, { schema: JsonSchema }>;
-  return content['application/json']?.schema ?? {};
-}
-
 async function responsesOf(entry: RouteEntry, access: Access | null, doc: Document) {
   const responses: Record<string, JsonSchema> = {};
   const errors: ErrorCodes = new Map();
@@ -336,19 +322,7 @@ async function responsesOf(entry: RouteEntry, access: Access | null, doc: Docume
     const codes = [...byCode].map(([code, whens]) => ({ code, when: whens.join('; ') }));
     responses[String(status)] = errorResponse(codes);
   }
-  if (libraryDefault) {
-    const hooked = responses['400'];
-    responses['400'] = hooked
-      ? {
-          description: `${String(hooked.description)}\n${String(LIBRARY_DEFAULT_REFUSAL.description)}`,
-          content: {
-            'application/json': {
-              schema: { anyOf: [jsonSchemaOf(hooked), jsonSchemaOf(LIBRARY_DEFAULT_REFUSAL)] },
-            },
-          },
-        }
-      : LIBRARY_DEFAULT_REFUSAL;
-  }
+  if (libraryDefault) responses['400'] = withLibraryRefusal(responses['400']);
   if (!succeeded && !declared?.retired) {
     doc.findings.push({
       rule: 'no-response',
