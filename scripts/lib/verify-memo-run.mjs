@@ -146,14 +146,26 @@ export class Memo {
       return verdict;
     }
     this.tree.refresh();
-    const after = keyFor({
-      check,
-      decl,
-      tree: this.tree,
-      git: plan.git,
-      native: this.native(decl),
-      env: this.env,
-    });
+    let after;
+    try {
+      after = keyFor({
+        check,
+        decl,
+        tree: this.tree,
+        git: plan.git,
+        native: this.native(decl),
+        env: this.env,
+      });
+    } catch (err) {
+      // The same refusal `plan` makes. A probed path can be a build output another check is
+      // writing as this one settles, and a listing that fails under it is a key not taken,
+      // never a verify ended with a stack trace over a verdict that was already green (ISS-1303).
+      this.unfiled.push({
+        label: check.label,
+        reason: `its key could not be taken after it ran: ${err.message}`,
+      });
+      return verdict;
+    }
     const history =
       decl.git && JSON.stringify(gitState(this.root, this.baseRef)) !== JSON.stringify(plan.git);
     if (after.key !== plan.key || history) {
