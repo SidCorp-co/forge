@@ -157,8 +157,7 @@ export function LeaveGuardProvider({ children }: { children: ReactNode }) {
     };
   }, [anyDirty, push]);
 
-  // A navigation forward from the guarded page would leave the guard's entry behind it, and a
-  // Back from the new page would land on a page that is already gone. Take the entry off first.
+  // Going forward past the guard's entry would strand it between the two pages: take it off first.
   const unwind = useCallback((then: () => void) => {
     const armed = sentinel.current;
     if (!armed?.onIt || window.history.state?.[SENTINEL] !== armed.token) {
