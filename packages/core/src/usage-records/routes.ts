@@ -2,6 +2,7 @@ import { and, count, desc, eq, gte, lte, type SQL, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import { usageRecords, usageSources } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
@@ -10,6 +11,19 @@ import { utcDayText } from '../lib/time-buckets.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/validator.js';
 import { estimateCost } from './pricing.js';
+import {
+  bulkCountSchema,
+  bulkUsageRecords,
+  createUsageRecord,
+  ingestCliSchema,
+  ingestCliUsage,
+  listUsageRecords,
+  readUsageRecord,
+  usageRecordListSchema,
+  usageRecordRowSchema,
+  usageSummary,
+  usageSummarySchema,
+} from './routes-reference.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -80,6 +94,7 @@ usageRecordRoutes.use('*', requireAuth(), assertEmailVerified());
 
 usageRecordRoutes.get(
   '/',
+  listUsageRecords,
   zValidator('query', listQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -112,12 +127,18 @@ usageRecordRoutes.get(
         .where(and(...conditions)),
     ]);
 
-    return c.json(listResponse(c, rows, totalRow?.n ?? 0, { limit: pageSize, offset }));
+    return c.json(
+      answer(
+        usageRecordListSchema,
+        listResponse(c, rows, totalRow?.n ?? 0, { limit: pageSize, offset }),
+      ),
+    );
   },
 );
 
 usageRecordRoutes.get(
   '/summary',
+  usageSummary,
   zValidator('query', summaryQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -182,17 +203,20 @@ usageRecordRoutes.get(
       .where(and(...conditions))
       .groupBy(usageRecords.source);
 
-    return c.json({
-      totals: totals ?? { inputTokens: 0, outputTokens: 0, estimatedCost: 0, requests: 0 },
-      daily,
-      byModel,
-      bySource,
-    });
+    return c.json(
+      answer(usageSummarySchema, {
+        totals: totals ?? { inputTokens: 0, outputTokens: 0, estimatedCost: 0, requests: 0 },
+        daily,
+        byModel,
+        bySource,
+      }),
+    );
   },
 );
 
 usageRecordRoutes.get(
   '/:id',
+  readUsageRecord,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -208,12 +232,13 @@ usageRecordRoutes.get(
     const access = await loadProjectAccess(row.projectId, userId);
     assertProjectRole(access, 'viewer', 'not a project member');
 
-    return c.json(row);
+    return c.json(answer(usageRecordRowSchema, row));
   },
 );
 
 usageRecordRoutes.post(
   '/',
+  createUsageRecord,
   zValidator('json', recordCreateSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -255,12 +280,13 @@ usageRecordRoutes.post(
       .returning();
     if (!inserted) throw new Error('usage_records: insert returned no row');
 
-    return c.json(inserted, 201);
+    return c.json(answer(usageRecordRowSchema, inserted), 201);
   },
 );
 
 usageRecordRoutes.post(
   '/bulk',
+  bulkUsageRecords,
   zValidator('json', bulkSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -302,12 +328,13 @@ usageRecordRoutes.post(
       .insert(usageRecords)
       .values(values)
       .returning({ id: usageRecords.id });
-    return c.json({ count: inserted.length });
+    return c.json(answer(bulkCountSchema, { count: inserted.length }));
   },
 );
 
 usageRecordRoutes.post(
   '/ingest-cli',
+  ingestCliUsage,
   zValidator('json', bulkSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -349,6 +376,6 @@ usageRecordRoutes.post(
       .insert(usageRecords)
       .values(values)
       .returning({ id: usageRecords.id });
-    return c.json({ ingested: inserted.length, scanned: records.length });
+    return c.json(answer(ingestCliSchema, { ingested: inserted.length, scanned: records.length }));
   },
 );

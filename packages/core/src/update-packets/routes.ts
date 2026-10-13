@@ -5,11 +5,13 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import { skillActivityTriggers } from '../db/schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/validator.js';
 import { createUpdatePacket } from '../skills/update-packets.js';
+import { publishUpdatePacket, updatePacketSchema } from './routes-reference.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, {
@@ -37,7 +39,8 @@ updatePacketRoutes.use('*', requireAuth(), assertEmailVerified());
 
 updatePacketRoutes.post(
   '/',
-  zValidator('json', bodySchema, (result, c) => {
+  publishUpdatePacket,
+  zValidator('json', bodySchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
   async (c) => {
@@ -47,6 +50,6 @@ updatePacketRoutes.post(
       actor: `human:${userId}`,
       trigger,
     });
-    return c.json(packet, 201);
+    return c.json(answer(updatePacketSchema, packet), 201);
   },
 );

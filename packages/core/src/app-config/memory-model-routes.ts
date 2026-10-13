@@ -6,6 +6,7 @@ import { eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import { appConfig, memoryModels } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
@@ -20,6 +21,14 @@ import {
 } from '../memory/chunk-reindex.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/validator.js';
+import {
+  cancelReindex,
+  estimateMemoryModel,
+  flipMemoryModel,
+  memoryModelStateSchema,
+  readMemoryModel,
+  reindexEstimateSchema,
+} from './routes-reference.js';
 
 const paramSchema = z.object({ projectId: z.uuid() });
 const flipSchema = z.object({ model: z.enum(memoryModels) }).strict();
@@ -34,27 +43,43 @@ const validParam = zValidator('param', paramSchema, (r) => {
   if (!r.success) throw badRequest(z.flattenError(r.error));
 });
 
-memoryModelRoutes.get('/:projectId/memory-model/estimate', validParam, async (c) => {
-  const { projectId } = c.req.valid('param');
-  const access = await loadProjectAccess(projectId, c.get('userId'));
-  assertProjectRole(access, 'viewer', 'not a project member');
-  return c.json(await estimateReindex(projectId));
-});
+memoryModelRoutes.get(
+  '/:projectId/memory-model/estimate',
+  estimateMemoryModel,
+  validParam,
+  async (c) => {
+    const { projectId } = c.req.valid('param');
+    const access = await loadProjectAccess(projectId, c.get('userId'));
+    assertProjectRole(access, 'viewer', 'not a project member');
+    return c.json(answer(reindexEstimateSchema, await estimateReindex(projectId)));
+  },
+);
 
-memoryModelRoutes.get('/:projectId/memory-model/reindex', validParam, async (c) => {
-  const { projectId } = c.req.valid('param');
-  const access = await loadProjectAccess(projectId, c.get('userId'));
-  assertProjectRole(access, 'viewer', 'not a project member');
-  const [cfg] = await db
-    .select({ model: appConfig.memoryModel })
-    .from(appConfig)
-    .where(eq(appConfig.projectId, projectId))
-    .limit(1);
-  return c.json({ model: cfg?.model ?? 'flat', reindex: await readReindex(projectId) });
-});
+memoryModelRoutes.get(
+  '/:projectId/memory-model/reindex',
+  readMemoryModel,
+  validParam,
+  async (c) => {
+    const { projectId } = c.req.valid('param');
+    const access = await loadProjectAccess(projectId, c.get('userId'));
+    assertProjectRole(access, 'viewer', 'not a project member');
+    const [cfg] = await db
+      .select({ model: appConfig.memoryModel })
+      .from(appConfig)
+      .where(eq(appConfig.projectId, projectId))
+      .limit(1);
+    return c.json(
+      answer(memoryModelStateSchema, {
+        model: cfg?.model ?? 'flat',
+        reindex: await readReindex(projectId),
+      }),
+    );
+  },
+);
 
 memoryModelRoutes.post(
   '/:projectId/memory-model',
+  flipMemoryModel,
   validParam,
   zValidator('json', flipSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
@@ -89,7 +114,7 @@ memoryModelRoutes.post(
           set: { memoryModel: 'chunked', memoryReindex: reindex, updatedAt: sql`now()` },
         });
       await enqueueChunkReindex(projectId);
-      return c.json({ model: 'chunked', reindex }, 202);
+      return c.json(answer(memoryModelStateSchema, { model: 'chunked', reindex }), 202);
     }
 
     await db
@@ -103,21 +128,30 @@ memoryModelRoutes.post(
       await writeReindex(projectId, { state: 'cancelled', finishedAt: new Date().toISOString() });
     }
     await enqueueChunkPurge(projectId);
-    return c.json({ model: 'flat', reindex: await readReindex(projectId) });
+    return c.json(
+      answer(memoryModelStateSchema, { model: 'flat', reindex: await readReindex(projectId) }),
+    );
   },
 );
 
-memoryModelRoutes.delete('/:projectId/memory-model/reindex', validParam, async (c) => {
-  const { projectId } = c.req.valid('param');
-  const access = await loadProjectAccess(projectId, c.get('userId'));
-  assertProjectRole(access, 'admin', 'insufficient permission');
-  const current = await readReindex(projectId);
-  if (!isLive(current)) {
-    throw new HTTPException(409, {
-      message: 'no reindex is queued or running',
-      cause: { code: 'REINDEX_NOT_LIVE' },
-    });
-  }
-  await writeReindex(projectId, { state: 'cancelled', finishedAt: new Date().toISOString() });
-  return c.json({ model: 'chunked', reindex: await readReindex(projectId) });
-});
+memoryModelRoutes.delete(
+  '/:projectId/memory-model/reindex',
+  cancelReindex,
+  validParam,
+  async (c) => {
+    const { projectId } = c.req.valid('param');
+    const access = await loadProjectAccess(projectId, c.get('userId'));
+    assertProjectRole(access, 'admin', 'insufficient permission');
+    const current = await readReindex(projectId);
+    if (!isLive(current)) {
+      throw new HTTPException(409, {
+        message: 'no reindex is queued or running',
+        cause: { code: 'REINDEX_NOT_LIVE' },
+      });
+    }
+    await writeReindex(projectId, { state: 'cancelled', finishedAt: new Date().toISOString() });
+    return c.json(
+      answer(memoryModelStateSchema, { model: 'chunked', reindex: await readReindex(projectId) }),
+    );
+  },
+);

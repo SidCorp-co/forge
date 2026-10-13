@@ -9,6 +9,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { readConversationAgentTurns } from '../agent-sessions/conversation-agent.js';
+import { answer } from '../api-reference/describe.js';
 import { loadConversationAttachment } from '../conversations/attachment-service.js';
 import { listWindowsForConversation } from '../conversations/windows.js';
 import { contentDisposition } from '../lib/attachment-headers.js';
@@ -22,6 +23,13 @@ import {
   UploadTicketError,
 } from '../uploads/ticket-service.js';
 import { readableConversation, writableConversation } from './conversation-access.js';
+import {
+  downloadRoomAttachment,
+  mintRoomUpload,
+  stoppedSchema,
+  stopRoomTurn,
+  uploadTicketSchema,
+} from './conversation-attachment-routes-reference.js';
 import { isTurnRunning, stopConversationTurns } from './conversation-stops.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
@@ -91,6 +99,7 @@ export const conversationAttachmentRoutes = new Hono<{ Variables: AuthVars }>();
  */
 conversationAttachmentRoutes.post(
   '/:id/attachments',
+  mintRoomUpload,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -113,14 +122,14 @@ conversationAttachmentRoutes.post(
         mime,
       });
       return c.json(
-        {
+        answer(uploadTicketSchema, {
           uploadId: ticket.id,
-          method: 'PUT' as const,
+          method: 'PUT',
           uploadPath: `/api/uploads/${ticket.id}`,
           maxBytes: ticket.maxBytes,
           expiresAt: ticket.expiresAt.toISOString(),
           expiresInMs: UPLOAD_TICKET_TTL_MS,
-        },
+        }),
         201,
       );
     } catch (err) {
@@ -141,6 +150,7 @@ conversationAttachmentRoutes.post(
 /** The bytes behind one of this room's attachments, for whoever may read it. */
 conversationAttachmentRoutes.get(
   '/:id/attachments/:attachmentId/download',
+  downloadRoomAttachment,
   zValidator('param', idParamSchema.extend({ attachmentId: z.uuid() }), (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -169,6 +179,7 @@ conversationAttachmentRoutes.get(
  */
 conversationAttachmentRoutes.post(
   '/:id/stop',
+  stopRoomTurn,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -181,6 +192,9 @@ conversationAttachmentRoutes.post(
       if (refusal) throw refusal;
     }
 
-    return c.json({ conversationId: id, stopped: stopConversationTurns(id) }, 200);
+    return c.json(
+      answer(stoppedSchema, { conversationId: id, stopped: stopConversationTurns(id) }),
+      200,
+    );
   },
 );

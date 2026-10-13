@@ -21,6 +21,7 @@ import {
   conversationAgentDeviceAvailable,
   readConversationAgentTurns,
 } from '../agent-sessions/conversation-agent.js';
+import { answer } from '../api-reference/describe.js';
 import { listConversationAttachmentsByIds } from '../conversations/attachment-service.js';
 import { resolveProjectHandle } from '../conversations/handles.js';
 import {
@@ -61,6 +62,20 @@ import { conversationAttachmentRoutes } from './conversation-attachment-routes.j
 import { foreignAttachmentIds, imagesFromAttachments } from './conversation-images.js';
 import { conversationMemberRoutes } from './conversation-member-routes.js';
 import { withDisplayNames } from './conversation-people.js';
+import {
+  agentModeOfferSchema,
+  changeRoom,
+  conversationDetailSchema,
+  conversationListSchema,
+  conversationSchema,
+  deleteRoom,
+  listRooms,
+  openRoom,
+  readAgentModeOffer,
+  readRoom,
+  sendToRoom,
+  sentSchema,
+} from './conversation-routes-reference.js';
 import { ConversationModeSettledError, sendWebConversationMessage } from './conversation-send.js';
 
 const READ_WINDOW = 200;
@@ -169,6 +184,7 @@ function soleProject(row: ConversationRow, scope: string[]): string {
 
 conversationRoutes.get(
   '/',
+  listRooms,
   zValidator('query', listQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -203,11 +219,14 @@ conversationRoutes.get(
 
     const offset = (page - 1) * pageSize;
     return c.json(
-      listResponse(
-        c,
-        visible.slice(offset, offset + pageSize),
-        visible.length,
-        fromPage(page, pageSize),
+      answer(
+        conversationListSchema,
+        listResponse(
+          c,
+          visible.slice(offset, offset + pageSize),
+          visible.length,
+          fromPage(page, pageSize),
+        ),
       ),
     );
   },
@@ -218,6 +237,7 @@ conversationRoutes.get(
  */
 conversationRoutes.get(
   '/agent-mode',
+  readAgentModeOffer,
   zValidator('query', z.object({ projectId: z.uuid() }).strict(), (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -226,15 +246,19 @@ conversationRoutes.get(
     const access = await loadProjectAccess(projectId, c.get('userId'));
     assertProjectRole(access, 'viewer', 'not a project member');
     return c.json(
-      (await conversationAgentDeviceAvailable(projectId))
-        ? { available: true, reason: null }
-        : { available: false, reason: 'this project has no runner paired' },
+      answer(
+        agentModeOfferSchema,
+        (await conversationAgentDeviceAvailable(projectId))
+          ? { available: true, reason: null }
+          : { available: false, reason: 'this project has no runner paired' },
+      ),
     );
   },
 );
 
 conversationRoutes.post(
   '/',
+  openRoom,
   zValidator('json', createSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -277,12 +301,13 @@ conversationRoutes.post(
       return settled ?? room;
     });
 
-    return c.json(conversation, 201);
+    return c.json(answer(conversationSchema, conversation), 201);
   },
 );
 
 conversationRoutes.get(
   '/:id',
+  readRoom,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -298,22 +323,25 @@ conversationRoutes.get(
       readConversationAgentTurns(id),
     ]);
     const scopeProjects = await projectsNamed(scope);
-    return c.json({
-      ...conversation,
-      scope,
-      scopeProjects,
-      canChangeMembership: await mayChangeMembership(conversation, userId),
-      agentMode: await agentModeOffer(conversation, scope, messages.length),
-      agentTurns,
-      participants: await withDisplayNames(participants),
-      messages,
-      windows,
-    });
+    return c.json(
+      answer(conversationDetailSchema, {
+        ...conversation,
+        scope,
+        scopeProjects,
+        canChangeMembership: await mayChangeMembership(conversation, userId),
+        agentMode: await agentModeOffer(conversation, scope, messages.length),
+        agentTurns,
+        participants: await withDisplayNames(participants),
+        messages,
+        windows,
+      }),
+    );
   },
 );
 
 conversationRoutes.patch(
   '/:id',
+  changeRoom,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -344,12 +372,13 @@ conversationRoutes.patch(
     if (archived !== undefined) updated = await setConversationArchived(id, archived);
     if (roomPresence !== undefined) updated = await setConversationPresence(id, roomPresence);
     if (!updated) throw notFound('conversation not found');
-    return c.json(updated);
+    return c.json(answer(conversationSchema, updated));
   },
 );
 
 conversationRoutes.delete(
   '/:id',
+  deleteRoom,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -367,6 +396,7 @@ conversationRoutes.delete(
  */
 conversationRoutes.post(
   '/:id/messages',
+  sendToRoom,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -455,6 +485,9 @@ conversationRoutes.post(
       listWindowsForConversation(id, WINDOW_PAGE),
       readConversationAgentTurns(id),
     ]);
-    return c.json({ ...sent, messages, windows, agentTurns }, sent.mode === 'agent' ? 202 : 201);
+    return c.json(
+      answer(sentSchema, { ...sent, messages, windows, agentTurns }),
+      sent.mode === 'agent' ? 202 : 201,
+    );
   },
 );

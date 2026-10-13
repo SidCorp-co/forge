@@ -1,11 +1,13 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/require-admin.js';
 import { zValidator } from '../middleware/validator.js';
 import { computeAlerts } from './alert-queries.js';
+import { alertListSchema, listAlerts } from './routes-reference.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -19,12 +21,18 @@ adminAlertRoutes.use('*', requireAuth(), assertEmailVerified(), requireAdmin());
 
 adminAlertRoutes.get(
   '/alerts',
+  listAlerts,
   zValidator('query', alertsQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
     const { staleSeconds } = c.req.valid('query');
     const alerts = await computeAlerts(staleSeconds === undefined ? {} : { staleSeconds });
-    return c.json(listResponse(c, alerts, alerts.length, { limit: alerts.length, offset: 0 }));
+    return c.json(
+      answer(
+        alertListSchema,
+        listResponse(c, alerts, alerts.length, { limit: alerts.length, offset: 0 }),
+      ),
+    );
   },
 );

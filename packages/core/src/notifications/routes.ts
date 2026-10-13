@@ -2,6 +2,7 @@ import { and, countDistinct, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import type { NotificationType } from '../db/schema.js';
 import {
@@ -14,6 +15,22 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { zValidator } from '../middleware/validator.js';
 import { hooks } from '../pipeline/hooks.js';
 import { recordAndDeliver } from './deliver.js';
+import {
+  closedSchema,
+  deleteNotification,
+  deliveryListSchema,
+  deliveryMembersSchema,
+  deliveryRowSchema,
+  dismissNotification,
+  doneNotification,
+  listNotifications,
+  markAllRead,
+  markAllReadSchema,
+  notificationMembers,
+  openCount,
+  openCountSchema,
+  patchNotification,
+} from './routes-reference.js';
 import { silenceRoutes } from './silences-routes.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
@@ -69,6 +86,7 @@ notificationRoutes.route('/silences', silenceRoutes);
  */
 notificationRoutes.get(
   '/open-count',
+  openCount,
   zValidator('query', openCountQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -94,12 +112,13 @@ notificationRoutes.get(
       .innerJoin(notifications, eq(notifications.id, notificationDeliveryMembers.notificationId))
       .where(and(...conditions));
 
-    return c.json({ count: row?.n ?? 0 });
+    return c.json(answer(openCountSchema, { count: row?.n ?? 0 }));
   },
 );
 
 notificationRoutes.post(
   '/mark-all-read',
+  markAllRead,
   zValidator('json', markAllReadBodySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -110,12 +129,13 @@ notificationRoutes.post(
       .set({ readAt: new Date() })
       .where(and(eq(notificationDeliveries.userId, userId), isNull(notificationDeliveries.readAt)))
       .returning({ id: notificationDeliveries.id });
-    return c.json({ updated: updated.length });
+    return c.json(answer(markAllReadSchema, { updated: updated.length }));
   },
 );
 
 notificationRoutes.get(
   '/',
+  listNotifications,
   zValidator('query', listQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -174,7 +194,9 @@ notificationRoutes.get(
       .limit(pageSize)
       .offset((page - 1) * pageSize);
 
-    return c.json(listResponse(c, rows, totalRow?.n ?? 0, fromPage(page, pageSize)));
+    return c.json(
+      answer(deliveryListSchema, listResponse(c, rows, totalRow?.n ?? 0, fromPage(page, pageSize))),
+    );
   },
 );
 
@@ -187,6 +209,7 @@ notificationRoutes.get(
  */
 notificationRoutes.patch(
   '/:id',
+  patchNotification,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -207,7 +230,7 @@ notificationRoutes.patch(
     if (!row) throw notFound('notification not found');
 
     if (read) await hooks.emit('notificationRead', { notificationId: row.id, userId });
-    return c.json(row);
+    return c.json(answer(deliveryRowSchema, row));
   },
 );
 
@@ -221,6 +244,7 @@ notificationRoutes.patch(
  */
 notificationRoutes.get(
   '/:id/members',
+  notificationMembers,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -259,7 +283,7 @@ notificationRoutes.get(
         desc(notifications.createdAt),
       );
 
-    return c.json(rows);
+    return c.json(answer(deliveryMembersSchema, rows));
   },
 );
 
@@ -303,15 +327,20 @@ for (const [path, state] of [
 ] as const) {
   notificationRoutes.post(
     path,
+    state === 'done' ? doneNotification : dismissNotification,
     zValidator('param', idParamSchema, (r) => {
       if (!r.success) throw badRequest(z.flattenError(r.error));
     }),
-    async (c) => c.json(await closeTasks(c.req.valid('param').id, c.get('userId'), state)),
+    async (c) =>
+      c.json(
+        answer(closedSchema, await closeTasks(c.req.valid('param').id, c.get('userId'), state)),
+      ),
   );
 }
 
 notificationRoutes.delete(
   '/:id',
+  deleteNotification,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),

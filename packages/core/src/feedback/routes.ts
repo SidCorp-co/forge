@@ -1,10 +1,17 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { feedbackKinds, feedbackSeverities, feedbackTargets } from '../db/feedback-vocabulary.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { zValidator } from '../middleware/validator.js';
+import { declaresInput, zValidator } from '../middleware/validator.js';
+import {
+  feedbackReportSchema,
+  listFeedbackReports,
+  reviewedStampSchema,
+  reviewFeedbackReport,
+} from './routes-reference.js';
 import { issueVisibleIn, listReports, readReport, stampReviewed } from './service.js';
 
 const listQuerySchema = z
@@ -34,6 +41,8 @@ const markReviewedBodySchema = z
   })
   .strict();
 
+const reportIdParamSchema = z.object({ id: z.uuid() });
+
 const serialize = <R extends { reviewedAt: Date | null; createdAt: Date }>(r: R) => ({
   ...r,
   reviewedAt: r.reviewedAt?.toISOString() ?? null,
@@ -51,6 +60,7 @@ feedbackReportRoutes.use('*', requireAuth(), assertEmailVerified());
 
 feedbackReportRoutes.get(
   '/',
+  listFeedbackReports,
   zValidator('query', listQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -62,9 +72,14 @@ feedbackReportRoutes.get(
 
     if (scope === 'all') {
       const visibleIds = await loadVisibleProjectIds(userId);
-      if (visibleIds.length === 0) return c.json([]);
+      if (visibleIds.length === 0) return c.json(answer(z.array(feedbackReportSchema), []));
       const rows = await listReports(visibleIds, filters, limit ?? 50);
-      return c.json(rows.map(({ issueId, runId, jobId, stage, ...r }) => serialize(r)));
+      return c.json(
+        answer(
+          z.array(feedbackReportSchema),
+          rows.map(({ issueId, runId, jobId, stage, ...r }) => serialize(r)),
+        ),
+      );
     }
 
     if (!projectId) {
@@ -78,8 +93,11 @@ feedbackReportRoutes.get(
     // REST endpoint is human-facing (web UI); React escapes all text on render.
     // No untrusted framing needed here — that's for AI-facing MCP list only.
     return c.json(
-      rows.map(({ issueId, runId, jobId, stage, projectId: _p, projectSlug, ...r }) =>
-        serialize(r),
+      answer(
+        z.array(feedbackReportSchema),
+        rows.map(({ issueId, runId, jobId, stage, projectId: _p, projectSlug, ...r }) =>
+          serialize(r),
+        ),
       ),
     );
   },
@@ -87,12 +105,14 @@ feedbackReportRoutes.get(
 
 feedbackReportRoutes.post(
   '/:id/reviewed',
+  reviewFeedbackReport,
+  declaresInput('param', reportIdParamSchema),
   zValidator('json', markReviewedBodySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
     const reportId = c.req.param('id');
-    if (!z.string().uuid().safeParse(reportId).success) {
+    if (!reportIdParamSchema.safeParse({ id: reportId }).success) {
       throw badRequest('id must be a valid uuid');
     }
     const { reviewed, linkedIssueId } = c.req.valid('json');
@@ -119,10 +139,12 @@ feedbackReportRoutes.post(
 
     if (!updated) throw notFound('feedback report not found after update');
 
-    return c.json({
-      id: updated.id,
-      reviewedAt: updated.reviewedAt?.toISOString() ?? null,
-      linkedIssueId: updated.linkedIssueId ?? null,
-    });
+    return c.json(
+      answer(reviewedStampSchema, {
+        id: updated.id,
+        reviewedAt: updated.reviewedAt?.toISOString() ?? null,
+        linkedIssueId: updated.linkedIssueId ?? null,
+      }),
+    );
   },
 );

@@ -9,15 +9,17 @@
 
 import { and, count, desc, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import { issues, jobs, projects } from '../db/schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/require-admin.js';
+import { pipelineHealthSchema, readPipelineHealth } from './routes-reference.js';
 
 export const pipelineHealthAdminRoutes = new Hono<{ Variables: AuthVars }>();
 pipelineHealthAdminRoutes.use('*', requireAuth(), assertEmailVerified(), requireAdmin());
 
-pipelineHealthAdminRoutes.get('/health', async (c) => {
+pipelineHealthAdminRoutes.get('/health', readPipelineHealth, async (c) => {
   const waiting = await db
     .select({
       id: issues.id,
@@ -45,11 +47,13 @@ pipelineHealthAdminRoutes.get('/health', async (c) => {
     .where(and(eq(jobs.status, 'failed'), sql`${jobs.finishedAt} > now() - interval '24 hours'`))
     .groupBy(jobs.failureKind);
 
-  return c.json({
-    waiting,
-    failureBreakdown: failureBreakdown.map((r) => ({
-      kind: r.failureKind ?? 'unclassified',
-      count: Number(r.count),
-    })),
-  });
+  return c.json(
+    answer(pipelineHealthSchema, {
+      waiting,
+      failureBreakdown: failureBreakdown.map((r) => ({
+        kind: r.failureKind ?? 'unclassified',
+        count: Number(r.count),
+      })),
+    }),
+  );
 });

@@ -15,6 +15,7 @@ import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { resolveProjectHandle } from '../conversations/handles.js';
 import {
   addableHandles,
@@ -28,11 +29,12 @@ import {
   addHandle,
   addPerson,
   listParticipants,
+  type ParticipantRow,
   removeParticipant,
 } from '../conversations/participants.js';
 import { derivedScope } from '../conversations/scope.js';
 import { getConversation } from '../conversations/store.js';
-import { conversationParticipants } from '../db/schema-conversations.js';
+import { type ConversationShape, conversationParticipants } from '../db/schema-conversations.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/validator.js';
@@ -41,6 +43,15 @@ import {
   readableConversation,
   withMembershipLock,
 } from './conversation-access.js';
+import {
+  addHandleToRoom,
+  addPersonToRoom,
+  candidatesBeforeRoom,
+  candidatesForRoom,
+  candidatesSchema,
+  membershipSchema,
+  removeFromRoom,
+} from './conversation-member-routes-reference.js';
 import { nameLostReaders, namePeople, withDisplayNames } from './conversation-people.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
@@ -62,9 +73,9 @@ export async function membershipOf(
   conversationId: string,
   userId: string,
 ): Promise<{
-  shape: string;
+  shape: ConversationShape;
   canChangeMembership: boolean;
-  participants: Awaited<ReturnType<typeof withDisplayNames>>;
+  participants: Array<ParticipantRow & { displayName: string | null }>;
   scope: string[];
   scopeProjects: Awaited<ReturnType<typeof projectsNamed>>;
 }> {
@@ -87,6 +98,7 @@ export async function membershipOf(
  */
 conversationMemberRoutes.get(
   '/candidates',
+  candidatesBeforeRoom,
   zValidator('query', projectQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -100,7 +112,12 @@ conversationMemberRoutes.get(
       addablePeople(null, scope),
       addableHandles(null, userId, scope),
     ]);
-    return c.json({ people: await namePeople(people), handles: await nameLostReaders(handles) });
+    return c.json(
+      answer(candidatesSchema, {
+        people: await namePeople(people),
+        handles: await nameLostReaders(handles),
+      }),
+    );
   },
 );
 
@@ -109,6 +126,7 @@ conversationMemberRoutes.get(
  */
 conversationMemberRoutes.get(
   '/:id/candidates',
+  candidatesForRoom,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -121,7 +139,12 @@ conversationMemberRoutes.get(
       addablePeople(id, scope),
       addableHandles(id, userId, scope),
     ]);
-    return c.json({ people: await namePeople(people), handles: await nameLostReaders(handles) });
+    return c.json(
+      answer(candidatesSchema, {
+        people: await namePeople(people),
+        handles: await nameLostReaders(handles),
+      }),
+    );
   },
 );
 
@@ -130,6 +153,7 @@ conversationMemberRoutes.get(
  */
 conversationMemberRoutes.post(
   '/:id/people',
+  addPersonToRoom,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -149,7 +173,7 @@ conversationMemberRoutes.post(
         verb: 'joined',
       });
     });
-    return c.json(await membershipOf(id, actor), 201);
+    return c.json(answer(membershipSchema, await membershipOf(id, actor)), 201);
   },
 );
 
@@ -158,6 +182,7 @@ conversationMemberRoutes.post(
  */
 conversationMemberRoutes.post(
   '/:id/handles',
+  addHandleToRoom,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -173,7 +198,7 @@ conversationMemberRoutes.post(
       await addHandle({ conversationId: id, handleUserId, projectId, actorUserId: actor, tx });
       await settleShape(tx, id);
     });
-    return c.json(await membershipOf(id, actor), 201);
+    return c.json(answer(membershipSchema, await membershipOf(id, actor)), 201);
   },
 );
 
@@ -182,6 +207,7 @@ conversationMemberRoutes.post(
  */
 conversationMemberRoutes.delete(
   '/:id/participants/:participantId',
+  removeFromRoom,
   zValidator('param', removeParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -193,7 +219,7 @@ conversationMemberRoutes.delete(
       await removeParticipant({ conversationId: id, participantId, tx: tx as never });
       if (leaving) await settleShape(tx, id, { ...leaving, verb: 'left' });
     });
-    return c.json(await membershipOf(id, actor));
+    return c.json(answer(membershipSchema, await membershipOf(id, actor)));
   },
 );
 

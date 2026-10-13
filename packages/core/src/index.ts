@@ -5,6 +5,7 @@ import type { Server as HttpServer } from 'node:http';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { z } from 'zod';
 import { adminAggregateRoutes } from './admin/aggregate-routes.js';
 import { adminAlertRoutes } from './admin/alert-routes.js';
 import { adminMcpAuditRoutes } from './admin/mcp-audit-routes.js';
@@ -18,6 +19,7 @@ import { agentSessionRoutes } from './agent-sessions/routes.js';
 import { registerAgentCronTicker, unregisterAgentCronTicker } from './agents/cron.js';
 import { agentRoutes } from './agents/routes.js';
 import { responseConformance } from './api-reference/conformance.js';
+import { describeOperation, redirect } from './api-reference/describe.js';
 import { referenceOf, referenceRoutes } from './api-reference/routes.js';
 import { memoryModelRoutes } from './app-config/memory-model-routes.js';
 import { appConfigRoutes } from './app-config/routes.js';
@@ -116,6 +118,7 @@ import { requestLogger } from './middleware/logger.js';
 import { PAT_ACCEPTED_PERMISSIONS_HEADER } from './middleware/pat-rest-surface.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
 import { requirePat } from './middleware/require-pat.js';
+import { declaresInput } from './middleware/validator.js';
 import { notificationRoutes } from './notifications/routes.js';
 import { orgInvitationRoutes } from './orgs/invitations-routes.js';
 import { orgRoutes } from './orgs/routes.js';
@@ -276,11 +279,20 @@ app.route('/api', guideRoutes);
 
 app.route('/api', referenceRoutes(apiReference));
 
-app.get('/pair', (c) => {
-  const code = c.req.query('code');
-  const base = env.APP_BASE_URL.replace(/\/+$/, '');
-  return c.redirect(code ? `${base}/pair?code=${encodeURIComponent(code)}` : `${base}/pair`, 302);
-});
+const pairQuerySchema = z.object({ code: z.string().optional() });
+app.get(
+  '/pair',
+  describeOperation({
+    summary: 'Send the caller to the web UI pairing page, with the device code if one is sent',
+    responses: { 302: redirect('The pairing page, with `code` when it was sent and not empty') },
+  }),
+  declaresInput('query', pairQuerySchema),
+  (c) => {
+    const { code } = pairQuerySchema.parse(c.req.query());
+    const base = env.APP_BASE_URL.replace(/\/+$/, '');
+    return c.redirect(code ? `${base}/pair?code=${encodeURIComponent(code)}` : `${base}/pair`, 302);
+  },
+);
 
 app.route('/api/auth', authRoutes);
 app.route('/api/auth', loginRoutes);

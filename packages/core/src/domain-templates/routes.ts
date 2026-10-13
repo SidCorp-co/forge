@@ -2,12 +2,20 @@ import { asc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import { domainTemplates } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/validator.js';
 import { applyTemplate, TemplateInvalidManifestError, TemplateNotFoundError } from './apply.js';
+import {
+  appliedTemplateSchema,
+  applyDomainTemplate,
+  domainTemplateSchema,
+  listDomainTemplates,
+  readDomainTemplate,
+} from './routes-reference.js';
 
 const keyParamSchema = z.object({ key: z.string().trim().min(1).max(200) });
 
@@ -27,13 +35,14 @@ const notFound = (message: string) =>
 export const domainTemplateRoutes = new Hono<{ Variables: AuthVars }>();
 domainTemplateRoutes.use('*', requireAuth(), assertEmailVerified());
 
-domainTemplateRoutes.get('/', async (c) => {
+domainTemplateRoutes.get('/', listDomainTemplates, async (c) => {
   const rows = await db.select().from(domainTemplates).orderBy(asc(domainTemplates.key));
-  return c.json(rows);
+  return c.json(answer(z.array(domainTemplateSchema), rows));
 });
 
 domainTemplateRoutes.get(
   '/:key',
+  readDomainTemplate,
   zValidator('param', keyParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -45,12 +54,13 @@ domainTemplateRoutes.get(
       .where(eq(domainTemplates.key, key))
       .limit(1);
     if (!row) throw notFound('domain template not found');
-    return c.json(row);
+    return c.json(answer(domainTemplateSchema, row));
   },
 );
 
 domainTemplateRoutes.post(
   '/apply',
+  applyDomainTemplate,
   zValidator('json', applyBodySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -63,7 +73,7 @@ domainTemplateRoutes.post(
 
     try {
       const result = await applyTemplate({ projectId, templateKey, actorUserId: userId });
-      return c.json(result);
+      return c.json(answer(appliedTemplateSchema, result));
     } catch (err) {
       if (err instanceof TemplateNotFoundError) {
         throw notFound(err.message);

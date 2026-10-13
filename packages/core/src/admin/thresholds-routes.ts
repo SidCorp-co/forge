@@ -10,11 +10,13 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import { ADMIN_THRESHOLDS_ID, adminThresholds } from '../db/schema-admin-thresholds.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/require-admin.js';
 import { zValidator } from '../middleware/validator.js';
+import { putThresholds, showThresholds, thresholdsSchema } from './routes-reference.js';
 import { readThresholds } from './thresholds.js';
 import { SENTRY_THRESHOLD_MAX, SENTRY_THRESHOLD_MIN } from './types.js';
 
@@ -40,16 +42,20 @@ const thresholdsBodySchema = z
 export const adminThresholdRoutes = new Hono<{ Variables: AuthVars }>();
 adminThresholdRoutes.use('*', requireAuth(), assertEmailVerified(), requireAdmin());
 
-adminThresholdRoutes.get('/thresholds', async (c) => c.json(await readThresholds()));
+adminThresholdRoutes.get('/thresholds', showThresholds, async (c) =>
+  c.json(answer(thresholdsSchema, await readThresholds())),
+);
 
 adminThresholdRoutes.put(
   '/thresholds',
+  putThresholds,
   zValidator('json', thresholdsBodySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
     const patch = c.req.valid('json');
-    const next = { ...(await readThresholds()), ...patch };
+    // Object.assign, not a spread: a spread types every key the patch left out as possibly undefined.
+    const next = Object.assign({}, await readThresholds(), patch);
     await db
       .insert(adminThresholds)
       .values({
@@ -62,6 +68,6 @@ adminThresholdRoutes.put(
         target: adminThresholds.id,
         set: { ...next, updatedBy: c.get('userId'), updatedAt: new Date() },
       });
-    return c.json(next);
+    return c.json(answer(thresholdsSchema, next));
   },
 );

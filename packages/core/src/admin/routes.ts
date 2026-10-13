@@ -2,6 +2,7 @@ import { and, count, desc, eq, gte, ilike, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { db } from '../db/client.js';
 import {
   activityLog,
@@ -23,6 +24,20 @@ import {
 } from '../middleware/auth.js';
 import { onAdminList, requireAdmin } from '../middleware/require-admin.js';
 import { zValidator } from '../middleware/validator.js';
+import {
+  adminDeviceListSchema,
+  adminProjectListSchema,
+  adminUserListSchema,
+  auditListSchema,
+  listAdminDevices,
+  listAdminProjects,
+  listAdminUsers,
+  listAudit,
+  readRetrievalBreakdown,
+  readWhoami,
+  retrievalBreakdownSchema,
+  whoamiSchema,
+} from './routes-reference.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -58,6 +73,7 @@ const strategyOf = sql<string>`coalesce(${retrievalAnalytics.metadata} ->> 'stra
 
 adminProtected.get(
   '/retrieval/breakdown',
+  readRetrievalBreakdown,
   zValidator('query', retrievalBreakdownQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -84,12 +100,19 @@ adminProtected.get(
       )
       .groupBy(strategyOf)
       .orderBy(strategyOf);
-    return c.json({ projectId, since: sinceDate.toISOString(), strategies: rows });
+    return c.json(
+      answer(retrievalBreakdownSchema, {
+        projectId,
+        since: sinceDate.toISOString(),
+        strategies: rows,
+      }),
+    );
   },
 );
 
 adminProtected.get(
   '/users',
+  listAdminUsers,
   zValidator('query', searchQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -111,12 +134,13 @@ adminProtected.get(
       .limit(limit)
       .offset(offset);
 
-    return c.json(listResponse(c, rows, Number(n), { limit, offset }));
+    return c.json(answer(adminUserListSchema, listResponse(c, rows, Number(n), { limit, offset })));
   },
 );
 
 adminProtected.get(
   '/projects',
+  listAdminProjects,
   zValidator('query', searchQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -157,14 +181,17 @@ adminProtected.get(
       .offset(offset);
 
     return c.json(
-      listResponse(
-        c,
-        rows.map((r) => ({
-          ...r,
-          memberCount: Number(r.memberCount ?? 0),
-        })),
-        Number(n),
-        { limit, offset },
+      answer(
+        adminProjectListSchema,
+        listResponse(
+          c,
+          rows.map((r) => ({
+            ...r,
+            memberCount: Number(r.memberCount ?? 0),
+          })),
+          Number(n),
+          { limit, offset },
+        ),
       ),
     );
   },
@@ -172,6 +199,7 @@ adminProtected.get(
 
 adminProtected.get(
   '/devices',
+  listAdminDevices,
   zValidator('query', devicesQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -188,12 +216,15 @@ adminProtected.get(
       .limit(limit)
       .offset(offset);
 
-    return c.json(listResponse(c, rows, Number(n), { limit, offset }));
+    return c.json(
+      answer(adminDeviceListSchema, listResponse(c, rows, Number(n), { limit, offset })),
+    );
   },
 );
 
 adminProtected.get(
   '/audit',
+  listAudit,
   zValidator('query', auditQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -216,18 +247,18 @@ adminProtected.get(
       .limit(limit)
       .offset(offset);
 
-    return c.json(listResponse(c, rows, Number(n), { limit, offset }));
+    return c.json(answer(auditListSchema, listResponse(c, rows, Number(n), { limit, offset })));
   },
 );
 
 const whoamiRoutes = new Hono<{ Variables: AuthVars }>();
 whoamiRoutes.use('*', requireAuth(), assertEmailVerified());
-whoamiRoutes.get('/whoami', async (c) => {
+whoamiRoutes.get('/whoami', readWhoami, async (c) => {
   const row = await authUserRow(c, c.get('userId'));
   if (!row) {
     throw new HTTPException(401, { message: 'user not found', cause: { code: 'UNAUTHENTICATED' } });
   }
-  return c.json({ isAdmin: onAdminList(row.email), email: row.email });
+  return c.json(answer(whoamiSchema, { isAdmin: onAdminList(row.email), email: row.email }));
 });
 
 adminRoutes.route('/', whoamiRoutes);

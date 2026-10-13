@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/describe.js';
 import { type JobType, jobTypes } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -14,6 +15,7 @@ import {
 } from '../pipeline/pipeline-config-schema.js';
 import { RUNNER_CAPABILITIES } from '../pipeline/registry.js';
 import { loadIssueSnapshot } from './issue-snapshot.js';
+import { previewPrompt, promptPreviewSchema } from './routes-reference.js';
 import { buildPipelinePreambleStructured, type SystemPromptOverride } from './system.js';
 import { buildJobPromptString, type UserPromptPolicyOverride } from './user.js';
 
@@ -54,6 +56,7 @@ promptRoutes.post(
   '/preview',
   requireAuth(),
   assertEmailVerified(),
+  previewPrompt,
   zValidator('json', previewBodySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -108,18 +111,20 @@ promptRoutes.post(
     // via hash alone in the UI before fetching the full content.
     const hash = await sha256Hex(`${systemPrompt}\n---\n${userPrompt}`);
 
-    return c.json({
-      systemPrompt,
-      userPrompt,
-      blocks,
-      hash,
-      resolvedFlags: {
-        state: body.state,
-        skillName: body.skillName ?? `forge-${body.state}`,
-        systemPromptMode: systemPromptOverride?.mode ?? 'append',
-        hasUserPromptPolicyOverride: userPromptPolicy !== null,
-      },
-    });
+    return c.json(
+      answer(promptPreviewSchema, {
+        systemPrompt,
+        userPrompt,
+        blocks,
+        hash,
+        resolvedFlags: {
+          state: body.state,
+          skillName: body.skillName ?? `forge-${body.state}`,
+          systemPromptMode: systemPromptOverride?.mode ?? 'append',
+          hasUserPromptPolicyOverride: userPromptPolicy !== null,
+        },
+      }),
+    );
   },
 );
 
