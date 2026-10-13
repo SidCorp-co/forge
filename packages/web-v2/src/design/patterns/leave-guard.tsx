@@ -50,6 +50,7 @@ export function LeaveGuardProvider({ children }: { children: ReactNode }) {
   const [anyDirty, setAnyDirty] = useState(false);
   const [pending, setPending] = useState<Pending | null>(null);
   const bypass = useRef(false);
+  const asked = useRef(false);
 
   const mark = useCallback((id: string, dirty: boolean) => {
     if (dirty) dirtyIds.current.add(id);
@@ -65,6 +66,7 @@ export function LeaveGuardProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!anyDirty) return;
     const warn = (event: BeforeUnloadEvent) => {
+      if (asked.current) return;
       event.preventDefault();
       event.returnValue = "";
     };
@@ -148,9 +150,15 @@ export function LeaveGuardProvider({ children }: { children: ReactNode }) {
   const api = useMemo<LeaveGuardApi>(() => ({ mark, attempt }), [mark, attempt]);
 
   const stay = () => setPending(null);
+  // Someone who said Leave has been asked: the browser does not ask a second time for the
+  // navigation that leaves the document.
   const leave = () => {
     const go = pending?.go;
     setPending(null);
+    asked.current = true;
+    setTimeout(() => {
+      asked.current = false;
+    }, 1000);
     go?.();
   };
 

@@ -72,6 +72,14 @@ describe("the browser's own prompt", () => {
     expect(unload()).toBe(true);
   });
 
+  it("is not asked a second time by the navigation of someone who has said Leave", () => {
+    mount();
+    edit();
+    fireEvent.click(screen.getByRole("button", { name: "go from code" }));
+    fireEvent.click(screen.getByRole("button", { name: "Leave" }));
+    expect(unload()).toBe(false);
+  });
+
   it("is not asked for when nothing is unsaved", () => {
     mount();
     expect(unload()).toBe(false);
