@@ -255,8 +255,9 @@ async function buildInto(
 
 /**
  * Drop the shared template `name` if no run holds it and none has touched it for
- * `IDLE_REAP_AFTER_MS`. Both locks are tried, never waited on: a template somebody is building or
- * using is left alone rather than queued behind.
+ * `IDLE_REAP_AFTER_MS`. Both locks are tried, never waited on, and the marker is read only once the
+ * use lock is ours: a holder's release stamps it, so an earlier read can be a day stale. A marker
+ * naming other content is not this suite's to judge, and is left for `acquireSharedTemplate` to refuse.
  */
 export async function reapSharedTemplate(
   admin: Sql,
@@ -269,12 +270,13 @@ export async function reapSharedTemplate(
       SELECT pg_try_advisory_lock(hashtextextended(${buildKey(name)}, 0)) AS ok`;
     if (!gate?.ok) return false;
     try {
-      const marker = parseMarker((await markerOf(conn, name)).text);
-      if (marker === null || now - marker.used <= IDLE_REAP_AFTER_MS) return false;
       const [inUse] = await conn<{ ok: boolean }[]>`
         SELECT pg_try_advisory_lock(hashtextextended(${useKey(name)}, 0)) AS ok`;
       if (!inUse?.ok) return false;
       try {
+        const marker = parseMarker((await markerOf(conn, name)).text);
+        const content = name.slice(TEMPLATE_PREFIX.length);
+        if (marker?.content !== content || now - marker.used <= IDLE_REAP_AFTER_MS) return false;
         await conn.unsafe(`DROP DATABASE IF EXISTS "${name}"`);
         return true;
       } catch {

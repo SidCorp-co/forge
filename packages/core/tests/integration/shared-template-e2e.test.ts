@@ -17,6 +17,7 @@ import {
   hashMigrations,
   IDLE_REAP_AFTER_MS,
   parseMarker,
+  reapSharedTemplate,
   type SharedTemplate,
   sharedTemplateName,
 } from '../helpers/shared-template.js';
@@ -86,6 +87,24 @@ async function take(folder: string, migrate: (url: string) => Promise<void>) {
 
 const existing = (name: string) => templateRow(admin, name);
 const holders = (name: string) => useLockHolders(admin, name);
+
+/** `sql`, with `hook` run right after any query that reads a database's marker, on this or a reserved connection. */
+function afterMarkerRead(sql: postgres.Sql, hook: () => Promise<void>): postgres.Sql {
+  const wrap = (target: postgres.Sql): postgres.Sql =>
+    new Proxy(target, {
+      apply: async (fn, self, args) => {
+        const out = await Reflect.apply(fn, self, args);
+        const text = Array.isArray(args[0]) ? (args[0] as string[]).join('') : '';
+        if (text.includes('shobj_description')) await hook();
+        return out;
+      },
+      get: (fn, key, recv) => {
+        if (key === 'reserve') return async () => wrap(await fn.reserve());
+        return Reflect.get(fn, key, recv);
+      },
+    });
+  return wrap(sql);
+}
 
 async function age(name: string, by: number): Promise<void> {
   const marker = parseMarker((await existing(name))?.marker ?? null);
@@ -354,6 +373,38 @@ describe('reapAbandoned, over a shared template', () => {
 
       expect(await reapAbandoned(admin)).toContain(got.name);
       expect(await existing(got.name)).toBeUndefined();
+    },
+    SLOW,
+  );
+
+  it(
+    'never drops one whose marker names other content, however long ago it was used',
+    async () => {
+      const name = sharedTemplateName(hashMigrations(migrations(`other-${mintRunToken()}`)));
+      touched.add(name);
+      await admin.unsafe(`CREATE DATABASE "${name}"`);
+      await admin.unsafe(
+        `COMMENT ON DATABASE "${name}" IS '${formatMarker({ content: 'abc123', built: 1, used: 1 })}'`,
+      );
+      const row = await existing(name);
+
+      expect(await reapAbandoned(admin)).not.toContain(name);
+      expect((await existing(name))?.oid).toBe(row?.oid);
+    },
+    SLOW,
+  );
+
+  it(
+    'reads the marker only once the use lock is its own, so a release that lands in between keeps the template',
+    async () => {
+      const got = await take(migrations(`between-${mintRunToken()}`), counted().migrate);
+      await age(got.name, 3 * DAY);
+      const release = () => got.release().then(() => void held.splice(0));
+
+      const dropped = await reapSharedTemplate(afterMarkerRead(admin, release), got.name);
+
+      expect(dropped).toBe(false);
+      expect(await existing(got.name)).toBeDefined();
     },
     SLOW,
   );
