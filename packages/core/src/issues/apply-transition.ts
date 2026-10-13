@@ -23,7 +23,9 @@ import { mintParkQuestion } from './park-question.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
 import { postReleaseGateHoldComment, resolveAgentCloseTarget } from './release-gate-hold.js';
 import { refuseUnrecordedClose } from './release-record-required.js';
+import { holdReleaseTagClose } from './release-tag-close.js';
 import { ISSUE_TERMINAL_STATUSES } from './status-sets.js';
+import { TransitionError, type TransitionErrorCode } from './transition-error.js';
 import { checkTransitionEvidence } from './transition-evidence.js';
 import {
   parkReasonFault,
@@ -39,38 +41,10 @@ export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>([
   'dropped',
 ]);
 
+export { TransitionError, type TransitionErrorCode };
+
 /** Who is performing the transition. `id` feeds the outbox actor context (ISS-196 trigger
  *  attribution); the WS `actorId` is the user id, or the device owner for a device actor. */
-
-export type TransitionErrorCode =
-  | 'NO_OP'
-  | 'ILLEGAL_TRANSITION'
-  | 'TRANSITION_REASON_REQUIRED'
-  | 'WAITING_KIND_REQUIRED'
-  | 'STALE_TRANSITION'
-  | 'NO_WORK_EVIDENCE'
-  | 'RELEASE_RECORD_REQUIRED'
-  | 'ENTRY_CRITERIA_UNMET'
-  | 'CLOSE_REQUIRES_SHIPPED'
-  | 'WAITING_KIND_NOT_APPLICABLE'
-  | 'ISSUE_ARCHIVED'
-  | 'OPEN_QUESTIONS'
-  | 'VOID_REASON_REQUIRED';
-
-/**
- * Typed transition failure. `message` keeps the legacy `CODE: detail` shape
- * the MCP surface exposes; REST callers map `code`/`detail`/`details` onto
- * HTTPException instead of parsing the string.
- */
-export class TransitionError extends Error {
-  constructor(
-    readonly code: TransitionErrorCode,
-    readonly detail: string,
-    readonly details: Record<string, unknown> = {},
-  ) {
-    super(`${code}: ${detail}`);
-  }
-}
 
 export type TransitionIssueRow = {
   id: string;
@@ -260,7 +234,7 @@ async function explainDraftRace(
  *
  * Throws `TransitionError` (NO_OP / ILLEGAL_TRANSITION /
  * REOPEN_REASON_REQUIRED / STALE_TRANSITION / PLAN_REQUIRED /
- * CLOSE_REQUIRES_SHIPPED); callers map it onto their own error surface.
+ * CLOSE_REQUIRES_SHIPPED / CLOSE_REQUIRES_RELEASE_TAG / RELEASE_TAG_UNREAD); callers map it onto their own error surface.
  */
 export async function transitionIssueStatus(
   issue: TransitionIssueRow,
@@ -336,6 +310,9 @@ export async function transitionIssueStatus(
     throw new TransitionError('RELEASE_RECORD_REQUIRED', unrecorded.detail, unrecorded.details);
   }
 
+  // Asked before the transaction opens, which no repository read should hold; the landing it judged is held inside.
+  const guarded = await holdReleaseTagClose(issue, toStatus, options);
+
   const declaredCriteria =
     options.skip === true
       ? []
@@ -347,7 +324,7 @@ export async function transitionIssueStatus(
     requestedStatus,
     toStatus,
     actor,
-    options,
+    options: guarded,
     reopening,
     declaredCriteria,
   });

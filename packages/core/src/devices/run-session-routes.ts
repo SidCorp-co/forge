@@ -55,6 +55,7 @@ deviceRunSessionRoutes.post(
         name: body.name,
         boxRunId: body.runId,
         ...(body.gate ? { gate: body.gate } : {}),
+        ...(body.policy ? { policy: body.policy } : {}),
       });
       return c.json(answer(openedRunSessionSchema, session));
     } catch (err) {

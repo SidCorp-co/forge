@@ -1,7 +1,7 @@
 // web-v2 feature module: projects — pure derivation helpers.
 //
 // All functions here are pure (no React, no I/O) so the console's business
-// logic — health derivation, list↔health join, totals, sort, filter — is unit
+// logic — health derivation, list↔health join, totals — is unit
 // testable in `derive.test.ts` without rendering anything.
 import type { HealthKey } from '@/design';
 import type { QueryRead } from '@/design/patterns/badge-read';
@@ -92,52 +92,6 @@ export function workspaceTotals(items: ProjectConsoleItem[], healthRead: QueryRe
     }),
     { projects: 0, healthRead, liveRuns: 0, openIssues: 0, runners: 0, spend24hUsd: 0 },
   );
-}
-
-// Lower rank sorts first under the "health" sort (worst → best).
-const HEALTH_RANK: Record<HealthKey | 'unread', number> = { down: 0, attention: 1, healthy: 2, idle: 3, unread: 4 };
-
-/** Most-recent-activity first; nulls (never active) sink to the bottom. */
-function recencyKey(item: ProjectConsoleItem): number {
-  return item.healthRead === 'read' && item.lastActivityAt ? Date.parse(item.lastActivityAt) : 0;
-}
-
-/** Return a new array sorted by the chosen key (non-mutating). */
-export function sortProjects(
-  items: ProjectConsoleItem[],
-  sort: ProjectSort,
-): ProjectConsoleItem[] {
-  const out = [...items];
-  out.sort((a, b) => {
-    if (sort === 'name') return a.name.localeCompare(b.name);
-    if (sort === 'health') {
-      const rank = (p: ProjectConsoleItem) => HEALTH_RANK[p.healthRead === 'read' ? (p.health ?? 'unread') : 'unread'];
-      return (rank(a) - rank(b)) || (recencyKey(b) - recencyKey(a));
-    }
-    return recencyKey(b) - recencyKey(a); // 'recent'
-  });
-  return out;
-}
-
-/** Free-text (name/organization, and repo/description where the rollup is read) + needs-attention filter. */
-export function filterProjects(
-  items: ProjectConsoleItem[],
-  query: string,
-  attentionOnly: boolean,
-  orgId: string | null = null,
-): ProjectConsoleItem[] {
-  const q = query.trim().toLowerCase();
-  return items.filter((p) => {
-    // The repository and description come from the health rollup: unread, they are not searched.
-    const rollupRead = p.healthRead === 'read';
-    const matches =
-      !q ||
-      p.name.toLowerCase().includes(q) ||
-      p.orgName.toLowerCase().includes(q) ||
-      (rollupRead && (p.repoPath?.toLowerCase().includes(q) ?? false)) ||
-      (rollupRead && (p.description?.toLowerCase().includes(q) ?? false));
-    return matches && (!attentionOnly || isAttention(p)) && (!orgId || p.orgId === orgId);
-  });
 }
 
 /**

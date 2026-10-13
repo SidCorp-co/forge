@@ -329,6 +329,15 @@ export const GITHUB_ENDPOINTS: readonly GitHubEndpoint[] = [
     callSites: ['runner-release-repo.ts:readReleaseForTag'],
     docs: `${REST}/releases/releases#get-a-release-by-tag-name`,
   },
+  {
+    path: '/repos/:p/:p/tags',
+    method: 'GET',
+    auth: 'installation',
+    permission: 'contents',
+    level: 'read',
+    callSites: ['repository-reader.ts:listTags'],
+    docs: `${REST}/repos/repos#list-repository-tags`,
+  },
 ] as const;
 
 export interface GitHubEventSubscription {

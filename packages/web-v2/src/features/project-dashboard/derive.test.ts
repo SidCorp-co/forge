@@ -162,6 +162,27 @@ describe("projectAttention (ISS-1156)", () => {
     ).toThrow(/parked at `banana`.*not one of the issue statuses/u);
   });
 
+  it("carries the time an attention item entered its state, said to be measured", () => {
+    const [item] = projectAttention(view([awaiting(1, "q1")]), "sable", []);
+    expect(item).toMatchObject({ since: "2026-10-08T00:00:00Z", sinceBasis: "entered" });
+  });
+
+  it("ages a parked issue from the page's ages by its issue id, and lists one it has no age for without a time", () => {
+    const ages = new Map([["doc-9", { since: "2026-06-23T00:00:00Z", basis: "last-write" as const }]]);
+    const items = projectAttention(
+      undefined,
+      "sable",
+      [
+        { issueId: "ISS-9", documentId: "doc-9", status: "needs_info" },
+        { issueId: "ISS-8", documentId: "doc-8", status: "on_hold" },
+      ],
+      ages,
+    );
+    expect(items[0]).toMatchObject({ since: "2026-06-23T00:00:00Z", sinceBasis: "last-write" });
+    expect(items[1]?.since).toBeUndefined();
+    expect(items[1]?.sinceBasis).toBeUndefined();
+  });
+
   it("keeps another project's rows out", () => {
     const other = { ...awaiting(5, "q5"), projectSlug: "tern" };
     expect(projectAttention(view([other]), "sable", [])).toEqual([]);
@@ -229,6 +250,13 @@ describe("attentionCut (ISS-1156)", () => {
   it("is null where every source's count is what the list holds", () => {
     const items = [...many("input", 3), ...many("parked", 2)];
     expect(attentionCut(items, viewWith({ awaitingInput: 3 }), "sable", 2)).toBeNull();
+  });
+
+  it("counts at least as many people as Open work counts blocked on one, whichever source listed them", () => {
+    const items = many("input", 2);
+    expect(attentionCut(items, viewWith({ awaitingInput: 2 }), "sable", 0, 5)).toEqual({ shown: 2, atLeast: 5, peopleCut: true });
+    expect(attentionCut(items, viewWith({ awaitingInput: 2 }), "sable", 0, 2)).toBeNull();
+    expect(attentionCut(items, viewWith({ awaitingInput: 2 }), "sable", 0)).toBeNull();
   });
 
   it("says 8 of at least 10 where 1 question and 9 parked read as 8 parked: the parked read stops at 5 and the questions at the viewer's 20", () => {

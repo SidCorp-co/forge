@@ -22,6 +22,22 @@
         }
       },
       {
+        "projectId": "4b0f2c1e-7d5a-4c6e-9a31-5e8d2f7b9c10",
+        "verdict": "unserved",
+        "failures": 3,
+        "countIsFloor": false,
+        "windowMs": 86400000,
+        "unreadSince": 1790236500000,
+        "consecutive": 3,
+        "recoveredAt": null,
+        "lastFailure": {
+          "at": 1790236520000,
+          "status": 404,
+          "what": "404 Not Found",
+          "reason": "pool 404 Not Found: Not Found: GET /api/devices/me/pool"
+        }
+      },
+      {
         "projectId": "2126d65a-d732-483b-a0ff-eb74fd88c53f",
         "verdict": "intermittent",
         "failures": 1,

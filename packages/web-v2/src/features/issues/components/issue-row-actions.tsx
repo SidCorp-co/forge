@@ -206,6 +206,10 @@ function RowMenu({
   );
 }
 
+// One line, never two: a row that wraps its second line outgrows the 56px Comfortable bound on the
+// narrowest desktop width. Module and creator give way (ellipsis), the kind and relations keep their size.
+const SUBTEXT = "hidden min-w-0 flex-nowrap items-center gap-x-3 overflow-hidden lg:flex";
+
 export function IssueLine({
   row,
   slug,
@@ -283,11 +287,21 @@ export function IssueLine({
           </span>
         </div>
         {comfortable && (
-          <div className="hidden min-w-0 flex-wrap items-center gap-x-3 gap-y-1 lg:flex">
-            {primaryModule && <ModuleCell modules={primaryModule} />}
-            {row.category && <MonoTag>{row.category}</MonoTag>}
-            <span className="fg-caption truncate">{label}</span>
-            <DepBadges deps={row.dependencies} slug={slug} />
+          <div className={SUBTEXT}>
+            {primaryModule && (
+              <span className="flex min-w-0 shrink">
+                <ModuleCell modules={primaryModule} />
+              </span>
+            )}
+            {row.category && (
+              <span className="shrink-0 whitespace-nowrap">
+                <MonoTag>{row.category}</MonoTag>
+              </span>
+            )}
+            <span className="fg-caption min-w-0 flex-1 truncate">{label}</span>
+            <span className="shrink-0">
+              <DepBadges deps={row.dependencies} slug={slug} />
+            </span>
           </div>
         )}
       </GridPart>

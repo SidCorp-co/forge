@@ -63,6 +63,11 @@ export { Breadcrumb, type BreadcrumbProps, type Crumb } from "./primitives/bread
 export { Pagination, type PaginationProps } from "./primitives/pagination";
 export { Collapsible, type CollapsibleProps } from "./primitives/collapsible";
 export { Table, THead, TBody, TR, TH, TD } from "./primitives/table";
+export { DataTable, type DataTableProps, type DataTableColumn } from "./patterns/data-table";
+export {
+  useDataTableRows, type DataTableModelColumn, type DataTableModelOptions, type DataTableSort,
+  type SortValue, type SortKey, type SortDirection,
+} from "./patterns/data-table-model";
 export {
   HelpButton, type HelpButtonProps, type HelpContent, type HelpShortcut,
 } from "./primitives/help-button";

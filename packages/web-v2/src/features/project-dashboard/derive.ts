@@ -22,7 +22,6 @@ import {
   type WorkState,
   workStateOf,
 } from "@forge/contracts/work-state";
-import type { ScheduleRow } from "@/features/schedules/types";
 import type { QueueStats } from "@/features/sessions/types";
 
 /* ------------------------------------------------------------------ *
@@ -178,6 +177,15 @@ export function activeSpend(runs: PipelineRunListItem[] | undefined): number {
 /** `input` holds an open question; `parked` is stopped at a status a person moves it from, with no question. */
 export type AttentionActionKind = "retry" | "diff" | "input" | "parked";
 
+/** `entered`: time in the state, measured. `last-write`: when the issue was last written to, which is
+ *  not time parked (a claim or a comment resets it), so it ages a chip and never degrades a project. */
+export type AgeBasis = "entered" | "last-write";
+
+export interface ParkedAge {
+  since: string;
+  basis: AgeBasis;
+}
+
 export interface DashboardAttentionItem {
   key: string;
   actionKind: AttentionActionKind;
@@ -189,6 +197,8 @@ export interface DashboardAttentionItem {
   /** basePath-relative destination (Next prepends `/v2`). */
   link: string;
   since?: string;
+  /** What `since` was measured from; absent where the item has no time. */
+  sinceBasis?: AgeBasis;
   status?: string;
 }
 
@@ -208,8 +218,13 @@ function mapAttention(
       issueRef: it.issueRef,
       link: it.link,
       since: it.since,
+      sinceBasis: "entered" as const,
       status: it.status,
     }));
+}
+
+function ageOf(age: ParkedAge | undefined): { since?: string; sinceBasis?: AgeBasis } {
+  return age ? { since: age.since, sinceBasis: age.basis } : {};
 }
 
 /** The work state's word, then the status the issue sits at. */
@@ -231,6 +246,8 @@ export function projectAttention(
   view: AttentionView | undefined,
   slug: string,
   blockers: ProjectHealthRow["blockers"] | undefined,
+  /** The parked issues' ages by issue id; a blocker with none is listed without a time. */
+  ages?: ReadonlyMap<string, ParkedAge>,
 ): DashboardAttentionItem[] {
   const out: DashboardAttentionItem[] = [];
   const parked: DashboardAttentionItem[] = [];
@@ -263,6 +280,7 @@ export function projectAttention(
       issueRef: b.issueId,
       link,
       status: b.status,
+      ...ageOf(ages?.get(b.documentId)),
     });
   }
   return [...out, ...parked];
@@ -312,6 +330,9 @@ export function attentionCut(
   view: AttentionView | undefined,
   slug: string,
   blockersTotal: number | undefined,
+  /** Issues the health row counts in the Blocked on a person state: each is owed a person's answer, so
+   *  the list cannot hold fewer than that, whichever source listed them. */
+  blockedOnPerson = 0,
 ): AttentionCut | null {
   if (!view) return null;
   const refusal = attentionRefusal(view, slug);
@@ -329,6 +350,7 @@ export function attentionCut(
     listedPeople,
     totals.awaitingInput,
     (blockersTotal ?? 0) + totals.awaitingOutsideBlockers,
+    blockedOnPerson,
   );
   const atLeast =
     Math.max(totals.failedJobs, listed(["retry"])) +
@@ -427,18 +449,4 @@ export function runnersSummary(
     busyCount: lines.filter((l) => l.busy).length,
     total: lines.length,
   };
-}
-
-/* ------------------------------------------------------------------ *
- * Upcoming schedules (AC#6)
- * ------------------------------------------------------------------ */
-
-/** Schedules ordered by soonest next run (nulls last). Pure — no slicing; the
- *  card caps the visible rows. */
-export function upcomingSchedules(rows: ScheduleRow[] | undefined): ScheduleRow[] {
-  return [...(rows ?? [])].sort((a, b) => {
-    const at = a.nextRunAt ? Date.parse(a.nextRunAt) : Number.POSITIVE_INFINITY;
-    const bt = b.nextRunAt ? Date.parse(b.nextRunAt) : Number.POSITIVE_INFINITY;
-    return at - bt;
-  });
 }

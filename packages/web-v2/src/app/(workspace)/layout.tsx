@@ -20,6 +20,7 @@ import { ConversationDock } from "@/features/conversations/components/conversati
 import { ConversationPanel } from "@/features/conversations/components/conversation-panel";
 import { useConversationDock } from "@/features/conversations/use-conversation-dock";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
+import { useSignInRedirect } from "@/features/auth/use-sign-in-redirect";
 import { useAuth } from "@/providers/auth-provider";
 import { ToastLane, useToast } from "@/providers/toast-provider";
 import { useProjects } from "@/features/projects/hooks";
@@ -97,11 +98,10 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const { data: openCount } = useOpenCount();
 
   // Auth gate: once /auth/me has resolved, an unauthenticated visitor is sent
-  // to /login (which also makes logout() "return here" effective). While the
-  // session is still hydrating we render the shell rather than flash a redirect.
-  useEffect(() => {
-    if (!isLoading && !user) router.replace("/login");
-  }, [isLoading, user, router]);
+  // to /login (which also makes logout() "return here" effective), carrying the
+  // address they opened. While the session is still hydrating we render the shell
+  // rather than flash a redirect.
+  useSignInRedirect({ signedIn: !!user, resolved: !isLoading });
 
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");

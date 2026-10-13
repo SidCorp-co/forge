@@ -124,6 +124,7 @@ pub async fn open(
     issue_keys: &[String],
     name: &str,
     gate: Option<&crate::daemon::degraded::Condition>,
+    policy: &crate::daemon::policy_copy::PolicyCopy,
 ) -> Result<(String, String)> {
     let url = client.url("/api/devices/me/run-sessions");
     let mut body = serde_json::json!({
@@ -138,6 +139,10 @@ pub async fn open(
     if let Some(gate) = gate {
         body["gate"] = serde_json::to_value(gate).unwrap_or(serde_json::Value::Null);
     }
+    // The copy of the policy the run was decided under, fixed when it was declared. Always sent:
+    // a run this box cannot name a copy for says so, and core records that rather than a guess
+    // (ISS-1303).
+    body["policy"] = policy.to_wire();
     let resp = client
         .http()
         .post(&url)

@@ -288,7 +288,8 @@ export interface ProjectSilenceRow {
 }
 
 /**
- * Projects ordered by how long each has gone without an issue run.
+ * Each project with how long it has gone without an issue run, in the order the pulse sent them;
+ * the table that shows them orders them.
  */
 export function projectSilenceRows(pulse: PulseResponse, nowMs: number): ProjectSilenceRow[] {
   return pulse.work.perProject
@@ -314,10 +315,6 @@ export function projectSilenceRows(pulse: PulseResponse, nowMs: number): Project
           : null,
         neverRan: p.lastIssueRunAt === null,
       };
-    })
-    .sort((a, b) => {
-      if (a.neverRan !== b.neverRan) return a.neverRan ? -1 : 1;
-      return (b.silenceSeconds ?? 0) - (a.silenceSeconds ?? 0);
     });
 }
 

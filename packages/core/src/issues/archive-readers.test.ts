@@ -78,9 +78,12 @@ const NOT_DISCOVERY: Record<string, string> = {
   'issues/merge-routes.ts': 'by issue id',
   'issues/park-routes.ts': 'the one issue its path names, to check the reader may see it',
   'issues/park-view.ts': 'the park of the one issue asked for by id',
+  'issues/pipeline-health-loaders.ts': 'the ids passed in',
   'issues/pipeline-health.ts': 'the ids passed in',
   'issues/read-service.ts': 'retrieval by id or key, which answers an archived issue by design',
   'issues/release-record-required.ts': 'the ids passed in',
+  'issues/release-tag-close.ts':
+    'by issue id, the landing commit of the issue a close names; an archived issue is refused before this runs',
   'issues/search-term.ts': 'whether the project holds the key a search typed, retrieval by key',
   'issues/steer-routes.ts': 'by issue id',
   'issues/transition.ts': 'dependents over edges of the issues being moved',

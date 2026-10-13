@@ -119,7 +119,7 @@ pub fn newest_entry(path: &Path) -> Option<Newest> {
 /// `decide` answers, or answer `fallback` once the whole file or
 /// [`TAIL_CAP`] has been read without one. `None` where the file cannot be
 /// opened or read.
-fn read_back<T>(path: &Path, decide: fn(&str, bool) -> Option<T>, fallback: T) -> Option<T> {
+fn read_back<T>(path: &Path, decide: impl Fn(&str, bool) -> Option<T>, fallback: T) -> Option<T> {
     use std::io::{Read, Seek, SeekFrom};
     let mut file = std::fs::File::open(path).ok()?;
     let len = file.metadata().ok()?.len();
@@ -297,6 +297,47 @@ fn decide_call(tail: &str, whole: bool) -> Option<Unanswered> {
         }
     }
     whole.then_some(Unanswered::Nothing)
+}
+
+/// Whether the tool call `tool_use_id` of the lead transcript at `path` ended
+/// in an error result, which is how Claude Code writes a call a `PreToolUse`
+/// hook refused or one that failed before it ran. `Some(false)` is a call that
+/// has no result yet, one that was answered without an error, and one whose
+/// result is older than [`TAIL_CAP`] of the file: none of them proves it
+/// failed. `None` where the file cannot be opened or read.
+///
+/// A denied `Agent` call is a `user` entry whose `tool_result` block carries
+/// the call's id and `is_error: true`, written before the model's next call.
+pub fn call_failed(path: &Path, tool_use_id: &str) -> Option<bool> {
+    read_back(
+        path,
+        |tail, whole| decide_failed(tail, whole, tool_use_id),
+        false,
+    )
+}
+
+fn decide_failed(tail: &str, whole: bool, tool_use_id: &str) -> Option<bool> {
+    let mut lines = tail.lines();
+    if !whole {
+        lines.next();
+    }
+    for line in lines.rev().filter(|l| l.contains(tool_use_id)) {
+        let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        if entry["type"] != "user" {
+            continue;
+        }
+        let answered = entry["message"]["content"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|b| b["type"] == "tool_result" && b["tool_use_id"] == tool_use_id);
+        if let Some(block) = answered {
+            return Some(block["is_error"] == true);
+        }
+    }
+    whole.then_some(false)
 }
 
 fn modified_ms(path: &Path) -> Option<i64> {
@@ -507,6 +548,81 @@ mod tests {
         );
         let lines = [call_line("t1", "AskUserQuestion", "{}"), filler];
         assert_eq!(unanswered(&lines), pending("t1", "AskUserQuestion"));
+    }
+
+    fn error_result_line(id: &str, is_error: bool) -> String {
+        format!(
+            r#"{{"type":"user","message":{{"content":[{{"type":"tool_result","tool_use_id":"{id}","is_error":{is_error},"content":"PreToolUse:Agent hook error: Hold"}}]}}}}"#
+        )
+    }
+
+    fn failed(lines: &[String], id: &str) -> Option<bool> {
+        let dir = Scratch::new("failed");
+        let path = dir.path().join("conv.jsonl");
+        std::fs::write(&path, format!("{}\n", lines.join("\n"))).expect("write");
+        call_failed(&path, id)
+    }
+
+    #[test]
+    fn a_call_whose_result_is_an_error_failed() {
+        let lines = [
+            call_line("toolu_1", "Agent", "{}"),
+            HOOK.into(),
+            error_result_line("toolu_1", true),
+        ];
+        assert_eq!(failed(&lines, "toolu_1"), Some(true));
+    }
+
+    #[test]
+    fn a_call_answered_without_an_error_or_not_yet_answered_did_not_fail() {
+        let answered = [
+            call_line("toolu_1", "Agent", "{}"),
+            error_result_line("toolu_1", false),
+        ];
+        assert_eq!(failed(&answered, "toolu_1"), Some(false));
+        let waiting = [call_line("toolu_1", "Agent", "{}"), HOOK.into()];
+        assert_eq!(failed(&waiting, "toolu_1"), Some(false));
+    }
+
+    #[test]
+    fn another_call_s_error_is_not_this_call_s() {
+        let lines = [
+            error_result_line("toolu_2", true),
+            call_line("toolu_1", "Agent", "{}"),
+        ];
+        assert_eq!(failed(&lines, "toolu_1"), Some(false));
+        let longer = [error_result_line("toolu_10", true)];
+        assert_eq!(
+            failed(&longer, "toolu_1"),
+            Some(false),
+            "an id that is the start of another is not that call"
+        );
+    }
+
+    #[test]
+    fn a_failure_older_than_the_first_window_is_found_by_widening() {
+        let dir = Scratch::new("failed-wide");
+        let path = dir.path().join("conv.jsonl");
+        let filler = format!(
+            r#"{{"type":"assistant","message":{{"content":[{{"type":"text","text":"{}"}}]}}}}"#,
+            "x".repeat(TAIL_BYTES as usize + 100)
+        );
+        std::fs::write(
+            &path,
+            format!(
+                "{}\n{filler}\n{}\n",
+                error_result_line("toolu_1", true),
+                call_line("toolu_2", "Bash", "{}")
+            ),
+        )
+        .expect("write");
+        assert_eq!(call_failed(&path, "toolu_1"), Some(true));
+    }
+
+    #[test]
+    fn a_missing_transcript_says_nothing_about_whether_a_call_failed() {
+        let dir = Scratch::new("failed-missing");
+        assert_eq!(call_failed(&dir.path().join("none.jsonl"), "toolu_1"), None);
     }
 
     #[test]

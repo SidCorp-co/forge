@@ -32,10 +32,11 @@ const fixture = JSON.parse(
   readFileSync(new URL('../../src/devices/pool-read-report.fixture.json', import.meta.url), 'utf8'),
 ) as { pool: { projects: Array<Record<string, unknown>> } };
 
-const [BLIND, INTERMITTENT] = fixture.pool.projects as [
-  Record<string, unknown>,
-  Record<string, unknown>,
-];
+const verdictOf = (verdict: string) =>
+  fixture.pool.projects.find((p) => p.verdict === verdict) as Record<string, unknown>;
+const BLIND = verdictOf('blind');
+const INTERMITTENT = verdictOf('intermittent');
+const UNSERVED = verdictOf('unserved');
 
 describe('a box reports its pool reads and core keeps them on the runner', () => {
   let harness: TestDatabase;
@@ -138,6 +139,17 @@ describe('a box reports its pool reads and core keeps them on the runner', () =>
     expect(await poolReadOf(device.id, second.id)).toMatchObject({
       verdict: 'intermittent',
       lastFailure: { status: 520 },
+    });
+  });
+
+  it('keeps an unserved pool on its runner as its own verdict, not as a blind one', async () => {
+    const { device, first } = await twoProjectBox();
+    const res = await beat(device.token, { pool: report([UNSERVED, first.id]) });
+    expect(await res.json()).toMatchObject({ ok: true, pool: { accepted: true } });
+    expect(await poolReadOf(device.id, first.id)).toMatchObject({
+      verdict: 'unserved',
+      consecutive: 3,
+      lastFailure: { status: 404 },
     });
   });
 

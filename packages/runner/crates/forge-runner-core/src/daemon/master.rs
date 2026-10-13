@@ -1441,6 +1441,18 @@ async fn sweep(
     masters.note_served(Served::Read(
         served.iter().map(|r| r.project_id.clone()).collect(),
     ));
+    // The list core just answered is the whole of what this box reads a pool
+    // for, so a record or a hold for a project it no longer names is dropped
+    // here, on the one pass that knows (ISS-1326).
+    if let Some(dir) = crate::daemon::control::config_dir() {
+        pool_reads::retain_served(
+            &dir,
+            &served
+                .iter()
+                .map(|r| (r.project_id.as_str(), r.runner_id.as_str()))
+                .collect::<Vec<_>>(),
+        );
+    }
     match crate::mcp::config::sweep_orphaned_sessions(
         &served.iter().map(|r| r.slug.clone()).collect::<Vec<_>>(),
     ) {
@@ -2084,10 +2096,14 @@ async fn take_pool_job(
         return;
     }
     let bound = cfg.runner.max_job_panes.max(1) as usize;
+    let dir = crate::daemon::control::config_dir();
     let fallback = resolve_repo(served, cfg, &runner.project_id)
         .ok()
         .map(|r| r.repo_path);
-    let took = pool_jobs::take_one(
+    // A pool core answered `404` for is not read again while core lists the same
+    // runner for it, and what each read said is recorded where `status`, the
+    // heartbeat and a restart find it (ISS-1234, ISS-1326).
+    let took = pool_jobs::take_recorded(
         &pool_jobs::JobPorts {
             pool: &pool_jobs::CorePool {
                 client,
@@ -2103,18 +2119,17 @@ async fn take_pool_job(
             id: &runner.project_id,
             slug: &runner.slug,
         },
-        job_panes.session_id(),
-        fallback.as_deref(),
-        bound,
-        tokens,
+        pool_jobs::Pass {
+            session_id: job_panes.session_id(),
+            fallback_cwd: fallback.as_deref(),
+            bound,
+            tokens,
+            config_dir: dir.as_deref(),
+            runner_id: &runner.runner_id,
+        },
     )
     .await;
-    // What this pass learned about the read itself, on disk where `status`, the
-    // heartbeat and a restart all find it (ISS-1234).
-    if let Some(dir) = crate::daemon::control::config_dir() {
-        pool_reads::note(&dir, &runner.project_id, &took, agent_activity::now_ms());
-    }
-    if let pool_jobs::Took::AtBound = took {
+    if let Some(pool_jobs::Took::AtBound) = took {
         // Per project and per pass, which is eight projects times six passes a
         // minute on the box this was measured on. What an operator reads is
         // `report_job_capacity`, once on the edge, for the box as a whole.
@@ -4911,12 +4926,16 @@ fn note_placement(
 ) {
     let now = master_build::Standing::this_box(&resolved.repo_path);
     let boot = crate::runner::inflight::boot_identity().unwrap_or_default();
+    // The copy of the policy this pane loads, from the same files it reads (ISS-1303).
+    let policy =
+        crate::daemon::policy_copy::PolicyCopy::placed_under(&resolved.repo_path).to_stored();
     if let Err(e) = led.note_master_placed(
         project_id,
         pane_name,
         &boot,
         &now.build,
         now.plugins.as_deref(),
+        Some(&policy),
     ) {
         tracing::warn!(
             "[master] {}: {pane_name} was placed and the build it was placed under could not be recorded ({e}); the next build will read it as outdated",
@@ -5280,26 +5299,43 @@ mod tests {
     /// running, as two snapshots. A claim landing between them looks to it like
     /// a job whose pane did not survive, so a box that claimed first would make
     /// a fresh release the likeliest thing it reports dead.
-    /// ISS-1234 criteria 5 and 25. Every pass that took one is recorded, and
-    /// recorded off what `take_one` answered: a claim whose outcome went nowhere
-    /// but the log is the silence this ends.
+    /// ISS-1326. The sweep reads a pool through the one pass that asks the hold,
+    /// reads and records (`pool_jobs::take_recorded`, whose behaviour its own
+    /// crossing test runs), handing it the config directory and the runner core
+    /// listed; and the list core just returned is what the records and holds are
+    /// held to, before the first pool is read.
     #[test]
-    fn every_pool_read_outcome_is_recorded_off_what_take_one_answered() {
+    fn the_sweep_reads_a_pool_through_the_recorded_pass_and_holds_the_record_to_core_list() {
         let body = THIS_SOURCE
             .split("async fn take_pool_job(")
             .nth(1)
             .and_then(|r| r.split("\nasync fn ").next())
             .unwrap_or_default();
-        let claim = body
-            .find("let took = pool_jobs::take_one(")
-            .expect("the claim is here");
-        let noted = body
-            .find("pool_reads::note(&dir, &runner.project_id, &took,")
-            .expect("the outcome of the read is recorded for this project");
         assert!(
-            claim < noted,
-            "the record reads the answer, so it follows it"
+            body.contains("pool_jobs::take_recorded(")
+                && body.contains("config_dir: dir.as_deref()")
+                && body.contains("runner_id: &runner.runner_id"),
+            "a pool read that does not go through the recorded pass is read whatever core answered, and recorded nowhere"
         );
+        assert!(
+            !body.contains("pool_jobs::take_one("),
+            "take_one straight from the sweep skips the hold and the record"
+        );
+        let sweep = THIS_SOURCE
+            .split("\nasync fn sweep(")
+            .nth(1)
+            .and_then(|r| r.split("\nasync fn ").next())
+            .unwrap_or_default();
+        let listed = sweep
+            .find("runners::list_me(client)")
+            .expect("the sweep reads core's list");
+        let retained = sweep
+            .find("pool_reads::retain_served(")
+            .expect("the records and holds are held to that list");
+        let first_pool_read = sweep
+            .find("take_pool_job(")
+            .expect("the sweep reads the pools");
+        assert!(listed < retained && retained < first_pool_read);
     }
 
     #[test]
@@ -5313,7 +5349,7 @@ mod tests {
             .find("if !*adopted.borrow()")
             .expect("the claim is gated on adoption having run");
         let claim = body
-            .find("pool_jobs::take_one(")
+            .find("pool_jobs::take_recorded(")
             .expect("the claim is here");
         assert!(
             barrier < claim,
@@ -13795,7 +13831,7 @@ mod outdated_tests {
         )
         .unwrap();
         if let Some(build) = build {
-            led.note_master_placed("p", "forge-master-proj", "boot-a", build, None)
+            led.note_master_placed("p", "forge-master-proj", "boot-a", build, None, None)
                 .unwrap();
         }
     }
@@ -14236,6 +14272,7 @@ mod outdated_tests {
             "forge-master-proj",
             "boot-a",
             crate::update::VERSION_LINE,
+            None,
             None,
         )
         .unwrap();

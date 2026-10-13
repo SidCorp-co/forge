@@ -63,7 +63,11 @@ export function forgeIssuesDescription(refClause: string): string {
     'longer gates dispatch.\n' +
     'TRANSITION. on_hold is a deliberate pause, waiting parks the issue for human review, and ' +
     'closed means the work shipped: a close on an issue with no merged_at is refused ' +
-    '(CLOSE_REQUIRES_SHIPPED), and work that turned out not to be work leaves by dropped. On an ' +
+    '(CLOSE_REQUIRES_SHIPPED), and work that turned out not to be work leaves by dropped. On a ' +
+    'project whose release chain names a tag, a close is also refused (CLOSE_REQUIRES_RELEASE_TAG, ' +
+    'or RELEASE_TAG_UNREAD where the tags could not be read) until a matching tag contains the ' +
+    "issue's landing commit. An agent's close on a project whose release chain names branches and " +
+    'no live deploy binding is refused RELEASE_TARGET_UNDECLARED. On an ' +
     'issue whose landingShape is outside_git the close also needs the mark to name where it ' +
     'landed, and a bare merged_at is refused the same way. A transition answers rewritten: null, ' +
     "or, where a rule stored another status than the one asked (an agent's waiting stored as " +

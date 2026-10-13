@@ -60,6 +60,11 @@ export type BranchRead = { sha: string } | ReadFailure;
 
 export type Containment = { contains: boolean } | ReadFailure;
 
+/** `containing` may stop at the first tag found, so it shows that one exists and is no census. */
+export type TagContainment =
+  | { commit: string; containing: string[]; matching: string[] }
+  | ReadFailure;
+
 export type Carriage =
   | { readonly kind: 'descends' }
   /** `paths`: every file the two trees may differ in, each side's since their merge base. */
@@ -85,6 +90,7 @@ export interface RepositoryReader {
   commit(ref: string): Promise<CommitLookup>;
   branchHead(branch: string): Promise<BranchRead>;
   contains(sha: string, branch: string): Promise<Containment>;
+  tagsContaining(commit: string, pattern: string): Promise<TagContainment>;
   carriage(judged: string, served: string): Promise<Carriage>;
   changedPaths(landing: string): Promise<ChangedPaths>;
   range(base: string, head: string): Promise<RangeRead>;

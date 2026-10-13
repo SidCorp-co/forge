@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 
-const MIGRATIONS_FOLDER = resolve(
+export const MIGRATIONS_FOLDER = resolve(
   // from packages/core/tests/helpers/migrate.ts → packages/core/drizzle/migrations
   new URL('../../drizzle/migrations', import.meta.url).pathname,
 );

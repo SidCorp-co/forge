@@ -20,9 +20,12 @@ export const TRANSITION_REFUSAL_STATUS = {
   WAITING_KIND_NOT_APPLICABLE: 422,
   RELEASE_RECORD_REQUIRED: 422,
   CLOSE_REQUIRES_SHIPPED: 422,
+  CLOSE_REQUIRES_RELEASE_TAG: 422,
+  RELEASE_TARGET_UNDECLARED: 409,
+  RELEASE_TAG_UNREAD: 503,
   ENTRY_CRITERIA_UNMET: 422,
   VOID_REASON_REQUIRED: 422,
-} as const satisfies Record<TransitionErrorCode, 409 | 422>;
+} as const satisfies Record<TransitionErrorCode, 409 | 422 | 503>;
 
 /** Where a rule stored a status other than the one asked for, and why. */
 export const rewrittenSchema = z.object({
@@ -58,12 +61,17 @@ const REFUSALS: Record<TransitionErrorCode, string> = {
   WAITING_KIND_NOT_APPLICABLE: '`waitingKind` was sent with a status other than `waiting`',
   RELEASE_RECORD_REQUIRED: 'the close needs a release record that was not made',
   CLOSE_REQUIRES_SHIPPED: 'the close needs the work marked as shipped first',
+  CLOSE_REQUIRES_RELEASE_TAG:
+    'the project ships by version tag and no matching tag contains the commit the issue landed as',
+  RELEASE_TARGET_UNDECLARED:
+    "the project's release chain names branches but has no active live deploy binding",
+  RELEASE_TAG_UNREAD: "the repository's tags could not be read, so the close could not be checked",
   ENTRY_CRITERIA_UNMET: "the project's entry criteria for the status are not met",
   VOID_REASON_REQUIRED:
     '`voidQuestions` was needed to settle the open questions and came without a reason',
 };
 
-const refusalsAt = (status: 409 | 422) =>
+const refusalsAt = (status: 409 | 422 | 503) =>
   fail(
     Object.fromEntries(
       (Object.keys(REFUSALS) as TransitionErrorCode[])
@@ -82,5 +90,6 @@ export const transitionIssue = describeOperation({
     404: fail('NOT_FOUND', 'the issue does not exist'),
     409: refusalsAt(409),
     422: refusalsAt(422),
+    503: refusalsAt(503),
   },
 });

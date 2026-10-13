@@ -409,7 +409,7 @@ async fn answer(dir: Option<&Path>, caller: Caller<'_>, d: &Dispatch) -> String 
         Ok(Err(e)) => open_because(&format!("the daemon could not be reached: {e}")),
         Ok(Ok(reply)) if reply.ok => ALLOW.to_string(),
         Ok(Ok(reply)) => match reply.reason.as_deref() {
-            Some(r) if r == forge_runner_core::daemon::dispatch_gate::REFUSAL => deny(r),
+            Some(r) if forge_runner_core::daemon::dispatch_gate::is_refusal(r) => deny(r),
             Some(other) => {
                 open_because(&format!("the daemon refused the question itself: {other}"))
             }

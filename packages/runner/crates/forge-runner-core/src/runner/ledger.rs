@@ -248,6 +248,34 @@ pub struct Unanswered {
     pub master_row_has_no_session: bool,
 }
 
+/// A run whose release was decided terminal and which nothing but an
+/// operator's `forge-runner run release` takes up again (ISS-1410): see
+/// [`Ledger::stranded_by_decision`].
+#[derive(Debug, Clone)]
+pub struct Stranded {
+    pub run: Run,
+    pub issues: Vec<Membership>,
+}
+
+/// What a run's recorded checkout path reads as: on disk, not on disk, or a path this
+/// process could not inspect, which is never read as either.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CheckoutPath {
+    OnDisk,
+    Absent,
+    Unreadable(String),
+}
+
+impl CheckoutPath {
+    pub fn of(path: &std::path::Path) -> Self {
+        match path.try_exists() {
+            Ok(true) => Self::OnDisk,
+            Ok(false) => Self::Absent,
+            Err(e) => Self::Unreadable(e.to_string()),
+        }
+    }
+}
+
 /// What will end a run no master answers for, read off its own row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WhatEndsIt {
@@ -524,6 +552,7 @@ const RUN_COLUMNS: &[&str] = &[
     "host_pid",
     "host_start",
     "refusal_wrote_ending",
+    "policy_copy",
 ];
 
 #[cfg(test)]
@@ -540,6 +569,7 @@ const MASTER_COLUMNS: &[&str] = &[
     "placed_at",
     "outdated",
     "unattributed",
+    "placed_policy",
 ];
 
 #[cfg(test)]
@@ -606,7 +636,8 @@ CREATE TABLE IF NOT EXISTS runs (
   host_ended_by       TEXT,
   host_pid            INTEGER,
   host_start          TEXT,
-  refusal_wrote_ending INTEGER
+  refusal_wrote_ending INTEGER,
+  policy_copy         TEXT
 );
 CREATE TABLE IF NOT EXISTS run_issues (
   run_id            TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
@@ -690,12 +721,14 @@ const ADDED_COLUMNS: &[(&str, &str, &str)] = &[
     ("runs", "host_pid", "INTEGER"),
     ("runs", "host_start", "TEXT"),
     ("runs", "refusal_wrote_ending", "INTEGER"),
+    ("runs", "policy_copy", "TEXT"),
     ("masters", "session_id", "TEXT"),
     ("masters", "placed_build", "TEXT"),
     ("masters", "placed_plugins", "TEXT"),
     ("masters", "placed_at", "INTEGER"),
     ("masters", "outdated", "TEXT"),
     ("masters", "unattributed", "TEXT"),
+    ("masters", "placed_policy", "TEXT"),
 ];
 
 /// The ledger, open on one box.
@@ -1254,6 +1287,41 @@ impl Ledger {
         rows.collect::<rusqlite::Result<Vec<_>>>().map_err(sql_err)
     }
 
+    /// Every run whose release was decided terminal and that nothing else on
+    /// this box names any more, oldest first (ISS-1410).
+    ///
+    /// Its session is over, every lease is back and its checkout was never
+    /// recorded returned, so [`Self::unclosed_runs`] passes over it, a pane
+    /// does not hold it (`close_loop::holds_open`) and no sweep takes it up.
+    /// Only an operator's `forge-runner run release` puts it back, and this is
+    /// the one listing that says which runs are waiting for that. Read only:
+    /// the rows are never written by asking.
+    pub fn stranded_by_decision(&self) -> Result<Vec<Stranded>> {
+        let runs = {
+            let mut stmt = self
+                .conn
+                .prepare(&format!(
+                    "{SELECT_RUN} WHERE release_terminal_at IS NOT NULL
+                       AND session_terminal_at IS NOT NULL AND released_as IS NULL
+                       AND NOT EXISTS (SELECT 1 FROM run_issues m
+                                        WHERE m.run_id = runs.run_id AND m.lease_returned_at IS NULL)
+                     ORDER BY created_at, run_id"
+                ))
+                .map_err(sql_err)?;
+            let rows = stmt.query_map([], map_run).map_err(sql_err)?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(sql_err)?
+        };
+        let mut out = Vec::with_capacity(runs.len());
+        for run in runs {
+            out.push(Stranded {
+                issues: self.issues(&run.run_id)?,
+                run,
+            });
+        }
+        Ok(out)
+    }
+
     /// The runs a master pane started now for `project_id` inherits: declared on
     /// this boot, not ended, and still holding the checkout they were given,
     /// whichever master session declared them (ISS-1312).
@@ -1658,6 +1726,11 @@ impl Ledger {
     /// current (ISS-1379). Written at placement, before the pane's own
     /// `SessionStart` hook writes the rest of its row, so it creates the row
     /// where there is none yet; a placement clears any outdated verdict.
+    ///
+    /// `policy` is the copy of the policy that pane loaded, as
+    /// `PolicyCopy::to_stored` writes it (ISS-1303). It is a second record
+    /// beside `plugins` and not a reading of it: that is the install registry,
+    /// and an installed plugin no settings layer enables did not load.
     pub fn note_master_placed(
         &self,
         project_id: &str,
@@ -1665,24 +1738,71 @@ impl Ledger {
         boot_id: &str,
         build: &str,
         plugins: Option<&str>,
+        policy: Option<&str>,
     ) -> Result<()> {
         self.conn
             .execute(
                 "INSERT INTO masters (project_id, pane_name, boot_id, cold_started_at, last_seen_at,
-                                      placed_build, placed_plugins, placed_at)
-                 VALUES (?1, ?2, ?3, ?6, ?6, ?4, ?5, ?6)
+                                      placed_build, placed_plugins, placed_policy, placed_at)
+                 VALUES (?1, ?2, ?3, ?7, ?7, ?4, ?5, ?6, ?7)
                  ON CONFLICT(project_id) DO UPDATE SET
                    pane_name      = excluded.pane_name,
                    boot_id        = excluded.boot_id,
                    last_seen_at   = excluded.last_seen_at,
                    placed_build   = excluded.placed_build,
                    placed_plugins = excluded.placed_plugins,
+                   placed_policy  = excluded.placed_policy,
                    placed_at      = excluded.placed_at,
                    outdated       = NULL",
-                params![project_id, pane_name, boot_id, build, plugins, now()],
+                params![project_id, pane_name, boot_id, build, plugins, policy, now()],
             )
             .map_err(sql_err)?;
         Ok(())
+    }
+
+    /// The policy copy the project's pane was placed under, as it was written,
+    /// or `None` where that pane was adopted and never placed by this build.
+    pub fn master_placed_policy(&self, project_id: &str) -> Result<Option<String>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT placed_policy FROM masters WHERE project_id = ?1",
+                params![project_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()
+            .map_err(sql_err)?
+            .flatten())
+    }
+
+    /// Fix the policy copy a run was declared under (ISS-1303). Written once,
+    /// at the declaration: a pane placed again, or a plugin updated on disk,
+    /// before the run is opened at core changes what is true now and not what
+    /// this run was decided under. Answers whether the run row exists.
+    pub fn record_policy_copy(&self, run_id: &str, stored: &str) -> Result<bool> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE runs SET policy_copy = ?2 WHERE run_id = ?1 AND policy_copy IS NULL",
+                params![run_id, stored],
+            )
+            .map_err(sql_err)?;
+        Ok(changed == 1)
+    }
+
+    /// The policy copy a run was declared under, as it was written; `None` for
+    /// a run declared by a build that recorded none.
+    pub fn policy_copy_of(&self, run_id: &str) -> Result<Option<String>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT policy_copy FROM runs WHERE run_id = ?1",
+                params![run_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()
+            .map_err(sql_err)?
+            .flatten())
     }
 
     /// Name `session_id` on the project's `masters` row as the session its
@@ -3198,6 +3318,89 @@ mod tests {
             run.project_id, None,
             "a pre-upgrade run genuinely has no project on the ledger; defaulting one here would publish it into a project it does not belong to"
         );
+    }
+
+    /// ISS-1303 criterion 13. An upgraded box reads its old ledger rather than failing on it, and
+    /// says of every run and pane it recorded before this change that it recorded no copy: a copy
+    /// invented for them would be the state lying about a run it never saw.
+    #[test]
+    fn a_ledger_written_before_the_policy_columns_gains_them_and_keeps_every_row() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE runs (
+               run_id TEXT PRIMARY KEY, project_id TEXT, master_session_id TEXT NOT NULL,
+               session_id TEXT, worktree_path TEXT NOT NULL, pid INTEGER, boot_id TEXT NOT NULL,
+               incarnation TEXT NOT NULL, work TEXT NOT NULL, blocker_kind TEXT,
+               waiting_on TEXT, resume_id TEXT, park_deadline_at INTEGER,
+               session_terminal_at INTEGER, worktree_gone_at INTEGER, created_at INTEGER NOT NULL);
+             INSERT INTO runs (run_id, project_id, master_session_id, worktree_path, boot_id,
+                               incarnation, work, created_at)
+             VALUES ('old-run', 'p', 'master-0', '/w/old', 'boot-a', 'live', 'runnable', 1);
+             CREATE TABLE masters (
+               project_id TEXT PRIMARY KEY, pane_name TEXT NOT NULL, conversation_id TEXT,
+               session_id TEXT, boot_id TEXT NOT NULL, cold_started_at INTEGER NOT NULL,
+               last_seen_at INTEGER NOT NULL, placed_build TEXT, placed_plugins TEXT, placed_at INTEGER);
+             INSERT INTO masters (project_id, pane_name, boot_id, cold_started_at, last_seen_at,
+                                  placed_build, placed_plugins, placed_at)
+             VALUES ('p', 'forge-master-p', 'boot-a', 1, 1, '0.16.0', 'forge@x 1.0.0 aaaaaaaa', 1);",
+        )
+        .unwrap();
+        let led = Ledger::from_conn(conn).unwrap();
+        assert!(
+            led.run("old-run").unwrap().is_some(),
+            "a run recorded before this change survives the migration"
+        );
+        assert_eq!(led.policy_copy_of("old-run").unwrap(), None);
+        let pane = led
+            .master_for_project("p")
+            .unwrap()
+            .expect("the pane survives");
+        assert_eq!(
+            pane.placed_plugins.as_deref(),
+            Some("forge@x 1.0.0 aaaaaaaa")
+        );
+        assert_eq!(led.master_placed_policy("p").unwrap(), None);
+        // And the columns are usable: a stamp lands on the old row, once.
+        assert!(led
+            .record_policy_copy(
+                "old-run",
+                "{\"named\":false,\"reason\":\"plugins_unknown\"}"
+            )
+            .unwrap());
+        assert!(
+            !led.record_policy_copy("old-run", "{\"named\":false,\"reason\":\"not_recorded\"}")
+                .unwrap(),
+            "a copy already fixed is not replaced"
+        );
+    }
+
+    /// ISS-1303. The pane's own `SessionStart` writes its row after the placement did, and a
+    /// placement written without a copy says there is none, so neither can leave a stale copy
+    /// standing under a pane it no longer describes.
+    #[test]
+    fn a_placement_writes_the_policy_copy_beside_the_plugin_set_and_replaces_it() {
+        let led = Ledger::open_in_memory().unwrap();
+        led.note_master_placed("p", "pane", "boot-a", "0.17.0", Some("set"), Some("first"))
+            .unwrap();
+        assert_eq!(
+            led.master_placed_policy("p").unwrap().as_deref(),
+            Some("first")
+        );
+        led.note_master("p", "pane", Some("conv"), Some("sess"), "boot-a")
+            .unwrap();
+        assert_eq!(
+            led.master_placed_policy("p").unwrap().as_deref(),
+            Some("first"),
+            "the pane's own row write does not touch what the placement recorded"
+        );
+        led.note_master_placed("p", "pane", "boot-b", "0.17.0", Some("set"), None)
+            .unwrap();
+        assert_eq!(
+            led.master_placed_policy("p").unwrap(),
+            None,
+            "a placement that recorded no copy leaves none standing"
+        );
+        assert_eq!(led.master_placed_policy("no-such-project").unwrap(), None);
     }
 
     #[test]

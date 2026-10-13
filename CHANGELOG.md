@@ -128,6 +128,12 @@
 
 - **The API publishes its own reference.** `/api/openapi.json` describes every route's input, answers, errors and permission, `/api/reference` renders it and `/api/reference/flows` draws four flows; none needs a login.
 
+- **A run now records which copy of the policy decided it.** The box reports the `forge` plugin copy its pane loaded, or says why it cannot, and the run keeps that. A copy core cannot read is refused by name.
+
+- **Tables sort from their headers.** On the projects list, the overview's "Longest without an issue run" table and Top workspaces, a column header sorts the rows, pressing it again reverses them, and the header says which way it runs. (ISS-1263)
+
+- **A project that ships by version tag can say so.** Name the tags in its release chain's last entry, such as `v*.*.*`, and an issue cannot close until a matching tag contains its landing commit. Other projects close as before.
+
 - **Deleting a memory note through an agent tool now says how many it removed.** The tool answered `deleted: true` where the web answers a count; both now answer the number of rows removed, `0` when none matched.
 
 - **A dependency can now wait for a release to ship.** An edge can carry `holdsUntil: "shipped"`, holding its dependent until the blocker closes. Other edges behave as before; the `forge` CLI's `next` still reads the old rule.
@@ -2534,6 +2540,7 @@
   (ISS-1313)
 
 ### Removed
+- **The Runs / Spend / Lead time switch on Top workspaces is gone.** Press the Runs, Spend or Median lead header instead; the ranking is still the server's, largest first. (ISS-1263)
 - **Forge no longer writes your release steps.** A project that declares its own procedure gets it;
   one that declares none is told where its method lives, instead of being refused for a deploy
   target Forge has no steps for.
@@ -3158,10 +3165,25 @@
 
 ### Fixed
 
+- **A project's page no longer calls an unread list all clear.** While runs or parked ages are unread, Needs you reads "—" instead of "0 · nothing to act on", and the Awaiting release line wraps on a phone. (ISS-1263)
+- **The Overview no longer lists an archived project.** Its link opened a page saying the project does not exist; archived projects are now left out of the Overview's rows and totals, and come back when unarchived. (ISS-1261)
+- **A dashboard section whose data has not arrived says which read it is waiting on.** It no longer says "none live" or "nothing waiting" for a failed read, and the runs figure says how many are open. (ISS-1159)
+- **The dashboard no longer says all is well while a read is missing.** Needs your attention, Throughput and Where time goes name the read they wait on, and the open-work ring and the Awaiting release line fit a phone. (ISS-1159)
+- **The module-taxonomy migration guide says its attribution pass takes no lease.** A label write is not refused over an issue a run holds, so the guide now says to run Pass 2 between waves, while no issue is held (ISS-1388).
+- **The module-taxonomy migration guide no longer says label names are not unique.** A project refuses a second label under a name already taken, with `LABEL_NAME_TAKEN`; the guide now says so (ISS-1388).
+- **A link to a documentation address that does not exist shows the refusal inside the docs.** It dropped the reader onto an unstyled page with no header or search; the docs now stay around it (ISS-1292).
+- **Signing in returns you to the page you opened.** A link opened while signed out used to land on the dashboard; it now returns to that address. One pointing off this site is ignored, and the login says so (ISS-1290).
+- **Escape closes the compact rail's project switcher.** It stayed open with focus in the find field; it now closes from the field or any row and puts focus back on the switcher button (ISS-1268).
+- **An agent's close on a project with a release chain and no live deploy binding is refused 409 `RELEASE_TARGET_UNDECLARED`.** It was a server error; the refusal says where to add the binding (ISS-1414).
+- **A refusal that names the newest release tag names the release, not its candidate.** `v0.1.0` now ranks above `v0.1.0-rc.9`, and prereleases rank by their own numbers, as semver orders them (ISS-1413).
+- **A pool the server answers 404 for no longer reads BLIND for ever.** After three 404s in a row `forge-runner status` and the runner card say UNSERVED and the box stops asking; 502s are still retried (ISS-1326).
+- **The "nobody is working it" line counts every session opened over the issue.** It counted only runs still holding it, so six runs read as one; it also lists all their statuses (ISS-1320).
+- **A dispatch another hook refused no longer blocks the master's next one.** The box frees the declared run once the call's error shows, and a held run's refusal names the run and the call.
 - **An empty product-map screen sends an admin to where it is filled.** Open Automation now lands on the Improve tab, and the words say to enable the Standing product-map refresh there, then run it.
 - **A release pane that stops on a question no longer asks it again every minute.** The question now lands on the release's issues, the release waits, a second press is refused by name, and the answer restarts it.
 - **The run drawer opened from Ops says Queued for a run nothing has started.** It read running, unlike the board, and offered Pause and Stop. It now agrees, names its issue, and offers both once work starts.
 - **A master an update left outdated no longer sits for days while its project's work waits.** A run whose worktree release failed for good no longer counts as open, and a master with real runs is nudged like any other.
+- **A run whose worktree release failed for good stays named.** The runner's journal says it once, and `forge-runner status` for as long as it stands, with its refusal and the command that retries the release.
 - **Two runner commands saving the box's config at once no longer fail or lose each other's change.** They take turns now, and an error names the file and the step.
 
 - **Two installs of the master skill into one checkout no longer fail one of them.** A bind and the daemon's start sweep reaching one checkout together now take turns, and both end with the shipped tree.
@@ -6371,6 +6393,10 @@
 
 ### Changed
 
+- **The projects list has an Active column, and its Sort menu and its headers are one control.** Last activity is a column now rather than trailing Spend, and a sort chosen in the menu marks its header. (ISS-1263)
+
+- **An integration run on a box with its own Postgres reuses the template database.** A run whose migrations match one already there clones it; a differing one builds its own. Concurrent runs build it once. CI still builds its own.
+- **The project dashboard opens on a sentence, and its shape follows what the project is doing.** A quiet project says so and shows empty panels as one line; a failing one gets a band linking its oldest item. (ISS-1159)
 - **An issue is one line of five columns that always fits.** The state says what is running, who owes an answer and for how long. Module, cost and complexity left the row; Comfortable density shows module, kind and creator.
 - **The Library is one row of tabs, and Memory is not among them.** Knowledge's readers are a grouped list, or a picker on a phone, not a second tab row. An empty product map opens Automation for an admin.
 - **The Issues screen shows issues, and the board, metrics and modules sit where they belong.** The tabs are gone: the board is the Pipeline page, throughput is on the dashboard, modules are "Group: module". Old `?tab=` links redirect.

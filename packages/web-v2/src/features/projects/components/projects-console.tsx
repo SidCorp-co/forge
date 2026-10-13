@@ -15,12 +15,14 @@ import {
   Kicker,
   PageContainer,
   ProjectCardSkeleton,
+  useDataTableRows,
 } from '@/design';
 import { formatApiError } from '@/lib/api/error';
 import { useActiveOrg } from '@/features/orgs/active-org';
-import { blindSearchEmpty, filterProjects, isAttention, sortProjects, unreadStatements, workspaceTotals } from '../derive';
+import { blindSearchEmpty, isAttention, unreadStatements, workspaceTotals } from '../derive';
+import { DEFAULT_PROJECT_SORT, FIRST_DESC, isDefaultSort, PROJECT_MODEL_COLUMNS } from '../columns';
 import { useProjectsConsole } from '../hooks';
-import type { ProjectConsoleItem, ProjectSort, ProjectView } from '../types';
+import type { ProjectConsoleItem, ProjectSortState, ProjectView } from '../types';
 import { AttentionBanner } from './attention-banner';
 import { NewProjectDialog } from './new-project-dialog';
 import { NewProjectTile } from './new-project-tile';
@@ -49,6 +51,8 @@ function SectionLabel({
   );
 }
 
+const NO_FILTERS: Record<string, string> = {};
+
 export function ProjectsConsole() {
   const { items: allItems, isLoading, isError, error, healthRead, refetch, toggle } = useProjectsConsole();
   const router = useRouter();
@@ -56,7 +60,7 @@ export function ProjectsConsole() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [sort, setSort] = useState<ProjectSort>('recent');
+  const [sort, setSort] = useState<ProjectSortState>(DEFAULT_PROJECT_SORT);
   const [view, setView] = useState<ProjectView>('cards');
   const [attentionOnly, setAttentionOnly] = useState(false);
   // Org scope is driven by the global active-org switcher (ISS-469), not a
@@ -85,19 +89,17 @@ export function ProjectsConsole() {
   // Where health is not read no project is known to need attention, so the filter cannot hold: it
   // would empty the list and the banner above it offers no way out.
   const attentionFilter = attentionOnly && healthRead === 'read';
-  const visible = useMemo(
-    () => sortProjects(filterProjects(items, query, attentionFilter), sort),
-    [items, query, attentionFilter, sort],
-  );
+  const filters = useMemo(() => (attentionFilter ? { attention: 'yes' } : NO_FILTERS), [attentionFilter]);
+  const visible = useDataTableRows(items, PROJECT_MODEL_COLUMNS, { sort, search: query, filters });
 
   // When searching/filtering/sorting, collapse the pinned section into one flat
   // result list (so a pinned match isn't hidden from the "rest"). Org scope is
   // NOT a "search" — it's the ambient workspace scope, so it doesn't collapse
   // the pinned section.
-  const searching = query.trim() !== '' || attentionFilter || sort !== 'recent';
+  const searching = query.trim() !== '' || attentionFilter || !isDefaultSort(sort);
   // What the console cannot answer until the health rollup is read, said beside the list it shapes.
   const unreadSays = useMemo(
-    () => unreadStatements({ query, attentionOnly, sort, read: healthRead }),
+    () => unreadStatements({ query, attentionOnly, sort: sort.id, read: healthRead }),
     [query, attentionOnly, sort, healthRead],
   );
   const searchBlind = query.trim() !== '' && healthRead !== 'read';
@@ -120,8 +122,8 @@ export function ProjectsConsole() {
     }
   }, [searchParams, router]);
 
-  function renderGroup(group: ProjectConsoleItem[]) {
-    if (view === 'list') return <ProjectList items={group} now={now} onTogglePin={toggle} />;
+  function renderGroup(group: readonly ProjectConsoleItem[]) {
+    if (view === 'list') return <ProjectList items={group} now={now} onTogglePin={toggle} sort={sort} onSortChange={setSort} />;
     return (
       <div className="grid gap-3.5 [grid-template-columns:repeat(auto-fill,minmax(326px,1fr))]">
         {group.map((p) => (
@@ -162,8 +164,8 @@ export function ProjectsConsole() {
           <ProjectsToolbar
             query={query}
             onQuery={setQuery}
-            sort={sort}
-            onSort={setSort}
+            sort={sort.id}
+            onSort={(id) => setSort({ id, desc: FIRST_DESC[id] })}
             view={view}
             onView={setView}
             onNewProject={onNewProject}

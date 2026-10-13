@@ -46,4 +46,20 @@ describe("the upcoming schedules card", () => {
     render(<SchedulesCard rows={[row({ lastStatus: null, lastRunAt: null })]} now={NOW} slug="forge-dev" />);
     expect(screen.getByText("never run")).toBeInTheDocument();
   });
+
+  it("lists the soonest next run first, and a schedule with none last", () => {
+    const rows = [
+      row({ id: "s1", name: "Later", nextRunAt: "2026-09-22T16:00:00.000Z" }),
+      row({ id: "s2", name: "Paused", nextRunAt: null, enabled: false }),
+      row({ id: "s3", name: "Soon", nextRunAt: "2026-09-21T13:00:00.000Z" }),
+    ];
+    render(<SchedulesCard rows={rows} now={NOW} slug="forge-dev" />);
+    expect(screen.getAllByText(/^(Later|Paused|Soon)$/).map((el) => el.textContent)).toEqual(["Soon", "Later", "Paused"]);
+  });
+
+  it("shows only the five soonest of more", () => {
+    const rows = [6, 5, 4, 3, 2, 1].map((n) => row({ id: `s${n}`, name: `S${n}`, nextRunAt: `2026-09-2${n}T16:00:00.000Z` }));
+    render(<SchedulesCard rows={rows} now={NOW} slug="forge-dev" />);
+    expect(screen.getAllByText(/^S\d$/).map((el) => el.textContent)).toEqual(["S1", "S2", "S3", "S4", "S5"]);
+  });
 });

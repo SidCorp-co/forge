@@ -204,10 +204,12 @@ export interface ReleaseWarning {
 /** How a release crosses ONE edge of the chain, declared on the entry it enters. */
 export type ReleaseCrossing = "merge-branch" | "cherry-pick";
 
-/** One branch on the release path. The first entry crosses from nothing. */
+/** One branch on the release path. The first entry crosses from nothing. The last may carry
+ *  `tag`, a glob naming the version tags that ship the project; this screen keeps it and shows no field. */
 export interface ReleaseChainEntry {
 	branch: string;
 	from?: ReleaseCrossing;
+	tag?: string;
 }
 
 /** What a project still has to declare — mirrors `ReleaseReadiness` in core

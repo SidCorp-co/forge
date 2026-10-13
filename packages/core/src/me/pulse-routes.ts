@@ -9,7 +9,7 @@
  * would have had to fan out over every project it can see.
  */
 
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -90,14 +90,20 @@ mePulseRoutes.get(
     const visibleIds = await loadVisibleProjectIds(c.get('userId'));
     if (visibleIds.length === 0) return c.json(answer(pulseSchema, emptyPulse(now)));
 
-    const projectIds = orgId
-      ? (
-          await db
-            .select({ id: projects.id })
-            .from(projects)
-            .where(and(inArray(projects.id, visibleIds), eq(projects.orgId, orgId)))
-        ).map((r) => r.id)
-      : visibleIds;
+    // An archived project is out of the project list the Overview's links resolve against, so it is
+    // out of the scope here: the pulse never names a project its own link cannot open (ISS-1261).
+    const projectIds = (
+      await db
+        .select({ id: projects.id })
+        .from(projects)
+        .where(
+          and(
+            inArray(projects.id, visibleIds),
+            isNull(projects.archivedAt),
+            ...(orgId ? [eq(projects.orgId, orgId)] : []),
+          ),
+        )
+    ).map((r) => r.id);
 
     if (projectIds.length === 0) return c.json(answer(pulseSchema, emptyPulse(now)));
 

@@ -39,4 +39,21 @@ describe("the live runs card", () => {
     render(<LiveRunsCard runs={[run("running")]} slug="forge-dev" />);
     expect(screen.getByText("running · drive")).toBeInTheDocument();
   });
+
+  it("names the runs read while it is out and states no run, none live and no idle count", () => {
+    render(<LiveRunsCard runs={[]} idle={[run("running")]} slug="forge-dev" read={{ read: "pending" }} />);
+    expect(screen.getByText("The project's runs are still being read.")).toBeInTheDocument();
+    expect(screen.queryByText(/none live/)).toBeNull();
+    expect(screen.queryByText(/no job running/)).toBeNull();
+  });
+
+  it("names why the runs read failed", () => {
+    render(<LiveRunsCard runs={[]} slug="forge-dev" read={{ read: "failed", reason: "Gateway Timeout" }} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("The project's runs could not be read: Gateway Timeout");
+  });
+
+  it("states the zero once the read is in", () => {
+    render(<LiveRunsCard runs={[]} slug="forge-dev" read={{ read: "ok" }} />);
+    expect(screen.getByText("none live right now")).toBeInTheDocument();
+  });
 });

@@ -34,6 +34,7 @@ import {
 } from '../pipeline/runs.js';
 import { type GateCondition, RUN_GATE_METADATA_KEY } from './gate-report.js';
 import { liveMasterSessionId } from './master-owner.js';
+import { POLICY_AT_OPEN_METADATA_KEY, type PolicyCopy, stampPolicy } from './policy-copy.js';
 import { projectAdmission, RunnerNotAdmittedError } from './pool-admission.js';
 import { returnIssuesForRun } from './run-issue-return.js';
 import {
@@ -170,6 +171,7 @@ export async function openRunSession(args: {
   name: string;
   boxRunId?: string;
   gate?: GateCondition;
+  policy?: PolicyCopy;
 }): Promise<RunSession> {
   if (args.issueKeys.length === 0) {
     throw new Error('openRunSession: a run session must carry at least one issue');
@@ -223,6 +225,8 @@ export async function openRunSession(args: {
       [RUN_ISSUE_STATUSES_METADATA_KEY]: openingStatuses,
       ...(args.boxRunId ? { [BOX_RUN_ID_METADATA_KEY]: args.boxRunId } : {}),
       ...(args.gate ? { [RUN_GATE_METADATA_KEY]: args.gate } : {}),
+      // Always written: a box that sent none is recorded as having named none.
+      [POLICY_AT_OPEN_METADATA_KEY]: stampPolicy(args.policy),
     },
   };
   const claimed = await db.transaction(async (tx) => {

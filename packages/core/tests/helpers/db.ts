@@ -3,7 +3,7 @@ import postgres, { type Sql } from 'postgres';
 import { startPostgresContainer } from './container.js';
 import { runMigrations } from './migrate.js';
 import { createTestSchema } from './schema-mode.js';
-import { drainRetiredScratchDbs, retireScratchDb, runToken, workerDbName } from './scratch-db.js';
+import { drainRetiredScratchDbs, retireScratchDb, workerDbName } from './scratch-db.js';
 
 export type TestDb = PostgresJsDatabase<Record<string, unknown>>;
 
@@ -91,7 +91,7 @@ async function cloneFromTemplate(workerId: string): Promise<TestDatabase | null>
   const template = process.env.TEST_PG_TEMPLATE;
   if (!adminUrl || !template) return null;
 
-  const dbName = workerDbName(workerId, runToken(template));
+  const dbName = workerDbName(workerId);
 
   const admin = postgres(adminUrl, { max: 1 });
   try {
@@ -138,7 +138,7 @@ function explainCloneFailure(template: string, err: unknown): string {
     return (
       `could not clone the template database "${template}" — it is gone. ` +
       'This is an ENVIRONMENT condition, not a failure of the code under test: global setup ' +
-      'built this template and something outside this run removed it. Re-run the suite; if it ' +
+      'built or took this template and something outside this run removed it. Re-run the suite; if it ' +
       'recurs, look for another process dropping databases on this server.'
     );
   }

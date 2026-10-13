@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { describeOperation, fail, json } from '../api-reference/describe.js';
 import { utf16String } from '../lib/utf16-string.js';
 import { gateConditionSchema } from './gate-report.js';
+import { policyCopySchema } from './policy-copy.js';
 import { runCheckpointSchema } from './run-evidence.js';
 
 export const runSessionBodySchema = z.object({
@@ -14,6 +15,8 @@ export const runSessionBodySchema = z.object({
   // rather than a field quietly dropped. The heartbeat is the other way round,
   // and for its own stated reason (ISS-1192).
   gate: gateConditionSchema.optional(),
+  // Refused by name too: the copy a run was decided under is not a field to absorb (ISS-1303).
+  policy: policyCopySchema.optional(),
 });
 
 export const closeBodySchema = z.object({

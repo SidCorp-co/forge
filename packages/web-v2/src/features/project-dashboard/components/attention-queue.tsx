@@ -1,29 +1,22 @@
 "use client";
 
-// Needs-your-attention queue (ISS-379, AC#2) — the dashboard centerpiece. Lists
-// the project's actionable items (failed → Approve & retry, review → Open diff,
-// holding a question → Provide info, parked → Open issue). Each primary action
-// NAVIGATES to the existing destination (issue-detail / review / relations) —
-// no new mutations, no duplication of ISS-377/366.
+// Needs-your-attention list (ISS-379, AC#2). Each row is one item a person acts on, with its age as a
+// chip and the action that clears it: failed → Approve & retry, review → Open diff, holding a
+// question → Provide info, parked → Open issue. Each action NAVIGATES to the existing destination —
+// no new mutations. Flat: rows divided by hairlines, no boxes. Empty is one line, said only where
+// nothing is owed beyond it (ISS-1156).
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  Button,
-  Card,
-  CardContent,
-  CardTitle,
-  EmptyState,
-  Icon,
-  MonoTag,
-  type IconName,
-} from "@/design";
+import { Button, Icon, MonoTag, type IconName } from "@/design";
 import { TONE_META, type SemanticTone } from "@/design/status";
-import { formatRelativeTime } from "@/features/projects/derive";
 import { WORK_STATE_LABELS } from "@forge/contracts/work-state";
 import type { AttentionActionKind, AttentionCut, DashboardAttentionItem } from "../derive";
+import type { ProjectShape } from "../shape";
+import { AgeChip } from "./age-chip";
+import { DashboardSection, EmptyLine, RowList } from "./dashboard-section";
 
-// ISS-509: tone-resolved so only a genuinely failed job is red — a
-// blocked-on-dependency `chain` item is calm `blocked` ink, NOT alarm-red.
+// ISS-509: tone-resolved so only a genuinely failed job is red — a blocked-on-dependency item is calm
+// `blocked` ink, NOT alarm-red.
 const ACTION_TONE: Record<AttentionActionKind, SemanticTone> = {
   retry: "failure",
   diff: "active",
@@ -31,17 +24,14 @@ const ACTION_TONE: Record<AttentionActionKind, SemanticTone> = {
   parked: "blocked",
 };
 
-const ACTION_META: Record<AttentionActionKind, { tag: string; icon: IconName; fg: string; bg: string }> = {
-  retry: { tag: "Failed", icon: "alert", ...actionTone("retry") },
-  diff: { tag: "Review", icon: "check", ...actionTone("diff") },
-  input: { tag: "Awaiting", icon: "clock", ...actionTone("input") },
-  parked: { tag: "Blocked", icon: "clock", ...actionTone("parked") },
+const ACTION_META: Record<AttentionActionKind, { tag: string; icon: IconName }> = {
+  retry: { tag: "Failed", icon: "alert" },
+  diff: { tag: "Review", icon: "check" },
+  input: { tag: "Awaiting", icon: "clock" },
+  parked: { tag: "Blocked", icon: "clock" },
 };
 
-function actionTone(kind: AttentionActionKind): { fg: string; bg: string } {
-  const t = TONE_META[ACTION_TONE[kind]];
-  return { fg: t.fg, bg: t.bg };
-}
+const TITLE = "Needs your attention";
 
 export function AttentionQueue({
   items,
@@ -49,6 +39,7 @@ export function AttentionQueue({
   refusal = null,
   pending = false,
   onRetry,
+  shape = "working",
   slug,
   now,
 }: {
@@ -61,92 +52,129 @@ export function AttentionQueue({
   pending?: boolean;
   /** Asks for the read again; offered under a refusal where the read failed. */
   onRetry?: () => void;
+  /**
+   * What the page reads as. An empty list says all caught up only under quiet or working: degraded
+   * means something this list does not hold is wrong, and unread means a read the list rests on beside
+   * its own has not arrived, so the page cannot yet say nothing needs anyone.
+   */
+  shape?: ProjectShape;
   slug: string;
   now: number;
 }) {
   const router = useRouter();
 
-  return (
-    <Card className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b border-line-subtle px-5 py-3.5">
-        <Icon name="inbox" size={16} className="text-subtle" />
-        <CardTitle>Needs your attention</CardTitle>
-        {items.length > 0 && (
-          <span
-            className="inline-flex min-w-[18px] items-center justify-center rounded-pill px-1.5 font-semibold"
-            style={{ fontSize: "var(--text-11)", lineHeight: "16px", color: "var(--accent-text)", background: "var(--flame-50)" }}
-          >
-            {items.length}
-          </span>
+  if (pending) {
+    return (
+      <DashboardSection title={TITLE}>
+        <p role="status" className="fg-body-sm py-2 text-subtle" data-testid="attention-pending">
+          Reading what needs you…
+        </p>
+      </DashboardSection>
+    );
+  }
+
+  const notes = (
+    <>
+      {refusal && (
+        <p role="alert" className="fg-caption mt-2 text-subtle" data-testid="attention-refusal">
+          {refusal}
+        </p>
+      )}
+      {refusal && onRetry && (
+        <Button size="sm" variant="secondary" className="mt-2" onClick={onRetry}>
+          Try again
+        </Button>
+      )}
+      {cut && (
+        <p className="fg-caption mt-2 text-subtle">
+          Showing {cut.shown} of at least {cut.atLeast}.
+          {cut.peopleCut && (
+            <>
+              {" "}
+              <Link href={`/projects/${slug}/issues?filter=blocked_on_person`} className="underline">
+                Every {WORK_STATE_LABELS.blocked_on_person.toLowerCase()} issue is in Issues
+              </Link>
+              .
+            </>
+          )}
+        </p>
+      )}
+    </>
+  );
+
+  if (items.length === 0) {
+    return (
+      <div>
+        {refusal ? (
+          <DashboardSection title={TITLE}>{notes}</DashboardSection>
+        ) : shape === "unread" && cut ? (
+          <DashboardSection title={TITLE}>
+            <p className="fg-body-sm py-2 text-subtle">
+              Not all of this page is read yet, so this is not an all clear.
+            </p>
+            {notes}
+          </DashboardSection>
+        ) : cut ? (
+          <DashboardSection title={TITLE}>
+            <p className="fg-body-sm py-2 text-subtle">Nothing is listed to act on here.</p>
+            {notes}
+          </DashboardSection>
+        ) : shape === "degraded" ? (
+          <EmptyLine
+            title={TITLE}
+            status="No item is waiting on you"
+            detail="What is wrong is named above, and it is not an item listed here."
+          />
+        ) : shape === "unread" ? (
+          <EmptyLine
+            title={TITLE}
+            status="Not all of this page is read yet"
+            detail="What it names above is missing here too, so this is not an all clear."
+          />
+        ) : (
+          <EmptyLine title={TITLE} status="All caught up" detail="Nothing in this project needs you right now." />
         )}
       </div>
-      <CardContent className="flex-1">
-        {pending ? (
-          <p role="status" className="fg-body-sm text-subtle" data-testid="attention-pending">
-            Reading what needs you…
-          </p>
-        ) : items.length === 0 ? (
-          cut || refusal ? (
-            <p className="fg-body-sm text-subtle">Nothing is listed to act on here.</p>
-          ) : (
-            <EmptyState title="All caught up" message="Nothing in this project needs you right now." mascot={false} />
-          )
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {items.map((it) => {
-              const m = ACTION_META[it.actionKind];
-              return (
-                <li
-                  key={it.key}
-                  className="flex items-center gap-2.5 rounded-md border border-line bg-surface px-2.5 py-2"
-                >
-                  <span
-                    className="inline-flex flex-none items-center gap-1 whitespace-nowrap rounded-pill px-1.5 py-0.5 font-semibold"
-                    style={{ color: m.fg, background: m.bg, fontSize: "var(--text-11)" }}
-                  >
-                    <Icon name={m.icon} size={12} style={{ color: m.fg }} />
-                    {m.tag}
-                  </span>
-                  {it.issueRef && <MonoTag>{it.issueRef}</MonoTag>}
-                  <span className="fg-body-sm min-w-0 flex-1 truncate text-fg">{it.title}</span>
-                  {it.since && (
-                    <span className="fg-caption hidden flex-none text-subtle sm:inline">
-                      {formatRelativeTime(it.since, now)}
-                    </span>
-                  )}
-                  <Button size="sm" variant="secondary" onClick={() => router.push(it.link)}>
-                    {it.actionLabel}
-                  </Button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-        {refusal && (
-          <p role="alert" className="fg-caption mt-3 text-subtle" data-testid="attention-refusal">
-            {refusal}
-          </p>
-        )}
-        {refusal && onRetry && (
-          <Button size="sm" variant="secondary" className="mt-2" onClick={onRetry}>
-            Try again
-          </Button>
-        )}
-        {cut && (
-          <p className="fg-caption mt-3 text-subtle">
-            Showing {cut.shown} of at least {cut.atLeast}.
-            {cut.peopleCut && (
-              <>
-                {" "}
-                <Link href={`/projects/${slug}/issues?filter=blocked_on_person`} className="underline">
-                  Every {WORK_STATE_LABELS.blocked_on_person.toLowerCase()} issue is in Issues
-                </Link>
-                .
-              </>
-            )}
-          </p>
-        )}
-      </CardContent>
-    </Card>
+    );
+  }
+
+  return (
+    <DashboardSection title={TITLE} aside={items.length}>
+      <RowList>
+        {items.map((it) => {
+          const m = ACTION_META[it.actionKind];
+          const t = TONE_META[ACTION_TONE[it.actionKind]];
+          return (
+            <li key={it.key} className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 py-2">
+              <span
+                className="inline-flex flex-none items-center gap-1 whitespace-nowrap rounded-pill px-1.5 py-0.5 font-semibold"
+                style={{ color: t.fg, background: t.bg, fontSize: "var(--text-11)" }}
+              >
+                <Icon name={m.icon} size={12} style={{ color: t.fg }} />
+                {m.tag}
+              </span>
+              {it.issueRef && <MonoTag>{it.issueRef}</MonoTag>}
+              {/* Narrow: kind, ref and age share the first line whatever the title's length, then the title
+                  takes its own, then the action. Wide: one line, in the order they are read. */}
+              <span className="fg-body-sm order-3 min-w-0 basis-full truncate text-fg sm:order-none sm:flex-1 sm:basis-40">
+                {it.title}
+              </span>
+              <span className="ml-auto flex-none sm:ml-0">
+                <AgeChip since={it.since} basis={it.sinceBasis} now={now} />
+              </span>
+              <Button
+                size="sm"
+                variant="secondary"
+                className="order-4 sm:order-none"
+                onClick={() => router.push(it.link)}
+              >
+                {it.actionLabel}
+              </Button>
+            </li>
+          );
+        })}
+      </RowList>
+      {notes}
+    </DashboardSection>
   );
 }

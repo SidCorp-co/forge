@@ -5,7 +5,9 @@ use forge_runner_core::daemon::degraded::{
     Condition, Last, Verdict, KEPT_AFTER_TRIM, MIN_WINDOW_MS, RECENT_WITHIN_MS,
 };
 use forge_runner_core::daemon::pool_reads;
-use forge_runner_core::runner::ledger::{short_id, Ledger, Unanswered, WhatEndsIt};
+use forge_runner_core::runner::ledger::{
+    short_id, CheckoutPath, Ledger, Stranded, Unanswered, WhatEndsIt,
+};
 
 use super::Ctx;
 
@@ -61,6 +63,9 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     match Ledger::default_path() {
         Ok(path) => {
             for line in unanswered_runs(&path, &cfg) {
+                println!("{line}");
+            }
+            for line in stranded_runs(&path, &cfg) {
                 println!("{line}");
             }
         }
@@ -195,6 +200,70 @@ fn unanswered_runs(path: &std::path::Path, cfg: &Config) -> Vec<String> {
     }
 }
 
+/// The runs whose release was decided terminal and that no sweep selects and no
+/// master pane holds, read without writing the ledger (ISS-1410). Nothing
+/// else names them once their session and leases are back, and only an
+/// operator's `run release` takes one up again, so this is where that is said
+/// for as long as the row stands. Silent when there are none, and when there
+/// is no ledger at all (the line above says so); a ledger that exists and
+/// cannot be read is said, never read as none.
+fn stranded_runs(path: &std::path::Path, cfg: &Config) -> Vec<String> {
+    if !path.exists() {
+        return Vec::new();
+    }
+    match Ledger::open_read_only(path).and_then(|led| led.stranded_by_decision()) {
+        Ok(runs) => stranded_lines(&runs, cfg),
+        Err(e) => vec![format!(
+            "stranded   UNREADABLE — {}: {e}. Which runs a terminal release stranded cannot be said",
+            path.display()
+        )],
+    }
+}
+
+fn stranded_lines(runs: &[Stranded], cfg: &Config) -> Vec<String> {
+    if runs.is_empty() {
+        return Vec::new();
+    }
+    let mut out = vec![format!(
+        "stranded   {} run(s) whose release was decided terminal — no sweep selects them and no master pane holds them; only `forge-runner run release <run>` takes one up again",
+        runs.len()
+    )];
+    for s in runs {
+        let project = s
+            .run
+            .project_id
+            .as_deref()
+            .map(|p| project_label(cfg, p))
+            .unwrap_or_else(|| "no project".to_string());
+        let keys = s
+            .issues
+            .iter()
+            .map(|m| m.issue_key.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let on_disk = match CheckoutPath::of(&s.run.worktree_path) {
+            CheckoutPath::OnDisk => "on disk".to_string(),
+            CheckoutPath::Absent => "path not on disk".to_string(),
+            CheckoutPath::Unreadable(why) => format!("path could not be inspected: {why}"),
+        };
+        let refusal = s
+            .run
+            .release_refusal
+            .as_deref()
+            .unwrap_or("no refusal was recorded");
+        let refusal = match refusal.char_indices().nth(160) {
+            Some((end, _)) => format!("{}…", &refusal[..end]),
+            None => refusal.to_string(),
+        };
+        out.push(format!(
+            "  {}  {project}  {keys}  checkout {} ({on_disk}) — {refusal}",
+            s.run.run_id,
+            s.run.worktree_path.display()
+        ));
+    }
+    out
+}
+
 fn unanswered_lines(runs: &[Unanswered], cfg: &Config) -> Vec<String> {
     if runs.is_empty() {
         return vec!["runs       none that no master on this box answers for".to_string()];
@@ -296,6 +365,11 @@ pub fn pool_lines(
                 span((now - c.unread_since.unwrap_or(c.last_failure.at)).max(0)),
                 c.consecutive,
                 span(c.window_ms)
+            ),
+            pool_reads::Verdict::Unserved => format!(
+                "  {who}  UNSERVED — core answers 404 for this pool ({} consecutive reads since {} ago), so the box stopped asking; it asks again when core's list of this box's projects changes or the daemon restarts; {newest}",
+                c.consecutive,
+                span((now - c.unread_since.unwrap_or(c.last_failure.at)).max(0)),
             ),
             pool_reads::Verdict::Intermittent => format!(
                 "  {who}  intermittent — {count} failed read(s) in the last {}; {newest}; reading again for {}",
@@ -773,6 +847,80 @@ mod tests {
         );
     }
 
+    /// ISS-1410 criterion 8: a run whose release was decided terminal, with its
+    /// session over and every lease back, is selected by no sweep and held by
+    /// no pane, so `status` is what names it, by id, issue, checkout and
+    /// refusal, with the one act that takes it up again.
+    #[test]
+    fn status_names_a_run_stranded_by_a_terminal_release() {
+        let s = Scratch::new("status-stranded");
+        let path = s.path().join("ledger.sqlite");
+        let mut led = Ledger::open(&path).unwrap();
+        led.create_run_group(NewRun {
+            run_id: "14df28bc".into(),
+            project_id: "sidpeak-id".into(),
+            master_session_id: "master-a".into(),
+            worktree_path: "/tmp/forge-status-absent-by-construction".into(),
+            boot_id: "boot-a".into(),
+            issue_keys: vec!["ISS-530".into()],
+        })
+        .unwrap();
+        led.end_run("14df28bc", "master", "never started").unwrap();
+        led.note_release_refusal(
+            "14df28bc",
+            "run ff1df919 still holds the checkout",
+            1_790_000_000,
+        )
+        .unwrap();
+        led.conclude_release_refusal(
+            "14df28bc",
+            1_790_000_300,
+            "master",
+            "run ff1df919 still holds the checkout",
+        )
+        .unwrap();
+        led.mark_session_terminal_observed("14df28bc").unwrap();
+        led.mark_lease_returned_observed("14df28bc", "ISS-530")
+            .unwrap();
+        let cfg = cfg_binding("sidpeak", "sidpeak-id");
+
+        let out = stranded_runs(&path, &cfg);
+        assert_eq!(out.len(), 2, "{out:?}");
+        assert!(
+            out[0].starts_with("stranded   1 run(s) whose release was decided terminal")
+                && out[0].contains("`forge-runner run release <run>`"),
+            "{out:?}"
+        );
+        assert_eq!(
+            out[1],
+            "  14df28bc  sidpeak  ISS-530  checkout /tmp/forge-status-absent-by-construction (path not on disk) — run ff1df919 still holds the checkout"
+        );
+
+        drop(led);
+        let torn = s.path().join("torn.sqlite");
+        std::fs::write(
+            &torn,
+            b"this is not a database, and it is long enough to say so",
+        )
+        .unwrap();
+        let out = stranded_runs(&torn, &cfg);
+        assert!(
+            out.len() == 1
+                && out[0].starts_with(&format!("stranded   UNREADABLE — {}: ", torn.display())),
+            "an unreadable ledger is named, never read as none stranded: {out:?}"
+        );
+        assert!(
+            stranded_runs(&s.path().join("absent.sqlite"), &cfg).is_empty(),
+            "a missing ledger is the line above's to say"
+        );
+        let none = s.path().join("none.sqlite");
+        drop(Ledger::open(&none).unwrap());
+        assert!(
+            stranded_runs(&none, &cfg).is_empty(),
+            "with none stranded nothing is printed"
+        );
+    }
+
     /// ISS-1355 criterion 12: a project this box does not bind is named by its id.
     #[test]
     fn status_names_an_unbound_project_by_its_id() {
@@ -850,7 +998,7 @@ mod tests {
         status: Option<u16>,
         what: &str,
     ) -> pool_reads::Condition {
-        let blind = verdict == pool_reads::Verdict::Blind;
+        let blind = verdict != pool_reads::Verdict::Intermittent;
         pool_reads::Condition {
             project_id: "p-1".into(),
             verdict,
@@ -888,6 +1036,30 @@ mod tests {
             out.contains("newest 10s ago: 520 (gateway: the origin returned an unknown error)"),
             "{out}"
         );
+    }
+
+    /// ISS-1326. A pool the server answers 404 for is not a blind one: the row
+    /// says what the answer was, that the box stopped asking, and what ends it.
+    #[test]
+    fn an_unserved_project_is_named_as_such_and_not_as_blind() {
+        let c = cond(
+            pool_reads::Verdict::Unserved,
+            3,
+            false,
+            Some(404),
+            "404 Not Found",
+        );
+        let out = pool_lines(&Ok(vec![c]), &cfg_binding("sid-desk", "p-1"), NOW).join("\n");
+        assert!(out.contains("sid-desk  UNSERVED"), "{out}");
+        assert!(!out.contains("BLIND"), "{out}");
+        assert!(out.contains("core answers 404 for this pool"), "{out}");
+        assert!(out.contains("30 consecutive reads since 5m ago"), "{out}");
+        assert!(out.contains("the box stopped asking"), "{out}");
+        assert!(
+            out.contains("core's list of this box's projects changes"),
+            "{out}"
+        );
+        assert!(out.contains("newest 10s ago: 404 Not Found"), "{out}");
     }
 
     /// Criterion 10, the floor and the missing status.
