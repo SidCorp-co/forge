@@ -138,7 +138,8 @@ type SessionRow = {
  * The job lane's `metadata.issueId` is one session, one issue, held for as long as the session
  * lives. A run session carries a GROUP, and two records link it to an issue: `issue_leases`, the
  * run's HOLD, which goes once the run gives the issue back, and the run's recorded group
- * (`runGroup`, else the keys `runIssueStatuses` was stamped with), which nothing rewrites. The
+ * (`runGroup` and the keys `runIssueStatuses` was stamped with, both written at open from one
+ * value and never rewritten, the second being all a run older than the first leaves). The
  * hold decides who is working the issue and the group decides how many sessions were opened over
  * it, so a finished run still counts and a live run that moved on is not mistaken for a worker.
  * No status filter: the sentence that counts them lists the statuses it saw.
