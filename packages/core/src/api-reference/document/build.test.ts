@@ -176,6 +176,27 @@ describe('buildReference over a planted app', () => {
     expect(alternatives).toContain('success');
   });
 
+  it('keeps a declared JSON refusal and the envelope a hook throws, at one status', async () => {
+    const app = new Hono();
+    app.get(
+      '/api/both/:id',
+      zValidator('param', z.object({ id: z.uuid() }), refuseWith('BAD_ID')),
+      describeOperation({
+        summary: 'Both',
+        responses: {
+          200: json(z.object({})),
+          400: json(z.object({ reason: z.string() }), 'legacy'),
+        },
+      }),
+      (c) => c.json({}),
+    );
+    const { document } = await buildReference(app, { version: 't' });
+    const refusal = JSON.stringify(responsesAt(document, '/api/both/{id}', 'get')['400']);
+    expect(refusal).toContain('reason');
+    expect(refusal).toContain('BAD_ID');
+    expect(refusal).toContain('anyOf');
+  });
+
   it('states a multipart body as an object whose named file part is required, and a second body type beside the JSON one', async () => {
     const app = new Hono();
     app.post(

@@ -1,6 +1,7 @@
 import { PAT_DOOR_REFUSALS } from '../../middleware/pat-rest-surface.js';
 import { type Answer, codeFor } from '../declare/describe.js';
 import {
+  alongside,
   ERROR_ENVELOPE,
   ERROR_ENVELOPE_NAME,
   errorResponse,
@@ -320,7 +321,9 @@ async function responsesOf(entry: RouteEntry, access: Access | null, doc: Docume
   }
   for (const [status, byCode] of errors) {
     const codes = [...byCode].map(([code, whens]) => ({ code, when: whens.join('; ') }));
-    responses[String(status)] = errorResponse(codes);
+    const envelope = errorResponse(codes);
+    const declaredJson = responses[String(status)];
+    responses[String(status)] = declaredJson ? alongside(declaredJson, envelope) : envelope;
   }
   if (libraryDefault) responses['400'] = withLibraryRefusal(responses['400']);
   if (!succeeded && !declared?.retired) {

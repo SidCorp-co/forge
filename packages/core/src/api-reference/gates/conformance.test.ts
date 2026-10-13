@@ -176,6 +176,19 @@ describe('judgeAnswer', () => {
     expect(judgeAnswer(declaration, known, 404, { code: 'NOT_FOUND' })?.what).toContain('message');
   });
 
+  it('judges a refusal declared as its own JSON shape against it, and still takes a known envelope code at that status', () => {
+    const declared = {
+      summary: 's',
+      responses: { 400: json(z.object({ code: z.string(), error: z.string() })) },
+    };
+    const known = new Map([[400, new Set(['BAD_ID'])]]);
+    expect(judgeAnswer(declared, known, 400, { code: 'X', error: 'no' })).toBeNull();
+    expect(judgeAnswer(declared, known, 400, { code: 'BAD_ID', message: 'no' })).toBeNull();
+    expect(judgeAnswer(declared, known, 400, { code: 'OTHER', message: 'no' })?.what).toContain(
+      'declared schema',
+    );
+  });
+
   it('judges an error status the route declared as a json body against that body', () => {
     const declared = {
       summary: 's',

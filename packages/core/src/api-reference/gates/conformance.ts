@@ -80,6 +80,16 @@ export function judgeAnswer(
   if (declared.kind !== 'json') return null;
   const parsed = wireSchema(declared.schema).safeParse(body);
   if (parsed.success) return null;
+  const code = (body as { code?: unknown } | null)?.code;
+  const message = (body as { message?: unknown } | null)?.message;
+  if (
+    status >= 400 &&
+    typeof code === 'string' &&
+    typeof message === 'string' &&
+    errors?.get(status)?.has(code)
+  ) {
+    return null;
+  }
   const issue = parsed.error.issues[0];
   return {
     status,

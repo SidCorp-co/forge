@@ -66,8 +66,9 @@ export const uploadAttachment = describeOperation({
 });
 
 export const downloadAttachment = describeOperation({
-  summary: 'Download an attachment with a single-use download ticket',
-  description: 'No sign-in: the ticket is the credential.',
+  summary: 'Download an attachment with a download ticket',
+  description:
+    'No sign-in: the ticket is the credential. It can be fetched again until it expires.',
   responses: {
     200: raw('application/octet-stream', 'The file, with the content type it was stored under'),
     404: fail({

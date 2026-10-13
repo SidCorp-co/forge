@@ -50,6 +50,17 @@ export const unlinkedSchema = z.object({ unlinked: z.number() });
 
 export const linkListSchema = z.object({ links: z.array(linkSchema) });
 
+/** These routes answer a refusal as `{ code, error }`, not the error envelope, which a caller reads by `error`. */
+export const speakerRefusalSchema = z.object({ code: z.string(), error: z.string() });
+
+const speakerRefusal = (codes: Readonly<Record<string, string>>) =>
+  json(
+    speakerRefusalSchema,
+    Object.entries(codes)
+      .map(([code, when]) => `- \`${code}\`: ${when}`)
+      .join('\n'),
+  );
+
 const SOURCE_UNKNOWN =
   'the body lacks `source` or `externalId`, or `source` is not a chat channel Forge knows';
 
@@ -69,9 +80,9 @@ export const proposeSpeakerLink = describeOperation({
     'Writes nothing. `youMayConfirm` says whether the caller is a candidate whose confirmation would be accepted.',
   responses: {
     200: json(proposalSchema, 'The speaker and who they could be'),
-    400: fail('SPEAKER_SOURCE_UNKNOWN', SOURCE_UNKNOWN),
+    400: speakerRefusal({ SPEAKER_SOURCE_UNKNOWN: SOURCE_UNKNOWN }),
     403: notMember,
-    404: fail(NOT_FOUND_ON_CHANNEL),
+    404: speakerRefusal(NOT_FOUND_ON_CHANNEL),
   },
 });
 
@@ -81,18 +92,19 @@ export const confirmSpeakerLink = describeOperation({
     'Only the person being mapped, signed in themselves, can confirm: the channel must report the address the caller holds in Forge.',
   responses: {
     201: json(createdLinkSchema, 'The link that now resolves the speaker to the caller'),
-    400: fail('SPEAKER_SOURCE_UNKNOWN', SOURCE_UNKNOWN),
-    403: fail({
-      FORBIDDEN: 'the caller is not a member of the project',
-      SPEAKER_ADDRESS_DIFFERS:
-        'the local parts of the two addresses match but the domains do not, which proposes a link and cannot confirm one',
-      SPEAKER_NOT_THE_TARGET: "the channel reports an address that is not the caller's",
-    }),
-    404: fail(NOT_FOUND_ON_CHANNEL),
-    409: fail(
-      'SPEAKER_ALREADY_LINKED',
-      'the speaker is already linked, to the caller or to another user',
+    400: speakerRefusal({ SPEAKER_SOURCE_UNKNOWN: SOURCE_UNKNOWN }),
+    403: json(
+      z.union([speakerRefusalSchema, z.object({ code: z.string(), message: z.string() })]),
+      [
+        '- `FORBIDDEN`: the caller is not a member of the project (the error envelope)',
+        '- `SPEAKER_ADDRESS_DIFFERS`: the local parts of the two addresses match but the domains do not, which proposes a link and cannot confirm one',
+        "- `SPEAKER_NOT_THE_TARGET`: the channel reports an address that is not the caller's",
+      ].join('\n'),
     ),
+    404: speakerRefusal(NOT_FOUND_ON_CHANNEL),
+    409: speakerRefusal({
+      SPEAKER_ALREADY_LINKED: 'the speaker is already linked, to the caller or to another user',
+    }),
   },
 });
 
@@ -105,7 +117,7 @@ export const unlinkSpeaker = describeOperation({
   summary: "Take one of the caller's chat-account links back",
   responses: {
     200: json(unlinkedSchema, 'How many links were removed'),
-    400: fail('SPEAKER_SOURCE_UNKNOWN', 'the source is not a chat channel Forge knows'),
-    404: fail('SPEAKER_UNLINKED', 'the caller holds no link for that speaker'),
+    400: speakerRefusal({ SPEAKER_SOURCE_UNKNOWN: 'the source is not a chat channel Forge knows' }),
+    404: speakerRefusal({ SPEAKER_UNLINKED: 'the caller holds no link for that speaker' }),
   },
 });

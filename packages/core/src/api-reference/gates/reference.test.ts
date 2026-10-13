@@ -3,8 +3,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Hono } from 'hono';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { PAT_UNGRANTABLE } from '../../auth/pat-permissions.js';
-import { buildReference, type Reference } from '../document/build.js';
+import { patUngrantableFor } from '../../auth/pat-permissions.js';
+import { buildReference, openApiPath, type Reference } from '../document/build.js';
 import { checkFlows, FLOWS } from '../surface/flows.js';
 import { checkReference, describeFinding } from './check.js';
 
@@ -53,13 +53,17 @@ describe('the API reference of the composed app', () => {
     ).toEqual([]);
   });
 
-  it('serves every public exclusion as an operation that needs no credential', () => {
-    const publics = Object.entries(PAT_UNGRANTABLE).filter(([, e]) => e.admits === 'public');
-    const operations = Object.values(reference.document.paths).flatMap((methods) =>
-      Object.values(methods),
-    );
-    const open = operations.filter((op) => Array.isArray(op.security) && op.security.length === 0);
-    expect(open.length).toBeGreaterThanOrEqual(publics.length);
+  it('asks for no bearer on exactly the routes the token map excludes by a door that takes none', () => {
+    const wrong = reference.routes.flatMap((entry) => {
+      const operation = reference.document.paths[openApiPath(entry.path)]?.[
+        entry.method.toLowerCase()
+      ] as { security?: unknown[] } | undefined;
+      const open = Array.isArray(operation?.security) && operation.security.length === 0;
+      const door = patUngrantableFor(entry.path, entry.method)?.admits;
+      const takesNoBearer = door === 'public' || door === 'ticket' || door === 'signature';
+      return open === takesNoBearer ? [] : [`${entry.key} is ${open ? 'open' : 'closed'}`];
+    });
+    expect(wrong).toEqual([]);
   });
 
   it('draws only flows whose every step is an operation of the document', () => {

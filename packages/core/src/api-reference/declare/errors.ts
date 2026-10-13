@@ -56,15 +56,19 @@ function jsonSchemaOf(response: JsonSchema): JsonSchema {
   return content['application/json']?.schema ?? {};
 }
 
-/** A 400 answer that also admits the library's own refusal, for a route with one validator that has a hook and one that has none. */
-export function withLibraryRefusal(hooked: JsonSchema | undefined): JsonSchema {
-  if (!hooked) return LIBRARY_DEFAULT_REFUSAL;
+/** One response that admits what either of two answers at the same status admits, with both descriptions. */
+export function alongside(first: JsonSchema, second: JsonSchema): JsonSchema {
   return {
-    description: `${String(hooked.description)}\n${String(LIBRARY_DEFAULT_REFUSAL.description)}`,
+    description: `${String(first.description)}\n${String(second.description)}`,
     content: {
       'application/json': {
-        schema: { anyOf: [jsonSchemaOf(hooked), jsonSchemaOf(LIBRARY_DEFAULT_REFUSAL)] },
+        schema: { anyOf: [jsonSchemaOf(first), jsonSchemaOf(second)] },
       },
     },
   };
+}
+
+/** A 400 answer that also admits the library's own refusal, for a route with one validator that has a hook and one that has none. */
+export function withLibraryRefusal(hooked: JsonSchema | undefined): JsonSchema {
+  return hooked ? alongside(hooked, LIBRARY_DEFAULT_REFUSAL) : LIBRARY_DEFAULT_REFUSAL;
 }
