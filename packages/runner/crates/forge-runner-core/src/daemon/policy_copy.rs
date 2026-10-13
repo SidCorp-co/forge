@@ -747,6 +747,27 @@ mod tests {
         );
     }
 
+    /// A pane process is replaced only through a placement, which rewrites its copy, and one the
+    /// daemon merely adopts after its own restart is the same process, so it keeps what it loaded.
+    #[test]
+    fn an_adopted_pane_keeps_the_copy_it_was_placed_with_and_a_placement_replaces_it() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        let first = named("forge@forge-local", "3.30.0", None);
+        placed_under(&led, &first);
+        // The daemon restarts and adopts the running pane under a new boot.
+        led.note_master("p", "forge-master-p", Some("conv"), Some("sess"), "boot-b")
+            .unwrap();
+        declared(&mut led, "run-1", "p");
+        stamp_declaration(&led, "run-1", "p");
+        assert_eq!(for_open(&led, "run-1").unwrap(), first);
+        // The pane is replaced: a placement under another copy, then a run.
+        let second = named("forge@forge-local", "3.36.542", None);
+        placed_under(&led, &second);
+        declared(&mut led, "run-22", "p");
+        stamp_declaration(&led, "run-22", "p");
+        assert_eq!(for_open(&led, "run-22").unwrap(), second);
+    }
+
     #[test]
     fn a_run_declared_by_a_build_that_recorded_no_copy_opens_not_recorded() {
         let mut led = Ledger::open_in_memory().unwrap();
