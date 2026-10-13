@@ -1,6 +1,10 @@
 /** ISS-1273 — who is working one issue, on whichever of the three lanes opened the work: the job
  *  lane's `agent_sessions.metadata.issueId`, the run-session lane's `issue_leases` row, and
- *  `issues.session_context.lease`. `none` carries its reason: an absent field reads as quiet. */
+ *  `issues.session_context.lease`. `none` carries its reason: an absent field reads as quiet.
+ *
+ *  ISS-1320 — a session is HELD or merely OPENED OVER the issue. The lease row says who holds it
+ *  now and is gone once a run gives the issue back; the run's recorded group says who was ever
+ *  opened over it. Only a holder is a worker, and the absence sentence counts the opened-over. */
 
 import {
   type LeaseReading,
@@ -16,6 +20,10 @@ export interface WorkerSession {
   id: string;
   status: string;
   lane: SessionWorkerLane;
+  /** True for a job-lane session, which carries its one issue, and for a run session whose
+   *  `issue_leases` row for the issue still exists. False for a run session that was opened over
+   *  the issue and has since given it back: it may be running, on another issue of its group. */
+  holds: boolean;
 }
 
 export type IssueWorker =
@@ -36,8 +44,9 @@ export function unreadableWorker(detail: string): IssueWorker {
   return { lane: 'unreadable', detail };
 }
 
-function liveSession(session: WorkerSession): boolean {
-  return session.status === 'queued' || session.status === 'running';
+/** A session working THIS issue: live, and holding it. */
+export function liveSession(session: Pick<WorkerSession, 'status' | 'holds'>): boolean {
+  return session.holds && (session.status === 'queued' || session.status === 'running');
 }
 
 /** A session outranks a claim: core wrote that row itself and only classifies the claim. */
@@ -66,21 +75,22 @@ export function classifyIssueWorker(input: {
   return { lane: 'none', detail: absenceOf(claim, input.sessions) };
 }
 
-/** Why no lane answered. What is absent is a LIVE session, and the clause names their statuses
- *  rather than judging them: `idle` is neither live nor terminal. It may not end at a bare colon
- *  either — `session-claim.ts` leaves `detail` empty for every verdict but `malformed`. */
+/** Why no lane answered. What is absent is a LIVE HOLDING session, and the clause says what it
+ *  counted and names those sessions' statuses rather than judging them: `idle` is neither live
+ *  nor terminal. It may not end at a bare colon either — `session-claim.ts` leaves `detail` empty
+ *  for every verdict but `malformed`. */
 function absenceOf(claim: LeaseReading | null, sessions: readonly WorkerSession[]): string {
   return `${sessionClause(sessions)}, and ${claimClause(claim)}`;
 }
 
 function sessionClause(sessions: readonly WorkerSession[]): string {
   if (sessions.length === 0) {
-    return 'no agent session is bound to this issue on either session lane';
+    return 'no agent session is on record as opened over this issue on either session lane';
   }
   const lanes = [...new Set(sessions.map((s) => s.lane))].sort().join(' and ');
   const statuses = [...new Set(sessions.map((s) => s.status))].sort().join(', ');
   const n = sessions.length;
-  return `none of the ${n} agent session${n === 1 ? '' : 's'} bound to this issue on the ${lanes} lane is queued or running (${statuses})`;
+  return `none of the ${n} agent session${n === 1 ? '' : 's'} on record as opened over this issue on the ${lanes} lane is queued or running and holding it (${statuses})`;
 }
 
 function claimClause(claim: LeaseReading | null): string {

@@ -71,7 +71,7 @@ describe('classifyPipelineHealthForIssue', () => {
       worker: {
         lane: 'none',
         detail:
-          'no agent session is bound to this issue on either session lane, and its record carries no claim',
+          'no agent session is on record as opened over this issue on either session lane, and its record carries no claim',
       },
     });
   });
@@ -87,7 +87,9 @@ describe('classifyPipelineHealthForIssue', () => {
   it('names the run-session lane when the only bind is the run issue lease', () => {
     const out = classifyPipelineHealthForIssue(
       baseInput({
-        sessions: [{ id: 'sess-box', status: 'running', metadata: null, lane: 'run_session' }],
+        sessions: [
+          { id: 'sess-box', status: 'running', metadata: null, lane: 'run_session', holds: true },
+        ],
       }),
     );
     expect(out.worker).toMatchObject({ lane: 'run_session', sessionId: 'sess-box' });
@@ -121,6 +123,7 @@ describe('classifyPipelineHealthForIssue', () => {
             status: 'running',
             metadata: { skill: 'forge-code' },
             lane: 'job',
+            holds: true,
           },
         ],
       }),
@@ -135,12 +138,35 @@ describe('classifyPipelineHealthForIssue', () => {
   it('classifies issue_busy when a sibling session is running', () => {
     const out = classifyPipelineHealthForIssue(
       baseInput({
-        sessions: [{ id: 'sess-x', status: 'running', metadata: null, lane: 'job' }],
+        sessions: [{ id: 'sess-x', status: 'running', metadata: null, lane: 'job', holds: true }],
         jobs: [job()],
       }),
     );
     expect(out.waitingOn?.reason).toBe('issue_busy');
     expect(out.waitingOn?.details.blockingSessionId).toBe('sess-x');
+  });
+
+  // ISS-1320 — a run session opened over the issue's group that has since given the issue back
+  // may be running on another issue of the group. It is on the row for the count, never as the
+  // issue's worker, its active session, or the reason a queued job waits.
+  it('does not read a live run session that no longer holds the issue as its worker', () => {
+    const out = classifyPipelineHealthForIssue(
+      baseInput({
+        sessions: [
+          {
+            id: 'sess-moved-on',
+            status: 'running',
+            metadata: null,
+            lane: 'run_session',
+            holds: false,
+          },
+        ],
+        jobs: [job()],
+      }),
+    );
+    expect(out.worker.lane).toBe('none');
+    expect(out.activeSession).toBeUndefined();
+    expect(out.waitingOn?.reason).not.toBe('issue_busy');
   });
 
   it('classifies issue_busy when a sibling job is dispatched', () => {

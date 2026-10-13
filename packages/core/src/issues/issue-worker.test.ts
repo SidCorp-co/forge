@@ -24,7 +24,7 @@ function claim(over: Partial<LeaseReading> = {}): LeaseReading {
 }
 
 function session(over: Partial<WorkerSession> = {}): WorkerSession {
-  return { id: 'sess-1', status: 'running', lane: 'job', ...over };
+  return { id: 'sess-1', status: 'running', lane: 'job', holds: true, ...over };
 }
 
 describe('classifyIssueWorker', () => {
@@ -87,7 +87,9 @@ describe('classifyIssueWorker', () => {
     });
     const detail = (worker as { detail: string }).detail;
     expect(detail).not.toContain('no agent session is bound');
-    expect(detail).toContain('none of the 2 agent sessions bound to this issue on the job lane');
+    expect(detail).toContain(
+      'none of the 2 agent sessions on record as opened over this issue on the job lane is queued or running and holding it',
+    );
     expect(detail).toContain('(completed, failed)');
   });
 
@@ -101,7 +103,49 @@ describe('classifyIssueWorker', () => {
     });
     const detail = (worker as { detail: string }).detail;
     expect(detail).not.toContain('finished');
-    expect(detail).toContain('is queued or running (idle)');
+    expect(detail).toContain('and holding it (idle)');
+  });
+
+  // ISS-1320 — ISS-1314 served `none of the 1 agent session ... (completed)` over six sessions,
+  // because the run-session bind was the surviving lease row and a finished run has none. The
+  // count is of the sessions opened over the issue, held or not, and its statuses are theirs.
+  it('counts every session opened over the issue, held or not, and lists exactly their statuses', () => {
+    const worker = classifyIssueWorker({
+      sessions: [
+        session({ id: 'a', lane: 'run_session', status: 'completed', holds: true }),
+        session({ id: 'b', lane: 'run_session', status: 'completed', holds: false }),
+        session({ id: 'c', lane: 'run_session', status: 'completed', holds: false }),
+        session({ id: 'd', lane: 'run_session', status: 'completed', holds: false }),
+        session({ id: 'e', lane: 'run_session', status: 'completed', holds: false }),
+        session({ id: 'f', lane: 'run_session', status: 'cancelled_stale', holds: false }),
+      ],
+      claim: null,
+    });
+    const detail = (worker as { detail: string }).detail;
+    expect(detail).toContain('none of the 6 agent sessions on record as opened over this issue');
+    expect(detail).toContain('(cancelled_stale, completed)');
+  });
+
+  it('does not read a running session that has given the issue back as its worker', () => {
+    const worker = classifyIssueWorker({
+      sessions: [session({ lane: 'run_session', status: 'running', holds: false })],
+      claim: null,
+    });
+    expect(worker.lane).toBe('none');
+    const detail = (worker as { detail: string }).detail;
+    expect(detail).toContain('none of the 1 agent session on record as opened over this issue');
+    expect(detail).toContain('is queued or running and holding it (running)');
+  });
+
+  it('still names the run-session lane for a running session that holds the issue', () => {
+    const worker = classifyIssueWorker({
+      sessions: [
+        session({ id: 'gone', lane: 'run_session', status: 'running', holds: false }),
+        session({ id: 'held', lane: 'run_session', status: 'running', holds: true }),
+      ],
+      claim: null,
+    });
+    expect(worker).toMatchObject({ lane: 'run_session', sessionId: 'held' });
   });
 
   it('names both session lanes where a finished row sits on each', () => {
@@ -121,7 +165,7 @@ describe('classifyIssueWorker', () => {
     expect(worker).toEqual({
       lane: 'none',
       detail:
-        'no agent session is bound to this issue on either session lane, and its record carries no claim',
+        'no agent session is on record as opened over this issue on either session lane, and its record carries no claim',
     });
   });
 
@@ -133,7 +177,7 @@ describe('classifyIssueWorker', () => {
     expect(worker).toEqual({
       lane: 'none',
       detail:
-        'no agent session is bound to this issue on either session lane, and the claim by iss-1273-52b95148 reads expired: expired 12 minutes ago',
+        'no agent session is on record as opened over this issue on either session lane, and the claim by iss-1273-52b95148 reads expired: expired 12 minutes ago',
     });
   });
 
@@ -148,7 +192,7 @@ describe('classifyIssueWorker', () => {
     expect(worker).toEqual({
       lane: 'none',
       detail:
-        'no agent session is bound to this issue on either session lane, and the claim by iss-1273-52b95148 reads expired',
+        'no agent session is on record as opened over this issue on either session lane, and the claim by iss-1273-52b95148 reads expired',
     });
     expect((worker as { detail: string }).detail.endsWith(':')).toBe(false);
   });

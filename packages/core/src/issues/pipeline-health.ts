@@ -30,19 +30,19 @@ import { logger } from '../logger.js';
 import { holderFanout, readClaim } from '../pipeline/lease-fanout.js';
 import type { LeaseReading } from '../pipeline/session-claim.js';
 import { projectRoom } from '../ws/rooms.js';
-import { classifyIssueWorker, type SessionWorkerLane, unreadableWorker } from './issue-worker.js';
-import { loadActiveJobsByIssue, loadPausedRunsByIssue } from './pipeline-health-loaders.js';
+import { classifyIssueWorker, liveSession, unreadableWorker } from './issue-worker.js';
+import {
+  loadActiveJobsByIssue,
+  loadPausedRunsByIssue,
+  loadSessionsByIssue,
+} from './pipeline-health-loaders.js';
 import {
   heldWaitingOn,
   queuedStepOf,
   retryCooldownWaitingOn,
   runnerWaitingOn,
 } from './pipeline-health-reasons.js';
-import type {
-  ClassifyInput,
-  PipelineHealth,
-  PipelineHealthSession,
-} from './pipeline-health-types.js';
+import type { ClassifyInput, PipelineHealth } from './pipeline-health-types.js';
 
 export type { IssueWorker, SessionWorkerLane, WorkerSession } from './issue-worker.js';
 
@@ -77,12 +77,12 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
 
   const queuedJobs = issueJobs.filter((j) => j.status === 'queued');
   const activeJobs = issueJobs.filter((j) => j.status !== 'queued');
-  const activeSession = sessions.find((s) => s.status === 'running' || s.status === 'queued');
+  const activeSession = sessions.find(liveSession);
 
   const out: PipelineHealth = {
     stage: issue.status as IssueStatus,
     worker: classifyIssueWorker({
-      sessions: sessions.map((s) => ({ id: s.id, status: s.status, lane: s.lane })),
+      sessions: sessions.map((s) => ({ id: s.id, status: s.status, lane: s.lane, holds: s.holds })),
       claim: input.claim ?? null,
     }),
   };
@@ -130,9 +130,7 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
     return out;
   }
 
-  const blockingSession = sessions.find(
-    (s) => (s.status === 'running' || s.status === 'queued') && s.id !== candidate.agentSessionId,
-  );
+  const blockingSession = sessions.find((s) => liveSession(s) && s.id !== candidate.agentSessionId);
   const blockingJob = activeJobs.find((j) => j.id !== candidate.id);
   const busy = blockingSession
     ? { blockingSessionId: blockingSession.id }
@@ -170,14 +168,6 @@ type IssueRow = {
   lease: unknown;
 };
 
-type SessionRow = {
-  id: string;
-  status: string;
-  metadata: Record<string, unknown> | null;
-  issue_id: string | null;
-  lane: SessionWorkerLane;
-};
-
 export async function hydratePipelineHealthForIssues(
   projectId: string,
   issueIds: readonly string[],
@@ -198,37 +188,8 @@ export async function hydratePipelineHealthForIssues(
   `)) as unknown as IssueRow[];
   const issuesById = new Map(issueRows.map((r) => [r.id, r]));
 
-  // Q2 — the two session binds. `lane` carries which one found each row.
-  const sessionRows = (await db.execute(sql`
-    SELECT s.id, s.status, s.metadata, i.id AS issue_id, 'job' AS lane, s.updated_at
-      FROM agent_sessions s
-      JOIN issues i ON i.id::text = s.metadata->>'issueId'
-     WHERE s.project_id = ${projectId}
-       AND s.status IN ('queued', 'running', 'completed', 'failed')
-       AND i.id IN ${idList}
-    UNION ALL
-    SELECT s.id, s.status, s.metadata, i.id AS issue_id, 'run_session' AS lane, s.updated_at
-      FROM issue_leases l
-      JOIN agent_sessions s ON s.id = l.session_id
-      JOIN issues i ON i.project_id = l.project_id
-                   AND 'ISS-' || i.iss_seq = l.issue_key -- ISS-992:canonical
-     WHERE s.project_id = ${projectId}
-       AND s.status IN ('queued', 'running', 'completed', 'failed')
-       AND i.id IN ${idList}
-     ORDER BY updated_at DESC
-  `)) as unknown as SessionRow[];
-  const sessionsByIssue = new Map<string, PipelineHealthSession[]>();
-  for (const r of sessionRows) {
-    if (!r.issue_id) continue;
-    const bucket = sessionsByIssue.get(r.issue_id) ?? [];
-    bucket.push({
-      id: r.id,
-      status: r.status,
-      metadata: (r.metadata as Record<string, unknown> | null) ?? null,
-      lane: r.lane,
-    });
-    sessionsByIssue.set(r.issue_id, bucket);
-  }
+  // Q2 — the two session binds, and the sessions each opened over an issue.
+  const sessionsByIssue = await loadSessionsByIssue(projectId, idList);
 
   // Q3 — the claim lane, read by the module that owns that blob.
   const now = new Date();

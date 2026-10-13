@@ -63,8 +63,11 @@ export interface PipelineHealthSession {
   id: string;
   status: string;
   metadata: Record<string, unknown> | null;
-  /** ISS-1273 — which bind found this row: the metadata key, or the run's issue lease. */
+  /** ISS-1273 — which bind found this row: the metadata key, or the run's issue. */
   lane: SessionWorkerLane;
+  /** ISS-1320 — whether this session holds the issue now. A run session opened over the issue
+   *  and since given it back is on the row for the count, never as a worker. */
+  holds: boolean;
 }
 
 export interface PipelineHealthJob {
