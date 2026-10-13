@@ -139,8 +139,9 @@ export function KnowledgeScreen({ scope }: KnowledgeScreenProps) {
   );
 }
 
-/** The product map is drawn by a schedule, so the way forward is the screen that runs it. An admin
- *  gets the button; anyone else is told what fills it, and nothing they cannot do. */
+/** The product map is drawn by the Standing product-map refresh, a template switch on Automation's
+ *  Improve tab, so the button opens that tab and the words name its two steps. An admin gets both;
+ *  anyone else is told what fills it, and nothing they cannot do. */
 function ProductMapEmpty({
   title,
   what,
@@ -157,12 +158,12 @@ function ProductMapEmpty({
       title={title}
       message={
         canManage
-          ? `The product-map refresh schedule draws ${what}. Run it from Automation.`
+          ? `The product-map refresh schedule draws ${what}. In Automation, enable Standing product-map refresh on the Improve tab, then run it.`
           : `The project's product-map refresh schedule draws ${what}.`
       }
       action={
         canManage && slug
-          ? { label: "Open Automation", onClick: () => router.push(`/projects/${slug}/automation`) }
+          ? { label: "Open Automation", onClick: () => router.push(`/projects/${slug}/automation?tab=improve`) }
           : undefined
       }
     />
