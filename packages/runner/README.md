@@ -284,11 +284,16 @@ not unix            ─▶ exit 0 for the service manager to start the new build
   were placed under. The daemon records the runner build and the installed
   Claude Code plugin set at every placement; a pane placed under another build,
   another plugin set, or before the build was recorded is outdated. An outdated
-  pane is not nudged, and the journal says so once per pane and reason. It is
+  pane is nudged for admissible work like any other, so work never waits on it,
+  and the journal says it is outdated once per pane and reason, and again every
+  five minutes while it is left running with work waiting. It is
   ended and placed again — in the same sweep, resuming its conversation — only
   when it holds no open run under the session this box serves it as (written
   onto its ledger row with the carry; a pane whose row names another, or whose
-  carry left a run it could not read, is left running until that clears), its
+  carry left a run it could not read, is left running until that clears; a run
+  whose worktree release was refused for good is not open once its session is
+  over and its leases are back, and the recovery sweep's line for it names
+  `forge-runner run release <run>`), its
   turn is affirmatively over (its hooks say so,
   or, unheard since the handover, its transcript's newest entry is a turn's
   end), its project has admissible work, and the conversation its row records

@@ -221,10 +221,11 @@ struct Registry {
     /// Consecutive early exits of each project's pane for one reason, which
     /// decide only what the journal says (ISS-1343).
     exits: HashMap<String, pane_exit::Tally>,
-    /// What this box last said about each project's outdated pane, so the
-    /// account is given once per pane and reason rather than once a sweep
-    /// (ISS-1379).
-    outdated: HashMap<String, String>,
+    /// What this box last said about each project's outdated pane, and when,
+    /// so the account is given once per pane and reason rather than once a
+    /// sweep (ISS-1379), and again every refresh window where work waits on
+    /// that pane (ISS-1410).
+    outdated: HashMap<String, (String, Instant)>,
 }
 
 /// One pane this box placed: when, and where its output begins.
@@ -970,14 +971,38 @@ impl Masters {
         }
     }
 
-    /// Whether what this sweep found about the project's outdated pane is news,
-    /// and remember it either way. `None` is a pane that is current or gone.
-    fn note_outdated(&self, project_id: &str, said: Option<String>) -> bool {
+    /// Whether what this sweep found about the project's outdated pane is
+    /// worth a line, and remember it either way. `None` is a pane that is
+    /// current or gone. A pane left running while admissible work waits for it
+    /// (`work_waiting`) is worth a line again each [`NUDGE_REFRESH`] window it
+    /// stays so, which is how a starvation this box cannot resolve stays in
+    /// the journal; any other is worth one per reason (ISS-1410).
+    fn note_outdated(&self, project_id: &str, said: Option<String>, work_waiting: bool) -> bool {
+        self.note_outdated_at(project_id, said, work_waiting, Instant::now())
+    }
+
+    fn note_outdated_at(
+        &self,
+        project_id: &str,
+        said: Option<String>,
+        work_waiting: bool,
+        now: Instant,
+    ) -> bool {
         let mut reg = self.0.lock().expect("masters poisoned");
-        match said {
-            Some(said) => reg.outdated.insert(project_id.to_string(), said.clone()) != Some(said),
-            None => reg.outdated.remove(project_id).is_some(),
+        let Some(said) = said else {
+            return reg.outdated.remove(project_id).is_some();
+        };
+        let due = match reg.outdated.get(project_id) {
+            Some((last, at)) => {
+                *last != said
+                    || (work_waiting && now.saturating_duration_since(*at) >= NUDGE_REFRESH)
+            }
+            None => true,
+        };
+        if due {
+            reg.outdated.insert(project_id.to_string(), (said, now));
         }
+        due
     }
 
     fn note_capability(&self, project_id: &str, said: &'static str) -> bool {
@@ -1560,7 +1585,7 @@ async fn sweep(
         // A pane an update left on the build it was placed under is judged
         // before the placement below, so one that may be replaced is ended in
         // time for this same sweep to place its successor (ISS-1379).
-        let outdated_left = outdated_resident(
+        outdated_resident(
             client,
             masters,
             ledger,
@@ -1803,12 +1828,6 @@ async fn sweep(
         }
 
         if standing_unknown {
-            continue;
-        }
-
-        // An outdated pane left running is not driven: the work it would take
-        // up waits for the successor placed once it holds nothing (ISS-1379).
-        if outdated_left && pane == PaneState::Adopted {
             continue;
         }
 
@@ -4587,8 +4606,9 @@ async fn retire_if_idle(
 /// and act on an outdated one: end it where it holds no run and no turn and
 /// there is work for a successor, which the placement after this call then
 /// starts resuming the same conversation; leave it running otherwise, and say
-/// once why (ISS-1379). Answers whether an outdated pane was left running, so
-/// the sweep does not nudge it.
+/// why (ISS-1379). Answers nothing the sweep branches on: a pane left running
+/// is nudged for the work waiting, as any pane is, because one that is not
+/// cannot close the runs that would let it be replaced (ISS-1410).
 #[allow(clippy::too_many_arguments)]
 async fn outdated_resident(
     client: &CoreClient,
@@ -4600,28 +4620,28 @@ async fn outdated_resident(
     resolved: &crate::daemon::dispatch::Resolved,
     project_id: &str,
     placement: Placement,
-) -> bool {
+) {
     let slug = &resolved.slug;
     if !terminal::alive(pane_name).await {
-        return false;
+        return;
     }
     let Some(found) = ledger.as_ref().and_then(|led| {
         judge_resident(
             led, masters, activity, pane_name, resolved, project_id, placement, None,
         )
     }) else {
-        return false;
+        return;
     };
     let Outdated { why, act, session } = found;
     match act {
         OutdatedAct::Replace => {
             if let Err(e) = terminal::kill(pane_name).await {
-                if masters.note_outdated(project_id, Some(format!("unkillable: {why}"))) {
+                if masters.note_outdated(project_id, Some(format!("unkillable: {why}")), true) {
                     tracing::error!(
-                        "[master] {slug}: {pane_name} is outdated ({why}) and holds no run and no turn, and tmux would not end it: {e}. It is left running and not nudged; `forge-runner master kill {slug}` ends it, and the next sweep places its successor"
+                        "[master] {slug}: {pane_name} is outdated ({why}) and holds no run and no turn, and tmux would not end it: {e}. It is left running and still nudged for the work waiting; `forge-runner master kill {slug}` ends it, and the next sweep places its successor"
                     );
                 }
-                return true;
+                return;
             }
             tracing::info!(
                 "[master] {slug}: {pane_name} is outdated ({why}) and holds no run and no turn, so it is ended and placed again this sweep, resuming its conversation under the build and plugins this box holds now"
@@ -4642,14 +4662,13 @@ async fn outdated_resident(
                     masters.forget(project_id);
                 }
             }
-            masters.note_outdated(project_id, None);
-            false
+            masters.note_outdated(project_id, None, false);
         }
         OutdatedAct::Leave(reason) => {
-            if masters.note_outdated(project_id, Some(format!("{why} / {reason}"))) {
+            let work_waiting = placement == Placement::AdoptOrStart;
+            if masters.note_outdated(project_id, Some(format!("{why} / {reason}")), work_waiting) {
                 tracing::warn!("{}", outdated_left_line(slug, pane_name, &why, &reason));
             }
-            true
         }
     }
 }
@@ -4694,7 +4713,7 @@ fn judge_resident(
             if row.as_ref().is_some_and(|r| r.outdated.is_some()) {
                 let _ = led.note_master_outdated(project_id, None);
             }
-            masters.note_outdated(project_id, None);
+            masters.note_outdated(project_id, None, false);
             return None;
         }
         Judged::Outdated(why) => why,
@@ -4934,7 +4953,7 @@ async fn end_master(
 /// one contradicting its own rule (ISS-1379 judge 3, finding 3).
 fn outdated_left_line(slug: &str, pane_name: &str, why: &str, reason: &str) -> String {
     format!(
-        "[master] {slug}: {pane_name} is outdated ({why}) and is left running, not nudged: {reason}. It is replaced on the first sweep that finds it holding no run, at its prompt, with work for its successor and a conversation that can be resumed; `forge-runner master kill {slug}` replaces it now, ending whatever it is doing"
+        "[master] {slug}: {pane_name} is outdated ({why}) and is left running: {reason}. It is nudged for admissible work as any pane is, and is replaced on the first sweep that finds it holding no run, at its prompt, with work for its successor and a conversation that can be resumed; `forge-runner master kill {slug}` replaces it now, ending whatever it is doing"
     )
 }
 #[cfg(test)]
@@ -4956,6 +4975,20 @@ mod tests {
         ] {
             assert!(line.contains(condition), "{condition}: {line}");
         }
+    }
+
+    /// ISS-1410 criterion 6: the sweep nudges a pane it leaves, so the line
+    /// that says it was left may not say it is not driven.
+    #[test]
+    fn the_outdated_line_says_the_pane_left_running_is_still_nudged() {
+        let line = super::outdated_left_line(
+            "forge-dev",
+            "forge-master-forge-dev",
+            "built 0.17.89",
+            "a run is open",
+        );
+        assert!(line.contains("is nudged for admissible work"), "{line}");
+        assert!(!line.contains("not nudged"), "{line}");
     }
 
     use super::*;
@@ -13679,19 +13712,77 @@ mod outdated_tests {
     }
 
     #[test]
-    fn the_journal_says_once_per_pane_and_reason() {
+    fn the_journal_says_once_per_pane_and_reason_where_no_work_waits() {
         let masters = Masters::new();
-        assert!(masters.note_outdated("p", Some("old build / holds run-1".into())));
+        assert!(masters.note_outdated("p", Some("old build / holds run-1".into()), false));
         assert!(
-            !masters.note_outdated("p", Some("old build / holds run-1".into())),
+            !masters.note_outdated("p", Some("old build / holds run-1".into()), false),
             "criterion 26: said once"
         );
         assert!(
-            masters.note_outdated("p", Some("old build / mid-turn".into())),
+            masters.note_outdated("p", Some("old build / mid-turn".into()), false),
             "criterion 34: a new reason is said"
         );
-        assert!(masters.note_outdated("p", None));
-        assert!(!masters.note_outdated("p", None));
+        assert!(masters.note_outdated("p", None, false));
+        assert!(!masters.note_outdated("p", None, false));
+    }
+
+    /// ISS-1410 criterion 9, on a clock the test holds: the sidpeak pane was
+    /// said once at 09/10 17:46 and never again for four days.
+    #[test]
+    fn a_pane_left_while_work_waits_is_said_again_every_refresh_window() {
+        let masters = Masters::new();
+        let said = || Some("old build / holds run-1".to_string());
+        let start = Instant::now();
+        assert!(masters.note_outdated_at("p", said(), true, start));
+        assert!(
+            !masters.note_outdated_at(
+                "p",
+                said(),
+                true,
+                start + NUDGE_REFRESH - Duration::from_secs(1)
+            ),
+            "not on every sweep inside the window"
+        );
+        assert!(
+            masters.note_outdated_at("p", said(), true, start + NUDGE_REFRESH),
+            "the first window"
+        );
+        assert!(
+            !masters.note_outdated_at(
+                "p",
+                said(),
+                true,
+                start + NUDGE_REFRESH + Duration::from_secs(1)
+            ),
+            "the window restarts from the line said"
+        );
+        assert!(
+            masters.note_outdated_at("p", said(), true, start + NUDGE_REFRESH * 2),
+            "the second window"
+        );
+        assert!(masters.note_outdated_at("q", Some("old build / no work".into()), false, start));
+        assert!(
+            !masters.note_outdated_at(
+                "q",
+                Some("old build / no work".into()),
+                false,
+                start + NUDGE_REFRESH * 3
+            ),
+            "with no work waiting nothing is starved, and the reason is said once"
+        );
+    }
+
+    /// ISS-1410 criterion 10: an outdated verdict is no input to the claim.
+    #[test]
+    fn an_outdated_verdict_noted_for_a_project_does_not_stop_its_nudge_being_claimed() {
+        let masters = Arc::new(Masters::new());
+        masters.remember_for_test("p", "sess-old", "forge-master-proj");
+        assert!(masters.note_outdated("p", Some("old build / holds run-1".into()), true));
+        assert!(
+            masters.claim_nudge("p", 7, None, false),
+            "the pane the box left running is asked for the work waiting"
+        );
     }
 
     fn a_master_row(led: &Ledger, build: Option<&str>) {
@@ -13802,6 +13893,73 @@ mod outdated_tests {
             last.act,
             OutdatedAct::Replace,
             "criterion 42: once its last run is closed and its turn is over, it is replaced"
+        );
+    }
+
+    /// ISS-1410 criteria 3 and 7: the sidpeak pane on 2026-10-13. Its one run,
+    /// 14df28bc, was ended, its session over, its lease back, its worktree
+    /// release refused for good over another run holding the checkout. The
+    /// pane was outdated, at its prompt, with 51 issues waiting, and was left
+    /// for four days because that run read as open.
+    #[test]
+    fn a_pane_whose_only_run_had_its_release_refused_for_good_is_replaced_and_the_row_is_untouched()
+    {
+        let dir = Scratch::new("outdated-stranded");
+        resumable(&dir);
+        let mut led = Ledger::open_in_memory().unwrap();
+        a_master_row(&led, Some("0.0.1 (old)"));
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "p".into(),
+            master_session_id: "sess-old".into(),
+            worktree_path: "/w/ISS-530-qa".into(),
+            boot_id: "boot-a".into(),
+            issue_keys: vec!["ISS-530".into()],
+        })
+        .unwrap();
+        led.attach_session("run-1", "agent-session").unwrap();
+        led.end_run("run-1", "master", "Never started").unwrap();
+        led.mark_session_terminal_observed("run-1").unwrap();
+        led.mark_lease_returned_observed("run-1", "ISS-530")
+            .unwrap();
+        led.note_release_refusal("run-1", "run ff1df919 still holds the checkout", 100)
+            .unwrap();
+        led.conclude_release_refusal("run-1", 400, "recovery", "release refused")
+            .unwrap();
+        let before = format!("{:?}", led.run("run-1").unwrap().unwrap());
+        assert!(before.contains("released_as: None"), "{before}");
+
+        let activity = agent_activity::Activities::new();
+        activity.record(
+            "sess-old",
+            agent_activity::Report {
+                event: agent_activity::Event::Stopped,
+                at: 1_000,
+                subject: None,
+                conversation: Some("conv-1"),
+                transcript: None,
+            },
+        );
+        let found = judge_resident(
+            &led,
+            &Masters::new(),
+            &activity,
+            "forge-master-proj",
+            &resolved(&dir),
+            "p",
+            Placement::AdoptOrStart,
+            Some(&dir),
+        )
+        .expect("outdated");
+        assert_eq!(
+            found.act,
+            OutdatedAct::Replace,
+            "criterion 3: a run nothing can still be done about does not keep the pane"
+        );
+        assert_eq!(
+            format!("{:?}", led.run("run-1").unwrap().unwrap()),
+            before,
+            "criterion 7: judging reads the stranded run and writes nothing to it"
         );
     }
 
@@ -14116,7 +14274,7 @@ mod outdated_tests {
     }
 
     #[test]
-    fn the_sweep_judges_before_it_places_and_never_nudges_a_pane_it_left() {
+    fn the_sweep_judges_before_it_places_and_nudges_a_pane_it_left_like_any_other() {
         assert!(
             at("take_pool_job(") < at("outdated_resident("),
             "criterion 35: pool jobs are taken whatever the master's build"
@@ -14129,14 +14287,19 @@ mod outdated_tests {
             at("outdated_resident(") < at("let stored_conversation = ledger"),
             "criterion 28: the conversation the successor resumes is read after the pane ends"
         );
-        let skip = at("if outdated_left && pane == PaneState::Adopted {");
         assert!(
-            skip < at("masters.claim_nudge("),
-            "criterion 25: an outdated pane left running is not nudged"
+            !sweep_source().contains("outdated_left"),
+            "ISS-1410 criterion 5: an outdated pane left running is nudged like any other"
         );
+        let production = THIS_SOURCE.split("#[cfg(test)]").next().unwrap();
+        let signature = production
+            .split("async fn outdated_resident(")
+            .nth(1)
+            .and_then(|r| r.split('{').next())
+            .expect("outdated_resident");
         assert!(
-            sweep_source()[skip..at("masters.claim_nudge(")].contains("continue;"),
-            "criterion 25"
+            !signature.contains("->"),
+            "ISS-1410 criterion 5: the judgement answers nothing the sweep could skip a nudge on"
         );
         assert!(
             at("note_placement(led, &runner.project_id") > at("ensure_master("),
