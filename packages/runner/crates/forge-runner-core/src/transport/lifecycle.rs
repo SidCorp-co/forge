@@ -71,21 +71,32 @@ async fn send(client: &CoreClient, url: &str, body: serde_json::Value) -> Result
         .await
         .map_err(|e| Error::Other(format!("lifecycle request: {e}")))?;
     if !resp.status().is_success() {
-        let code = resp.status().as_u16();
-        let text = resp.text().await.unwrap_or_default();
-        return Err(refusal(code, &text));
+        return Err(Refused::read(resp).await.error);
     }
     Ok(())
 }
 
-/// What a non-2xx answer from a lifecycle route is, with a job taken away from
-/// this box marked as disowned.
-fn refusal(code: u16, text: &str) -> Error {
-    let said = super::status::refused("lifecycle", code, text);
-    if code == 403 || code == 409 {
-        return Error::Other(format!("{}: {said}", crate::transport::events::DISOWNED));
+/// A non-2xx answer from a lifecycle route: its status and body, and the error
+/// it is, with a job taken away from this box marked as disowned. The one place
+/// a lifecycle response body is read, so every site says it the same way.
+struct Refused {
+    code: u16,
+    text: String,
+    error: Error,
+}
+
+impl Refused {
+    async fn read(resp: reqwest::Response) -> Self {
+        let code = resp.status().as_u16();
+        let text = resp.text().await.unwrap_or_default();
+        let said = super::status::refused("lifecycle", code, &text);
+        let error = if code == 403 || code == 409 {
+            Error::Other(format!("{}: {said}", crate::transport::events::DISOWNED))
+        } else {
+            Error::Other(said)
+        };
+        Self { code, text, error }
     }
-    Error::Other(said)
 }
 
 /// What core did with a blocked report.
@@ -121,12 +132,11 @@ pub async fn blocked(
     if resp.status().is_success() {
         return Ok(BlockedDoor::Recorded);
     }
-    let code = resp.status().as_u16();
-    let text = resp.text().await.unwrap_or_default();
-    if code == 404 && text.contains(ROUTE_ABSENT) {
+    let refused = Refused::read(resp).await;
+    if refused.code == 404 && refused.text.contains(ROUTE_ABSENT) {
         return Ok(BlockedDoor::Absent);
     }
-    Err(refusal(code, &text))
+    Err(refused.error)
 }
 
 pub async fn turn_is_job_end(client: &CoreClient, job_id: &str) -> bool {
