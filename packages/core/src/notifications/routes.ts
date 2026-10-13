@@ -46,7 +46,9 @@ const listQuerySchema = z.object({
 });
 
 const openCountQuerySchema = z.object({ projectId: z.uuid().optional() });
-const markAllReadBodySchema = z.object({ projectId: z.uuid().optional() }).strict();
+// A `projectId` was once accepted here and never narrowed the update, so a caller who sent one
+// marked every project's notifications read. It is refused by name now.
+const markAllReadBodySchema = z.object({}).strict();
 const patchBodySchema = z.object({ read: z.boolean() }).strict();
 
 const badRequest = (details: unknown) =>

@@ -76,7 +76,8 @@ export const openCount = describeOperation({
 
 export const markAllRead = describeOperation({
   summary: 'Mark every unread notification of the caller read',
-  description: 'The `projectId` in the body is accepted and does not narrow the update.',
+  description:
+    "Takes no body fields: it marks every project's notifications read, so a `projectId` is refused rather than ignored.",
   responses: { 200: json(markAllReadSchema, 'How many deliveries were marked') },
 });
 
