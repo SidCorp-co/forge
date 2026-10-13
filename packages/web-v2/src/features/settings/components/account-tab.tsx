@@ -62,6 +62,9 @@ const readOf = (prefs: Preferences, assistant: AssistantPreferences): AccountDra
   assistantInstructions: assistant.assistantInstructions ?? "",
 });
 
+/** Standing instructions of nothing but whitespace are no instructions: they are what a save clears. */
+const blankAsEmpty = (value: string): string => (value.trim() === "" ? "" : value);
+
 function AccountPreferences({
   prefs,
   assistant,
@@ -72,7 +75,11 @@ function AccountPreferences({
   const updatePrefs = useUpdatePreferences();
   const updateAssistant = useUpdateAssistantPreferences();
   const [failure, setFailure] = useState<string | null>(null);
-  const form = useSettingsForm<AccountDraft>({ read: readOf(prefs, assistant), schema });
+  const form = useSettingsForm<AccountDraft>({
+    read: readOf(prefs, assistant),
+    schema,
+    comparable: (d) => ({ ...d, assistantInstructions: blankAsEmpty(d.assistantInstructions) }),
+  });
   const { theme, language } = form.draft;
 
   async function save() {
@@ -86,12 +93,11 @@ function AccountPreferences({
         }
         if (
           held.answerStyle !== assistant.answerStyle ||
-          held.assistantInstructions !== (assistant.assistantInstructions ?? "")
+          blankAsEmpty(held.assistantInstructions) !== blankAsEmpty(assistant.assistantInstructions ?? "")
         ) {
           await updateAssistant.mutateAsync({
             answerStyle: held.answerStyle,
-            assistantInstructions:
-              held.assistantInstructions.trim() === "" ? null : held.assistantInstructions,
+            assistantInstructions: blankAsEmpty(held.assistantInstructions) || null,
           });
         }
       } catch (err) {

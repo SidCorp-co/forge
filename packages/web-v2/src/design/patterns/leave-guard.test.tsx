@@ -155,6 +155,21 @@ describe("the Back button", () => {
     await waitFor(() => expect(dialog()).toBeInTheDocument());
   });
 
+  it("is answered again, not taken, by a second Back while the first is still unanswered", async () => {
+    mount();
+    edit();
+    window.history.back();
+    await waitFor(() => expect(dialog()).toBeInTheDocument());
+    window.history.back();
+    await popped();
+    expect(window.location.pathname).toBe("/settings");
+    expect(dialog()).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Leave" }));
+    await waitFor(() => expect(window.location.pathname).toBe("/before"));
+    expect(dialog()).toBeNull();
+  });
+
   it("goes back once the person says Leave", async () => {
     mount();
     edit();

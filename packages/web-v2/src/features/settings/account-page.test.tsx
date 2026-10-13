@@ -93,6 +93,34 @@ describe("one form, one save bar", () => {
 	});
 });
 
+describe("standing instructions that are only whitespace", () => {
+	const unloadAsked = () => {
+		const event = new Event("beforeunload", { cancelable: true });
+		window.dispatchEvent(event);
+		return event.defaultPrevented;
+	};
+
+	it("are no edit over instructions that were never set", async () => {
+		mount();
+		fireEvent.change(await screen.findByLabelText("Standing instructions"), { target: { value: "   " } });
+		expect(saveButton()).toBeDisabled();
+		expect(unloadAsked()).toBe(false);
+	});
+
+	it("clear what was set, and the page is clean once that is saved", async () => {
+		assistant = { answerStyle: "default", assistantInstructions: "Be brief." };
+		mount();
+		fireEvent.change(await screen.findByLabelText("Standing instructions"), { target: { value: "   " } });
+		expect(saveButton()).toBeEnabled();
+		fireEvent.click(saveButton());
+
+		await waitFor(() => expect(assistantWrites).toHaveLength(1));
+		expect(assistantWrites[0]).toEqual({ answerStyle: "default", assistantInstructions: null });
+		await screen.findByText("No unsaved changes.");
+		await waitFor(() => expect(unloadAsked()).toBe(false));
+	});
+});
+
 describe("what one Save writes", () => {
 	it("writes the assistant route alone when only its fields moved", async () => {
 		mount();

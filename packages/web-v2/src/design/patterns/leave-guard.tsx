@@ -21,8 +21,6 @@ import { ConfirmDialog } from "@/design/primitives/confirm-dialog";
 interface Pending {
   /** Carries out the navigation the person was asked about. */
   go: () => void;
-  /** Restores what the navigation already did to the history, where it did anything. */
-  stay?: () => void;
 }
 
 interface LeaveGuardApi {
@@ -119,13 +117,14 @@ export function LeaveGuardProvider({ children }: { children: ReactNode }) {
       }
       const armed = sentinel.current;
       if (!armed?.onIt) return;
-      armed.onIt = false;
+      // The browser is on the page's own entry now. Put the guard's entry back at once, so a
+      // second Back before the person has answered is answered too.
+      push();
       setPending({
         go: () => {
-          swallow.current += 1;
-          window.history.back();
+          armed.onIt = false;
+          window.history.go(-2);
         },
-        stay: push,
       });
     };
     window.addEventListener("popstate", onPop);
@@ -148,10 +147,7 @@ export function LeaveGuardProvider({ children }: { children: ReactNode }) {
 
   const api = useMemo<LeaveGuardApi>(() => ({ mark, attempt }), [mark, attempt]);
 
-  const stay = () => {
-    pending?.stay?.();
-    setPending(null);
-  };
+  const stay = () => setPending(null);
   const leave = () => {
     const go = pending?.go;
     setPending(null);
