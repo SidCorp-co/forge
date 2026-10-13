@@ -2484,9 +2484,10 @@ mod tests {
     #[cfg(unix)]
     fn transcript_with(
         dir: &crate::test_scratch::Scratch,
+        file: &str,
         results: &[(&str, bool)],
     ) -> std::path::PathBuf {
-        let path = dir.join("lead.jsonl");
+        let path = dir.join(file);
         let mut body = String::new();
         for (tool_use, is_error) in results {
             body.push_str(&format!(
@@ -2539,7 +2540,7 @@ mod tests {
         )));
         assert_eq!(promised_to(&ctl, &run_id).as_deref(), Some("toolu_1"));
 
-        let lead = transcript_with(&dir, &[("toolu_1", true)]);
+        let lead = transcript_with(&dir, "lead.jsonl", &[("toolu_1", true)]);
         let next = gate_on(
             &ctl,
             &asking_from("forge:runner", "toolu_2", Some(&lead)),
@@ -2585,8 +2586,8 @@ mod tests {
             "sess-a"
         )));
 
-        let answered_fine = transcript_with(&dir, &[("toolu_1", false)]);
-        let another_call_failed = transcript_with(&dir, &[("toolu_9", true)]);
+        let answered_fine = transcript_with(&dir, "answered.jsonl", &[("toolu_1", false)]);
+        let another_call_failed = transcript_with(&dir, "other.jsonl", &[("toolu_9", true)]);
         let no_result_yet = {
             let path = dir.join("pending.jsonl");
             std::fs::write(
