@@ -99,7 +99,7 @@ for (const table of document.querySelectorAll("table")) {
     });
   }
 }
-parent.postMessage(JSON.stringify({ viewport: innerWidth, out, overflowing, stickyWidest, pinned }), "*");
+parent.postMessage(btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify({ viewport: innerWidth, out, overflowing, stickyWidest, pinned })))), "*");
 `;
 
 /**
@@ -134,7 +134,8 @@ export async function measureReach(markup: string, width: number, viewport: numb
     const found = /<pre id="reach">([\s\S]*?)<\/pre>/.exec(dom);
     const body = found?.[1];
     if (!body) throw new Error("Chrome laid the page out but reported no measurement: the frame's script did not run.");
-    const text = body.replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+    // The report crosses the DOM dump as base64, so no `&`, `<` or `"` in it is escaped and nothing is unescaped here.
+    const text = Buffer.from(body, "base64").toString("utf8");
     const measured = JSON.parse(text) as { viewport: number; out: Reach[]; overflowing: string[]; stickyWidest: Record<string, number>; pinned: Measured["pinned"] };
     if (measured.viewport !== viewport) {
       throw new Error(`Chrome laid the page out in a ${measured.viewport}px viewport, not the ${viewport}px asked for, so the responsive classes answered for another screen.`);
