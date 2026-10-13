@@ -70,19 +70,27 @@ describe("Knowledge readers", () => {
 });
 
 describe("empty product-map readers", () => {
-  it("gives an admin an Open Automation button that goes to Automation, and no command", () => {
+  it("gives an admin an Open Automation button that opens the Improve tab, and no command", () => {
     renderScreen(true);
     expect(screen.getByText("No overview entry yet")).toBeInTheDocument();
     expect(screen.queryByText(/forge-product-map|bootstrap/i)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Open Automation" }));
-    expect(push).toHaveBeenCalledWith("/projects/forge-dev/automation");
+    expect(push).toHaveBeenCalledWith("/projects/forge-dev/automation?tab=improve");
+  });
+
+  it("tells an admin to enable the Standing product-map refresh on the Improve tab and then run it", () => {
+    renderScreen(true);
+    expect(
+      screen.getByText(/enable Standing product-map refresh on the Improve tab, then run it/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Run it from Automation/)).toBeNull();
   });
 
   it("gives anyone else no button and no words about running it", () => {
     renderScreen(false);
     expect(screen.getByText("No overview entry yet")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Open Automation/ })).toBeNull();
-    expect(screen.queryByText(/Run it|forge-product-map|bootstrap/i)).toBeNull();
+    expect(screen.queryByText(/Run it|enable|Improve|forge-product-map|bootstrap/i)).toBeNull();
   });
 
   it.each([
@@ -93,7 +101,21 @@ describe("empty product-map readers", () => {
     const nav = screen.getByRole("navigation", { name: "Knowledge readers" });
     fireEvent.click(within(nav).getByRole("button", { name: reader }));
     expect(screen.getByText(title)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Open Automation" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open Automation" }));
+    expect(push).toHaveBeenCalledWith("/projects/forge-dev/automation?tab=improve");
+    expect(screen.getByText(/enable Standing product-map refresh on the Improve tab, then run it/)).toBeInTheDocument();
     expect(screen.queryByText(/forge-product-map|bootstrap/i)).toBeNull();
+  });
+
+  it.each([
+    ["Scenarios", "No scenario entries yet"],
+    ["Workflow", "No workflow entries yet"],
+  ])("gives a non-admin no button and no enable-or-run words in the %s reader", (reader, title) => {
+    renderScreen(false);
+    const nav = screen.getByRole("navigation", { name: "Knowledge readers" });
+    fireEvent.click(within(nav).getByRole("button", { name: reader }));
+    expect(screen.getByText(title)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Open Automation/ })).toBeNull();
+    expect(screen.queryByText(/Run it|enable|Improve|forge-product-map|bootstrap/i)).toBeNull();
   });
 });

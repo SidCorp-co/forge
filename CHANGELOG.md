@@ -3156,6 +3156,7 @@
 
 ### Fixed
 
+- **An empty product-map screen sends an admin to where it is filled.** Open Automation now lands on the Improve tab, and the words say to enable the Standing product-map refresh there, then run it.
 - **A release pane that stops on a question no longer asks it again every minute.** The question now lands on the release's issues, the release waits, a second press is refused by name, and the answer restarts it.
 - **The run drawer opened from Ops says Queued for a run nothing has started.** It read running, unlike the board, and offered Pause and Stop. It now agrees, names its issue, and offers both once work starts.
 - **A master an update left outdated no longer sits for days while its project's work waits.** A run whose worktree release failed for good no longer counts as open, and a master with real runs is nudged like any other.
