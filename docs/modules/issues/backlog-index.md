@@ -3,15 +3,17 @@
 `GET /api/projects/:id/backlog/ranking` and `GET /api/projects/:id/backlog/neighbours` answer from
 stored rows. A call computes nothing over the backlog: it drains what changed since the last call,
 checks the stored rows cover every issue they should, and reads. The code is
-`packages/core/src/issues/backlog/` (`rank-read.ts:readRanking`, `alike-read.ts:readNeighbours`,
-the maintainers `rank-maintainer.ts:drainRank` and `alike-maintainer.ts:drainAlike`). The two
+`packages/core/src/issues/backlog/` (the reads `packages/core/src/issues/backlog/rank-read.ts:readRanking` and
+`packages/core/src/issues/backlog/alike-read.ts:readNeighbours`; the maintainers
+`packages/core/src/issues/backlog/rank-maintainer.ts:drainRank` and
+`packages/core/src/issues/backlog/alike-maintainer.ts:drainAlike`). The two
 streams of INPUTS (`/backlog/ordering`, `/backlog/alike`, ISS-1173) are unchanged and stay for a
 caller that wants the inputs.
 
 ## Where a project's weights live
 
 In the project's pipeline config, under `rank`. The built-in table is
-`rank-weights.ts:BUILT_IN_RANK_WEIGHTS`; a project overrides one weight at a time, and the
+`packages/core/src/issues/backlog/rank-weights.ts:BUILT_IN_RANK_WEIGHTS`; a project overrides one weight at a time, and the
 override is folded over the built-in table by `foldRankWeights`.
 
 - Write it through the one door every pipeline config key uses (`forge_config`, or `PATCH` on the
@@ -43,7 +45,7 @@ and whether they are the project's, `index`, `edges: 'tracker'` and `excluded`.
 | `409 RANK_WEIGHTS_REFUSED` | the stored table cannot rank, with the key at fault |
 
 A read catches up first, then answers every statement of the answer from one repeatable-read
-snapshot (`rank-read.ts:readRanking`, `alike-read.ts:readNeighbours`), so a change committed in the
+snapshot (`packages/core/src/issues/backlog/rank-read.ts:readRanking`, `packages/core/src/issues/backlog/alike-read.ts:readNeighbours`), so a change committed in the
 middle of a read cannot leave the coverage check, the pending count and the rows disagreeing while
 the answer says `fresh`.
 
@@ -73,7 +75,7 @@ marks the whole project (the all-zero subject).
 - A ranking drain rescores the changed issue and every issue above it in a `blocks` chain, and
   removes the row of one that left the takeable set.
 - A neighbour drain re-embeds one title when it changes, and re-searches only the seeds a changed
-  issue memory can enter or already appears in (`alike-maintainer.ts:seedsAffectedBy`: a listed
+  issue memory can enter or already appears in (`packages/core/src/issues/backlog/alike-maintainer.ts:seedsAffectedBy`: a listed
   hit, a cosine at or above the seed's lowest kept score, or a seed that kept fewer than ten).
 - A neighbour drain measures at most `ALIKE_SEEDS_PER_PASS` seeds and marks the rest, so a
   whole-project mark (a new project, a changed embeddings model) is drained over several passes. A
@@ -83,7 +85,7 @@ marks the whole project (the all-zero subject).
 - Archiving or restoring an issue marks it as a neighbour target, so seeds that list it are
   searched again.
 - Each drain is one transaction under a Postgres advisory lock per project and index.
-- `index-sweeper.ts` (pg-boss queue `backlog-index.maintain`, every minute) drains projects nobody
+- `packages/core/src/issues/backlog/index-sweeper.ts` (pg-boss queue `backlog-index.maintain`, every minute) drains projects nobody
   is reading, so the indexes converge unread.
 - The neighbour index is measured with a model, recorded as `measured_with`; a changed
   `EMBEDDINGS_MODEL` makes every seed uncovered and the read refuses until it is re-measured.
