@@ -30,6 +30,7 @@ function Page() {
         onClick={(e) => {
           e.preventDefault();
           went.push("link /elsewhere");
+          window.history.pushState({}, "", "/elsewhere");
         }}
       >
         another page
@@ -122,12 +123,25 @@ describe("a link inside the app", () => {
     expect(went).toEqual([]);
   });
 
-  it("is followed once the person says Leave", () => {
+  it("is followed once the person says Leave", async () => {
     mount();
     edit();
     fireEvent.click(screen.getByRole("link", { name: "another page" }));
     fireEvent.click(screen.getByRole("button", { name: "Leave" }));
-    expect(went).toEqual(["link /elsewhere"]);
+    await waitFor(() => expect(went).toEqual(["link /elsewhere"]));
+  });
+
+  it("leaves no entry of the guard's own behind: two presses of Back reach the page before", async () => {
+    mount();
+    edit();
+    fireEvent.click(screen.getByRole("link", { name: "another page" }));
+    fireEvent.click(screen.getByRole("button", { name: "Leave" }));
+    await waitFor(() => expect(window.location.pathname).toBe("/elsewhere"));
+
+    window.history.back();
+    await waitFor(() => expect(window.location.pathname).toBe("/settings"));
+    window.history.back();
+    await waitFor(() => expect(window.location.pathname).toBe("/before"));
   });
 
   it("is not asked about when it only moves within the page", () => {
@@ -145,13 +159,13 @@ describe("a navigation the app starts from code", () => {
     expect(went).toEqual(["code"]);
   });
 
-  it("waits for the answer while edits are unsaved", () => {
+  it("waits for the answer while edits are unsaved", async () => {
     mount();
     edit();
     fireEvent.click(screen.getByRole("button", { name: "go from code" }));
     expect(went).toEqual([]);
     fireEvent.click(screen.getByRole("button", { name: "Leave" }));
-    expect(went).toEqual(["code"]);
+    await waitFor(() => expect(went).toEqual(["code"]));
   });
 });
 

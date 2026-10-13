@@ -21,6 +21,8 @@ import { ConfirmDialog } from "@/design/primitives/confirm-dialog";
 interface Pending {
   /** Carries out the navigation the person was asked about. */
   go: () => void;
+  /** The navigation is a Back that already leaves the guard's entry behind it. */
+  viaBack?: boolean;
 }
 
 interface LeaveGuardApi {
@@ -106,6 +108,7 @@ export function LeaveGuardProvider({ children }: { children: ReactNode }) {
   // page may already be clean, and it has to be consumed there or the next real Back is.
   const swallow = useRef(0);
   const sentinel = useRef<{ token: string; onIt: boolean } | null>(null);
+  const afterBack = useRef<(() => void) | null>(null);
   const push = useCallback(() => {
     const armed = sentinel.current;
     if (!armed) return;
@@ -117,6 +120,10 @@ export function LeaveGuardProvider({ children }: { children: ReactNode }) {
     const onPop = () => {
       if (swallow.current > 0) {
         swallow.current -= 1;
+        const next = afterBack.current;
+        afterBack.current = null;
+        // Next answers this popstate itself; a navigation begun inside it is overtaken by it.
+        if (next) setTimeout(next, 0);
         return;
       }
       const armed = sentinel.current;
@@ -125,6 +132,7 @@ export function LeaveGuardProvider({ children }: { children: ReactNode }) {
       // second Back before the person has answered is answered too.
       push();
       setPending({
+        viaBack: true,
         go: () => {
           armed.onIt = false;
           window.history.go(-2);
@@ -149,19 +157,34 @@ export function LeaveGuardProvider({ children }: { children: ReactNode }) {
     };
   }, [anyDirty, push]);
 
+  // A navigation forward from the guarded page would leave the guard's entry behind it, and a
+  // Back from the new page would land on a page that is already gone. Take the entry off first.
+  const unwind = useCallback((then: () => void) => {
+    const armed = sentinel.current;
+    if (!armed?.onIt || window.history.state?.[SENTINEL] !== armed.token) {
+      then();
+      return;
+    }
+    armed.onIt = false;
+    swallow.current += 1;
+    afterBack.current = then;
+    window.history.back();
+  }, []);
+
   const api = useMemo<LeaveGuardApi>(() => ({ mark, attempt }), [mark, attempt]);
 
   const stay = () => setPending(null);
   // Someone who said Leave has been asked: the browser does not ask a second time for the
   // navigation that leaves the document.
   const leave = () => {
-    const go = pending?.go;
+    const leaving = pending;
     setPending(null);
     asked.current = true;
     setTimeout(() => {
       asked.current = false;
     }, 1000);
-    go?.();
+    if (leaving?.viaBack) leaving.go();
+    else if (leaving) unwind(leaving.go);
   };
 
   return (
