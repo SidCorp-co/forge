@@ -439,6 +439,31 @@ describe('a check taken through the memo', () => {
     expect(listEntries(dir)).toEqual([]);
   });
 
+  // A probed path is a live build output (cargo's `target/`) that a concurrent check may be
+  // writing as this one settles, and a directory vanishing or closing under the key's listing
+  // threw out of `settle` and ended the whole verify with a stack trace (ISS-1303).
+  it.skipIf(process.getuid?.() === 0)(
+    'leaves a passed check unfiled, and says why, when a probed directory cannot be listed as it settles',
+    () => {
+      mkdirSync(join(root, 'target'));
+      const probed = { c: { roots: ['check.mjs', 'src'], probed: ['target'] } };
+      const m = new Memo({ root, args: [], env: env(), baseRef: 'main', declarations: probed });
+      const plan = m.plan(check);
+      const r = spawnSync('node', ['check.mjs'], { cwd: root, encoding: 'utf8', env: plan.env });
+      const closed = join(root, 'target', 'rmeta-in-flight');
+      mkdirSync(closed);
+      chmodSync(closed, 0o000);
+      try {
+        const verdict = m.settle(plan, r.status, r.stdout, { code: r.status });
+        expect(verdict.code, 'the verdict of the check stands').toBe(0);
+        expect(m.unfiled[0].reason).toMatch(/its key could not be taken after it ran/);
+        expect(listEntries(dir)).toEqual([]);
+      } finally {
+        chmodSync(closed, 0o755);
+      }
+    },
+  );
+
   it('neither reads nor writes the store under --all, nor under CI', () => {
     run(memo());
     const before = listEntries(dir).length;

@@ -23,6 +23,7 @@ import {
   usageRecords,
 } from '../db/schema.js';
 import { type RunGate, readRunGate } from '../devices/gate-report.js';
+import { type RunPolicy, readRunPolicy } from '../devices/policy-copy.js';
 import { RETRY_MAX_ROUNDS, readAutoRetryPayload } from '../jobs/retry.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { usageSessionMatch } from '../usage-records/rollup.js';
@@ -156,11 +157,14 @@ export interface PipelineRunSummary {
   /** ISS-1192 — the box's declaration gate when this run opened; `null` where
    *  the box reported none. The list row omits it: it carries a breakdown. */
   gateAtOpen: RunGate | null;
+  /** ISS-1303 — the copy of the policy the box named when it opened this run; `null` for a
+   *  run opened before the stamp existed. The list row omits it with the gate. */
+  policyAtOpen: RunPolicy | null;
 }
 
 export type PipelineRunListItem = Omit<
   PipelineRunSummary,
-  'steps' | 'attempts' | 'retrySummary' | 'gateAtOpen'
+  'steps' | 'attempts' | 'retrySummary' | 'gateAtOpen' | 'policyAtOpen'
 >;
 
 const EMPTY_COST: PipelineRunCostSummary = {
@@ -459,6 +463,7 @@ export async function loadPipelineRunSummary(runId: string): Promise<PipelineRun
     attempts: attemptRollup.attempts,
     retrySummary: attemptRollup.retrySummary,
     gateAtOpen: readRunGate(row.metadata, runId),
+    policyAtOpen: readRunPolicy(row.metadata, runId),
   };
 }
 

@@ -40,6 +40,7 @@ pub mod master_question;
 pub mod master_skill;
 pub mod pane_exit;
 pub mod pane_path;
+pub mod policy_copy;
 pub mod pool_jobs;
 pub mod pool_reads;
 pub mod recovery;

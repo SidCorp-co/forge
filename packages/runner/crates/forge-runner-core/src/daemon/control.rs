@@ -668,6 +668,9 @@ fn run_declare_as(
                 issue_keys
             );
             note_host(ctl, led, &run.run_id, peer);
+            // The copy of the policy this run is decided under is fixed now, from what the
+            // project's pane was placed with, and not when the sweep opens the run at core.
+            crate::daemon::policy_copy::stamp_declaration(led, &run.run_id, project_id);
             ClaimReply {
                 ok: true,
                 job_id: Some(run.run_id),
@@ -2342,6 +2345,53 @@ mod tests {
             .promised
             .get(run_id)
             .map(|p| p.tool_use.clone())
+    }
+
+    /// ISS-1303 criterion 11, through the declaration itself. The run is stamped with what the
+    /// project's pane was placed with at the moment it is declared, and a placement after that
+    /// is about the next run and not this one.
+    #[cfg(unix)]
+    #[test]
+    fn a_declaration_fixes_the_policy_copy_its_pane_was_placed_with() {
+        use crate::daemon::policy_copy::{for_open, PolicyCopy};
+        let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+        let copy = |version: &str| PolicyCopy::Named {
+            plugin: "forge@forge-local".into(),
+            version: version.into(),
+            commit: None,
+        };
+        let place = |version: &str| {
+            let held = ctl.ledger.lock().unwrap();
+            held.as_ref()
+                .unwrap()
+                .note_master_placed(
+                    "proj-1",
+                    "pane-1",
+                    "boot-a",
+                    "0.17.0",
+                    None,
+                    Some(&copy(version).to_stored()),
+                )
+                .unwrap();
+        };
+        place("3.30.0");
+        let run_id = run_declare(
+            &ctl,
+            "proj-1",
+            &["ISS-7".into()],
+            "/w/seven",
+            "sess-a",
+            None,
+        )
+        .job_id
+        .expect("declared");
+        place("3.36.542");
+        let held = ctl.ledger.lock().unwrap();
+        assert_eq!(
+            for_open(held.as_ref().unwrap(), &run_id).unwrap(),
+            copy("3.30.0"),
+            "the run was decided by the pane that was placed when it was declared"
+        );
     }
 
     /// Criteria 11, 12 and 13. The cap is core's and the refusal is this

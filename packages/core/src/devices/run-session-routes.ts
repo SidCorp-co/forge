@@ -15,6 +15,7 @@ import { IssueLeaseHeldError } from '../issues/issue-lease.js';
 import { utf16String } from '../lib/utf16-string.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { gateConditionSchema } from './gate-report.js';
+import { policyCopySchema } from './policy-copy.js';
 import { RunnerNotAdmittedError } from './pool-admission.js';
 import { badRequest, conflict, forbidden, notFound, sessionParamsSchema } from './route-errors.js';
 import {
@@ -39,6 +40,8 @@ const runSessionBodySchema = z.object({
   // rather than a field quietly dropped. The heartbeat is the other way round,
   // and for its own stated reason (ISS-1192).
   gate: gateConditionSchema.optional(),
+  // Refused by name too: the copy a run was decided under is not a field to absorb (ISS-1303).
+  policy: policyCopySchema.optional(),
 });
 
 deviceRunSessionRoutes.post(
@@ -57,6 +60,7 @@ deviceRunSessionRoutes.post(
         name: body.name,
         boxRunId: body.runId,
         ...(body.gate ? { gate: body.gate } : {}),
+        ...(body.policy ? { policy: body.policy } : {}),
       });
       return c.json(session);
     } catch (err) {
