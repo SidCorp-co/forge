@@ -5,8 +5,8 @@ import type { Hono } from 'hono';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { PAT_UNGRANTABLE } from '../../auth/pat-permissions.js';
 import { buildReference, type Reference } from '../document/build.js';
-import { checkReference, describeFinding } from './check.js';
 import { checkFlows, FLOWS } from '../surface/flows.js';
+import { checkReference, describeFinding } from './check.js';
 
 /**
  * The reference against the composed app: every route the app serves is an operation that states

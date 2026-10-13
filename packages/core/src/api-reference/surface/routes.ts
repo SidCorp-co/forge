@@ -1,10 +1,10 @@
 import { Hono } from 'hono';
 import pkg from '../../../package.json' with { type: 'json' };
-import { buildReference, type Reference } from '../document/build.js';
 import { describeOperation, raw } from '../declare/describe.js';
+import { buildReference, type Reference } from '../document/build.js';
+import type { RouteSource } from '../document/registry.js';
 import { FLOWS } from './flows.js';
 import { renderFlowsPage, renderReferencePage } from './page.js';
-import type { RouteSource } from '../document/registry.js';
 
 /**
  * The reference of an app, built from its route table on first use and kept: the table is fixed

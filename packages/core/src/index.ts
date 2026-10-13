@@ -18,11 +18,11 @@ import { agentSessionProjectReadRoutes } from './agent-sessions/project-read-rou
 import { agentSessionRoutes } from './agent-sessions/routes.js';
 import { registerAgentCronTicker, unregisterAgentCronTicker } from './agents/cron.js';
 import { agentRoutes } from './agents/routes.js';
-import { responseConformance } from './api-reference/gates/conformance.js';
 import { describeOperation, redirect } from './api-reference/declare/describe.js';
+import { declaresInput } from './api-reference/declare/validator.js';
+import { responseConformance } from './api-reference/gates/conformance.js';
 import { describedInstallRoutes } from './api-reference/surface/install-reference.js';
 import { referenceOf, referenceRoutes } from './api-reference/surface/routes.js';
-import { declaresInput } from './api-reference/declare/validator.js';
 import { memoryModelRoutes } from './app-config/memory-model-routes.js';
 import { appConfigRoutes } from './app-config/routes.js';
 import { registerWebConversationAdapter } from './assistant/conversation-drain.js';
