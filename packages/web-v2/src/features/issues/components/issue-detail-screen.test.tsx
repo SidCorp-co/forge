@@ -161,8 +161,9 @@ function visibleWords(root: HTMLElement): number {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   let words = 0;
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    // what a 1440-wide window does not draw: hidden folds, and what only a phone-width window shows
-    if (node.parentElement?.closest("[hidden],[aria-hidden='true'],script,style,[class~='md:hidden'],[class~='column-md:hidden']")) continue;
+    // what a 1440-wide window does not draw: hidden folds, what only a phone-width window shows, and the
+    // title block a column under 72rem shows in place of the bar's (1440 less the 76px rail is wider)
+    if (node.parentElement?.closest("[hidden],[aria-hidden='true'],script,style,[class~='md:hidden'],[class~='column-md:hidden'],[class~='column-wide:hidden']")) continue;
     words += (node.textContent ?? "").split(/\s+/).filter((token) => /[\p{L}\p{N}]/u.test(token)).length;
   }
   return words;
