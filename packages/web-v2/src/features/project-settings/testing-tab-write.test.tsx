@@ -8,8 +8,9 @@
 import { applyDocumentPatch, comparePatchBase } from "@forge/contracts/document-patch";
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { LeaveGuardProvider } from "@/design";
 import { ApiError } from "@/lib/api/client";
 import { TestingTab } from "./components/testing-tab";
 
@@ -22,6 +23,7 @@ let sent: unknown[];
 /** Held open, or made to fail, by the cases about a read that has not landed. */
 let held: Promise<void> | null;
 let fails: boolean;
+let client: QueryClient;
 
 vi.mock("@/lib/api/client", async () => {
 	const actual = await vi.importActual<typeof import("@/lib/api/client")>("@/lib/api/client");
@@ -71,9 +73,12 @@ const START: Doc = {
 
 async function mount() {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	client = qc;
 	const view = render(
 		<QueryClientProvider client={qc}>
-			<TestingTab projectId="p1" canEdit />
+			<LeaveGuardProvider>
+					<TestingTab projectId="p1" canEdit />
+				</LeaveGuardProvider>
 		</QueryClientProvider>,
 	);
 	// The form seeds from the environments document's own read, so nothing is on screen until
@@ -88,7 +93,7 @@ function clear(label: RegExp | string) {
 }
 
 function save() {
-	fireEvent.click(screen.getByRole("button", { name: /save testing config/i }));
+	fireEvent.click(screen.getByRole("button", { name: "Save" }));
 }
 
 beforeEach(() => {
@@ -148,10 +153,12 @@ describe("before the document is in hand", () => {
 		const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 		render(
 			<QueryClientProvider client={qc}>
-				<TestingTab projectId="p1" canEdit />
+				<LeaveGuardProvider>
+					<TestingTab projectId="p1" canEdit />
+				</LeaveGuardProvider>
 			</QueryClientProvider>,
 		);
-		expect(screen.queryByRole("button", { name: /save testing config/i })).toBeNull();
+		expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
 		expect(screen.queryByLabelText(/environment limits/i)).toBeNull();
 		opened.release();
 		held = null;
@@ -163,12 +170,14 @@ describe("before the document is in hand", () => {
 		const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 		render(
 			<QueryClientProvider client={qc}>
-				<TestingTab projectId="p1" canEdit />
+				<LeaveGuardProvider>
+					<TestingTab projectId="p1" canEdit />
+				</LeaveGuardProvider>
 			</QueryClientProvider>,
 		);
 		await screen.findByRole("button", { name: /retry/i });
 		expect(screen.queryByLabelText(/environment limits/i)).toBeNull();
-		expect(screen.queryByRole("button", { name: /save testing config/i })).toBeNull();
+		expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
 	});
 });
 
@@ -183,5 +192,100 @@ describe("a limits edit", () => {
 		expect(Object.keys((sent[0] as { patch: Doc }).patch)).toEqual(["limits"]);
 		expect(stored.preview).toEqual(START.preview);
 		expect(stored.live).toEqual(START.live);
+	});
+});
+
+describe("a value the page cannot accept", () => {
+	it("names a malformed URL beside its field and sends nothing", async () => {
+		await mount();
+		fireEvent.change(screen.getByLabelText(/^live url/i), { target: { value: "not a url" } });
+		await screen.findByText("Enter a valid URL (including http(s)://).");
+		expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+		fireEvent.click(screen.getByRole("button", { name: "Save" }));
+		expect(sent).toEqual([]);
+	});
+
+	it("names a half-filled testing URL row, and stops naming it once the row is complete", async () => {
+		await mount();
+		fireEvent.change(screen.getByLabelText("Testing URL 1 label"), { target: { value: "" } });
+		await screen.findByText("Label is required.");
+		expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+		fireEvent.change(screen.getByLabelText("Testing URL 1 label"), { target: { value: "Mail" } });
+		await waitFor(() => expect(screen.queryByText("Label is required.")).toBeNull());
+		expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+	});
+});
+
+describe("the way out of a refused save", () => {
+	const limits = () => screen.getByLabelText(/environment limits/i) as HTMLTextAreaElement;
+
+	async function refused() {
+		await mount();
+		fireEvent.change(limits(), { target: { value: "mine" } });
+		stored = { ...stored, limits: "theirs" };
+		save();
+		return screen.findByRole("button", { name: /use the current values/i });
+	}
+
+	it("takes what is stored now at the setting that moved, and says so", async () => {
+		fireEvent.click(await refused());
+		await waitFor(() => expect(limits().value).toBe("theirs"));
+		expect(await screen.findByText(/loaded what is stored now/i)).toBeInTheDocument();
+	});
+
+	it("still takes it when a background read had already landed before the button was pressed", async () => {
+		const button = await refused();
+		await act(async () => {
+			await client.refetchQueries({ queryKey: ["project", "p1", "environments"] });
+			// The query cache hands a landed read to its observers on the next task.
+			await new Promise((resolve) => setTimeout(resolve, 20));
+		});
+		fireEvent.click(button);
+		await waitFor(() => expect(limits().value).toBe("theirs"));
+		expect(await screen.findByText(/loaded what is stored now/i)).toBeInTheDocument();
+	});
+});
+
+describe("a row typed only in part", () => {
+	it("is an unsaved edit: Discard is offered, the leave warning is armed, and Save stays blocked", async () => {
+		await mount();
+		fireEvent.click(screen.getByRole("button", { name: "Add URL" }));
+		fireEvent.change(screen.getByLabelText("Testing URL 2 label"), { target: { value: "Admin" } });
+		await screen.findByText("URL is required.");
+		expect(screen.getByRole("button", { name: "Discard" })).toBeEnabled();
+		expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+		const unload = new Event("beforeunload", { cancelable: true });
+		window.dispatchEvent(unload);
+		expect(unload.defaultPrevented).toBe(true);
+	});
+
+	it("is an unsaved edit for a credential with a password and no label", async () => {
+		await mount();
+		fireEvent.click(screen.getByRole("button", { name: "Add credential" }));
+		fireEvent.change(screen.getByLabelText("Credential 2 password"), { target: { value: "pw" } });
+		await screen.findByText("Label is required.");
+		expect(screen.getByRole("button", { name: "Discard" })).toBeEnabled();
+	});
+
+	it("is not an edit while the added row is still blank", async () => {
+		await mount();
+		fireEvent.click(screen.getByRole("button", { name: "Add URL" }));
+		expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+		const unload = new Event("beforeunload", { cancelable: true });
+		window.dispatchEvent(unload);
+		expect(unload.defaultPrevented).toBe(false);
+	});
+});
+
+describe("the page's one Save", () => {
+	it("is the only Save, disabled until a value moves and again once it is put back", async () => {
+		await mount();
+		expect(screen.getAllByRole("button", { name: /^save/i })).toHaveLength(1);
+		const limits = screen.getByLabelText(/environment limits/i);
+		expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+		fireEvent.change(limits, { target: { value: "changed" } });
+		expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+		fireEvent.change(limits, { target: { value: START.limits as string } });
+		expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
 	});
 });

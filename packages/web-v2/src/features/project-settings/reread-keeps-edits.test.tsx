@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 //
-// ISS-1170 criterion 20. The refusal banner is the only way out of a `CONFIG_STALE` save, so
-// what it does to the edits it was offered to rescue IS the criterion. Reproduced here at the
-// layer the harm lives at: two sections of ONE page load, edits held in both, a second writer
-// moving a path only one of them names.
+// ISS-1170 criterion 20, kept under ISS-1262's one form. The refusal banner is the only way out of a
+// `CONFIG_STALE` save, so what it does to the edits it was offered to rescue IS the criterion.
+// Reproduced at the layer the harm lives at: ONE page holding edits in two sections, and a second
+// writer moving a path only one of them names.
 //
 // The store is the server's own contract, run from the same `@forge/contracts/document-patch`
 // functions `updatePipelineConfig` calls, so a body the real route would refuse is refused here.
@@ -17,34 +17,20 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { LeaveGuardProvider } from "@/design";
 import { ApiError } from "@/lib/api/client";
-import { AssistantWeeklySection } from "./components/assistant-weekly-section";
-import { StagePermissionsSection } from "./components/stage-permissions-section";
-import { usePipelineConfig } from "./hooks";
-import type { PipelineConfig } from "./types";
+import { PipelineTab } from "./components/pipeline-tab";
 
 expect.extend(matchers);
 
 type Doc = Record<string, unknown>;
+type States = Record<string, Record<string, unknown>>;
 
 let stored: Doc;
+/** Every body the page put on the wire, in order. */
 let sent: unknown[];
-
-function patchPipelineConfig(body: unknown): { pipelineConfig: Doc } {
-	sent.push(body);
-	const write = body as { base?: unknown; patch?: Doc };
-	const conflicts = comparePatchBase(stored, write.base, write.patch ?? {});
-	if (conflicts.length > 0) {
-		throw new ApiError(
-			409,
-			`the pipeline config changed since you read it — ${describeConflicts(conflicts)}. Nothing was written.`,
-			"CONFIG_STALE",
-			{ conflicts },
-		);
-	}
-	stored = applyDocumentPatch(stored, write.patch ?? {});
-	return { pipelineConfig: stored };
-}
+/** How many times the page has read the document back. */
+let reads: number;
 
 vi.mock("@/lib/api/client", async () => {
 	const actual = await vi.importActual<typeof import("@/lib/api/client")>("@/lib/api/client");
@@ -52,22 +38,88 @@ vi.mock("@/lib/api/client", async () => {
 		...actual,
 		apiClient: async (path: string, init?: { method?: string; body?: string }) => {
 			if (path.endsWith("/pipeline-config") && init?.method === "PATCH") {
-				return patchPipelineConfig(JSON.parse(init.body ?? "null"));
+				const write = JSON.parse(init.body ?? "null") as { base: Doc; patch: Doc } | null;
+				sent.push(write);
+				if (!write || typeof write !== "object" || !("base" in write) || !("patch" in write)) {
+					throw new ApiError(400, "a pipeline config write is `{ base, patch }`", "CONFIG_PATCH_SHAPE");
+				}
+				const conflicts = comparePatchBase(stored, write.base, write.patch);
+				if (conflicts.length > 0) {
+					throw new ApiError(
+						409,
+						`the pipeline config changed since you read it — ${describeConflicts(conflicts)}. Nothing was written.`,
+						"CONFIG_STALE",
+						{ conflicts },
+					);
+				}
+				stored = applyDocumentPatch(stored, write.patch);
+				return { pipelineConfig: structuredClone(stored) };
 			}
-			if (path.endsWith("/pipeline-config")) return { pipelineConfig: structuredClone(stored) };
+			if (path.endsWith("/pipeline-config")) {
+				reads += 1;
+				return { pipelineConfig: structuredClone(stored) };
+			}
+			if (path === "/projects/p1") return { id: "p1", agentConfig: {} };
 			throw new Error(`unmocked ${init?.method ?? "GET"} ${path}`);
 		},
 	};
 });
 
+vi.mock("./hooks", async (importActual) => {
+	const actual = await importActual<typeof import("./hooks")>();
+	return { ...actual, useReleaseReadiness: () => ({ isLoading: true, isError: false }) };
+});
+
 const toast = vi.fn();
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast }) }));
 
-/** What the tab holds when the person arrives. The Open stage already denies one tool, so a
- *  second writer has something to move. */
+vi.mock("@/features/runners/hooks", () => ({
+	useProjectRunners: () => ({
+		data: [
+			{ deviceId: "box-a", deviceName: "box-a", deviceStatus: "online", runnerStatus: "online" },
+			{ deviceId: "box-b", deviceName: "box-b", deviceStatus: "online", runnerStatus: "online" },
+		],
+		isPending: false,
+	}),
+}));
+
+const statesOf = (doc: Doc): States => doc.states as States;
+
+let client: QueryClient;
+function mountPage() {
+	client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	return render(
+		<QueryClientProvider client={client}>
+			<LeaveGuardProvider>
+				<PipelineTab projectId="p1" canEdit slug="forge" />
+			</LeaveGuardProvider>
+		</QueryClientProvider>,
+	);
+}
+
+const ready = () => screen.findByRole("switch", { name: "Pipeline enabled" });
+const press = () => fireEvent.click(screen.getByRole("button", { name: "Save" }));
+const reread = () => client.invalidateQueries({ queryKey: ["project", "p1", "pipeline-config"] });
+const expandOpenStage = () =>
+	fireEvent.click(
+		screen
+			.getAllByRole("button")
+			.find((b) => b.hasAttribute("aria-expanded") && /^Open/.test(b.textContent ?? "")) as HTMLElement,
+	);
+
+beforeEach(() => {
+	sent = [];
+	reads = 0;
+	toast.mockClear();
+});
+afterEach(cleanup);
+
+/** What the page holds when the person arrives. The Open stage already denies one tool, so a second
+ *  writer has something to move. */
 const START: Doc = {
 	enabled: true,
 	states: { open: { enabled: true, mode: "auto", disallowedTools: ["Bash(rm:*)"] } },
+	knowledgePromotion: { enabled: true, candidatesPerRun: 3, minRetrievals: 2 },
 	assistantWeekly: {
 		enabled: true,
 		pinnedIssue: "ISS-25",
@@ -76,92 +128,80 @@ const START: Doc = {
 	},
 };
 
-/** One read of the document, handed to every section — what `pipeline-tab.tsx` does. */
-function Page() {
-	const cfgQ = usePipelineConfig("p1");
-	if (!cfgQ.data) return null;
-	const config = cfgQ.data.pipelineConfig as PipelineConfig;
-	return (
-		<>
-			<div data-testid="weekly">
-				<AssistantWeeklySection projectId="p1" config={config} canEdit />
-			</div>
-			<div data-testid="perms">
-				<StagePermissionsSection projectId="p1" config={config} canEdit deviceNames={{}} />
-			</div>
-		</>
-	);
-}
+beforeEach(() => {
+	stored = structuredClone(START);
+});
 
-function mountPage() {
-	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return render(
-		<QueryClientProvider client={qc}>
-			<Page />
-		</QueryClientProvider>,
-	);
-}
-
-const pinnedField = () =>
-	within(screen.getByTestId("weekly")).getByLabelText(
-		/pinned issue key/i,
-	) as HTMLInputElement;
+const pinnedField = () => screen.getByLabelText(/pinned issue key/i) as HTMLInputElement;
+const retrievalsField = () =>
+	screen.getByLabelText("Minimum retrievals before a memory is eligible") as HTMLInputElement;
 
 /** The untouched section's unsaved edit — in no conflict with anybody. */
-function typeInAssistantWeekly(value: string): void {
+const typeInAssistantWeekly = (value: string) =>
 	fireEvent.change(pinnedField(), { target: { value } });
-}
-
-function expandOpenStage(): void {
-	fireEvent.click(within(screen.getByTestId("perms")).getByRole("button", { name: /Open/ }));
-}
 
 /** The colliding section's unsaved edit: one more denied tool id on Open. */
 async function typeADeniedTool(id: string): Promise<void> {
-	const perms = within(screen.getByTestId("perms"));
-	const field = await perms.findByLabelText("Add a tool id to Denied tools");
+	const field = await screen.findByLabelText("Add a tool id to Denied tools");
 	fireEvent.change(field, { target: { value: id } });
 	fireEvent.keyDown(field, { key: "Enter" });
 }
 
 /** The raw ids the Denied tools editor is showing, off each chip's own title. */
 function deniedChips(): string[] {
-	const perms = within(screen.getByTestId("perms"));
-	const editor = perms.getByText("Denied tools").parentElement as HTMLElement;
+	const editor = screen.getByText("Denied tools").parentElement as HTMLElement;
 	return within(editor)
 		.getAllByRole("button")
 		.map((el) => el.getAttribute("title"))
 		.filter((t): t is string => t !== null);
 }
 
-async function saveOpenStagePermissions(): Promise<void> {
-	const perms = within(screen.getByTestId("perms"));
-	fireEvent.click(perms.getByRole("button", { name: /save open permissions/i }));
-}
+const moveDeniedTools = () => {
+	stored = applyDocumentPatch(stored, {
+		states: { open: { disallowedTools: ["Bash(rm:*)", "WebFetch"] } },
+	});
+};
 
-beforeEach(() => {
-	stored = structuredClone(START);
-	sent = [];
-	toast.mockClear();
+describe("a re-read of the document", () => {
+	it("keeps the edits held in two sections and shows the stored value at the path nobody edited", async () => {
+		mountPage();
+		await ready();
+		expandOpenStage();
+		typeInAssistantWeekly("ISS-9999-UNSAVED");
+		await typeADeniedTool("qa_probe_typed_X");
+
+		stored = applyDocumentPatch(stored, { knowledgePromotion: { minRetrievals: 9 } });
+		await reread();
+
+		await waitFor(() => expect(retrievalsField().value).toBe("9"));
+		expect(pinnedField().value).toBe("ISS-9999-UNSAVED");
+		expect(deniedChips()).toContain("qa_probe_typed_X");
+	});
+
+	it("is not a re-read when the same document comes back", async () => {
+		mountPage();
+		await ready();
+		typeInAssistantWeekly("ISS-9999-UNSAVED");
+		const before = reads;
+		await reread();
+		await waitFor(() => expect(reads).toBeGreaterThan(before));
+		expect(pinnedField().value).toBe("ISS-9999-UNSAVED");
+		expect(screen.queryByText(/loaded what is stored now/i)).toBeNull();
+	});
 });
-afterEach(cleanup);
 
 describe("the way out of a refused save", () => {
 	it("keeps the edits held in a section that never collided", async () => {
 		mountPage();
-		await screen.findByLabelText(/pinned issue key/i);
-
+		await ready();
 		expandOpenStage();
 		typeInAssistantWeekly("ISS-9999-UNSAVED");
 		await typeADeniedTool("qa_probe_typed_X");
-		expect(pinnedField().value).toBe("ISS-9999-UNSAVED");
 		expect(deniedChips()).toContain("qa_probe_typed_X");
 
-		// A second writer moves the very path this stage's save names.
-		stored = applyDocumentPatch(stored, {
-			states: { open: { disallowedTools: ["Bash(rm:*)", "WebFetch"] } },
-		});
-		await saveOpenStagePermissions();
+		// A second writer moves the very path this stage's edit names.
+		moveDeniedTools();
+		press();
 		await screen.findByText(/changed by someone else/i);
 
 		fireEvent.click(screen.getByRole("button", { name: /use the current values/i }));
@@ -176,18 +216,38 @@ describe("the way out of a refused save", () => {
 		expect(after.textContent).toMatch(/every other edit on this page is as you left it/i);
 	});
 
+	it("still takes the stored values when a background read had already landed before the button was pressed", async () => {
+		mountPage();
+		await ready();
+		expandOpenStage();
+		await typeADeniedTool("qa_probe_typed_X");
+
+		moveDeniedTools();
+		press();
+		await screen.findByText(/changed by someone else/i);
+		// The window regained focus and the document was read again: the draft is now seeded from
+		// the very document the button's own re-read is about to return.
+		const before = reads;
+		await reread();
+		await waitFor(() => expect(reads).toBeGreaterThan(before));
+
+		fireEvent.click(screen.getByRole("button", { name: /use the current values/i }));
+
+		await waitFor(() => expect(deniedChips()).toContain("WebFetch"));
+		expect(deniedChips()).not.toContain("qa_probe_typed_X");
+		const after = await screen.findByText(/loaded what is stored now/i);
+		expect(after.textContent).toContain("Stage permissions (Open)");
+	});
+
 	it("lets the person keep their own change and save over the other writer's", async () => {
 		mountPage();
-		await screen.findByLabelText(/pinned issue key/i);
-
+		await ready();
 		expandOpenStage();
 		typeInAssistantWeekly("ISS-9999-UNSAVED");
 		await typeADeniedTool("qa_probe_typed_X");
 
-		stored = applyDocumentPatch(stored, {
-			states: { open: { disallowedTools: ["Bash(rm:*)", "WebFetch"] } },
-		});
-		await saveOpenStagePermissions();
+		moveDeniedTools();
+		press();
 		await screen.findByText(/changed by someone else/i);
 
 		fireEvent.click(screen.getByRole("button", { name: /keep my changes/i }));
@@ -195,40 +255,33 @@ describe("the way out of a refused save", () => {
 		await screen.findByText("2 denied");
 		expect(deniedChips()).toContain("qa_probe_typed_X");
 
-		const perms = within(screen.getByTestId("perms"));
-		fireEvent.click(perms.getByRole("button", { name: /save open permissions/i }));
+		press();
 		await waitFor(() =>
-			expect((stored.states as Doc).open).toMatchObject({
+			expect(statesOf(stored).open).toMatchObject({
 				disallowedTools: ["Bash(rm:*)", "qa_probe_typed_X"],
 			}),
 		);
-		expect(pinnedField().value).toBe("ISS-9999-UNSAVED");
+		expect((stored.assistantWeekly as Doc).pinnedIssue).toBe("ISS-9999-UNSAVED");
 	});
 
 	it("replaces the colliding setting alone, not the section it sits in", async () => {
 		mountPage();
-		await screen.findByLabelText(/pinned issue key/i);
+		await ready();
 		expandOpenStage();
-
 		await typeADeniedTool("qa_probe_typed_X");
-		const perms = within(screen.getByTestId("perms"));
-		const allowField = await perms.findByLabelText(
-			"Add a tool id to Allowed tools (allowlist)",
-		);
+		const allowField = await screen.findByLabelText("Add a tool id to Allowed tools (allowlist)");
 		fireEvent.change(allowField, { target: { value: "qa_probe_allowed_Y" } });
 		fireEvent.keyDown(allowField, { key: "Enter" });
 
-		stored = applyDocumentPatch(stored, {
-			states: { open: { disallowedTools: ["Bash(rm:*)", "WebFetch"] } },
-		});
-		await saveOpenStagePermissions();
+		moveDeniedTools();
+		press();
 		await screen.findByText(/changed by someone else/i);
 
 		fireEvent.click(screen.getByRole("button", { name: /use the current values/i }));
 		await waitFor(() => expect(deniedChips()).toContain("WebFetch"));
 		expect(deniedChips()).not.toContain("qa_probe_typed_X");
 		// The allowlist edit was in the same section and in no conflict: it stands.
-		const editor = perms.getByText("Allowed tools (allowlist)").parentElement as HTMLElement;
+		const editor = screen.getByText("Allowed tools (allowlist)").parentElement as HTMLElement;
 		expect(
 			within(editor)
 				.getAllByRole("button")
@@ -238,16 +291,15 @@ describe("the way out of a refused save", () => {
 
 	it("names what it will do to the edits it holds, before the button is pressed", async () => {
 		mountPage();
-		await screen.findByLabelText(/pinned issue key/i);
+		await ready();
 		expandOpenStage();
 		await typeADeniedTool("qa_probe_typed_X");
-		stored = applyDocumentPatch(stored, {
-			states: { open: { disallowedTools: ["Bash(rm:*)", "WebFetch"] } },
-		});
-		await saveOpenStagePermissions();
+		moveDeniedTools();
+		press();
 		await screen.findByText(/changed by someone else/i);
 
 		const banner = screen.getByText(/changed by someone else/i).closest("div") as HTMLElement;
 		expect(banner.textContent).toMatch(/your edits everywhere else on this page are kept/i);
+		expect(banner.textContent).toMatch(/nothing was saved/i);
 	});
 });

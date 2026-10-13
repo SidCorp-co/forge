@@ -6,60 +6,21 @@
 // land at `open` (public webhook, REST, MCP, member-created included) parks at
 // `draft` with the `intake` label until a human approves it into the pipeline
 // via the existing draft→open transition. Review queue = issues list filtered
-// to status draft + label intake.
-//
-// The save names this section's own keys and the values it read them against, and nothing else
-// of the document (ISS-1170).
+// to status draft + label intake. Saved with the rest of the page.
 
-import {
-  Banner,
-  Button,
-  CardTitle,
-  Toggle,
-} from "@/design";
-import { useSettingsDraft } from "../draft";
-import { useUpdatePipelineConfig } from "../hooks";
-import { type PipelineConfig, sectionWrite } from "../types";
-import { SaveRefusedBanner } from "./save-refused-banner";
-
-const AT = ["intakeGate"] as const;
-
-interface Slice {
-	enabled: boolean;
-	notify: boolean;
-}
-
-const seed = (config: PipelineConfig): Slice => ({
-	enabled: config.intakeGate?.enabled ?? false,
-	notify: config.intakeGate?.notify !== false,
-});
+import { CardTitle, type SettingsForm, Toggle } from "@/design";
+import type { PipelineDraft } from "../pipeline-form";
 
 export function IntakeGateSection({
-	projectId,
-	config,
+	form,
 	canEdit,
 }: {
-	projectId: string;
-	/** The full server-fetched pipelineConfig (round-tripped on save). */
-	config: PipelineConfig;
+	form: SettingsForm<PipelineDraft>;
 	canEdit: boolean;
 }) {
-	const update = useUpdatePipelineConfig(projectId);
-
-	const held = useSettingsDraft(seed(config), { at: AT });
-	const { enabled, notify } = held.draft;
-	const dirty = held.dirty;
-	const setEnabled = (next: boolean) => held.setDraft((d) => ({ ...d, enabled: next }));
-	const setNotify = (next: boolean) => held.setDraft((d) => ({ ...d, notify: next }));
-
-	function save() {
-		update.mutate(
-			sectionWrite(
-				{ intakeGate: config.intakeGate },
-				{ intakeGate: { enabled, notify } },
-			),
-		);
-	}
+	const { enabled, notify } = form.draft.intakeGate;
+	const set = (next: Partial<PipelineDraft["intakeGate"]>) =>
+		form.setDraft((d) => ({ ...d, intakeGate: { ...d.intakeGate, ...next } }));
 
 	return (
 		<div className="mt-6 border-t border-line pt-5">
@@ -78,7 +39,7 @@ export function IntakeGateSection({
 				<label className="flex items-center gap-3">
 					<Toggle
 						checked={enabled}
-						onChange={setEnabled}
+						onChange={(next) => set({ enabled: next })}
 						disabled={!canEdit}
 						aria-label="Require human approval for new issues"
 					/>
@@ -89,7 +50,7 @@ export function IntakeGateSection({
 				<label className="flex items-center gap-3">
 					<Toggle
 						checked={notify}
-						onChange={setNotify}
+						onChange={(next) => set({ notify: next })}
 						disabled={!canEdit || !enabled}
 						aria-label="Notify the project owner on each gated issue"
 					/>
@@ -98,31 +59,6 @@ export function IntakeGateSection({
 					</span>
 				</label>
 			</div>
-
-			{canEdit && (
-				<div className="mt-3 space-y-3">
-					<SaveRefusedBanner
-						projectId={projectId}
-						error={update.isError ? update.error : null}
-						onDismiss={() => update.reset()}
-						draft={held}
-					/>
-					{update.isSuccess && !dirty && (
-						<Banner tone="success" onDismiss={() => update.reset()}>
-							Intake gate saved.
-						</Banner>
-					)}
-					<Button
-						variant="primary"
-						loading={update.isPending}
-						disabled={!dirty || update.isPending}
-						onClick={save}
-						className="min-h-11"
-					>
-						Save intake gate
-					</Button>
-				</div>
-			)}
 		</div>
 	);
 }

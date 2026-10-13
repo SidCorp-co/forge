@@ -15,6 +15,8 @@ export interface ConfirmDialogProps {
   title: string;
   message: ReactNode;
   confirmLabel: string;
+  /** What the button that keeps things as they are says. */
+  cancelLabel?: string;
   /** `danger` renders a red confirm button for destructive actions. */
   tone?: "danger" | "default";
   loading?: boolean;
@@ -27,6 +29,7 @@ export function ConfirmDialog({
   title,
   message,
   confirmLabel,
+  cancelLabel = "Cancel",
   tone = "default",
   loading = false,
   onConfirm,
@@ -38,7 +41,7 @@ export function ConfirmDialog({
         <p className="fg-body-sm text-fg">{message}</p>
         <div className="mt-auto flex items-center justify-end gap-2.5 pt-2">
           <Button type="button" variant="ghost" onClick={onClose} disabled={loading}>
-            Cancel
+            {cancelLabel}
           </Button>
           <Button
             type="button"

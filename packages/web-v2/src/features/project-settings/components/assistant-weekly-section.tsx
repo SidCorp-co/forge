@@ -1,63 +1,32 @@
 "use client";
 
 import {
-  Banner,
-  Button,
-  CardTitle,
-  Toggle,
+	Button,
+	CardTitle,
 	Input,
+	type SettingsForm,
+	Toggle,
 } from "@/design";
-import { useSettingsDraft } from "../draft";
-import { useRunAssistantWeekly, useUpdatePipelineConfig } from "../hooks";
-import { type PipelineConfig, sectionWrite } from "../types";
-import { SaveRefusedBanner } from "./save-refused-banner";
-
-type Slice = NonNullable<PipelineConfig["assistantWeekly"]>;
-
-const EMPTY: Slice = { enabled: false, pinnedIssue: "", judgeProviderId: "", judgeModel: "" };
-
-const AT = ["assistantWeekly"] as const;
-
-const seed = (config: PipelineConfig): Slice => ({ ...EMPTY, ...(config.assistantWeekly ?? {}) });
+import { useRunAssistantWeekly } from "../hooks";
+import type { PipelineDraft } from "../pipeline-form";
 
 export function AssistantWeeklySection({
 	projectId,
-	config,
+	form,
 	canEdit,
+	savedEnabled,
 }: {
 	projectId: string;
-	/** The full server-fetched pipelineConfig (round-tripped on save). */
-	config: PipelineConfig;
+	form: SettingsForm<PipelineDraft>;
 	canEdit: boolean;
+	/** Whether the stored configuration has the reading on, which is what "run now" would run. */
+	savedEnabled: boolean;
 }) {
-	const update = useUpdatePipelineConfig(projectId);
 	const runNow = useRunAssistantWeekly(projectId);
-	const seeded = seed(config);
-	const held = useSettingsDraft(seeded, { at: AT });
-	const { draft: slice, setDraft: setSlice, dirty } = held;
-	const complete =
-		!slice.enabled ||
-		(slice.pinnedIssue.trim() !== "" &&
-			slice.judgeProviderId.trim() !== "" &&
-			slice.judgeModel.trim() !== "");
-
-	function save() {
-		const source = slice.source?.trim();
-		update.mutate(
-			sectionWrite(
-				{ assistantWeekly: config.assistantWeekly },
-				{
-					assistantWeekly: {
-						enabled: slice.enabled,
-						pinnedIssue: slice.pinnedIssue.trim(),
-						judgeProviderId: slice.judgeProviderId.trim(),
-						judgeModel: slice.judgeModel.trim(),
-						...(source ? { source } : {}),
-					},
-				},
-			),
-		);
-	}
+	const slice = form.draft.assistantWeekly;
+	const set = (next: Partial<PipelineDraft["assistantWeekly"]>) =>
+		form.setDraft((d) => ({ ...d, assistantWeekly: { ...d.assistantWeekly, ...next } }));
+	const incomplete = form.errorAt("assistantWeekly.enabled");
 
 	const field = (
 		key: "pinnedIssue" | "judgeProviderId" | "judgeModel" | "source",
@@ -72,7 +41,7 @@ export function AssistantWeeklySection({
 				disabled={!canEdit || !slice.enabled}
 				placeholder={placeholder}
 				className="w-64"
-				onChange={(e) => setSlice({ ...slice, [key]: e.target.value })}
+				onChange={(e) => set({ [key]: e.target.value })}
 			/>
 			<label className="fg-body-sm text-fg" htmlFor={`assistant-weekly-${key}`}>
 				{label}
@@ -96,7 +65,7 @@ export function AssistantWeeklySection({
 				<div className="flex items-center gap-3">
 					<Toggle
 						checked={slice.enabled}
-						onChange={(enabled) => setSlice({ ...slice, enabled })}
+						onChange={(enabled) => set({ enabled })}
 						disabled={!canEdit}
 						aria-label="Post a weekly assistant reading"
 					/>
@@ -110,42 +79,25 @@ export function AssistantWeeklySection({
 				)}
 				{field("judgeModel", "judge model (never the model under test)", "cx/gpt-6-astra")}
 				{field("source", "one door only (optional)", "web")}
+				{incomplete && (
+					<p role="alert" className="fg-caption text-[var(--red-600)]">
+						{incomplete}
+					</p>
+				)}
 			</div>
 
 			{canEdit && (
-				<div className="mt-3 space-y-3">
-					<SaveRefusedBanner
-						projectId={projectId}
-						error={update.isError ? update.error : null}
-						onDismiss={() => update.reset()}
-						draft={held}
-					/>
-					{update.isSuccess && !dirty && (
-						<Banner tone="success" onDismiss={() => update.reset()}>
-							Assistant weekly reading saved.
-						</Banner>
-					)}
-					<div className="flex flex-wrap gap-3">
-						<Button
-							variant="primary"
-							loading={update.isPending}
-							disabled={!dirty || !complete || update.isPending}
-							onClick={save}
-							className="min-h-11"
-						>
-							Save assistant weekly reading
-						</Button>
-						<Button
-							variant="secondary"
-							loading={runNow.isPending}
-							disabled={dirty || !seeded.enabled || runNow.isPending}
-							onClick={() => runNow.mutate()}
-							className="min-h-11"
-							title="Runs the saved config for the previous ISO week now; a week whose report is already on the issue is skipped"
-						>
-							Run the reading now
-						</Button>
-					</div>
+				<div className="mt-3">
+					<Button
+						variant="secondary"
+						loading={runNow.isPending}
+						disabled={form.dirty || !savedEnabled || runNow.isPending}
+						onClick={() => runNow.mutate()}
+						className="min-h-11"
+						title="Runs the saved config for the previous ISO week now; a week whose report is already on the issue is skipped"
+					>
+						Run the reading now
+					</Button>
 				</div>
 			)}
 		</div>

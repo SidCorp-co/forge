@@ -1,62 +1,23 @@
 "use client";
 
-
-import {
-  Banner,
-  Button,
-  CardTitle,
-  Toggle,
-} from "@/design";
-import { useSettingsDraft } from "../draft";
-import { useUpdatePipelineConfig } from "../hooks";
-import { type PipelineConfig, sectionWrite } from "../types";
-import { SaveRefusedBanner } from "./save-refused-banner";
-
-const DEFAULT_PER_RUN = 3;
-const DEFAULT_MIN_RETRIEVALS = 3;
-
-const AT = ["knowledgePromotion"] as const;
-
-interface Slice {
-	enabled: boolean;
-	perRun: number;
-	minRetrievals: number;
-}
-
-const seed = (config: PipelineConfig): Slice => ({
-	enabled: config.knowledgePromotion?.enabled ?? false,
-	perRun: config.knowledgePromotion?.candidatesPerRun ?? DEFAULT_PER_RUN,
-	minRetrievals: config.knowledgePromotion?.minRetrievals ?? DEFAULT_MIN_RETRIEVALS,
-});
+import { CardTitle, type SettingsForm, Toggle } from "@/design";
+import type { PipelineDraft } from "../pipeline-form";
 
 export function KnowledgePromotionSection({
-	projectId,
-	config,
+	form,
 	canEdit,
 }: {
-	projectId: string;
-	/** The full server-fetched pipelineConfig (round-tripped on save). */
-	config: PipelineConfig;
+	form: SettingsForm<PipelineDraft>;
 	canEdit: boolean;
 }) {
-	const update = useUpdatePipelineConfig(projectId);
-
-	const held = useSettingsDraft(seed(config), { at: AT });
-	const { enabled, perRun, minRetrievals } = held.draft;
-	const dirty = held.dirty;
-	const setEnabled = (next: boolean) => held.setDraft((d) => ({ ...d, enabled: next }));
-	const setPerRun = (next: number) => held.setDraft((d) => ({ ...d, perRun: next }));
-	const setMinRetrievals = (next: number) =>
-		held.setDraft((d) => ({ ...d, minRetrievals: next }));
-
-	function save() {
-		update.mutate(
-			sectionWrite(
-				{ knowledgePromotion: config.knowledgePromotion },
-				{ knowledgePromotion: { enabled, candidatesPerRun: perRun, minRetrievals } },
-			),
-		);
-	}
+	const { enabled, candidatesPerRun, minRetrievals } = form.draft.knowledgePromotion;
+	const set = (next: Partial<PipelineDraft["knowledgePromotion"]>) =>
+		form.setDraft((d) => ({
+			...d,
+			knowledgePromotion: { ...d.knowledgePromotion, ...next },
+		}));
+	const perRunError = form.errorAt("knowledgePromotion.candidatesPerRun");
+	const retrievalsError = form.errorAt("knowledgePromotion.minRetrievals");
 
 	return (
 		<div className="mt-6 border-t border-line pt-5">
@@ -74,7 +35,7 @@ export function KnowledgePromotionSection({
 				<div className="flex items-center gap-3">
 					<Toggle
 						checked={enabled}
-						onChange={setEnabled}
+						onChange={(next) => set({ enabled: next })}
 						disabled={!canEdit}
 						aria-label="Propose durable memories for curated knowledge"
 					/>
@@ -82,23 +43,27 @@ export function KnowledgePromotionSection({
 						Propose durable memories for curated knowledge
 					</span>
 				</div>
-
 				<label className="flex items-center gap-3">
 					<input
 						type="number"
 						min={1}
 						max={10}
-						value={perRun}
+						value={candidatesPerRun}
 						disabled={!canEdit || !enabled}
 						aria-label="Proposals per night"
+						aria-invalid={perRunError ? true : undefined}
 						className="h-9 w-20 rounded border border-line bg-surface px-2 text-fg"
-						onChange={(e) => setPerRun(Number(e.target.value))}
+						onChange={(e) => set({ candidatesPerRun: Number(e.target.value) })}
 					/>
 					<span className="fg-body-sm text-fg">
 						proposals per night <span className="text-muted">(max 10)</span>
 					</span>
 				</label>
-
+				{perRunError && (
+					<p role="alert" className="fg-caption text-[var(--red-600)]">
+						{perRunError}
+					</p>
+				)}
 				<label className="flex items-center gap-3">
 					<input
 						type="number"
@@ -107,40 +72,21 @@ export function KnowledgePromotionSection({
 						value={minRetrievals}
 						disabled={!canEdit || !enabled}
 						aria-label="Minimum retrievals before a memory is eligible"
+						aria-invalid={retrievalsError ? true : undefined}
 						className="h-9 w-20 rounded border border-line bg-surface px-2 text-fg"
-						onChange={(e) => setMinRetrievals(Number(e.target.value))}
+						onChange={(e) => set({ minRetrievals: Number(e.target.value) })}
 					/>
 					<span className="fg-body-sm text-fg">
 						retrievals before a memory is eligible{" "}
 						<span className="text-muted">(higher = fewer, better proposals)</span>
 					</span>
 				</label>
+				{retrievalsError && (
+					<p role="alert" className="fg-caption text-[var(--red-600)]">
+						{retrievalsError}
+					</p>
+				)}
 			</div>
-
-			{canEdit && (
-				<div className="mt-3 space-y-3">
-					<SaveRefusedBanner
-						projectId={projectId}
-						error={update.isError ? update.error : null}
-						onDismiss={() => update.reset()}
-						draft={held}
-					/>
-					{update.isSuccess && !dirty && (
-						<Banner tone="success" onDismiss={() => update.reset()}>
-							Knowledge promotion saved.
-						</Banner>
-					)}
-					<Button
-						variant="primary"
-						loading={update.isPending}
-						disabled={!dirty || update.isPending}
-						onClick={save}
-						className="min-h-11"
-					>
-						Save knowledge promotion
-					</Button>
-				</div>
-			)}
 		</div>
 	);
 }

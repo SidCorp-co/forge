@@ -5,6 +5,7 @@ import {
   PageTitle,
   ScreenTabs,
   type TabItem,
+  useLeaveGuardAttempt,
 } from "@/design";
 import { useTabParam } from "@/lib/utils/use-tab-param";
 import { AgentsTab } from "@/features/agent-accounts/components/agents-tab";
@@ -28,13 +29,14 @@ const TABS: TabItem[] = [
 
 export function SettingsScreen() {
   const [tab, setTab] = useTabParam<SettingsTab>(TAB_VALUES, "account");
+  const leave = useLeaveGuardAttempt();
 
   return (
     <div className="flex min-h-full flex-col">
       <ScreenTabs
         tabs={TABS}
         value={tab}
-        onChange={(v) => setTab(v as SettingsTab)}
+        onChange={(v) => leave(() => setTab(v as SettingsTab))}
         header={
           <header className="mb-6">
             <PageTitle className="fg-h2">Settings</PageTitle>

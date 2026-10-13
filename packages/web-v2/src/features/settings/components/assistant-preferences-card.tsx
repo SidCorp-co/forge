@@ -3,7 +3,6 @@
 // Settings → Account → how the assistant answers you. The style and the
 // standing instructions save through the same preferences route as the theme;
 // the trail underneath is every write anybody made to them, each restorable.
-import { useEffect, useState } from "react";
 import type { AnswerStyle, PreferenceChange } from "@forge/contracts";
 import {
   Button,
@@ -13,18 +12,15 @@ import {
   Field,
   SectionTitle,
   Select,
+  type SettingsForm,
   Skeleton,
   Textarea,
   type SelectOption,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
-import {
-  useAssistantPreferences,
-  usePreferenceChanges,
-  useRestorePreferenceChange,
-  useUpdateAssistantPreferences,
-} from "../hooks";
+import { usePreferenceChanges, useRestorePreferenceChange } from "../hooks";
+import type { AccountDraft } from "./account-tab";
 
 export const ANSWER_STYLE_OPTIONS: SelectOption[] = [
   { value: "default", label: "Default — let the assistant judge" },
@@ -49,26 +45,11 @@ export function describeChange(change: PreferenceChange): string {
   return `${FIELD_LABEL[change.field]} ${value} by ${ACTOR_LABEL[change.changedBy]}`;
 }
 
-export function AssistantPreferencesCard() {
-  const prefsQ = useAssistantPreferences();
+export function AssistantPreferencesCard({ form }: { form: SettingsForm<AccountDraft> }) {
   const changesQ = usePreferenceChanges();
-  const update = useUpdateAssistantPreferences();
   const restore = useRestorePreferenceChange();
   const { toast } = useToast();
-
-  const [style, setStyle] = useState<AnswerStyle>("default");
-  const [instructions, setInstructions] = useState("");
-  useEffect(() => {
-    if (prefsQ.data) {
-      setStyle(prefsQ.data.answerStyle);
-      setInstructions(prefsQ.data.assistantInstructions ?? "");
-    }
-  }, [prefsQ.data]);
-
-  const dirty =
-    !!prefsQ.data &&
-    (style !== prefsQ.data.answerStyle ||
-      instructions !== (prefsQ.data.assistantInstructions ?? ""));
+  const { answerStyle, assistantInstructions } = form.draft;
 
   async function onRestore(change: PreferenceChange) {
     try {
@@ -86,48 +67,28 @@ export function AssistantPreferencesCard() {
         <p className="fg-body-sm mb-4 text-muted">
           Applies to every reply addressed to you — in Forge rooms and in every connected chat.
         </p>
-        {prefsQ.isLoading ? (
-          <div className="space-y-4">
-            <Skeleton className="h-10 w-full rounded-md" />
-            <Skeleton className="h-24 w-full rounded-md" />
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <Field label="Reply style">
-              <Select
-                options={ANSWER_STYLE_OPTIONS}
-                value={style}
-                onChange={(v) => setStyle(v as AnswerStyle)}
-              />
-            </Field>
-            <Field
-              label="Standing instructions"
-              hint="Followed in every reply to you. Leave empty for none."
-            >
-              <Textarea
-                value={instructions}
-                maxLength={2000}
-                onChange={(e) => setInstructions(e.target.value)}
-              />
-            </Field>
-            <div>
-              <Button
-                variant="primary"
-                loading={update.isPending}
-                disabled={!dirty}
-                className="min-h-11"
-                onClick={() =>
-                  update.mutate({
-                    answerStyle: style,
-                    assistantInstructions: instructions.trim() === "" ? null : instructions,
-                  })
-                }
-              >
-                Save answer preferences
-              </Button>
-            </div>
-          </div>
-        )}
+        <div className="space-y-4">
+          <Field label="Reply style">
+            <Select
+              options={ANSWER_STYLE_OPTIONS}
+              value={answerStyle}
+              onChange={(v) => form.setDraft((d) => ({ ...d, answerStyle: v as AnswerStyle }))}
+            />
+          </Field>
+          <Field
+            label="Standing instructions"
+            hint="Followed in every reply to you. Leave empty for none."
+            error={form.errorAt("assistantInstructions")}
+          >
+            <Textarea
+              value={assistantInstructions}
+              maxLength={2000}
+              onChange={(e) =>
+                form.setDraft((d) => ({ ...d, assistantInstructions: e.target.value }))
+              }
+            />
+          </Field>
+        </div>
 
         <CardTitle className="mt-8 mb-2">Changes</CardTitle>
         {changesQ.isLoading ? (

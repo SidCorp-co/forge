@@ -10,10 +10,7 @@
 // Rendered as a stage × runner matrix so the answer to "where does Review
 // run?" is one row, and "what does this box run?" is one column.
 //
-// Save contract: this section writes `states.<stage>.deviceIds` and nothing else. The
-// patch it sends names only the stages whose pool it moved, compared against the pools it
-// was seeded with — so a stage-permissions save from the same page load, which writes
-// other leaves of the same `states` map, overlaps at no path and both land (ISS-1170).
+// The pools are the `deviceIds` of each stage in the page's draft, saved with the rest of it.
 
 import { useMemo } from "react";
 import {
@@ -22,40 +19,24 @@ import {
   CardTitle,
   HealthDot,
   Icon,
+  type SettingsForm,
   Skeleton,
 } from "@/design";
 import { useProjectRunners } from "@/features/runners/hooks";
 import type { ProjectRunner } from "@/features/runners/types";
-import { useSettingsDraft } from "../draft";
-import { useUpdatePipelineConfig } from "../hooks";
-import { PIPELINE_STATUS_ROWS, type PipelineConfig, sectionWrite } from "../types";
-import { SaveRefusedBanner } from "./save-refused-banner";
+import type { PipelineDraft } from "../pipeline-form";
+import { PIPELINE_STATUS_ROWS } from "../types";
 
-type StatesMap = Record<string, Record<string, unknown>>;
-type PoolMap = Record<string, string[]>;
-
-function asStates(config: PipelineConfig): StatesMap {
-  const s = config.states;
-  return s && typeof s === "object" ? (s as StatesMap) : {};
-}
-
-function seedPools(config: PipelineConfig): PoolMap {
-  const out: PoolMap = {};
-  for (const [status, st] of Object.entries(asStates(config))) {
-    const ids = st?.deviceIds;
-    if (Array.isArray(ids)) {
-      const clean = ids.filter((d): d is string => typeof d === "string");
-      if (clean.length > 0) out[status] = clean;
-    }
-  }
-  return out;
-}
-
-function snapshot(pools: PoolMap): string {
-  const keys = Object.keys(pools)
-    .filter((k) => (pools[k]?.length ?? 0) > 0)
-    .sort();
-  return JSON.stringify(keys.map((k) => [k, [...pools[k]].sort()]));
+/** The devices a pool names that no runner on this project answers for. The server refuses a
+ *  save that keeps one, so the page holds its Save while any is named. */
+export function unknownPoolDevices(
+  states: PipelineDraft["states"],
+  runners: readonly { deviceId?: string | null }[],
+): string[] {
+  const known = new Set(runners.map((r) => r.deviceId));
+  const out = new Set<string>();
+  for (const st of Object.values(states)) for (const id of st.deviceIds) if (!known.has(id)) out.add(id);
+  return [...out];
 }
 
 /** Why this runner cannot take work right now, or null when it can. */
@@ -73,69 +54,43 @@ function blockedReason(r: ProjectRunner): string | null {
   return null;
 }
 
-/** This draft is one array per stage, which the document holds at `states.<stage>.deviceIds`. */
-function locatePool(path: readonly string[]): string[] | null {
-  return path[0] === "states" && path[2] === "deviceIds" && path[1] ? [path[1]] : null;
-}
-
 export function RunnerPoolsSection({
   projectId,
-  config,
+  form,
   canEdit,
 }: {
   projectId: string;
-  config: PipelineConfig;
+  form: SettingsForm<PipelineDraft>;
   canEdit: boolean;
 }) {
-  const update = useUpdatePipelineConfig(projectId);
   const runnersQuery = useProjectRunners(projectId);
   const runners = useMemo(
     () => (runnersQuery.data ?? []).filter((r): r is ProjectRunner & { deviceId: string } => !!r.deviceId),
     [runnersQuery.data],
   );
 
-  const seeded = useMemo(() => seedPools(config), [config]);
-  const held = useSettingsDraft(seeded, { locate: locatePool });
-  const pools = held.draft;
-  const setPools = held.setDraft;
-  // Order-insensitive and blind to an empty pool, which `held.dirty` is not: a stage cleared
-  // when it was already empty is not an edit.
-  const dirty = snapshot(pools) !== snapshot(seeded);
+  const states = form.draft.states;
+  const pools = (status: string): string[] => states[status]?.deviceIds ?? [];
+  const staleIds = useMemo(() => unknownPoolDevices(states, runners), [states, runners]);
 
-  const known = useMemo(() => new Set(runners.map((r) => r.deviceId)), [runners]);
-  const staleIds = useMemo(() => {
-    const out = new Set<string>();
-    for (const ids of Object.values(pools)) for (const id of ids) if (!known.has(id)) out.add(id);
-    return [...out];
-  }, [pools, known]);
-
-  function toggle(status: string, deviceId: string) {
-    setPools((p) => {
-      const cur = p[status] ?? [];
+  function setPool(status: string, next: (current: string[]) => string[]) {
+    form.setDraft((d) => {
+      const stage = d.states[status];
+      if (!stage) return d;
       return {
-        ...p,
-        [status]: cur.includes(deviceId) ? cur.filter((d) => d !== deviceId) : [...cur, deviceId],
+        ...d,
+        states: { ...d.states, [status]: { ...stage, deviceIds: next(stage.deviceIds).sort() } },
       };
     });
   }
 
+  function toggle(status: string, deviceId: string) {
+    setPool(status, (cur) => (cur.includes(deviceId) ? cur.filter((d) => d !== deviceId) : [...cur, deviceId]));
+  }
+
   function clearStage(status: string) {
-    setPools((p) => ({ ...p, [status]: [] }));
+    setPool(status, () => []);
   }
-
-  function save() {
-    const before: StatesMap = {};
-    const after: StatesMap = {};
-    for (const status of new Set([...Object.keys(asStates(config)), ...Object.keys(pools)])) {
-      const read = seeded[status];
-      const want = pools[status] ?? [];
-      before[status] = read ? { deviceIds: read } : {};
-      after[status] = want.length > 0 ? { deviceIds: want } : {};
-    }
-    update.mutate(sectionWrite({ states: before }, { states: after }));
-  }
-
-  const saveDisabled = !dirty || staleIds.length > 0 || update.isPending;
 
   return (
     <div className="mt-6 border-t border-line pt-5">
@@ -156,6 +111,19 @@ export function RunnerPoolsSection({
             No device runner is bound to this project, so there is nothing to pool. Pair a device on
             the Runners tab first.
           </p>
+          {PIPELINE_STATUS_ROWS.filter((stage) => pools(stage.status).length > 0).map((stage) => (
+            <div key={stage.status} className="mt-2 flex items-center justify-between gap-3 border-line border-t pt-2">
+              <p className="fg-label text-fg">
+                {stage.label}
+                <span className="fg-caption ml-2 text-muted">pinned to a device no runner answers for</span>
+              </p>
+              {canEdit && (
+                <Button variant="ghost" size="sm" onClick={() => clearStage(stage.status)}>
+                  Clear
+                </Button>
+              )}
+            </div>
+          ))}
         </div>
       ) : (
         <div className="overflow-x-auto rounded-md border border-line">
@@ -187,7 +155,7 @@ export function RunnerPoolsSection({
             </thead>
             <tbody>
               {PIPELINE_STATUS_ROWS.map((stage) => {
-                const selected = pools[stage.status] ?? [];
+                const selected = pools(stage.status);
                 const members = runners.filter((r) => selected.includes(r.deviceId));
                 const allBlocked = members.length > 0 && members.every((r) => blockedReason(r) !== null);
                 return (
@@ -247,41 +215,14 @@ export function RunnerPoolsSection({
         </div>
       )}
 
-      {runners.length > 0 && (
-        <div className="mt-3 space-y-3">
-          {staleIds.length > 0 && (
-            <Banner tone="attention">
-              {staleIds.length === 1 ? "A pool names a device" : "Pools name devices"} with no runner
-              on this project ({staleIds.map((d) => d.slice(0, 8)).join(", ")}). The server rejects a
-              save that keeps {staleIds.length === 1 ? "it" : "them"} — the row above shows no column
-              for {staleIds.length === 1 ? "it" : "them"}, so clear that stage to drop it.
-            </Banner>
-          )}
-
-          <SaveRefusedBanner
-            projectId={projectId}
-            error={update.isError ? update.error : null}
-            onDismiss={() => update.reset()}
-            draft={held}
-          />
-
-          {update.isSuccess && !dirty && (
-            <Banner tone="success" onDismiss={() => update.reset()}>
-              Runner pools saved.
-            </Banner>
-          )}
-
-          {canEdit && (
-            <Button
-              variant="primary"
-              loading={update.isPending}
-              disabled={saveDisabled}
-              onClick={save}
-              className="min-h-11"
-            >
-              Save runner pools
-            </Button>
-          )}
+      {runners.length > 0 && staleIds.length > 0 && (
+        <div className="mt-3">
+          <Banner tone="attention">
+            {staleIds.length === 1 ? "A pool names a device" : "Pools name devices"} with no runner
+            on this project ({staleIds.map((d) => d.slice(0, 8)).join(", ")}). The server rejects a
+            save that keeps {staleIds.length === 1 ? "it" : "them"} — the row above shows no column
+            for {staleIds.length === 1 ? "it" : "them"}, so clear that stage to drop it.
+          </Banner>
         </div>
       )}
     </div>

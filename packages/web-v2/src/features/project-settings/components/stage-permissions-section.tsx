@@ -1,7 +1,6 @@
 "use client";
 
 
-import { useSettingsDraft } from "../draft";
 import {
   Badge,
   Button,
@@ -9,9 +8,10 @@ import {
   Checkbox,
   Collapsible,
   MonoTag,
+  type SettingsForm,
 } from "@/design";
 import { providerForMcpServerName } from "@/features/integrations/providers/registry";
-import { useUpdatePipelineConfig } from "../hooks";
+import type { PipelineDraft, StageDraft } from "../pipeline-form";
 import {
   denylistBaseline,
   groupByServer,
@@ -20,14 +20,11 @@ import {
   MCP_CATALOG,
   MCP_CATALOG_NAMES,
   PIPELINE_STATUS_ROWS,
-  pipelineStatusLabel,
   summarizeStageConfig,
-  sectionWrite,
   type PipelineConfig,
   type PipelineStateConfig,
   type StagePermissionRow,
 } from "../types";
-import { SaveRefusedBanner } from "./save-refused-banner";
 import { ToolListEditor } from "./tool-list-editor";
 
 function ToolChips({ tools }: { tools: string[] }) {
@@ -78,66 +75,28 @@ function editableRows(config: PipelineConfig): StagePermissionRow[] {
   }));
 }
 
-/** The three leaves one stage's editor holds, as it holds them. */
-interface StageDraft {
-  denied: string[];
-  allowed: string[];
-  mcp: Record<string, unknown>;
-}
-
-const seedStage = (stored: PipelineStateConfig): StageDraft => ({
-  denied: stored.disallowedTools ?? [],
-  allowed: stored.allowedTools ?? [],
-  mcp: stored.mcpServers ?? {},
-});
-
-/** This draft is one stage's three permission leaves, under `states.<stage>`. */
-function locateStage(status: string) {
-  return (path: readonly string[]): string[] | null => {
-    if (path[0] !== "states" || path[1] !== status) return null;
-    const leaf = path[2];
-    if (leaf === "disallowedTools") return ["denied"];
-    if (leaf === "allowedTools") return ["allowed"];
-    if (leaf === "mcpServers") return ["mcp", ...path.slice(3)];
-    return null;
-  };
-}
-
 function StageEditor({
-  projectId,
   config,
+  form,
   status,
 }: {
-  projectId: string;
   config: PipelineConfig;
+  form: SettingsForm<PipelineDraft>;
   status: string;
 }) {
-  const update = useUpdatePipelineConfig(projectId);
-  const stored = ((config.states ?? {}) as Record<string, PipelineStateConfig | undefined>)[status] ?? {};
-
-  const held = useSettingsDraft(seedStage(stored), { locate: locateStage(status) });
-  const { denied, allowed, mcp } = held.draft;
-  const setDenied = (next: string[]) => held.setDraft((d) => ({ ...d, denied: next }));
-  const setAllowed = (next: string[]) => held.setDraft((d) => ({ ...d, allowed: next }));
+  const stage = form.draft.states[status];
+  const denied = stage?.disallowedTools ?? [];
+  const allowed = stage?.allowedTools ?? [];
+  const mcp = stage?.mcpServers ?? {};
+  const setStage = (next: (current: StageDraft) => StageDraft) =>
+    form.setDraft((d) => {
+      const current = d.states[status];
+      return current ? { ...d, states: { ...d.states, [status]: next(current) } } : d;
+    });
+  const setDenied = (next: string[]) => setStage((s) => ({ ...s, disallowedTools: next }));
+  const setAllowed = (next: string[]) => setStage((s) => ({ ...s, allowedTools: next }));
   const setMcp = (next: (m: Record<string, unknown>) => Record<string, unknown>) =>
-    held.setDraft((d) => ({ ...d, mcp: next(d.mcp) }));
-  const dirty = held.dirty;
-
-  // This stage's three permission leaves, and no other key of the document: a runner-pool
-  // save from the same page load writes `states.<stage>.deviceIds`, which is not among them.
-  function save() {
-    const before: PipelineStateConfig = {
-      disallowedTools: stored.disallowedTools,
-      allowedTools: stored.allowedTools,
-      mcpServers: stored.mcpServers,
-    };
-    const after: PipelineStateConfig = {
-      disallowedTools: denied.length > 0 ? denied : undefined,
-      allowedTools: allowed.length > 0 ? allowed : undefined,
-      mcpServers: Object.keys(mcp).length > 0 ? mcp : undefined,
-    };
-    update.mutate(sectionWrite({ states: { [status]: before } }, { states: { [status]: after } }));
-  }
+    setStage((s) => ({ ...s, mcpServers: next(s.mcpServers) }));
 
   return (
     <div className="mt-3 space-y-4 border-t border-line pt-3">
@@ -196,35 +155,19 @@ function StageEditor({
           A custom server spec is written through the API — this list edits the catalog entries.
         </p>
       </div>
-
-      <SaveRefusedBanner
-        projectId={projectId}
-        error={update.isError ? update.error : null}
-        onDismiss={() => update.reset()}
-        draft={held}
-      />
-
-      <Button
-        variant="primary"
-        loading={update.isPending}
-        disabled={!dirty}
-        onClick={save}
-        className="min-h-11"
-      >
-        Save {pipelineStatusLabel(status)} permissions
-      </Button>
     </div>
   );
 }
 
 export function StagePermissionsSection({
-  projectId,
   config,
+  form,
   canEdit,
   deviceNames,
 }: {
-  projectId: string;
+  /** What is stored: the read-only summary and the tool ids on offer come from it. */
   config: PipelineConfig;
+  form: SettingsForm<PipelineDraft>;
   canEdit: boolean;
   /** deviceId → runner name, so a pinned pool reads as boxes, not UUIDs. Optional: the component stays query-free. */
   deviceNames?: Record<string, string>;
@@ -336,11 +279,7 @@ export function StagePermissionsSection({
                   )}
 
                   {canEdit && (
-                    <StageEditor
-                      projectId={projectId}
-                      config={config}
-                      status={row.status}
-                    />
+                    <StageEditor config={config} form={form} status={row.status} />
                   )}
                 </div>
               </Collapsible>

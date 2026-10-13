@@ -16,6 +16,7 @@ import {
   ProjectMark,
   ScreenTabs,
   type TabItem,
+  useLeaveGuardAttempt,
 } from "@/design";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import {
@@ -77,6 +78,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 	const detailQ = useProject(listItem?.id);
 
 	const [tab, setTab] = useTabParam<ProjectSettingsTab>(TAB_VALUES, "basics");
+	const leave = useLeaveGuardAttempt();
 
 	if (projectsQ.isLoading || (listItem && detailQ.isLoading)) {
 		return (
@@ -134,7 +136,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 			<ScreenTabs
 				tabs={TABS}
 				value={tab}
-				onChange={(v) => setTab(v as ProjectSettingsTab)}
+				onChange={(v) => leave(() => setTab(v as ProjectSettingsTab))}
 				header={
 					<>
 						<header className="mb-6 flex items-center gap-4">
