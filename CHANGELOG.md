@@ -3158,6 +3158,8 @@
 
 - **A release pane that stops on a question no longer asks it again every minute.** The question now lands on the release's issues, the release waits, a second press is refused by name, and the answer restarts it.
 
+- **Two runner commands saving the box's config at once no longer fail or lose each other's change.** They take turns now, and an error names the file and the step.
+
 - **Two installs of the master skill into one checkout no longer fail one of them.** A bind and the daemon's start sweep reaching one checkout together now take turns, and both end with the shipped tree.
 
 - **A provision that stopped advancing is now read as stalled, with its age.** It no longer holds release or dispatch on a box running the project's master, and binding over a running master is refused by name.
