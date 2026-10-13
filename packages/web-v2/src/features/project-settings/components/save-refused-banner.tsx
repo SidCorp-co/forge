@@ -9,6 +9,7 @@
 // anywhere else on the page — the page's one form carries its draft across a re-read.
 
 import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { Banner, Button, type SettingsForm } from "@/design";
 import {
 	describeSettings,
@@ -40,6 +41,7 @@ export function SaveRefusedBanner({
 }) {
 	const qc = useQueryClient();
 	const conflicts = writeConflicts(error);
+	const [explained, setExplained] = useState(false);
 
 	function reread(yielding: string[]) {
 		draft.takeStored(yielding);
@@ -80,10 +82,7 @@ export function SaveRefusedBanner({
 				</p>
 				{conflicts.length > 0 && (
 					<>
-						<p className="fg-caption text-muted">
-							Your edits everywhere else on this page are kept either way.
-						</p>
-						<div className="flex flex-wrap gap-2">
+						<div className="flex flex-wrap items-center gap-2">
 							<Button
 								variant="secondary"
 								size="sm"
@@ -94,12 +93,26 @@ export function SaveRefusedBanner({
 							<Button variant="secondary" size="sm" onClick={() => reread([])}>
 								Keep my changes
 							</Button>
+							<Button
+								variant="ghost"
+								size="sm"
+								className="md:hidden"
+								aria-expanded={explained}
+								onClick={() => setExplained((open) => !open)}
+							>
+								{explained ? "Hide details" : "What each does"}
+							</Button>
 						</div>
-						<p className="fg-caption text-muted">
-							<b>Use the current values</b> replaces what you typed into {moved}.{" "}
-							<b>Keep my changes</b> keeps it, and your next save writes over what is stored
-							now — or is refused again, if it moves again first.
-						</p>
+						<div className={explained ? "space-y-1" : "hidden space-y-1 md:block"}>
+							<p className="fg-caption text-muted">
+								Your edits everywhere else on this page are kept either way.
+							</p>
+							<p className="fg-caption text-muted">
+								<b>Use the current values</b> replaces what you typed into {moved}.{" "}
+								<b>Keep my changes</b> keeps it, and your next save writes over what is stored
+								now — or is refused again, if it moves again first.
+							</p>
+						</div>
 					</>
 				)}
 			</div>

@@ -246,6 +246,13 @@ describe("the way out of a refused save", () => {
 	});
 });
 
+describe("a flat page", () => {
+	it("stacks no card: its sections are flush with the page", async () => {
+		await mount();
+		expect(document.querySelectorAll("div.rounded-lg.border.bg-surface.shadow-sm")).toHaveLength(0);
+	});
+});
+
 describe("a row typed only in part", () => {
 	it("is an unsaved edit: Discard is offered, the leave warning is armed, and Save stays blocked", async () => {
 		await mount();

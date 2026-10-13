@@ -8,8 +8,6 @@ import { z } from "zod";
 import type { AnswerStyle } from "@forge/contracts";
 import {
   Banner,
-  Card,
-  CardContent,
   ErrorState,
   Field,
   MonoTag,
@@ -19,6 +17,7 @@ import {
   Skeleton,
   type SelectOption,
   useSettingsForm,
+  SettingsSection,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useAuth } from "@/providers/auth-provider";
@@ -111,27 +110,25 @@ function AccountPreferences({
 
   return (
     <>
-      <Card>
-        <CardContent>
-          <SectionTitle className="fg-h3 mb-4">Preferences</SectionTitle>
-          <div className="space-y-4">
-            <Field label="Theme" hint="Applies the next time the app loads.">
-              <Select
-                options={THEME_OPTIONS}
-                value={theme}
-                onChange={(v) => form.setDraft((d) => ({ ...d, theme: v as ThemePref }))}
-              />
-            </Field>
-            <Field label="Language">
-              <Select
-                options={LANGUAGE_OPTIONS}
-                value={language}
-                onChange={(v) => form.setDraft((d) => ({ ...d, language: v as LanguagePref }))}
-              />
-            </Field>
-          </div>
-        </CardContent>
-      </Card>
+      <SettingsSection>
+        <SectionTitle className="fg-h3 mb-4">Preferences</SectionTitle>
+        <div className="space-y-4">
+          <Field label="Theme" hint="Applies the next time the app loads.">
+            <Select
+              options={THEME_OPTIONS}
+              value={theme}
+              onChange={(v) => form.setDraft((d) => ({ ...d, theme: v as ThemePref }))}
+            />
+          </Field>
+          <Field label="Language">
+            <Select
+              options={LANGUAGE_OPTIONS}
+              value={language}
+              onChange={(v) => form.setDraft((d) => ({ ...d, language: v as LanguagePref }))}
+            />
+          </Field>
+        </div>
+      </SettingsSection>
 
       <AssistantPreferencesCard form={form} />
 
@@ -162,46 +159,40 @@ export function AccountTab() {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardContent>
-          <SectionTitle className="fg-h3 mb-4">Profile</SectionTitle>
-          <dl className="space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <dt className="fg-label">Email</dt>
-              <dd className="fg-body-sm text-fg">{user?.email ?? "—"}</dd>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <dt className="fg-label">User ID</dt>
-              <dd>{user?.id ? <MonoTag>{user.id}</MonoTag> : "—"}</dd>
-            </div>
-          </dl>
-        </CardContent>
-      </Card>
+      <SettingsSection>
+        <SectionTitle className="fg-h3 mb-4">Profile</SectionTitle>
+        <dl className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <dt className="fg-label">Email</dt>
+            <dd className="fg-body-sm text-fg">{user?.email ?? "—"}</dd>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt className="fg-label">User ID</dt>
+            <dd>{user?.id ? <MonoTag>{user.id}</MonoTag> : "—"}</dd>
+          </div>
+        </dl>
+      </SettingsSection>
 
       {prefsQ.data && assistantQ.data ? (
         <AccountPreferences prefs={prefsQ.data} assistant={assistantQ.data} />
       ) : prefsQ.isError || assistantQ.isError ? (
-        <Card>
-          <CardContent>
-            <ErrorState
-              message={formatApiError(prefsQ.error ?? assistantQ.error)}
-              onRetry={() => {
-                void prefsQ.refetch();
-                void assistantQ.refetch();
-              }}
-            />
-          </CardContent>
-        </Card>
+        <SettingsSection>
+          <ErrorState
+            message={formatApiError(prefsQ.error ?? assistantQ.error)}
+            onRetry={() => {
+              void prefsQ.refetch();
+              void assistantQ.refetch();
+            }}
+          />
+        </SettingsSection>
       ) : (
-        <Card>
-          <CardContent>
-            <SectionTitle className="fg-h3 mb-4">Preferences</SectionTitle>
-            <div className="space-y-4">
-              <Skeleton className="h-10 w-full rounded-md" />
-              <Skeleton className="h-10 w-full rounded-md" />
-            </div>
-          </CardContent>
-        </Card>
+        <SettingsSection>
+          <SectionTitle className="fg-h3 mb-4">Preferences</SectionTitle>
+          <div className="space-y-4">
+            <Skeleton className="h-10 w-full rounded-md" />
+            <Skeleton className="h-10 w-full rounded-md" />
+          </div>
+        </SettingsSection>
       )}
     </div>
   );

@@ -341,4 +341,26 @@ describe("the way out of a refused save", () => {
 		expect(banner.textContent).toMatch(/your edits everywhere else on this page are kept/i);
 		expect(banner.textContent).toMatch(/nothing was saved/i);
 	});
+
+	it("keeps the refusal compact on a phone: the explanation is folded behind a toggle, the two ways out are not", async () => {
+		mountPage();
+		await ready();
+		expandOpenStage();
+		await typeADeniedTool("qa_probe_typed_X");
+		moveDeniedTools();
+		press();
+		await screen.findByText(/changed by someone else/i);
+
+		const explanation = screen.getByText(/your edits everywhere else on this page are kept/i).parentElement as HTMLElement;
+		expect(explanation.className).toContain("hidden");
+		expect(explanation.className).toContain("md:block");
+		expect(screen.getByRole("button", { name: /use the current values/i })).toBeVisible();
+		expect(screen.getByRole("button", { name: /keep my changes/i })).toBeVisible();
+
+		const toggle = screen.getByRole("button", { name: "What each does" });
+		expect(toggle).toHaveAttribute("aria-expanded", "false");
+		fireEvent.click(toggle);
+		expect(screen.getByRole("button", { name: "Hide details" })).toHaveAttribute("aria-expanded", "true");
+		expect(explanation.className).not.toContain("hidden");
+	});
 });

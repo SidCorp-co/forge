@@ -6,8 +6,6 @@
 import type { AnswerStyle, PreferenceChange } from "@forge/contracts";
 import {
   Button,
-  Card,
-  CardContent,
   CardTitle,
   Field,
   SectionTitle,
@@ -16,6 +14,7 @@ import {
   Skeleton,
   Textarea,
   type SelectOption,
+  SettingsSection,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
@@ -61,63 +60,61 @@ export function AssistantPreferencesCard({ form }: { form: SettingsForm<AccountD
   }
 
   return (
-    <Card>
-      <CardContent>
-        <SectionTitle className="fg-h3 mb-1">How the assistant answers you</SectionTitle>
-        <p className="fg-body-sm mb-4 text-muted">
-          Applies to every reply addressed to you — in Forge rooms and in every connected chat.
-        </p>
-        <div className="space-y-4">
-          <Field label="Reply style">
-            <Select
-              options={ANSWER_STYLE_OPTIONS}
-              value={answerStyle}
-              onChange={(v) => form.setDraft((d) => ({ ...d, answerStyle: v as AnswerStyle }))}
-            />
-          </Field>
-          <Field
-            label="Standing instructions"
-            hint="Followed in every reply to you. Leave empty for none."
-            error={form.errorAt("assistantInstructions")}
-          >
-            <Textarea
-              value={assistantInstructions}
-              maxLength={2000}
-              onChange={(e) =>
-                form.setDraft((d) => ({ ...d, assistantInstructions: e.target.value }))
-              }
-            />
-          </Field>
-        </div>
+    <SettingsSection>
+      <SectionTitle className="fg-h3 mb-1">How the assistant answers you</SectionTitle>
+      <p className="fg-body-sm mb-4 text-muted">
+        Applies to every reply addressed to you — in Forge rooms and in every connected chat.
+      </p>
+      <div className="space-y-4">
+        <Field label="Reply style">
+          <Select
+            options={ANSWER_STYLE_OPTIONS}
+            value={answerStyle}
+            onChange={(v) => form.setDraft((d) => ({ ...d, answerStyle: v as AnswerStyle }))}
+          />
+        </Field>
+        <Field
+          label="Standing instructions"
+          hint="Followed in every reply to you. Leave empty for none."
+          error={form.errorAt("assistantInstructions")}
+        >
+          <Textarea
+            value={assistantInstructions}
+            maxLength={2000}
+            onChange={(e) =>
+              form.setDraft((d) => ({ ...d, assistantInstructions: e.target.value }))
+            }
+          />
+        </Field>
+      </div>
 
-        <CardTitle className="mt-8 mb-2">Changes</CardTitle>
-        {changesQ.isLoading ? (
-          <Skeleton className="h-10 w-full rounded-md" />
-        ) : !changesQ.data || changesQ.data.length === 0 ? (
-          <p className="fg-body-sm text-muted">Nothing has been changed yet.</p>
-        ) : (
-          <ul className="divide-y divide-line" data-testid="preference-changes">
-            {changesQ.data.map((change) => (
-              <li key={change.id} className="flex items-center justify-between gap-3 py-2">
-                <div>
-                  <p className="fg-body-sm">{describeChange(change)}</p>
-                  <p className="fg-caption text-subtle">
-                    {new Date(change.changedAt).toLocaleString()}
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  disabled={restore.isPending}
-                  onClick={() => onRestore(change)}
-                  aria-label={`Restore: ${describeChange(change)}`}
-                >
-                  Restore
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </CardContent>
-    </Card>
+      <CardTitle className="mt-8 mb-2">Changes</CardTitle>
+      {changesQ.isLoading ? (
+        <Skeleton className="h-10 w-full rounded-md" />
+      ) : !changesQ.data || changesQ.data.length === 0 ? (
+        <p className="fg-body-sm text-muted">Nothing has been changed yet.</p>
+      ) : (
+        <ul className="divide-y divide-line" data-testid="preference-changes">
+          {changesQ.data.map((change) => (
+            <li key={change.id} className="flex items-center justify-between gap-3 py-2">
+              <div>
+                <p className="fg-body-sm">{describeChange(change)}</p>
+                <p className="fg-caption text-subtle">
+                  {new Date(change.changedAt).toLocaleString()}
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                disabled={restore.isPending}
+                onClick={() => onRestore(change)}
+                aria-label={`Restore: ${describeChange(change)}`}
+              >
+                Restore
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </SettingsSection>
   );
 }

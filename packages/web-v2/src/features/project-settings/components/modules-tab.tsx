@@ -15,8 +15,6 @@
 import { useMemo, useState } from "react";
 import {
   Button,
-  Card,
-  CardContent,
   ConfirmDialog,
   EmptyState,
   ErrorState,
@@ -27,6 +25,7 @@ import {
   Skeleton,
   Textarea,
   type SelectOption,
+  SettingsSection,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCreateLabel, useDeleteLabel, useLabels, useUpdateLabel } from "../hooks";
@@ -234,89 +233,87 @@ export function ModulesTab({ projectId, canEdit }: { projectId: string; canEdit:
   }
 
   return (
-    <Card>
-      <CardContent>
-        <SectionTitle className="fg-h3 mb-1">Modules</SectionTitle>
-        <p className="fg-body-sm mb-4 text-muted">
-          The parts of this project issues are attributed to. Each issue has one primary module and
-          any number of secondary ones.
-        </p>
+    <SettingsSection>
+      <SectionTitle className="fg-h3 mb-1">Modules</SectionTitle>
+      <p className="fg-body-sm mb-4 text-muted">
+        The parts of this project issues are attributed to. Each issue has one primary module and
+        any number of secondary ones.
+      </p>
 
-        {labelsQ.isLoading ? (
-          <div className="space-y-2">
-            <Skeleton className="h-12 w-full rounded-md" />
-            <Skeleton className="h-12 w-5/6 rounded-md" />
-            <Skeleton className="h-12 w-2/3 rounded-md" />
-          </div>
-        ) : labelsQ.isError ? (
-          <ErrorState
-            title="Couldn't load modules"
-            message={formatApiError(labelsQ.error)}
-            onRetry={() => labelsQ.refetch()}
-          />
-        ) : modules.length === 0 ? (
-          <EmptyState
-            title="No modules yet"
-            message="Add a module to attribute issues to a part of this project."
-            mascot={false}
-          />
-        ) : (
-          <ul className="space-y-1.5">
-            {tree.map((node) => (
-              <ModuleRow
-                key={node.module.id}
-                node={node}
-                modules={modules}
-                canEdit={canEdit}
-                saving={update.isPending || remove.isPending}
-                onPatch={(patch) => update.mutate({ labelId: node.module.id, patch })}
-                onDelete={() => setPendingDelete(node.module)}
-              />
-            ))}
-          </ul>
-        )}
-
-        {canEdit && (
-          <div className="mt-4 flex items-end gap-2">
-            <div className="flex-1">
-              <Input
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="New module name"
-                aria-label="New module name"
-                maxLength={64}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") add();
-                }}
-              />
-            </div>
-            <Button
-              variant="secondary"
-              icon="plus"
-              loading={create.isPending}
-              disabled={newName.trim() === ""}
-              onClick={add}
-              className="min-h-11"
-            >
-              Add
-            </Button>
-          </div>
-        )}
-
-        <ConfirmDialog
-          open={pendingDelete !== null}
-          title="Delete module"
-          message={`${pendingDelete?.name ?? ""} is removed from the taxonomy. Issues tagged with it keep their other modules. This cannot be undone.`}
-          confirmLabel="Delete"
-          tone="danger"
-          loading={remove.isPending}
-          onConfirm={() => {
-            if (!pendingDelete) return;
-            remove.mutate(pendingDelete.id, { onSettled: () => setPendingDelete(null) });
-          }}
-          onClose={() => setPendingDelete(null)}
+      {labelsQ.isLoading ? (
+        <div className="space-y-2">
+          <Skeleton className="h-12 w-full rounded-md" />
+          <Skeleton className="h-12 w-5/6 rounded-md" />
+          <Skeleton className="h-12 w-2/3 rounded-md" />
+        </div>
+      ) : labelsQ.isError ? (
+        <ErrorState
+          title="Couldn't load modules"
+          message={formatApiError(labelsQ.error)}
+          onRetry={() => labelsQ.refetch()}
         />
-      </CardContent>
-    </Card>
+      ) : modules.length === 0 ? (
+        <EmptyState
+          title="No modules yet"
+          message="Add a module to attribute issues to a part of this project."
+          mascot={false}
+        />
+      ) : (
+        <ul className="space-y-1.5">
+          {tree.map((node) => (
+            <ModuleRow
+              key={node.module.id}
+              node={node}
+              modules={modules}
+              canEdit={canEdit}
+              saving={update.isPending || remove.isPending}
+              onPatch={(patch) => update.mutate({ labelId: node.module.id, patch })}
+              onDelete={() => setPendingDelete(node.module)}
+            />
+          ))}
+        </ul>
+      )}
+
+      {canEdit && (
+        <div className="mt-4 flex items-end gap-2">
+          <div className="flex-1">
+            <Input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="New module name"
+              aria-label="New module name"
+              maxLength={64}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") add();
+              }}
+            />
+          </div>
+          <Button
+            variant="secondary"
+            icon="plus"
+            loading={create.isPending}
+            disabled={newName.trim() === ""}
+            onClick={add}
+            className="min-h-11"
+          >
+            Add
+          </Button>
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title="Delete module"
+        message={`${pendingDelete?.name ?? ""} is removed from the taxonomy. Issues tagged with it keep their other modules. This cannot be undone.`}
+        confirmLabel="Delete"
+        tone="danger"
+        loading={remove.isPending}
+        onConfirm={() => {
+          if (!pendingDelete) return;
+          remove.mutate(pendingDelete.id, { onSettled: () => setPendingDelete(null) });
+        }}
+        onClose={() => setPendingDelete(null)}
+      />
+    </SettingsSection>
   );
 }

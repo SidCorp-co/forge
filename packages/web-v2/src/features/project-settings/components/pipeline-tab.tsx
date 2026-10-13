@@ -9,8 +9,6 @@ import Link from "next/link";
 import { type ReactNode, useMemo, useState } from "react";
 import {
   Banner,
-  Card,
-  CardContent,
   Collapsible,
   EmptyState,
   ErrorState,
@@ -20,6 +18,7 @@ import {
   Skeleton,
   Toggle,
   useSettingsForm,
+  SettingsSection,
 } from "@/design";
 import { useProject } from "@/features/projects/hooks";
 import { useProjectRunners } from "@/features/runners/hooks";
@@ -147,86 +146,84 @@ function PipelinePage({
 
   return (
     <>
-      <Card>
-        <CardContent>
-          <SectionTitle className="fg-h3 mb-1">Pipeline</SectionTitle>
-          <p className="fg-body-sm mb-1 text-muted">
-            An issue is picked up at <b>Open</b>, runs as one session, and ends either at{" "}
-            <b>Needs info</b>, <b>{ISSUE_STATUS_LABELS.awaiting_release}</b> or closed. The session is driven by the{" "}
-            <code>issue-flow</code> skill, which this project gets from a plugin — see Plugins below.
+      <SettingsSection>
+        <SectionTitle className="fg-h3 mb-1">Pipeline</SectionTitle>
+        <p className="fg-body-sm mb-1 text-muted">
+          An issue is picked up at <b>Open</b>, runs as one session, and ends either at{" "}
+          <b>Needs info</b>, <b>{ISSUE_STATUS_LABELS.awaiting_release}</b> or closed. The session is driven by the{" "}
+          <code>issue-flow</code> skill, which this project gets from a plugin — see Plugins below.
+        </p>
+        {libraryHref && (
+          <p className="fg-caption mb-4">
+            <Link href={libraryHref} className="text-accent-text hover:underline">
+              Manage or create skills in Library →
+            </Link>
           </p>
-          {libraryHref && (
-            <p className="fg-caption mb-4">
-              <Link href={libraryHref} className="text-accent-text hover:underline">
-                Manage or create skills in Library →
-              </Link>
-            </p>
-          )}
+        )}
 
-          <div className="divide-y divide-line">
-            <StageRow
-              label="Pipeline enabled"
-              hint="Master switch — when off, nothing is dispatched."
-              control={
-                <Toggle
-                  checked={masterEnabled}
-                  onChange={(v) => form.setDraft((d) => ({ ...d, enabled: v }))}
-                  disabled={!canEdit}
-                  aria-label="Pipeline enabled"
-                />
-              }
-            />
-            <StageRow
-              label="Start queued issues automatically"
-              hint="Off holds every issue at Open until a human starts it. The pipeline stays on — nothing else changes."
-              control={
-                <Toggle
-                  checked={entryGateOpen(draft)}
-                  onChange={(open) => form.setDraft((d) => withEntryGate(d, open))}
-                  disabled={!canEdit || !masterEnabled}
-                  aria-label="Start queued issues automatically"
-                />
-              }
-            />
-          </div>
-
-          <ReleaseSection projectId={projectId} slug={slug} />
-
-          <PluginsSection form={form} canEdit={canEdit} />
-
-          <McpServersSection form={form} canEdit={canEdit} />
-
-          <StagePermissionsSection config={config} form={form} canEdit={canEdit} deviceNames={deviceNames} />
-
-          <RunnerPoolsSection projectId={projectId} form={form} canEdit={canEdit} />
-
-          <IntakeGateSection form={form} canEdit={canEdit} />
-
-          <PoolBacklogSection form={form} canEdit={canEdit} />
-
-          <KnowledgePromotionSection form={form} canEdit={canEdit} />
-
-          <AssistantWeeklySection
-            projectId={projectId}
-            form={form}
-            canEdit={canEdit}
-            savedEnabled={config.assistantWeekly?.enabled === true}
+        <div className="divide-y divide-line">
+          <StageRow
+            label="Pipeline enabled"
+            hint="Master switch — when off, nothing is dispatched."
+            control={
+              <Toggle
+                checked={masterEnabled}
+                onChange={(v) => form.setDraft((d) => ({ ...d, enabled: v }))}
+                disabled={!canEdit}
+                aria-label="Pipeline enabled"
+              />
+            }
           />
+          <StageRow
+            label="Start queued issues automatically"
+            hint="Off holds every issue at Open until a human starts it. The pipeline stays on — nothing else changes."
+            control={
+              <Toggle
+                checked={entryGateOpen(draft)}
+                onChange={(open) => form.setDraft((d) => withEntryGate(d, open))}
+                disabled={!canEdit || !masterEnabled}
+                aria-label="Start queued issues automatically"
+              />
+            }
+          />
+        </div>
 
-          <div className="mt-6 border-t border-line pt-5">
-            <Collapsible title={`Configured elsewhere — ${API_ONLY_KEYS.length} keys this screen doesn't edit`}>
-              <ul className="space-y-2">
-                {API_ONLY_KEYS.map((k) => (
-                  <li key={k.key}>
-                    <p className="fg-label font-mono text-fg">{k.key}</p>
-                    <p className="fg-caption text-muted">{k.reason}</p>
-                  </li>
-                ))}
-              </ul>
-            </Collapsible>
-          </div>
-        </CardContent>
-      </Card>
+        <ReleaseSection projectId={projectId} slug={slug} />
+
+        <PluginsSection form={form} canEdit={canEdit} />
+
+        <McpServersSection form={form} canEdit={canEdit} />
+
+        <StagePermissionsSection config={config} form={form} canEdit={canEdit} deviceNames={deviceNames} />
+
+        <RunnerPoolsSection projectId={projectId} form={form} canEdit={canEdit} />
+
+        <IntakeGateSection form={form} canEdit={canEdit} />
+
+        <PoolBacklogSection form={form} canEdit={canEdit} />
+
+        <KnowledgePromotionSection form={form} canEdit={canEdit} />
+
+        <AssistantWeeklySection
+          projectId={projectId}
+          form={form}
+          canEdit={canEdit}
+          savedEnabled={config.assistantWeekly?.enabled === true}
+        />
+
+        <div className="mt-6 border-t border-line pt-5">
+          <Collapsible title={`Configured elsewhere — ${API_ONLY_KEYS.length} keys this screen doesn't edit`}>
+            <ul className="space-y-2">
+              {API_ONLY_KEYS.map((k) => (
+                <li key={k.key}>
+                  <p className="fg-label font-mono text-fg">{k.key}</p>
+                  <p className="fg-caption text-muted">{k.reason}</p>
+                </li>
+              ))}
+            </ul>
+          </Collapsible>
+        </div>
+      </SettingsSection>
 
       {canEdit && (
         <SettingsFormBar
@@ -275,51 +272,43 @@ export function PipelineTab({
 
   if (cfgQ.isLoading || projectQ.isLoading) {
     return (
-      <Card>
-        <CardContent>
-          <div className="space-y-3">
-            <Skeleton className="h-10 w-full rounded-md" />
-            <Skeleton className="h-10 w-full rounded-md" />
-            <Skeleton className="h-10 w-full rounded-md" />
-          </div>
-        </CardContent>
-      </Card>
+      <SettingsSection>
+        <div className="space-y-3">
+          <Skeleton className="h-10 w-full rounded-md" />
+          <Skeleton className="h-10 w-full rounded-md" />
+          <Skeleton className="h-10 w-full rounded-md" />
+        </div>
+      </SettingsSection>
     );
   }
 
   if (cfgQ.isError) {
     if (isFeatureOff(cfgQ.error)) {
       return (
-        <Card>
-          <CardContent>
-            <EmptyState
-              title="Pipeline control is off"
-              message="Per-project pipeline configuration isn't enabled on this deployment. Issues run on the built-in defaults."
-              mascot={false}
-            />
-          </CardContent>
-        </Card>
+        <SettingsSection>
+          <EmptyState
+            title="Pipeline control is off"
+            message="Per-project pipeline configuration isn't enabled on this deployment. Issues run on the built-in defaults."
+            mascot={false}
+          />
+        </SettingsSection>
       );
     }
     return (
-      <Card>
-        <CardContent>
-          <ErrorState message={formatApiError(cfgQ.error)} onRetry={() => cfgQ.refetch()} />
-        </CardContent>
-      </Card>
+      <SettingsSection>
+        <ErrorState message={formatApiError(cfgQ.error)} onRetry={() => cfgQ.refetch()} />
+      </SettingsSection>
     );
   }
 
   if (projectQ.isError || !projectQ.data) {
     return (
-      <Card>
-        <CardContent>
-          <ErrorState
-            message={projectQ.error ? formatApiError(projectQ.error) : "The project could not be read."}
-            onRetry={() => projectQ.refetch()}
-          />
-        </CardContent>
-      </Card>
+      <SettingsSection>
+        <ErrorState
+          message={projectQ.error ? formatApiError(projectQ.error) : "The project could not be read."}
+          onRetry={() => projectQ.refetch()}
+        />
+      </SettingsSection>
     );
   }
 

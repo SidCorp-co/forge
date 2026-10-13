@@ -23,7 +23,7 @@ export function SettingsFormBar({
 }: SettingsFormBarProps) {
   return (
     <div className="sticky bottom-0 z-10 mt-8 border-t border-line bg-surface py-3">
-      {children && <div className="mb-3 space-y-3">{children}</div>}
+      {children && <div className="mb-3 max-h-[40dvh] space-y-3 overflow-y-auto">{children}</div>}
       <div className="flex flex-wrap items-center gap-3">
         <p className="fg-body-sm min-w-0 flex-1 text-muted" aria-live="polite">
           {blockedBy ?? (dirty ? "You have unsaved changes." : "No unsaved changes.")}

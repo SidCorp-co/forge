@@ -3,8 +3,6 @@
 import {
   Badge,
   Button,
-  Card,
-  CardContent,
   CardTitle,
   ErrorState,
   Field,
@@ -14,6 +12,7 @@ import {
   Select,
   Skeleton,
   type SelectOption,
+  SettingsSection,
 } from "@/design";
 import { useOrgMembers } from "@/features/orgs/hooks";
 import { useProjectsIncludingArchived } from "@/features/projects/hooks";
@@ -91,180 +90,178 @@ export function MembersTab({
   }
 
   return (
-    <Card>
-      <CardContent>
-        <SectionTitle className="fg-h3 mb-4">Members</SectionTitle>
+    <SettingsSection>
+      <SectionTitle className="fg-h3 mb-4">Members</SectionTitle>
 
-        {membersQ.isLoading ? (
-          <div className="space-y-2">
+      {membersQ.isLoading ? (
+        <div className="space-y-2">
+          <Skeleton className="h-9 w-full rounded-md" />
+          <Skeleton className="h-9 w-3/4 rounded-md" />
+        </div>
+      ) : membersQ.isError ? (
+        <ErrorState
+          message={formatApiError(membersQ.error)}
+          onRetry={() => membersQ.refetch()}
+        />
+      ) : (
+        <ul className="space-y-1.5">
+          {(membersQ.data ?? []).map((m) => (
+            <li
+              key={m.userId}
+              className="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2"
+            >
+              <span className="min-w-0 truncate text-fg">{m.email}</span>
+              <span className="flex shrink-0 items-center gap-2">
+                {canEdit ? (
+                  <Select
+                    options={ROLE_OPTIONS}
+                    value={m.role}
+                    onChange={(v) =>
+                      updateRole.mutate({
+                        userId: m.userId,
+                        role: v as "admin" | "member" | "viewer",
+                      })
+                    }
+                    disabled={updateRole.isPending}
+                  />
+                ) : (
+                  <Badge tone={m.role === "admin" ? "accent" : "neutral"}>
+                    {m.role}
+                  </Badge>
+                )}
+                {canEdit && (
+                  <IconButton
+                    icon="trash"
+                    aria-label={`Remove ${m.email}`}
+                    onClick={() => remove.mutate(m.userId)}
+                    disabled={remove.isPending}
+                  />
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {canEdit && (
+        <div className="mt-4 space-y-3 border-t border-line pt-4">
+          <CardTitle className="fg-label text-fg">Pending invitations</CardTitle>
+          {invitationsQ.isLoading ? (
             <Skeleton className="h-9 w-full rounded-md" />
-            <Skeleton className="h-9 w-3/4 rounded-md" />
-          </div>
-        ) : membersQ.isError ? (
-          <ErrorState
-            message={formatApiError(membersQ.error)}
-            onRetry={() => membersQ.refetch()}
-          />
-        ) : (
-          <ul className="space-y-1.5">
-            {(membersQ.data ?? []).map((m) => (
-              <li
-                key={m.userId}
-                className="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2"
-              >
-                <span className="min-w-0 truncate text-fg">{m.email}</span>
-                <span className="flex shrink-0 items-center gap-2">
-                  {canEdit ? (
-                    <Select
-                      options={ROLE_OPTIONS}
-                      value={m.role}
-                      onChange={(v) =>
-                        updateRole.mutate({
-                          userId: m.userId,
-                          role: v as "admin" | "member" | "viewer",
-                        })
-                      }
-                      disabled={updateRole.isPending}
-                    />
-                  ) : (
-                    <Badge tone={m.role === "admin" ? "accent" : "neutral"}>
-                      {m.role}
-                    </Badge>
-                  )}
-                  {canEdit && (
+          ) : invitationsQ.isError ? (
+            <ErrorState
+              message={formatApiError(invitationsQ.error)}
+              onRetry={() => invitationsQ.refetch()}
+            />
+          ) : (invitationsQ.data ?? []).length === 0 ? (
+            <p className="fg-body-sm text-subtle">No pending invitations.</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {(invitationsQ.data ?? []).map((inv) => (
+                <li
+                  key={inv.email}
+                  className="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2"
+                >
+                  <span className="min-w-0 truncate text-fg">
+                    {inv.email}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    {inv.expired && <Badge tone="amber">Expired</Badge>}
+                    <Badge tone="neutral">{inv.role}</Badge>
                     <IconButton
                       icon="trash"
-                      aria-label={`Remove ${m.email}`}
-                      onClick={() => remove.mutate(m.userId)}
-                      disabled={remove.isPending}
+                      aria-label={`Cancel invitation for ${inv.email}`}
+                      onClick={() => revoke.mutate(inv.email)}
+                      disabled={revoke.isPending}
                     />
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
-        {canEdit && (
-          <div className="mt-4 space-y-3 border-t border-line pt-4">
-            <CardTitle className="fg-label text-fg">Pending invitations</CardTitle>
-            {invitationsQ.isLoading ? (
-              <Skeleton className="h-9 w-full rounded-md" />
-            ) : invitationsQ.isError ? (
-              <ErrorState
-                message={formatApiError(invitationsQ.error)}
-                onRetry={() => invitationsQ.refetch()}
-              />
-            ) : (invitationsQ.data ?? []).length === 0 ? (
-              <p className="fg-body-sm text-subtle">No pending invitations.</p>
-            ) : (
-              <ul className="space-y-1.5">
-                {(invitationsQ.data ?? []).map((inv) => (
-                  <li
-                    key={inv.email}
-                    className="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2"
-                  >
-                    <span className="min-w-0 truncate text-fg">
-                      {inv.email}
-                    </span>
-                    <span className="flex shrink-0 items-center gap-2">
-                      {inv.expired && <Badge tone="amber">Expired</Badge>}
-                      <Badge tone="neutral">{inv.role}</Badge>
-                      <IconButton
-                        icon="trash"
-                        aria-label={`Cancel invitation for ${inv.email}`}
-                        onClick={() => revoke.mutate(inv.email)}
-                        disabled={revoke.isPending}
-                      />
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-
-        {canEdit && orgId && orgCandidates.length > 0 && (
-          <div className="mt-4 space-y-3 border-t border-line pt-4">
-            <CardTitle className="fg-label text-fg">Add from organization</CardTitle>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-              <div className="flex-1">
-                <Field label="Org member">
-                  <Select
-                    options={orgCandidateOptions}
-                    value={addUserId}
-                    onChange={(v) => setAddUserId(v)}
-                    placeholder="Select an org member…"
-                  />
-                </Field>
-              </div>
-              <div className="sm:w-40">
-                <Field label="Role">
-                  <Select
-                    options={ROLE_OPTIONS}
-                    value={addRole}
-                    onChange={(v) =>
-                      setAddRole(v as "admin" | "member" | "viewer")
-                    }
-                  />
-                </Field>
-              </div>
-              <Button
-                variant="primary"
-                icon="plus"
-                loading={directAdd.isPending}
-                disabled={!addUserId}
-                onClick={addFromOrg}
-                className="min-h-11"
-              >
-                Add
-              </Button>
+      {canEdit && orgId && orgCandidates.length > 0 && (
+        <div className="mt-4 space-y-3 border-t border-line pt-4">
+          <CardTitle className="fg-label text-fg">Add from organization</CardTitle>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+            <div className="flex-1">
+              <Field label="Org member">
+                <Select
+                  options={orgCandidateOptions}
+                  value={addUserId}
+                  onChange={(v) => setAddUserId(v)}
+                  placeholder="Select an org member…"
+                />
+              </Field>
             </div>
-          </div>
-        )}
-
-        {canEdit && (
-          <div className="mt-4 space-y-3 border-t border-line pt-4">
-            <CardTitle className="fg-label text-fg">
-              Invite by email (outside the org)
-            </CardTitle>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-              <div className="flex-1">
-                <Field label="Email">
-                  <Input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="teammate@example.com"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") send();
-                    }}
-                  />
-                </Field>
-              </div>
-              <div className="sm:w-40">
-                <Field label="Role">
-                  <Select
-                    options={ROLE_OPTIONS}
-                    value={role}
-                    onChange={(v) => setRole(v as "admin" | "member")}
-                  />
-                </Field>
-              </div>
-              <Button
-                variant="primary"
-                icon="mail"
-                loading={invite.isPending}
-                disabled={email.trim() === ""}
-                onClick={send}
-                className="min-h-11"
-              >
-                Invite
-              </Button>
+            <div className="sm:w-40">
+              <Field label="Role">
+                <Select
+                  options={ROLE_OPTIONS}
+                  value={addRole}
+                  onChange={(v) =>
+                    setAddRole(v as "admin" | "member" | "viewer")
+                  }
+                />
+              </Field>
             </div>
+            <Button
+              variant="primary"
+              icon="plus"
+              loading={directAdd.isPending}
+              disabled={!addUserId}
+              onClick={addFromOrg}
+              className="min-h-11"
+            >
+              Add
+            </Button>
           </div>
-        )}
-      </CardContent>
-    </Card>
+        </div>
+      )}
+
+      {canEdit && (
+        <div className="mt-4 space-y-3 border-t border-line pt-4">
+          <CardTitle className="fg-label text-fg">
+            Invite by email (outside the org)
+          </CardTitle>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+            <div className="flex-1">
+              <Field label="Email">
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="teammate@example.com"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") send();
+                  }}
+                />
+              </Field>
+            </div>
+            <div className="sm:w-40">
+              <Field label="Role">
+                <Select
+                  options={ROLE_OPTIONS}
+                  value={role}
+                  onChange={(v) => setRole(v as "admin" | "member")}
+                />
+              </Field>
+            </div>
+            <Button
+              variant="primary"
+              icon="mail"
+              loading={invite.isPending}
+              disabled={email.trim() === ""}
+              onClick={send}
+              className="min-h-11"
+            >
+              Invite
+            </Button>
+          </div>
+        </div>
+      )}
+    </SettingsSection>
   );
 }

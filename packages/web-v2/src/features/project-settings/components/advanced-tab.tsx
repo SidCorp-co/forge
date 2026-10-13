@@ -2,13 +2,12 @@
 
 import {
   Button,
-  Card,
-  CardContent,
   Field,
   Input,
   SectionTitle,
   Select,
   type SelectOption,
+  SettingsSection,
 } from "@/design";
 import { useOrgs } from "@/features/orgs/hooks";
 import { useProjectsIncludingArchived } from "@/features/projects/hooks";
@@ -48,92 +47,90 @@ export function AdvancedTab({
     <div className="space-y-6">
       {canEdit && <MoveToOrgCard project={project} />}
 
-      <Card>
-        <CardContent>
-          <SectionTitle className="fg-h3 mb-1">Archive project</SectionTitle>
-          {isArchived ? (
-            <>
-              <p className="fg-caption mb-4 text-muted">
-                This project is <strong>archived</strong>. It is hidden from the
-                default project list and no new pipeline jobs are dispatched.
-                All issues, comments, runs, and sessions are retained. Unarchive
-                to make it active again.
-              </p>
-              {canEdit && (
+      <SettingsSection>
+        <SectionTitle className="fg-h3 mb-1">Archive project</SectionTitle>
+        {isArchived ? (
+          <>
+            <p className="fg-caption mb-4 text-muted">
+              This project is <strong>archived</strong>. It is hidden from the
+              default project list and no new pipeline jobs are dispatched.
+              All issues, comments, runs, and sessions are retained. Unarchive
+              to make it active again.
+            </p>
+            {canEdit && (
+              <Button
+                variant="primary"
+                loading={unarchive.isPending}
+                onClick={() => unarchive.mutate()}
+                className="min-h-11"
+              >
+                Unarchive project
+              </Button>
+            )}
+          </>
+        ) : (
+          <>
+            <p className="fg-caption mb-4 text-muted">
+              Archiving hides this project from the default list and pauses
+              auto-pipeline dispatch. Nothing is deleted — issues, comments,
+              runs, and sessions are kept and you can unarchive at any time.
+            </p>
+            {canEdit &&
+              (confirming ? (
+                <div className="space-y-4">
+                  <Field
+                    label="Confirm archive"
+                    hint={`Type the project name "${project.name}" to confirm.`}
+                  >
+                    <Input
+                      value={typed}
+                      onChange={(e) => setTyped(e.target.value)}
+                      placeholder={project.name}
+                      autoComplete="off"
+                      aria-label="Type the project name to confirm archive"
+                    />
+                  </Field>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="danger"
+                      loading={archive.isPending}
+                      disabled={!nameMatches}
+                      onClick={() =>
+                        archive.mutate(undefined, {
+                          onSuccess: () => {
+                            setConfirming(false);
+                            setTyped("");
+                          },
+                        })
+                      }
+                      className="min-h-11"
+                    >
+                      Confirm archive
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        setConfirming(false);
+                        setTyped("");
+                      }}
+                      className="min-h-11"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
                 <Button
-                  variant="primary"
-                  loading={unarchive.isPending}
-                  onClick={() => unarchive.mutate()}
+                  variant="danger"
+                  onClick={() => setConfirming(true)}
                   className="min-h-11"
                 >
-                  Unarchive project
+                  Archive project
                 </Button>
-              )}
-            </>
-          ) : (
-            <>
-              <p className="fg-caption mb-4 text-muted">
-                Archiving hides this project from the default list and pauses
-                auto-pipeline dispatch. Nothing is deleted — issues, comments,
-                runs, and sessions are kept and you can unarchive at any time.
-              </p>
-              {canEdit &&
-                (confirming ? (
-                  <div className="space-y-4">
-                    <Field
-                      label="Confirm archive"
-                      hint={`Type the project name "${project.name}" to confirm.`}
-                    >
-                      <Input
-                        value={typed}
-                        onChange={(e) => setTyped(e.target.value)}
-                        placeholder={project.name}
-                        autoComplete="off"
-                        aria-label="Type the project name to confirm archive"
-                      />
-                    </Field>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="danger"
-                        loading={archive.isPending}
-                        disabled={!nameMatches}
-                        onClick={() =>
-                          archive.mutate(undefined, {
-                            onSuccess: () => {
-                              setConfirming(false);
-                              setTyped("");
-                            },
-                          })
-                        }
-                        className="min-h-11"
-                      >
-                        Confirm archive
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        onClick={() => {
-                          setConfirming(false);
-                          setTyped("");
-                        }}
-                        className="min-h-11"
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <Button
-                    variant="danger"
-                    onClick={() => setConfirming(true)}
-                    className="min-h-11"
-                  >
-                    Archive project
-                  </Button>
-                ))}
-            </>
-          )}
-        </CardContent>
-      </Card>
+              ))}
+          </>
+        )}
+      </SettingsSection>
     </div>
   );
 }
@@ -174,36 +171,34 @@ function MoveToOrgCard({ project }: { project: ProjectDetail }) {
   }
 
   return (
-    <Card>
-      <CardContent>
-        <SectionTitle className="fg-h3 mb-1">Move to organization</SectionTitle>
-        <p className="fg-caption mb-4 text-muted">
-          Transfer this project to another organization you administer. Owners
-          and admins of the destination org will manage the project; per-project
-          members are kept.
-        </p>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-          <div className="flex-1 sm:max-w-80">
-            <Field label="Destination organization">
-              <Select
-                options={options}
-                value={targetOrgId}
-                onChange={(v) => setTargetOrgId(v)}
-                placeholder="Select an organization…"
-              />
-            </Field>
-          </div>
-          <Button
-            variant="primary"
-            loading={update.isPending}
-            disabled={!targetOrgId}
-            onClick={move}
-            className="min-h-11"
-          >
-            Move
-          </Button>
+    <SettingsSection>
+      <SectionTitle className="fg-h3 mb-1">Move to organization</SectionTitle>
+      <p className="fg-caption mb-4 text-muted">
+        Transfer this project to another organization you administer. Owners
+        and admins of the destination org will manage the project; per-project
+        members are kept.
+      </p>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+        <div className="flex-1 sm:max-w-80">
+          <Field label="Destination organization">
+            <Select
+              options={options}
+              value={targetOrgId}
+              onChange={(v) => setTargetOrgId(v)}
+              placeholder="Select an organization…"
+            />
+          </Field>
         </div>
-      </CardContent>
-    </Card>
+        <Button
+          variant="primary"
+          loading={update.isPending}
+          disabled={!targetOrgId}
+          onClick={move}
+          className="min-h-11"
+        >
+          Move
+        </Button>
+      </div>
+    </SettingsSection>
   );
 }
