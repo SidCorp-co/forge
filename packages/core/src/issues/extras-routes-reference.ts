@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../api-reference/describe.js';
+import { describeOperation, fail, json, NO_SUCH_PROJECT } from '../api-reference/describe.js';
 import { issuePriorities, issueStatuses } from '../db/schema.js';
 import { BATCH_SKIP_BY_CODE } from './batch-skip-reason.js';
 import { ISSUE_REF_REFUSALS } from './search-reference.js';
@@ -83,7 +83,7 @@ export const patchIssuesBatch = describeOperation({
   summary: 'Change the status, priority or category of up to 100 issues at once',
   description:
     'Never refused as a whole: each issue lands in `updated`, `skipped` or `failed`. A status move the state machine refused is named in `skipReason` when other fields were still written.',
-  responses: { 200: json(batchResultSchema) },
+  responses: { 200: json(batchResultSchema), 404: NO_SUCH_PROJECT },
 });
 
 export const enrichIssue = describeOperation({

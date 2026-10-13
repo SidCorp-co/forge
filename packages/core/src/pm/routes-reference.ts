@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { describeOperation, empty, fail, json } from '../api-reference/describe.js';
+import {
+  describeOperation,
+  empty,
+  fail,
+  json,
+  NO_SUCH_PROJECT,
+} from '../api-reference/describe.js';
 import { tableRow } from '../api-reference/rows.js';
 import { pmConfig, pmDecisions, pmPolicies } from '../db/schema.js';
 
@@ -104,6 +110,7 @@ export const runPm = describeOperation({
     403: fail('FORBIDDEN', MEMBER),
     409: fail('DISABLED', 'the PM agent is not enabled on the project'),
     422: fail('POOL_JOB_NO_PROMPT', 'the PM run could not be started: no prompt is built for it'),
+    404: NO_SUCH_PROJECT,
   },
 });
 
@@ -120,23 +127,31 @@ export const respondEscalation = describeOperation({
 
 export const readPmConfig = describeOperation({
   summary: "Read a project's PM config, creating the default row on first read",
-  responses: { 200: json(pmConfigSchema), 403: fail('FORBIDDEN', VIEWER) },
+  responses: { 200: json(pmConfigSchema), 403: fail('FORBIDDEN', VIEWER), 404: NO_SUCH_PROJECT },
 });
 
 export const updatePmConfig = describeOperation({
   summary: "Change a project's PM config",
   description: 'Only the fields sent change.',
-  responses: { 200: json(pmConfigSchema, 'The config as updated'), 403: fail('FORBIDDEN', ADMIN) },
+  responses: {
+    200: json(pmConfigSchema, 'The config as updated'),
+    403: fail('FORBIDDEN', ADMIN),
+    404: NO_SUCH_PROJECT,
+  },
 });
 
 export const listPolicies = describeOperation({
   summary: "List a project's PM policies, highest priority first",
-  responses: { 200: json(policyListSchema), 403: fail('FORBIDDEN', VIEWER) },
+  responses: { 200: json(policyListSchema), 403: fail('FORBIDDEN', VIEWER), 404: NO_SUCH_PROJECT },
 });
 
 export const createPolicy = describeOperation({
   summary: 'Add a PM policy',
-  responses: { 201: json(policySchema, 'The policy as created'), 403: fail('FORBIDDEN', ADMIN) },
+  responses: {
+    201: json(policySchema, 'The policy as created'),
+    403: fail('FORBIDDEN', ADMIN),
+    404: NO_SUCH_PROJECT,
+  },
 });
 
 export const updatePolicy = describeOperation({
@@ -161,5 +176,9 @@ export const deletePolicy = describeOperation({
 export const listDecisions = describeOperation({
   summary: "List a project's PM decisions, newest first",
   description: 'Paged by `page` and `pageSize`; `cause` filters to one cause.',
-  responses: { 200: json(decisionListSchema), 403: fail('FORBIDDEN', VIEWER) },
+  responses: {
+    200: json(decisionListSchema),
+    403: fail('FORBIDDEN', VIEWER),
+    404: NO_SUCH_PROJECT,
+  },
 });

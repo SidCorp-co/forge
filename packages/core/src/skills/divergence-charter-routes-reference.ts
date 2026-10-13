@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../api-reference/describe.js';
+import { describeOperation, fail, json, NO_SUCH_PROJECT } from '../api-reference/describe.js';
 import { divergenceCharterEntrySchema } from './divergence-charters.js';
 
 const charterSchema = z.object({
@@ -21,6 +21,7 @@ export const readDivergenceCharter = describeOperation({
   responses: {
     200: json(readCharterSchema),
     403: fail('FORBIDDEN', 'the caller is not a project member'),
+    404: NO_SUCH_PROJECT,
   },
 });
 
@@ -30,5 +31,6 @@ export const saveDivergenceCharter = describeOperation({
   responses: {
     200: json(savedCharterSchema, 'The charter as saved'),
     403: fail('FORBIDDEN', 'the caller is not a project admin'),
+    404: NO_SUCH_PROJECT,
   },
 });

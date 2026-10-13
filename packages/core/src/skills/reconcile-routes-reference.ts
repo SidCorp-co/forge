@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../api-reference/describe.js';
+import { describeOperation, fail, json, NO_SUCH_PROJECT } from '../api-reference/describe.js';
 import { tableRow } from '../api-reference/rows.js';
 import { reconcileRuns } from '../db/schema.js';
 
@@ -29,12 +29,13 @@ export const spawnReconcile = describeOperation({
     ),
     403: notAdmin,
     409: fail('CONFLICT', 'a run is already active for the project, or no runner is online'),
+    404: NO_SUCH_PROJECT,
   },
 });
 
 export const listReconcileRuns = describeOperation({
   summary: 'List the latest 20 reconcile runs of a project, newest first',
-  responses: { 200: json(runListSchema), 403: notMember },
+  responses: { 200: json(runListSchema), 403: notMember, 404: NO_SUCH_PROJECT },
 });
 
 export const readReconcileRun = describeOperation({

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../api-reference/describe.js';
+import { describeOperation, fail, json, NO_SUCH_PROJECT } from '../api-reference/describe.js';
 import { issueStatuses } from '../db/schema.js';
 
 const verdictSchema = z.enum(['PASS', 'FAIL']);
@@ -57,6 +57,7 @@ export const readSmokeVerify = describeOperation({
   responses: {
     200: json(smokeReportSchema),
     403: fail('FORBIDDEN', 'the caller is not a project member'),
+    404: NO_SUCH_PROJECT,
   },
 });
 
@@ -71,5 +72,6 @@ export const runSmokeVerify = describeOperation({
       'NO_RUNNER_ONLINE',
       'no runner is online for the project, so a canary would queue forever',
     ),
+    404: NO_SUCH_PROJECT,
   },
 });

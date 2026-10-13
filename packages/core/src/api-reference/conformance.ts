@@ -1,4 +1,4 @@
-import type { MiddlewareHandler } from 'hono';
+import type { Context, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { matchedRoutes } from 'hono/route';
 import { type ZodType, z } from 'zod';
@@ -84,6 +84,19 @@ export function judgeAnswer(
 }
 
 /**
+ * The route whose handler gave the answer. Every route that matches the path is listed, in the
+ * order it was registered, and the answer is the one `routeIndex` stopped at: `/projects/health`
+ * and `/projects/:id` both match `/projects/health`, and the first to answer wins. Where a gate
+ * ahead of the route refused the request, the route it guarded is the next one in the list.
+ */
+function responderOf(c: Context): { method: string; path: string } | undefined {
+  const matched = matchedRoutes(c);
+  const stopped = matched[c.req.routeIndex];
+  if (stopped && stopped.method !== 'ALL') return stopped;
+  return matched.slice(c.req.routeIndex + 1).find((m) => m.method !== 'ALL');
+}
+
+/**
  * Makes each JSON answer under `/api` answer to the schema its route declares, when
  * `RESPONSE_CONFORMANCE=1`. A mismatch fails the request with a 500 that names the route, the
  * status and the field, so a run that drives the routes against a real database cannot pass while a
@@ -94,9 +107,7 @@ export function responseConformance(reference: () => Promise<Reference>): Middle
     await next();
     if (env.RESPONSE_CONFORMANCE !== '1') return;
     if (!c.res.headers.get('content-type')?.includes('application/json')) return;
-    const route = matchedRoutes(c)
-      .filter((m) => m.method !== 'ALL')
-      .at(-1);
+    const route = responderOf(c);
     if (!route) return;
     const key = `${route.method} ${route.path}`;
     const { routes, errors, libraryDefaults } = await reference();

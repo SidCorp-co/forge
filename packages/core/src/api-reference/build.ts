@@ -300,6 +300,13 @@ async function responsesOf(entry: RouteEntry, access: Access | null, doc: Docume
   if (access?.door === 'token') {
     for (const refusal of PAT_DOOR_REFUSALS)
       addCode(errors, refusal.status, refusal.code, refusal.when);
+  } else if (access?.door !== 'public') {
+    // A route kept out of the grant still meets the token door when a token is sent to it, and the
+    // door turns the token away there by name.
+    for (const refusal of PAT_DOOR_REFUSALS) {
+      if (refusal.code === 'INVALID_TOKEN' || refusal.code === 'PAT_NOT_PERMITTED')
+        addCode(errors, refusal.status, refusal.code, refusal.when);
+    }
   }
   addCode(
     errors,

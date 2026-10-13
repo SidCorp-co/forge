@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { describeOperation, empty, fail, json } from '../api-reference/describe.js';
+import {
+  describeOperation,
+  empty,
+  fail,
+  json,
+  NO_SUCH_PROJECT,
+} from '../api-reference/describe.js';
 import { tableRow } from '../api-reference/rows.js';
 import { agents } from '../db/schema.js';
 
@@ -20,12 +26,20 @@ const needsRole = (role: string) =>
 
 export const listAgents = describeOperation({
   summary: "List a project's agents, oldest first, optionally by type or enabled state",
-  responses: { 200: json(agentListSchema, 'Every matching agent'), 403: notMember },
+  responses: {
+    200: json(agentListSchema, 'Every matching agent'),
+    403: notMember,
+    404: NO_SUCH_PROJECT,
+  },
 });
 
 export const createAgent = describeOperation({
   summary: 'Create an agent in a project; it starts disabled unless `enabled` is sent',
-  responses: { 201: json(agentSchema, 'The new agent'), 403: needsRole('member') },
+  responses: {
+    201: json(agentSchema, 'The new agent'),
+    403: needsRole('member'),
+    404: NO_SUCH_PROJECT,
+  },
 });
 
 export const readAgent = describeOperation({

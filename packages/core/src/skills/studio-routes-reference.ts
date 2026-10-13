@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../api-reference/describe.js';
+import { describeOperation, fail, json, NO_SUCH_PROJECT } from '../api-reference/describe.js';
 import { skillRowSchema, skillSchema, skillWriteRefusals } from './crud-routes-reference.js';
 
 /** A global skill: a read-only template, and the project skill that shadows it if any. */
@@ -27,6 +27,7 @@ export const listEffectiveSkills = describeOperation({
   responses: {
     200: json(effectiveSkillsSchema, 'Every global skill, then every skill of the project'),
     403: fail('FORBIDDEN', 'the caller is not a project member'),
+    404: NO_SUCH_PROJECT,
   },
 });
 

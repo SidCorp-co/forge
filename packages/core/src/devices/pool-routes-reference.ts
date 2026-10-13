@@ -332,6 +332,8 @@ const refusedAtWrite = {
   QUESTION_RECOMMENDED_UNKNOWN: '`recommendedOptionId` is not one of the options',
   QUESTION_SHAPE_INVALID: 'a free-text round states nothing in `needed`',
   QUESTION_MESSAGE_REFUSED: "the round's text was refused when screened",
+  QUESTION_ISSUE_ELSEWHERE: 'the issue does not exist or belongs to another project',
+  QUESTION_ISSUE_TERMINAL: 'the issue is closed or dropped, so no answer could reach it',
 };
 
 const noRunner = fail('NOT_FOUND', 'the device has no claude-code runner');

@@ -55,6 +55,12 @@ export function fail(code?: string | Readonly<Record<string, string>>, when = ''
   };
 }
 
+/** The answer of a route that resolves a project from the request and cannot find one the caller can see. */
+export const NO_SUCH_PROJECT = fail(
+  'NOT_FOUND',
+  'the project does not exist, or the caller cannot see it',
+);
+
 export type OperationDeclaration = {
   /** One line: what calling this does, in the caller's words. */
   readonly summary: string;

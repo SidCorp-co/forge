@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { describeOperation, empty, fail, json } from '../api-reference/describe.js';
+import {
+  describeOperation,
+  empty,
+  fail,
+  json,
+  NO_SUCH_PROJECT,
+} from '../api-reference/describe.js';
 import { tableRow } from '../api-reference/rows.js';
 import { skillScopes, skills, skillTargets } from '../db/schema.js';
 
@@ -102,6 +108,7 @@ export const listSkills = describeOperation({
     200: json(listedSkillsSchema, 'The skills, each flagged when it is a meta skill'),
     400: fail('BAD_REQUEST', '`scope=project` was sent without a `projectId`'),
     403: notMember,
+    404: NO_SUCH_PROJECT,
   },
 });
 
@@ -109,7 +116,11 @@ export const listInvokableSkills = describeOperation({
   summary: 'List the skills a person may run as a slash command in a chat on a project',
   description:
     'Exactly the skills `POST /api/agent-sessions/start` accepts as `skillName`, so the composer never offers one the start route would refuse.',
-  responses: { 200: json(invokableSchema, 'Name and description, sorted by name'), 403: notMember },
+  responses: {
+    200: json(invokableSchema, 'Name and description, sorted by name'),
+    403: notMember,
+    404: NO_SUCH_PROJECT,
+  },
 });
 
 export const readSkill = describeOperation({
@@ -131,6 +142,7 @@ export const createSkill = describeOperation({
       ...skillWriteRefusals,
     }),
     403: fail('FORBIDDEN', '`isGlobal` was true, or the caller is not a project admin'),
+    404: NO_SUCH_PROJECT,
   },
 });
 
@@ -160,6 +172,7 @@ export const skillSyncStatus = describeOperation({
   responses: {
     200: json(syncStatusAnswerSchema, 'Empty when the project has no skills'),
     403: notMember,
+    404: NO_SUCH_PROJECT,
   },
 });
 
@@ -173,5 +186,6 @@ export const bulkPushSkills = describeOperation({
       'The devices that were signalled; none when no runner is bound',
     ),
     403: fail('FORBIDDEN', 'the caller is not a project admin'),
+    404: NO_SUCH_PROJECT,
   },
 });

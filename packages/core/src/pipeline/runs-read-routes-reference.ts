@@ -1,7 +1,8 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../api-reference/describe.js';
+import { describeOperation, fail, json, NO_SUCH_PROJECT } from '../api-reference/describe.js';
 import { pipelineRunKinds, pipelineRunStatuses } from '../db/schema.js';
 import { gateConditionSchema } from '../devices/gate-report.js';
+import { storedPolicySchema } from '../devices/policy-copy.js';
 
 const nullableIso = z.string().nullable();
 
@@ -113,6 +114,12 @@ export const pipelineRunSummarySchema = pipelineRunListItemSchema.extend({
       z.object({ read: z.literal('unreadable'), reason: z.string() }),
     ])
     .nullable(),
+  policyAtOpen: z
+    .union([
+      z.object({ read: z.literal('ok'), policy: storedPolicySchema }),
+      z.object({ read: z.literal('unreadable'), reason: z.string() }),
+    ])
+    .nullable(),
 });
 
 export const pipelineRunListSchema = z.object({
@@ -139,5 +146,6 @@ export const listProjectPipelineRuns = describeOperation({
   responses: {
     200: json(pipelineRunListSchema),
     403: fail('FORBIDDEN', 'the caller is not a member of the project'),
+    404: NO_SUCH_PROJECT,
   },
 });

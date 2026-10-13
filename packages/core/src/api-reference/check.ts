@@ -61,7 +61,7 @@ function balanced(text: string, from: number): string {
   return text.slice(from);
 }
 
-/** Each `new HTTPException(status, { ..., cause: { code } })` a handler's own text writes. */
+/** Each `new HTTPException(status, { ..., cause: { code } })` a handler's own text writes, and the 404 of the project lookup it calls. */
 export function thrownInline(handlerSource: string): Thrown[] {
   const out: Thrown[] = [];
   // `new HTTPException(` as written, or as a bundler's import wrapper writes it: `new ns.HTTPException(`.
@@ -71,6 +71,16 @@ export function thrownInline(handlerSource: string): Thrown[] {
     if (!status) continue;
     const code = /cause:\s*\{\s*code:\s*['"`]([^'"`]+)['"`]/.exec(call)?.[1];
     out.push({ status: Number(status), code: code ?? statusToCode(Number(status)) });
+  }
+  // The project the request names is looked up by a helper that throws 404 where there is none or
+  // the caller cannot see it. A call whose refusal is caught on the spot answers nothing of the kind.
+  for (const m of handlerSource.matchAll(/\bloadProjectAccess\)?\(/g)) {
+    const from = (m.index ?? 0) + m[0].length - 1;
+    const after = handlerSource.slice(from + balanced(handlerSource, from).length);
+    if (!/^\s*\.catch\(/.test(after)) {
+      out.push({ status: 404, code: 'NOT_FOUND' });
+      break;
+    }
   }
   return out;
 }

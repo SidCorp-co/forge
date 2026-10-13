@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../api-reference/describe.js';
+import { describeOperation, fail, json, NO_SUCH_PROJECT } from '../api-reference/describe.js';
 import { skillActivityEventTypes } from '../db/schema.js';
 
 /** The history is capped rather than whole: ISS-1025 found every view an unbounded read of the log. */
@@ -113,6 +113,7 @@ export const readSkillActivity = describeOperation({
       'a filter is malformed, or none of `projectId` and `packetId` was sent',
     ),
     ...adminRefusals,
+    404: NO_SUCH_PROJECT,
   },
 });
 

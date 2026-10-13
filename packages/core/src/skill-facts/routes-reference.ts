@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../api-reference/describe.js';
+import { describeOperation, fail, json, NO_SUCH_PROJECT } from '../api-reference/describe.js';
 import { jobTypes } from '../db/schema.js';
 
 export const factsQuerySchema = z.object({
@@ -34,5 +34,6 @@ export const listSkillFacts = describeOperation({
     400: fail('BAD_REQUEST', '`projectId` is missing or not a UUID, or `stage` names no job type'),
     200: json(factsSchema, 'Every fact, with its text for this project'),
     403: fail('FORBIDDEN', 'the caller is not a member of the project'),
+    404: NO_SUCH_PROJECT,
   },
 });

@@ -41,12 +41,19 @@ function planted() {
   app.get('/api/issues/other-code', declare, () => {
     throw new HTTPException(404, { message: 'gone', cause: { code: 'GONE_FOR_GOOD' } });
   });
+  // Both match /api/issues/first; the one registered first answers, and is the one judged.
+  app.get(
+    '/api/issues/first',
+    describeOperation({ summary: 'f', responses: { 200: json(z.object({ first: z.boolean() })) } }),
+    (c) => c.json({ first: true }),
+  );
   app.get('/api/issues/undeclared-status', declare, (c) => c.json({ id: 'a' }, 201));
   app.get(
     '/api/issues/text',
     describeOperation({ summary: 't', responses: { 200: json(z.string()) } }),
     (c) => c.text('plain'),
   );
+  app.get('/api/issues/:id', declare, (c) => c.json({ id: 'a' }));
   return app;
 }
 
@@ -109,6 +116,12 @@ describe('responseConformance', () => {
     expect(((await res.json()) as { message: string }).message).toContain(
       'status 201 is not declared',
     );
+  });
+
+  it('judges the route that answered, not the last route that matched the path', async () => {
+    const res = await (await served()).request('/api/issues/first');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ first: true });
   });
 
   it('does not read an answer that is not JSON', async () => {

@@ -308,6 +308,21 @@ describe('what the check reads out of handler text', () => {
     ).toEqual([{ status: 409, code: 'X' }]);
   });
 
+  it('reads the project lookup as a 404 the handler can answer, as written or through an import wrapper', () => {
+    expect(thrownInline('const a = await loadProjectAccess(id, user);')).toEqual([
+      { status: 404, code: 'NOT_FOUND' },
+    ]);
+    expect(
+      thrownInline('await (0, __vite_ssr_import_1__.loadProjectAccess)(id, f(user));'),
+    ).toEqual([{ status: 404, code: 'NOT_FOUND' }]);
+  });
+
+  it('reads no 404 from a project lookup whose refusal is caught on the spot', () => {
+    expect(
+      thrownInline('const a = await loadProjectAccess(id, f(user)).catch(() => null);'),
+    ).toEqual([]);
+  });
+
   it('reads the status and code of each exception thrown inline, through nested braces and strings', () => {
     const text = `async (c) => {
       throw new HTTPException(422, { message: "a (b)", cause: { code: 'ONE', details: { x: 1 } } });

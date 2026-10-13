@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeOperation, fail, json } from '../api-reference/describe.js';
+import { describeOperation, fail, json, NO_SUCH_PROJECT } from '../api-reference/describe.js';
 import { issueStatuses } from '../db/schema.js';
 
 const stageSchema = z.enum(issueStatuses);
@@ -66,10 +66,18 @@ export const registerSkill = describeOperation({
 
 export const listSkillRegistrations = describeOperation({
   summary: 'List the stage-to-skill bindings of a project',
-  responses: { 200: json(registrationsSchema, 'One row per bound stage'), 403: notMember },
+  responses: {
+    200: json(registrationsSchema, 'One row per bound stage'),
+    403: notMember,
+    404: NO_SUCH_PROJECT,
+  },
 });
 
 export const unregisterStage = describeOperation({
   summary: 'Clear the skill bound to one stage, whichever skill it is',
-  responses: { 200: json(unregisteredSchema, 'Whether a binding was cleared'), 403: notAdmin },
+  responses: {
+    200: json(unregisteredSchema, 'Whether a binding was cleared'),
+    403: notAdmin,
+    404: NO_SUCH_PROJECT,
+  },
 });
