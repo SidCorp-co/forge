@@ -13,6 +13,7 @@ import {
   Icon,
   RowActions,
   SectionTitle,
+  useNow,
 } from "@/design";
 import {
   chatTurnLine,
@@ -24,6 +25,9 @@ import {
   reachStatement,
 } from "../token-view";
 import type { PatScope, PatToken } from "../types";
+
+// A token that expires while the screen is open leaves the live table within this long.
+const EXPIRY_CHECK_MS = 15_000;
 
 const THIS_YEAR = new Date().getFullYear();
 
@@ -119,7 +123,8 @@ export interface TokenListProps {
 
 export function TokenList({ tokens, level, onRevoke, revoking }: TokenListProps) {
   const [endedOpen, setEndedOpen] = useState(false);
-  const groups = useMemo(() => groupTokens(tokens, Date.now()), [tokens]);
+  const now = useNow(EXPIRY_CHECK_MS);
+  const groups = useMemo(() => groupTokens(tokens, now), [tokens, now]);
   const chatLine = chatTurnLine(groups.chatTurn);
 
   const liveColumns = useMemo<DataTableColumn<PatToken>[]>(() => {
@@ -157,14 +162,14 @@ export function TokenList({ tokens, level, onRevoke, revoking }: TokenListProps)
         id: "ended",
         header: "Ended",
         cellClassName: "font-mono text-muted",
-        sortValue: (t) => time(endOf(t, Date.now())?.at ?? null),
+        sortValue: (t) => time(endOf(t, now)?.at ?? null),
         cell: (t) => {
-          const end = endOf(t, Date.now());
+          const end = endOf(t, now);
           return end ? `${end.kind} ${fmtDate(end.at)}` : "—";
         },
       },
     ],
-    [level],
+    [level, now],
   );
 
   return (

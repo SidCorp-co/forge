@@ -15,7 +15,6 @@ import { useEffect, useState } from "react";
 import {
   Button,
   Checkbox,
-  EmptyState,
   ErrorState,
   Field,
   Input,
@@ -290,11 +289,7 @@ export function TokensTab() {
         />
       )}
 
-      {!tokensQ.isLoading && !tokensQ.isError && tokens.length === 0 && (
-        <EmptyState title="No tokens" message="Create a personal access token below to use the API." />
-      )}
-
-      {!tokensQ.isLoading && !tokensQ.isError && tokens.length > 0 && (
+      {!tokensQ.isLoading && !tokensQ.isError && (
         <TokenList
           tokens={tokens}
           level={levelLabel}

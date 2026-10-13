@@ -7,7 +7,7 @@
 // grants each token carries.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PatToken } from "../types";
 
@@ -244,6 +244,33 @@ describe("TokensTab — what still has access comes first", () => {
     expect(screen.getByRole("status")).toHaveTextContent("No token can reach your account.");
     expect(screen.queryByRole("table", { name: "Tokens that can reach your account" })).toBeNull();
     expect(screen.getByRole("button", { name: /3 tokens no longer reach your account/ })).toBeInTheDocument();
+  });
+
+  it("says in words that no token can reach the account when the account has never held one", () => {
+    tokens = [];
+    render(<TokensTab />);
+    expect(screen.getByRole("status")).toHaveTextContent("No token can reach your account.");
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.queryByRole("button", { name: /no longer reach/ })).toBeNull();
+  });
+
+  it("moves a token out of the live table when its expiry passes while the screen stays open", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-10-14T00:00:00.000Z"));
+      tokens = [aToken({ id: "soon", name: "soon", expiresAt: "2026-10-14T00:00:20.000Z" }), ...LIVE];
+      render(<TokensTab />);
+      expect(screen.getByRole("status")).toHaveTextContent("3 tokens can reach your account.");
+      act(() => {
+        vi.advanceTimersByTime(30_000);
+      });
+      expect(screen.getByRole("status")).toHaveTextContent("2 tokens can reach your account.");
+      expect(rowNames("Tokens that can reach your account")).not.toContain("soon");
+      fireEvent.click(screen.getByRole("button", { name: /1 token no longer reaches your account/ }));
+      expect(rowNames("Tokens that no longer reach your account")).toEqual(["soon"]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("says what a live row reaches and who made it", () => {
