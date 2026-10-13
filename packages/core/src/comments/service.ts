@@ -173,22 +173,35 @@ async function assertParentOnIssue(parentId: string, issueId: string, tx: Tx): P
   if (parent.issueId !== issueId) throw new CommentParentRefused('other_issue');
 }
 
-/** Someone who is neither a comment's author nor an admin of its project tried to change it. */
+/** A refusal to change a comment, carrying which of the two rules refused. */
 export class CommentChangeForbidden extends Error {
-  constructor() {
-    super('not comment author or project admin');
+  constructor(readonly reason: 'not_a_writer' | 'not_author_or_admin') {
+    super(
+      reason === 'not_a_writer'
+        ? 'requires the project member role or above to change a comment'
+        : 'not comment author or project admin',
+    );
     this.name = 'CommentChangeForbidden';
   }
 }
 
-/** Editing or deleting a comment belongs to its author and to an admin of its project. */
+/**
+ * Editing or deleting a comment belongs to its author and to an admin of its project, and to
+ * neither without the role that may write one: whoever may not create a comment may not change
+ * one, so a viewer who authored a comment before a demotion no longer reaches it by either door.
+ */
 export async function assertMayChangeComment(
   userId: string,
   comment: { authorId: string; projectId: string },
 ): Promise<void> {
-  if (comment.authorId === userId) return;
   const access = await effectiveProjectRole(userId, comment.projectId);
-  if (!projectRoleAtLeast(access?.role ?? null, 'admin')) throw new CommentChangeForbidden();
+  if (!projectRoleAtLeast(access?.role ?? null, 'member')) {
+    throw new CommentChangeForbidden('not_a_writer');
+  }
+  if (comment.authorId === userId) return;
+  if (!projectRoleAtLeast(access?.role ?? null, 'admin')) {
+    throw new CommentChangeForbidden('not_author_or_admin');
+  }
 }
 
 export type NewComment = {

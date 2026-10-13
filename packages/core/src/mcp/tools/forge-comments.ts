@@ -379,7 +379,11 @@ async function assertMayChange(
     await assertMayChangeComment(userId, comment);
   } catch (err) {
     if (err instanceof CommentChangeForbidden) {
-      throw new Error(`FORBIDDEN: only the comment author or a project admin can ${verb}`);
+      throw new Error(
+        err.reason === 'not_a_writer'
+          ? `FORBIDDEN: ${err.message}`
+          : `FORBIDDEN: only the comment author or a project admin can ${verb}`,
+      );
     }
     throw err;
   }

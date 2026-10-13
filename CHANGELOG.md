@@ -12,6 +12,7 @@
 
 - **A viewer can no longer deploy, cancel or roll back a Coolify binding.** The web API let any project member through; it now asks for the member role, as the agent tool always did, and says which role was held.
 - **Another person's comment cannot be rewritten by an agent, and a reply cannot hang under another issue.** Agents could edit any comment and name any parent; editing now needs the author or a project admin, as in the web.
+- **A viewer can no longer edit or delete a comment they wrote.** The web let the author through whatever their role, for instance after a demotion; it now asks for the member role, as the agent tool did.
 - **A step handoff cannot overwrite another project's issue, and a viewer cannot mark feedback reviewed through an agent tool.** Both are refused by name, and the other issue's handoff is left as it was.
 - **Signing up with an email already registered says so.** It used to fail as a server error, and the failed save's values, including the typed password's hash, could reach logs, error reports and error messages; none do now.
 - **A failed save's values stay out of every error Forge reports.** They no longer reach a log line, an error report, a tool's reply or a stream's error, however the error's text is copied, re-encoded or rendered.
@@ -124,6 +125,8 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+
+- **Deleting a memory note through an agent tool now says how many it removed.** The tool answered `deleted: true` where the web answers a count; both now answer the number of rows removed, `0` when none matched.
 
 - **A dependency can now wait for a release to ship.** An edge can carry `holdsUntil: "shipped"`, holding its dependent until the blocker closes. Other edges behave as before; the `forge` CLI's `next` still reads the old rule.
 
@@ -3160,6 +3163,10 @@
 - **A provision that stopped advancing is now read as stalled, with its age.** It no longer holds release or dispatch on a box running the project's master, and binding over a running master is refused by name.
 
 - **One hung `git clone` no longer stops a box provisioning its other projects.** Each git step is killed after ten minutes and reported `failed` by name, and the box refuses to provision a workspace its own live master holds.
+
+- **A failed adopt no longer leaves an empty repository that reads as ready.** It removes the `.git` it made and nothing else, and a checkout with no commit is refused by name.
+
+- **The device row on the project Runners screen no longer prints its name and version over its buttons on a phone.** The header, its badges and the Set primary, Re-provision and Unassign buttons wrap onto the next line instead.
 
 - **A project that releases on its own is no longer blocked for having over 50 issues waiting.** Readiness names the oldest 50 as the next part and how many wait behind; where a person cuts, the refusal stays.
 

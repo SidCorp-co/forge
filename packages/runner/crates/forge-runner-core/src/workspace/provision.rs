@@ -128,7 +128,14 @@ async fn process_one(client: &CoreClient, cfg: &Config, masters: Option<&Masters
 
     // 3. Clone, or recognise a deliberately repo-less workspace.
     match classify_workspace(&repo_path, p.repo_url.as_deref()) {
-        WorkspaceMode::AlreadyRepo => {}
+        WorkspaceMode::AlreadyRepo => {
+            if p.repo_url.as_deref().is_some_and(|u| !u.trim().is_empty()) {
+                if let Err(stop) = require_a_commit(&repo_path, GIT_STEP_LIMIT).await {
+                    report(client, &p.runner_id, stop.status, Some(&stop.detail)).await;
+                    return;
+                }
+            }
+        }
         WorkspaceMode::RepoLess => {
             if let Err(detail) = ensure_repo_less_dir(&repo_path) {
                 report(client, &p.runner_id, "needs_manual_setup", Some(&detail)).await;
@@ -580,7 +587,47 @@ async fn adopt_repo(
     .await
 }
 
+/// An adopt works inside a folder that holds only this provisioner's own output, and what it adds
+/// is a `.git`. When it stops anywhere, that `.git` goes, whichever step stopped it: left behind it
+/// reads as a checkout on the next provision, which reports a repository with no commit `ready`
+/// (ISS-1359). A `.git` that was there before the adopt began is not the adopt's, and stays.
 async fn adopt_repo_with(
+    program: &Path,
+    repo_url: &str,
+    repo_path: &Path,
+    ssh_cmd: Option<&str>,
+    git_cfg: &[String],
+    branch: Option<&str>,
+    limit: Duration,
+) -> std::result::Result<(), Stop> {
+    let had_git = repo_path.join(".git").exists();
+    let mut done = adopt_steps(
+        program, repo_url, repo_path, ssh_cmd, git_cfg, branch, limit,
+    )
+    .await;
+    if let (Err(stop), false) = (&mut done, had_git) {
+        if let Err(e) = clear_adopted_git(repo_path) {
+            stop.detail.push_str(&format!(
+                " The .git it made in {} could not be removed ({e}); delete it before provisioning again, or the next provision reads it as a checkout.",
+                repo_path.display()
+            ));
+        }
+    }
+    done
+}
+
+fn clear_adopted_git(repo_path: &Path) -> std::result::Result<(), String> {
+    let git = repo_path.join(".git");
+    let removed = match std::fs::symlink_metadata(&git) {
+        Ok(meta) if meta.is_dir() => std::fs::remove_dir_all(&git),
+        Ok(_) => std::fs::remove_file(&git),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => Err(e),
+    };
+    removed.map_err(|e| format!("remove {}: {e}", git.display()))
+}
+
+async fn adopt_steps(
     program: &Path,
     repo_url: &str,
     repo_path: &Path,
@@ -609,9 +656,8 @@ async fn adopt_repo_with(
     };
 
     git(&["init"]).await?;
-    // An adopt may re-run (a fetch that failed on a network blip), so the remote
-    // may already be there. Set it either way rather than branching on `git
-    // remote get-url`, which is one more process for the same outcome.
+    // Set the remote either way rather than branching on `git remote get-url`, which is one more
+    // process for the same outcome.
     if let Err(stop) = git(&["remote", "add", "origin", repo_url]).await {
         if stop.status == "failed" {
             return Err(stop);
@@ -637,6 +683,41 @@ async fn adopt_repo_with(
     let remote_ref = format!("origin/{target}");
     git(&["checkout", "-f", "-B", &target, &remote_ref]).await?;
     Ok(())
+}
+
+/// An existing checkout that holds no commit on any branch cannot serve a project that names a
+/// remote, and reporting it `ready` hands a master a repository with nothing in it. A failed adopt
+/// used to leave exactly that (ISS-1359), so the shape is in the field already: it is refused by
+/// name, and the folder is left as it is for a person to look at. Any ref holding a commit is
+/// enough to pass, so a repository whose current branch is unborn but which keeps history on
+/// another is not called empty.
+async fn require_a_commit(repo_path: &Path, limit: Duration) -> std::result::Result<(), Stop> {
+    require_a_commit_with(Path::new("git"), repo_path, limit).await
+}
+
+async fn require_a_commit_with(
+    program: &Path,
+    repo_path: &Path,
+    limit: Duration,
+) -> std::result::Result<(), Stop> {
+    let mut cmd = git_command(program, Some(repo_path), &[], None);
+    cmd.args(["rev-list", "-n", "1", "--all"]);
+    match run_git(cmd, limit).await {
+        Ok(Some(out)) if out.status.success() && !out.stdout.iter().all(u8::is_ascii_whitespace) => {
+            Ok(())
+        }
+        Ok(Some(out)) if out.status.success() => Err(Stop::manual(format!(
+            "{} is a git repository holding no commit on any branch, so it cannot serve a project whose code is at a remote. A failed adopt leaves this. Look at it, then delete its .git or clone the project there by hand, and re-provision.",
+            repo_path.display()
+        ))),
+        Ok(Some(out)) => Err(Stop::manual(format!(
+            "git rev-list failed in {}: {}",
+            repo_path.display(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ))),
+        Ok(None) => Err(Stop::timed_out("git rev-list", limit)),
+        Err(e) => Err(Stop::manual(format!("spawn git rev-list: {e}"))),
+    }
 }
 
 /// What lets a provision write into `p`'s workspace: the lease that keeps a master from being
@@ -1478,6 +1559,236 @@ esac"#,
         assert!(stop.detail.contains("remote set-head"), "{}", stop.detail);
         let _ = fs::remove_dir_all(&bin);
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A failed adopt leaves the `.git` it initialised, and the next provision reads that as an
+    /// existing checkout and reports it `ready` (ISS-1359 repair 1). Every exit of the adopt owes
+    /// the same removal, whichever step stopped it, and none of it touches what was there before.
+    #[cfg(unix)]
+    async fn an_adopt_that_stops_at(
+        n: usize,
+        step: &str,
+        how: &str,
+    ) -> (crate::test_scratch::InScratch, Stop) {
+        let bin = tmp(&format!("fake-git-{n}"));
+        let git = fake_git(
+            &bin,
+            &format!(
+                r#"case " $* " in
+  *" init "*) mkdir -p "$2/.git";;
+  *" {step} "*) {how};;
+esac"#
+            ),
+        );
+        let dir = tmp(&format!("adopt-stops-{n}"));
+        fs::create_dir_all(dir.join(".claude")).unwrap();
+        fs::write(dir.join(".claude").join("sentinel"), "mine").unwrap();
+        fs::write(dir.join("CLAUDE.md"), "pointer").unwrap();
+
+        let stop = adopt_repo_with(
+            &git,
+            "git://127.0.0.1:1/x.git",
+            &dir,
+            None,
+            &[],
+            Some("main"),
+            Duration::from_millis(500),
+        )
+        .await
+        .expect_err("an adopt that was stopped cannot have succeeded");
+        let _ = fs::remove_dir_all(&bin);
+        (dir, stop)
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn every_exit_of_a_failed_adopt_removes_the_git_it_made_and_nothing_else() {
+        for (n, (step, how, status)) in [
+            ("fetch", "sleep 30", "failed"),
+            ("fetch", "echo refused >&2; exit 1", "needs_manual_setup"),
+            ("remote", "echo no >&2; exit 1", "needs_manual_setup"),
+            ("checkout", "echo nope >&2; exit 1", "needs_manual_setup"),
+            ("checkout", "sleep 30", "failed"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let (dir, stop) = an_adopt_that_stops_at(n, step, how).await;
+            assert_eq!(stop.status, status, "{step}: {}", stop.detail);
+            assert!(
+                !dir.join(".git").exists(),
+                "{step} ({how}): the adopt's own .git was left to read as a checkout"
+            );
+            assert_eq!(
+                fs::read_to_string(dir.join(".claude").join("sentinel")).unwrap(),
+                "mine",
+                "{step}: what was in the workspace before was removed"
+            );
+            assert_eq!(
+                fs::read_to_string(dir.join("CLAUDE.md")).unwrap(),
+                "pointer"
+            );
+            assert_eq!(
+                classify_workspace(&dir, Some("git://127.0.0.1:1/x.git")),
+                WorkspaceMode::Adopt,
+                "{step}: the next provision would not adopt again"
+            );
+        }
+    }
+
+    /// An adopt only ever runs where there is no `.git`. If one were there, it is not the adopt's.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_git_that_was_there_before_the_adopt_is_not_removed_by_its_failure() {
+        let bin = tmp("fake-git-preexisting");
+        let git = fake_git(&bin, "echo refused >&2; exit 1");
+        let dir = tmp("adopt-preexisting");
+        fs::create_dir_all(dir.join(".git")).unwrap();
+        fs::write(dir.join(".git").join("HEAD"), "ref: refs/heads/main").unwrap();
+
+        adopt_repo_with(
+            &git,
+            "git://127.0.0.1:1/x.git",
+            &dir,
+            None,
+            &[],
+            None,
+            ONE_SECOND,
+        )
+        .await
+        .expect_err("refused");
+
+        assert!(dir.join(".git").join("HEAD").exists());
+        let _ = fs::remove_dir_all(&bin);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A repository with no commit on any branch cannot serve a project that names a remote,
+    /// whoever left it so. The stranded `.git` the failed adopts above used to leave is already in
+    /// the field.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_checkout_holding_no_commit_is_refused_by_name_for_a_project_with_a_remote() {
+        let bin = tmp("fake-git-nocommit");
+        let git = fake_git(&bin, "exit 0");
+        let dir = tmp("no-commit");
+        fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let stop = require_a_commit_with(&git, &dir, ONE_SECOND)
+            .await
+            .expect_err("a repository with no commit was read as a checkout");
+        assert_eq!(stop.status, "needs_manual_setup");
+        assert!(
+            stop.detail.contains(&dir.display().to_string()) && stop.detail.contains("no commit"),
+            "{}",
+            stop.detail
+        );
+
+        let has = fake_git(&bin, "echo abc123");
+        assert!(require_a_commit_with(&has, &dir, ONE_SECOND).await.is_ok());
+        let broken = fake_git(&bin, "echo 'not a git repository' >&2; exit 128");
+        let stop = require_a_commit_with(&broken, &dir, ONE_SECOND)
+            .await
+            .expect_err("a probe that failed is not an answer");
+        assert!(
+            stop.detail.contains("not a git repository"),
+            "{}",
+            stop.detail
+        );
+        let hung = fake_git(&bin, "sleep 30");
+        let stop = require_a_commit_with(&hung, &dir, Duration::from_millis(300))
+            .await
+            .expect_err("a probe that overran is not an answer");
+        assert_eq!(stop.status, "failed");
+        let _ = fs::remove_dir_all(&bin);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A current branch with no commit does not make a repository empty: history on another
+    /// branch is history, and the refusal never tells anyone to delete it.
+    #[tokio::test]
+    async fn an_unborn_current_branch_over_committed_history_is_not_called_empty() {
+        let dir = tmp("orphan-current");
+        fs::create_dir_all(&dir).unwrap();
+        let git = |args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&*dir)
+                .args(["-c", "user.name=t", "-c", "user.email=t@t"])
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "{args:?}: {:?}", out);
+        };
+        git(&["init", "-q", "-b", "main"]);
+        git(&["commit", "-q", "--allow-empty", "-m", "history"]);
+        git(&["checkout", "-q", "--orphan", "unborn"]);
+        assert!(require_a_commit(&dir, Duration::from_secs(20))
+            .await
+            .is_ok());
+    }
+
+    /// What the daemon's own provision step reports, read off a core that records the bodies it was
+    /// sent. Driven through `process_one`, because the helper proving a probe is not the proof that
+    /// the step asks it before it says `ready`.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_provision_over_a_checkout_with_no_commit_reports_it_by_name_and_writes_nothing() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let log = seen.clone();
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = listener.accept().await {
+                let log = log.clone();
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 8192];
+                    let n = sock.read(&mut buf).await.unwrap_or(0);
+                    log.lock()
+                        .unwrap()
+                        .push(String::from_utf8_lossy(&buf[..n]).into_owned());
+                    let _ = sock
+                        .write_all(
+                            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}",
+                        )
+                        .await;
+                });
+            }
+        });
+
+        let dir = tmp("no-commit-provision");
+        fs::create_dir_all(&dir).unwrap();
+        let init = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&dir)
+            .arg("init")
+            .output()
+            .unwrap();
+        assert!(init.status.success());
+        let p = provision_for(
+            "proj-1",
+            "iss1359-no-commit",
+            Some(&dir),
+            Some("git://127.0.0.1:1/x.git"),
+        );
+        let client = CoreClient::new(&base, "tok");
+
+        process_one(&client, &Config::default(), None, &p).await;
+
+        let sent = seen.lock().unwrap().clone();
+        assert_eq!(sent.len(), 1, "one report and nothing after it: {sent:?}");
+        assert!(
+            sent[0].contains("provision-status")
+                && sent[0].contains("needs_manual_setup")
+                && sent[0].contains("no commit"),
+            "{}",
+            sent[0]
+        );
+        assert!(
+            !dir.join(".claude").exists() && !dir.join(".mcp.json").exists(),
+            "a refused provision wrote into the checkout"
+        );
     }
 
     #[tokio::test]

@@ -75,4 +75,9 @@ describe.each(Object.entries(doors))('%s', (_name, remove) => {
     expect(await remove(callers.member)).not.toHaveProperty('refused');
     expect(await rows()).toBe(0);
   });
+
+  it('answers with the number of rows removed, one the first time and none the second', async () => {
+    expect((await remove(callers.member)).body).toEqual({ deleted: 1 });
+    expect((await remove(callers.member)).body).toEqual({ deleted: 0 });
+  });
 });
