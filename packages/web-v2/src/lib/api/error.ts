@@ -235,6 +235,19 @@ function listOf(names: string[]): string {
   return `${unique.slice(0, -1).join(', ')} and ${unique[unique.length - 1]}`;
 }
 
+/** A stage's own fields, so two edits to one stage's permissions are told apart. */
+const STAGE_FIELD_LABELS: Record<string, string> = {
+  disallowedTools: 'Denied tools',
+  allowedTools: 'Allowed tools',
+  mcpServers: 'MCP servers',
+  deviceIds: 'Runner pool',
+};
+
+function stageFieldLabel(path: string): string | undefined {
+  const parts = path.split('.');
+  return parts[0] === 'states' && parts.length >= 3 ? STAGE_FIELD_LABELS[parts[2]] : undefined;
+}
+
 /** The fields of a section that a sentence about a change has to be able to tell apart. */
 const FIELD_LABELS: Record<string, string> = {
   'intakeGate.enabled': 'Require approval',
@@ -266,7 +279,7 @@ export function describeSettings(paths: string[]): { text: string; count: number
   for (const path of [...paths].sort((a, b) => known(a) - known(b))) {
     const section = settingLabel(path);
     const fields = groups.get(section) ?? new Set<string>();
-    const field = FIELD_LABELS[path];
+    const field = FIELD_LABELS[path] ?? stageFieldLabel(path);
     if (field) fields.add(field);
     groups.set(section, fields);
   }

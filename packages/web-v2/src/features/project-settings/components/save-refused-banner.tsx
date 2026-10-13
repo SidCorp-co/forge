@@ -17,7 +17,6 @@ import {
 	formatSettingsWriteError,
 	settingLabel,
 	settingsThatMoved,
-	wasOrWere,
 	writeConflicts,
 } from "@/lib/api/error";
 
@@ -56,11 +55,10 @@ export function SaveRefusedBanner({
 		const kept = describeSettings(keptHere);
 		return (
 			<Banner tone="attention" onDismiss={draft.dismissReplaced}>
-				Loaded what is stored now. Your changes to {replaced.text} {wasOrWere(replaced.count)}{" "}
-				replaced by the stored values
+				Loaded what is stored now. Your changes to {replaced.text} were replaced by the stored values
 				{keptHere.length > 0 && (
 					<>
-						; your changes to {kept.text} {wasOrWere(kept.count)} kept
+						; your changes to {kept.text} were kept
 					</>
 				)}
 				. Every other edit on this page is as you left it.
@@ -75,7 +73,7 @@ export function SaveRefusedBanner({
 	return (
 		<Banner tone={conflicts.length > 0 ? "attention" : "danger"} onDismiss={onDismiss}>
 			<div className="space-y-2">
-				<p className={explained ? undefined : "line-clamp-2 md:line-clamp-none"}>
+				<p className={conflicts.length > 0 && !explained ? "line-clamp-2 md:line-clamp-none" : undefined}>
 					{document === "environments"
 						? formatSettingsWriteError(error)
 						: formatPipelineConfigError(error)}
