@@ -142,6 +142,9 @@ describe('each rule, planted once', () => {
     expect(rules(findings)).toEqual(['param-not-in-path GET /api/issues']);
   });
 
+});
+
+describe('each rule, planted once, continued', () => {
   it('no-access: a path in neither the grant menu nor the exclusions is named', async () => {
     const app = new Hono();
     app.get('/not-a-listed-path', ok, (c) => c.json({}));

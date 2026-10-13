@@ -47,7 +47,7 @@ describe('probeInputRefusal', () => {
     const refusal = await probeInputRefusal(
       declared((r) => {
         if (!r.success) {
-          const flat = z.flattenError(r.error);
+          const flat = z.flattenError(r.error as z.core.$ZodError<unknown>);
           throw new HTTPException(400, {
             message: 'x',
             cause: { code: Object.keys(flat.fieldErrors).join(',') || 'FLAT' },

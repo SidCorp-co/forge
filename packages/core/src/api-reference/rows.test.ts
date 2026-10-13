@@ -5,7 +5,7 @@ import * as schema from '../db/schema.js';
 import { tableRow } from './rows.js';
 import { renderSchema } from './schema.js';
 
-const tables = Object.values(schema).filter((value): value is PgTable => is(value, PgTable));
+const tables = Object.values(schema).filter((value) => is(value, PgTable)) as PgTable[];
 
 describe('tableRow', () => {
   it('reads every table the schema declares, with no type JSON Schema cannot hold', () => {

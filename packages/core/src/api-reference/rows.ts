@@ -1,8 +1,15 @@
 import { getTableName } from 'drizzle-orm';
 import type { PgTable } from 'drizzle-orm/pg-core';
-import { createSelectSchema } from 'drizzle-zod';
+import { type BuildSchema, createSelectSchema } from 'drizzle-zod';
 
-const cache = new WeakMap<PgTable, ReturnType<typeof createSelectSchema>>();
+export type TableRow<T extends PgTable> = BuildSchema<
+  'select',
+  T['_']['columns'],
+  undefined,
+  undefined
+>;
+
+const cache = new WeakMap<PgTable, unknown>();
 
 function pascal(name: string): string {
   return name
@@ -20,10 +27,10 @@ function pascal(name: string): string {
  * A handler that answers with some of a row's columns takes `.pick()` or `.omit()` of this, and one
  * that reshapes a row writes the shape it sends: the schema describes the answer, never the row.
  */
-export function tableRow<T extends PgTable>(table: T) {
+export function tableRow<T extends PgTable>(table: T): TableRow<T> {
   const held = cache.get(table);
-  if (held) return held as ReturnType<typeof createSelectSchema<T>>;
-  const schema = createSelectSchema(table).meta({ id: pascal(getTableName(table)) });
+  if (held) return held as TableRow<T>;
+  const schema = createSelectSchema(table).meta({ id: pascal(getTableName(table)) }) as TableRow<T>;
   cache.set(table, schema);
-  return schema as ReturnType<typeof createSelectSchema<T>>;
+  return schema;
 }

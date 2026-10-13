@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { type ErrorHandler, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -59,7 +59,7 @@ async function served() {
     responseConformance(async () => reference),
   );
   guarded.route('/', app);
-  guarded.onError(app.errorHandler);
+  guarded.onError((app as unknown as { errorHandler: ErrorHandler }).errorHandler);
   return guarded;
 }
 

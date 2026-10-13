@@ -1,5 +1,5 @@
 import type { MiddlewareHandler } from 'hono';
-import type { ZodType } from 'zod';
+import type { ZodType, z } from 'zod';
 import { statusToCode } from '../middleware/error.js';
 
 /** A JSON body with this shape. */
@@ -111,4 +111,16 @@ export function describeOperation(declaration: OperationDeclaration): Middleware
 /** The code an error answer carries: the one named, or the one `middleware/error.ts` derives. */
 export function codeFor(status: number, code: string): string {
   return code === '' ? statusToCode(status) : code;
+}
+
+/**
+ * Returns `body` as it is. It exists so the compiler holds a handler to its declaration: `body`
+ * must be what `schema` accepts, so a handler that sends a field the schema lacks, omits one it
+ * requires or sends the wrong type fails `tsc`, in the gate every change meets, and no longer in a
+ * run against a real database after the merge.
+ *
+ * `return c.json(answer(tokenSchema, publicShape(row)))`
+ */
+export function answer<S extends ZodType>(_schema: S, body: z.input<S>): z.input<S> {
+  return body;
 }
