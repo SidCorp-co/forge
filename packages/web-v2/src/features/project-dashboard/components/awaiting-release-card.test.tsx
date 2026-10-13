@@ -10,6 +10,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "@/providers/toast-provider";
 import type { PipelineRunListItem } from "@/features/pipeline/types";
+import type { ReadState } from "../shape";
 import { AwaitingReleaseCard } from "./awaiting-release-card";
 
 expect.extend(matchers);
@@ -31,7 +32,7 @@ const run = (n: number): PipelineRunListItem =>
     finishedAt: null,
   }) as unknown as PipelineRunListItem;
 
-function mount(runs: PipelineRunListItem[], awaitingReleaseIssues: number) {
+function mount(runs: PipelineRunListItem[], awaitingReleaseIssues: number, read?: ReadState) {
   return render(
     <QueryClientProvider client={new QueryClient()}>
       <ToastProvider>
@@ -40,6 +41,7 @@ function mount(runs: PipelineRunListItem[], awaitingReleaseIssues: number) {
           slug="forge-dev"
           projectId="p1"
           awaitingReleaseIssues={awaitingReleaseIssues}
+          read={read}
         />
       </ToastProvider>
     </QueryClientProvider>,
@@ -52,6 +54,13 @@ describe("the Awaiting release card", () => {
     expect(screen.getByRole("region", { name: "Awaiting release" })).toHaveTextContent(
       "nothing waiting on a release decision",
     );
+  });
+
+  it("names the runs read while it has not arrived, and says neither nothing waiting nor a count of runs at the gate", () => {
+    mount([], 0, { read: "failed", reason: "Gateway Timeout" });
+    const section = screen.getByRole("region", { name: "Awaiting release" });
+    expect(section).toHaveTextContent("The project's runs could not be read: Gateway Timeout");
+    expect(section).not.toHaveTextContent(/nothing waiting|no release run/i);
   });
 
   it("does not say nothing is waiting beside issues that are Awaiting release", () => {

@@ -16,6 +16,7 @@ import {
   spendComparison,
   stuckRuns,
   throughputComparison,
+  unreadStatement,
 } from "./shape";
 
 const NOW = Date.parse("2026-10-13T12:00:00.000Z");
@@ -253,5 +254,19 @@ describe("a figure's comparison", () => {
     });
     expect(slowestComparison([{ step: "test", medianSec: 840 }])).toBeNull();
     expect(slowestComparison([{ step: "test", medianSec: 840 }, { step: "code", medianSec: 0 }])).toBeNull();
+  });
+});
+
+describe("unreadStatement", () => {
+  it("agrees its verb with what it names, and gives the reason where it is known", () => {
+    expect(unreadStatement("The project's runs", { read: "pending" }, true)).toBe("The project's runs are still being read.");
+    expect(unreadStatement("What needs you", { read: "pending" })).toBe("What needs you is still being read.");
+    expect(unreadStatement("The project's runs", { read: "failed", reason: "Gateway Timeout" }, true)).toBe(
+      "The project's runs could not be read: Gateway Timeout",
+    );
+  });
+
+  it("says nothing of a read that is in", () => {
+    expect(unreadStatement("The project's runs", { read: "ok" }, true)).toBeNull();
   });
 });

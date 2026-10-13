@@ -3,13 +3,25 @@
 import { useRouter } from "next/navigation";
 import { Badge, Button, HealthDot, Icon } from "@/design";
 import type { RunnersSummary } from "../derive";
-import { DashboardSection, EmptyLine, RowList } from "./dashboard-section";
+import type { ReadState } from "../shape";
+import { DashboardSection, EmptyLine, RowList, unreadSection } from "./dashboard-section";
 
 const PLATFORM_LABEL: Record<string, string> = { macos: "macOS", linux: "Linux", windows: "Windows" };
 
-export function RunnersCard({ summary, slug }: { summary: RunnersSummary; slug: string }) {
+export function RunnersCard({
+  summary,
+  slug,
+  read,
+}: {
+  summary: RunnersSummary;
+  slug: string;
+  /** The project's runners read; until it is in, "none bound" is not said. */
+  read?: ReadState;
+}) {
   const router = useRouter();
   const { lines, onlineCount, total } = summary;
+  const unread = unreadSection("Runners", "The project's runners", read, true);
+  if (unread) return unread;
 
   if (total === 0) {
     return (

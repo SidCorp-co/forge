@@ -102,16 +102,19 @@ function sentence(parts: readonly string[]): string {
   return `${body.charAt(0).toUpperCase()}${body.slice(1)}.`;
 }
 
+/** What a section or the page says of a read that has not arrived: which, and why. Null where it is in. */
+export function unreadStatement(subject: string, s: ReadState, plural = false): string | null {
+  if (s.read === "pending") return `${subject} ${plural ? "are" : "is"} still being read.`;
+  if (s.read === "failed") return `${subject} could not be read: ${s.reason}`;
+  return null;
+}
+
 function unreadLines(input: ShapeInput): string[] {
-  const out: string[] = [];
-  const line = (what: string, s: ReadState) => {
-    if (s.read === "pending") out.push(`${what} is still being read.`);
-    if (s.read === "failed") out.push(`${what} could not be read: ${s.reason}`);
-  };
-  line("What needs you", input.attention);
-  line("The project's runs", input.runs);
-  line("How long parked issues have waited", input.parked);
-  return out;
+  return [
+    unreadStatement("What needs you", input.attention),
+    unreadStatement("The project's runs", input.runs, true),
+    unreadStatement("How long parked issues have waited", input.parked),
+  ].filter((line): line is string => line !== null);
 }
 
 interface Qualifier {

@@ -30,4 +30,10 @@ describe("the Needs your attention list with nothing in it", () => {
     expect(screen.queryByText("All caught up")).toBeNull();
     expect(screen.getByTestId("attention-refusal")).toBeInTheDocument();
   });
+
+  it("does not say all caught up under a degraded page the list does not hold the cause of", () => {
+    render(<AttentionQueue items={[]} cut={null} degraded slug="pair" now={0} />);
+    expect(screen.queryByText("All caught up")).toBeNull();
+    expect(screen.getByText("No item is waiting on you")).toBeInTheDocument();
+  });
 });
