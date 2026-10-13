@@ -8,11 +8,13 @@
 import { useMemo, useState } from "react";
 import {
   Badge,
+  ConfirmDialog,
   DataTable,
   type DataTableColumn,
   Icon,
   RowActions,
   SectionTitle,
+  Truncated,
   useNow,
 } from "@/design";
 import {
@@ -49,10 +51,15 @@ function GrantBadge({ token }: { token: PatToken }) {
   if (token.grant === "full") return <Badge tone="red">Full access</Badge>;
   if (token.grant === "legacy") return <Badge tone="amber">Legacy — full access, never stated</Badge>;
   const names = token.permissions ?? [];
+  if (names.length === 0) return <Badge tone="neutral">No permission named</Badge>;
   return (
-    <Badge tone="neutral">
-      {names.length} permission{names.length === 1 ? "" : "s"}
-    </Badge>
+    <div className="flex flex-wrap gap-1">
+      {names.map((name) => (
+        <Badge key={name} tone="neutral">
+          {name}
+        </Badge>
+      ))}
+    </div>
   );
 }
 
@@ -75,10 +82,9 @@ const NAME_COLUMN: DataTableColumn<PatToken> = {
   sortValue: (t) => t.name,
   cell: (t) => (
     <>
-      <span className="block font-medium text-fg">{t.name}</span>
-      <span className="fg-caption block">
-        made by {ORIGIN_WORDS[originOf(t)]} · <span className="font-mono">{t.prefix}…</span>
-      </span>
+      <Truncated text={t.name} className="font-medium text-fg" />
+      <span className="fg-caption block">made by {ORIGIN_WORDS[originOf(t)]}</span>
+      <Truncated text={`${t.prefix}…`} className="fg-caption font-mono" />
     </>
   ),
 };
@@ -89,11 +95,10 @@ function describing(level: (token: PatToken) => string): DataTableColumn<PatToke
     {
       id: "level",
       header: "Level",
-      cellClassName: "whitespace-nowrap",
       cell: (t) => <Badge tone={t.boundProjectId ? "cobalt" : "neutral"}>{level(t)}</Badge>,
     },
     { id: "scopes", header: "Scopes", cell: (t) => <ScopeBadges scopes={t.scopes} /> },
-    { id: "grant", header: "Grant", cellClassName: "whitespace-nowrap", cell: (t) => <GrantBadge token={t} /> },
+    { id: "grant", header: "Grant", cell: (t) => <GrantBadge token={t} /> },
     {
       id: "created",
       header: "Created",
@@ -123,6 +128,7 @@ export interface TokenListProps {
 
 export function TokenList({ tokens, level, onRevoke, revoking }: TokenListProps) {
   const [endedOpen, setEndedOpen] = useState(false);
+  const [revokeTarget, setRevokeTarget] = useState<PatToken | null>(null);
   const now = useNow(EXPIRY_CHECK_MS);
   const groups = useMemo(() => groupTokens(tokens, now), [tokens, now]);
   const chatLine = chatTurnLine(groups.chatTurn);
@@ -147,12 +153,12 @@ export function TokenList({ tokens, level, onRevoke, revoking }: TokenListProps)
           <RowActions
             subject={t.name}
             busy={revoking}
-            actions={[{ id: "revoke", label: "Revoke", variant: "danger", onClick: () => onRevoke(t) }]}
+            actions={[{ id: "revoke", label: "Revoke", variant: "danger", onClick: () => setRevokeTarget(t) }]}
           />
         ),
       },
     ];
-  }, [level, onRevoke, revoking]);
+  }, [level, revoking]);
 
   const endedColumns = useMemo<DataTableColumn<PatToken>[]>(
     () => [
@@ -219,6 +225,19 @@ export function TokenList({ tokens, level, onRevoke, revoking }: TokenListProps)
           )}
         </div>
       )}
+      <ConfirmDialog
+        open={revokeTarget !== null}
+        title={`Revoke "${revokeTarget?.name ?? ""}"?`}
+        message={`Anything using this token loses access to your account at once, and a revoked token cannot be restored.`}
+        confirmLabel="Revoke token"
+        tone="danger"
+        loading={revoking}
+        onClose={() => setRevokeTarget(null)}
+        onConfirm={() => {
+          if (revokeTarget) onRevoke(revokeTarget);
+          setRevokeTarget(null);
+        }}
+      />
     </section>
   );
 }

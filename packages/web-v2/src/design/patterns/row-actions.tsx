@@ -16,12 +16,16 @@ export interface RowActionsProps {
   subject: string;
 }
 
-/** A row's actions. One it cannot take is left out, never drawn disabled, so none has a disabled state here. */
+/**
+ * A row's actions. One it cannot take is left out, never drawn disabled, so none has a disabled state here.
+ * They wrap onto a second line rather than widen the column, so a row never needs the table to scroll to
+ * reach one.
+ */
 export function RowActions({ actions, busy = false, subject }: RowActionsProps) {
   const shown = actions.filter((a): a is RowAction => Boolean(a));
   if (shown.length === 0) return null;
   return (
-    <div className="flex max-w-[9.5rem] flex-wrap justify-end gap-2 sm:max-w-none sm:flex-nowrap">
+    <div className="flex max-w-[9.5rem] flex-wrap justify-end gap-2 sm:max-w-none">
       {shown.map((a) => (
         <Button
           key={a.id}

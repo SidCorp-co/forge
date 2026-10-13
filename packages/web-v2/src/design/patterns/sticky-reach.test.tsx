@@ -1,12 +1,17 @@
 // @vitest-environment node
 // @gate-input whole-tree
 //
-// ISS-1166 / ISS-1169, round 2. A table's sticky first column is pinned over whatever scrolls under
+// ISS-1166 / ISS-1169, rounds 2 and 3. A table's sticky first column is pinned over whatever scrolls under
 // it, so it takes that much of the width away from every other column for good. Uncapped, the longest
 // agent handle made it 234px of a 356px table at 390px, and "Give a credential" could not be scrolled
 // out from under it. jsdom has no layout, so each table is drawn here in a real Chrome at the width
 // the app has at 390px (a 17px gutter either side) and every control in its body is scrolled as close
 // to view as the table allows; it fails when one still sits under the sticky column or past the edge.
+//
+// Round 3 adds what round 2 left unmeasured. A name in a sticky cell reads whole or is cut on one line
+// with the whole of it in a title, and is never broken mid-word ("AdminHub UI" over four lines); and at
+// 1280px, in the 894px the settings page leaves a table, every row action sits inside the table's frame
+// with nothing to scroll sideways.
 
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactNode } from "react";
@@ -19,6 +24,9 @@ import { measureReach, type Reach } from "@/test-support/chrome-layout";
 
 const PHONE_COLUMN = 356;
 const PHONE = 390;
+// The settings page at 1280px: the width the table has beside the nav rail and the page's own gutters.
+const DESKTOP_COLUMN = 894;
+const DESKTOP = 1280;
 
 // The longest handle the server takes is 40 characters (`create-agent-form.tsx:HANDLE_RULE`), and a
 // display name is free text.
@@ -105,15 +113,22 @@ const clearOf = (reach: Reach[]) => reach.filter((r) => !r.clear);
 const STICKY_FLOOR_PX = 128;
 const STICKY_CAP_PX = 160;
 
-async function measured(markup: string, table: string) {
-  const { reach, overflowing, stickyWidest, pinned } = await measureReach(markup, PHONE_COLUMN, PHONE);
+async function measured(markup: string, table: string, column = PHONE_COLUMN, viewport = PHONE) {
+  const { reach, overflowing, stickyWidest, pinned, broken, clipped, scrolling } = await measureReach(markup, column, viewport);
   return {
     reach: reach.filter((r) => r.table === table),
     overflowing: overflowing.filter((o) => o.startsWith(`${table}:`)),
     stickyWidest: stickyWidest[table] ?? 0,
     pinned: pinned.filter((p) => p.table === table),
+    broken: broken.filter((b) => b.startsWith(`${table}:`)),
+    clipped: clipped.filter((c) => c.table === table),
+    scrolling: scrolling.filter((s) => s.startsWith(`${table}:`)),
   };
 }
+
+const unframed = (reach: Reach[]) => reach.filter((r) => !r.framed).map((r) => `${r.control} at ${r.left}-${r.right}`);
+// What the two names the audit saw broken, and a name that cannot fit, are drawn as.
+const WHOLE_NAMES = ["AdminHub UI", "SID_GROWTH"];
 
 describe("a control in a table with a sticky first column scrolls clear of it at 390px", () => {
   it("Agents: every row action, with the longest handle and a long display name", async () => {
@@ -177,5 +192,101 @@ describe("a control in a table with a sticky first column scrolls clear of it at
     expect(pinned.filter((p) => !p.fits)).toEqual([]);
     expect(stickyWidest).toBeGreaterThanOrEqual(STICKY_FLOOR_PX);
     expect(stickyWidest).toBeLessThanOrEqual(STICKY_CAP_PX);
+  });
+});
+
+describe("a name in a sticky cell reads whole at 390px, or is cut on one line with the whole of it in a title", () => {
+  it("Projects: a name is never broken mid-word, and one that fits is not cut", async () => {
+    const items = [...WHOLE_NAMES, "a-project-with-a-very-long-name-that-keeps-going-and-going", "p".repeat(60)].map(project);
+    const markup = renderToStaticMarkup(
+      <ProjectList items={items} now={Date.parse("2026-10-03T00:00:00Z")} onTogglePin={() => {}} sort={{ id: "recent", desc: true }} onSortChange={() => {}} />,
+    );
+    const { broken, clipped, reach, pinned } = await measured(markup, "Projects");
+    expect(broken).toEqual([]);
+    expect(clipped.length).toBeGreaterThan(0);
+    expect(clipped.filter((c) => !c.titled)).toEqual([]);
+    expect(clipped.map((c) => c.text).filter((t) => WHOLE_NAMES.includes(t))).toEqual([]);
+    expect(clearOf(reach)).toEqual([]);
+    expect(pinned.filter((p) => !p.fits)).toEqual([]);
+  });
+
+  it("Agents: a handle and a display name are never broken mid-word", async () => {
+    state.agents = [
+      agent(1, { displayName: "AdminHub UI" }),
+      agent(2, { handle: "SID_GROWTH" }),
+      agent(3, { handle: LONGEST_HANDLE, activeTokens: 1, canAct: true }),
+      agent(4, { displayName: LONG_DISPLAY_NAME, activeTokens: 1, canAct: true }),
+      agent(5, { handle: UNBREAKABLE }),
+    ];
+    const { broken, clipped, reach } = await measured(renderToStaticMarkup(<AgentsTab />), "Agents");
+    expect(broken).toEqual([]);
+    expect(clipped.length).toBeGreaterThan(0);
+    expect(clipped.filter((c) => !c.titled)).toEqual([]);
+    expect(clipped.map((c) => c.text).filter((t) => WHOLE_NAMES.includes(t))).toEqual([]);
+    expect(clearOf(reach)).toEqual([]);
+  });
+
+  it("API Tokens: a name and the line under it are never broken mid-word", async () => {
+    const live = [token("AdminHub UI"), token("SID_GROWTH"), token("a-token-named-by-someone-who-likes-long-names-0123456789")];
+    const markup = renderToStaticMarkup(<TokenList tokens={live} level={() => "User-level"} onRevoke={() => {}} revoking={false} />);
+    const { broken, clipped, reach } = await measured(markup, "Tokens that can reach your account");
+    expect(broken).toEqual([]);
+    expect(clipped.length).toBeGreaterThan(0);
+    expect(clipped.filter((c) => !c.titled)).toEqual([]);
+    expect(clipped.map((c) => c.text).filter((t) => WHOLE_NAMES.includes(t))).toEqual([]);
+    expect(clearOf(reach)).toEqual([]);
+  });
+
+  it("Overview: a project name in the silence table is never broken mid-word", async () => {
+    const row = (name: string) => ({
+      id: name, slug: name, name, open: 4, in_flight: 2, awaiting_release: 1, blocked_on_person: 3,
+      stuckRuns: 0, abandonedIssues: 0, lastIssueRunAt: "2026-09-20T00:00:00.000Z",
+    });
+    const pulse = {
+      work: {
+        buckets: { open: 0, in_flight: 0, awaiting_release: 0, blocked_on_person: 0 },
+        blockedOnPersonAges: [],
+        perProject: [...WHOLE_NAMES, "a-project-with-a-very-long-name-that-keeps-going-and-going", "p".repeat(60)].map(row),
+      },
+    } as unknown as PulseResponse;
+    const markup = renderToStaticMarkup(<WorkSitting pulse={pulse} nowMs={Date.parse("2026-10-03T00:00:00Z")} />);
+    const { broken, clipped } = await measured(markup, "Longest without an issue run");
+    expect(broken).toEqual([]);
+    expect(clipped.length).toBeGreaterThan(0);
+    expect(clipped.filter((c) => !c.titled)).toEqual([]);
+    expect(clipped.map((c) => c.text).filter((t) => WHOLE_NAMES.includes(t))).toEqual([]);
+  });
+});
+
+describe("every row action sits inside the table's frame at 1280px, with nothing to scroll sideways", () => {
+  it("Agents: the handles beta holds, the longest the server takes, and a long display name, each with all three actions", async () => {
+    // Beta's own handles, read off https://forge-beta.sidcorp.co/settings?tab=agents at 1280px: the table was 940px in
+    // 894px of frame with these, though it fitted with the short ones a first fixture used.
+    state.agents = [
+      ...["sid-accountants", "epodsystem-core", "home-kieutrung-services-anhome", "butlocs", "erp", "sid-desk"].map((handle, i) =>
+        agent(i, { handle, projects: [], activeTokens: 1, canAct: false }),
+      ),
+      agent(6, { handle: LONGEST_HANDLE, activeTokens: 1, canAct: true }),
+      agent(7, { displayName: LONG_DISPLAY_NAME, handle: "home-kieutrung-services-anhome", activeTokens: 1, canAct: true }),
+      agent(8, { handle: UNBREAKABLE }),
+      ...Array.from({ length: 5 }, (_, i) => agent(9 + i, { activeTokens: i % 2, canAct: i % 2 === 1 })),
+    ];
+    const { reach, scrolling } = await measured(renderToStaticMarkup(<AgentsTab />), "Agents", DESKTOP_COLUMN, DESKTOP);
+    expect(reach.filter((r) => r.control.startsWith("Self")).length).toBe(state.agents.length);
+    expect(unframed(reach)).toEqual([]);
+    expect(scrolling).toEqual([]);
+  });
+
+  it("API Tokens: Revoke on a row that reaches through several named permissions", async () => {
+    const named = ["issues:read", "issues:write", "schedules:read", "schedules:write", "knowledge:read"];
+    const live = [
+      token("iss974-walk-2"),
+      token("ci", { grant: "named", permissions: named, boundProjectId: "p1", expiresAt: "2027-01-01T00:00:00.000Z", lastUsedAt: "2026-10-01T00:00:00.000Z" }),
+    ];
+    const markup = renderToStaticMarkup(<TokenList tokens={live} level={(t) => (t.boundProjectId ? "Project: forge-dev" : "User-level")} onRevoke={() => {}} revoking={false} />);
+    const { reach, scrolling } = await measured(markup, "Tokens that can reach your account", DESKTOP_COLUMN, DESKTOP);
+    expect(reach.filter((r) => r.control.startsWith("Revoke")).length).toBe(2);
+    expect(unframed(reach)).toEqual([]);
+    expect(scrolling).toEqual([]);
   });
 });

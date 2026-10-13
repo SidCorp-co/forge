@@ -16,6 +16,7 @@ import {
   Card,
   CardContent,
   CardTitle,
+  ConfirmDialog,
   DataTable,
   type DataTableColumn,
   EmptyState,
@@ -26,6 +27,7 @@ import {
   RowActions,
   SectionTitle,
   Skeleton,
+  Truncated,
 } from "@/design";
 import { useActiveOrg } from "@/features/orgs/active-org";
 import { useProjectsIncludingArchived } from "@/features/projects/hooks";
@@ -55,6 +57,7 @@ export function AgentsTab() {
   const { toast } = useToast();
 
   const [revealed, setRevealed] = useState<{ userId: string; plaintext: string } | null>(null);
+  const [revoking, setRevoking] = useState<AgentAccountRow | null>(null);
   const [renaming, setRenaming] = useState<{ userId: string; value: string } | null>(null);
 
   if (activeOrg && activeOrg.role !== "owner" && activeOrg.role !== "admin") {
@@ -134,19 +137,23 @@ export function AgentsTab() {
         ) : (
           <button
             type="button"
-            className="text-left"
+            className="block w-full text-left"
             onClick={() => setRenaming({ userId: agent.userId, value: agent.displayName ?? "" })}
           >
-            {agentLabel(agent)}
+            <Truncated text={agentLabel(agent)} />
           </button>
         ),
     },
     {
       id: "address",
       header: "Address",
-      cellClassName: "whitespace-nowrap",
+      cellClassName: "max-w-52",
       sortValue: (agent) => agent.handle,
-      cell: (agent) => <MonoTag>{agentAddress(agent)}</MonoTag>,
+      cell: (agent) => (
+        <MonoTag className="block truncate" title={agentAddress(agent)}>
+          {agentAddress(agent)}
+        </MonoTag>
+      ),
     },
     {
       id: "projects",
@@ -156,11 +163,14 @@ export function AgentsTab() {
     {
       id: "canAct",
       header: "Can act",
-      cellClassName: "whitespace-nowrap",
       sortValue: (agent) => (agent.canAct ? 1 : 0),
       cell: (agent) => {
         const reach = reachOf(agent);
-        return reach.canAct ? <Badge tone="green">Yes</Badge> : <Badge tone="amber">No — {reach.why}</Badge>;
+        return reach.canAct ? (
+          <Badge tone="green">Yes</Badge>
+        ) : (
+          <Badge tone="amber">No — {reach.why}</Badge>
+        );
       },
     },
     {
@@ -178,7 +188,7 @@ export function AgentsTab() {
               id: "revoke",
               label: "Revoke",
               variant: "ghost",
-              onClick: () => onRevoke(agent),
+              onClick: () => setRevoking(agent),
             },
             {
               id: "self",
@@ -267,6 +277,20 @@ export function AgentsTab() {
       )}
 
       <CreateAgentForm orgId={orgId} />
+
+      <ConfirmDialog
+        open={revoking !== null}
+        title={`Revoke the credentials of "${revoking ? agentLabel(revoking) : ""}"?`}
+        message="It keeps its place in every room it is in, and cannot answer in one until it is given a credential again."
+        confirmLabel="Revoke credentials"
+        tone="danger"
+        loading={revoke.isPending}
+        onClose={() => setRevoking(null)}
+        onConfirm={() => {
+          if (revoking) void onRevoke(revoking);
+          setRevoking(null);
+        }}
+      />
     </div>
   );
 }
