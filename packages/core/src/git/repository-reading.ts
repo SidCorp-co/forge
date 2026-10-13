@@ -3,7 +3,8 @@
  * project hosted anywhere but GitHub — or bound to nothing — is read through. One reading owns two
  * bare repositories under the deploy key's temp dir and fetches into them only what a question
  * needs: every branch's commits once (`--filter=tree:0`), for which commit a name is, its message
- * and parents, and which branch holds it; and, for a question about files, the trees of just the
+ * and parents, and which branch holds it; every tag's commits the same way, for which tags hold a
+ * commit (ISS-1391); and, for a question about files, the trees of just the
  * commits it compares (`--depth=1 --filter=blob:none`), never a file's contents. Nothing is fetched
  * lazily behind a read, and every fetch is held to `REMOTE_FETCH_LIMITS`.
  *
@@ -14,6 +15,7 @@
 import { execFile } from 'node:child_process';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import { matchingTagsNewestFirst } from '../projects/release-tag.js';
 import {
   type BranchRead,
   type Carriage,
@@ -30,6 +32,7 @@ import {
   type Refused,
   type RepositoryReader,
   saying,
+  type TagContainment,
 } from '../projects/repository-reader.js';
 import {
   boundedFetch,
@@ -78,6 +81,7 @@ class GitReading {
   private readonly limits: FetchLimits;
   private made: Promise<number> | null = null;
   private historyRead: Promise<void> | null = null;
+  private tagsRead: Promise<void> | null = null;
   private treesRead: Promise<void> = Promise.resolve();
   private treesMade = false;
   private readonly fetched = new Set<string>();
@@ -153,6 +157,33 @@ class GitReading {
       );
     })();
     return this.historyRead;
+  }
+
+  private ensureTags(): Promise<void> {
+    this.tagsRead ??= (async () => {
+      await this.ensureHistory();
+      await this.fetchInto(
+        this.history,
+        "fetching every tag's commits from the git host",
+        'commits-only',
+        ['--filter=tree:0', this.remote, '+refs/tags/*:refs/forge/tags/*'],
+      );
+    })();
+    return this.tagsRead;
+  }
+
+  /** The names of the fetched tags, all of them or only those that contain `sha`. */
+  async tagNames(contains?: string): Promise<string[]> {
+    await this.ensureTags();
+    const out = await this.git([
+      '-C',
+      this.history,
+      'for-each-ref',
+      '--format=%(refname:strip=3)',
+      ...(contains === undefined ? [] : ['--contains', contains]),
+      'refs/forge/tags',
+    ]);
+    return out.split('\n').filter((name) => name !== '');
   }
 
   private async verified(name: string): Promise<string | null> {
@@ -414,6 +445,22 @@ export function gitRepositoryReader(
         if ('why' in tip) return tip;
         const read = await g.status(['-C', g.history, 'merge-base', '--is-ancestor', sha, tip.sha]);
         return { contains: read === 0 };
+      } catch (err) {
+        return { why: g.failed(err) };
+      }
+    },
+
+    async tagsContaining(commit: string, pattern: string): Promise<TagContainment> {
+      try {
+        const found = await g.resolve(commit);
+        if (!found.ok) return { why: found.why };
+        const sha = found.commit.sha;
+        const [all, holding] = await Promise.all([g.tagNames(), g.tagNames(sha)]);
+        return {
+          commit: sha,
+          matching: matchingTagsNewestFirst(pattern, all),
+          containing: matchingTagsNewestFirst(pattern, holding),
+        };
       } catch (err) {
         return { why: g.failed(err) };
       }

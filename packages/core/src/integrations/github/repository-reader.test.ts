@@ -75,3 +75,128 @@ describe('a name longer than a whole sha, on a GitHub binding', () => {
     expect(client.asked).toEqual([`/repos/o/r/commits/${SHA.toUpperCase()}`]);
   });
 });
+
+/**
+ * ISS-1391 — which tags hold a commit, over a client answering as GitHub does: the tag list pages
+ * 100 at a time with each tag's commit already peeled, and a compare from the landing to a tag
+ * says `ahead` or `identical` exactly where the tag holds it.
+ */
+describe('tagsContaining, on a GitHub binding', () => {
+  const LANDING = SHA;
+  const HOLDER = 'a'.repeat(40);
+  const OTHER = 'b'.repeat(40);
+
+  function tagged(
+    tags: Array<{ name: string; holds: boolean }>,
+    opts: { failCompare?: boolean } = {},
+  ): GitHubRepoClient & { asked: string[] } {
+    const client = github();
+    const shaOf = (t: { holds: boolean }) => (t.holds ? HOLDER : OTHER);
+    return {
+      ...client,
+      async get<T>(path: string): Promise<T> {
+        client.asked.push(path);
+        if (path.toLowerCase().startsWith(`/repos/o/r/commits/${LANDING}`)) {
+          return { sha: LANDING, parents: [], commit: { message: 'm' } } as T;
+        }
+        const page = /\/tags\?per_page=100&page=(\d+)/.exec(path);
+        if (page) {
+          const at = (Number(page[1]) - 1) * 100;
+          return tags
+            .slice(at, at + 100)
+            .map((t) => ({ name: t.name, commit: { sha: shaOf(t) } })) as T;
+        }
+        const cmp = /\/compare\/[0-9a-f]+\.\.\.([0-9a-f]+)\?per_page=1$/.exec(path);
+        if (cmp) {
+          if (opts.failCompare) throw new GitHubReadError(500, `GET ${path} returned HTTP 500`);
+          return { status: cmp[1] === HOLDER ? 'ahead' : 'diverged' } as T;
+        }
+        throw new GitHubReadError(404, `GET ${path} returned HTTP 404`);
+      },
+    };
+  }
+
+  const compares = (c: { asked: string[] }) => c.asked.filter((p) => p.includes('/compare/'));
+
+  it('names the matching tag that holds the commit, newest listed first, and asks nothing of a tag the pattern does not name', async () => {
+    const client = tagged([
+      { name: 'v1.1.0', holds: false },
+      { name: 'v1.2.0', holds: true },
+      { name: 'nightly-9', holds: true },
+    ]);
+    const read = await githubRepositoryReader(client).tagsContaining(LANDING, 'v*');
+    expect(read).toEqual({
+      commit: LANDING,
+      matching: ['v1.2.0', 'v1.1.0'],
+      containing: ['v1.2.0'],
+    });
+    expect(compares(client)).toHaveLength(2);
+  });
+
+  it('answers no containing tag where none holds the commit, listing the matching ones', async () => {
+    const read = await githubRepositoryReader(
+      tagged([
+        { name: 'v1.18.0', holds: false },
+        { name: 'v1.9.0', holds: false },
+      ]),
+    ).tagsContaining(LANDING, 'v*');
+    expect(read).toEqual({ commit: LANDING, matching: ['v1.18.0', 'v1.9.0'], containing: [] });
+  });
+
+  it('finds the sole tag that holds the commit when it is the oldest of 120, past the first tag page', async () => {
+    const all = Array.from({ length: 120 }, (_, i) => ({ name: `v1.${i + 1}.0`, holds: i === 0 }));
+    const client = tagged(all);
+    const read = await githubRepositoryReader(client).tagsContaining(LANDING, 'v*');
+    expect(read).toMatchObject({ commit: LANDING, containing: ['v1.1.0'] });
+    expect('matching' in read && read.matching).toHaveLength(120);
+    expect(compares(client)).toHaveLength(120);
+  });
+
+  it('stops comparing after the first batch that holds the commit', async () => {
+    const all = Array.from({ length: 120 }, (_, i) => ({ name: `v1.${i + 1}.0`, holds: true }));
+    const client = tagged(all);
+    const read = await githubRepositoryReader(client).tagsContaining(LANDING, 'v*');
+    expect(read).toMatchObject({ commit: LANDING });
+    expect(compares(client)).toHaveLength(10);
+  });
+
+  it('reads a repository holding exactly the most tags one reading lists', async () => {
+    const all = Array.from({ length: 1000 }, (_, i) => ({ name: `v1.${i + 1}.0`, holds: true }));
+    const read = await githubRepositoryReader(tagged(all)).tagsContaining(LANDING, 'v*');
+    expect(read).toMatchObject({ commit: LANDING });
+    expect('why' in read).toBe(false);
+  });
+
+  it('refuses a repository with more tags than one reading lists, rather than reading part of them', async () => {
+    const all = Array.from({ length: 1001 }, (_, i) => ({ name: `v1.${i + 1}.0`, holds: true }));
+    const client = tagged(all);
+    const read = await githubRepositoryReader(client).tagsContaining(LANDING, 'v*');
+    expect(read).toEqual({
+      why: 'o/r holds more than 1000 tags, more than one reading lists whole, so whether a tag holds the commit cannot be read',
+    });
+    expect(compares(client)).toEqual([]);
+  });
+
+  it('says why where a compare fails, rather than answering that no tag holds the commit', async () => {
+    const read = await githubRepositoryReader(
+      tagged([{ name: 'v1.0.0', holds: true }], { failCompare: true }),
+    ).tagsContaining(LANDING, 'v*');
+    expect(read).toMatchObject({
+      why: expect.stringContaining('o/r could not read which tags hold'),
+    });
+  });
+
+  it('says why where the commit is unknown to the repository', async () => {
+    const read = await githubRepositoryReader(tagged([])).tagsContaining('c'.repeat(40), 'v*');
+    expect(read).toMatchObject({ why: expect.stringContaining('HTTP 404') });
+  });
+
+  it('refuses a name longer than a whole sha without asking GitHub', async () => {
+    const client = tagged([]);
+    const name = `${LANDING}a`;
+    expect(await githubRepositoryReader(client).tagsContaining(name, 'v*')).toEqual({
+      why: overlong(name),
+    });
+    expect(client.asked).toEqual([]);
+  });
+});

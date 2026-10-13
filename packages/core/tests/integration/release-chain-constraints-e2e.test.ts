@@ -14,6 +14,8 @@
  * `src/projects/release-chain.test.ts`.
  */
 
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import type { Sql } from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -25,6 +27,17 @@ import {
   runForward,
   writeChain,
 } from './release-chain-migration-ground.js';
+
+/** A migration or rollback file's statements, split on drizzle's own marker, as `runForward` takes them. */
+function statementsOf(folder: 'migrations' | 'rollback', file: string): string[] {
+  const path = fileURLToPath(new URL(`../../drizzle/${folder}/${file}`, import.meta.url));
+  return readFileSync(path, 'utf8')
+    .split('--> statement-breakpoint')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+const TAG_MIGRATION = '0328_a_chain_can_name_the_tag_that_ships_it.sql';
 
 let groundDb: PreMigrationGround;
 let db: Awaited<ReturnType<PreMigrationGround['fresh']>>;
@@ -43,6 +56,9 @@ beforeAll(async () => {
   });
   subject = planted.id;
   await runForward(db.sql);
+  // 0328 replaces the predicate 0312 made, so every case below is judged against the function the
+  // deployed schema carries, not the one it started from.
+  await runForward(db.sql, statementsOf('migrations', TAG_MIGRATION));
 }, 300_000);
 
 afterAll(async () => {
@@ -208,6 +224,57 @@ describe('projects_release_chain_chk — one case per clause it refuses', () => 
   });
 });
 
+describe('projects_release_chain_chk — the tag that ships a project (0328, ISS-1391)', () => {
+  it('takes a tag on the only entry, and on the last entry of several', async () => {
+    expect(await refusal(db.sql, [{ branch: 'dev', tag: 'v*.*.*' }])).toBeNull();
+    expect(
+      await refusal(db.sql, [
+        { branch: 'dev' },
+        { branch: 'main', from: 'merge-branch', tag: 'v*' },
+      ]),
+    ).toBeNull();
+  });
+
+  it('takes a pattern of exactly 100 characters, and every character the pattern may hold', async () => {
+    expect(await refusal(db.sql, [{ branch: 'dev', tag: 'v'.repeat(100) }])).toBeNull();
+    expect(await refusal(db.sql, [{ branch: 'dev', tag: 'aZ09._/-*' }])).toBeNull();
+  });
+
+  it('refuses a tag on an entry that is not the last, by name', async () => {
+    expect(
+      await refusal(db.sql, [
+        { branch: 'dev', tag: 'v*' },
+        { branch: 'main', from: 'merge-branch' },
+      ]),
+    ).toBe(CHK);
+    expect(
+      await refusal(db.sql, [
+        { branch: 'dev' },
+        { branch: 'stg', from: 'merge-branch', tag: 'v*' },
+        { branch: 'main', from: 'merge-branch' },
+      ]),
+    ).toBe(CHK);
+  });
+
+  it('refuses a pattern that is empty, a hundred and one characters, or not a string', async () => {
+    expect(await refusal(db.sql, [{ branch: 'dev', tag: '' }])).toBe(CHK);
+    expect(await refusal(db.sql, [{ branch: 'dev', tag: 'v'.repeat(101) }])).toBe(CHK);
+    expect(await refusal(db.sql, [{ branch: 'dev', tag: null }])).toBe(CHK);
+    expect(await refusal(db.sql, [{ branch: 'dev', tag: 7 }])).toBe(CHK);
+    expect(await refusal(db.sql, [{ branch: 'dev', tag: ['v*'] }])).toBe(CHK);
+  });
+
+  it('refuses a pattern holding a character a tag pattern may not', async () => {
+    for (const tag of ['v 1', 'v?', 'v[0-9]', 'v{1,2}', 'v\\1', 'v$', 'v\n']) {
+      expect(await refusal(db.sql, [{ branch: 'dev', tag }]), JSON.stringify(tag)).toBe(CHK);
+    }
+  });
+
+  it('still refuses a key the entry does not declare, beside a tag', async () => {
+    expect(await refusal(db.sql, [{ branch: 'dev', tag: 'v*', pattern: 'v*' }])).toBe(CHK);
+  });
+});
+
 describe('the column itself', () => {
   it('defaults to an empty chain, so a row inserted naming nothing ships nothing', async () => {
     const late = await plantProjectPostMigration(db.sql, g, 'inserted-after-0312');
@@ -237,3 +304,28 @@ async function plantProjectPostMigration(sql: Sql, gr: Ground, slug: string): Pr
   );
   return (row as unknown as { id: string }).id;
 }
+
+/**
+ * Last, because it changes the function: 0328's way back, run the way an operator runs it
+ * (`db/migrate.ts` never reads the folder). It refuses by name while a project still declares a
+ * tag, and only then puts the old predicate back, which refuses the key again.
+ */
+describe('drizzle/rollback/0328_down.sql', () => {
+  const DOWN = statementsOf('rollback', '0328_down.sql');
+
+  it('aborts naming the project that still declares a tag, and leaves the predicate alone', async () => {
+    await writeChain(db.sql, subject, [{ branch: 'dev', tag: 'v*' }]);
+
+    await expect(runForward(db.sql, DOWN)).rejects.toThrow(/chain-under-the-check/);
+    expect(await refusal(db.sql, [{ branch: 'dev', tag: 'v*' }])).toBeNull();
+  });
+
+  it('restores the predicate once no project declares a tag, which then refuses the key', async () => {
+    await writeChain(db.sql, subject, [{ branch: 'dev' }]);
+
+    await runForward(db.sql, DOWN);
+
+    expect(await refusal(db.sql, [{ branch: 'dev', tag: 'v*' }])).toBe(CHK);
+    expect(await refusal(db.sql, [{ branch: 'dev' }])).toBeNull();
+  });
+});

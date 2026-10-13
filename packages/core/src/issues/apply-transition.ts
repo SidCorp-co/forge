@@ -23,6 +23,7 @@ import { mintParkQuestion } from './park-question.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
 import { postReleaseGateHoldComment, resolveAgentCloseTarget } from './release-gate-hold.js';
 import { refuseUnrecordedClose } from './release-record-required.js';
+import { refuseUnreleasedClose } from './release-tag-close.js';
 import { ISSUE_TERMINAL_STATUSES } from './status-sets.js';
 import { checkTransitionEvidence } from './transition-evidence.js';
 import {
@@ -52,6 +53,8 @@ export type TransitionErrorCode =
   | 'RELEASE_RECORD_REQUIRED'
   | 'ENTRY_CRITERIA_UNMET'
   | 'CLOSE_REQUIRES_SHIPPED'
+  | 'CLOSE_REQUIRES_RELEASE_TAG'
+  | 'RELEASE_TAG_UNREAD'
   | 'WAITING_KIND_NOT_APPLICABLE'
   | 'ISSUE_ARCHIVED'
   | 'OPEN_QUESTIONS'
@@ -260,7 +263,7 @@ async function explainDraftRace(
  *
  * Throws `TransitionError` (NO_OP / ILLEGAL_TRANSITION /
  * REOPEN_REASON_REQUIRED / STALE_TRANSITION / PLAN_REQUIRED /
- * CLOSE_REQUIRES_SHIPPED); callers map it onto their own error surface.
+ * CLOSE_REQUIRES_SHIPPED / CLOSE_REQUIRES_RELEASE_TAG / RELEASE_TAG_UNREAD); callers map it onto their own error surface.
  */
 export async function transitionIssueStatus(
   issue: TransitionIssueRow,
@@ -335,6 +338,10 @@ export async function transitionIssueStatus(
   if (unrecorded) {
     throw new TransitionError('RELEASE_RECORD_REQUIRED', unrecorded.detail, unrecorded.details);
   }
+
+  // Asked before the transaction opens: it reads the project's repository, which no lock should wait on.
+  const untagged = await refuseUnreleasedClose(issue, toStatus);
+  if (untagged) throw new TransitionError(untagged.code, untagged.detail, untagged.details);
 
   const declaredCriteria =
     options.skip === true

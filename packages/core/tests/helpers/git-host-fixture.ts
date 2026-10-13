@@ -49,7 +49,9 @@ export interface GitHost {
   branch(branch: string, from: string): void;
   /** Merge `from` into `into` with a merge commit; the merge's sha. */
   merge(into: string, from: string, message: string): string;
-  /** Make the served repository match the working one, every branch. */
+  /** Tag `at` in the working repository; `annotated` makes a tag object rather than a bare ref. */
+  tag(name: string, at: string, annotated?: boolean): void;
+  /** Make the served repository match the working one, every branch and every tag. */
   publish(): void;
   /** Answer every read with `answer`'s stderr and exit status, as that host refuses; null serves. */
   answering(answer: HostAnswer | null): void;
@@ -113,8 +115,12 @@ export function startGitHost(): GitHost {
       git(work, 'merge', '--quiet', '--no-ff', '-m', message, from);
       return git(work, 'rev-parse', 'HEAD');
     },
+    tag(name, at, annotated = false) {
+      git(work, 'tag', ...(annotated ? ['-a', '-m', name] : []), name, at);
+    },
     publish() {
       git(work, 'push', '--quiet', '--force', '--all', served);
+      git(work, 'push', '--quiet', '--force', '--tags', served);
     },
     answering(answer) {
       if (!answer) return rmSync(said, { force: true });

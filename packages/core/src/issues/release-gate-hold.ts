@@ -3,6 +3,7 @@ import { comments, type IssueStatus } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { resolveReleaseGate } from '../release-batch/gate.js';
 import type { ActorAgency } from './actor-agency.js';
+import { releaseTagOf } from './release-tag-close.js';
 
 export interface CloseTargetDecision {
   status: IssueStatus;
@@ -20,6 +21,10 @@ export async function resolveAgentCloseTarget(args: {
   if (args.requested !== 'closed') return pass;
   if (args.agency !== 'agent') return pass;
   if (args.viaReleasePath) return pass;
+  // A project that ships by tag is not held at the gate and then closed by a release batch: its
+  // close is decided by whether a tag contains the landing (`refuseUnreleasedClose`), for every
+  // actor, so rewriting an agent's close to `awaiting_release` would answer a different question.
+  if ((await releaseTagOf(args.projectId)) !== null) return pass;
 
   const gate = await resolveReleaseGate(args.projectId);
   if (!gate) return pass;

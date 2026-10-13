@@ -30,6 +30,11 @@ const dbSelect = vi.fn(() => ({
 
 // The archived-issue guard reads the row itself; these tests script every select, so it answers none.
 vi.mock('../questions/issue-coupling.js', () => ({ settleOpenQuestions: async () => null }));
+// A project naming no release tag owes a close nothing more, and these cases script every select.
+vi.mock('./release-tag-close.js', () => ({
+  releaseTagOf: vi.fn(async () => null),
+  refuseUnreleasedClose: vi.fn(async () => null),
+}));
 vi.mock('./archive.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./archive.js')>()),
   archivedAmong: vi.fn(async () => []),

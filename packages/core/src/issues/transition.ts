@@ -65,9 +65,12 @@ function transitionErrorToHttp(err: TransitionError): HTTPException {
     case 'WAITING_KIND_NOT_APPLICABLE':
     case 'RELEASE_RECORD_REQUIRED':
     case 'CLOSE_REQUIRES_SHIPPED':
+    case 'CLOSE_REQUIRES_RELEASE_TAG':
     case 'ENTRY_CRITERIA_UNMET':
     case 'VOID_REASON_REQUIRED':
       return new HTTPException(422, { message: err.detail, cause });
+    case 'RELEASE_TAG_UNREAD':
+      return new HTTPException(503, { message: err.detail, cause });
     case 'NO_WORK_EVIDENCE':
       return new HTTPException(409, { message: err.detail, cause });
     default:

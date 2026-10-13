@@ -2,10 +2,15 @@
  * The repository reads Forge takes through a project's GitHub binding (ISS-1398 moved them here
  * from their callers, request for request): a commit by its sha, a branch's head, whether a branch
  * contains a commit, what a served commit carries of a judged one, what a landing changed, and the
- * commits between a branch and a commit. GitHub answers a pair with no common ancestor with a 404,
+ * commits between a branch and a commit, and which tags hold a commit (ISS-1391). GitHub answers a pair with no common ancestor with a 404,
  * which arrives as a failed request and is unread like any other.
  */
 
+import {
+  matchingTagsNewestFirst,
+  RELEASE_TAG_COMPARE_BATCH,
+  RELEASE_TAG_LIST_CEILING,
+} from '../../projects/release-tag.js';
 import {
   type Carriage,
   type ChangedPaths,
@@ -18,6 +23,7 @@ import {
   type RangeCommit,
   type RangeRead,
   type RepositoryReader,
+  type TagContainment,
 } from '../../projects/repository-reader.js';
 import { GitHubReadError, type GitHubRepoClient } from './client.js';
 
@@ -56,6 +62,11 @@ interface ComparePage {
   commits?: CommitRead[];
 }
 
+interface TagRead {
+  name?: string;
+  commit?: { sha?: string };
+}
+
 function why(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -85,6 +96,57 @@ function rangeCommitOf(c: CommitRead): RangeCommit | null {
     ),
     message: c.commit?.message ?? '',
   };
+}
+
+/** Every tag and the commit it names, which the listing peels an annotated tag down to. */
+async function listTags(client: GitHubRepoClient): Promise<Map<string, string> | string> {
+  const repository = client.fullName;
+  const tags = new Map<string, string>();
+  // One page past the ceiling's worth, so a repository holding exactly the ceiling is read whole.
+  for (let page = 1; page <= RELEASE_TAG_LIST_CEILING / PAGE_SIZE + 1; page += 1) {
+    const read = await client.get<TagRead[]>(
+      `/repos/${repository}/tags?per_page=${PAGE_SIZE}&page=${page}`,
+    );
+    if (!Array.isArray(read)) return `${repository} answered its tag list with no array`;
+    for (const t of read) {
+      if (typeof t.name !== 'string' || typeof t.commit?.sha !== 'string') {
+        return `${repository} answered a tag with no name or no commit`;
+      }
+      tags.set(t.name, t.commit.sha.toLowerCase());
+    }
+    if (tags.size > RELEASE_TAG_LIST_CEILING) break;
+    if (read.length < PAGE_SIZE) return tags;
+  }
+  return `${repository} holds more than ${RELEASE_TAG_LIST_CEILING} tags, more than one reading lists whole, so whether a tag holds the commit cannot be read`;
+}
+
+/** The matching tags, newest first, that contain `sha`: batches of compares until one holds it. */
+async function holding(
+  client: GitHubRepoClient,
+  sha: string,
+  matching: string[],
+  tags: Map<string, string>,
+) {
+  const repository = client.fullName;
+  const containing: string[] = [];
+  for (
+    let at = 0;
+    at < matching.length && containing.length === 0;
+    at += RELEASE_TAG_COMPARE_BATCH
+  ) {
+    const batch = matching.slice(at, at + RELEASE_TAG_COMPARE_BATCH);
+    const statuses = await Promise.all(
+      batch.map((name) =>
+        client.get<CompareRead>(
+          `/repos/${repository}/compare/${encodeURIComponent(sha)}...${encodeURIComponent(tags.get(name) as string)}?per_page=1`,
+        ),
+      ),
+    );
+    batch.forEach((name, i) => {
+      if (DESCENDS.has(statuses[i]?.status ?? '')) containing.push(name);
+    });
+  }
+  return containing;
 }
 
 /** The reader over a GitHub binding's installation. */
@@ -214,6 +276,23 @@ export function githubRepositoryReader(client: GitHubRepoClient): RepositoryRead
         return { contains: !!cmp.status && DESCENDS.has(cmp.status) };
       } catch (err) {
         return { why: why(err) };
+      }
+    },
+
+    async tagsContaining(commit: string, pattern: string): Promise<TagContainment> {
+      const named = overlong(commit);
+      if (named) return { why: named };
+      try {
+        const found = await client.get<CommitRead>(commitPath(commit));
+        const sha = found.sha?.toLowerCase();
+        if (!sha) return { why: `${repository} answered no sha for ${commit}` };
+        const tags = await listTags(client);
+        if (typeof tags === 'string') return { why: tags };
+        const matching = matchingTagsNewestFirst(pattern, [...tags.keys()]);
+        const containing = await holding(client, sha, matching, tags);
+        return { commit: sha, matching, containing };
+      } catch (err) {
+        return { why: `${repository} could not read which tags hold ${commit}: ${why(err)}` };
       }
     },
 
