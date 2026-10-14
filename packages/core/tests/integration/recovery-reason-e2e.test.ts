@@ -4,7 +4,9 @@
  * own comment (`transition-reason.ts:requiresAuthoredReason`), and the wedge reset posts its notice.
  * The hand-back when a run session ends wrote its reason only on the audit row where it went back to
  * `open` or `approved`, so the thread read an issue moved back with no word of why
- * (`transition-reason.ts:postRecoveryNotice`). Against real Postgres, through the kernel's own call.
+ * (`transition-reason.ts:postRecoveryNotice`). A person's explicit hand-back (`recovery: true`) to
+ * `open` or `approved` carries why as well, posted the same way, and is refused by name without it
+ * (`transition-faults.ts:reasonFault`). Against real Postgres, through the kernel's own call.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -17,6 +19,7 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { returnIssuesForRun } from '../../src/devices/index.js';
+import { transitionIssueStatus } from '../../src/issues/apply-transition.js';
 import { runReconcilerOnce } from '../../src/pipeline/reconciler.js';
 import { closeWorld, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import {
@@ -125,5 +128,51 @@ describe('the reconciler says why it reset a wedge', () => {
     const said = (await thread(issue.id)).map((c) => c.body);
     expect(said).toHaveLength(1);
     expect(said[0]).toContain('Moved by the reconciler: `in_progress` -> `open`');
+  });
+});
+
+describe("a person's recovery move says why on the issue", () => {
+  const person = () => ({ type: 'user' as const, id: ownerId, agency: 'human' as const });
+  const heldNowhere = async () => {
+    const issue = await createTestIssue(projectId, ownerId, 1, {
+      status: 'in_progress',
+      createdAt: new Date(Date.now() - 3_600_000),
+    });
+    return { id: issue.id, projectId, status: 'in_progress' as const, reopenCount: 0 };
+  };
+
+  it.each(['open', 'approved'] as const)(
+    'refuses a hand-back to %s that carries no reason, by name, and moves nothing',
+    async (to) => {
+      const issue = await heldNowhere();
+
+      await expect(
+        transitionIssueStatus(issue, to, person(), { recovery: true }),
+      ).rejects.toMatchObject({
+        refusals: [{ code: 'TRANSITION_REASON_REQUIRED', from: 'in_progress', to, recovery: true }],
+      });
+      await expect(
+        transitionIssueStatus(issue, to, person(), { recovery: true, transitionReason: '   ' }),
+      ).rejects.toMatchObject({ refusals: [{ code: 'TRANSITION_REASON_REQUIRED' }] });
+
+      const [row] = await rows<{ status: string }>(
+        sql`SELECT status FROM issues WHERE id = ${issue.id}`,
+      );
+      expect(row?.status).toBe('in_progress');
+      expect(await thread(issue.id)).toHaveLength(0);
+    },
+  );
+
+  it('posts the reason a person handed an issue back to open with, in their own words', async () => {
+    const issue = await heldNowhere();
+    const why = 'the run stalled on a broken fixture; starting over from the plan';
+
+    await transitionIssueStatus(issue, 'open', person(), { recovery: true, transitionReason: why });
+
+    const said = (await thread(issue.id)).map((c) => c.body);
+    expect(said, "a person's hand-back with no word on the thread is a silent move").toHaveLength(1);
+    expect(said[0]).toContain('Handed back — moved from `in_progress` to `open`');
+    expect(said[0]).toContain(why);
+    expect(said[0], 'a person made this move, not Forge').not.toContain('Forge made this move');
   });
 });
