@@ -20,9 +20,38 @@ const PHRASING = new Set([
   'footnoteReference',
 ]);
 
-/** Markup with its tags and comments taken out, the text between them kept and joined. */
+/** Whether a tag opens at `at`: `<` then a letter, or `<`, `/` and a letter. */
+function opensTag(html: string, at: number): boolean {
+  if (html[at] !== '<') return false;
+  const next = html[at + 1] ?? '';
+  const name = next === '/' ? (html[at + 2] ?? '') : next;
+  return name.toLowerCase() !== name.toUpperCase() && name < '\u0080';
+}
+
+/**
+ * The text of markup, read once from the front the way a browser reads it: a tag runs to the first
+ * `>`, a comment to `-->`, and a `<!` that opens no comment to the first `>`. What a pass leaves is
+ * never read again for tags, so pieces cannot be rejoined into a tag by what was taken out. A tag
+ * or comment that is never closed stays as the text it is.
+ */
 function withoutTags(html: string): string {
-  return html.replace(/<!--[\s\S]*?-->/gu, '').replace(/<\/?[A-Za-z][^<>]*>/gu, '');
+  let text = '';
+  let at = 0;
+  while (at < html.length) {
+    const closer = html.startsWith('<!--', at)
+      ? '-->'
+      : html.startsWith('<!', at) || html.startsWith('<?', at) || opensTag(html, at)
+        ? '>'
+        : null;
+    const end = closer === null ? -1 : html.indexOf(closer, at + 2);
+    if (closer === null || end < 0) {
+      text += html[at];
+      at += 1;
+    } else {
+      at = end + closer.length;
+    }
+  }
+  return text;
 }
 
 function textOf(node: Nodes, depth: number): string {

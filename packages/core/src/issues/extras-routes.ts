@@ -158,6 +158,7 @@ issueExtrasRoutes.patch(
               },
               toStatus,
               actor,
+              { reason: data.reason || undefined, transitionReason: data.reason || undefined },
             );
             touched = true;
             row.status = transitioned.status;

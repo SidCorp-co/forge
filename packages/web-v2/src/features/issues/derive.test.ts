@@ -17,6 +17,7 @@ import {
 import { STATUS_KEY_TONE } from "@/design/status";
 import {
 	allowedTransitions,
+	BULK_SHARES_ONE_REASON,
 	bulkAllowedStatuses,
 	canonicalIssueId,
 	issueQueryKey,
@@ -307,23 +308,36 @@ describe("bulkAllowedStatuses (ISS-463)", () => {
 	it("returns [] for an empty selection", () => {
 		expect(bulkAllowedStatuses(EXITS, [])).toEqual([]);
 	});
-	it("matches allowedTransitions when every row shares a status, less the reason-required ones", () => {
+	it("matches allowedTransitions when every row shares a status, less the reason-required ones a shared reason cannot serve", () => {
 		const rows = [
 			row({ id: "a", status: "approved" }),
 			row({ id: "b", status: "approved" }),
 		];
 		expect(bulkAllowedStatuses(EXITS, rows)).toEqual(
 			allowedTransitions(EXITS, "approved").filter(
-				(s) => !(REASON_REQUIRED_ISSUE_STATUSES as readonly string[]).includes(s),
+				(s) =>
+					!(REASON_REQUIRED_ISSUE_STATUSES as readonly string[]).includes(s) ||
+					BULK_SHARES_ONE_REASON.has(s),
 			),
 		);
 	});
-	it("omits exactly the targets the shared reason-required answer names, whatever it grows to", () => {
+	it("omits every reason-required target but the one that takes a single shared reason", () => {
+		const rows = [row({ id: "a", status: "in_progress" })];
+		const offered = bulkAllowedStatuses(EXITS, rows);
+		for (const owing of REASON_REQUIRED_ISSUE_STATUSES) {
+			expect(offered.includes(owing as never)).toBe(BULK_SHARES_ONE_REASON.has(owing));
+		}
+	});
+	it("omits exactly the targets the shared reason-required answer names, less the one shared reason, whatever it grows to", () => {
 		const rows = [row({ id: "a", status: "in_progress" })];
 		const all = allowedTransitions(EXITS, "in_progress");
 		const offered = bulkAllowedStatuses(EXITS, rows);
 		expect(all.filter((s) => !offered.includes(s))).toEqual(
-			all.filter((s) => (REASON_REQUIRED_ISSUE_STATUSES as readonly string[]).includes(s)),
+			all.filter(
+				(s) =>
+					(REASON_REQUIRED_ISSUE_STATUSES as readonly string[]).includes(s) &&
+					!BULK_SHARES_ONE_REASON.has(s),
+			),
 		);
 	});
 	it("never offers a status that requires an authored reason", () => {
@@ -335,7 +349,7 @@ describe("bulkAllowedStatuses (ISS-463)", () => {
 		expect(result).not.toContain("waiting");
 		expect(result).not.toContain("needs_info");
 		expect(result).not.toContain("reopen");
-		expect(result).not.toContain("on_hold");
+		expect(result).toContain("on_hold");
 		expect(result).toContain("dropped");
 	});
 	it("intersects allowed targets across mixed statuses", () => {
@@ -348,7 +362,7 @@ describe("bulkAllowedStatuses (ISS-463)", () => {
 			expect(allowedTransitions(EXITS, "open")).toContain(s);
 			expect(allowedTransitions(EXITS, "approved")).toContain(s);
 		}
-		expect(result).toEqual(["in_progress", "dropped"]);
+		expect(result).toEqual(["in_progress", "on_hold", "dropped"]);
 	});
 	it("keeps the first selected row's declared order, not the enum's", () => {
 		const rows = [

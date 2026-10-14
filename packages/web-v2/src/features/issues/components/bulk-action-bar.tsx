@@ -16,11 +16,17 @@
 
 import { useId, useState } from "react";
 import { Button, Menu, type MenuItem } from "@/design";
-import { bulkAllowedStatuses, priorityLabel, transitionLabels } from "../derive";
+import {
+  BULK_SHARES_ONE_REASON,
+  bulkAllowedStatuses,
+  priorityLabel,
+  transitionLabels,
+} from "../derive";
 import { agentHoldsSelection, heldInSelection } from "../edit-lock";
 import { type BulkUpdate, useBulkUpdateIssues, useStatusExits } from "../hooks";
 import { ISSUE_PRIORITIES, type IssueRow } from "../types";
 import { BatchReleaseDialog, type BatchReleaseIssue } from "./batch-release-dialog";
+import { TransitionReasonDialog } from "./transition-reason-dialog";
 
 const BATCH_RELEASE_GATE = "awaiting_release" as const;
 
@@ -78,6 +84,7 @@ export function BulkActionBar({
   const bulk = useBulkUpdateIssues();
   const { exits, isPending: exitsPending, isError: exitsFailed } = useStatusExits();
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
+  const [holdOpen, setHoldOpen] = useState(false);
   const statusReasonId = useId();
   const count = selectedRows.length;
   if (count === 0) return null;
@@ -100,7 +107,9 @@ export function BulkActionBar({
   const statusNames = transitionLabels(statusTargets);
   const statusItems: MenuItem[] = statusTargets.map((s, i) => ({
     label: statusNames[i],
-    onSelect: () => run({ kind: "status", toStatus: s }),
+    // On hold needs a reason: asked once for the selection, sent with every issue.
+    onSelect: () =>
+      BULK_SHARES_ONE_REASON.has(s) ? setHoldOpen(true) : run({ kind: "status", toStatus: s }),
   }));
   const priorityItems: MenuItem[] = ISSUE_PRIORITIES.map((p) => ({
     label: priorityLabel(p),
@@ -177,6 +186,23 @@ export function BulkActionBar({
           </Button>
         </span>
       </div>
+      <TransitionReasonDialog
+        status={holdOpen ? "on_hold" : null}
+        issueCount={count}
+        loading={bulk.isPending}
+        onConfirm={(reason) => {
+          bulk.mutate(
+            { ids, update: { kind: "status", toStatus: "on_hold", reason } },
+            {
+              onSuccess: () => {
+                setHoldOpen(false);
+                onCleared();
+              },
+            },
+          );
+        }}
+        onClose={() => setHoldOpen(false)}
+      />
       <BatchReleaseDialog
         projectId={projectId}
         selectedIssues={batchRelease.enabled ? selectedRows.map((r): BatchReleaseIssue => ({ id: r.id, displayId: r.displayId, title: r.title })) : []}

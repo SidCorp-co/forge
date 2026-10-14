@@ -38,6 +38,15 @@ describe('the text a comment reads as', () => {
     expect(readAsText('just words, 12 of them')).toBe('just words, 12 of them');
   });
 
+  it.each([
+    ['a tag cut by another tag', '<div><scr<script>ipt>alert(1)</div>', 'ipt>alert(1)'],
+    ['a comment opener cut by a comment', '<div><!<!---->--hello</div>', '--hello'],
+    ['a tag never closed', '<div>a <b and c', 'a <b and c'],
+    ['a comment never closed', '<div>a <!-- and c', 'a <!-- and c'],
+  ])('rebuilds no tag from the pieces left by taking one out: %s', (_how, body, read) => {
+    expect(readAsText(body)).toBe(read);
+  });
+
   it('terminates on markup nested in markup', () => {
     expect(readAsText('<div><div>&lt;div&gt;x</div></div>')).toBe('<div>x');
   });

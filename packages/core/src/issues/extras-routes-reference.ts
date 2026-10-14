@@ -18,9 +18,23 @@ export const batchPatchBodySchema = z
         status: z.enum(issueStatuses).optional(),
         priority: z.enum(issuePriorities).optional(),
         category: z.string().trim().min(1).max(100).nullable().optional(),
+        reason: z
+          .string()
+          .trim()
+          .max(2000)
+          .optional()
+          .describe(
+            'Why the status moves, sent once and posted on every issue it moves. A move into `on_hold`, `waiting`, `needs_info` or `reopen` skips an issue as `transition_reason_required` without one.',
+          ),
       })
       .strict()
-      .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' }),
+      .refine((o) => Object.keys(o).filter((k) => k !== 'reason').length > 0, {
+        message: 'no fields to update',
+      })
+      .refine((o) => o.reason === undefined || o.status !== undefined, {
+        message: '`reason` travels with a `status` move and is refused without one',
+        path: ['reason'],
+      }),
   })
   .strict();
 

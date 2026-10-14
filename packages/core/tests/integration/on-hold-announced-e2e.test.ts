@@ -246,19 +246,17 @@ describe('REST POST /transition into on_hold', () => {
     expect(await thread(id)).toHaveLength(0);
   });
 
-  it('refuses a blank reason, and moves nothing and writes nothing', async () => {
+  it('refuses a blank reason by the same name, and moves nothing and writes nothing', async () => {
     const w = await seed();
     const id = await insertIssue(w, 'in_progress');
 
     const res = await rest(id, w.token, { toStatus: 'on_hold', reason: '   ' });
 
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as {
-      code: string;
-      details?: { fieldErrors?: { reason?: string[] } };
-    };
-    expect(body.code).toBe('BAD_REQUEST');
-    expect(body.details?.fieldErrors?.reason?.length).toBeGreaterThan(0);
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { code: string; message?: string };
+    expect(body.code).toBe('TRANSITION_REASON_REQUIRED');
+    expect(JSON.stringify(body)).toContain('on_hold');
+    expect(JSON.stringify(body)).toContain('reason');
     expect(await statusOf(id)).toBe('in_progress');
     expect(await thread(id)).toHaveLength(0);
   });
@@ -339,7 +337,7 @@ describe('MCP forge_issues into on_hold', () => {
     expect(await thread(id)).toHaveLength(0);
   });
 
-  it('refuses a blank reason by the tool’s own schema, naming the field', async () => {
+  it('refuses a blank reason by the same name, naming on_hold', async () => {
     const w = await seed();
     const id = await insertIssue(w, 'in_progress');
 
@@ -350,7 +348,8 @@ describe('MCP forge_issues into on_hold', () => {
     });
 
     expect(answer.isError).toBe(true);
-    expect(answer.text).toContain('reason');
+    expect(answer.text).toContain('TRANSITION_REASON_REQUIRED');
+    expect(answer.text).toContain('on_hold');
     expect(await statusOf(id)).toBe('in_progress');
     expect(await thread(id)).toHaveLength(0);
   });

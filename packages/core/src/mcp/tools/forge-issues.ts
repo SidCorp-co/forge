@@ -126,7 +126,7 @@ const dataObject = z
     note: z.string().max(10_000).optional(),
     issueId: issueRefSchema.optional(),
     relations: z.array(issueRelationInputSchema).max(20).optional(),
-    reason: z.string().trim().min(1).max(10_000).optional(),
+    reason: z.string().trim().max(10_000).optional(),
     waitingKind: z.enum(waitingKinds).optional(),
     needs: z
       .string()
