@@ -13,7 +13,7 @@ export const EpodsystemConnectionConfig: ConnectionSection = ({ connection }) =>
   return (
     <section className="flex flex-col gap-2">
       <CardTitle>Store</CardTitle>
-      <p className="fg-body-sm rounded-md border border-line bg-surface px-3 py-2 text-muted">
+      <p className="fg-body-sm border-b border-line pb-2 text-muted">
         {slug || name
           ? `${name ?? slug}${slug ? ` (${slug})` : ""}`
           : "Store identity is filled in automatically by a successful Test."}

@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 //
-// A toast never covers what a person is reading. Inside a frame that is a
-// layout fact — the lane is an in-flow sibling of <main>, so it takes its room
-// out of <main>'s box — and jsdom lays nothing out, so these read placement
-// and the bounds that hold it; the painted geometry is measured in a browser.
+// A toast never covers what a person is reading on a wide screen: the lane is an
+// in-flow sibling of <main>, so it takes its room out of <main>'s box. On a phone
+// it overlays instead, because room taken from <main> lifts the page's save bar.
+// jsdom lays nothing out, so these read placement and the bounds that hold it;
+// the painted geometry is measured in a browser.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -24,7 +25,7 @@ function Frame({ withLane = true }: { withLane?: boolean }) {
       <Trigger />
       <div data-testid="column" className="flex flex-col">
         <main data-testid="main">content</main>
-        {withLane ? <ToastLane className="mb-[56px] md:mb-0" /> : null}
+        {withLane ? <ToastLane /> : null}
       </div>
     </ToastProvider>
   );
@@ -47,13 +48,24 @@ describe("inside a frame, toasts go to the lane", () => {
     expect(screen.queryByTestId("toast-corner")).not.toBeInTheDocument();
   });
 
-  it("is in flow: the lane is not positioned over anything", () => {
+  it("is in flow from the wide breakpoint up: nothing positions it over anything there", () => {
     render(<Frame />);
     act(() => fire({ title: "Saved" }));
 
-    const cls = screen.getByTestId("toast-lane").className;
-    expect(cls).not.toMatch(/\b(fixed|absolute|sticky)\b/);
-    expect(cls).toContain("flex-none");
+    const classes = screen.getByTestId("toast-lane").className.split(/\s+/);
+    expect(classes.filter((c) => /^(fixed|absolute|sticky)$/.test(c))).toEqual([]);
+    expect(classes).toContain("flex-none");
+  });
+
+  it("overlays on a phone: out of flow, over the top edge, letting touches through but to its toasts", () => {
+    render(<Frame />);
+    act(() => fire({ title: "Saved" }));
+
+    const classes = screen.getByTestId("toast-lane").className.split(/\s+/);
+    for (const overlay of ["max-md:fixed", "max-md:inset-x-0", "max-md:pointer-events-none"]) {
+      expect(classes).toContain(overlay);
+    }
+    expect(screen.getByText("Saved").closest(".pointer-events-auto")).not.toBeNull();
   });
 
   it("caps its height and scrolls inside itself past the cap", () => {
@@ -65,11 +77,13 @@ describe("inside a frame, toasts go to the lane", () => {
     expect(cls).toContain("overflow-y-auto");
   });
 
-  it("carries the frame's clearance for the mobile tab bar", () => {
+  it("keeps clear of the bottom edge on a phone, where the tab bar and a save bar sit", () => {
     render(<Frame />);
     act(() => fire({ title: "Saved" }));
 
-    expect(screen.getByTestId("toast-lane").className).toContain("mb-[56px]");
+    const classes = screen.getByTestId("toast-lane").className.split(/\s+/);
+    expect(classes.some((c) => c.startsWith("max-md:top-"))).toBe(true);
+    expect(classes.filter((c) => /^(max-md:)?bottom-/.test(c))).toEqual([]);
   });
 
   it("takes no room at all while nothing is showing", () => {

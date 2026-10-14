@@ -163,7 +163,7 @@ function CredentialSection({
     <section className="flex flex-col gap-3">
       <CardTitle>Credential</CardTitle>
       {canManage && secretField === null && (
-        <p className="fg-body-sm rounded-md border border-line bg-surface px-3 py-2 text-muted">
+        <p className="fg-body-sm border-b border-line pb-2 text-muted">
           {module?.connectionNote ??
             `${providerLabel(connection.provider)}'s credential is not entered by hand and cannot be replaced here.`}
         </p>
@@ -236,7 +236,7 @@ function ConfigSection({
     return (
       <section className="flex flex-col gap-2">
         <CardTitle>Configuration</CardTitle>
-        <p className="fg-body-sm rounded-md border border-line bg-surface px-3 py-2 text-muted">
+        <p className="fg-body-sm border-b border-line pb-2 text-muted">
           {module?.connectionNote ??
             `${providerLabel(connection.provider)} has no configuration at the credential tier.`}
         </p>
@@ -289,12 +289,12 @@ function ProjectsSection({
       ) : bindingsError ? (
         <ErrorState message={bindingsError} onRetry={onRetry} />
       ) : bindings.length === 0 ? (
-        <p className="fg-body-sm rounded-md border border-line bg-surface px-3 py-2 text-muted">
+        <p className="fg-body-sm border-b border-line pb-2 text-muted">
           No projects use this connection yet. Share it from a project&apos;s settings →
           Integrations.
         </p>
       ) : (
-        <ul className="flex flex-col gap-1.5">
+        <ul className="flex flex-col divide-y divide-line">
           {bindings.map((b) => {
             const project = byId.get(b.projectId);
             const archived = Boolean(project?.archivedAt);
@@ -325,12 +325,12 @@ function ProjectsSection({
                   <Link
                     href={`/projects/${project.slug}/settings?tab=integrations`}
                     onClick={onNavigate}
-                    className="flex items-center gap-3 rounded-md border border-line bg-surface px-3 py-2 transition-colors hover:bg-hover"
+                    className="flex items-center gap-3 py-2 transition-colors hover:bg-hover"
                   >
                     {row}
                   </Link>
                 ) : (
-                  <div className="flex items-center gap-3 rounded-md border border-line bg-surface px-3 py-2 opacity-80">
+                  <div className="flex items-center gap-3 py-2 opacity-80">
                     {row}
                   </div>
                 )}
@@ -390,7 +390,7 @@ function DangerZone({
         </Button>
       </div>
       {confirming && (
-        <div className="flex flex-col gap-2 rounded-md border border-line bg-sunken px-3 py-2.5">
+        <div className="flex flex-col gap-2 border-y border-line py-2.5">
           <p className="fg-body-sm text-fg">
             {affectedProjects.length > 0
               ? `Removing this connection stops credential resolution for ${affectedProjects.length} project${affectedProjects.length === 1 ? "" : "s"}: ${affectedProjects.join(", ")}. Their integrations stop working on the next dispatch.`

@@ -106,7 +106,7 @@ export function RunnerPoolsSection({
       {runnersQuery.isPending ? (
         <Skeleton className="h-32 w-full" />
       ) : runners.length === 0 ? (
-        <div className="rounded-md border border-line bg-sunken px-3 py-3">
+        <div>
           <p className="fg-body-sm text-muted">
             No device runner is bound to this project, so there is nothing to pool. Pair a device on
             the Runners tab first.
@@ -126,7 +126,7 @@ export function RunnerPoolsSection({
           ))}
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-md border border-line">
+        <div className="overflow-x-auto border-y border-line">
           <table className="w-full border-collapse">
             <thead>
               <tr className="bg-sunken">

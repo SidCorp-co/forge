@@ -313,7 +313,7 @@ export function SentrySection({ projectId }: { projectId: string }) {
           </div>
 
           {form.targets.length === 0 ? (
-            <p className="fg-body-sm text-muted rounded-md border border-dashed border-subtle p-4 text-center">
+            <p className="fg-body-sm text-muted border-y border-dashed border-subtle py-4 text-center">
               No Sentry projects registered yet. Add one (e.g. “Backend” →
               org/project slug) so agents know which Sentry project to query.
             </p>
@@ -322,7 +322,7 @@ export function SentrySection({ projectId }: { projectId: string }) {
               <div
                 // biome-ignore lint/suspicious/noArrayIndexKey: rows have no stable id; order is the identity
                 key={i}
-                className="flex flex-col gap-3 rounded-md border border-subtle p-3"
+                className="flex flex-col gap-3 border-t border-subtle pt-3"
               >
                 <div className="flex items-start justify-between gap-2">
                   <span className="fg-label text-muted">

@@ -5,7 +5,7 @@
 // answered, never reading a key itself.
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api/client";
@@ -15,7 +15,12 @@ vi.mock("@/features/issues/api", () => ({ issuesApi: { lookup } }));
 
 const { useIssueSearchCommands } = await import("./issue-search-commands");
 
-afterEach(() => lookup.mockReset());
+// Nothing here unmounts a hook on its own, so a test that does not wait for its query leaves React's
+// scheduler running into the next file's teardown ("window is not defined", once in a full run).
+afterEach(() => {
+  cleanup();
+  lookup.mockReset();
+});
 
 function wrapper({ children }: { children: ReactNode }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -74,7 +79,7 @@ it("says the search did not answer when it fails for any other reason, beside Se
   const { result } = mount("ISS-1280", "p1");
 
   await waitFor(() => expect(result.current.notice).toMatch(/^The issues search did not answer/));
-  expect(result.current.notice).toContain("Service unavailable");
+  expect(result.current.notice).toContain("The server could not complete the request (503).");
   expect(result.current.commands.map((c) => c.label)).toEqual(["Search issues for “ISS-1280”"]);
 });
 

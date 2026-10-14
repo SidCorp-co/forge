@@ -160,7 +160,7 @@ export function McpServersSection({
       {canEdit && (
         <div className="mt-3 space-y-3">
           {addOpen ? (
-            <div className="space-y-2 rounded-md border border-line bg-surface p-3">
+            <div className="space-y-2 border-t border-line pt-3">
               <Input
                 // The example must be a name this form would ACCEPT. It read `sentry` until
                 // ISS-1071, which is a provider name the refusal below rejects by name — so the

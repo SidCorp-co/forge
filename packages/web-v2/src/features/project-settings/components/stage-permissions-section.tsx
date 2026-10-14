@@ -185,13 +185,11 @@ export function StagePermissionsSection({
       </p>
 
       {rows.length === 0 ? (
-        <div className="rounded-md border border-line bg-sunken px-3 py-3">
-          <p className="fg-body-sm text-muted">
-            Every stage runs the default tool surface — no overrides set.
-          </p>
-        </div>
+        <p className="fg-body-sm text-muted">
+          Every stage runs the default tool surface — no overrides set.
+        </p>
       ) : (
-        <div className="space-y-2">
+        <div className="divide-y divide-line border-y border-line">
           {rows.map((row) => {
             const denied = row.config.disallowedTools ?? [];
             const allowed = row.config.allowedTools ?? [];
@@ -201,6 +199,7 @@ export function StagePermissionsSection({
 
             return (
               <Collapsible
+                flat
                 key={row.status}
                 title={
                   <div className="flex flex-wrap items-center gap-2">
