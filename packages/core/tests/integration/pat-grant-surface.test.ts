@@ -213,8 +213,7 @@ describe('a granted token reaches its groups and is refused outside them', () =>
   });
 
   it('is refused writing a resource it holds only the read of', async () => {
-    const res = await send('POST', '/api/issues', issuesReadOnly, {
-      projectId,
+    const res = await send('PATCH', `/api/issues/${issueId}`, issuesReadOnly, {
       title: 'grant probe',
     });
     expect(res.status).toBe(403);
@@ -223,11 +222,10 @@ describe('a granted token reaches its groups and is refused outside them', () =>
   });
 
   it('writes once the write group is held', async () => {
-    const res = await send('POST', '/api/issues', issuesWrite, {
-      projectId,
+    const res = await send('PATCH', `/api/issues/${issueId}`, issuesWrite, {
       title: 'grant probe',
     });
-    expect(codeOf(res)).not.toBe('PAT_PERMISSION_REQUIRED');
+    expect(res.status, res.text).toBe(200);
   });
 
   it('still answers PAT_NOT_PERMITTED off the surface, whatever it holds', async () => {

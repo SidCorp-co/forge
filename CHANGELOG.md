@@ -3174,6 +3174,7 @@
 
 ### Fixed
 
+- **A path the API does not serve is answered 404 naming it, whoever asks.** A request to one used to be told 401 with no token, or that its token was the wrong kind, or that it was not an admin, because a guard over the prefix spoke before routing could say nothing is there. A route that exists and is kept from a token still refuses it by name. (ISS-1305)
 - **A session's message count no longer reads 0 for work it never recorded.** Master and run sessions keep no transcript here, so they show no count and `transcript: not-recorded`; older sessions show their real length. (ISS-1241)
 
 - **The API reference page shows each operation's permission or door.** Sign-in, pairing and invitation routes are shown with no bearer, and a route no longer lists refusals from a gate registered after it. Flow steps read as sentences. (ISS-1371)

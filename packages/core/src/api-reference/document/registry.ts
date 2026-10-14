@@ -34,6 +34,17 @@ type RouterWithMatch = {
   match: (method: string, path: string) => [MatchedRoute[], ...unknown[]];
 };
 
+/**
+ * Whether the app has a route that answers `method` at `path`. A record of method `ALL` is a gate
+ * on the way to a route and never one itself, which is also why `readRoutes` leaves it out, so a
+ * path only a gate matches is not served. HEAD is read as GET, as the app dispatches it.
+ */
+export function servesRoute(app: RouteSource, method: string, path: string): boolean {
+  const upper = method.toUpperCase();
+  const [matched] = (app.router as RouterWithMatch).match(upper === 'HEAD' ? 'GET' : upper, path);
+  return matched.some(([[, record]]) => record.method !== 'ALL');
+}
+
 const SAMPLES = ['00000000-0000-4000-8000-000000000000', '1', 'x'];
 
 /** A path a request could take to this route: each `:name` gets a value, each `*` a segment. */
