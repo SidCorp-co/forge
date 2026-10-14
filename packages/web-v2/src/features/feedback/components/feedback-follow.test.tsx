@@ -50,7 +50,7 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
     reporters: [],
     messages: [],
     verified: null,
-    autoVerify: null,
+    recordCheck: null,
     verifyHeld: null,
     snoozed: null,
     shipNotice: null,

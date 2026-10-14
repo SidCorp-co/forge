@@ -157,9 +157,11 @@ export function releaseBuildOf(
 /**
  * The standing a release counts one criterion it carries by (BC-5, BC-13): the newest verdict on the
  * commit `build`, or `unjudged` where none is on it, so a verdict on an earlier build never counts
- * here; with no cut build (a draft) the newest verdict, which is what a draft is cut on. "Proven" is
- * `criterionCountsAsPass` of this, on every surface that counts a release's criteria: the release
- * record's totals and the page's list read the same rows by it.
+ * here; with no cut build (a draft) the newest verdict, which is what a draft is cut on. The release
+ * record's totals count `criterionCountsAsPass` of this, as the issue gate does; the release page
+ * counts the same rows by the rule a requirement counts by (core `release-page/claims.ts:readClaims`),
+ * so a short, or under an independent judge the builder's own pass, is proven on the record's gate
+ * and not on the page.
  */
 export function releaseStandingOf(
 	verdicts: readonly ReleaseVerdictReading[],
@@ -390,10 +392,11 @@ export interface ReleasePageHeader {
 }
 
 /**
- * One carried criterion proven on `header.build` (`criterionCountsAsPass` of `releaseStandingOf`), in
- * its own wording, so two criteria proving one requirement criterion read apart: `issueKey` and `n`
- * name it, `code` is the requirement criterion it traces (null where it traces none), and `short`
- * marks one met but short of its wording.
+ * One carried criterion proven on `header.build` by the rule a requirement counts by (core
+ * `requirements:unverifiedWhy`), in its own wording, so two criteria proving one requirement criterion
+ * read apart: `issueKey` and `n` name it, and `code` is the requirement criterion it traces (null
+ * where it traces none). `short` is false on every page read since a short stopped counting as proven
+ * (2026-10-14); a share frozen before then may carry true, and reads as it was frozen.
  */
 export interface ReleasePageProven {
 	code: string | null;

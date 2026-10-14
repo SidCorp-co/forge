@@ -140,16 +140,19 @@ const page = async (who: keyof typeof tokens, view = 'user', version = '0.1.0') 
 
 describe('the page counts what it proves once (BC-5)', () => {
   // QA 0.4.0-dev.218: "9 of 26 criteria proven" in the header beside 6 rows under the requirement.
-  // Proven is `criterionCountsAsPass` everywhere: a short counts, and is marked where it is listed
-  it('reads the header, the requirements list and the release record by one rule, a short counted and marked', async () => {
+  // The header and the list read one rule, the one a requirement counts by (`requirements:unverifiedWhy`,
+  // the owner's ruling of 2026-10-14): a short is met short of its wording and is never proven
+  it('reads the header and the requirements list by the requirement rule, a short not proven', async () => {
     const w = await releaseWorldOfFour();
     // the second issue's first criterion is passed on the build too, so every verdict is on it
     await judge(w.b, 1, 'pass', BUILD);
     const p = await page('member');
     const listed = p.requirements.flatMap((r) => r.proven);
-    expect(listed.map((x) => [x.code, x.short])).toEqual([
+    expect(
+      listed.map((x) => [x.code, x.short]),
+      'REQ-35 decision 7b261fca: a short is never verified',
+    ).toEqual([
       ['BC-1', false],
-      ['BC-2', true],
       ['BC-3', false],
     ]);
     expect(p.header.verified).toMatchObject({
@@ -157,17 +160,14 @@ describe('the page counts what it proves once (BC-5)', () => {
       total: 4,
       level: 'some_criteria',
     });
-    const record = await call('member', 'GET', '/releases/0.1.0');
-    expect((record.body.release as { verified: { proven: number } }).verified.proven).toBe(
-      listed.length,
-    );
-    // a pass on the build in place of the short changes the mark, never the count
+    expect(p.knownIssues.map((k) => [k.bc, k.standing])).toContainEqual(['BC-2', 'short']);
+    // a pass on the build in place of the short proves it
     await judge(w.a, 2, 'pass', BUILD);
     const after = await page('member');
-    expect(after.requirements.flatMap((r) => r.proven.map((x) => x.short))).toEqual([
-      false,
-      false,
-      false,
+    expect(after.requirements.flatMap((r) => r.proven.map((x) => [x.code, x.short]))).toEqual([
+      ['BC-1', false],
+      ['BC-2', false],
+      ['BC-3', false],
     ]);
     expect(after.header.verified.proven).toBe(3);
   });

@@ -32,11 +32,7 @@ import { sweepPreviews } from './previews/index.js';
 import { sweepQuestionSuggestions } from './questions/index.js';
 import { recoverUnstartedReleaseBatches, resumeStrandedFinishes } from './release-batch/index.js';
 import { sweepExpiredExecutions, sweepExpiredReportRuns } from './reports/index.js';
-import {
-  followApprovedDesigns,
-  sweepDeliveredRequirements,
-  sweepStaleDrafts,
-} from './requirements/index.js';
+import { sweepDeliveredRequirements, sweepStaleDrafts } from './requirements/index.js';
 import { reapGhostRunners, runRunnerStaleSweep } from './runners/index.js';
 import type { Timer } from './schedules/index.js';
 import { sweepSuggestions } from './suggestions/index.js';
@@ -96,22 +92,12 @@ const logged =
   };
 
 /**
- * REQ-41 BC-10, BC-12: a design approval a requirement's traces survive is followed by itself (the
- * outbox consumer acts on the approval; this catches a row the approval found not agreed, rows stale
- * before the rule, and a lost delivery), and a draft untouched for a week is asked about once.
+ * REQ-41 BC-12: a draft untouched for a week is asked about once, and a person's merge-or-drop answer
+ * is carried out. Nothing here moves a requirement or a pin by itself (REQ-41 BC-10, owner ruling
+ * 2026-10-14): a design approved past a pin waits on a signer to re-pin it.
  */
 function requirementTimers(): Timer[] {
   return [
-    {
-      kind: 'cluster',
-      name: 'design-follow-sweep',
-      cron: '23 * * * *',
-      run: logged(
-        'design-follow-sweep: followed',
-        followApprovedDesigns,
-        (r) => (r as { followed: number }).followed > 0,
-      ),
-    },
     {
       kind: 'cluster',
       name: 'question-suggest-sweep',
@@ -148,12 +134,13 @@ export function coreTimers(): Timer[] {
     { kind: 'cluster', name: 'pipeline-reconciler', cron: '* * * * *', run: runReconcilerOnce },
     {
       kind: 'cluster',
-      name: 'feedback-auto-verify',
+      name: 'feedback-loop-check',
       cron: '*/15 * * * *',
       run: logged(
-        'feedback-auto-verify: sweep complete',
+        'feedback-loop-check: sweep complete',
         sweepResolvedFeedback,
-        (r) => (r as { verified: number }).verified > 0,
+        (r) =>
+          (r as { verified: number; noted: number }).verified + (r as { noted: number }).noted > 0,
       ),
     },
     {

@@ -124,10 +124,10 @@ describe('the issue-flow method teaches the acts that name what they wait on', (
 describe('the workflow-design guide clears pin-only dependents in one act', () => {
   const design = body('workflow-design');
 
-  it('tells a writer a pin-only proposal approves by itself, and names the act for the dependents nobody proposed', () => {
+  it('tells a writer a pin-only proposal waits on its approver, and names the one act that clears the dependents', () => {
+    expect(design).not.toContain('approves by itself');
     for (const word of [
-      'one whose only change is the pin approves by itself',
-      'WORKFLOW_DESIGN_UNCOMPARABLE',
+      'Nothing approves itself, a pin-only revision included',
       '`GET …/workflows/<base>/design/repins`',
       '`POST …/design/repins',
       'WORKFLOW_REPIN_PENDING_CHANGE',

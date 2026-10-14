@@ -1,11 +1,11 @@
 export { reportLinksOf } from './about.js';
-export { sweepResolvedFeedback } from './auto-verify.js';
 export { feedbackTriageRecord } from './checklist-record.js';
 export { fileContractChangeIn } from './contract-change.js';
 export { provideFeedbackDependents } from './dependents.js';
 export type { ReadDoor } from './egress.js';
 export { embedFeedback, embedFeedbackLater, nearestFeedbackOf } from './embeddings.js';
 export { listFeedbackAs } from './list-read.js';
+export { sweepResolvedFeedback } from './loop-check.js';
 export { owedTriages } from './owed-triage.js';
 export { rowIn } from './read.js';
 export { forgeRecordingTool } from './recording-tool.js';

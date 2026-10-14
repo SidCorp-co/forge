@@ -31,10 +31,10 @@ import { activeIssuePrefix, issueWaitsOf } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { readEffectivePolicy, readProjectDocument } from '../project-config/index.js';
-import { followReadsOf } from './auto-follow.js';
 import { linkedContractsOf } from './baselines.js';
 import { requirementDependents } from './dependents.js';
 import { feedbackCountsOf, feedbackLinksOf } from './feedback-links.js';
+import { followReadsOf } from './follow-reads.js';
 import { changedTracedOf } from './plan-drift.js';
 import { staleContractPinsOf, stalePinsOf } from './rules.js';
 import { mergeOrDropOf } from './stale-drafts.js';
@@ -158,7 +158,7 @@ async function uncoveredOf(ids: readonly string[]): Promise<Map<string, Map<stri
 /**
  * The facts a requirement's turn reads beside its rows, per requirement: why an accepted breakdown
  * left a BC uncovered, the traced nodes a stale design pin's approval removed or renamed (REQ-41
- * BC-10, `auto-follow.ts`), and whether its newest merge-or-drop question stands open or was answered
+ * BC-10, `follow-reads.ts`), and whether its newest merge-or-drop question stands open or was answered
  * with an act core refused (REQ-41 BC-12).
  */
 // every requirement read has a status-since row (filed time where no transition); a missing one is a

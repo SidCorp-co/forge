@@ -42,6 +42,7 @@ import {
 export interface RevisionWrite {
   /** Why it was written; asked, never required (REQ-34 BC-17): absent, null or blank stores none. */
   reason?: string | null | undefined;
+  /** Its spec: absent carries the head's (on a new revision) or keeps the draft's (an edit), as kind does; `{}` clears it. */
   spec?: RequirementSpec | undefined;
   tldr?: string | null | undefined;
   changeSummary?: string | null | undefined;
@@ -56,7 +57,9 @@ export interface RevisionWrite {
   picture?: DraftPicture | undefined;
 }
 
-export const specOf = (spec: RequirementSpec | undefined) => spec ?? {};
+/** The spec a write stores: the one it gives, else `carried` (the head's, or the draft's own), else none. */
+export const specOf = (spec: RequirementSpec | undefined, carried?: RequirementSpec | null) =>
+  spec ?? carried ?? {};
 
 /** The reason as stored: its trimmed text, or null where none was given. */
 export const reasonOf = (write: Pick<RevisionWrite, 'reason'>) => write.reason?.trim() || null;
@@ -251,23 +254,18 @@ export async function newRevisionIn(
     false,
   );
   if (unfit.length) return unfit;
-  const asked = await withAskedQuestions(tx, {
-    projectId: owner.projectId,
-    requirementId,
-    spec: specOf(write.spec),
-  });
-  if ('refusals' in asked) return asked.refusals;
-  const [{ next } = { next: 1 }] = await tx
-    .select({ next: sql<number>`coalesce(max(${requirementRevisions.revision}), 0)::int + 1` })
-    .from(requirementRevisions)
-    .where(eq(requirementRevisions.requirementId, requirementId));
   // a new revision of the head's kind carries the head's picture until it is redrawn or replaced;
-  // one of another kind starts with none (Requirement lifecycle r14 `revision.written`)
+  // one of another kind starts with none (Requirement lifecycle r14 `revision.written`); one that
+  // gives no spec carries the head's, as it carries the kind
   const [carried] =
     input.head === null
       ? []
       : await tx
-          .select({ kind: requirementRevisions.kind, pictureId: requirementRevisions.pictureId })
+          .select({
+            kind: requirementRevisions.kind,
+            pictureId: requirementRevisions.pictureId,
+            spec: requirementRevisions.spec,
+          })
           .from(requirementRevisions)
           .where(
             and(
@@ -275,6 +273,16 @@ export async function newRevisionIn(
               eq(requirementRevisions.revision, input.head),
             ),
           );
+  const asked = await withAskedQuestions(tx, {
+    projectId: owner.projectId,
+    requirementId,
+    spec: specOf(write.spec, carried?.spec as RequirementSpec | null | undefined),
+  });
+  if ('refusals' in asked) return asked.refusals;
+  const [{ next } = { next: 1 }] = await tx
+    .select({ next: sql<number>`coalesce(max(${requirementRevisions.revision}), 0)::int + 1` })
+    .from(requirementRevisions)
+    .where(eq(requirementRevisions.requirementId, requirementId));
   await tx.insert(requirementRevisions).values({
     ...newRevisionRow({
       requirementId,
@@ -335,10 +343,23 @@ export async function rewriteRevisionIn(
     false,
   );
   if (unfit.length) return unfit;
+  // an edit that gives no spec keeps the draft's, as it keeps the kind
+  const [drafted] =
+    stored.spec === undefined
+      ? await tx
+          .select({ spec: requirementRevisions.spec })
+          .from(requirementRevisions)
+          .where(
+            and(
+              eq(requirementRevisions.requirementId, requirementId),
+              eq(requirementRevisions.revision, revision),
+            ),
+          )
+      : [];
   const asked = await withAskedQuestions(tx, {
     projectId,
     requirementId,
-    spec: specOf(stored.spec),
+    spec: specOf(stored.spec, drafted?.spec as RequirementSpec | null | undefined),
   });
   if ('refusals' in asked) return asked.refusals;
   const { landing } = input;

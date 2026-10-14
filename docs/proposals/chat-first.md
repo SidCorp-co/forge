@@ -135,7 +135,7 @@ Today an Assistant-mode reply that no rewrite fixes is replaced whole by
 
 | BC | Rule | Kernel rule | What decides |
 |---|---|---|---|
-| 10 | A requirement follows an approved design by itself | On a workflow design reaching `approved`, core re-pins every agreed requirement pinning an older revision of it, through `requirements/repin.ts:repinRequirement`, as the kernel with a reason naming both revisions. A re-pin changes no criterion (`standing.effect.follow`). Where the new revision removes or renames a step a criterion traces, core does not re-pin. The requirement then waits on the assistant (`agent`), which drafts a `revision_diff` suggestion; once one is proposed, a signer reviews it. A contract that moved too is left to a person. An hourly sweep follows what an approval found not agreed. | Whether any step a current criterion traces was removed or renamed between the pinned and the approved revision |
+| 10 | A requirement follows an approved design when somebody re-pins it | Nothing re-pins by itself (the owner's ruling of 2026-10-14). On a workflow design reaching `approved`, an agreed requirement pinning an older revision of it reads as pinned behind (`requirements.rule.pinBehind`), and its mover re-pins it through `requirements/repin.ts:repinRequirement` (`POST …/requirements/<REQ>/repin`), held by the project's `revisions` person gate: a holder of `requirements.approve` where it is on, any project writer, an agent included, where it is off. A re-pin changes no criterion (`standing.effect.follow`). Where the new revision removed or renamed a step a criterion traces (`requirements/follow-reads.ts:followReadsOf`), the requirement waits on the assistant (`agent`), which drafts a `revision_diff` suggestion; once one is proposed, a signer reviews it. | Whether any step a current criterion traces was removed or renamed between the pinned and the approved revision |
 | 11 | A run parked after repeated failures waits on the master | `pipeline/autonomous-rescue-cap.ts` parks at `on_hold` as an agent park (no question, no blocker). `issues/standing.ts`'s agent-park turn already reads that as waiting on the master ("resume once"). The master re-dispatches with a changed brief, drops it, or asks a person a question carrying a recommended answer. | The cap that exists: 3 run sessions ended since the issue last moved on |
 | 12 | A draft untouched for 7 days gets a merge-or-drop proposal | A sweep finds drafts (requirement draft revisions, draft requirements, draft issues) whose newest touch is 7 days old and that have no open proposal. The assistant asks one question on the record: merge into a named item, drop, or keep, with a recommended option and its reason, read by rule from requirements (a near-duplicate, an accepted or dropped requirement), feedback (open items asking for it) and issues (a same-titled live one). Merge is offered only where a live item to merge into was found, and the option names it (`target`). The answer acts by itself (`requirements/stale-draft-act.ts`): drop drops the draft naming the question (a stale draft revision of a requirement past draft is withdrawn, and the requirement reads as it did before it); merge moves it into the target (a proposed revision of a requirement, a comment on an issue) and drops it naming the target; keep changes nothing and buys another 7 days. A merge a rule cannot do safely (target ended, links the merge would strand, a revision already open on the target, merging a draft revision of an agreed requirement) is refused by name on the answered round, and the draft waits on the master. Before the question the draft is `awaiting_proposal`, which is not a decision. | `touched_at` older than 7 days (`DRAFT_STALE_DAYS`), and no open question of that origin |
 
@@ -148,17 +148,13 @@ for. Parks the cap made at `needs_info` before it parked for the master are re-h
 
 ## Pin-only design revisions (BC-23)
 
-A design revision whose only change is re-pins approves by itself. `workflows/design-pin-only.ts:settlePinOnly`
-reads each proposed design against its approved revision with `design-repin.ts:pinOnlyChange` (structural over
-the canonical design, never a text diff) and approves it through `design-record.ts:recordDecision`, so the
-`workflow.designDecided` event, the design issue's mark and BC-10's requirement re-pin follow as for any
-approval. It runs inside the project's workflow lock where a design is proposed (`proposeDesign`, a write that
-proposes) and where an approval can unblock a dependent resting on that base, and at boot over rows already
-waiting (`design-pin-only-boot.ts`). The ledger names the kernel (`sweeper`) and the decision row says
-`decided_kind = 'kernel'` with no user (migration 0483; a CHECK refuses a kernel decision that names a user and a
-person decision that names none), so every reader shows "Forge (pin-only)", never the proposer. The reason is `designs.reason.pinOnlyKernel`, naming
-each pin moved. Any other change, or a base not yet approved, leaves it a person's approval; a design that
-cannot be compared is refused `WORKFLOW_DESIGN_UNCOMPARABLE`, never approved.
+Nothing approves itself, a pin-only revision included (the owner's ruling of 2026-10-14). A design
+revision whose only change is re-pins is read as such (`design-repin.ts:pinOnlyChange`, structural over the
+canonical design, never a text diff) and shown so its approver sees there is nothing else to read; it is
+approved through the design's own decision (`design-service.ts:decideDesignAs`), or, for every pin-only
+dependent of a base at once, through `POST …/workflows/<base>/design/repins`, each held by the project's
+`designs` person gate. Decisions written by the kernel before this ruling keep `decided_kind = 'kernel'` and
+read "Forge (pin-only)" with `designs.reason.pinOnlyKernel`; nothing writes one now.
 
 ## The home opens on chat (BC-13)
 
@@ -265,7 +261,7 @@ lifecycle r14 already says of every picture.
 - **Confirm (BC-20).** The routed issue's run opens its REQ-39 preview. The item's page shows it
   while it is live, and the reporter, or anyone on the project for them, presses Fixed or Not fixed
   there (`POST /api/previews/:id/confirm`). The confirm is bound to the patch id served. When the
-  item reads resolved, the verify sweep (`feedback/auto-verify.ts`) reads `loopCloseFromConfirm`
+  item reads resolved, the loop-check sweep (`feedback/loop-check.ts`) reads `loopCloseFromConfirm`
   against the patch id the passing merge check recorded at the commit the issue merged (the fast
   lane's own test), as the person who confirmed and under the rules their own press meets:
   - gone, where they said Fixed of the patch that shipped: verified;
@@ -302,7 +298,9 @@ These are text-only revisions, approved by the orchestrator.
   - A new step `page` covers the page actions and Sees.
   - A door `preview` for ideas: it writes code through a sketch run and no record.
 - **Requirement lifecycle r14 → r15.**
-  - `agreed` re-pins by itself on a design approval unless a traced step changed.
+  - `agreed` is re-pinned on a design approval by its mover through the re-pin act, held by the
+    `revisions` person gate; nothing re-pins by itself, and a traced step that changed goes to the
+    assistant instead.
   - `draft` gets the 7-day merge-or-drop question.
   - `picture` takes a kept preview for a screen.
 - **Issue lifecycle r14 → r15.** The rescue cap is an agent park waiting on the master. A run's
@@ -327,7 +325,7 @@ These are text-only revisions, approved by the orchestrator.
 | 7 assistant filters stay marked | `UI_FILTER_PARAMS`, `assistant-filters.ts` on every toolbar | ui-actions |
 | 8 chat knows what the page shows | snapshot `listFilter`, `shown`, `highlight` | ui-actions |
 | 9 view only, acts by click | registry view-only; buttons are page routes | ui-actions, needs-me |
-| 10 auto-follow approved designs | re-pin on design approval | noise-cut |
+| 10 follow approved designs by a re-pin | the re-pin act, held by the `revisions` gate | noise-cut |
 | 11 crash-park waits on the master | rescue cap as an agent park | noise-cut |
 | 12 7-day merge-or-drop proposal | stale-draft sweep, question with options; the answer acts by itself | noise-cut, drafts-act |
 | 13 home on chat | home page | home |

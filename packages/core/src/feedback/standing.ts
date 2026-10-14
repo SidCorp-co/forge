@@ -141,10 +141,10 @@ export interface StandingFacts {
   /** Set while a snooze has not run out: the item is parked out of New until then. */
   snoozedUntil?: string | null;
   /** While it reads resolved, names a criterion and a sweep has dated it: when the record is read if nobody has answered. */
-  autoVerifyAt?: string | null;
-  /** It names a violated criterion, so the record can answer "is the problem gone?" after the window. */
-  recordCanVerify?: boolean;
-  /** Past its window the record could not answer, and why, as the sweep wrote it on the item. */
+  recordCheckAt?: string | null;
+  /** It names a violated criterion, so after the window the record can say whether the problem reads gone. */
+  recordCanSay?: boolean;
+  /** Past its window, what the record reads, as the sweep wrote it on the item for a person to answer from. */
   verifyHeld?: string | null;
   /** It reads resolved and nothing told its reporter the work shipped (`ship-notice.ts`): a person relays it. */
   relayOwed?: boolean;
@@ -241,8 +241,8 @@ function waitingOf(
         };
       }
       if (facts.relayOwed) return relayWait(reporter, viewer, facts);
-      // Feedback lifecycle r14 loop-check: past the window, where the record cannot answer, the item
-      // waits on a holder of feedback.approve, naming the question and why the record could not
+      // Feedback lifecycle r14 loop-check: past the window the item waits on a holder of
+      // feedback.approve, naming the question and what the record reads; nothing answers it for them
       if (facts.verifyHeld) {
         return {
           wait: wait(
@@ -262,10 +262,8 @@ function waitingOf(
           facts.carrierVersion
             ? say('standing.act.verifyFixIn', { v: facts.carrierVersion })
             : say('standing.act.verifyFix'),
-          say(
-            facts.recordCanVerify ? 'feedback.rule.verifyByRecord' : 'feedback.rule.verifyByPerson',
-          ),
-          { ref: facts.carrierVersion ?? null, dueAt: facts.autoVerifyAt ?? null },
+          say(facts.recordCanSay ? 'feedback.rule.verifyByRecord' : 'feedback.rule.verifyByPerson'),
+          { ref: facts.carrierVersion ?? null, dueAt: facts.recordCheckAt ?? null },
         ),
         // owner, 2026-10-07: nobody is owed this act, so it is on no one's Needs you; any member may take it
         yours: false,

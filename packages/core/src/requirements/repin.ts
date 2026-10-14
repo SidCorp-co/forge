@@ -7,6 +7,7 @@ import {
   requirementRevisions,
   requirements,
 } from '../db/schema-requirements.js';
+import { personGateOf } from '../project-config/index.js';
 import { signoffReasonRefusal } from './acceptance-rules.js';
 import { latestBaselineIn, linkedContracts, writePinsIn } from './baselines.js';
 import { linkedDesigns, type RequirementActor, rowIn, signerRefusal } from './read.js';
@@ -19,8 +20,10 @@ import { answer, inTx, lockRequirements, type RequirementOutcome } from './write
 // version, with no text revision; the earlier baseline stays, and an issue whose plan read it
 // reads changed-since-plan until it is re-planned; the text is unchanged, so the readiness result
 // the agree recorded carries over (ISS-86, ISS-98); no picture or mockup is pinned, so neither makes
-// a re-pin due (Requirement lifecycle r14 `agreed`). A design approval that removes or renames no step
-// a current criterion traces is followed without a person, by the kernel (`auto-follow.ts`, REQ-41 BC-10)
+// a re-pin due (Requirement lifecycle r14 `agreed`). Nothing re-pins by itself: a design approval
+// only makes this act due, and its mover takes it as the project's `revisions` person gate asks
+// (`personGateOf`): a signer where the gate is on, any project writer, an agent included, where it
+// is off (REQ-41 BC-10, owner ruling 2026-10-14)
 export async function repinRequirement(input: {
   projectId: string;
   ref: string;
@@ -30,7 +33,8 @@ export async function repinRequirement(input: {
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
   const row = await rowIn(db, projectId, input.ref);
-  const signer = await signerRefusal(actor, projectId, 're-pinning a requirement', row);
+  const gate = await personGateOf(projectId, 'revisions', 're-pinning a requirement');
+  const signer = await signerRefusal(actor, projectId, gate.act, row, gate.permission);
   if (signer) return { ok: false, refusals: [signer] };
   const unsaid = signoffReasonRefusal('repin', input.reason);
   if (unsaid) return { ok: false, refusals: [unsaid] };
@@ -50,9 +54,8 @@ export async function repinRequirement(input: {
 /**
  * The re-pin itself, inside a transaction holding the project's requirement lock: every guard the
  * act has, then a further baseline of the head pinning each linked design's approved revision and
- * each linked contract's current version. A person's act reaches it through `repinRequirement`
- * after the signer check; the kernel's follow of an approved design (`auto-follow.ts`, REQ-41
- * BC-10) reaches it directly, recording `by` as the approver whose act it follows.
+ * each linked contract's current version, reached only through `repinRequirement` after the signer
+ * check, so `by` is always the signer who took it.
  */
 export async function repinIn(
   tx: Tx,
@@ -60,8 +63,8 @@ export async function repinIn(
     projectId: string;
     requirementId: string;
     revision: number;
-    /** The approver the follow records; null where Forge's kernel is the one that acts (BC-23). */
-    by: string | null;
+    /** The signer who re-pins. */
+    by: string;
     reason?: string | null | undefined;
   },
 ): Promise<RequirementRefusal[] | null> {
@@ -117,7 +120,7 @@ export async function repinIn(
     seq,
     act: 'repin',
     agreedBy: input.by,
-    agreedKind: input.by === null ? 'kernel' : 'person',
+    agreedKind: 'person',
     reason: input.reason?.trim() || null,
     readiness: latest.readiness,
   });

@@ -39,7 +39,7 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
     reporters: [{ id: "u9", name: "Ana", agency: "human", from: null }],
     messages: [],
     verified: null,
-    autoVerify: null,
+    recordCheck: null,
     verifyHeld: null,
     snoozed: null,
     shipNotice: null,
@@ -254,28 +254,28 @@ describe("the confirmation of the fix", () => {
     expect(screen.getByTestId("verified-line")).toHaveTextContent("after 7 days with no reply");
   });
 
-  it("dates the record check of a resolved item that names a criterion, and says what it verifies on", () => {
-    renderWithQuery(<LinkedFeedback f={view({ phase: "resolved", autoVerify: { at: "2026-10-14T01:00:00.000Z", windowDays: 7 } })} slug="hop" />);
-    expect(screen.getByTestId("facts-auto-verify")).toHaveTextContent("verified if its criterion passes (7-day window)");
+  it("dates the record check of a resolved item that names a criterion, and says a triager answers from it", () => {
+    renderWithQuery(<LinkedFeedback f={view({ phase: "resolved", recordCheck: { at: "2026-10-14T01:00:00.000Z", windowDays: 7 } })} slug="hop" />);
+    expect(screen.getByTestId("facts-record-check")).toHaveTextContent("the record is read for a triager (7-day window)");
   });
 
-  it("says why the record could not verify an item past its window, and dates nothing", () => {
+  it("says what the record reads of an item past its window, and that it waits on a triager", () => {
     const held = { at: "2026-10-14T01:00:00.000Z", why: "its triage named no criterion, so no verdict can say the problem is gone" };
     renderWithQuery(<LinkedFeedback f={view({ phase: "resolved", verifyHeld: held })} slug="hop" />);
-    expect(screen.getByTestId("facts-verify-held")).toHaveTextContent("Not verified: its triage named no criterion");
-    expect(screen.queryByTestId("facts-auto-verify")).toBeNull();
+    expect(screen.getByTestId("facts-verify-held")).toHaveTextContent("Waiting on a triager: its triage named no criterion");
+    expect(screen.queryByTestId("facts-record-check")).toBeNull();
   });
 
-  it("tells whoever confirms the fix who verifies it: the record, a person, or a person after the record could not", () => {
+  it("tells whoever confirms the fix that a person verifies it: before the window, after it, and with no criterion", () => {
     core();
     const resolved = { phase: "resolved", status: "triaged", can: { ...CAN, triage: false, verify: true } } as const;
     const { unmount } = renderWithQuery(<FeedbackActions projectId="p1" f={view(resolved)} />);
     expect(screen.getByTestId("verify-copy")).toHaveTextContent("It names no criterion, so a person verifies it.");
     unmount();
-    const dated = renderWithQuery(<FeedbackActions projectId="p1" f={view({ ...resolved, autoVerify: { at: "2026-10-14T01:00:00.000Z", windowDays: 7 } })} />);
-    expect(screen.getByTestId("verify-copy")).toHaveTextContent("Forge checks the record: a passing criterion verifies it.");
+    const dated = renderWithQuery(<FeedbackActions projectId="p1" f={view({ ...resolved, recordCheck: { at: "2026-10-14T01:00:00.000Z", windowDays: 7 } })} />);
+    expect(screen.getByTestId("verify-copy")).toHaveTextContent("a triager answers from what the record reads.");
     dated.unmount();
     renderWithQuery(<FeedbackActions projectId="p1" f={view({ ...resolved, verifyHeld: { at: "2026-10-14T01:00:00.000Z", why: "REQ-1 BC-2 reads failing on the running build" } })} />);
-    expect(screen.getByTestId("verify-copy")).toHaveTextContent("The record could not verify it, so a person answers.");
+    expect(screen.getByTestId("verify-copy")).toHaveTextContent("Past its window, a triager answers from what the record reads.");
   });
 });

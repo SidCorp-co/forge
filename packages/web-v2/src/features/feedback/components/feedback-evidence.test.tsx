@@ -74,7 +74,7 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
     clarification: null,
     openSuggestions: 0,
     verified: null,
-    autoVerify: null,
+    recordCheck: null,
     verifyHeld: null,
     shipNotice: null,
     snoozed: null,

@@ -25,7 +25,6 @@ import {
 } from './design-bases.js';
 import { revisionChangesOf } from './design-changes.js';
 import { type DesignIssueOutcome, handBack, redrawWaitingDesign } from './design-issue.js';
-import { refuseUncomparable, settlePinOnly } from './design-pin-only.js';
 import { recordDecision } from './design-record.js';
 import { pinOnlyChange } from './design-repin.js';
 import { designRequirementsOf } from './design-requirements.js';
@@ -207,7 +206,6 @@ export async function proposeDesign(input: {
     ? await designIssueIn(projectId, input.issue, writer.userId)
     : undefined;
   const designIssueId = named?.id;
-  const { templates } = await templatesOf(projectId);
   const outcome = await db.transaction(async (tx): Promise<DesignRefusal[] | null> => {
     await lockWorkflows(tx, projectId);
     const row = await readWorkflow(tx, id);
@@ -263,7 +261,6 @@ export async function proposeDesign(input: {
       designIssueId: drawing.issueId,
     });
     await moveDesign(tx, id, row.designStatus, 'proposed', { writer });
-    refuseUncomparable(await settlePinOnly(tx, projectId, templates), id);
     return null;
   });
   if (outcome) return { ok: false, refusals: outcome };
@@ -283,7 +280,6 @@ export async function decideDesignAs(input: {
   await rowIn(projectId, id);
   const refusal = await approverRefusalFor(decider, projectId);
   if (refusal) return { ok: false, refusals: [refusal] };
-  const { templates } = await templatesOf(projectId);
   type Decided =
     | { refusals: DesignRefusal[] }
     | {
@@ -320,8 +316,6 @@ export async function decideDesignAs(input: {
       reason,
       decider,
     });
-    // an approval can leave a dependent's pin-only proposal resting on a base that stands approved now
-    if (decision === 'approve') await settlePinOnly(tx, projectId, templates);
     return { flow: row.flow, designIssueId: latest?.designIssueId ?? null, parked, approved };
   });
   // the approve's checklist refuses inside the kernel move; it rolls the decision back and is answered here

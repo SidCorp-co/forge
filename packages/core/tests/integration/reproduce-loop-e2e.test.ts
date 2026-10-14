@@ -307,7 +307,7 @@ describe("the reporter's confirm in the fix preview is the item's loop close (BC
     const fb = await shippedWithConfirm({ patch: P, shipped: P, verdict: 'fixed' });
     expect((await read(fb)).phase).toBe('resolved');
     const swept = await sweepResolvedFeedback();
-    expect(swept.confirmed).toBeGreaterThanOrEqual(1);
+    expect(swept.verified).toBeGreaterThanOrEqual(1);
     const out = await read(fb);
     expect(out.status).toBe('verified');
     expect(out.verified).toMatchObject({ how: 'person', by: people.ann, byReporter: true });
@@ -347,7 +347,7 @@ describe("the reporter's confirm in the fix preview is the item's loop close (BC
       'dated: the window counts, the reporter is asked as today',
     ).not.toBeNull();
     // it names no criterion, so the record promises no date: a person answers (Feedback lifecycle r14)
-    expect(out.autoVerify).toBeNull();
+    expect(out.recordCheck).toBeNull();
   });
 
   it('asks again when the merge check record that shipped it names no patch (an old-shape full-lane report: the absent marker)', async () => {

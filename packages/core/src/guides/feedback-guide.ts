@@ -67,8 +67,8 @@ Two more phases are **read, never written**, from the work the item was routed t
   \`resolved\` once every other is closed, \`planned\` while any is open (waiting on each still open), and
   \`triaged\` only when every one was dropped.
 
-Nothing reads an item as \`verified\`: a person verifies it, or Forge does after the verify window where the
-record says the problem is gone (below).
+Nothing reads an item as \`verified\` and nothing verifies it by itself: a person verifies it, or the
+reporter's confirm in the fix's preview does as theirs (below).
 
 ### Triage: a holder of feedback.approve answers the triage checklist and writes the route in the same act
 - An item reaches \`triaged\` only through the triage checklist (Feedback lifecycle r14 \`triage-check\`),
@@ -143,13 +143,15 @@ route, declining included, closes the open question.
 - \`verify\` follows \`resolved\` and nothing else (\`FEEDBACK_NOT_RESOLVED\`): an item is never verified
   before its fix shipped. The reporter or anyone on the project (\`project.read\`) verifies, and the
   decision records who and when (\`PERMISSION_FORBIDDEN\` to someone with no role on the project).
-- Nobody verifying is answered from the record (Feedback lifecycle r14 \`loop-check\`): every 15 minutes
-  core dates the first sight of \`resolved\`, and once the project's \`feedback.verifyWindowDays\`
-  (default 7, 1 to 90) have run with no reply it verifies the item as the system only where the
-  criterion its triage named violated passes on the running build and nothing was filed against it
-  since ("Verified from the record: REQ-n BC-m passes on the running build, …"), and tells each reporter
-  with a bell once. Otherwise the item stays resolved for a person to answer: it is never assumed gone.
-  A reopen or a re-route clears the date.
+- Nobody verifying is read from the record for a person (Feedback lifecycle r14 \`loop-check\`): every
+  15 minutes core dates the first sight of \`resolved\`, and once the project's
+  \`feedback.verifyWindowDays\` (default 7, 1 to 90) have run with no reply it writes on the item what
+  the record reads: "the record reads it gone: REQ-n BC-m passes on the running build, …" where the
+  criterion its triage named violated passes and nothing was filed against it since, else why the
+  record cannot say. The item stays resolved and waits on a holder of \`feedback.approve\`, who
+  verifies or reopens it through \`verify\` or \`reopen\`: Forge verifies nothing by itself, a record
+  that reads it gone included (the owner's ruling of 2026-10-14). A reopen or a re-route clears the
+  date.
 - \`verify-ask\` sends a resolved item to its reporter's bell, where it stays until the item is
   verified or reopened. It takes \`feedback.approve\`, follows \`resolved\` (\`FEEDBACK_NOT_RESOLVED\`),
   and is refused to the reporter themselves (\`FEEDBACK_VERIFY_ASK_SELF\`): they verify instead.

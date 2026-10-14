@@ -114,19 +114,16 @@ never held, or one flow twice is refused at the write (\`WORKFLOW_BASE_SELF\`, \
 base it declares is not approved at the revision it names — returned, still proposed, never approved, or
 approved at another revision — and the refusal names each base and its state. The same reading stands
 before anyone tries: a proposed design whose base moved reads as waiting on its writer to re-pin \`basedOn\`,
-not on its approver. Approve the base first, or write the design again naming the base revision that is approved — but only a design with a change
-of its own: one whose only change is the pin approves by itself the moment it is proposed or written (below), and
-whoever approves designs re-pins every dependent that was never proposed in one act. Prose that cites another design is
-never read as a base.
+not on its approver. Approve the base first, or write the design again naming the base revision that is approved; whoever
+approves designs re-pins every dependent in one act (below). Prose that cites another design is never read as
+a base.
 
-### A base approved at a new revision: a pin-only revision approves by itself
-A proposal whose only change from the approved revision is the base revisions it pins is approved by Forge in
-the transaction that proposes it, as the kernel and never as a person: the decision is recorded like any
-approval, its reason names each pin moved (from → to) and the fingerprint the two share, the requirement
-re-pin follows on that approval, and it never reaches Needs you. Any other change keeps it a person's
-approval. A proposal resting on a base not yet approved waits, and approves in the transaction that approves
-that base. A design whose shape cannot be compared is refused \`WORKFLOW_DESIGN_UNCOMPARABLE\`, never approved.
-The act below is for the dependents nobody proposed.
+### A base approved at a new revision: its dependents wait on one act
+Nothing approves itself, a pin-only revision included (REQ-41 BC-23): a proposal whose only change from the
+approved revision is the base revisions it pins waits on its approver like any other, and the read says it is
+pin-only so the approver can see there is nothing else to read. The act below clears a base's dependents,
+proposed or not, in one go; approving a design never re-pins the requirements linking it either: each is
+re-pinned by its own act, held by the project's \`approvals.revisions\` gate (REQ-41 BC-10).
 
 A proposed revision that differs from its approved revision only in the base revisions it pins, read on the
 canonical design and never on its text, reads as a pin-only change: the design read carries \`pinOnly\` with
@@ -134,7 +131,8 @@ each pin old → new, every path at which the two differ (each a \`/basedOn/<i>/
 they share once the pins are set aside. \`GET …/workflows/<base>/design/repins\` plans the act that clears a base's
 dependents: every design whose approved revision pins the base at another revision, and every design resting
 on one of those, ordered every base first. \`POST …/design/repins { revision, designs: [{ workflowId, revision }] }\`
-takes it in one transaction for whoever holds \`workflow-designs.approve\`: each design is re-pinned as a revision
+takes it in one transaction for whoever the \`approvals.designs\` gate asks (\`workflow-designs.approve\` where it
+is on, \`workflow-designs.write\` where it is off): each design is re-pinned as a revision
 written by the acting person and approved, one recorded decision per design whose note names the act's id. A design with any other change
 pending is refused \`WORKFLOW_REPIN_PENDING_CHANGE\` and goes through its own review; a re-pin that would rest
 on a base with no approved revision is refused \`WORKFLOW_DESIGN_BASE_UNAPPROVED\`; bases naming each other in a
@@ -160,13 +158,12 @@ or node id. A repository project cites \`{ kind: "repo", file, symbol }\`. The o
 \`WORKFLOW_OBSERVATION_CITATION_KIND_MISMATCH\`.
 
 ### Who approves, and what an approval is judged by
-Every approval, the pin-only one included, is judged by the workflow approval checklist, read from the
+Every approval, a pin-only one included, is judged by the workflow approval checklist, read from the
 newest revision: the business criteria its steps serve (traced on the requirements linking it; none is
 asked of a design no requirement links), who owns each step, its refusals, returns and failures drawn
 as conditions, tests or failure edges (asked only of a flow, never of a structure such as a system
 context), and its change from the last approved revision, computed. A gap is refused
-\`CHECKLIST_INCOMPLETE\` on \`/answers/<question>\`, naming it; a pin-only approval with a gap leaves the
-revision proposed. Where the project document's \`approvals.designs\` is on, approving takes
+\`CHECKLIST_INCOMPLETE\` on \`/answers/<question>\`, naming it, and the revision stays proposed. Where the project document's \`approvals.designs\` is on, approving takes
 \`workflow-designs.approve\` (project admin, or an org owner or admin), person or agent alike, a design
 onboarding drafted included; off (the default), \`workflow-designs.write\` suffices and the complete
 checklist decides. Without it the call is refused \`PERMISSION_FORBIDDEN\` naming the permission. Unlinking an issue lifts its gate, so it takes the

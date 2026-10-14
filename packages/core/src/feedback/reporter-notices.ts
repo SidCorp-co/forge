@@ -37,19 +37,6 @@ export function duplicateNotice(
   };
 }
 
-/** The item was verified because nobody confirmed the fix inside the window. */
-export function autoVerifiedNotice(
-  language: NoticeLanguage,
-  key: string,
-  title: string,
-  days: number,
-): NoticeText {
-  return {
-    title: noticeCopy(language, 'autoVerified.title', { key, title }),
-    body: noticeCopy(language, 'autoVerified.body', { days: String(days) }),
-  };
-}
-
 /** A message a triager wrote, delivered as written under the item it is about. */
 export function messageNotice(
   language: NoticeLanguage,
@@ -83,7 +70,7 @@ export function shippedNotice(
 
 /**
  * A move somebody else made on the reporter's item (REQ-34 BC-21): triaged and where it went,
- * verified on their behalf, or reopened. Its decline, merge and auto-verify have notices of their own.
+ * verified on their behalf, or reopened. Its decline and merge have notices of their own.
  */
 export function stepNotice(
   language: NoticeLanguage,

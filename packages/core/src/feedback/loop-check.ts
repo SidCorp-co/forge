@@ -1,14 +1,14 @@
 /**
- * Loop close for a resolved item nobody confirmed (Feedback lifecycle r14 loop-check; Feedback triage
- * r16 auto-verify). A sweep reads which triaged items read resolved: the first sight dates it
+ * Loop check for a resolved item nobody confirmed (Feedback lifecycle r14 loop-check; Feedback triage
+ * r16). A sweep reads which triaged items read resolved: the first sight dates it
  * (`resolved_seen_at`). Once the project's verify window (`feedback.verifyWindowDays`) has run from
- * that date, the record answers "is the problem gone?" (`loop-close.ts:goneByRecord`): where the
- * violated criterion passes on the running build and nothing was filed against it since, the item is
- * verified by the system with those sources as its reason, and its reporter told once; otherwise it
- * stays resolved for a holder of feedback.approve to answer, and the sweep writes on the item when it
- * found that and why (`verifyHeldAt`, `verifyHeldWhy`), so it is never held in silence. An item that
- * stops reading resolved loses its date and that reason, so a reopen or a re-route starts the count
- * again; a reporter who says "not fixed" reopens it as before.
+ * that date, the sweep reads what the record says about "is the problem gone?"
+ * (`loop-close.ts:goneByRecord`) and writes it on the item with its time (`verifyHeldAt`,
+ * `verifyHeldWhy`), so the item waits on a holder of feedback.approve, who verifies or reopens it
+ * through the item's own verify and reopen, and is never held in silence. Nothing here verifies an
+ * item by itself: a record that reads it gone is what that person answers from, not an answer. An
+ * item that stops reading resolved loses its date and that note, so a reopen or a re-route starts
+ * the count again; a reporter who says "not fixed" reopens it as before.
  *
  * A word said ahead comes first (REQ-41 BC-20): where the reporter, or a member for them, confirmed
  * the fix in its preview, and the change that shipped is the one they confirmed, that word is the
@@ -31,23 +31,19 @@ import { agencyOf, issueOfPreview, shippedPatchOf } from './confirm-reads.js';
 import { linkedOf, phaseIn } from './list-read.js';
 import { goneByRecord, loopCloseFactsOf } from './loop-close.js';
 import { type FeedbackActor, type Row, rowIn } from './read.js';
-import { tellReporters } from './reporter-language.js';
-import { autoVerifiedNotice } from './reporter-notices.js';
-import { reportersOf, tellStepToReporters, withBell } from './reporters.js';
+import { tellStepToReporters } from './reporters.js';
 import { personalActRefusal, reopenRefusal, verifyRefusal } from './rules.js';
 import { decide, feedbackKernelActor, inTx, lockFeedback, roleFacts } from './service.js';
-import { autoVerifyAt, verifyWindowDays } from './verify-window.js';
+import { recordCheckAt, verifyWindowDays } from './verify-window.js';
 
 export interface AutoVerifySweepResult {
   dated: number;
   cleared: number;
-  /** Every item verified this sweep: past its window, or by a confirm on what shipped. */
+  /** Verified this sweep by the reporter's confirm made in the fix's preview: their word, carried out. */
   verified: number;
-  /** Of those, verified by the reporter's confirm made in the fix's preview. */
-  confirmed: number;
   /** Reopened by a Not fixed said in the preview of the change that shipped. */
   reopened: number;
-  /** Past their window, left resolved for a person: the record could not say the problem is gone. */
+  /** Past their window, left resolved for a holder of feedback.approve with what the record reads. */
   held: number;
   /** Of those, the ones whose reason was written on the item this sweep (new, or changed since). */
   noted: number;
@@ -138,53 +134,10 @@ async function closeByConfirm(
   return moved;
 }
 
-async function verifyIn(
-  rowId: string,
-  projectId: string,
-  days: number,
-  reason: string,
-): Promise<boolean> {
-  let verified = false;
-  const refusals = await inTx(async (tx) => {
-    await lockFeedback(tx, projectId);
-    const row = await rowIn(tx, projectId, rowId, true);
-    if (row.status !== 'triaged') return null;
-    const linked = await linkedOf(projectId, [row]);
-    if (phaseIn(row, linked) !== 'resolved') return null;
-    movedRow(
-      await transition(tx, FEEDBACK_MACHINE, {
-        to: 'verified',
-        expect: row.status,
-        set: { updatedAt: new Date() },
-        where: eq(feedback.id, row.id),
-        reason,
-        actor: { type: 'system' },
-        source: 'feedback-auto-verify',
-        returning: ['id'],
-      }),
-    );
-    await decide(tx, row, 'system', { decision: 'verified', reason });
-    const key = feedbackKey(row.fbSeq);
-    await emitEvent(tx, 'feedback.verifySettled', {
-      projectId,
-      feedbackId: row.id,
-      key,
-      decision: 'verified',
-    });
-    const told = withBell(await reportersOf(tx, row)).map((r) => r.id);
-    await tellReporters(tx, { projectId, feedbackId: row.id, kind: 'verified' }, told, (language) =>
-      autoVerifiedNotice(language, key, row.title, days),
-    );
-    verified = true;
-    return null;
-  });
-  if (refusals) throw new Error(`feedback auto-verify refused ${rowId}: ${refusals[0]?.detail}`);
-  return verified;
-}
-
 /**
- * Writes on the item why the record could not verify it, once per reason: a sweep that finds the
- * same reason again writes nothing, and one that finds another writes it with its own time.
+ * Writes on the item what the record reads for the person who answers it, once per reading: a sweep
+ * that finds the same reading again writes nothing, and one that finds another writes it with its
+ * own time.
  */
 async function noteHeld(row: Row, why: string, now: Date): Promise<boolean> {
   const current =
@@ -201,7 +154,7 @@ async function noteHeld(row: Row, why: string, now: Date): Promise<boolean> {
   if (written.length > 0) {
     logger.info(
       { feedback: row.id, why },
-      'feedback: past its verify window, the record could not verify it; a person answers',
+      'feedback: past its verify window; what the record reads is written for a person to answer',
     );
   }
   return written.length > 0;
@@ -214,7 +167,6 @@ export async function sweepResolvedFeedback(
     dated: 0,
     cleared: 0,
     verified: 0,
-    confirmed: 0,
     reopened: 0,
     held: 0,
     noted: 0,
@@ -241,7 +193,6 @@ export async function sweepResolvedFeedback(
         const closed = await closeByConfirm(row, projectId);
         if (closed === 'verified') {
           result.verified += 1;
-          result.confirmed += 1;
           continue;
         }
         if (closed === 'reopened') {
@@ -262,21 +213,17 @@ export async function sweepResolvedFeedback(
         result.dated += 1;
         continue;
       }
-      if (autoVerifyAt(row.resolvedSeenAt, days).getTime() > now.getTime()) continue;
+      if (recordCheckAt(row.resolvedSeenAt, days).getTime() > now.getTime()) continue;
       try {
         const record = goneByRecord(
           await loopCloseFactsOf({ ...row, resolvedSeenAt: row.resolvedSeenAt }),
         );
-        if (!record.gone) {
-          result.held += 1;
-          if (await noteHeld(row, record.why, now)) result.noted += 1;
-          continue;
-        }
-        if (await verifyIn(row.id, projectId, days, record.reason)) result.verified += 1;
+        result.held += 1;
+        if (await noteHeld(row, record.why, now)) result.noted += 1;
       } catch (err) {
         logger.error(
           { err, feedback: row.id },
-          'feedback: an item past its verify window was not verified',
+          'feedback: what the record reads of an item past its verify window was not written',
         );
       }
     }

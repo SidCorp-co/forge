@@ -32,7 +32,7 @@ import { linkedOf, summaryOf, viewerCanOf } from './list-read.js';
 import { sourceOf } from './relations.js';
 import { reportersOf } from './reporters.js';
 import { shipNoticeOf } from './ship-notice.js';
-import { autoVerifyOf, verifyHeldOf } from './verify-window.js';
+import { recordCheckOf, verifyHeldOf } from './verify-window.js';
 
 export interface FeedbackActor {
   userId: string;
@@ -172,9 +172,9 @@ function attachmentViewsOf(
   }));
 }
 
-// The one decision reason Forge writes itself (`auto-verify.ts`), stored as its English: read back
-// to its key so a reader in another language gets its own words. `read.test.ts` holds the writer's
-// sentence to this pattern, so a reworded template is red there rather than English on screen.
+// The one decision reason Forge once wrote itself, before nothing verified an item by itself
+// (Feedback triage r16), stored as its English: read back to its key on the rows that carry it, so a
+// reader in another language gets its own words. Nothing writes it now.
 const AUTO_VERIFIED = /^Verified automatically after (\d+) days with no reply$/;
 
 /** A stored decision reason as said: Forge's own by its key, a person's or an agent's carried as written. */
@@ -303,8 +303,8 @@ export async function detailAs(
     {
       ...summary,
       verified: verifiedViewOf(row, decisions, deciders, withhold),
-      autoVerify: (() => {
-        const at = autoVerifyOf(row, phase, linked.verifyWindowDays);
+      recordCheck: (() => {
+        const at = recordCheckOf(row, phase, linked.verifyWindowDays);
         return at ? { at: at.toISOString(), windowDays: linked.verifyWindowDays } : null;
       })(),
       verifyHeld: (() => {

@@ -158,17 +158,12 @@ describe('a release page claims a criterion only with a pass verdict on the buil
         title: 'Visit reminders',
         completes: false,
         // each row in its issue criterion's own wording, the requirement criterion it proves said once
-        proven: [
-          { code: 'BC-1', statement: 'criterion 1', short: false, issueKey: 'ISS-1', n: 1 },
-          { code: 'BC-2', statement: 'criterion 2', short: true, issueKey: 'ISS-1', n: 2 },
-        ],
-        unproven: 2,
+        // a short is never proven: the page counts by the rule a requirement does (REQ-35 decision 7b261fca)
+        proven: [{ code: 'BC-1', statement: 'criterion 1', short: false, issueKey: 'ISS-1', n: 1 }],
+        unproven: 3,
         business: {
           total: 4,
-          proven: [
-            { code: 'BC-1', statement: 'A nurse sees the reminder' },
-            { code: 'BC-2', statement: 'A nurse sees it on a phone' },
-          ],
+          proven: [{ code: 'BC-1', statement: 'A nurse sees the reminder' }],
         },
       },
     ]);
@@ -193,7 +188,7 @@ describe('a release page claims a criterion only with a pass verdict on the buil
     const w = await releaseWorldOfFour();
     await judge(w.a, 1, 'fail', BUILD, { reason: 'the reminder came late' });
     const p = await page('member');
-    expect(p.requirements[0]?.proven.map((x) => x.code)).toEqual(['BC-2']);
+    expect(p.requirements[0]?.proven.map((x) => x.code)).toEqual([]);
     expect(p.knownIssues.find((k) => k.bc === 'BC-1')).toMatchObject({ standing: 'fail' });
   });
 });
@@ -355,7 +350,7 @@ describe('the highlights the assistant drafts from the requirements it advances'
     const [row] = await rows(sql`SELECT state FROM release_highlights WHERE run_id = ${w.runId}`);
     expect((row as { state: string }).state).toBe('drafted');
     const p = await page('member');
-    expect(p.requirements[0]?.proven.map((x) => x.code)).toEqual(['BC-1', 'BC-2', 'BC-3']);
+    expect(p.requirements[0]?.proven.map((x) => x.code)).toEqual(['BC-1', 'BC-3']);
   });
 });
 

@@ -1,10 +1,13 @@
 // What a release page may claim, under its one truth rule (REQ-40 BC-13): every criterion the
-// release carries, read through `releaseClaimOf` at the build the page describes. A claimed
-// criterion proves its requirement criterion live (BC-5) and lends its kept clip or picture to a
-// highlight (BC-3); every other one is a known issue as its verdict on the build reads (BC-8). Pure:
-// the loaders in facts.ts hand it rows.
+// release carries, read at the build the page describes by the rule a requirement's coverage counts
+// by (`requirements:unverifiedWhy`, REQ-35 decision 7b261fca): the verdict it stands on is the
+// judge's (`requirements:judgesVerdict`), and only a pass that rule counts as verified proves it, so
+// a short, or under an independent judge the builder's own pass, is never listed or counted as
+// proven. A claimed criterion proves its requirement criterion live (BC-5) and lends its kept clip or
+// picture to a highlight (BC-3); every other one is a known issue as its verdict on the build reads
+// (BC-8). Pure: the loaders in facts.ts hand it rows.
 
-import { criterionCountsAsPass } from '@forge/contracts/issue-vocabulary';
+import type { PolicyQaMode } from '@forge/contracts/project-config';
 import {
   RELEASE_CLIP_MAX_BYTES,
   type ReleaseClaim,
@@ -16,13 +19,17 @@ import {
   type ReleaseVerdictReading,
   releaseClaimOf,
   releaseMediaKindOf,
-  releaseStandingOf,
 } from '@forge/contracts/release-page';
+import { judgesVerdict, unverifiedWhy } from '../requirements/index.js';
 
 export interface CarriedVerdict extends ReleaseVerdictReading {
   id: string;
   reason: string | null;
   evidence: readonly string[];
+  /** Recorded by the issue's builder; the verified rule reads it. */
+  byBuilder: boolean;
+  /** Names who recorded it. */
+  authored: boolean;
 }
 
 /** One live criterion of an issue the release carries, with every verdict it earned since its last reopen. */
@@ -48,52 +55,65 @@ export interface IssueFile {
 export interface ClaimReading {
   criterion: CarriedCriterion;
   claim: ReleaseClaim;
-  /** Whether it counts as proven on the build: `criterionCountsAsPass(releaseStandingOf(...))`, the rule the release record's totals count by. */
+  /**
+   * Whether it counts as proven on the build: the verdict it stands on there is a pass the verified
+   * rule counts (`requirements:unverifiedWhy`); on a draft, which has no build, its newest verdict.
+   */
   proven: boolean;
-  /** Proven, and only short of its wording. */
-  short: boolean;
-  /** The verdict on the build the claim reads: the pass it claims, or the short, fail or skip it is held by. */
+  /** Where its verdict on the build is a pass the verified rule does not count, why; else null. */
+  unverified: string | null;
+  /** The verdict on the build the claim reads: the pass it claims, or the short, fail, skip or uncounted pass it is held by. */
   onBuild: CarriedVerdict | null;
 }
 
-/** The newest verdict whose identity is `build`: the one `releaseClaimOf` reads. */
-function newestOnBuild(
-  verdicts: readonly CarriedVerdict[],
-  build: string | null,
-): CarriedVerdict | null {
-  if (build === null) return null;
-  return (
-    [...verdicts]
-      .sort((a, b) => b.at.localeCompare(a.at))
-      .find((v) => v.identityKind === 'commit' && v.commitSha === build) ?? null
-  );
+/** The verdicts a release reads a criterion by, newest first: those on `build`, or every one on a draft. */
+function readAt(verdicts: readonly CarriedVerdict[], build: string | null): CarriedVerdict[] {
+  const newestFirst = [...verdicts].sort((a, b) => b.at.localeCompare(a.at));
+  return build === null
+    ? newestFirst
+    : newestFirst.filter((v) => v.identityKind === 'commit' && v.commitSha === build);
 }
 
 export function readClaims(
   criteria: readonly CarriedCriterion[],
   build: string | null,
+  judge: PolicyQaMode | null,
 ): ClaimReading[] {
   return criteria.map((criterion) => {
-    const standing = releaseStandingOf(criterion.verdicts, build);
+    const stands = judgesVerdict(readAt(criterion.verdicts, build), judge) ?? null;
+    const why = stands ? unverifiedWhy(stands, judge) : null;
+    const proven =
+      stands !== null &&
+      stands.identityKind !== 'commit_unresolved' &&
+      stands.verdict === 'pass' &&
+      why === null;
+    const onBuild = build === null ? null : stands;
+    let claim: ReleaseClaim;
+    if (build === null || onBuild === null) claim = releaseClaimOf(criterion.verdicts, build);
+    else if (proven) claim = { claimed: true, at: onBuild.at };
+    else if (onBuild.verdict === 'pass')
+      claim = { claimed: false, standing: 'not_judged', elsewhere: null };
+    else claim = { claimed: false, standing: onBuild.verdict, elsewhere: null };
     return {
       criterion,
-      claim: releaseClaimOf(criterion.verdicts, build),
-      proven: criterionCountsAsPass(standing),
-      short: standing === 'short',
-      onBuild: newestOnBuild(criterion.verdicts, build),
+      claim,
+      proven,
+      unverified: stands?.verdict === 'pass' ? why : null,
+      onBuild,
     };
   });
 }
 
 /**
  * Every carried criterion the page does not claim, with its standing on the build and where it was
- * judged instead. One the page lists as proven (`proven`, the standing the header counts by) and not
- * short is never also a known issue: on a draft, which has no build to claim on, a criterion whose
- * newest verdict is a pass reads as proven once, not as proven and "not yet judged" both.
+ * judged instead. One the page lists as proven (`proven`, the standing the header counts by) is never
+ * also a known issue: on a draft, which has no build to claim on, a criterion whose newest verdict is
+ * a counted pass reads as proven once, not as proven and "not yet judged" both. A pass on the build
+ * the verified rule does not count reads as not judged, saying why.
  */
 export function knownIssuesOf(claims: readonly ClaimReading[]): ReleaseKnownIssue[] {
-  return claims.flatMap(({ criterion, claim, onBuild, proven, short }) =>
-    claim.claimed || (proven && !short)
+  return claims.flatMap(({ criterion, claim, onBuild, proven, unverified }) =>
+    claim.claimed || proven
       ? []
       : [
           {
@@ -102,7 +122,7 @@ export function knownIssuesOf(claims: readonly ClaimReading[]): ReleaseKnownIssu
             bc: criterion.bc,
             statement: criterion.statement,
             standing: claim.standing,
-            reason: claim.standing === 'not_judged' ? null : (onBuild?.reason ?? null),
+            reason: claim.standing === 'not_judged' ? unverified : (onBuild?.reason ?? null),
             elsewhere: claim.elsewhere,
           },
         ],
@@ -138,16 +158,17 @@ const byKeyThenN = (a: ReleasePageProven, b: ReleasePageProven) =>
 
 /**
  * One group's carried criteria, each row one issue criterion as the header counts it (BC-5), in its
- * own wording so rows tracing one code read apart: the proven ones listed, a short marked, the traced
- * ones in code order, then those that trace no code; the rest counted as not proven on the build.
+ * own wording so rows tracing one code read apart: the proven ones listed, the traced ones in code
+ * order, then those that trace no code; the rest, a short among them, counted as not proven on the
+ * build. A proven row is never short now: only a pass is verified.
  */
 function criteriaOf(claims: readonly ClaimReading[]): ReleasePageCriteria {
   const proven: ReleasePageProven[] = claims
     .filter((c) => c.proven)
-    .map(({ criterion, short }) => ({
+    .map(({ criterion }) => ({
       code: criterion.bc,
       statement: criterion.statement,
-      short,
+      short: false,
       issueKey: criterion.issueKey,
       n: criterion.n,
     }))

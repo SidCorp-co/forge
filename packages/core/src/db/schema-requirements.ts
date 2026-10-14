@@ -365,7 +365,8 @@ export const requirementBaselines = pgTable(
     revision: integer('revision').notNull(),
     seq: integer('seq').notNull().default(1),
     act: text('act', { enum: BASELINE_ACTS }).notNull().default('agree'),
-    // a person names their user; the kernel's follow of a pin-only design names none (REQ-41 BC-23)
+    // a person names their user; `kernel` is only on rows the kernel's follow of a pin-only design
+    // wrote before nothing re-pinned by itself (REQ-41 BC-10, BC-23), and those name none
     agreedBy: uuid('agreed_by').references(() => users.id, { onDelete: 'restrict' }),
     agreedKind: text('agreed_kind', { enum: ['person', 'kernel'] })
       .notNull()

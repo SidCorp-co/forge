@@ -116,7 +116,7 @@ export interface StandingInput {
   staleContractPins: readonly { contract: string; pinned: string | null; current: string }[];
   /**
    * The nodes live criteria trace that a stale design pin's approval removed or renamed
-   * (`auto-follow.ts:followReadsOf`); absent or empty where none did, and the kernel follows it.
+   * (`follow-reads.ts:followReadsOf`); absent or empty where none did, and a signer re-pins it.
    */
   tracedChanges?: readonly TracedChange[];
   /** An open merge-or-drop question on this draft or its draft revision (`stale-drafts.ts`, REQ-41 BC-12). */
@@ -209,8 +209,8 @@ function feedbackTurn(input: StandingInput): Turn | null {
 // done unless feedback waits on triage; 2. a proposed revision → a signer; 3. a draft revision →
 // its author, unless 2b. the assistant asked whether to merge, drop or keep a stale draft → a signer
 // answers it (REQ-41 BC-12); 4. a draft requirement → a signer agrees it; 4b. untriaged feedback → a
-// signer triages it (ISS-79); 5. a design approved past the pin → the kernel re-pins it by itself
-// (`auto-follow.ts`, REQ-41 BC-10) and until then a signer may (ISS-86), unless the approval removed
+// signer triages it (ISS-79); 5. a design approved past the pin → a signer re-pins it (REQ-41 BC-10,
+// ISS-86; nothing re-pins by itself), unless the approval removed
 // or renamed a step a live criterion traces → the assistant revises those criteria, and once a
 // revision is suggested a signer reviews it; 6. every
 // issue closed and every BC proven → the BA's check task, a BC unproven → whoever owes its proof

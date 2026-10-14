@@ -223,11 +223,11 @@ function VerifiedFact({ f }: { f: FeedbackView }) {
       </Fact>
     );
   }
-  if (!f.autoVerify) return null;
+  if (!f.recordCheck) return null;
   return (
-    <Fact label={t("feedback.fact.recordCheck")} testId="facts-auto-verify">
-      <span className="fg-body-sm text-muted" title={time.dateTime(f.autoVerify.at)}>
-        {t("feedback.fact.recordCheckAt", { at: time.dateTime(f.autoVerify.at), n: f.autoVerify.windowDays })}
+    <Fact label={t("feedback.fact.recordCheck")} testId="facts-record-check">
+      <span className="fg-body-sm text-muted" title={time.dateTime(f.recordCheck.at)}>
+        {t("feedback.fact.recordCheckAt", { at: time.dateTime(f.recordCheck.at), n: f.recordCheck.windowDays })}
       </span>
     </Fact>
   );

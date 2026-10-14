@@ -15,14 +15,15 @@ export async function readApprovals(projectId: string): Promise<Approvals | null
   return doc?.document.approvals ?? null;
 }
 
-/** What the step's move asks of its mover on `projectId`, and the act its refusal names. */
+/** What the step's move asks of its mover on `projectId`, and the act its refusal names (`label` where another act shares the switch). */
 export async function personGateOf(
   projectId: string,
   gate: PersonGate,
+  label?: string,
 ): Promise<{ permission: ProjectPermission; act: string }> {
   const approvals = await readApprovals(projectId);
   return {
     permission: personGatePermission(approvals, gate),
-    act: personGateAct(approvals, gate),
+    act: personGateAct(approvals, gate, label),
   };
 }

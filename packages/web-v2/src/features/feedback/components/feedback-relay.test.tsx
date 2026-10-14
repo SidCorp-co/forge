@@ -44,7 +44,7 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
     reporters: [{ id: "u9", name: "Ana", agency: "agent", from: null }],
     messages: [],
     verified: null,
-    autoVerify: null,
+    recordCheck: null,
     verifyHeld: null,
     snoozed: null,
     shipNotice: {

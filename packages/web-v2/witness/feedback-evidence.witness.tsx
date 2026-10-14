@@ -58,7 +58,7 @@ const item = {
   createdAt: AT,
   updatedAt: AT,
   verified: null,
-  autoVerify: null,
+  recordCheck: null,
   verifyHeld: null,
   shipNotice: null,
   body: "I pressed Save on a new order. The button spins and nothing is saved; the console says the save failed with a 500.",

@@ -1,31 +1,18 @@
 /**
- * A requirement follows an approved design by itself when its criteria do not change (REQ-41 BC-10;
- * Requirement lifecycle `agreed`). On a workflow design reaching `approved`, every agreed requirement
- * whose latest baseline pins an older revision of it is re-pinned by the kernel through
- * `repin.ts:repinIn`, the act a person's "Update to the approved design" takes, with a reason naming
- * both revisions. Where the newer revision removed or renamed a step (or removed an edge) a live
- * criterion traces, nothing is re-pinned: the requirement waits on the assistant to revise those
- * criteria (`standing.ts`, the stale-pin turn). A contract that moved too is left to a person, as
- * before: a contract version is not a design. The same follow runs on a timer for the rows stale
- * before this rule, and for a delivery that was lost.
+ * What an approved design changed of the requirements pinned behind it (REQ-41 BC-10, Requirement
+ * lifecycle `agreed`). Nothing here moves a pin: a requirement whose latest baseline pins a design
+ * behind its approved revision waits on a signer to update it (`repin.ts:repinIn`, the "Update to the
+ * approved design" act, gated by `approvals`), or, where the approval removed or renamed a step (or
+ * removed an edge) a live criterion traces, on the assistant to revise those criteria
+ * (`standing.ts`, the stale-pin turn). The standing reads both from here.
  */
 
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
-import { db, type Tx } from '../db/client.js';
+import type { db, Tx } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
-import {
-  requirementCriteria,
-  requirementCriterionSteps,
-  requirements,
-} from '../db/schema-requirements.js';
+import { requirementCriteria, requirementCriterionSteps } from '../db/schema-requirements.js';
 import { projectWorkflowDesigns, projectWorkflows } from '../db/schema-workflows.js';
-import { logger } from '../lib/logger.js';
-import { consume } from '../outbox/index.js';
-import { linkedContracts } from './baselines.js';
-import { repinIn } from './repin.js';
-import { staleContractPinsOf } from './rules.js';
 import type { TracedChange } from './standing-follow.js';
-import { inTx, lockRequirements } from './write-tx.js';
 
 /** The nodes of one design revision a trace can name: each step's id and the name it shows, each edge. */
 export interface DesignNodes {
@@ -260,176 +247,4 @@ export async function followReadsOf(
     ]);
   }
   return out;
-}
-
-export type FollowOutcome =
-  | 'followed'
-  | 'current'
-  | 'traced_step_changed'
-  | 'contract_moved'
-  | 'design_unread'
-  | 'no_approver'
-  | 'refused';
-
-/**
- * Who the follow is recorded as: whoever approved the newest of the designs it follows, or the kernel
- * where that approval was Forge's own (a pin-only revision, REQ-41 BC-23), which no person took.
- */
-async function approverOf(
-  tx: Tx,
-  pins: readonly StaleDesignPin[],
-): Promise<{ by: string } | { kernel: true } | null> {
-  for (const p of [...pins].sort((a, b) => b.approved - a.approved)) {
-    const [row] = await tx
-      .select({
-        by: projectWorkflowDesigns.decidedByUser,
-        kind: projectWorkflowDesigns.decidedKind,
-      })
-      .from(projectWorkflowDesigns)
-      .where(
-        and(
-          eq(projectWorkflowDesigns.workflowId, p.workflowId),
-          eq(projectWorkflowDesigns.revision, p.approved),
-        ),
-      );
-    if (row?.kind === 'kernel') return { kernel: true };
-    if (row?.by) return { by: row.by };
-  }
-  return null;
-}
-
-const pinWords = (pins: readonly StaleDesignPin[]) =>
-  pins.map((p) => `${p.flow} r${p.pinned ?? 'none'} → r${p.approved}`).join(', ');
-
-/** The kernel's follow of one agreed requirement, in one transaction under the project's requirement lock. */
-export async function followRequirement(
-  projectId: string,
-  requirementId: string,
-): Promise<FollowOutcome> {
-  let outcome: FollowOutcome = 'current';
-  const refusals = await inTx(async (tx) => {
-    await lockRequirements(tx, projectId);
-    const [row] = await tx
-      .select({ status: requirements.status, head: requirements.currentRevision })
-      .from(requirements)
-      .where(and(eq(requirements.id, requirementId), eq(requirements.projectId, projectId)));
-    if (row?.status !== 'agreed' || row.head === null) return null;
-    const stale = (await followReadsOf(tx, [requirementId])).get(requirementId) ?? [];
-    if (stale.length === 0) return null;
-    if (stale.some((s) => s.unread)) {
-      outcome = 'design_unread';
-      return null;
-    }
-    if (stale.some((s) => s.changes.length > 0)) {
-      outcome = 'traced_step_changed';
-      return null;
-    }
-    const contracts = await linkedContracts(tx, requirementId);
-    const contractPins = rowsOf<{
-      provider_project_id: string;
-      contract_slug: string;
-      contract_version: string;
-    }>(
-      await tx.execute(sql`
-        SELECT p.provider_project_id, p.contract_slug, p.contract_version
-          FROM requirement_baseline_pins p
-         WHERE p.requirement_id = ${requirementId} AND p.contract_slug IS NOT NULL
-           AND (p.revision, p.baseline_seq) = (
-                 SELECT b.revision, b.seq FROM requirement_baselines b
-                  WHERE b.requirement_id = ${requirementId}
-                  ORDER BY b.revision DESC, b.seq DESC LIMIT 1)`),
-    ).map((p) => ({
-      providerProjectId: p.provider_project_id,
-      contractSlug: p.contract_slug,
-      contractVersion: p.contract_version,
-    }));
-    if (staleContractPinsOf(contracts, contractPins).length > 0) {
-      outcome = 'contract_moved';
-      return null;
-    }
-    const approver = await approverOf(tx, stale);
-    if (!approver) {
-      outcome = 'no_approver';
-      return null;
-    }
-    const refused = await repinIn(tx, {
-      projectId,
-      requirementId,
-      revision: row.head,
-      by: 'by' in approver ? approver.by : null,
-      reason:
-        'by' in approver
-          ? `Followed by itself on the design approval: ${pinWords(stale)}. No step a current criterion traces was removed or renamed, so no criterion changes (REQ-41 BC-10).`
-          : stale.map((p) => `design ${p.flow} r${p.approved}`).join(', '),
-    });
-    outcome = refused?.length ? 'refused' : 'followed';
-    return refused;
-  });
-  if (refusals?.length) {
-    logger.warn(
-      { projectId, requirementId, refusals },
-      'requirement-follow: the kernel re-pin was refused; the requirement waits on a person to update it',
-    );
-  }
-  return outcome;
-}
-
-/** Every agreed requirement of `projectId` linking `workflowId`, followed. */
-export async function followApprovedDesign(
-  projectId: string,
-  workflowId: string,
-): Promise<Record<string, FollowOutcome>> {
-  const rows = rowsOf<{ id: string }>(
-    await db.execute(sql`
-      SELECT r.id FROM requirements r
-        JOIN requirement_workflows rw ON rw.requirement_id = r.id
-       WHERE r.project_id = ${projectId} AND rw.workflow_id = ${workflowId} AND r.status = 'agreed'
-       ORDER BY r.req_seq`),
-  );
-  const out: Record<string, FollowOutcome> = {};
-  for (const r of rows) out[r.id] = await followRequirement(projectId, r.id);
-  return out;
-}
-
-/** The timer's pass: every agreed requirement on any project pinning a design behind its approval. */
-export async function followApprovedDesigns(): Promise<{ followed: number; left: number }> {
-  const rows = rowsOf<{ id: string; project_id: string }>(
-    await db.execute(sql`
-      SELECT DISTINCT r.id, r.project_id, r.req_seq FROM requirements r
-        JOIN requirement_workflows rw ON rw.requirement_id = r.id
-        JOIN project_workflows w ON w.id = rw.workflow_id
-        JOIN LATERAL (
-               SELECT b.revision, b.seq FROM requirement_baselines b
-                WHERE b.requirement_id = r.id
-                ORDER BY b.revision DESC, b.seq DESC LIMIT 1) lb ON true
-        LEFT JOIN requirement_baseline_pins p
-          ON p.requirement_id = r.id AND p.workflow_id = rw.workflow_id
-         AND p.revision = lb.revision AND p.baseline_seq = lb.seq
-       WHERE r.status = 'agreed' AND w.approved_revision IS NOT NULL
-         AND (p.design_revision IS NULL OR p.design_revision < w.approved_revision)
-       ORDER BY r.project_id, r.req_seq`),
-  );
-  let followed = 0;
-  for (const r of rows) {
-    if ((await followRequirement(r.project_id, r.id)) === 'followed') followed += 1;
-  }
-  return { followed, left: rows.length - followed };
-}
-
-/** The approve of a design is the follow's trigger; a return moves no pin. */
-export function registerRequirementFollow(): void {
-  consume('workflow.designDecided', {
-    name: 'requirement-follow',
-    handle: async (p) => {
-      if (p.decision !== 'approve') return;
-      const outcomes = await followApprovedDesign(p.projectId, p.workflowId);
-      const followed = Object.values(outcomes).filter((o) => o === 'followed').length;
-      if (Object.keys(outcomes).length > 0) {
-        logger.info(
-          { projectId: p.projectId, workflowId: p.workflowId, followed, outcomes },
-          'requirement-follow: agreed requirements read against the approved design',
-        );
-      }
-    },
-  });
 }

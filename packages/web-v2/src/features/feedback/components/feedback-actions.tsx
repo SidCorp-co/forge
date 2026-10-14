@@ -110,8 +110,8 @@ function VerifyBar({ projectId, f }: { projectId: string; f: FeedbackView }) {
       <p className="text-12 text-muted" data-testid="verify-copy">
         {f.verifyHeld
           ? t("feedback.verify.held")
-          : f.autoVerify
-            ? t("feedback.verify.byDate", { at: time.dateTime(f.autoVerify.at), n: f.autoVerify.windowDays })
+          : f.recordCheck
+            ? t("feedback.verify.byDate", { at: time.dateTime(f.recordCheck.at), n: f.recordCheck.windowDays })
             : t("feedback.verify.byPerson")}
       </p>
       {!reopening && f.can.verify ? (

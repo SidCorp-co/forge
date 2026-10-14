@@ -1,5 +1,4 @@
 export { dropAsDuplicateIn } from './acceptance.js';
-export { followApprovedDesigns, nodesOfDesign, registerRequirementFollow } from './auto-follow.js';
 export { latestBaselineIn } from './baselines.js';
 export { requirementKeysAndTitles, requirementStatusesBySeq } from './cited-requirements.js';
 export {
@@ -21,6 +20,7 @@ export {
 export { draftPictureRefusals, type Landing, landingIn, NEW_REQUIREMENT } from './draft-picture.js';
 export { embedRequirementHead, similarRequirements } from './embeddings.js';
 export { feedbackLinksOf } from './feedback-links.js';
+export { nodesOfDesign } from './follow-reads.js';
 export { plannedRevisionFor, requirementOfIssue } from './issue-links.js';
 export { drawKeptPreview, type KeptPreviewAbout, liveCriteriaOf } from './kept-preview.js';
 export type { ProposeDuplicate } from './near-duplicate.js';
@@ -41,6 +41,7 @@ export { roomSettleWriter } from './room-settle.js';
 export { linkIssueRefusal } from './rules.js';
 export { actOnStaleDraftAnswer, registerStaleDraftAct } from './stale-draft-act.js';
 export { sweepStaleDrafts } from './stale-drafts.js';
+export { type JudgedVerdict, judgesVerdict, unverifiedWhy } from './standing-coverage.js';
 export {
   criterionVerdictOf,
   deliveredAmong,

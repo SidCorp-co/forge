@@ -17,7 +17,11 @@ import {
   type ReleaseTechnicalNotes,
   releaseBuildOf,
 } from '@forge/contracts/release-page';
-import type { ReleaseDetail, ReleaseNoteSection } from '@forge/contracts/releases';
+import {
+  type ReleaseDetail,
+  type ReleaseNoteSection,
+  releaseVerifiedLevel,
+} from '@forge/contracts/releases';
 import {
   WHATS_NEW_KIND_OF_SECTION,
   WHATS_NEW_SECTIONS,
@@ -47,14 +51,26 @@ export function buildOf(detail: ReleaseDetail): string | null {
   return releaseBuildOf(detail.state, detail.head);
 }
 
-export function headerOf(detail: ReleaseDetail): ReleasePageHeader {
+/**
+ * The page's header. Its proven count is the page's own (`claims.ts:readClaims`, the rule a
+ * requirement counts by), so the header, the list and the totals read one number; the release
+ * record's deploy check is kept as it stands.
+ */
+export function headerOf(
+  detail: ReleaseDetail,
+  counted: { proven: number; total: number },
+): ReleasePageHeader {
   return {
     version: detail.version,
     state: detail.state,
     releasedAt: detail.releasedAt,
     environment: detail.production,
     build: buildOf(detail),
-    verified: detail.verified,
+    verified: {
+      ...detail.verified,
+      ...counted,
+      level: releaseVerifiedLevel(counted, detail.verified.check),
+    },
     approval: approvalOf(detail),
   };
 }

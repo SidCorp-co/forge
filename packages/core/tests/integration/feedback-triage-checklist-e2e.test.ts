@@ -1,14 +1,15 @@
 /**
  * Feedback triage answers its checklist (REQ-34 BC-1, BC-2, BC-6; Feedback lifecycle r14
- * triage-check, Feedback triage r16 check and decide), and loop close answers "is the problem gone?"
- * from the record (r14 loop-check, r16 auto-verify). Through the app's own routes against real
- * Postgres: a triage missing an answer is refused naming each question and recorded as refused; a
- * bug against a criterion is triaged with its three answers; a suggestion's accept meets the same
- * check; and past its window an item is verified only where its criterion passes on the running build
- * with nothing filed against it since.
+ * triage-check, Feedback triage r16 check and decide), and loop close reads "is the problem gone?"
+ * from the record for a person (r14 loop-check). Through the app's own routes against real Postgres:
+ * a triage missing an answer is refused naming each question and recorded as refused; a bug against a
+ * criterion is triaged with its three answers; a suggestion's accept meets the same check; and past
+ * its window an item is verified by nothing but a person: the record that reads it gone, where its
+ * criterion passes on the running build with nothing filed against it since, is written on it for a
+ * holder of feedback.approve to answer from (the owner's ruling of 2026-10-14).
  *
  * @direct-test-of packages/core/src/feedback/triage.ts
- * @direct-test-of packages/core/src/feedback/auto-verify.ts
+ * @direct-test-of packages/core/src/feedback/loop-check.ts
  * @direct-test-of packages/core/src/feedback/checklist-routes.ts
  */
 
@@ -293,7 +294,7 @@ describe('a suggestion accept meets the same check (criterion 3)', () => {
   });
 });
 
-describe('loop close answers from the record (criterion 4)', () => {
+describe('loop close reads the record for a person (criterion 4)', () => {
   /** A bug routed to a closed issue that traces BC-1 of an agreed requirement, naming BC-1 violated. */
   async function resolvedAgainstBc1(seq: number) {
     const req = await agreedRequirement();
@@ -332,7 +333,7 @@ describe('loop close answers from the record (criterion 4)', () => {
       }),
     );
 
-  /** Seen resolved by one sweep, then aged past its window; the caller runs the sweep that answers. */
+  /** Seen resolved by one sweep, then aged past its window; the caller runs the sweep that reads the record. */
   async function agedPastWindow(fbId: string) {
     const { sweepResolvedFeedback } = await import('../../src/feedback/index.js');
     await sweepResolvedFeedback();
@@ -344,19 +345,26 @@ describe('loop close answers from the record (criterion 4)', () => {
 
   const pastWindow = async (fbId: string) => (await agedPastWindow(fbId))();
 
-  it('verifies where the violated criterion passes on the running build, naming its sources', async () => {
+  it('verifies nothing where the violated criterion passes: it writes that reading for a person, who verifies', async () => {
     unplant = plantLiveBuild(LIVE, { [FIXED]: true });
     const { req, issueId, fbId, fb } = await resolvedAgainstBc1(41);
     await pass(issueId);
     const swept = await pastWindow(fbId);
-    expect(swept).toMatchObject({ verified: 1, held: 0 });
+    expect(swept, 'Feedback triage r16: nothing verifies an item by itself').toMatchObject({
+      verified: 0,
+      held: 1,
+      noted: 1,
+    });
     const out = (await ok(on('GET', `/feedback/${fb}`))).feedback;
-    expect(out.status).toBe('verified');
-    expect(out.verified.reason).toMatch(
+    expect(out.status, 'Feedback triage r16: nothing verifies an item by itself').toBe('triaged');
+    expect(out.verifyHeld.why).toMatch(
       new RegExp(
-        `^Verified from the record: ${req} BC-1 passes on the running build, and nothing was filed against it since \\d{4}-\\d{2}-\\d{2}\\.$`,
+        `^the record reads it gone: ${req} BC-1 passes on the running build, and nothing was filed against it since \\d{4}-\\d{2}-\\d{2}\\.$`,
       ),
     );
+    const verified = (await ok(on('POST', `/feedback/${fb}/verify`, {}))).feedback;
+    expect(verified.status).toBe('verified');
+    expect(verified.verified).toMatchObject({ how: 'person', by: ownerId });
   });
 
   it('leaves it resolved for a person where the criterion is not proven on the running build', async () => {

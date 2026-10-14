@@ -25,8 +25,6 @@ export async function recordDecision(
     /** `reason` as said, where Forge composed it; absent where the decider wrote it. */
     reasonSays?: Said | null;
     decider: WorkflowWriter;
-    /** The ledger names Forge's own kernel for the move, not `decider`: a pin-only approval (BC-23). */
-    kernel?: boolean;
   },
 ): Promise<{ parked: boolean; approved: DesignIssueOutcome | null }> {
   const { projectId, row, designIssueId, revision, decision, reason, decider } = input;
@@ -36,14 +34,12 @@ export async function recordDecision(
     revision,
     decision,
     userId: decider.userId,
-    kernel: input.kernel === true,
     reason,
     reasonSays: input.reasonSays ?? null,
   });
   await moveDesign(tx, id, row.designStatus, decision === 'approve' ? 'approved' : 'returned', {
     writer: decider,
     reason,
-    ...(input.kernel ? { actor: { type: 'sweeper' as const } } : {}),
     // an approve is judged by the workflow approval checklist (Requirement lifecycle r15 design_check)
     ...(decision === 'approve'
       ? {
@@ -63,7 +59,6 @@ export async function recordDecision(
           flow: row.flow,
           revision,
           decider,
-          kernel: input.kernel,
         })
       : null;
   // the decision is the answer a question waiting on this revision asked for (ISS-254)
