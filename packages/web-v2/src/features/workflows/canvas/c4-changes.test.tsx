@@ -12,37 +12,10 @@ import type { ComponentProps } from "react";
 import { describe, expect, it } from "vitest";
 import { type Diagram, layoutView } from "../c4/layout";
 import { FOCAL, viewOf } from "../c4/view";
-import type { DesignDiff, StepMark } from "../design-diff";
-import type { GraphNode, SystemGraph } from "../types";
+import type { DesignDiff } from "../design-diff";
+import { clinicGraph as graph, graphDiff as diffOf, PAYMENTS } from "@/test/system-graph";
 import { c4Nodes } from "./c4-canvas";
 import { type C4BoxData, C4_NODE_TYPES } from "./c4-nodes";
-
-const node = (id: string, kind: GraphNode["kind"], boundary: string | null): GraphNode => ({
-  id,
-  kind,
-  title: id,
-  name: id,
-  purpose: "",
-  owner: null,
-  boundary,
-  integration: null,
-  mark: null,
-  removed: false,
-});
-
-/** A clinic's system: one person, the app in scope, and two payment providers the Boundaries view folds into one box. */
-const graph: SystemGraph = {
-  workflowId: "w-1",
-  revision: 2,
-  against: 1,
-  focal: { boundary: null, title: "Clinic app", tip: "", purpose: "", parts: ["app"] },
-  nodes: [node("clerk", "person", null), node("app", "system", null), node("card", "external", "payments"), node("bank", "external", "payments")],
-  relationships: [],
-  boundaries: [{ id: "outside:payments", lane: "payments", side: "outside", label: "Payments", tip: "", members: ["card", "bank"] }],
-  facts: { people: [], externals: 2, boundaries: [], namedBoundaries: 1 },
-};
-
-const diffOf = (steps: Record<string, StepMark>): DesignDiff => ({ steps: new Map(Object.entries(steps)), edges: new Map(), removed: [] });
 
 async function diagram(): Promise<Diagram> {
   const v = viewOf(graph, "context", "boundaries");
@@ -64,7 +37,7 @@ const drawn = (data: C4BoxData) =>
 describe("a folded box says what the proposal changes inside it", () => {
   it("counts the changed steps a folded boundary holds, and marks it changed", async () => {
     const b = boxes(await diagram(), diffOf({ card: "changed" }));
-    const payments = b.get("outside:payments");
+    const payments = b.get(PAYMENTS);
     expect(payments?.box.node.kind, "the fixture's boundary is not folded").toBe("group");
     expect(payments?.changed, "a folded boundary holding a changed step does not say so").toBe(1);
     expect(payments?.mark, "a folded boundary holding a changed step is not marked").toBe("changed");
@@ -80,13 +53,13 @@ describe("a folded box says what the proposal changes inside it", () => {
 
   it("counts nothing while Changes is off", async () => {
     const b = boxes(await diagram(), null);
-    expect(b.get("outside:payments")?.changed, "a folded boundary counts changes while Changes is off").toBe(0);
-    expect(b.get("outside:payments")?.mark).toBeNull();
+    expect(b.get(PAYMENTS)?.changed, "a folded boundary counts changes while Changes is off").toBe(0);
+    expect(b.get(PAYMENTS)?.mark).toBeNull();
   });
 
   it("draws a folded boundary holding a change as changed, with how many", async () => {
-    const payments = boxes(await diagram(), diffOf({ card: "changed", bank: "removed" })).get("outside:payments");
-    if (!payments) throw new Error("no Payments box");
+    const payments = boxes(await diagram(), diffOf({ card: "changed", bank: "removed" })).get(PAYMENTS);
+    if (!payments) throw new Error("no Payment providers box");
     drawn(payments);
     expect(screen.getByTestId("c4-box")).toHaveAttribute("data-mark", "changed");
     expect(screen.getByTestId("c4-changed")).toHaveTextContent("2 changed");
