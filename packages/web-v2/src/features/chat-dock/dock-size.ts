@@ -1,6 +1,6 @@
 // The Ask Agent panel's two sizes and every width it is drawn at (REQ-31 r2). Large is the widest the
-// panel can be while the page beside it keeps its readable minimum; half is half of that; a drag sets
-// any width between them, and the size control snaps back to one of the two.
+// panel can be while the page beside it keeps its readable minimum; half is half of that, never below
+// its own floor; a drag sets any width between them, and the size control snaps back to one of the two.
 
 /** The page's readable minimum beside the Ask Agent panel (REQ-31 BC-1, BC-3, BC-4). The panel's
  *  large size leaves the page this much; the page's reflow and the narrow-window overlay read it here. */
@@ -10,6 +10,11 @@ export const PAGE_MIN_WIDTH = 480;
  *  the panel goes over the page (dockOverPage). */
 export const LARGE_FLOOR = 360;
 
+/** The narrowest Half is drawn (REQ-31, decided 2026-10-14 on ISS-493: at 180px the panel's own title
+ *  shrank to nothing and it scrolled sideways). Where large sits at this floor too, Half is large and
+ *  is not offered. */
+export const HALF_FLOOR = 360;
+
 /** What a browser keeps: one of the two sizes, which follows the window, or a dragged width in px. */
 export type DockSize = "large" | "half" | number;
 
@@ -17,10 +22,15 @@ export const DOCK_SIZE_KEY = "web-v2:chat-dock-size";
 /** Where the panel's dragged px width was kept before the two sizes; read by nothing but the move. */
 export const LEGACY_DOCK_WIDTH_KEY = "web-v2:chat-dock-width";
 
-/** `room` is the width the page and the panel share: from the page's left edge to the window's right. */
-export function dockSizes(room: number): { large: number; half: number } {
+/**
+ * `room` is the width the page and the panel share: from the page's left edge to the window's right.
+ * Half is half of large held to its floor, and never wider than large; where it comes out as large
+ * (large is at the floor) there is no Half to offer, and a kept Half is drawn at large.
+ */
+export function dockSizes(room: number): { large: number; half: number; halfOffered: boolean } {
   const large = Math.round(Math.max(LARGE_FLOOR, room - PAGE_MIN_WIDTH));
-  return { large, half: Math.round(large / 2) };
+  const half = Math.min(large, Math.max(HALF_FLOOR, Math.round(large / 2)));
+  return { large, half, halfOffered: half < large };
 }
 
 /** The px width a kept size is drawn at in `room`; a dragged width outside today's two sizes is held to them. */
@@ -31,11 +41,12 @@ export function dockWidth(size: DockSize, room: number): number {
   return Math.round(Math.min(large, Math.max(half, size)));
 }
 
-/** What a drag that ends at `px` keeps: held between the two sizes, and landing on either is that size. */
+/** What a drag that ends at `px` keeps: held between the two sizes, and landing on either is that size.
+ *  Where no half is offered the two are one width, and a drag keeps large. */
 export function sizeFromDrag(px: number, room: number): DockSize {
-  const { large, half } = dockSizes(room);
+  const { large, half, halfOffered } = dockSizes(room);
   const w = Math.round(px);
-  if (w >= large) return "large";
+  if (w >= large || !halfOffered) return "large";
   if (w <= half) return "half";
   return w;
 }

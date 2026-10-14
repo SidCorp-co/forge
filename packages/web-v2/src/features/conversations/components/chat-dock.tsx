@@ -272,10 +272,12 @@ function SizeTarget({ size, at, onSize }: { size: "half" | "large"; at: "half" |
  * The switch between the two sizes: Half and Large are each a target that moves the panel to the size
  * it names, the one the panel is at pressed. A width between them is marked between them, named for
  * what set it, and is not a target (REQ-31 BC-2, BC-6). `byBoard`: the width an open board widened it to.
+ * Where large sits at Half's floor there is no Half: its place says so, and is not a target.
  */
 function SizeControl({ width, room, byBoard, onSize }: { width: number; room: number; byBoard: boolean; onSize: (size: DockSize) => void }) {
   const t = useCopy();
   const at = sizeAt(width, room);
+  const { halfOffered } = dockSizes(room);
   const between = byBoard ? t("shell.dock.size.board", { width }) : t("shell.dock.size.custom", { width });
   const shown = at === "large" ? t("shell.dock.size.large") : at === "half" ? t("shell.dock.size.half") : between;
   return (
@@ -286,7 +288,13 @@ function SizeControl({ width, room, byBoard, onSize }: { width: number; room: nu
       title={t("shell.dock.size.label", { size: shown })}
       className="fg-caption inline-flex h-7 min-w-0 flex-none items-center gap-0.5 rounded-md border border-line bg-sunken p-0.5 font-semibold"
     >
-      <SizeTarget size="half" at={at} onSize={onSize} />
+      {halfOffered ? (
+        <SizeTarget size="half" at={at} onSize={onSize} />
+      ) : (
+        <span data-segment="half" data-offered="false" data-testid="chat-dock-no-half" className={`${segment(false)} font-normal`}>
+          {t("shell.dock.size.halfCannotFit")}
+        </span>
+      )}
       {at === null && (
         <span aria-hidden data-segment={byBoard ? "board" : "custom"} data-on className={segment(true)}>
           <span className="@max-md:hidden">{between}</span>
