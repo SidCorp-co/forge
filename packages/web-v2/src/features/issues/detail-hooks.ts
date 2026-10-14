@@ -67,10 +67,7 @@ export function useStepHandoffs(projectId: string | undefined, id: string | unde
   });
 }
 
-/** Per-stage duration + cost for the issue (ISS-377 gap E). The REST view is
- *  project-scoped with no issueId filter, so we fetch the 90-day window and
- *  filter to this issue in `select`. Same `['issue', id, …]` prefix for free
- *  WS invalidation. */
+/** Per-stage duration + cost for the issue: the REST view has no issueId filter, so the 90-day window is fetched and filtered in `select`. */
 export function useStepDurations(projectId: string | undefined, id: string | undefined) {
   return useQuery({
     queryKey: ["issue", id, "step-durations"],

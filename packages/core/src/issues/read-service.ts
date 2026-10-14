@@ -4,11 +4,7 @@ import { issues } from '../db/schema.js';
 
 export type IssueRow = typeof issues.$inferSelect;
 
-/**
- * Returns null rather than throwing: the error vocabulary belongs to the
- * transport. REST answers 404 `issue not found`, MCP answers
- * `NOT_FOUND: issue not found`, and both are asserted by their own tests.
- */
+/** Returns null rather than throwing: the error vocabulary belongs to the transport. */
 export async function findIssueById(issueId: string): Promise<IssueRow | null> {
   const [row] = await db.select().from(issues).where(eq(issues.id, issueId)).limit(1);
   return row ?? null;

@@ -2,8 +2,7 @@
  * ISS-1179 — which `forge_issues` inputs name an issue, and what a caller may spell into them.
  * Two copies of that claim with only one of them checked is the defect: the description promised
  * `documentId` took a display key while `z.uuid()` refused one. So {@link ISSUE_REF_CLAUSE} is
- * RENDERED from the registries below and the handler ROUTES BY them. Resolution is the REST
- * by-display door's, unchanged — `parseIssueRef` over `heldIssuePrefixes`, `findIssueByDisplaySeq`.
+ * RENDERED from the registries below and the handler ROUTES BY them.
  */
 
 import { z } from 'zod';

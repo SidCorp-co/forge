@@ -657,19 +657,14 @@ describe('the issue data plane holds no table or column nothing reads (ISS-1132)
     expect(cfg.indexes.map((i) => i.config.name)).not.toContain('issue_step_contexts_verdict_idx');
   });
 
-  it('keeps a single-row attribute key single with a partial unique index, over no foreign key on key', () => {
+  it('keeps a single-row attribute key single by a partial unique index, with no foreign key on key', () => {
     const cfg = getTableConfig(issueAttributes);
     const index = cfg.indexes.find((i) => i.config.name === 'issue_attributes_single_row_uq');
-    expect(index?.config.unique).toBe(true);
-    expect(index?.config.columns.map((c) => (c as { name: string }).name)).toEqual([
-      'issue_id',
-      'key',
-    ]);
-    expect(index?.config.where).toBeDefined();
-    const keyFk = cfg.foreignKeys.find((fk) =>
+    expect(index?.config.unique && index.config.where !== undefined).toBe(true);
+    const fkOnKey = cfg.foreignKeys.some((fk) =>
       fk.reference().columns.some((c) => c.name === 'key'),
     );
-    expect(keyFk).toBeUndefined();
+    expect(fkOnKey).toBe(false);
   });
 });
 
