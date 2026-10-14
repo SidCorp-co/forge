@@ -236,12 +236,11 @@ function listOf(names: string[]): string {
   return `${unique.slice(0, -1).join(', ')} and ${unique[unique.length - 1]}`;
 }
 
-/** A stage's own fields, so two edits to one stage's permissions are told apart. */
+/** The fields of a stage that share one section name ("Stage permissions"), so edits to two of them are told apart. */
 const STAGE_FIELD_LABELS: Record<string, string> = {
   disallowedTools: 'Denied tools',
   allowedTools: 'Allowed tools',
   mcpServers: 'MCP servers',
-  deviceIds: 'Runner pool',
 };
 
 function stageFieldLabel(path: string): string | undefined {

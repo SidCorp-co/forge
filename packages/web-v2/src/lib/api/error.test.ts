@@ -252,6 +252,14 @@ describe('describeSettings', () => {
     expect(describeSettings(['plugins', 'plugins']).count).toBe(1);
   });
 
+  it('names each stage setting once: a runner pool has its own section, a permission its field', () => {
+    expect(describeSettings(['states.open.deviceIds']).text).toBe('Runner pools (Open)');
+    expect(describeSettings(['states.open.disallowedTools']).text).toBe('Stage permissions (Open) (Denied tools)');
+    expect(describeSettings(['states.open.mcpServers.playwright']).text).toBe(
+      'Stage permissions (Open) (MCP server playwright)',
+    );
+  });
+
   it('keeps a stage setting in the stage it belongs to', () => {
     expect(describeSettings(['states.open.deviceIds']).text).toBe('Runner pools (Open)');
   });
