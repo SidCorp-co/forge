@@ -7,7 +7,7 @@ export const checkpointSourceSchema = z
   .string()
   .min(1)
   .max(64)
-  .refine((source) => source === RECONSTRUCTION_SOURCE, {
+  .refine((source): boolean => source === RECONSTRUCTION_SOURCE, {
     error: (issue) =>
       `a checkpoint declares what it is in \`source\`, and the only valid source is \`${RECONSTRUCTION_SOURCE}\`; got ${JSON.stringify(issue.input)}`,
   });

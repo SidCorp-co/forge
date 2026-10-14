@@ -238,7 +238,7 @@ export function withheldMarker(id: string): string {
   return id === '' ? '[withheld]' : `[withheld: test credential "${id}", read at ${READ_AT}]`;
 }
 
-/** Whether a stored value is in `text`, as it stands or as a reader sees it. */
+/** True where `text` carries a stored value, written out or only read off it. */
 function holdsCredential(text: string, credentials: readonly StoredCredential[]): boolean {
   return (
     spansOf(text, credentials).length > 0 || findCredential(readAsText(text), credentials) !== null
