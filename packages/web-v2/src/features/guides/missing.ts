@@ -12,6 +12,9 @@ export const MISSING_GUIDE_BODY = `The index lists every guide there is, and eac
   "/api/guides",
 )}/<slug>.md with no credential.`;
 
+/** Said where a refusal would offer the docs' search and the guide index it searches is down. */
+export const SEARCH_UNAVAILABLE = "Search is not available right now: the guide index could not be reached.";
+
 /** The way back from a refusal that is not one of the three doors themselves. */
 export const ALL_DOORS_LINK_TEXT = "All three ways in";
 
