@@ -12,7 +12,7 @@ export class MetaSkillReservedError extends Error {
   readonly code = 'META_SKILL_RESERVED';
   constructor(name: string) {
     super(
-      `META_SKILL_RESERVED: '${name}' is a Forge meta skill delivered via the plugin channel and cannot be shadowed by a per-project skill`,
+      `META_SKILL_RESERVED: '${name}' is a Forge-owned skill name and cannot be shadowed by a per-project skill`,
     );
     this.name = 'MetaSkillReservedError';
   }

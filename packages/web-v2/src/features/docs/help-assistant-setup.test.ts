@@ -156,6 +156,109 @@ function stepReferences(markdown: string): Array<{ number: number; sentence: str
   return refs;
 }
 
+/** Prose as one line, frontmatter, headings and bold marks gone: what a reference is read in. */
+function flat(markdown: string): string {
+  return prose(markdown)
+    .replace(/^---[\s\S]*?^---/m, "")
+    .replace(/^#+ .*$/gm, "")
+    .replace(/\*\*/g, "")
+    .replace(/\s+/g, " ");
+}
+
+type SetupPage = (typeof SETUP_PAGES)[number];
+
+/**
+ * Every way these pages name a step, each with what the step it names has to hold. `says` captures
+ * the number, and a second number where it names a range, whose last step `end` is read against.
+ * `page` is the page the number points into, where that is not the page saying it.
+ */
+interface ReferenceForm {
+  says: RegExp;
+  holds: RegExp;
+  end?: RegExp;
+  page?: SetupPage;
+}
+
+const REFERENCE_FORMS: ReferenceForm[] = [
+  { says: /the project you chose in step (\d+)/, holds: /Bind to a project/ },
+  { says: /the code (?:in your note )?from step (\d+)/, holds: /^\d+\. Paste the code into your note/ },
+  { says: /the Endpoint from step (\d+)/, holds: /\*\*Endpoint\*\*/ },
+  { says: /\(steps (\d+) to (\d+) below says? how\)/, holds: /open your computer's search/, end: /to open the terminal/ },
+  { says: /After step (\d+) you see/, holds: /^\d+\. Choose \*\*Create token\*\*\./ },
+  { says: /(?:You come back to step (\d+) when the panel is showing|you go on to step (\d+)\. If you see a Confirm password)/, holds: /^\d+\. Choose \*\*Copy to clipboard\*\*/ },
+  { says: /You come back to step (\d+) when Developer is in the list/, holds: /^\d+\. Choose \*\*Developer\*\*/ },
+  { says: /Developer is now in the list on the left\. Now go back to step (\d+)/, holds: /^\d+\. Choose \*\*Developer\*\*/ },
+  { says: /You come back to step (\d+) when the window shows the file/, holds: /^\d+\. Open the file/ },
+  { says: /claude_desktop_config\.json`\. Now go back to step (\d+)/, holds: /^\d+\. Open the file/ },
+  { says: /when you opened the file in step (\d+)/, holds: /^\d+\. Open the file/ },
+  { says: /You go on to step (\d+) when you have finished it/, holds: /^\d+\. (?:Replace `<ENDPOINT>`|Save)/ },
+  { says: /Now go on to step (\d+)\./, holds: /^\d+\. Save\./ },
+  { says: /settings again, the same way as in step (\d+)/, holds: /^\d+\. Open Claude Desktop's settings\./ },
+  { says: /Open Settings again, as in step (\d+)/, holds: /^\d+\. Open Claude Desktop's settings\./ },
+  { says: /on each screen, as in step (\d+)/, holds: /^\d+\. On each installer screen/ },
+  { says: /the same connection as in step (\d+)/, holds: /\*\*Copy\*\* above the block/ },
+  { says: /(?:the block you copied in step|If you copied the block in step) (\d+)/, holds: /\*\*Copy\*\* above the block|to copy the block\./ },
+  { says: /If step (\d+) shows `✘/, holds: /✔ Connected/ },
+  { says: /If step (\d+) does not show forge as running/, holds: /marked \*\*running\*\*/ },
+  { says: /If step (\d+) shows no forge/, holds: /\*\*Check:\*\* \*\*forge\*\* is listed\./ },
+  { says: /or step (\d+) shows a red dot/, holds: /green dot/ },
+  {
+    says: /steps (\d+) to (\d+) of \[Connect Claude Desktop\]/,
+    page: "claude-desktop",
+    holds: /nodejs\.org/,
+    end: /installation is complete/,
+  },
+];
+
+/**
+ * The step references a page makes, each read through the form it is written in. `wrong` is a
+ * reference whose step does not hold what it names; `unread` is one written in no known form, which
+ * a renumbering could move with nothing to say it went wrong.
+ */
+function unresolvedReferences(page: SetupPage): { wrong: string[]; unread: string[] } {
+  const text = flat(body(page));
+  const read = new Set<number>();
+  const wrong: string[] = [];
+  for (const form of REFERENCE_FORMS) {
+    const steps = mainSteps(body(form.page ?? page));
+    for (const m of text.matchAll(new RegExp(form.says.source, "g"))) {
+      const numbers = m.slice(1).filter((n) => n !== undefined).map(Number);
+      numbers.forEach((n, i) => {
+        const holds = i > 0 && form.end ? form.end : form.holds;
+        if (!holds.test(steps[n - 1] ?? "")) wrong.push(`step ${n} does not hold ${holds}: ${m[0]}`);
+      });
+      for (const r of m[0].matchAll(/\b[Ss]teps? \d+/g)) read.add((m.index ?? 0) + (r.index ?? 0));
+    }
+  }
+  const unread = [...text.matchAll(/\b[Ss]teps? \d+/g)]
+    .filter((r) => !read.has(r.index ?? -1))
+    .map((r) => text.slice(Math.max(0, (r.index ?? 0) - 60), (r.index ?? 0) + 20));
+  return { wrong, unread };
+}
+
+/**
+ * A step that sends the reader into a section names the step they come back to, and the section's
+ * own last line names one too. Two numbers for one return leave the reader at whichever they read last.
+ */
+function disagreeingReturns(markdown: string): string[] {
+  const out: string[] = [];
+  for (const step of mainSteps(markdown)) {
+    const sent = /follow (.+?) at the end of this page\. You (?:come back|go on) to step (\d+)/.exec(flat(step));
+    if (!sent) continue;
+    const [, title, back] = sent;
+    const heading = markdown.split("\n").find((l) => l.startsWith("## ") && l.slice(3) === title);
+    if (!heading) {
+      out.push(`no section titled ${title}`);
+      continue;
+    }
+    const section = markdown.slice(markdown.indexOf(heading) + heading.length).split(/^## /m)[0];
+    for (const r of flat(section).matchAll(/(?:go back|go on) to step (\d+)/g)) {
+      if (r[1] !== back) out.push(`${title}: the step says ${back}, the section says ${r[1]}`);
+    }
+  }
+  return out;
+}
+
 /** "MCP" outside the page that explains it, and not quoting a label the reader's screen shows. */
 function unquotedMcp(markdown: string): string[] {
   const outsideQuotes = prose(markdown).replace(/\*\*[^*\n]+\*\*/g, "").replace(/`[^`\n]+`/g, "");
@@ -283,25 +386,28 @@ describe("one action to a step, on the four setup pages", () => {
     expect(dangling).toEqual([]);
   });
 
-  // A number that still resolves can point at the wrong step after a renumbering, so the
-  // references that name what they point at are held to that.
-  it.each(SETUP_PAGES)("%s sends each 'step N' that names a thing to the step holding it", (page) => {
-    const steps = mainSteps(body(page));
-    const named: Array<[RegExp, RegExp]> = [
-      [/\bthe project you chose in step/, /Bind to a project/],
-      [/\bthe code (?:in your note )?from step/, /forge_pat_/],
-      [/\bthe Endpoint from step/, /\*\*Endpoint\*\*/],
-      [/\bsteps? \d+(?: to \d+)? below says? how/, /terminal/i],
-    ];
-    const wrong: string[] = [];
-    for (const ref of stepReferences(body(page))) {
-      for (const [phrase, holds] of named) {
-        if (phrase.test(ref.sentence) && !holds.test(steps[ref.number - 1] ?? "")) {
-          wrong.push(`step ${ref.number} is not the one that holds ${holds}: ${ref.sentence}`);
-        }
-      }
-    }
-    expect(wrong).toEqual([]);
+  it.each(SETUP_PAGES)("%s resolves every 'step N' it says to the step holding what it names", (page) => {
+    expect(unresolvedReferences(page)).toEqual({ wrong: [], unread: [] });
+  });
+
+  it.each(SETUP_PAGES)("%s returns the reader from a section to the step that sent them there", (page) => {
+    expect(disagreeingReturns(body(page))).toEqual([]);
+  });
+
+  it("reads each reference form on some page, so none of them is a rule nothing exercises", () => {
+    const unused = REFERENCE_FORMS.filter((form) => !SETUP_PAGES.some((page) => form.says.test(flat(body(page)))));
+    expect(unused.map((form) => form.says.source)).toEqual([]);
+  });
+
+  it("names no step of the four setup pages from any other help page", () => {
+    const setupLink = new RegExp(`${FOLDER}/(?:${SETUP_PAGES.join("|")})\\b|Connect (?:Claude Desktop|Claude Code|Cursor|another app)`);
+    const naming = HELP_DOCS.filter((d) => !SETUP_PAGES.some((p) => d.slug === `${FOLDER}/${p}`)).flatMap((d) =>
+      flat(d.body)
+        .split(/(?<=[.!?])\s+/)
+        .filter((sentence) => setupLink.test(sentence) && /\b[Ss]teps? \d/.test(sentence))
+        .map((sentence) => `${d.slug}: ${sentence}`),
+    );
+    expect(naming).toEqual([]);
   });
 
   // The form shows read ticked when it opens (tokens-tab.tsx: useState<PatScope[]>(["read"])), so a
@@ -376,6 +482,26 @@ describe("the one-action rule, each against the step it would let through", () =
     expect(checkAsksForAnAct("1. Open it.\n\n   **Check:** it is listed. If a switch is off, turn it on.")).toHaveLength(1);
     expect(checkAsksForAnAct("1. Open it.\n\n   **Check:** it is listed. Go back to step 16.")).toHaveLength(1);
     expect(checkAsksForAnAct("1. Open it.\n\n   **Check:** it is listed with a green dot.")).toEqual([]);
+  });
+
+  it("refuses a section that returns the reader to a step its caller does not name", () => {
+    const page = [
+      "## Steps",
+      "",
+      "1. Choose **Developer**.",
+      "",
+      "   **Check:** it opens.",
+      "",
+      "2. If it is missing, follow **If it is missing** at the end of this page. You come back to step 3 when it is there.",
+      "",
+      "   **Check:** it opens.",
+      "",
+      "## If it is missing",
+      "",
+      "Now go back to step 1.",
+    ].join("\n");
+    expect(disagreeingReturns(page)).toEqual(["If it is missing: the step says 3, the section says 1"]);
+    expect(disagreeingReturns(page.replace("step 3 when", "step 1 when"))).toEqual([]);
   });
 
   it("reads a step number, a pair of them and a range, and ignores prose that has none", () => {

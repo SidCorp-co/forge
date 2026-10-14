@@ -67,8 +67,8 @@ settings Forge writes for you, and paste them into Cursor.
 10. Choose **Create token**.
 
     **Check:** a panel titled **Token created** appears; or, if Forge wants to
-    confirm it is you first, a **Confirm password** box or a **Continue with**
-    button appears instead.
+    confirm it is you first, a **Confirm password** box with the cursor in it, or a
+    **Continue with** button, comes into view instead.
 
 11. If the **Token created** panel has not appeared, follow
     **If Forge asks you to confirm it is you** at the end of this page. You come
@@ -79,7 +79,8 @@ settings Forge writes for you, and paste them into Cursor.
 
 12. Choose **Copy to clipboard**. Forge shows the code only this once.
 
-    **Check:** a notice reading **Copied to clipboard** appears.
+    **Check:** a notice reading **Copied to clipboard** appears near the top of the
+    screen, over the panel.
 
 13. Paste the code into your note.
 
@@ -137,53 +138,64 @@ settings Forge writes for you, and paste them into Cursor.
     `~/.cursor/mcp.json`: on a Mac, the `.cursor` folder inside your home folder; on
     Windows, `C:\Users\<your name>\.cursor\mcp.json`.
 
-24. If the file is empty, or holds only `{}` or `"mcpServers": {}` with nothing
+24. In your note, drag from the block's first `{` to its last `}` to highlight the
+    whole block.
+
+    **Check:** the whole block is highlighted, from its first `{` to its last `}`.
+
+25. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the block.
+
+    **Check:** the block is still highlighted. A copy changes nothing on the screen;
+    the next paste shows it worked.
+
+26. If the file in Cursor holds only `{}`, or `"mcpServers": {}` with nothing
     between those last braces, select everything in it — **Cmd+A** on a Mac,
     **Ctrl+A** on Windows.
 
-    **Check:** if you did, everything in the editor tab is highlighted.
+    **Check:** if you did, all the text in the editor tab is highlighted.
 
-25. If you selected everything, paste the block from your note in its place.
+27. If the file was empty or you selected everything in it, paste the block you
+    copied in step 25 — **Cmd+V** on a Mac, **Ctrl+V** on Windows.
 
     **Check:** if you did, the file holds `"forge"` inside `"mcpServers"`, with your
     token in it.
 
-26. If the file already listed other servers under `"mcpServers"` when Cursor opened
+28. If the file already listed other servers under `"mcpServers"` when Cursor opened
     it, follow **If the file already lists other servers** at the end of this page.
-    You go on to step 27 when you have finished it.
+    You go on to step 29 when you have finished it.
 
     **Check:** the file holds `"forge"` inside `"mcpServers"`, with your token in
     it.
 
-27. Save the file — **Cmd+S** on a Mac, **Ctrl+S** on Windows.
+29. Save the file — **Cmd+S** on a Mac, **Ctrl+S** on Windows.
 
     **Check:** the editor tab no longer marks the file as changed.
 
-28. Go back to the **Cursor Settings** tab.
+30. Go back to the **Cursor Settings** tab.
 
     **Check:** **forge** is listed.
 
-29. If a switch beside **forge** is off, turn it on.
+31. If a switch beside **forge** is off, turn it on.
 
     **Check:** **forge** shows a green dot and a count of its tools.
 
-30. Open Cursor's chat — **Cmd+L** on a Mac, **Ctrl+L** on Windows.
+32. Open Cursor's chat — **Cmd+L** on a Mac, **Ctrl+L** on Windows.
 
     **Check:** a chat panel opens beside the editor.
 
-31. Type: *"What issues are open in Forge right now?"*
+33. Type: *"What issues are open in Forge right now?"*
 
     **Check:** your question shows where you type, and it has not been sent yet.
 
-32. Press Enter to send it.
+34. Press Enter to send it.
 
     **Check:** Cursor asks your permission to run a tool from `forge`.
 
-33. Allow it.
+35. Allow it.
 
     **Check:** Cursor answers with issues from your project.
 
-34. Delete the note. The token now lives in Cursor's settings file, and you will not
+36. Delete the note. The token now lives in Cursor's settings file, and you will not
     need the copy again.
 
     **Check:** the note is gone from your notes app.
@@ -228,20 +240,31 @@ If you see a **Continue with** button:
 Add only the `"forge": { … }` part of the block from your note, as the first
 server in the list.
 
-1. Click straight after `"mcpServers": {` in the file.
+1. In your note, drag from `"forge": {` down to the `}` that closes it — the first
+   `}` that sits exactly below the `"` of `"forge"` — to highlight that part.
+
+   **Check:** the highlight starts at `"forge"` and ends at that `}`, and the two
+   lines after it are not highlighted.
+
+2. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy that part.
+
+   **Check:** the part is still highlighted. A copy changes nothing on the screen;
+   the next paste shows it worked.
+
+3. In the file in Cursor, click straight after `"mcpServers": {`.
 
    **Check:** the cursor blinks right after the `{`.
 
-2. Press Enter.
+4. Press Enter.
 
    **Check:** the cursor is on a new, empty line.
 
-3. Paste the `"forge": { … }` part of the block from your note.
+5. Paste the part you copied.
 
    **Check:** the new line holds `"forge": {` and the lines that belong to it,
    ending with a `}`.
 
-4. Type a comma straight after that closing `}`.
+6. Type a comma straight after that closing `}`.
 
    **Check:** a comma sits between the end of the `"forge"` part and the name of
    the next server.
@@ -254,5 +277,5 @@ connection works in every folder you open in Cursor. It lasts until you remove
 the `forge` block from `mcp.json` or revoke the token on Forge's **API Tokens**
 tab.
 
-If step 28 shows no **forge**, or step 29 shows a red dot, see
+If step 30 shows no **forge**, or step 31 shows a red dot, see
 [When it does not work](?path=connect-an-assistant/when-it-does-not-work).

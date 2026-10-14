@@ -124,8 +124,8 @@ installed. The steps below install it.
 20. Choose **Create token**.
 
     **Check:** a panel titled **Token created** appears; or, if Forge wants to
-    confirm it is you first, a **Confirm password** box or a **Continue with**
-    button appears instead.
+    confirm it is you first, a **Confirm password** box with the cursor in it, or a
+    **Continue with** button, comes into view instead.
 
 21. If the **Token created** panel has not appeared, follow
     **If Forge asks you to confirm it is you** at the end of this page. You come
@@ -136,7 +136,8 @@ installed. The steps below install it.
 
 22. Choose **Copy to clipboard**. Forge shows the code only this once.
 
-    **Check:** a notice reading **Copied to clipboard** appears.
+    **Check:** a notice reading **Copied to clipboard** appears near the top of the
+    screen, over the panel.
 
 23. Paste the code into your note.
 
@@ -159,63 +160,71 @@ installed. The steps below install it.
     *"This snippet configures"*, then your project's name, then a short grey label
     such as `my-project` — the project's short name.
 
-27. Copy the address shown under **Endpoint**.
+27. Drag across the address shown under **Endpoint**, from `https` to `/mcp`, to
+    highlight it.
 
-    **Check:** the address is highlighted.
+    **Check:** the whole address is highlighted, from `https://` to `/mcp`.
 
-28. Paste the address into your note.
+28. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the address.
+
+    **Check:** the address is still highlighted. A copy changes nothing on the
+    screen; the next paste shows it worked.
+
+29. Paste the address into your note.
 
     **Check:** your note holds an address that starts with `https://` and ends with
     `/mcp`.
 
-29. Copy the project's short name from the grey label.
+30. Drag across the project's short name in the grey label to highlight it.
 
-    **Check:** the short name is highlighted.
+    **Check:** the whole short name is highlighted, and nothing outside the grey
+    label is.
 
-30. Paste the short name into your note.
+31. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the short name.
+
+    **Check:** the short name is still highlighted. A copy changes nothing on the
+    screen; the next paste shows it worked.
+
+32. Paste the short name into your note.
 
     **Check:** your note holds the token, the address and the short name.
 
-31. Open Claude Desktop's settings. On a Mac, choose **Claude** › **Settings…** in
+33. Open Claude Desktop's settings. On a Mac, choose **Claude** › **Settings…** in
     the menu bar at the top of the screen. On Windows, choose **☰** › **File** ›
     **Settings…**; the **☰** menu is at the top left of the Claude window.
 
     **Check:** the Settings window opens.
 
-32. Choose **Developer** in the list on the left.
+34. Choose **Developer** in the list on the left.
 
     **Check:** the Developer page shows an **Edit Config** button; or the list has
     no **Developer**.
 
-33. If the list has no **Developer**, follow **If Settings has no Developer** at the
+35. If the list has no **Developer**, follow **If Settings has no Developer** at the
     end of this page. You come back to step 34 when **Developer** is in the list.
 
     **Check:** the Developer page shows an **Edit Config** button.
 
-34. Choose **Edit Config**.
+36. Choose **Edit Config**.
 
     **Check:** a Finder window (Mac) or File Explorer window (Windows) shows a file
     called `claude_desktop_config.json`; or no window opens.
 
-35. If no window opened, follow **If Edit Config opens no window** at the end of
-    this page. You come back to step 36 when the window shows the file.
+37. If no window opened, follow **If Edit Config opens no window** at the end of
+    this page. You come back to step 38 when the window shows the file.
 
     **Check:** a Finder window (Mac) or File Explorer window (Windows) shows a file
     called `claude_desktop_config.json`.
 
-36. Open the file in a plain text editor. On a Mac, choose **Open With** ›
+38. Open the file in a plain text editor. On a Mac, choose **Open With** ›
     **TextEdit** from the file's right-click menu. On Windows, choose **Open with**
     › **Notepad** from the file's right-click menu.
 
     **Check:** a window shows the file's text: nothing at all, just `{}`, or some
     text that is already there.
 
-37. If the window is empty or holds only `{}`, select everything in it — **Cmd+A**
-    on a Mac, **Ctrl+A** on Windows.
-
-    **Check:** if you did, everything in the window is highlighted.
-
-38. If you selected everything, paste the block below in its place.
+39. If the window is empty or holds only `{}`, choose **Copy** above the block
+    below, here on this page.
 
     ```json
     {
@@ -240,35 +249,45 @@ installed. The steps below install it.
     }
     ```
 
+    **Check:** if you did, the button changes to **Copied ✓** for a moment.
+
+40. If the window holds only `{}`, select everything in it — **Cmd+A** on a Mac,
+    **Ctrl+A** on Windows.
+
+    **Check:** if you did, the `{}` is highlighted.
+
+41. If you copied the block in step 39, paste it into the file's window — **Cmd+V**
+    on a Mac, **Ctrl+V** on Windows.
+
     **Check:** if you did, the file starts with `{`, the next line is
     `"mcpServers": {`, and the word `forge` appears on the line after that.
 
-39. If the window held any other text when you opened the file in step 36, follow
+42. If the window held any other text when you opened the file in step 38, follow
     **If the file already has text in it** at the end of this page. You go on to
-    step 40 when you have finished it.
+    step 43 when you have finished it.
 
     **Check:** the file has `"forge": {` in it.
 
-40. Replace `<ENDPOINT>` — angle brackets included — with the address from your
+43. Replace `<ENDPOINT>` — angle brackets included — with the address from your
     note, keeping the quote marks around it.
 
     **Check:** that line reads `"https://…/mcp",` with your address in it.
 
-41. Replace `<YOUR_TOKEN_HERE>` with the code from step 23, keeping the word
+44. Replace `<YOUR_TOKEN_HERE>` with the code from step 23, keeping the word
     `Bearer` and the space after it.
 
     **Check:** that line reads `"AUTH_HEADER": "Bearer forge_pat_…"` with your token
     where the dots are.
 
-42. Replace `<PROJECT>` with the project's short name from your note.
+45. Replace `<PROJECT>` with the project's short name from your note.
 
     **Check:** no `<` or `>` is left anywhere in the file.
 
-43. Save the file — **Cmd+S** on a Mac, **Ctrl+S** on Windows.
+46. Save the file — **Cmd+S** on a Mac, **Ctrl+S** on Windows.
 
     **Check:** the window's title no longer marks the file as edited.
 
-44. Quit Claude Desktop completely — closing its window is not enough. On a Mac,
+47. Quit Claude Desktop completely — closing its window is not enough. On a Mac,
     choose **Claude** › **Quit Claude** in the menu bar. On Windows, choose **Quit**
     from the right-click menu of the Claude icon near the clock at the bottom right
     of the screen.
@@ -276,39 +295,39 @@ installed. The steps below install it.
     **Check:** the Claude icon is gone from the Dock (Mac) or from beside the clock
     (Windows).
 
-45. Open Claude Desktop again.
+48. Open Claude Desktop again.
 
     **Check:** the Claude window opens.
 
-46. Open Claude Desktop's settings again, the same way as in step 31.
+49. Open Claude Desktop's settings again, the same way as in step 33.
 
     **Check:** the Settings window opens.
 
-47. Choose **Developer** in the list on the left.
+50. Choose **Developer** in the list on the left.
 
     **Check:** **forge** is listed there and marked **running**.
 
-48. Close Settings.
+51. Close Settings.
 
     **Check:** only Claude's chat window is open.
 
-49. Start a new chat.
+52. Start a new chat.
 
     **Check:** the new chat is empty and waiting for your question.
 
-50. Type: *"What issues are open in Forge right now?"*
+53. Type: *"What issues are open in Forge right now?"*
 
     **Check:** your question shows where you type, and it has not been sent yet.
 
-51. Press Enter to send it.
+54. Press Enter to send it.
 
     **Check:** Claude asks your permission to use a tool from `forge`.
 
-52. Allow it.
+55. Allow it.
 
     **Check:** Claude answers with issues from your project.
 
-53. Delete the note. The token now lives in Claude Desktop's settings file, and you
+56. Delete the note. The token now lives in Claude Desktop's settings file, and you
     will not need the copy again.
 
     **Check:** the note is gone from your notes app.
@@ -359,11 +378,11 @@ If you see a **Continue with** button:
 
    **Check:** the menu closes without an error message.
 
-3. Open Settings again, as in step 31.
+3. Open Settings again, as in step 33.
 
    **Check:** **Developer** is now in the list on the left.
 
-Now go back to step 32.
+Now go back to step 34.
 
 ## If Edit Config opens no window
 
@@ -374,7 +393,7 @@ the last four.
 
    **Check:** a box asks for a folder.
 
-2. Paste `~/Library/Application Support/Claude/` into the box.
+2. Type `~/Library/Application Support/Claude/` into the box.
 
    **Check:** the box shows that folder.
 
@@ -390,7 +409,7 @@ the last four.
 
    **Check:** the text in the address bar is highlighted.
 
-6. Paste `%APPDATA%\Claude\` into the address bar.
+6. Type `%APPDATA%\Claude\` into the address bar.
 
    **Check:** the address bar shows that folder.
 
@@ -399,13 +418,13 @@ the last four.
    **Check:** a File Explorer window shows a file called
    `claude_desktop_config.json`.
 
-Now go back to step 36.
+Now go back to step 38.
 
 ## If the file already has text in it
 
 Claude Desktop keeps its own preferences in the same file, so add Forge to what
-is there rather than replacing it. Each part below pastes this block, the same
-connection as in step 38 without the lines around it:
+is there rather than replacing it. Each part below copies and pastes this block,
+the same connection as in step 39 without the lines around it:
 
 ```json
 "forge": {
@@ -419,68 +438,80 @@ Do the one part whose description matches your file.
 
 ### It has `"mcpServers": {` followed by other connections
 
-1. Click straight after `"mcpServers": {`.
+1. Choose **Copy** above the block at the top of this section.
+
+   **Check:** the button changes to **Copied ✓** for a moment.
+
+2. Click straight after `"mcpServers": {`.
 
    **Check:** the cursor blinks right after the `{`.
 
-2. Press Enter.
+3. Press Enter.
 
    **Check:** the cursor is on a new, empty line.
 
-3. Paste the block.
+4. Paste the block you copied.
 
    **Check:** the new line holds `"forge": {` and the lines that belong to it.
 
-4. Type a comma straight after the block's last `}`.
+5. Type a comma straight after the block's last `}`.
 
    **Check:** a comma sits between the end of the Forge block and the name of the
    connection after it.
 
 ### It has `"mcpServers": {}`, with nothing between the braces
 
-1. Click between the two braces.
+1. Choose **Copy** above the block at the top of this section.
+
+   **Check:** the button changes to **Copied ✓** for a moment.
+
+2. Click between the two braces.
 
    **Check:** the cursor blinks between the `{` and the `}`.
 
-2. Press Enter.
+3. Press Enter.
 
    **Check:** the `}` has moved to the line below the `{`.
 
-3. Paste the block, with no comma after it.
+4. Paste the block you copied, with no comma after it.
 
    **Check:** `"mcpServers": {` is followed by `"forge": {`.
 
-4. Press Enter.
+5. Press Enter.
 
    **Check:** the `}` after the Forge block is on a line of its own.
 
 ### It has no `"mcpServers"` at all
 
-1. Click straight after the very first `{` in the file.
+1. Choose **Copy** above the block at the top of this section.
+
+   **Check:** the button changes to **Copied ✓** for a moment.
+
+2. Click straight after the very first `{` in the file.
 
    **Check:** the cursor blinks right after that `{`.
 
-2. Press Enter.
+3. Press Enter.
 
    **Check:** the cursor is on a new, empty line.
 
-3. Type `"mcpServers": {`.
+4. Type `"mcpServers": {`.
 
    **Check:** the new line reads `"mcpServers": {`.
 
-4. Press Enter.
+5. Press Enter.
 
    **Check:** the cursor is on a new, empty line below it.
 
-5. Paste the block.
+6. Paste the block you copied.
 
    **Check:** the line below `"mcpServers": {` holds `"forge": {`.
 
-6. Press Enter.
+7. Press Enter.
 
    **Check:** the cursor is on a new, empty line below the Forge block.
 
-7. Type `},` — a closing brace and a comma.
+8. Type `},` — a closing brace and a comma.
 
    **Check:** the file starts `{`, then `"mcpServers": {`, then `"forge": {`, and
    your earlier text follows the `},` you typed.
@@ -491,5 +522,5 @@ Ask in your own words — [What you can ask](?path=connect-an-assistant/what-you
 has twenty examples. The connection lasts until you remove the `forge` block
 from the file or revoke the token on Forge's **API Tokens** tab.
 
-If step 47 does not show **forge** as running, see
+If step 50 does not show **forge** as running, see
 [When it does not work](?path=connect-an-assistant/when-it-does-not-work).

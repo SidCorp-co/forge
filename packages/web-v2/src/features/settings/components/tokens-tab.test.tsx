@@ -351,3 +351,27 @@ describe("TokensTab — the level a project token is bound to", () => {
     expect(screen.getByText("Project: 11111111")).toBeInTheDocument();
   });
 });
+
+// ISS-1289 — a create refused for fresh auth adds the password box below the whole form, under the
+// fold at 1280x900. The setup pages' Check after Create token names that box, so it has to be in view.
+describe("TokensTab — the re-auth prompt opens where the reader is looking", () => {
+  it("brings the Confirm password box into view and puts the cursor in it", async () => {
+    const { ApiError } = await import("@/lib/api/client");
+    const scroll = vi.mocked(Element.prototype.scrollIntoView);
+    scroll.mockClear();
+    createMutate.mockImplementationOnce((_input, opts: { onError: (e: unknown) => void }) =>
+      opts.onError(new ApiError(403, "fresh auth", "FRESH_AUTH_REQUIRED")),
+    );
+    render(<TokensTab />);
+    fireEvent.change(nameField(), { target: { value: "ci" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Full access/ }));
+    expect(scroll).not.toHaveBeenCalled();
+
+    fireEvent.click(createButton());
+
+    const password = screen.getByPlaceholderText("Your account password");
+    expect(scroll).toHaveBeenCalledTimes(1);
+    expect(scroll.mock.contexts[0]).toContainElement(password);
+    expect(password).toHaveFocus();
+  });
+});

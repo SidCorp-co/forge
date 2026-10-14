@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 
-import { cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import * as matchers from "@testing-library/jest-dom/matchers";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Markdown } from "./markdown";
 
+expect.extend(matchers);
 afterEach(cleanup);
 
 function hrefOf(markdown: string, docBasePath = "issue-statuses"): string | null {
@@ -59,5 +61,39 @@ describe("a link inside the public documentation reader", () => {
     expect(publicHref("[Ask](what-you-can-ask)")).toBe(
       "/guides?path=connect-an-assistant%2Fwhat-you-can-ask",
     );
+  });
+});
+
+// ISS-1289 — a help page that tells its reader to paste a block has to let them copy it first.
+describe("a fenced block on a doc page", () => {
+  const BLOCK = '```json\n{\n  "mcpServers": {}\n}\n```';
+
+  it("has a Copy button that puts the block's text on the clipboard and says so", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    render(<Markdown variant="prose">{BLOCK}</Markdown>);
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+
+    expect(await screen.findByRole("button", { name: "Copied ✓" })).toBeInTheDocument();
+    expect(writeText).toHaveBeenCalledWith('{\n  "mcpServers": {}\n}');
+  });
+
+  it("says the copy failed, rather than nothing, when the clipboard refuses", async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error("denied"));
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    render(<Markdown variant="prose">{BLOCK}</Markdown>);
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+
+    expect(await screen.findByRole("button", { name: /Couldn't copy/ })).toBeInTheDocument();
+  });
+
+  it("gives a diagram no Copy button, and an inline embed none either", () => {
+    render(<Markdown variant="prose">{"```mermaid\ngraph TD; A-->B\n```"}</Markdown>);
+    expect(screen.queryByRole("button", { name: "Copy" })).toBeNull();
+    cleanup();
+    render(<Markdown>{BLOCK}</Markdown>);
+    expect(screen.queryByRole("button", { name: "Copy" })).toBeNull();
   });
 });

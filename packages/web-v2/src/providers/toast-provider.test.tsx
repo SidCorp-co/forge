@@ -2,13 +2,14 @@
 //
 // A toast never moves the page under it: the lane overlays at every width, over the
 // top edge, because room taken from <main> lifted the page's save bar while a toast
-// showed (ISS-1171, at 1280 as on a phone).
+// showed (ISS-1171, at 1280 as on a phone). It overlays an open dialog too (ISS-1289).
 // jsdom lays nothing out, so these read placement and the bounds that hold it;
 // the painted geometry is measured in a browser.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SlideOver } from "@/design/patterns/slide-over";
 import { MAX_VISIBLE_TOASTS, ToastLane, ToastProvider, useToast, type ToastInput } from "./toast-provider";
 
 expect.extend(matchers);
@@ -38,14 +39,39 @@ afterEach(() => {
 });
 
 describe("inside a frame, toasts go to the lane", () => {
-  it("renders the toast as the next sibling of <main>, not over it", () => {
+  it("renders the lane on <body>, outside the frame, and not the corner", () => {
     render(<Frame />);
     act(() => fire({ title: "Saved" }));
 
     const lane = screen.getByTestId("toast-lane");
     expect(lane).toHaveTextContent("Saved");
-    expect(screen.getByTestId("main").nextElementSibling).toBe(lane);
+    expect(lane.parentElement).toBe(document.body);
+    expect(screen.getByTestId("column")).not.toContainElement(lane);
     expect(screen.queryByTestId("toast-corner")).not.toBeInTheDocument();
+  });
+
+  // ISS-1289 — the Copied to clipboard notice rendered under the Token created panel: the lane sat
+  // inside the frame while the panel is a portal on <body>. Both on <body>, z-index alone orders them.
+  it("shows above an open slide-over: both on <body>, the lane at the higher tier", () => {
+    render(
+      <ToastProvider>
+        <Trigger />
+        <SlideOver open onClose={() => {}} title="Token created">
+          <p>panel</p>
+        </SlideOver>
+        <div data-testid="column">
+          <ToastLane />
+        </div>
+      </ToastProvider>,
+    );
+    act(() => fire({ title: "Copied to clipboard" }));
+
+    const lane = screen.getByTestId("toast-lane");
+    const dialogLayer = screen.getByRole("dialog").parentElement as HTMLElement;
+    const tier = (el: HTMLElement) => Number(/(?:^|\s)z-\[?(\d+)\]?(?:\s|$)/.exec(el.className)?.[1] ?? Number.NaN);
+    expect(lane.parentElement).toBe(document.body);
+    expect(dialogLayer.parentElement).toBe(document.body);
+    expect(tier(lane)).toBeGreaterThan(tier(dialogLayer));
   });
 
   it("is out of flow at every width, so it takes no room from the column at 1280 either", () => {

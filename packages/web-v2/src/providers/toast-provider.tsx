@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Toast, type ToastView } from "@/design/primitives/toast";
 import { cn } from "@/lib/utils/cn";
 
@@ -65,6 +66,8 @@ function ToastStack({ items, remove }: Pick<ToastLaneApi, "items" | "remove">) {
  * so it lets touches through everywhere but the toasts instead. On a wide screen it keeps to the
  * right, below the top bar. Its height is capped so the reading area keeps most of the column;
  * anything past the cap scrolls inside the lane. `className` carries the frame's own clearance.
+ * It renders through a portal on `<body>`, as every layer in popover.tsx's stacking note does, so
+ * its tier is compared with an open dialog's and not trapped under it by the frame (ISS-1289).
  */
 export function ToastLane({ className }: { className?: string }) {
   const lane = useContext(ToastLaneContext);
@@ -73,8 +76,8 @@ export function ToastLane({ className }: { className?: string }) {
 
   useEffect(() => registerLane(), [registerLane]);
 
-  if (items.length === 0) return null;
-  return (
+  if (items.length === 0 || typeof document === "undefined") return null;
+  return createPortal(
     <section
       aria-label="Notifications"
       data-testid="toast-lane"
@@ -85,7 +88,8 @@ export function ToastLane({ className }: { className?: string }) {
       )}
     >
       <ToastStack items={items} remove={remove} />
-    </section>
+    </section>,
+    document.body,
   );
 }
 
