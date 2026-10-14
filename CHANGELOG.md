@@ -3182,6 +3182,8 @@
 
 ### Fixed
 
+- **A refused public docs address, reached from a docs page, offers the docs' search.** The refusal shows the search box and the doors, and says so when the guide index cannot be reached. (ISS-1415)
+
 - **A refused or unknown public docs address looks like Forge documentation.** A plain request for one still answers 404 naming what was asked for, now under the documentation's header and name with the three doors to go back to. (ISS-1293)
 
 - **Each numbered step on the four connect-an-assistant setup pages asks for one action, with a Check of its own.** The scopes step says read is already ticked and asks for write, as the form shows it. (ISS-1289)
