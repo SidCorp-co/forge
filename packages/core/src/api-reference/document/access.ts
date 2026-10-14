@@ -70,7 +70,9 @@ export function accessProse(access: Access | null, gatesTakeBearer: boolean): st
     );
   }
   if (!BEARERLESS_DOORS.has(access.door) && !asksForBearer(access, gatesTakeBearer)) {
-    paragraphs.push('**Credential:** none. This route reads no bearer.');
+    paragraphs.push(
+      '**Bearer:** not read. This route takes no bearer token; any other credential it reads is named in its inputs.',
+    );
   }
   return paragraphs.join('\n\n');
 }

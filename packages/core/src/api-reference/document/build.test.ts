@@ -300,7 +300,9 @@ describe('what a caller sends, read from the gates a route runs', () => {
     const { document } = await buildReference(door(), { version: 't' });
     const login = document.paths['/api/devices/login/init']?.post as Record<string, unknown>;
     expect(login.security).toEqual([]);
-    expect(login.description).toContain('**Credential:** none. This route reads no bearer.');
+    expect(login.description).toContain(
+      '**Bearer:** not read. This route takes no bearer token; any other credential it reads is named in its inputs.',
+    );
     const credentialRefusals = JSON.stringify(
       responsesAt(document, '/api/devices/login/init', 'post'),
     );
@@ -311,9 +313,7 @@ describe('what a caller sends, read from the gates a route runs', () => {
     const { document } = await buildReference(door(), { version: 't' });
     expect(document.paths['/api/devices/me']?.get?.security).toEqual([{ bearerAuth: [] }]);
     expect(document.paths['/mcp']?.post?.security).toEqual([{ bearerAuth: [] }]);
-    expect(String(document.paths['/api/devices/me']?.get?.description)).not.toContain(
-      'Credential:',
-    );
+    expect(String(document.paths['/api/devices/me']?.get?.description)).not.toContain('Bearer:');
   });
 
   it('does not read a gate registered after the route, which never runs for it', async () => {

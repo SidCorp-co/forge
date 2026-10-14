@@ -82,14 +82,20 @@ describe('accessProse', () => {
     expect(prose).toContain('**Door:** `session`.');
     expect(prose).toContain('No permission grants a token this route.');
     expect(prose).toContain('Use a session (browser/desktop login).');
-    expect(prose).not.toContain('Credential:');
+    expect(prose).not.toContain('Bearer:');
   });
 
   it('says that a route reads no bearer where none is read, and nothing of the kind for a public one', () => {
     expect(accessProse(accessOf('POST', '/api/devices/login/init'), false)).toContain(
-      '**Credential:** none. This route reads no bearer.',
+      '**Bearer:** not read. This route takes no bearer token; any other credential it reads is named in its inputs.',
     );
-    expect(accessProse(accessOf('GET', '/api/health'), false)).not.toContain('Credential:');
+    expect(accessProse(accessOf('GET', '/api/health'), false)).not.toContain('Bearer:');
+  });
+
+  it('says no bearer is read, never that no credential is, where the route reads a cookie or a body', () => {
+    const prose = accessProse(accessOf('POST', '/api/auth/refresh'), false);
+    expect(prose).toContain('**Bearer:** not read.');
+    expect(prose).not.toMatch(/no credential|Credential/);
   });
 
   it('says nothing for a route with no access, which the check names instead', () => {
