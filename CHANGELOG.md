@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.237] - 2026-10-14
+
+Releases stop re-cutting issues they shipped but could not close
+
+### Fixed
+
+- **A release that shipped no longer holds the issues it could not close.** They wait at the release gate unclaimed, so the next release claims them without an abort; only a release that deployed and never shipped holds its roster.
+- **The screen witness runs its pages again.** The bundler no longer drops each entry as free of side effects, the Ask Agent entry mounts its shell inside the router, and a page that throws is named by what it threw.
+
 ## [0.4.0-dev.236] - 2026-10-14
 
 Detail pages lead with content on phones; contract timeline marks merge close versions
