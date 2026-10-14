@@ -9,6 +9,21 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.243] - 2026-10-14
+
+Connect an outside system in one flow, and draw a short criterion hollow
+
+### Changed
+
+- **A bind that takes over a switched-off binding says so.** The one-call bind response names the switched-off binding it wrote over (its revision and connection) in `rewroteSwitchedOff`, instead of only answering `created: false`.
+- **A connection is added and bound on Integrations in one step.** One save binds every chosen project, or refuses naming the project and target; agents use the same call. GitHub never strands an App on an error page.
+
+### Fixed
+
+- **A release proof list draws a short as the Criteria tab does.** A short is the hollow amber check named Short, never ≈ or a pass, and a row counts its checks as met.
+- **A short criterion no longer reads as a pass.** The Criteria tab draws it as a hollow amber ✓, with the word Short beside it on wider screens; pass, fail, skipped and not-judged keep their marks.
+- **A refusal names a requirement waiting on its accept.** Design approval and feedback triage no longer call traced or written criteria missing when their requirement has no accepted revision; they name it, the traced count, and the accept to take.
+
 ## [0.4.0-dev.242] - 2026-10-14
 
 A short counts as met, design approvals never land issues, recoveries say why

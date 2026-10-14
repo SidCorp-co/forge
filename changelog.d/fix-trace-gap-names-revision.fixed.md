@@ -1,1 +1,0 @@
-**A refusal names a requirement waiting on its accept.** Design approval and feedback triage no longer call traced or written criteria missing when their requirement has no accepted revision; they name it, the traced count, and the accept to take.
