@@ -90,10 +90,11 @@ function strandedWorkSentence(err: ApiError): string | null {
     );
   }
   const outsideGit = detailStr(err.details, 'to') === 'website';
-  const remark = outsideGit ? 'naming where its work landed' : 'from its merged pull request';
+  const kept = detailStr(err.details, 'landingShape') === 'outside_git' ? 'outside git' : 'in git';
   return (
     `${total} open ${one ? 'issue carries a merge mark' : 'issues carry merge marks'} that would stop counting as a landing once this project ${outsideGit ? 'has no repository' : 'has a repository'}. ` +
-    `Finish ${it} first, or press Unmark on ${one ? 'it' : 'each one'}, save the new shape, then mark ${one ? 'it' : 'each one'} merged again ${remark}.`
+    `Finish ${it} first, then change the shape. To change it now instead, ${one ? 'that issue has' : 'each of those issues has'} to declare that its work lands ${kept}, so its mark keeps counting; ` +
+    'the issue page has no control for that yet, so ask an agent to set it.'
   );
 }
 
