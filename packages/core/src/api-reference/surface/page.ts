@@ -49,6 +49,16 @@ pre.mermaid {
 ol { padding-left: 1.2rem; }
 `;
 
+const REFERENCE_CONFIGURATION = {
+  hideClientButton: true,
+  defaultHttpClient: { targetKey: 'shell', clientKey: 'curl' },
+  // The viewer keeps its response codes in one row that scrolls inside a header it clips, so on a
+  // narrow screen the last codes are out of sight; here they wrap into the row below instead.
+  customCss:
+    '.response-card .scalar-card-header-title { overflow: visible; white-space: normal; flex: 1 1 100%; } ' +
+    '.response-card .tab-list { flex-wrap: wrap; overflow: visible; height: auto; }',
+} as const;
+
 /** The page that renders the served document, readable with no credential. */
 export function renderReferencePage(openApiUrl: string): string {
   return `<!doctype html>
@@ -60,7 +70,7 @@ export function renderReferencePage(openApiUrl: string): string {
 <link rel="icon" href="data:,">
 </head>
 <body>
-<script id="api-reference" data-url="${escapeHtml(openApiUrl)}" data-configuration='{"hideClientButton":true,"defaultHttpClient":{"targetKey":"shell","clientKey":"curl"}}'></script>
+<script id="api-reference" data-url="${escapeHtml(openApiUrl)}" data-configuration="${escapeHtml(JSON.stringify(REFERENCE_CONFIGURATION))}"></script>
 <script src="${SCALAR.src}" integrity="${SCALAR.integrity}" crossorigin="anonymous"></script>
 </body>
 </html>

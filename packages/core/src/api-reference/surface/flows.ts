@@ -204,17 +204,43 @@ export function checkFlows(document: OpenApiDocument, flows: readonly Flow[] = F
   return missing;
 }
 
-/** A flow as a Mermaid sequence diagram: one arrow to core per step, one answer back. */
+/** The longest a line of a drawn label may be: a sequence draws each gap as wide as its widest label. */
+const LABEL_WIDTH = 34;
+
+/** A label broken at word boundaries into lines no longer than `LABEL_WIDTH`, which mermaid breaks with `<br/>`. */
+export function labelLines(text: string): string {
+  const lines: string[] = [];
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    const last = lines[lines.length - 1];
+    if (last !== undefined && last.length + 1 + word.length <= LABEL_WIDTH)
+      lines[lines.length - 1] = `${last} ${word}`;
+    else lines.push(word);
+  }
+  return lines.join('<br/>');
+}
+
+/**
+ * A flow as a Mermaid sequence diagram: one arrow to core per step, one answer back. Core sits
+ * between the two actors it talks to, so every arrow joins neighbouring lifelines and no label is
+ * drawn across a third one. A flow of more than two actors has no such order, and is refused.
+ */
 export function toMermaid(flow: Flow): string {
   const actors = [...new Set(flow.steps.map((s) => s.from))];
+  if (actors.length > 2) {
+    throw new Error(
+      `flow ${flow.id} names ${actors.length} actors (${actors.join(', ')}): a sequence with core between them crosses a lifeline with some label, so a flow names at most two`,
+    );
+  }
+  const [left, right] = actors;
   const lines = [
     'sequenceDiagram',
-    ...actors.map((a) => `  participant ${a}`),
+    `  participant ${left}`,
     '  participant Core',
+    ...(right ? [`  participant ${right}`] : []),
   ];
   flow.steps.forEach((step, index) => {
     lines.push(`  ${step.from}->>Core: ${index + 1}. ${step.call}`);
-    lines.push(`  Core-->>${step.from}: ${step.note.replace(/[;\n]/g, ',')}`);
+    lines.push(`  Core-->>${step.from}: ${labelLines(step.note.replace(/[;\n]/g, ','))}`);
   });
   return lines.join('\n');
 }

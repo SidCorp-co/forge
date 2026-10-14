@@ -316,6 +316,20 @@ describe('what a caller sends, read from the gates a route runs', () => {
     expect(String(document.paths['/api/devices/me']?.get?.description)).not.toContain('Bearer:');
   });
 
+  it('names no permission in x-forge-access on a route the grant map files but whose gates read no bearer', async () => {
+    const app = new Hono();
+    app.get('/api/invitations/:token', described('Preview an invitation'), (c) => c.json({}));
+    app.get('/api/issues', gate as never, described('List'), (c) => c.json({}));
+    const { document } = await buildReference(app, { version: 't' });
+    const preview = document.paths['/api/invitations/{token}']?.get as Record<string, unknown>;
+    expect(preview['x-forge-access']).toEqual({ door: 'none', reason: expect.any(String) });
+    expect(preview.security).toEqual([]);
+    expect(document.paths['/api/issues']?.get?.['x-forge-access']).toMatchObject({
+      door: 'token',
+      permission: 'issues:read',
+    });
+  });
+
   it('does not read a gate registered after the route, which never runs for it', async () => {
     const app = new Hono();
     app.get('/api/issues', described('List'), (c) => c.json({}));

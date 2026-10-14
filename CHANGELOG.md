@@ -3174,6 +3174,8 @@
 
 ### Fixed
 
+- **The API reference JSON and page agree, and read on a phone.** A route reading no bearer names no permission in `x-forge-access`; response codes wrap at 390px; flow diagrams run no lifeline through a label. (ISS-1371)
+
 - **A session's message count no longer reads 0 for work it never recorded.** Master and run sessions keep no transcript here, so they show no count and `transcript: not-recorded`; older sessions show their real length. (ISS-1241)
 
 - **The API reference page shows each operation's permission or door.** Sign-in, pairing and invitation routes are shown with no bearer, and a route no longer lists refusals from a gate registered after it. Flow steps read as sentences. (ISS-1371)

@@ -97,6 +97,21 @@ describe('the API reference of the composed app', () => {
     expect(bearer.filter((key) => !asks(key))).toEqual([]);
   });
 
+  it('names a permission in x-forge-access on exactly the operations that ask for a bearer', () => {
+    const wrong = reference.routes.flatMap((entry) => {
+      const operation = reference.document.paths[openApiPath(entry.path)]?.[
+        entry.method.toLowerCase()
+      ] as { security?: unknown[]; 'x-forge-access'?: { permission?: string; door: string } };
+      const asks = (operation.security ?? []).length > 0;
+      const permission = operation['x-forge-access']?.permission;
+      if (permission && !asks) return [`${entry.key} claims ${permission} and asks for no bearer`];
+      if (!permission && operation['x-forge-access']?.door === 'token')
+        return [`${entry.key} is on the token door and names no permission`];
+      return [];
+    });
+    expect(wrong).toEqual([]);
+  });
+
   it('shows, in the words an operation is read by, the permission or the door the document carries', () => {
     const missing = reference.routes.flatMap((entry) => {
       const operation = reference.document.paths[openApiPath(entry.path)]?.[
@@ -105,10 +120,10 @@ describe('the API reference of the composed app', () => {
       const access = operation['x-forge-access'];
       if (!access) return [`${entry.key} carries no access`];
       const shown = access.permission
-        ? entry.takesBearer
-          ? `**Permission:** \`${access.permission}\``
-          : '**Bearer:** not read.'
-        : `**Door:** \`${access.door}\``;
+        ? `**Permission:** \`${access.permission}\``
+        : access.door === 'none'
+          ? '**Bearer:** not read.'
+          : `**Door:** \`${access.door}\``;
       return operation.description?.startsWith(shown) ? [] : [`${entry.key} does not say ${shown}`];
     });
     expect(missing).toEqual([]);
