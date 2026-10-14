@@ -250,7 +250,7 @@ const HOUR = 60 * 60_000;
 /** GitHub's manifest conversion, counted: every call that would spend an App's code. */
 function stubGitHub(answer: 'ok' | 'gone' = 'ok') {
   const conversions: string[] = [];
-  vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+  vi.stubGlobal('fetch', async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input instanceof Request ? input.url : input);
     if (url.includes('/app-manifests/')) {
       conversions.push(url);

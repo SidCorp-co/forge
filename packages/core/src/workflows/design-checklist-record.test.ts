@@ -32,6 +32,7 @@ const facts = (raw: ReturnType<typeof doc>, over: Partial<DesignFacts> = {}): De
   approved: null,
   linkedBy: ['REQ-3'],
   traced: ['REQ-3 BC-1'],
+  awaitingAccept: [],
   ...over,
 });
 
@@ -62,6 +63,25 @@ describe('the workflow approval checklist, read from the design', () => {
     const refusals = checklistRefusals(judge(facts(bare, { traced: [] })));
     expect(refusals.map((r) => r.question)).toEqual(['criteria', 'roles', 'exceptions']);
     expect(refusals[0]?.detail).toContain('REQ-3 links it, and none of their business criteria');
+  });
+
+  it('names a linking requirement with traces but no accepted revision, never calling it untraced', () => {
+    const e = judge(
+      facts(drawn, {
+        linkedBy: ['REQ-46'],
+        traced: [],
+        awaitingAccept: [{ requirement: 'REQ-46', traced: 7 }],
+      }),
+    );
+    const [gap] = checklistRefusals(e);
+    expect(gap?.question).toBe('criteria');
+    expect(gap?.detail).toContain(
+      'REQ-46 has 7 business criteria traced to its steps, but no accepted revision, so none counts yet.',
+    );
+    expect(gap?.detail).toContain('Accept a revision of REQ-46');
+    expect(gap?.detail, 'the old wording sends a reader to trace again').not.toContain(
+      'none of their business criteria is traced',
+    );
   });
 
   it('asks no exception path of a structure, and no trace of a design no requirement links', () => {
