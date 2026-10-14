@@ -71,7 +71,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.15",
+    "@biomejs/biome": "2.5.15",
     "@testcontainers/postgresql": "^12.2.0",
     "@types/node": "^26.6.3",
     "@types/nodemailer": "^8.0.2",
