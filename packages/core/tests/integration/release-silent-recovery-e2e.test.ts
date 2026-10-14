@@ -229,6 +229,40 @@ describe('a pass that died after stamping', () => {
     expect((await abortStamp(runId))?.reason).toBe('a pass began this and died');
   });
 
+  it('resumes a promoted batch whose pass died after stamping, keeping its roster held', async () => {
+    const { a, runId, jobId } = await batch();
+    await take(jobId, silent() * 2);
+    await write(runId, 'promote', silent(), false);
+    const { stampAbort } = await import('../../src/release-batch/abort-stamp.js');
+    await stampAbort(runId, { reason: 'died after the stamp', by: '', holdPromotedRoster: true });
+    expect(((await abortStamp(runId)) as { roster?: string } | null)?.roster).toBe('held');
+
+    expect(await mods.recoverSilentReleaseBatches()).toEqual({ recovered: 1, held: 1 });
+
+    expect(await runStatus(runId)).toBe('cancelled');
+    const after = await stored(a);
+    expect(after.status).toBe('releasing');
+    expect(after.claim).toBe(runId);
+  });
+
+  it('resumes a batch whose pass died after settling its roster and before cancelling the run', async () => {
+    const { a, runId, jobId } = await batch();
+    await take(jobId, silent() * 2);
+    const { stampAbort, settleAbortStamp } = await import('../../src/release-batch/abort-stamp.js');
+    const stampId = await stampAbort(runId, {
+      reason: 'died late',
+      by: '',
+      holdPromotedRoster: true,
+    });
+    await settleAbortStamp(runId, stampId as string, { roster: 'released', closed: [] });
+    expect(await runStatus(runId)).toBe('running');
+
+    expect(await mods.recoverSilentReleaseBatches()).toEqual({ recovered: 1, held: 0 });
+
+    expect(await runStatus(runId)).toBe('cancelled');
+    expect((await stored(a)).status).toBe('awaiting_release');
+  });
+
   it("does not resume a person's abort that has not finished", async () => {
     const { a, runId, jobId } = await batch();
     await take(jobId, silent() * 2);
@@ -348,17 +382,18 @@ describe('what the pass must leave alone', () => {
   it.each([
     [
       'one a person already aborted',
-      sql`jsonb_build_object('abort', jsonb_build_object('roster', 'released'))`,
+      () =>
+        sql`jsonb_build_object('abort', jsonb_build_object('roster', 'released', 'by', ${ownerId}::text))`,
     ],
     [
       'one carrying a finish record',
-      sql`jsonb_build_object('finish', jsonb_build_object('state', 'failed'))`,
+      () => sql`jsonb_build_object('finish', jsonb_build_object('state', 'failed'))`,
     ],
   ])('%s', async (_name, patch) => {
     const { runId, jobId } = await batch();
     await take(jobId, silent() * 2);
     await harness.db.execute(sql`
-      UPDATE pipeline_runs SET metadata = metadata || ${patch} WHERE id = ${runId}
+      UPDATE pipeline_runs SET metadata = metadata || ${patch()} WHERE id = ${runId}
     `);
 
     expect(await mods.recoverSilentReleaseBatches()).toEqual({ recovered: 0, held: 0 });

@@ -25,10 +25,11 @@ interface TakenRow extends Record<string, unknown> {
 }
 
 /**
- * An abort stamp this sweep wrote and never finished: no person on it, the roster still `returning`.
- * A pass that died after stamping leaves one, and the next pass resumes it instead of excluding it.
+ * An abort stamp this sweep wrote and never took the run past: it names no person, and the run is
+ * still running. Whatever the stamp says of the roster, the pass that wrote it died before the run
+ * was cancelled, and the next pass resumes it instead of excluding it.
  */
-const INTERRUPTED_SWEEP = sql`(metadata -> 'abort' ->> 'by' = '' AND metadata -> 'abort' ->> 'roster' = 'returning')`;
+const INTERRUPTED_SWEEP = sql`(metadata -> 'abort' ->> 'by' = '')`;
 
 /** What the sweep may stamp, checked on the row at the write: still running, no finish, no other abort. */
 export const SWEEP_MAY_ABORT: SQL = sql`(status = 'running' AND metadata -> 'finish' IS NULL AND (metadata -> 'abort' IS NULL OR ${INTERRUPTED_SWEEP}))`;
@@ -78,8 +79,7 @@ async function judge(row: TakenRow, now: number): Promise<Verdict> {
   const promotes = attempts.filter((a) => a.stage === 'promote');
   const stamp = readAbortStamp(fresh.metadata);
   if (stamp !== null) {
-    const ours = stamp.by === '' && stamp.roster === 'returning';
-    return ours
+    return stamp.by === ''
       ? { act: true, reason: stamp.reason, promoted: promotes.length > 0 }
       : { act: false };
   }
