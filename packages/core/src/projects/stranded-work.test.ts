@@ -5,6 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { canonicalIssueKey } from '../lib/issue-ref.js';
 import {
   chainStrandsWork,
   kindStrandsWork,
@@ -13,7 +14,7 @@ import {
   STRANDED_NAMED_MAX,
 } from './stranded-work.js';
 
-const keys = (n: number) => Array.from({ length: n }, (_, i) => `ISS-${i + 1}`);
+const keys = (n: number) => Array.from({ length: n }, (_, i) => canonicalIssueKey(i + 1));
 
 describe('chainStrandsWork', () => {
   it('opens with its own code and carries every waiting key in details', () => {
@@ -37,8 +38,8 @@ describe('chainStrandsWork', () => {
 
   it(`names at most ${STRANDED_NAMED_MAX} keys and counts the rest, while details keep all of them`, () => {
     const r = chainStrandsWork(keys(STRANDED_NAMED_MAX + 4));
-    expect(r.message).toContain(`ISS-${STRANDED_NAMED_MAX} and 4 more`);
-    expect(r.message).not.toContain(`ISS-${STRANDED_NAMED_MAX + 1},`);
+    expect(r.message).toContain(`${canonicalIssueKey(STRANDED_NAMED_MAX)} and 4 more`);
+    expect(r.message).not.toContain(`${canonicalIssueKey(STRANDED_NAMED_MAX + 1)},`);
     expect(r.details.issues).toHaveLength(STRANDED_NAMED_MAX + 4);
   });
 
