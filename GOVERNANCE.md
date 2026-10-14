@@ -24,8 +24,9 @@ stops short and hands it back, saying so.
 administrator *can*. Don't. The setting exists for recovery, not for convenience, and using it
 makes the required check a suggestion.
 
-**A review judges the head that lands.** Where the reviewed head and the landed head differ, the
-merged mark is refused and names both.
+**A merge lands the head that was judged.** Where a merge through the GitHub integration is
+authorised for a head (`expectedHeadSha`) and the pull request's head has moved, the merge is
+refused as `head-moved` and names both heads.
 
 ## Review authority
 

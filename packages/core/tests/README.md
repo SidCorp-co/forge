@@ -60,9 +60,12 @@ How concurrent runs share one without stepping on each other:
   connection lives, on a connection opened with `max_lifetime: 0` (postgres.js otherwise recycles a
   connection after 30 to 60 minutes and the lock would go with it). A crash drops the lock with the
   connection; no clock is involved. Teardown names a connection that was replaced under it.
-- **Reaped only when idle.** `reapAbandoned` drops a shared template only when it can take the
-  exclusive lock **and** the marker's last-used time (stamped when a run takes it and when it lets
-  go) is more than a day old. A template whose comment it cannot read is left alone.
+- **Reaped only when idle.** `reapAbandoned` drops a shared template only when it can take both
+  the build lock and the exclusive use lock without waiting **and** the marker's last-used time
+  (stamped when a run takes it and when it lets go) is more than a day old. The marker is read only
+  once the use lock is held, because a holder's release stamps it and an earlier read can be a day
+  stale. A template whose comment it cannot read, or whose marker names other content, is left
+  alone.
 - **Never dropped by a run's own teardown.** A private (`fresh`) template is dropped by the run that
   built it; a shared one is not, by the run that built it or by any other.
 - **Refused, not repaired.** A shared name that exists without a valid marker fails setup naming

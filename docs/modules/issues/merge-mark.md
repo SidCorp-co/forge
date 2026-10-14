@@ -157,7 +157,7 @@ else behind it, because the landing IS the trace such work leaves. The refusal o
 the landing route and never `data.commit`. Its price is below.
 
 The `work_evidence` entry criterion runs the same check and holds a person as well, so its refusal
-is read by `anyone` (`EvidenceReader`): it names the branch and handoff routes, says a person's mark
+is the `criterion` door's (`EvidenceDoor`): it names the branch and handoff routes, says a person's mark
 naming a commit is checked only for the repository holding it, not read as this issue's landing, so
 it does not clear it, and names `statusEntryCriteria` as the
 declaration to change where the project's work leaves none of these.

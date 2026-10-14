@@ -69,16 +69,16 @@ draft ─▶ open ─▶ confirmed ─▶ approved ─▶ in_progress ─▶ dev
 
 **Only `finish` and `abort` may write out of `releasing`.** An agent that could leave it would be declaring its own release finished. A batch that dies without either outcome hands its issues to `reopen` with the reason attached.
 
-**Three retired statuses, and the trap is that all three still WORK.**
+**Retired statuses, and the one that still WORKS.**
 
 | Retired | What happens if you write it |
 |---|---|
 | `deploying` `pass` `staging` | gone from the enum — `forge_issues.update` **refuses** them, so you find out at once |
-| `clarified` `tested` | still in the enum for rows that already hold them, so the write **SUCCEEDS silently**. Nothing dispatches at either, so the issue is stranded until a person moves it by hand |
+| `clarified` `tested` | still in the enum for the rows that already hold them, so such a row stays readable and can be moved out. A write INTO either is **refused** (`ILLEGAL_TRANSITION`, naming `approved` and `awaiting_release` as the rungs that took their place), because nothing dispatches at them and the issue would be stranded until a person moved it by hand |
 | `released` | renamed to `awaiting_release` (migration 0228). The old name is refused. It was the past tense of an action that had not happened, and it doubled as the release *trigger* because there was no button; the button and `releasing` took that job |
 | `waiting` | still written, still being retired. An agent's `waiting` is rewritten to `needs_info` on an autonomous project |
 
-`tested` is the one to watch: forge-plugin still writes it where this chain says `testing`, and one project names it in `poolBacklog.statuses`. Until both move, treat a row at `tested` as a row at `testing` that owes a status fix (ISS-1022).
+`waiting` is the one to watch: it is not refused, so a write of it succeeds, and it is rewritten to `needs_info` on an autonomous project.
 
 **`confirmed` and `approved` are NOT retired, and were for one day.** They were cut on 2026-09-10 with `clarified` and `tested`, on the rule that a rung earns its place only where a **different party** owes the next move at it — and under the single-driver pipeline one agent walked all four, so none of them did. The wave model splits triage from execution, which is exactly that party boundary, and forge-plugin's own ladder never stopped naming the two: a kernel calling them retired was the half that was wrong (ISS-976). Nothing dispatches at either, so a row resting on one reaches a master only where its project declares the status in `poolBacklog.statuses`.
 
@@ -152,7 +152,7 @@ This replaced a check on WHO answered a `needs_info` question. That check existe
 There is no cap on how many times an issue may be reopened — the stop signal is judgement, not arithmetic: ~5 rounds with no movement means a human is needed, while 5 rounds each making progress is normal work.
 
 ### `merged_at` is written deliberately, and by nothing else
-Two things write it: `forge_issues` `mark_merged`, which is a claim you make, and an observed merge of a pull request Forge has projected. No transition stamps it as a side effect — closing did until ISS-1108 and no longer does, and the `mergeStates.baseBranch` rule that once stamped it on the way out of a state was removed before that. `unmark` clears a claim you made wrongly; it is not a step anything routine owes, and it is refused on a `closed` issue — `closed` means the work shipped, so reopen it first and take `dropped` from there where the work never landed.
+Two things write it: `forge_issues` `mark_merged`, which is a claim you make, and an observed merge of a pull request Forge has projected. No transition stamps it as a side effect. `unmark` clears a claim you made wrongly; it is not a step anything routine owes, and it is refused on a `closed` issue — `closed` means the work shipped, so reopen it first and take `dropped` from there where the work never landed.
 
 ### Derived fields you don't hand-set
 - `plan` — written by the **plan** step. A reporter who pre-fills it deletes that step's reason to exist, and risks a plan agent trusting it instead of exploring. Red flag: `plan-by-hand`.

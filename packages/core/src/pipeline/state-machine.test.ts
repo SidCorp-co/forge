@@ -6,6 +6,7 @@ import {
   DRAFT_EXIT_TARGETS,
   getAllowedTransitions,
   isReopenEntry,
+  RETIRED_STATUS_REPLACEMENTS,
   transitions,
 } from './state-machine.js';
 
@@ -53,6 +54,7 @@ const DRAFT_MAY_REACH = ['open', 'closed', 'dropped', 'developed', 'in_progress'
 
 function acceptedByTheDocumentedRules(from: string, to: string): boolean {
   if (to === 'draft') return false;
+  if (to === 'clarified' || to === 'tested') return false;
   if (from === 'draft') return DRAFT_MAY_REACH.includes(to);
   return true;
 }
@@ -216,6 +218,14 @@ describe('state machine', () => {
       expect(canTransitionFree('approved', 'needs_info')).toBe(true);
       expect(canTransitionFree('developed', 'reopen')).toBe(true);
       expect(canTransitionFree('tested', 'on_hold')).toBe(true);
+    });
+
+    it('never allows a retired rung as a target, from any status', () => {
+      for (const from of issueStatuses) {
+        expect(canTransitionFree(from, 'clarified'), `${from} -> clarified`).toBe(false);
+        expect(canTransitionFree(from, 'tested'), `${from} -> tested`).toBe(false);
+      }
+      expect([...RETIRED_STATUS_REPLACEMENTS.keys()].sort()).toEqual(['clarified', 'tested']);
     });
 
     it('never allows draft as a target', () => {

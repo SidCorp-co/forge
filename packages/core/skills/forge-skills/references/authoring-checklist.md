@@ -18,12 +18,12 @@ Run this over a skill before shipping it.
 - [ ] Body isn't bloated (rough target: keep it focused; if a section is a lookup list, it's a reference).
 
 ## Mechanics & safety
-- [ ] Exactly ONE merge mechanism (skill git-merge XOR server mergeStates) — no double-merge.
-- [ ] Single-branch projects: release skips re-merge when already on production.
+- [ ] Exactly ONE merge mechanism (the skill's `git merge` XOR the driver's landing) — no double-merge.
+- [ ] Single-branch projects: no second merge when the work is already on the one branch.
 - [ ] `references` files created via MCP carry `encoding`.
-- [ ] Status transition is the LAST action; comment is posted before it.
+- [ ] A skill that moves an issue's status does it as the LAST action; the comment is posted before it.
 
 ## Ship
 - [ ] Read `forge_skills_effective` and reconciled against the live server body before overwriting.
-- [ ] `forge_skills_update`/`create` (server, `installOnly: true`) → `forge_skills_push`.
+- [ ] `forge_skills_update`, or `forge_skills_create` then `forge_skills_update` with `installOnly: true` (create does not take it) → `forge_skills_push`.
 - [ ] Verified ON DISK (`.claude/skills/<name>/SKILL.md`), not just the sync dashboard.

@@ -5,7 +5,7 @@ Forge core API — Hono + Drizzle backend. A single Node process serves REST, We
 ## Prerequisites
 
 - **Node** `>=20` (enforced via `engines.node`)
-- **pnpm** — the repo's `packages/*` workspace (`contracts`, `core`, `dev`, `observability`, `web-v2`, plus the Rust `runner` Cargo workspace and a `tests` dir)
+- **pnpm** — the repo's `packages/*` workspace (`contracts`, `core`, `observability`, `web-v2`, plus the Rust `runner` Cargo workspace)
 - **Postgres 17** — the compose stack at the repo root gives you one preconfigured (`forge` DB, user `forge`, password `forge_secret`)
 - **Docker** — only needed if you run integration tests in `container` mode
 
@@ -16,7 +16,7 @@ Forge core API — Hono + Drizzle backend. A single Node process serves REST, We
 pnpm install
 ```
 
-Install from the repo root, not from inside `packages/core/`. The pnpm workspace links the active packages (`contracts`, `core`, `dev`, `observability`, `web-v2`) together.
+Install from the repo root, not from inside `packages/core/`. The pnpm workspace links the active packages (`contracts`, `core`, `observability`, `web-v2`) together.
 
 ## Environment
 
@@ -27,8 +27,8 @@ The env schema lives in [`src/config/env.ts`](./src/config/env.ts) and is valida
 | `DATABASE_URL` | `postgres://forge:forge_secret@localhost:5432/forge` | matches the compose defaults |
 | `JWT_SECRET` | 32+ char random string | user session tokens |
 | `DEVICE_TOKEN_PEPPER` | 32+ char random string | hashes device tokens |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | any SMTP credentials | transactional email |
-| `CORS_ORIGINS` | `http://localhost:3000` | comma-separated allow-list |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | any SMTP credentials | optional; transactional email |
+| `CORS_ORIGINS` | `http://localhost:3000` (default) | comma-separated allow-list |
 | `PORT` | `8080` (default) | |
 | `NODE_ENV` | `development` (default) | `development` / `test` / `staging` / `production` |
 
@@ -105,7 +105,7 @@ Needs a local Docker daemon. No shared Postgres required.
 
 ```bash
 cd packages/core
-pnpm db:generate   # reads src/db/schema.ts → drizzle/migrations/NNNN_*.sql
+pnpm db:generate   # reads the schema files drizzle.config.ts names (src/db/schema.ts and its schema-*.ts) → drizzle/migrations/NNNN_*.sql
 pnpm db:migrate    # applies pending migrations to $DATABASE_URL
 pnpm db:studio     # drizzle-kit studio — browse the DB in a UI
 ```
@@ -116,7 +116,7 @@ pnpm db:studio     # drizzle-kit studio — browse the DB in a UI
 
 | Script | Purpose |
 |---|---|
-| `pnpm lint` | Biome check over `src` and `tests` |
+| `pnpm lint` | Biome check over `src`, `tests` and `scripts` |
 | `pnpm lint:fix` | Biome check with `--write` |
 | `pnpm typecheck` | `tsc --noEmit` |
 | `pnpm test:watch` | Vitest in watch mode |

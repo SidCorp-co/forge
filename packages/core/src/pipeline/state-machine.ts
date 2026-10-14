@@ -69,8 +69,19 @@ export function canTransition(from: IssueStatus, to: IssueStatus): boolean {
  */
 export const NON_TARGETABLE_STATUSES: ReadonlySet<IssueStatus> = new Set(['draft']);
 
+/**
+ * Rungs the enum still carries for the rows that already hold them and nothing dispatches at, so
+ * an issue written INTO one is stranded until a person moves it by hand. Each maps to the rung
+ * that took its place; a write naming one is refused by name rather than accepted in silence.
+ */
+export const RETIRED_STATUS_REPLACEMENTS: ReadonlyMap<IssueStatus, IssueStatus> = new Map([
+  ['clarified', 'approved'],
+  ['tested', 'awaiting_release'],
+]);
+
 export function canTransitionFree(from: IssueStatus, to: IssueStatus): boolean {
   if (NON_TARGETABLE_STATUSES.has(to)) return false;
+  if (RETIRED_STATUS_REPLACEMENTS.has(to)) return false;
   if (from === 'draft') return DRAFT_EXIT_TARGETS.includes(to);
   return true;
 }

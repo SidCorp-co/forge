@@ -3,7 +3,7 @@
   "version": "0.3.0",
   "private": true,
   "license": "Apache-2.0",
-  "description": "Shared TypeScript types + request schemas derived from @forge/core (Drizzle rows + Zod schemas). Type-only surface \u2014 no runtime coupling.",
+  "description": "Shared TypeScript types, registries and Zod schemas that clients and @forge/core read alike. Core's own shapes are imported as types only; the constants and schemas shipped here declare their own values.",
   "type": "module",
   "exports": {
     ".": {

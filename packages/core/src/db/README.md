@@ -1,12 +1,14 @@
 # `packages/core/src/db` — Drizzle schema conventions
 
 Single source of truth for Postgres schema. A new table lands either in
-[`schema.ts`](./schema.ts) or in a `schema-<subject>.ts` module of its own —
+[`packages/core/src/db/schema.ts`](./schema.ts) or in a `schema-<subject>.ts` module of its own —
 `schema-issue-leases.ts`, `schema-deploy-locks.ts` and the rest. A module of its
-own owes two registrations, and a table carrying neither is invisible to the
-generator or to the query layer: the file path in `schema` in
-[`../../drizzle.config.ts`](../../drizzle.config.ts), and a spread into the
-`schema` object in [`db/client.ts`](./client.ts). Migrations are generated into
+own owes its file path in `schema` in
+[`packages/core/drizzle.config.ts`](../../drizzle.config.ts), or the generator never
+sees its tables. By convention it is also spread into the `schema` object in
+[`packages/core/src/db/client.ts`](./client.ts), the object drizzle's relational query API
+reads; `schema-release-ledger.ts` is not spread, and its tables are reached by importing
+them. Migrations are generated into
 [`../../drizzle/migrations/`](../../drizzle/migrations) via `pnpm db:generate`.
 
 The conventions below are set by Phase 2.1-C (ISS-146) and bind every later
@@ -52,6 +54,6 @@ The `pgvector` extension is enabled in the migration that introduces the
 
 ```bash
 cd packages/core
-pnpm db:generate   # reads schema.ts, writes drizzle/migrations/NNNN_*.sql
+pnpm db:generate   # reads the files drizzle.config.ts names, writes drizzle/migrations/NNNN_*.sql
 pnpm db:migrate    # applies to $DATABASE_URL
 ```

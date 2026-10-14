@@ -19,6 +19,7 @@ import {
   startKit,
   stopKit,
 } from '../helpers/backlog-index-kit.js';
+import { neighbourFault } from '../helpers/neighbour-ties.js';
 
 beforeAll(startKit, 180_000);
 afterAll(stopKit);
@@ -253,7 +254,8 @@ describe('what a change re-measures', () => {
     expect(moved.measured).not.toContain(antipode);
     expect(moved.measured).toContain(target);
     expect(moved.measured.length).toBeLessThan(SEEDS);
-    // Not searching it was right: what is stored is what a search now finds.
+    // Not searching it was right: what is stored is what a search now finds, up to the order of equal
+    // scores and the member a cut inside a run of them keeps, which a search does not promise.
     const stored =
       (await neighbours('?catchUpMs=0')).body.seeds.find((s) => s.issueId === antipode)?.hits ?? [];
     const [seedRow] = await rows<{ vector: string }>(
@@ -266,7 +268,7 @@ describe('what a change re-measures', () => {
       queryVec: JSON.parse(seedRow?.vector as string) as number[],
       memoryModel: 'flat',
     });
-    expect(stored.map((h) => h.sourceRef)).toEqual(fresh.map((h) => h.sourceRef));
+    expect(neighbourFault(stored, fresh)).toBeNull();
 
     // Moved to the antipode's own side, the same issue now scores above that seed's floor.
     await harness.db.execute(sql`
