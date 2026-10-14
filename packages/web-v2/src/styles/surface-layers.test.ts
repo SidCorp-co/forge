@@ -130,9 +130,19 @@ describe.each(Object.entries(THEMES))("the %s theme's background layers", (_, th
     }
     expect(value(shell, "--paper-0"), "--paper-0 is the base itself").toEqual(value(theme, "--bg-shell"));
     expect(value(shell, "--fg-disabled"), "--fg-disabled is the base's strong line").toEqual(value(theme, "--shell-line-strong"));
-    // a status read on the layer takes the dark scales, as a [data-theme="dark"] scope would
+    // a status read on the layer takes the base's own text step, through the alias that names it
     for (const tone of ["ok", "warn", "danger", "info", "muted"]) {
-      expect({ tone, fg: value(shell, `--status-${tone}-fg`) }).toEqual({ tone, fg: value(THEMES.dark, `--${tone}-11`) });
+      expect({ tone, fg: value(shell, `--status-${tone}-fg`) }).toEqual({ tone, fg: value(theme, `--shell-${tone}-11`) });
+    }
+  });
+
+  it("reads every status text at 4.6:1 or more on the base, a hovered row and an active row", () => {
+    const fgs = ["--status-ok-fg", "--status-warn-fg", "--status-danger-fg", "--status-info-fg", "--status-muted-fg", "--ai-fg", "--fg-danger", "--green-600", "--red-600", "--amber-600", "--slate-600"];
+    for (const bg of ["--bg-shell", "--bg-hover", "--bg-active"]) {
+      for (const fg of fgs) {
+        const ratio = contrast(value(shell, fg), value(shell, bg));
+        expect({ fg, bg, ratio, clear: ratio >= 4.6 }).toEqual({ fg, bg, ratio, clear: true });
+      }
     }
   });
 });
