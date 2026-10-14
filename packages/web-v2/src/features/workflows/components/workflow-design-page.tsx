@@ -2,7 +2,7 @@
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import type { ReactNode } from "react";
 import { useRef, useState } from "react";
-import { DetailLayout, DetailMobileTitle, DetailPane, DetailTabs, FactsRail, StatusBadge, useRecordView, useUrlTab, ViewHeading, Icon, fixedHeight } from "@/design";
+import { DetailLayout, DetailLeadEnd, DetailMobileTitle, DetailPane, DetailTabs, FactsRail, StatusBadge, useRecordView, useUrlTab, ViewHeading, Icon, fixedHeight } from "@/design";
 import { Decisions } from "@/features/comments";
 import { ItemMemory, useItemMemoryCount } from "@/features/memory";
 import type { Copy } from "@/lib/i18n/product-copy";
@@ -277,6 +277,7 @@ export function WorkflowDesignPage({ projectId, slug, d, record, template, decis
       {tab === "design" ? (
         <div ref={columnRef} className={cn("flex flex-col", fixedHeight("page", "lg"))} data-testid="view-design">
           {head}
+          <DetailLeadEnd />
           {/* Focus mode lifts this one element over the page, so the canvas keeps its zoom, selection and walk */}
           <div className={cn("relative flex min-h-0 flex-1 flex-col", focus && "fixed inset-0 z-40 bg-app")} data-testid="design-canvas-area" data-focus={focus}>
             <WorkflowCanvas
@@ -304,6 +305,7 @@ export function WorkflowDesignPage({ projectId, slug, d, record, template, decis
       ) : (
         <>
           {head}
+          <DetailLeadEnd />
           <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("workflows.tab.design")}>
             <TabView tab={tab} projectId={projectId} slug={slug} d={d} record={record} shown={shown} template={template} diff={fullDiff} revision={shownRevision} />
           </DetailPane>

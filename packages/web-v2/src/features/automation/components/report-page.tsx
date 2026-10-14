@@ -5,6 +5,7 @@
 import { Link } from "@/lib/navigation/router";
 import {
   DetailLayout,
+  DetailLeadEnd,
   DetailMobileTitle,
   DetailPane,
   DetailTabs,
@@ -138,6 +139,7 @@ export function ReportPage({ projectId, slug, reportId, canWrite }: { projectId:
           >
             <DetailMobileTitle itemKey={developer ? shortId(r.id) : undefined} title={<Written text={r.summary} lang={r.writtenLang} />} badge={<StatusBadge family="reportTriage" value={r.triage} />} />
             <ReportBanner r={r} className="px-8 py-2.5 max-md:px-4" />
+            <DetailLeadEnd />
             <div className="flex justify-end px-8 pt-3 max-md:px-4" data-testid="report-view-bar">
               <RecordViewSwitch view={view} onView={onView} />
             </div>

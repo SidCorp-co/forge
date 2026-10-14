@@ -6,6 +6,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { railBeside } from "@/test/rail-beside";
 import { fakeCore, renderWithQuery, type Call } from "@/test/render";
 import { IssueDetailScreen } from "./issue-detail-screen";
 
@@ -17,6 +18,7 @@ vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation"
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   window.history.replaceState(null, "", "/");
 });
 
@@ -243,6 +245,7 @@ describe("an issue page in the person's view", () => {
   });
 
   it("shows two relations of each kind and counts the rest", async () => {
+    railBeside();
     const root = await page();
     expect(within(within(root).getByTestId("rail-holds-up")).getAllByRole("link")).toHaveLength(2);
     expect(within(root).getByRole("button", { name: "4 more" })).toBeInTheDocument();

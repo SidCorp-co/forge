@@ -8,6 +8,7 @@ import {
   Button,
   ConfirmDialog,
   DetailLayout,
+  DetailLeadEnd,
   DetailMobileTitle,
   DetailPane,
   DetailTabs,
@@ -368,6 +369,7 @@ export function SchedulePage({ access, scheduleId }: { access: AutomationAccess;
           >
             <DetailMobileTitle itemKey={s.name} title={whatItRuns(s, t)} badge={<StatusBadge family="scheduleStanding" value={s.state} />} />
             <ScheduleBanner s={s} className="px-8 py-2.5 max-md:px-4" />
+            <DetailLeadEnd />
             <DetailTabs tabs={tabs} value={tab} onChange={setTab} testId="schedule-tabs" />
             <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("schedules.tab.overview")}>
               {tab === "overview" ? <Overview d={d} access={access} /> : null}

@@ -2,7 +2,7 @@
 import type { IssueBlocker } from "@forge/contracts/issue-standing";
 import type { ParkThreadQuestion } from "@forge/contracts/park";
 import type { ComponentProps, ReactNode } from "react";
-import { type RecordView, RecordViewSwitch } from "@/design";
+import { DetailLeadEnd, type RecordView, RecordViewSwitch } from "@/design";
 import { useIssueForecast } from "@/features/forecast";
 import { IssuePreview } from "@/features/previews";
 import { settingsHref } from "@/features/project-settings";
@@ -86,6 +86,8 @@ export function IssuePageMain(props: {
             ) : null}
             {developer ? <AwaitingReleaseBanner projectId={issue.projectId} issueId={issue.id} canWrite={canWrite} /> : null}
             {developer && agentState ? <LiveAgent state={agentState} step={liveStep ?? "—"} slug={slug} issueId={id} /> : null}
+            {/* where the issue stands and what it needs is this page's lead: below 1024px the rail follows it */}
+            <DetailLeadEnd inset />
             <div className="border-b border-line-subtle py-4">
               <IssueCriteria
                 issue={issue}
