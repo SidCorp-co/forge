@@ -232,7 +232,7 @@ function bindingsOf(
   return b;
 }
 
-/** For each file, the names it exports the comments table under, through any chain of re-exports. */
+/** Export names of the table per module, settled across chains of re-exports. */
 function exportedNames(parsed: ReadonlyMap<string, Parsed>): Map<string, Set<string>> {
   const exportedAs = new Map<string, Set<string>>();
   for (const [file, p] of parsed) exportedAs.set(file, new Set(p.declaredTable));
