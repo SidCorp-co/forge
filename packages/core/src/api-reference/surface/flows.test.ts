@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { JSDOM } from 'jsdom';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { describeOperation, json } from '../declare/describe.js';
@@ -110,8 +111,8 @@ describe('the steps of each flow, read as sentences', () => {
       ),
     );
     const html = renderFlowsPage(FLOWS, document, '/api/reference');
-    const items = [...html.matchAll(/<li>(.*)<\/li>/g)].map((m) =>
-      (m[1] ?? '').replace(/<[^>]+>/g, ''),
+    const items = [...new JSDOM(html).window.document.querySelectorAll('ol li')].map(
+      (li) => li.textContent ?? '',
     );
     expect(items.length).toBe(FLOWS.flatMap((f) => f.steps).length);
     expect(items.filter((text) => /[.!?] [a-z]/.test(text))).toEqual([]);
