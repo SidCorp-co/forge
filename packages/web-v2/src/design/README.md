@@ -78,7 +78,7 @@ A page that fits none of the five is a design question, not a sixth layout. Ask 
   - 6–8: borders;
   - 9–10: solid;
   - 11–12: text.
-- **Layers:** two, and only two. `bg-shell` is the neutral base: the shell's frame and its sidebar, nothing else. `bg-app` is the content every page paints: the main pane, its rail, a docked panel. `bg-surface` is a bar or a control on that content, in the same tone, so the content stays flat. They are told apart by tone and a hairline, never by a frame or a shadow. The neutrals are crisp grey, never a warm tint, and orange is the accent only.
+- **Layers:** two, and only two. `bg-shell` is the base: a graphite under the shell's frame, its sidebar and the phone's nav drawer, nothing else, dark in both themes. `bg-app` is the content every page paints: the main pane, its rail, a docked panel. `bg-surface` is a bar or a control on that content, in the same tone, so the content stays flat. They are told apart by tone and a hairline, never by a frame or a shadow. Whatever sits on the base carries `data-layer="shell"`, which points the semantic aliases at the base's own `--shell-*` palette, so the same `text-muted` or `bg-hover` reads light on graphite. The neutrals are crisp grey, never a warm tint, and orange is the accent only.
 - **Semantic:** reach for these first. They are `bg-shell`, `bg-app`, `bg-surface`, `bg-sunken`, `bg-hover`, `border-line-subtle`, `border-line`, `border-line-strong`, `text-fg`, `text-muted`, `text-subtle`, `text-link`, `bg-accent`, `text-accent-text`, and `status-{ok,warn,danger,info,muted}-{bg,line,solid,fg}`.
 - **Type:** `text-12` `text-13` `text-14` `text-16` `text-20` `text-24`, each with its line height.
   - Inter carries the UI and JetBrains Mono carries keys and code.

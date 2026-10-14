@@ -12,13 +12,15 @@
    cream and washed out the page. Orange is the accent and nothing else.
    Layer 2 — SEMANTIC aliases (bg, surface, line, fg, accent, status-*). Components read these.
    Two layers, told apart by tone and a hairline, never by a frame or a shadow:
-     --bg-shell  the base: the shell's frame and its sidebar (neutral-2 light, neutral-1 dark);
+     --bg-shell  the base: the shell's frame and its sidebar, a graphite in both themes, darker than
+                 the content in dark too;
      --bg-app    the content every page paints: the main pane, its rail, a docked panel;
      --bg-surface a bar or control on the content (top bar, input, popover): the same tone, so the
                  content layer stays flat. Overlays separate by --shadow-overlay.
-   In light the content is white on a grey base; in dark it is the lighter of the two. On the base a
-   hovered row lifts to the content's tone ([data-layer="shell"] below), so it reads on the grey and
-   its text keeps the contrast it has on the content.
+   The base is dark in both themes, so the content stands on it as the page; on a grey base the
+   sidebar's text read washed out beside the content's. The --shell-* tokens are the base's own
+   palette, and [data-layer="shell"] below points the semantic aliases at them, so everything drawn
+   on the sidebar (its rows, controls, chips and counts) reads light on graphite at AA.
    Layer 3 — the old names (paper, ink, flame, cobalt, amber, green, red, slate), each mapped onto
    a scale step so every existing use follows the theme; new code reads layer 2.
    Type, radius, shadow, density and motion are tokens here too; app/globals.css maps them into
@@ -53,10 +55,18 @@
    --ai-5: oklch(0.907 0.041 292);  --ai-6: oklch(0.877 0.052 292);  --ai-7: oklch(0.832 0.068 292);  --ai-8: oklch(0.765 0.09 292);
    --ai-9: oklch(0.575 0.15 292);  --ai-10: oklch(0.535 0.15 292);  --ai-11: oklch(0.535 0.128 292);  --ai-12: oklch(0.255 0.06 292);
 
-  --bg-shell:      var(--neutral-2);
   --bg-app:        var(--neutral-1);
   --bg-surface:    var(--neutral-1);
   --shadow-color:  oklch(0.255 0.012 264 / 0.14);
+
+  /* the base: graphite, with its own controls, lines, text and accent tint */
+  --bg-shell:           oklch(0.255 0.01 264);
+  --shell-control:      oklch(0.29 0.01 264);
+  --shell-hover:        oklch(0.32 0.012 264);
+  --shell-active:       oklch(0.35 0.012 264);
+  --shell-line-subtle:  oklch(0.34 0.01 264);
+  --shell-line:         oklch(0.36 0.01 264);
+  --shell-line-strong:  oklch(0.44 0.01 264);
 }
 
 [data-theme="dark"] {
@@ -86,10 +96,18 @@
    --ai-5: oklch(0.298 0.06 292);  --ai-6: oklch(0.338 0.072 292);  --ai-7: oklch(0.398 0.084 292);  --ai-8: oklch(0.478 0.102 292);
    --ai-9: oklch(0.575 0.15 292);  --ai-10: oklch(0.535 0.142 292);  --ai-11: oklch(0.635 0.105 292);  --ai-12: oklch(0.935 0.032 292);
 
-  --bg-shell:      var(--neutral-1);
   --bg-app:        var(--neutral-2);
   --bg-surface:    var(--neutral-2);
   --shadow-color:  oklch(0 0 0 / 0.5);
+
+  /* the base: a graphite below the content */
+  --bg-shell:           oklch(0.12 0.005 264);
+  --shell-control:      oklch(0.17 0.006 264);
+  --shell-hover:        oklch(0.2 0.008 264);
+  --shell-active:       oklch(0.23 0.008 264);
+  --shell-line-subtle:  oklch(0.25 0.008 264);
+  --shell-line:         oklch(0.27 0.008 264);
+  --shell-line-strong:  oklch(0.34 0.008 264);
 }
 
 /* also on every [data-theme] element, so a nested theme scope (/dev/design) re-resolves the aliases */
@@ -149,6 +167,15 @@
   --scrim:         color-mix(in oklch, var(--neutral-12) 25%, transparent);
   --scrim-strong:  color-mix(in oklch, var(--neutral-12) 40%, transparent);
   --scrim-media:   oklch(0.12 0.005 264 / 0.82);
+
+  /* The base's text and tints: the same in both themes, since the base is graphite in both. */
+  --shell-fg:           oklch(0.96 0.003 264);
+  --shell-fg-muted:     oklch(0.87 0.006 264);
+  --shell-fg-subtle:    oklch(0.74 0.01 264);
+  --shell-accent-tint:  oklch(0.35 0.075 38);
+  --shell-accent-text:  oklch(0.82 0.12 50);
+  --shell-chip:         oklch(0.34 0.05 262);
+  --shell-chip-fg:      oklch(0.88 0.06 262);
 
   /* ===== LAYER 3: the old names, each on a scale step ===== */
   --paper-0:   var(--neutral-1);
@@ -287,8 +314,29 @@
   --dur-slow: 200ms;
 }
 
-/* The base layer: a hover there lifts to the content's tone rather than sinking below the grey. */
-[data-layer="shell"] { --bg-hover: var(--bg-app); }
+/* The base layer: everything drawn on it reads the base's palette. Declared on the layer's element,
+   after the aliases above, so these win over the theme's for the sidebar and nothing else. */
+[data-layer="shell"] {
+  color-scheme: dark;
+  --bg-surface: var(--shell-control);
+  --bg-sunken: var(--shell-control);
+  --bg-hover: var(--shell-hover);
+  --bg-active: var(--shell-active);
+  --border-subtle: var(--shell-line-subtle);
+  --border-default: var(--shell-line);
+  --border-strong: var(--shell-line-strong);
+  --fg-default: var(--shell-fg);
+  --fg-muted: var(--shell-fg-muted);
+  --fg-subtle: var(--shell-fg-subtle);
+  --accent-tint: var(--shell-accent-tint);
+  --accent-text: var(--shell-accent-text);
+  --link: var(--shell-chip-fg);
+  --flame-50: var(--shell-accent-tint);
+  --flame-700: var(--shell-accent-text);
+  --cobalt-50: var(--shell-chip);
+  --cobalt-100: var(--shell-chip);
+  --cobalt-700: var(--shell-chip-fg);
+}
 
 @media (pointer: coarse) {
   :root, [data-theme] { --row-h: var(--row-h-touch); }
