@@ -99,11 +99,11 @@ that a reader without JavaScript gets the refusal instead of a blank document. I
 ends when Next server-renders a `notFound()` body.
 
 The same request decides the outage. A plain request for a real door, help page, the landing or a
-guide asks core first (`coreStatus` in the middleware: the index for `/guides`, the guide for
-`/guides/<slug>`), and where core cannot be reached or answers anything but success (or, for a
+guide asks core first (`coreStatus` in the middleware: the index for `/guides`; for `/guides/<slug>`
+the guide, then the index its page is also built from), and where core cannot be reached or answers anything but success (or, for a
 guide, 404) the middleware answers **503** with `Retry-After` and `unavailableDocument`, the same
 header and ways in as the 404s. Core unreachable is never a 404: that would tell a reader a guide
-does not exist on no evidence. The price is one core request per plain `/guides` view too.
+does not exist on no evidence. The price is one core request per plain `/guides` view, and a second per guide view.
 
 A client-side navigation is left alone: the router fetches the same URL for flight data and would
 choke on an HTML document, and it has JavaScript by definition, so the page serves it inside the docs

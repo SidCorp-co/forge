@@ -67,9 +67,10 @@ async function guides(request: NextRequest, pathname: string): Promise<NextRespo
   if (!GUIDE_SLUG.test(slug)) return missing();
 
   // Core unreachable is not evidence that the guide does not exist, so it is a 503 and never a 404.
+  // A guide's page is built from the index too, so the index answering is owed as well.
   const status = await coreStatus(`/guides/${encodeURIComponent(slug)}`);
   if (status === 404) return missing();
-  return ok(status) ? pass() : unavailable();
+  return ok(status) && ok(await coreStatus("/guides")) ? pass() : unavailable();
 }
 
 export function middleware(request: NextRequest) {

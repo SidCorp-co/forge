@@ -139,12 +139,23 @@ describe("a plain request for a real /guides address while core cannot answer fo
     expect((await ask(path, DOCUMENT)).status).toBe(503);
   });
 
-  it.each(REAL)("passes %s through when core answers, asking it once", async (path) => {
-    fetchGuide.mockResolvedValueOnce({ status: 200 });
+  it.each(REAL)("passes %s through when core answers for it and for the index", async (path) => {
+    fetchGuide.mockResolvedValue({ status: 200 });
     const res = await ask(path, DOCUMENT);
+    fetchGuide.mockResolvedValue({ status: 404 });
 
     expect(res.headers.get("x-middleware-next")).toBe("1");
-    expect(fetchGuide).toHaveBeenCalledTimes(1);
+    const asked = fetchGuide.mock.calls.map((call) => String((call as unknown[])[0]));
+    expect(asked.some((url) => url.endsWith("/guides"))).toBe(true);
+  });
+
+  it("answers a guide core has with a 503 while the index its page is built from does not answer", async () => {
+    fetchGuide.mockResolvedValueOnce({ status: 200 }).mockResolvedValueOnce({ status: 503 });
+    const res = await ask("/guides/issue-dependencies", DOCUMENT);
+
+    expect(res.status).toBe(503);
+    expect(res.headers.get("retry-after")).toBe("30");
+    expect(await res.text()).toContain("<h1>The guides could not be loaded</h1>");
   });
 
   it("leaves a client-side navigation to the page, which renders the same shell, without asking core", async () => {
