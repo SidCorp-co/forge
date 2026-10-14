@@ -1,7 +1,5 @@
-// ISS-1264: the owner's rule, said three times, is flat sections with hairline dividers and hierarchy
-// from type and whitespace, no card mosaic. The Overview drew its five sections as five bordered,
-// shadowed cards; one that stacks a `Card` again fails here by name, so the rule outlives the pass
-// that applied it.
+// ISS-1264: the owner's rule is flat sections with hairline dividers and no card mosaic; a Card stacked
+// again in the Overview fails here by name.
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";

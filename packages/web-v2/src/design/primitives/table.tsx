@@ -16,8 +16,6 @@ import { cn } from "@/lib/utils/cn";
 const DEFAULT_REGION_NAME = "Table, scrolls sideways";
 const BOUNDED_REGION_NAME = "Table, scrolls";
 
-// A table that windows its rows scrolls inside a frame of its own: a window needs a frame whose
-// height it can read, and a page-tall table has none.
 const BOUNDED_FRAME = "max-h-[min(70vh,40rem)] overflow-y-auto";
 
 /**
@@ -27,9 +25,6 @@ const BOUNDED_FRAME = "max-h-[min(70vh,40rem)] overflow-y-auto";
  * scroller the containing block of absolutely positioned cells (an `sr-only`
  * header) so they scroll with it instead of widening the document. The focus
  * ring is the card's, since the edge cues sit over the scroller's own edges.
- *
- * `bounded` gives the scroller a height of its own, so it scrolls down as well as across and is
- * always a tab stop; the owner of a windowed table reads that scroller through `scrollerRef`.
  */
 export function Table({
   className,
@@ -43,11 +38,10 @@ export function Table({
 }: HTMLAttributes<HTMLTableElement> & {
   /** The first column is `sticky`: the start cue gives way to the hairline its cells draw. */
   stickyStart?: boolean;
-  /** The scroller has a height of its own and scrolls down as well as across. */
+  /** A height of its own, which a windowed table needs to know what is in view; it is a tab stop. */
   bounded?: boolean;
   /** The scroller element, for a table that windows its rows by what the scroller shows. */
   scrollerRef?: RefObject<HTMLDivElement | null>;
-  /** Handlers for the scroller, such as the focus tracking of a windowed table. */
   scrollerProps?: Pick<HTMLAttributes<HTMLDivElement>, "onFocus" | "onBlur">;
 }) {
   const [edgesRef, edges] = useScrollEdges<HTMLDivElement>();
@@ -100,8 +94,7 @@ function EdgeCue({ side, visible }: { side: "start" | "end"; visible: boolean })
   );
 }
 
-// A header that stays in view over the rows scrolling under it. Its hairline is a pseudo-element
-// because a border on a collapsed table's cell stays behind when the cell sticks.
+// The hairline is a pseudo-element because a collapsed table's cell border stays behind when it sticks.
 const STUCK_HEAD =
   "[&_th]:sticky [&_th]:top-0 [&_th]:z-[2] [&_th]:bg-surface [&_th]:after:absolute [&_th]:after:inset-x-0 [&_th]:after:bottom-0 [&_th]:after:h-px [&_th]:after:bg-line [&_th]:after:content-['']";
 

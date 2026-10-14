@@ -1,8 +1,5 @@
-// jsdom implements no layout, so it implements no `ResizeObserver` either. This one reports what the
-// element measures when it is asked, the way the browser's does on `observe`, and again whenever a
-// test says the element changed size. A test that has stubbed a size (`test-support/layout.ts`) sees
-// that size arrive; one that has not sees the 0 jsdom measures, which is what a browser reports for
-// an element with no box — never a width the mock invented.
+// jsdom has no layout and no `ResizeObserver`. This one reports what the element measures on `observe`
+// and when a test says it resized; unstubbed, that is the 0 a browser reports for an element with no box.
 
 type Target = Element;
 

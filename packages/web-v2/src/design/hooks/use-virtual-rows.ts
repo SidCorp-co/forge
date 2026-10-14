@@ -1,9 +1,8 @@
 "use client";
 
-// The one place @tanstack/react-virtual is imported (ISS-1172's boundary, ISS-1264's list). It hands
-// back plain numbers and callbacks, so a pattern draws rows from them and no library type reaches a
-// feature. The row that holds focus is always among the rows returned, because a row the list
-// recycles out from under the keyboard drops focus to the page.
+// The one importer of @tanstack/react-virtual: it hands back plain numbers and callbacks, so no
+// library type reaches a feature. The row that holds focus is always among the rows returned, found
+// by its key, so rows inserted or reordered above it do not move the hold to another row.
 
 import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -57,6 +56,23 @@ export interface VirtualRows {
 
 const ROW = "[data-index]";
 
+/** Where the held row is now: where it was if it still has that key, else wherever that key went, else -1. */
+function heldIndex(
+  held: { key: string | number; index: number },
+  count: number,
+  getKey: ((index: number) => string | number) | undefined,
+): number {
+  if (!getKey) return held.index < count ? held.index : -1;
+  if (held.index < count && getKey(held.index) === held.key) return held.index;
+  for (let i = 0; i < count; i++) {
+    if (getKey(i) === held.key) {
+      held.index = i;
+      return i;
+    }
+  }
+  return -1;
+}
+
 export function useVirtualRows({
   count,
   estimateSize,
@@ -67,7 +83,7 @@ export function useVirtualRows({
   scrollPaddingStart,
 }: VirtualRowsOptions): VirtualRows {
   const scrollerRef = useRef<HTMLDivElement | null>(null);
-  const held = useRef<number | null>(null);
+  const held = useRef<{ key: string | number; index: number } | null>(null);
   const pending = useRef<number | null>(null);
 
   const virtualizer = useVirtualizer<HTMLDivElement, Element>({
@@ -80,8 +96,8 @@ export function useVirtualRows({
     scrollPaddingStart,
     rangeExtractor: (range) => {
       const drawn = defaultRangeExtractor(range);
-      const keep = held.current;
-      if (keep === null || keep >= range.count || drawn.includes(keep)) return drawn;
+      const keep = held.current === null ? -1 : heldIndex(held.current, range.count, getKey);
+      if (keep === -1 || drawn.includes(keep)) return drawn;
       return [...drawn, keep].sort((a, b) => a - b);
     },
   });
@@ -115,17 +131,22 @@ export function useVirtualRows({
   const focusRow = useCallback(
     (index: number) => {
       pending.current = index;
-      held.current = index;
+      held.current = { key: getKey?.(index) ?? index, index };
       virtualizer.scrollToIndex(index, { align: "auto" });
       settle();
     },
-    [virtualizer, settle],
+    [virtualizer, settle, getKey],
   );
 
   const trackFocus = {
     onFocus: (event: FocusEvent<HTMLElement>) => {
       const row = (event.target as HTMLElement).closest<HTMLElement>(ROW);
-      held.current = row && event.currentTarget.contains(row) ? Number(row.dataset.index) : null;
+      if (!row || !event.currentTarget.contains(row)) {
+        held.current = null;
+        return;
+      }
+      const index = Number(row.dataset.index);
+      held.current = { key: getKey?.(index) ?? index, index };
     },
     onBlur: (event: FocusEvent<HTMLElement>) => {
       const next = event.relatedTarget as Node | null;

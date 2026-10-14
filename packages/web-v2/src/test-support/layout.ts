@@ -1,6 +1,4 @@
-// What a test gives an element that jsdom cannot: a size. jsdom measures every element at 0, so a
-// component that reads its own frame (the chat composer) or windows its rows by the frame's height
-// (the virtualised lists) sees nothing to lay out. A test names the sizes it is asserting wiring for
+// What a test gives an element that jsdom cannot: a size. A test names the sizes it asserts wiring for
 // and never real coordinates; where an element sits on screen is the browser walk's to prove.
 
 export interface Box {

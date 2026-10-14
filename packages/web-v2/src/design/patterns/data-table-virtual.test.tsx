@@ -134,6 +134,8 @@ describe("a table of more than 100 rows", () => {
   });
 });
 
+// jsdom cannot press Tab: the first case scrolls the table the way the browser does when focus nears
+// the end of the window, and the browser walk presses the key.
 describe("a table of more than 100 rows, by keyboard", () => {
   it("reaches an action that was not drawn when the table opened, once focus has scrolled it near", async () => {
     table(300);
@@ -158,6 +160,20 @@ describe("a table of more than 100 rows, by keyboard", () => {
     expect(indexes()).not.toContain(3);
     expect(button.isConnected).toBe(true);
     expect(document.activeElement).toBe(button);
+  });
+
+  it("keeps the same row, not the same place, when the rows are re-ordered above it", async () => {
+    const rows = rowsOf(300);
+    const view = table(300, { rows });
+    await act(async () => {});
+    const button = screen.getByRole("button", { name: "Open r2" });
+    act(() => button.focus());
+    await scrollTo(ROW * 250);
+    view.rerender(<DataTable rows={[{ id: "rnew", name: "name new" }, ...rows]} columns={COLUMNS} getRowId={(r) => r.id} aria-label="Things" />);
+    await act(async () => {});
+    expect(button.isConnected).toBe(true);
+    expect(document.activeElement).toBe(button);
+    expect(button.closest("tr")).toHaveAttribute("data-index", "3");
   });
 
   it("lets the row go once focus has left the table", async () => {

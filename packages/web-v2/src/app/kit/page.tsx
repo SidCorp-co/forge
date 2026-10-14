@@ -408,6 +408,19 @@ function DataTableDemo() {
   );
 }
 
+const LONG_SESSIONS = Array.from({ length: 300 }, (_, i) => ({ sid: `S-${2000 + i}`, iss: `FRG-${300 + i}` }));
+
+const LONG_COLUMNS: DataTableColumn<(typeof LONG_SESSIONS)[number]>[] = [
+  { id: "session", header: "session", sticky: true, cell: (r) => <MonoTag>{r.sid}</MonoTag>, sortValue: (r) => r.sid },
+  { id: "issue", header: "issue", cell: (r) => <MonoTag hue="cobalt">{r.iss}</MonoTag> },
+  { id: "actions", header: null, headerLabel: "Actions", align: "end", cell: (r) => <Button size="sm" variant="secondary">{`Open ${r.sid}`}</Button> },
+];
+
+// 300 rows, so past 100 the table draws only the rows in view and scrolls inside its own frame.
+function LongTableDemo() {
+  return <DataTable aria-label="Three hundred sessions" rows={LONG_SESSIONS} columns={LONG_COLUMNS} getRowId={(r) => r.sid} />;
+}
+
 const DEMO_WORKSPACES = [
   { slug: "forge-core", runs: 38, spend: 41.2 },
   { slug: "forge-web", runs: 21, spend: 63.9 },
@@ -988,6 +1001,7 @@ export default function KitPage() {
             <div className="flex flex-col gap-6">
               <DataTableDemo />
               <RankedDemo />
+              <LongTableDemo />
             </div>
           </Section>
 

@@ -178,6 +178,23 @@ describe("the keyboard", () => {
     expect(document.activeElement).toBe(first);
   });
 
+  it("keeps the same row, not the same place, when rows arrive above it", async () => {
+    const view = list(items(1300));
+    await act(async () => {});
+    const first = articles()[0] as HTMLElement;
+    act(() => first.focus());
+    await scrollTo(ROW * 700);
+    const arrived = [{ id: "new", title: "Newest" }, ...items(1300)];
+    view.rerender(
+      <VirtualList aria-label="Inbox" rows={arrived} getRowId={(r) => r.id} renderRow={(r) => <p>{r.title}</p>} getRowLabel={(r) => r.title} estimateRowHeight={ROW} />,
+    );
+    await act(async () => {});
+    expect(first.isConnected).toBe(true);
+    expect(document.activeElement).toBe(first);
+    expect(first).toHaveAttribute("data-index", "1");
+    expect(indexes()).not.toContain(2);
+  });
+
   it("lets the row go once focus has left the list", async () => {
     const first = await opened();
     act(() => first.blur());

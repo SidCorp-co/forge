@@ -54,7 +54,6 @@ function SectionLabel({
 
 const NO_FILTERS: Record<string, string> = {};
 
-// Below Tailwind's `sm` breakpoint.
 const PHONE_WIDTH = 'not all and (min-width: 40rem)';
 
 export function ProjectsConsole() {
@@ -65,8 +64,7 @@ export function ProjectsConsole() {
   const [createOpen, setCreateOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<ProjectSortState>(DEFAULT_PROJECT_SORT);
-  // The owner's rule is flat rows with no card mosaic, so a phone opens as the list and a wide
-  // screen as the cards; a view the person picks wins over either.
+  // Flat rows, no card mosaic: a phone opens as the list, a view the person picks wins.
   const [pickedView, setView] = useState<ProjectView | null>(null);
   const phone = useMediaQuery(PHONE_WIDTH);
   const view: ProjectView = pickedView ?? (phone ? 'list' : 'cards');
