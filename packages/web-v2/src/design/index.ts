@@ -37,6 +37,7 @@ export { Toggle } from "./primitives/toggle";
 export { SegmentedControl, type SegmentOption } from "./primitives/segmented-control";
 export { Textarea } from "./primitives/textarea";
 export { Checkbox } from "./primitives/checkbox";
+export { HollowCheck } from "./primitives/hollow-check";
 export { Radio, RadioGroup } from "./primitives/radio";
 export { Select, NativeSelect, type SelectOption } from "./primitives/select";
 export { ChipPicker, type ChipPickerProps } from "./primitives/chip-picker";

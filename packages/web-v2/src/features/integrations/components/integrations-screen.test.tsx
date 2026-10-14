@@ -1,7 +1,8 @@
-// The workspace Integrations screen: named as the nav names it, with the act that adds a connection,
-// every app standing open with its health in view, and each row naming its bindings apart.
+// The workspace Integrations screen: named as the nav names it, with the act that adds a connection
+// and binds its projects without leaving the page (FB-128), every app standing open with its health
+// in view, each row naming its bindings apart, and GitHub's return landing here in words.
 
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ConnectionDirectoryItem } from "@forge/contracts/integrations";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -57,13 +58,73 @@ function serve() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("IntegrationsScreen", () => {
-  it("is titled as the nav names it and carries the act that adds a connection", async () => {
+  it("is titled as the nav names it, and adds a connection here rather than sending the person into a project", async () => {
     serve();
     renderWithQuery(<IntegrationsScreen />);
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Integrations");
     await userEvent.click(screen.getByRole("button", { name: "Add connection" }));
-    const link = await screen.findByRole("link", { name: "Forge" });
-    expect(link.getAttribute("href")).toBe("/projects/forge/settings?tab=connections#integrations");
+    const flow = await screen.findByTestId("add-connection-flow");
+    expect(within(flow).getByRole("checkbox", { name: "Forge" })).toBeTruthy();
+    expect(within(flow).getByRole("combobox", { name: "App" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Forge" })).toBeNull();
+  });
+
+  it("names why GitHub's return could not finish, and the App it left on GitHub, from the query core lands it with", async () => {
+    serve();
+    window.history.pushState(null, "", "/integrations?connect=state_expired&app=forge-test-app&appOwner=SidCorp-co&appOrg=1");
+    renderWithQuery(<IntegrationsScreen />);
+    const banner = await screen.findByTestId("github-stranded");
+    expect(banner.textContent).toContain("over an hour old");
+    expect(banner.textContent).toContain("forge-test-app");
+    expect(within(banner).getByRole("link").getAttribute("href")).toBe(
+      "https://github.com/organizations/SidCorp-co/settings/apps/forge-test-app",
+    );
+    window.history.pushState(null, "", "/integrations");
+  });
+
+  it("points at GitHub's list of Apps when the return could not be shown to be the person's own", async () => {
+    serve();
+    window.history.pushState(null, "", "/integrations?connect=state_invalid");
+    renderWithQuery(<IntegrationsScreen />);
+    const banner = await screen.findByTestId("github-stranded");
+    expect(banner.textContent).toContain("Forge did not start");
+    expect(within(banner).getByRole("link").getAttribute("href")).toBe("https://github.com/settings/apps");
+    window.history.pushState(null, "", "/integrations");
+  });
+
+  it("binds a GitHub App back from its install into each ticked project's repository, in one call", async () => {
+    const calls = fakeCore((call) => {
+      if (call.path === "/integration-connections/c3/targets") {
+        return { body: { targets: [{ provider: "github", installationId: 9, owner: "SidCorp-co", repo: "forge" }], truncated: false } };
+      }
+      if (call.method === "POST" && call.path === "/integration-connections/c3/bindings") return { body: { bindings: [] } };
+      if (call.path === "/integration-connections") return { body: { items: [COOLIFY, GITLAB] } };
+      if (call.path === "/orgs") return { body: [{ id: "o1", name: "SidCorp", role: "owner" }] };
+      if (call.path.startsWith("/projects")) {
+        return { body: [{ id: "p1", slug: "forge", name: "Forge", orgId: "o1", archivedAt: null }] };
+      }
+      return undefined;
+    });
+    window.history.pushState(null, "", "/integrations?bind=c3");
+    renderWithQuery(<IntegrationsScreen />);
+    const flow = await screen.findByTestId("bind-connection-flow");
+    await userEvent.click(await within(flow).findByRole("checkbox", { name: "Forge" }));
+    await userEvent.selectOptions(within(flow).getByRole("combobox", { name: "Repository for Forge" }), "SidCorp-co/forge");
+    await userEvent.click(within(flow).getByRole("button", { name: "Bind (1)" }));
+    await vi.waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
+    const writes = calls.filter((c) => c.method !== "GET");
+    expect(writes).toEqual([
+      {
+        method: "POST",
+        path: "/integration-connections/c3/bindings",
+        body: {
+          bindings: [
+            { projectId: "p1", role: "service", target: { provider: "github", installationId: 9, owner: "SidCorp-co", repo: "forge" } },
+          ],
+        },
+      },
+    ]);
+    window.history.pushState(null, "", "/integrations");
   });
 
   it("stands every app open, so a lone connection's health and status are in view without a click", async () => {

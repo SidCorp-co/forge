@@ -162,7 +162,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:displayName field:json:shortName field:json:request field:json:account`,
   'a structured part of a record core validates and stores; it admits nobody': words`
     field:json:agentReport field:json:answers field:json:artifact field:json:attachments
-    field:json:awaitsDesign field:json:awaitsMerge field:json:block field:json:blocker
+    field:json:awaitsDesign field:json:awaitsMerge field:json:bindings field:json:block field:json:blocker
     field:json:build field:json:capabilities field:json:carried field:json:category
     field:json:changes field:json:checklist field:json:checkpoint field:json:checks
     field:json:codes field:json:color field:json:config field:json:contract field:json:contracts
@@ -255,6 +255,7 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
   'an outbound URL, header set or module URL core builds, never a request to core': lines`
     assistant/identity/link-url.ts URLSearchParams.toString in speakerLinkUrl
     integrations/autoflow/refresh.ts URLSearchParams.toString in requestRefresh
+    integration-door/github-connect-routes.ts URLSearchParams.toString in strandedAt
     integrations/deploy/coolify/client.ts URLSearchParams.toString in CoolifyClient
     integrations/deploy/coolify/health-probe.ts URL handed to @types/node:fetchImpl in probeHealth
     integrations/deploy/kept-probe-request.ts Headers handed to @types/node:fetchImpl in sendKeptProbeRequest
@@ -311,6 +312,8 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     web-host/mount.ts Context handed to hono:host in hostTheWeb
     middleware/route-refs.ts Request handed to hono:dispatch in resolvingRouteRefs
     middleware/route-refs.ts Context handed to hono:authenticate in refuseUnresolvedRefs
+    middleware/auth.ts Context handed to hono:auth in requireAuthOrLand
+    middleware/auth.ts Context handed to hono:verified in requireAuthOrLand
     middleware/zod-validator.ts Context handed to hono:middleware in refuseUndeclaredBodyType
     lib/upload-body-limit.ts Context handed to hono:limiter in uploadBodyLimit
     middleware/chat-write-hold.ts Context handed to hono:matchedRoutes in chatWriteRouteOf

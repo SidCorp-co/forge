@@ -1,10 +1,7 @@
 import type { AgentAccess, BindingRole } from "@forge/contracts/integrations";
-import { schemaUrl } from "@/features/project-config";
 import { providerModule } from "./providers/registry";
 
 const RELEASE_RUNNER_LABEL = "releaseRunnerLabel";
-
-export const BINDING_SCHEMA = schemaUrl("binding");
 
 export type BindingDocument = {
 	$schema: string;

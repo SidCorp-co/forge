@@ -11,16 +11,36 @@ import { inboundWebhookUrl } from '../index.js';
 import { APP_EVENTS, APP_PERMISSIONS } from './app-permissions.js';
 import { anonymousOctokit, responseOf } from './octokit.js';
 
-const STATE_TTL_MS = 10 * 60_000;
+/**
+ * As long as the code GitHub hands back lives: an hour. The state is signed when Connect is pressed
+ * and read when GitHub returns, after the person has read GitHub's create page; a shorter state
+ * refused a slow reader after GitHub had already made the App, and stranded it there (FB-128).
+ */
+export const STATE_TTL_MS = 60 * 60_000;
 
-interface ConnectState {
+export interface ConnectState {
   projectId: string;
   userId: string;
   /** Org that will own the credential, when the operator chose an org-owned
    *  App. Absent = personal. The choice is made at connect time but spent in
    *  the callback, which sees nothing but this state. */
   orgId?: string;
+  /** Where the flow began, so the install lands back there: the workspace Integrations page, or
+   *  the project's settings when absent. */
+  returnTo?: 'integrations';
+  /** The connection the manifest callback created, carried through GitHub's install step. */
+  connectionId?: string;
 }
+
+/**
+ * A connect state as read back: genuine, forged, or genuine and past its hour. An expired one is
+ * still told apart from a forged one, because only a state Forge signed for this person may have
+ * its code spent to name the App it stranded.
+ */
+export type ConnectStateRead =
+  | { ok: true; state: ConnectState }
+  | { ok: false; why: 'invalid' }
+  | { ok: false; why: 'expired'; state: ConnectState };
 
 export function signConnectState(secret: string, state: ConnectState, nowMs = Date.now()): string {
   const body = Buffer.from(JSON.stringify({ ...state, exp: nowMs + STATE_TTL_MS })).toString(
@@ -30,30 +50,33 @@ export function signConnectState(secret: string, state: ConnectState, nowMs = Da
   return `${body}.${mac}`;
 }
 
-export function verifyConnectState(
+export function readConnectState(
   secret: string,
   token: string,
   nowMs = Date.now(),
-): ConnectState | null {
+): ConnectStateRead {
+  const invalid = { ok: false as const, why: 'invalid' as const };
   const [body, mac] = token.split('.');
-  if (!body || !mac) return null;
+  if (!body || !mac) return invalid;
   const expected = createHmac('sha256', secret).update(body).digest('base64url');
-  if (expected.length !== mac.length) return null;
-  if (!timingSafeEqual(Buffer.from(expected), Buffer.from(mac))) return null;
+  if (expected.length !== mac.length) return invalid;
+  if (!timingSafeEqual(Buffer.from(expected), Buffer.from(mac))) return invalid;
 
   let parsed: ConnectState & { exp?: number };
   try {
     parsed = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
   } catch {
-    return null;
+    return invalid;
   }
-  if (typeof parsed.exp !== 'number' || parsed.exp < nowMs) return null;
-  if (!parsed.projectId || !parsed.userId) return null;
-  return {
+  if (typeof parsed.exp !== 'number' || !parsed.projectId || !parsed.userId) return invalid;
+  const state: ConnectState = {
     projectId: parsed.projectId,
     userId: parsed.userId,
     ...(parsed.orgId ? { orgId: parsed.orgId } : {}),
+    ...(parsed.returnTo === 'integrations' ? { returnTo: 'integrations' as const } : {}),
+    ...(parsed.connectionId ? { connectionId: parsed.connectionId } : {}),
   };
+  return parsed.exp < nowMs ? { ok: false, why: 'expired', state } : { ok: true, state };
 }
 
 /**
@@ -87,12 +110,14 @@ export function manifestPostUrl(owner?: string | null): string {
     : 'https://github.com/settings/apps/new';
 }
 
-interface ConvertedApp {
+export interface ConvertedApp {
   appId: string;
   privateKey: string;
   webhookSecret: string;
   slug?: string;
   htmlUrl?: string;
+  /** Who owns the App on GitHub: where its settings page lives. */
+  owner?: { login: string; isOrg: boolean };
 }
 
 /** Exchange the one-time code for the App's credentials. The code is single-use. */
@@ -107,6 +132,7 @@ export async function convertManifestCode(args: {
     webhook_secret?: string;
     slug?: string;
     html_url?: string;
+    owner?: { login?: string; type?: string };
   };
   try {
     body = (
@@ -129,5 +155,17 @@ export async function convertManifestCode(args: {
     webhookSecret: body.webhook_secret,
     ...(body.slug ? { slug: body.slug } : {}),
     ...(body.html_url ? { htmlUrl: body.html_url } : {}),
+    ...(body.owner?.login
+      ? { owner: { login: body.owner.login, isOrg: body.owner.type === 'Organization' } }
+      : {}),
   };
+}
+
+/** Where a person deletes an App or makes it a new key: its own settings page when its name is known. */
+export function appSettingsUrl(app?: Pick<ConvertedApp, 'slug' | 'owner'>): string {
+  if (!app?.slug) return 'https://github.com/settings/apps';
+  const slug = encodeURIComponent(app.slug);
+  return app.owner?.isOrg
+    ? `https://github.com/organizations/${encodeURIComponent(app.owner.login)}/settings/apps/${slug}`
+    : `https://github.com/settings/apps/${slug}`;
 }

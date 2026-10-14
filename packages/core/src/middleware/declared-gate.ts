@@ -1,5 +1,7 @@
 export const AUTH_GATES = {
   requireAuth: 'a session JWT, or a personal or agent access token held to its grant',
+  requireAuthOrLand:
+    'what requireAuth admits; a browser sent back by an outside site with no session, or an unverified one, is redirected to a web page naming why instead of refused',
   requireUserOrDevice:
     'a session JWT, a paired device credential, or a personal or agent access token held to its grant',
   requireUser: 'a session JWT, in the Authorization header or the session cookie',

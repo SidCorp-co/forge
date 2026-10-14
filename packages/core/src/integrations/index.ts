@@ -59,6 +59,8 @@ export { applyGrantedMcpServers } from './mcp-resolver.js';
 export { raceWithTimeout } from './probe.js';
 export {
   applySecretsPatch,
+  type BindingItem,
+  bindingItemsSchema,
   configSchemaForProvider,
   connectionConfigSchemaForProvider,
   connectionCreateSchema,
@@ -104,6 +106,7 @@ export {
   type BindingWithConnection,
   bindingInboundSecret,
   buildContextFromBinding,
+  type CreateConnectionInput,
   createConnection,
   decryptConnectionSecrets,
   effectiveConfig,
@@ -117,6 +120,7 @@ export {
   listBindingsForConnection,
   listBindingsForProject,
   listConnectionsForPrincipalUser,
+  pendingConnectionRow,
   softDeleteConnection,
   updateConnection,
   writeConnectionSecrets,

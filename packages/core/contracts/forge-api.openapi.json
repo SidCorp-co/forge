@@ -9598,6 +9598,54 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "bindings": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "agentAccess": {
+                          "enum": [
+                            "none",
+                            "all"
+                          ],
+                          "type": "string"
+                        },
+                        "instructions": {
+                          "maxLength": 4000,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "projectId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "role": {
+                          "enum": [
+                            "deploy",
+                            "service",
+                            "source"
+                          ],
+                          "type": "string"
+                        },
+                        "target": {
+                          "additionalProperties": {},
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "projectId",
+                        "role",
+                        "target"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 50,
+                    "minItems": 1,
+                    "type": "array"
+                  },
                   "config": {
                     "additionalProperties": {},
                     "default": {},
@@ -9781,6 +9829,130 @@
           "assertEmailVerified"
         ],
         "x-forge-validated": []
+      },
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "bindings": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "agentAccess": {
+                          "enum": [
+                            "none",
+                            "all"
+                          ],
+                          "type": "string"
+                        },
+                        "instructions": {
+                          "maxLength": 4000,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "projectId": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "role": {
+                          "enum": [
+                            "deploy",
+                            "service",
+                            "source"
+                          ],
+                          "type": "string"
+                        },
+                        "target": {
+                          "additionalProperties": {},
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "projectId",
+                        "role",
+                        "target"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 50,
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "bindings"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "json"
+        ]
+      }
+    },
+    "/api/integration-connections/{id}/targets": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": []
       }
     },
     "/api/integration-connections/{id}/test": {
@@ -9845,8 +10017,7 @@
           }
         },
         "x-forge-auth": [
-          "requireAuth",
-          "assertEmailVerified"
+          "requireAuthOrLand"
         ],
         "x-forge-validated": [
           "query"
@@ -9885,8 +10056,7 @@
           }
         },
         "x-forge-auth": [
-          "requireAuth",
-          "assertEmailVerified"
+          "requireAuthOrLand"
         ],
         "x-forge-validated": [
           "query"
@@ -39204,6 +39374,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "returnTo",
+            "required": false,
+            "schema": {
+              "const": "integrations",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -43966,6 +44145,7 @@
     "assertEmailVerified": "a person whose email address is verified (a device passes)",
     "requireAdmin": "a platform administrator",
     "requireAuth": "a session JWT, or a personal or agent access token held to its grant",
+    "requireAuthOrLand": "what requireAuth admits; a browser sent back by an outside site with no session, or an unverified one, is redirected to a web page naming why instead of refused",
     "requireDevice": "a paired device credential only",
     "requireFreshAuth": "a caller who re-authenticated within the window the route sets",
     "requirePat": "a personal or agent access token only",

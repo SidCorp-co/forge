@@ -8,9 +8,11 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { integrationConnectionsApi, integrationsApi } from "./api";
+import { useAlsoBind } from "./also-bind";
 import {
   type BindConnectionInput,
   bindConnection,
+  bindConnectionInto,
   bindingRefusalText,
   type CreateIntegrationInput,
   createIntegration,
@@ -18,6 +20,7 @@ import {
   updateIntegration,
 } from "./bind-actions";
 import type {
+  ConnectionBindingItem,
   ConnectionUpdateInput,
   IntegrationSummary,
 } from "./types";
@@ -102,7 +105,7 @@ export function useProbeRocketchatRooms(projectId: string | undefined) {
  *  callback, so a refetch here would only re-read the same empty list. */
 export function useGitHubConnect(projectId: string | undefined) {
   return useMutation({
-    mutationFn: (params: { org?: string; environment?: string; orgId?: string }) =>
+    mutationFn: (params: { org?: string; orgId?: string; returnTo?: "integrations" }) =>
       integrationsApi.githubConnect(projectId as string, params),
   });
 }
@@ -159,15 +162,22 @@ export function useRotateIntegrationSecret(projectId: string | undefined) {
   });
 }
 
-/** Create a Coolify/Epodsystem integration. Returns the one-time `integrationSecret`. */
+/**
+ * Create a connection and its binding in one call: into this project, and into every project an
+ * {@link useAlsoBind} provider above names.
+ */
 export function useCreateProviderIntegration(projectId: string | undefined) {
   const invalidate = useInvalidateBindingChange(projectId);
+  const qc = useQueryClient();
+  const also = useAlsoBind();
   const { toast } = useToast();
   const t = useCopy();
   return useMutation({
-    mutationFn: (body: CreateIntegrationInput) => createIntegration(projectId as string, body),
+    mutationFn: (body: CreateIntegrationInput) => createIntegration(projectId as string, body, also),
     onSuccess: () => {
       invalidate();
+      void qc.invalidateQueries({ queryKey: ["integration-connections"] });
+      if (also.length > 0) void qc.invalidateQueries({ queryKey: ["integrations"] });
       toast({ title: t("integrations.toast.saved"), tone: "success" });
     },
     onError: (err) =>
@@ -391,6 +401,31 @@ export function useConnectionBindings(connectionId: string | null | undefined) {
     queryKey: ["integration-connections", connectionId, "bindings"],
     queryFn: () => integrationConnectionsApi.bindings(connectionId as string),
     enabled: !!connectionId,
+  });
+}
+
+/** What a connection can be bound to, as binding-v1 targets. */
+export function useConnectionTargets(connectionId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["integration-connections", connectionId, "targets"],
+    queryFn: () => integrationConnectionsApi.targets(connectionId as string),
+    enabled: !!connectionId,
+    retry: false,
+  });
+}
+
+/** Bind one connection into several projects, each with its own target, as one write. */
+export function useBindConnectionInto(connectionId: string) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const t = useCopy();
+  return useMutation({
+    mutationFn: (items: ConnectionBindingItem[]) => bindConnectionInto(connectionId, items),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["integration-connections"] });
+      void qc.invalidateQueries({ queryKey: ["integrations"] });
+      toast({ title: t("integrations.toast.bound"), tone: "success" });
+    },
   });
 }
 

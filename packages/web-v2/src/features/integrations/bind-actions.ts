@@ -1,10 +1,9 @@
-import type { AgentAccess, BindingRole } from "@forge/contracts/integrations";
+import type { AgentAccess, BindingRole, ConnectionBindingItem } from "@forge/contracts/integrations";
 import { formatApiError } from "@/lib/api/error";
 import { configApi } from "@/features/project-config";
 import { documentRefusals, refusalLine } from "@/lib/api/refusals";
 import { integrationConnectionsApi, integrationsApi } from "./api";
 import {
-	BINDING_SCHEMA,
 	type BindingDocument,
 	type BindingRead,
 	bindingConfigOf,
@@ -43,56 +42,44 @@ export interface UpdateIntegrationInput {
 const readBinding = async (projectId: string, id: string) =>
 	(await configApi.getBinding(projectId, id)) as BindingRead;
 
-export async function bindConnection(projectId: string, input: BindConnectionInput) {
-	const label = input.label ?? "";
-	const { items } = await integrationsApi.list(projectId);
-	const freed = items.find(
-		(b) =>
-			b.provider === input.provider &&
-			b.label === label &&
-			b.role === "service" &&
-			input.role === "service" &&
-			!b.bindingActive,
-	);
-	const id = freed?.id ?? crypto.randomUUID();
-	const read = freed ? await readBinding(projectId, id) : null;
-	const document: BindingDocument = {
-		$schema: BINDING_SCHEMA,
-		version: 1,
-		id,
+/** The item one project takes in a bind call: the binding-v1 target and grant, nothing else. */
+function itemFor(projectId: string, input: Omit<BindConnectionInput, "connectionId">): ConnectionBindingItem {
+	return {
+		projectId,
 		role: input.role,
-		connection: input.connectionId,
-		agentAccess: input.agentAccess ?? "none",
-		active: true,
-		target: targetOf(input.provider, input.binding, label),
+		target: targetOf(input.provider, input.binding, input.label ?? ""),
+		...(input.agentAccess ? { agentAccess: input.agentAccess } : {}),
 	};
-	return configApi.putBinding(projectId, id, {
-		baseRevision: read?.declared === true ? read.revision : null,
-		document,
-	});
 }
 
-export async function createIntegration(projectId: string, input: CreateIntegrationInput) {
+/** Bind an existing connection into one project, through the same one-call bind as several. */
+export async function bindConnection(projectId: string, input: BindConnectionInput) {
+	return integrationConnectionsApi.bind(input.connectionId, [itemFor(projectId, input)]);
+}
+
+/** Bind an existing connection into several projects, each with its own target, as one write. */
+export async function bindConnectionInto(connectionId: string, items: ConnectionBindingItem[]) {
+	return integrationConnectionsApi.bind(connectionId, items);
+}
+
+/**
+ * Create a connection and bind it into `projectId` and every project of `alsoProjectIds`, all with
+ * the same target, in one call: core writes all of it or none of it (FB-128).
+ */
+export async function createIntegration(
+	projectId: string,
+	input: CreateIntegrationInput,
+	alsoProjectIds: readonly string[] = [],
+) {
 	const tiers = splitTiers(input.provider, input.config);
-	const created = await integrationConnectionsApi.create({
+	const bound = { ...input, binding: tiers.binding };
+	return integrationConnectionsApi.create({
 		provider: input.provider as never,
 		config: tiers.connection,
 		secrets: input.secrets ?? {},
 		...(input.orgId ? { orgId: input.orgId } : {}),
+		bindings: [projectId, ...alsoProjectIds.filter((id) => id !== projectId)].map((id) => itemFor(id, bound)),
 	});
-	try {
-		return await bindConnection(projectId, {
-			connectionId: created.connection.id,
-			provider: input.provider,
-			role: input.role,
-			binding: tiers.binding,
-			...(input.label ? { label: input.label } : {}),
-			...(input.agentAccess ? { agentAccess: input.agentAccess } : {}),
-		});
-	} catch (err) {
-		await integrationConnectionsApi.remove(created.connection.id).catch(() => undefined);
-		throw err;
-	}
 }
 
 function withInstructions(document: BindingDocument, instructions: string | null | undefined): BindingDocument {

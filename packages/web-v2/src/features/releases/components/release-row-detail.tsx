@@ -5,17 +5,32 @@
 import type { ReleaseKnownIssue, ReleasePage, ReleasePageChange, ReleasePageProven } from "@forge/contracts/release-page";
 import { Link } from "@/lib/navigation/router";
 import { QueryBoundary } from "@/lib/api/query-boundary";
-import { useCopy } from "@/lib/i18n/interface-language";
+import type { ReactNode } from "react";
+import { HollowCheck, statusReading } from "@/design";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { issueHref } from "@/lib/routes/issues";
 import { requirementHref } from "@/lib/routes/requirements";
 import { withoutCriterionCode } from "@/lib/utils/criterion-code";
 import { useReleasePage } from "../hooks";
 import type { Reach } from "./release-anchors";
 
+/**
+ * A short among the proven lines, drawn as the Criteria tab draws it: the hollow ✓ in the warn tone,
+ * named Short, never the pass's ✓ (forge-core-eb, 2026-10-14).
+ */
+function ShortMark() {
+  const reading = statusReading("criterion", "short", useInterfaceLanguage()).label;
+  return (
+    <span className="inline-flex text-warn-11" role="img" aria-label={reading} title={reading} data-testid="proof-short-mark">
+      <HollowCheck />
+    </span>
+  );
+}
+
 export const STANDING_KEY = (s: ReleaseKnownIssue["standing"]) => `releases.page.known.${s}` as const;
 
 /** One criterion as a line under a row: a mark, its wording without its code, and in the Technical view its issue and number. */
-export function CheckLine({ text, mark, label }: { text: string; mark: string; label?: string | null }) {
+export function CheckLine({ text, mark, label }: { text: string; mark: ReactNode; label?: string | null }) {
   return (
     <li className="flex gap-2 text-12 text-muted">
       <span className="w-3 flex-none text-center">{mark}</span>
@@ -130,7 +145,7 @@ export function ChangeDetail({ page, change, checks, cut, reach }: { page: Relea
             {proven.map((p) => (
               <CheckLine
                 key={`p:${p.n ?? p.statement}`}
-                mark={p.short ? "≈" : "✓"}
+                mark={p.short ? <ShortMark /> : "✓"}
                 text={developer ? p.statement : withoutCriterionCode(p.statement)}
                 label={developer && p.n !== null ? `#${p.n}` : null}
               />

@@ -39,7 +39,7 @@ const SECTIONS = new Map(
 
 // A provider with no section is not a provider whose section is empty — it is one this screen has
 // nothing to configure for, and saying so beats rendering a blank pane under its name.
-function ProviderDetails({ provider, projectId }: { provider: string; projectId: string }) {
+export function ProviderDetails({ provider, projectId }: { provider: string; projectId: string }) {
   const section = SECTIONS.get(provider);
   const t = useCopy();
   if (!section) {

@@ -223,6 +223,42 @@ export function requireUserOrDevice(): MiddlewareHandler<{ Variables: AuthVars }
   });
 }
 
+/**
+ * requireAuth and assertEmailVerified for a browser an outside site sends back. Whoever they admit
+ * is admitted exactly as they would admit it; a caller they would refuse is handed to `land`,
+ * which redirects to a page that says why. A JSON 401 on the API's own origin is a page nobody
+ * reads, and the GitHub callbacks behind it strand an App GitHub has already made (FB-128).
+ */
+export function requireAuthOrLand(
+  land: (c: Context, why: 'no_session' | 'email_unverified') => Response | Promise<Response>,
+): MiddlewareHandler<{ Variables: AuthVars }> {
+  const auth = requireAuth();
+  const verified = assertEmailVerified();
+  return declareGate('requireAuthOrLand', async (c, next) => {
+    let admitted = false;
+    try {
+      await auth(c, async () => {
+        await verified(c, async () => {
+          admitted = true;
+          await next();
+        });
+      });
+    } catch (err) {
+      if (admitted || !(err instanceof HTTPException)) throw err;
+      if (err.status === 401) return land(c, 'no_session');
+      if (err.status === 403 && causeCode(err) === 'EMAIL_NOT_VERIFIED') {
+        return land(c, 'email_unverified');
+      }
+      throw err;
+    }
+  });
+}
+
+function causeCode(err: HTTPException): string | null {
+  const cause = err.cause as { code?: unknown } | undefined;
+  return typeof cause?.code === 'string' ? cause.code : null;
+}
+
 /** The columns of the caller's `users` row that an auth gate decides on. */
 type AuthUserRow = { email: string; emailVerifiedAt: Date | null };
 

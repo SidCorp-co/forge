@@ -8,8 +8,8 @@
 // the operator comes looking for an app before a credential. What a row holds,
 // and what it deliberately does not: `connection-row.tsx`.
 
-import { Link } from "@/lib/navigation/router";
-import { useRef, useState } from "react";
+import { useRouter, useSearchParams } from "@/lib/navigation/router";
+import { useState } from "react";
 import {
   Button,
   EmptyState,
@@ -18,7 +18,6 @@ import {
   LoadingState,
   PageContainer,
   PageTitle,
-  Popover,
   ToolbarSelect,
   TopBarActions,
 } from "@/design";
@@ -31,7 +30,10 @@ import { useProjectsIncludingArchived } from "@/features/projects";
 import { useConnections } from "../hooks";
 import { matchesQuery } from "../connection-identity";
 import { groupConnectionsByApp } from "../connection-groups";
+import { AddConnectionDrawer } from "./add-connection-drawer";
+import { BindConnectionDrawer } from "./bind-connection-drawer";
 import { ConnectionEditDrawer } from "./connection-edit-drawer";
+import { GitHubStrandedBanner } from "./github-stranded-banner";
 import { ConnectionGroupList } from "./connection-group";
 import { providerLabel } from "../providers/registry";
 
@@ -41,45 +43,19 @@ const CLOSED_APPS_KEY = "web-v2:integrations-closed-apps";
 /** One identity for "nothing is shut under this filter", so reads do not re-allocate. */
 const EMPTY_APPS: string[] = [];
 
-/** Where a connection is made: the project it serves. The act names the project and goes there. */
+/**
+ * Where a connection is made: here, for every project it serves (FB-128). The drawer binds them in
+ * the same save; a project's own Integrations tab can still attach one, but is never the only way.
+ */
 function AddConnection({ projects }: { projects: Array<{ id: string; slug: string; name: string }> }) {
-  const anchorRef = useRef<HTMLSpanElement>(null);
   const [open, setOpen] = useState(false);
   const t = useCopy();
   return (
     <>
-      <span ref={anchorRef} className="inline-flex">
-        <Button variant="primary" size="sm" icon="plus" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-          {t("integrations.add")}
-        </Button>
-      </span>
-      <Popover
-        open={open}
-        anchor={anchorRef}
-        onDismiss={() => setOpen(false)}
-        placement="bottom-end"
-        takesFocus
-        maxHeight={360}
-        className="w-75 bg-surface p-3"
-      >
-        {projects.length === 0 ? (
-          <p className="fg-body-sm text-subtle">{t("integrations.addNoProject")}</p>
-        ) : (
-          <ul className="flex flex-col divide-y divide-line-subtle">
-            {projects.map((p) => (
-              <li key={p.id}>
-                <Link
-                  href={`/projects/${p.slug}/settings?tab=connections#integrations`}
-                  className="block py-2 text-13 font-semibold text-fg hover:text-accent-text"
-                  onClick={() => setOpen(false)}
-                >
-                  {p.name}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Popover>
+      <Button variant="primary" size="sm" icon="plus" aria-expanded={open} onClick={() => setOpen(true)}>
+        {t("integrations.add")}
+      </Button>
+      {open ? <AddConnectionDrawer open onClose={() => setOpen(false)} projects={projects} /> : null}
     </>
   );
 }
@@ -156,6 +132,11 @@ export function IntegrationsScreen() {
     .filter((p) => p.archivedAt === null && (!activeOrg || p.orgId === activeOrg.id))
     .sort((a, b) => a.name.localeCompare(b.name));
   const apps = useOpenApps(`${query}\u0000${provider}`, query.trim() !== "" || provider !== "");
+  // GitHub's return lands here: `?connect=<cause>` when it could not finish, `?bind=<id>` when it did
+  const params = useSearchParams();
+  const router = useRouter();
+  const bindId = params.get("bind");
+  const clearReturn = () => router.replace("/integrations");
 
   // The SELECTED ID, with the row re-derived from the live query data, so the open drawer reflects
   // every mutation (rename/health/active) without holding a stale snapshot.
@@ -168,6 +149,8 @@ export function IntegrationsScreen() {
       <TopBarActions>
         <AddConnection projects={spaceProjects} />
       </TopBarActions>
+
+      <GitHubStrandedBanner params={params} onDismiss={clearReturn} />
 
       {inScope.length > 1 ? (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -216,6 +199,7 @@ export function IntegrationsScreen() {
       )}
 
       {selected ? <ConnectionEditDrawer connection={selected} onClose={() => setSelectedId(null)} /> : null}
+      {bindId ? <BindConnectionDrawer connectionId={bindId} onClose={clearReturn} projects={spaceProjects} /> : null}
     </PageContainer>
   );
 }

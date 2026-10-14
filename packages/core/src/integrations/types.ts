@@ -525,8 +525,9 @@ export interface IntegrationAdapterMethods<
   }): Promise<Record<string, unknown>>;
   /**
    * Asks the provider, through the connection's own credential, whether the target a binding
-   * document names exists. Coolify is the only one: a typed application uuid is otherwise stored
-   * unverified and fails at the first deploy.
+   * document names exists or belongs to this project's source host: a typed Coolify application
+   * uuid is otherwise stored unverified and fails at the first deploy, and a GitHub or GitLab
+   * target off the project's host binds a repository the project does not build.
    */
   verifyBindingTarget?(args: VerifyBindingTargetArgs): Promise<BindingTargetRefusal[]>;
   healthcheck(ctx: AdapterContext<TConfig, TSecrets>): Promise<HealthCheckResult>;

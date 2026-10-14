@@ -1,10 +1,13 @@
 export { githubIntegration } from './adapter.js';
 export {
+  appSettingsUrl,
   buildAppManifest,
+  type ConnectState,
+  type ConvertedApp,
   convertManifestCode,
   manifestPostUrl,
+  readConnectState,
   signConnectState,
-  verifyConnectState,
 } from './connect.js';
 export { findConnectionOwningInstallation } from './install-resolve.js';
 export {

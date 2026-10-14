@@ -9,6 +9,7 @@ import {
   getAdapter,
   getIntegration,
   heldInboundSecret,
+  type IntegrationConnectionRow,
   mintInboundSecret,
   notifyConnectionChanged,
   runInitialHealthcheck,
@@ -26,13 +27,16 @@ interface BindEffects {
     label: string;
     agentAccess: AgentAccess;
   }): Promise<ApiRefusal[]>;
-  inboundSecret(connectionId: string): Promise<string>;
+  /** `pending` is the connection a create is storing in the same transaction, not readable yet. */
+  inboundSecret(connectionId: string, pending?: IntegrationConnectionRow | null): Promise<string>;
   targetRefusals(input: {
     projectId: string;
     connectionId: string;
     provider: string;
     config: Record<string, unknown>;
     held: Record<string, unknown> | null;
+    /** The connection itself, where it is not stored yet. */
+    connection?: IntegrationConnectionRow;
   }): Promise<ApiRefusal[]>;
   afterWrite(input: {
     bindingId: string;
@@ -77,15 +81,15 @@ export const bindEffects: BindEffects = {
     return out;
   },
 
-  async inboundSecret(connectionId) {
-    const connection = await findConnectionById(connectionId);
+  async inboundSecret(connectionId, pending) {
+    const connection = pending ?? (await findConnectionById(connectionId));
     return (connection && heldInboundSecret(connection)) ?? mintInboundSecret();
   },
 
-  async targetRefusals({ projectId, connectionId, provider, config, held }) {
+  async targetRefusals({ projectId, connectionId, provider, config, held, ...given }) {
     const verify = getAdapter(provider)?.verifyBindingTarget;
     if (!verify) return [];
-    const connection = await findConnectionById(connectionId);
+    const connection = given.connection ?? (await findConnectionById(connectionId));
     if (!connection) return [];
     const refused = await verify({ projectId, connection, config, held });
     return refused.map((r) => ({ ...r, path: `/target${r.path}` }));

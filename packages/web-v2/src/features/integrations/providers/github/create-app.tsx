@@ -48,13 +48,29 @@ function AppOwner({ projectId }: { projectId: string }) {
   );
 }
 
-export function CreateApp({ projectId, onBack }: { projectId: string; onBack: (() => void) | null }) {
+/**
+ * Start the manifest flow for `projectId`, whose name the App takes and whose org owns it. Begun
+ * from the workspace Integrations page (`returnTo`), the install step lands back there, where the
+ * new App is bound into its projects.
+ */
+export function CreateApp({
+  projectId,
+  onBack,
+  returnTo,
+}: {
+  projectId: string;
+  onBack: (() => void) | null;
+  returnTo?: "integrations";
+}) {
   const connect = useGitHubConnect(projectId);
   const [org, setOrg] = useState("");
   const t = useCopy();
 
   const start = async () => {
-    const res = await connect.mutateAsync({ org: org.trim() || undefined });
+    const res = await connect.mutateAsync({
+      ...(org.trim() ? { org: org.trim() } : {}),
+      ...(returnTo ? { returnTo } : {}),
+    });
     submitManifest(res);
   };
 
@@ -103,3 +119,18 @@ export function CreateApp({ projectId, onBack }: { projectId: string; onBack: ((
   );
 }
 
+
+/**
+ * GitHub's step on the workspace Integrations page (FB-128): the App takes the first ticked project's
+ * name, and its install step lands back there, where each project picks its repository.
+ */
+export function WorkspaceCreateApp({ projectId }: { projectId: string }) {
+  const project = useProjects().data?.find((p) => p.id === projectId);
+  const t = useCopy();
+  return (
+    <div className="flex flex-col gap-3">
+      {project && <p className="fg-body-sm text-muted">{t("integrations.addFlow.githubNamed", { project: project.name })}</p>}
+      <CreateApp projectId={projectId} onBack={null} returnTo="integrations" />
+    </div>
+  );
+}
