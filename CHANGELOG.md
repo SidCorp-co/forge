@@ -3178,7 +3178,7 @@
 
 ### Fixed
 
-- **A notification names its issue and opens it.** A sweep over several issues is one inbox row expanding to them, each opening its own. A resolved row is no longer unread; the inbox filters by type and unread first. (ISS-1168)
+- **A notification names its subject and opens it.** A runner, session, step, schedule or project in the title; a sweep is one row expanding to its issues. A resolved row is no longer unread; filter by type and unread. (ISS-1168)
 
 - **A session's message count no longer reads 0 for work it never recorded.** Master and run sessions keep no transcript here, so they show no count; every other session shows its real length, the same in list and detail. (ISS-1241)
 

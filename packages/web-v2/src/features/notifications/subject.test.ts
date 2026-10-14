@@ -22,8 +22,9 @@ describe("subjectHref", () => {
     );
   });
 
-  it("opens nothing where no project is named", () => {
-    expect(subjectHref({ type: "ops_alert", projectSlug: null, issueId: ISSUE })).toBeNull();
+  it("opens the ops page for a platform alert, and nothing for a project-less other", () => {
+    expect(subjectHref({ type: "ops_alert", projectSlug: null, issueId: null })).toBe("/ops");
+    expect(subjectHref({ type: "pipeline_wedge", projectSlug: null, issueId: ISSUE })).toBeNull();
   });
 });
 

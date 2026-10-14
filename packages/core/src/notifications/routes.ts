@@ -468,6 +468,7 @@ export async function createNotification(input: {
   title: string;
   body?: string | null;
   issueId?: string | null;
+  subject?: string | null;
   secondaryIssueId?: string | null;
   agentSessionId?: string | null;
   severity?: string | null;

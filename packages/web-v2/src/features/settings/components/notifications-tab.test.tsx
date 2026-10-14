@@ -360,13 +360,14 @@ describe("a row names what it is about and opens it", () => {
     expect(screen.getByText("Invoicing · Stranded issues")).toBeInTheDocument();
   });
 
-  it("opens its project where it names no issue, and is plain text where it names no project", async () => {
+  it("opens its project where it names no issue, the ops page for a platform alert, and plain text for a project-less other", async () => {
     server.ask = async () => ({
       items: [
         row(1, { type: "pipeline_wedge", title: "A runner can no longer authenticate", projectSlug: "invoicing" }),
         row(2, { type: "ops_alert", title: "Disk is nearly full" }),
+        row(3, { type: "pipeline_wedge", title: "A step is held" }),
       ],
-      totalCount: 2,
+      totalCount: 3,
     });
     open();
     await loaded();
@@ -374,8 +375,9 @@ describe("a row names what it is about and opens it", () => {
       "href",
       "/projects/invoicing",
     );
-    expect(screen.queryByRole("link", { name: "Disk is nearly full" })).toBeNull();
-    expect(screen.getByText("Disk is nearly full")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Disk is nearly full" })).toHaveAttribute("href", "/ops");
+    expect(screen.queryByRole("link", { name: "A step is held" })).toBeNull();
+    expect(screen.getByText("A step is held")).toBeInTheDocument();
   });
 
   it("reads a row read when it is opened", async () => {

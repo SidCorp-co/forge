@@ -27,6 +27,8 @@ export interface EmitNotificationInput {
   title: string;
   body?: string | null;
   issueId?: string | null;
+  /** What it is about when that is neither an issue nor its project: a runner, a session. */
+  subject?: string | null;
   agentSessionId?: string | null;
   /** Overrides the contract default severity for this single event. */
   severity?: string | null;

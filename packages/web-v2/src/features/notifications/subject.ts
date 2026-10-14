@@ -4,9 +4,9 @@ interface Subject {
   issueId: string | null;
 }
 
-/** The page a notification is about, or null where it names no project to open. */
+/** The page a notification is about; a platform alert opens the ops page, and none else names nowhere. */
 export function subjectHref({ type, projectSlug, issueId }: Subject): string | null {
-  if (!projectSlug) return null;
+  if (!projectSlug) return type === "ops_alert" ? "/ops" : null;
   if (type === "reconcile_gate_pending") return `/projects/${projectSlug}/library?tab=updates`;
   if (issueId) return `/projects/${projectSlug}/issues/${issueId}`;
   return `/projects/${projectSlug}`;
