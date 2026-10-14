@@ -3182,6 +3182,8 @@
 
 ### Fixed
 
+- **A refused or unknown public docs address looks like Forge documentation.** A plain request for one still answers 404 naming what was asked for, now under the documentation's header and name with the three doors to go back to. (ISS-1293)
+
 - **Each numbered step on the four connect-an-assistant setup pages asks for one action, with a Check of its own.** The scopes step says read is already ticked and asks for write, as the form shows it. (ISS-1289)
 
 - **A notification names its subject and opens it.** A runner, session, step, schedule or project in the title; a sweep is one row expanding to its issues. A resolved row is no longer unread; filter by type and unread. (ISS-1168)
