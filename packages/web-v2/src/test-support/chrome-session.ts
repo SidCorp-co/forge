@@ -50,6 +50,8 @@ export interface Tab {
   waitFor(expression: string, waitMs: number, what: string): Promise<void>;
   tap(x: number, y: number): Promise<void>;
   pressTab(): Promise<void>;
+  /** A real key press, as the browser handles it (so its own scrolling runs): `End`, with `ctrl` for Ctrl+End. */
+  press(key: string, modifiers?: { ctrl?: boolean }): Promise<void>;
   /** The name the accessibility tree gives the first element `selector` matches: what a screen reader says. */
   accessibleName(selector: string): Promise<string>;
 }
@@ -196,6 +198,12 @@ export async function launchChrome({ chrome = chromeBinary(), launchMs = WARM_LA
               const key = { key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 };
               await tab("Input.dispatchKeyEvent", { type: "rawKeyDown", ...key });
               await tab("Input.dispatchKeyEvent", { type: "keyUp", ...key });
+            },
+            async press(key, modifiers = {}) {
+              const codes: Record<string, number> = { End: 35, Home: 36, PageDown: 34, PageUp: 33 };
+              const down = { key, code: key, windowsVirtualKeyCode: codes[key] ?? 0, modifiers: modifiers.ctrl ? 2 : 0 };
+              await tab("Input.dispatchKeyEvent", { type: "rawKeyDown", ...down });
+              await tab("Input.dispatchKeyEvent", { type: "keyUp", ...down });
             },
             async accessibleName(selector) {
               const { root } = (await tab("DOM.getDocument", {})) as { root: { nodeId: number } };
