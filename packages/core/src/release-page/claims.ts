@@ -1,7 +1,7 @@
 // What a release page may claim, under its one truth rule (REQ-40 BC-13): every criterion the
 // release carries, read at the build the page describes by the rule a requirement's coverage counts
-// by (`requirements:unverifiedWhy`, REQ-35 decision 7b261fca): the verdict it stands on is the
-// judge's (`requirements:judgesVerdict`), and only a pass that rule counts as verified proves it, so
+// by (contracts `verified-rule.ts:verifiedOf`, REQ-35 decision 7b261fca), as the release record counts them: the
+// verdict it stands on is the judge's, and only a pass that rule counts as verified proves it, so
 // a short, or under an independent judge the builder's own pass, is never listed or counted as
 // proven. A claimed criterion proves its requirement criterion live (BC-5) and lends its kept clip or
 // picture to a highlight (BC-3); every other one is a known issue as its verdict on the build reads
@@ -20,7 +20,7 @@ import {
   releaseClaimOf,
   releaseMediaKindOf,
 } from '@forge/contracts/release-page';
-import { judgesVerdict, unverifiedWhy } from '../requirements/index.js';
+import { verifiedOf } from '@forge/contracts/verified-rule';
 
 export interface CarriedVerdict extends ReleaseVerdictReading {
   id: string;
@@ -57,7 +57,7 @@ export interface ClaimReading {
   claim: ReleaseClaim;
   /**
    * Whether it counts as proven on the build: the verdict it stands on there is a pass the verified
-   * rule counts (`requirements:unverifiedWhy`); on a draft, which has no build, its newest verdict.
+   * rule counts (contracts `verified-rule.ts:verifiedOf`); on a draft, which has no build, its newest verdict.
    */
   proven: boolean;
   /** Where its verdict on the build is a pass the verified rule does not count, why; else null. */
@@ -80,13 +80,9 @@ export function readClaims(
   judge: PolicyQaMode | null,
 ): ClaimReading[] {
   return criteria.map((criterion) => {
-    const stands = judgesVerdict(readAt(criterion.verdicts, build), judge) ?? null;
-    const why = stands ? unverifiedWhy(stands, judge) : null;
-    const proven =
-      stands !== null &&
-      stands.identityKind !== 'commit_unresolved' &&
-      stands.verdict === 'pass' &&
-      why === null;
+    const read = verifiedOf(readAt(criterion.verdicts, build), judge);
+    const { stands, why } = read;
+    const proven = read.proven && stands?.identityKind !== 'commit_unresolved';
     const onBuild = build === null ? null : stands;
     let claim: ReleaseClaim;
     if (build === null || onBuild === null) claim = releaseClaimOf(criterion.verdicts, build);

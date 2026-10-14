@@ -43,6 +43,7 @@ function facts(n: number): ReleaseFacts {
       releaseNotes: null,
       requirementId: null,
       criteria: [],
+      verdicts: new Map(),
       reopenedAt: null,
       closedAt: [],
       merged: {
@@ -54,7 +55,7 @@ function facts(n: number): ReleaseFacts {
       },
     });
   }
-  return { issues, requirements: new Map(), cutters: new Map() };
+  return { issues, requirements: new Map(), cutters: new Map(), judge: null };
 }
 
 const gate = (code: string): ReleaseGateView => ({
@@ -168,12 +169,30 @@ describe('what a release says it verified', () => {
     reason: null,
     judgedAt: null,
     judgedBy: null,
+    proven: false,
+    unverified: null,
+  });
+  // a verdict the release counts by (`criteriaAt`), recorded by someone other than the builder
+  const verdict = (v: 'pass' | 'fail') => ({
+    id: `v-${v}`,
+    criterionId: 'c1',
+    verdict: v,
+    identityKind: 'commit',
+    commitSha: 'a'.repeat(40),
+    at: new Date(T0).toISOString(),
+    reason: null,
+    evidence: [],
+    agency: 'agent' as const,
+    byBuilder: false,
+    authored: true,
   });
   const withCriteria = (standings: ('pass' | 'fail' | 'unjudged')[]): Shared => {
     const s = shared(standings.length);
     standings.forEach((standing, k) => {
       const fact = s.facts.issues.get(`i${k + 1}`);
-      if (fact) fact.criteria = [criterion(standing)];
+      if (!fact) return;
+      fact.criteria = [criterion(standing)];
+      fact.verdicts = new Map(standing === 'unjudged' ? [] : [[1, [verdict(standing)]]]);
     });
     return s;
   };

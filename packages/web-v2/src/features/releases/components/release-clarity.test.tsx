@@ -33,7 +33,7 @@ describe("a release that has to be split", () => {
 
 describe("a release's rail", () => {
   it("holds the approval and the forecast itself, hidden at no width and copied nowhere", () => {
-    const { container } = render(<facts.ReleaseProperties r={{ ...release, issues: [], criteria: { total: 0, proven: 0, failing: 0, open: 0 }, cutCount: 0 } as never} forecast={scope} besideReader />);
+    const { container } = render(<facts.ReleaseProperties r={{ ...release, issues: [], criteria: { total: 0, proven: 0, failing: 0, open: 0, unproven: 0 }, cutCount: 0 } as never} forecast={scope} besideReader />);
     expect(screen.getByTestId("facts-approval")).toBeInTheDocument();
     expect(within(screen.getByTestId("facts-run")).getByTestId("facts-release-forecast")).toBeInTheDocument();
     expect(container.innerHTML).not.toMatch(/max-(sm|md|lg):hidden/);

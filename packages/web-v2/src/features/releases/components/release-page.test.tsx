@@ -151,7 +151,7 @@ describe("the header, the Proof panel and the list say one count (BC-5)", () => 
   it("reads the same proven and total in the header, the panel and the rows of the list", async () => {
     fakeCore((c) => {
       if (c.path === "/projects/p1/releases/0.4.0")
-        return { body: { release: { ...DETAIL, verified, criteria: { proven: 4, failing: 1, open: 1, total: 6 } } } };
+        return { body: { release: { ...DETAIL, verified, criteria: { proven: 4, failing: 1, open: 1, unproven: 0, total: 6 } } } };
       if (c.path === "/projects/p1/releases") return { body: { releases: [] } };
       if (c.path === "/projects/p1/releases/0.4.0/page?view=user") return { body: page };
       return { body: {} };

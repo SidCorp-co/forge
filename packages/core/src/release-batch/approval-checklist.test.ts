@@ -20,7 +20,7 @@ const judge = (f: ApprovalFacts, reason?: string) =>
 
 describe('the release approval checklist, read from what the release carries', () => {
   it('is complete when every carried criterion passes and the approver says why', () => {
-    const e = judge({ carried, unpassed: [], verdictsRequired: true }, 'beta serves it cleanly');
+    const e = judge({ carried, unproven: [], verdictsRequired: true }, 'beta serves it cleanly');
     expect(e.complete).toBe(true);
     expect(e.answers.find((a) => a.question === 'carried')?.value).toBe(
       'REQ-2 at revision 3; ISS-5 serves no requirement.',
@@ -30,7 +30,7 @@ describe('the release approval checklist, read from what the release carries', (
   it('names each criterion that is not a pass, and an approval with no reason', () => {
     const e = judge({
       carried,
-      unpassed: [{ issue: 'ISS-4', n: 2, standing: 'fail' }],
+      unproven: [{ issue: 'ISS-4', n: 2, standing: 'fail' }],
       verdictsRequired: true,
     });
     const by = Object.fromEntries(checklistRefusals(e).map((r) => [r.question, r.detail]));
@@ -42,7 +42,7 @@ describe('the release approval checklist, read from what the release carries', (
     const e = judge(
       {
         carried,
-        unpassed: [{ issue: 'ISS-4', n: 2, standing: 'not judged' }],
+        unproven: [{ issue: 'ISS-4', n: 2, standing: 'not judged' }],
         verdictsRequired: false,
       },
       'judged live after release',
@@ -51,7 +51,7 @@ describe('the release approval checklist, read from what the release carries', (
   });
 
   it('refuses a release that carries no issue', () => {
-    const e = judge({ carried: [], unpassed: [], verdictsRequired: true }, 'x');
+    const e = judge({ carried: [], unproven: [], verdictsRequired: true }, 'x');
     expect(checklistRefusals(e).map((r) => r.question)).toEqual(['carried']);
   });
 });

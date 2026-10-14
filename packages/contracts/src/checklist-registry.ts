@@ -22,18 +22,28 @@ export const ISSUE_READY_CHECKLIST = defineChecklist({
 	questions: [
 		{
 			id: "requirement",
-			prompt: "Which agreed requirement does this issue deliver, and at which revision?",
+			prompt:
+				"Which agreed requirement does this issue deliver, and at which revision?",
 			fix: "Link the issue to the agreed or accepted requirement it delivers, then write its plan: saving the plan records the revision of that requirement it is written against.",
 			answer: { kind: "text", maxLength: 200 },
-			answeredBy: { by: "record", field: "requirementId", label: "linked requirement and its plan" },
+			answeredBy: {
+				by: "record",
+				field: "requirementId",
+				label: "linked requirement and its plan",
+			},
 			need: { blocking: true },
 		},
 		{
 			id: "criteria",
-			prompt: "What are its criteria, each traced to a business criterion of that revision?",
+			prompt:
+				"What are its criteria, each traced to a business criterion of that revision?",
 			fix: "Write the issue's numbered acceptance criteria and trace each one to a business criterion (BC) of the requirement revision its plan is written against.",
 			answer: { kind: "text", maxLength: 2000 },
-			answeredBy: { by: "record", field: "acceptanceCriteria", label: "acceptance criteria" },
+			answeredBy: {
+				by: "record",
+				field: "acceptanceCriteria",
+				label: "acceptance criteria",
+			},
 			need: { blocking: true },
 		},
 		{
@@ -41,12 +51,17 @@ export const ISSUE_READY_CHECKLIST = defineChecklist({
 			prompt: "Which design revision does it build, or none?",
 			fix: "Name the workflow design the issue builds, or leave it building none.",
 			answer: { kind: "text", maxLength: 200 },
-			answeredBy: { by: "record", field: "buildsWorkflow", label: "workflow design" },
+			answeredBy: {
+				by: "record",
+				field: "buildsWorkflow",
+				label: "workflow design",
+			},
 			need: { blocking: true },
 		},
 		{
 			id: "hotfix",
-			prompt: "Is it a hotfix for a production failure? If so, which FB-n or Sentry issue does it fix, and which criterion does it restore, or which requirement revision will add one?",
+			prompt:
+				"Is it a hotfix for a production failure? If so, which FB-n or Sentry issue does it fix, and which criterion does it restore, or which requirement revision will add one?",
 			fix: "If it is a hotfix, answer it. If not, leave it unanswered and the assumed answer is taken.",
 			answer: { kind: "text", maxLength: 500 },
 			answeredBy: { by: "mover" },
@@ -62,8 +77,10 @@ export const ISSUE_READY_CHECKLIST = defineChecklist({
 	],
 });
 
-const options = <V extends string>(values: readonly V[], labels: Record<V, string>) =>
-	values.map((value) => ({ value, label: labels[value] }));
+const options = <V extends string>(
+	values: readonly V[],
+	labels: Record<V, string>,
+) => values.map((value) => ({ value, label: labels[value] }));
 
 /** The answer a triage gives to "Which business criterion does it violate, or none?" when it names none. */
 export const NO_CRITERION = "none";
@@ -84,9 +101,13 @@ export const FEEDBACK_TRIAGE_CHECKLIST = defineChecklist({
 	questions: [
 		{
 			id: "kind",
-			prompt: "Is it a bug, a change request, a question, an idea or a contract change?",
+			prompt:
+				"Is it a bug, a change request, a question, an idea or a contract change?",
 			fix: "Correct what it is with the triage.",
-			answer: { kind: "choice", options: options(FEEDBACK_KINDS, FEEDBACK_KIND_LABELS) },
+			answer: {
+				kind: "choice",
+				options: options(FEEDBACK_KINDS, FEEDBACK_KIND_LABELS),
+			},
 			answeredBy: { by: "record", field: "kind", label: "reported type" },
 			need: { blocking: true },
 		},
@@ -95,7 +116,11 @@ export const FEEDBACK_TRIAGE_CHECKLIST = defineChecklist({
 			prompt: "Which requirement is it about, or none?",
 			fix: "Retarget the item to the requirement it is about, or name the criterion it violates.",
 			answer: { kind: "text", maxLength: 200 },
-			answeredBy: { by: "record", field: "requirementId", label: "target or violated criterion" },
+			answeredBy: {
+				by: "record",
+				field: "requirementId",
+				label: "target or violated criterion",
+			},
 			need: { blocking: true },
 		},
 		{
@@ -110,7 +135,10 @@ export const FEEDBACK_TRIAGE_CHECKLIST = defineChecklist({
 			id: "severity",
 			prompt: "How severe is it?",
 			fix: "Pick low, medium, high or critical.",
-			answer: { kind: "choice", options: options(FEEDBACK_SEVERITIES, FEEDBACK_SEVERITY_LABELS) },
+			answer: {
+				kind: "choice",
+				options: options(FEEDBACK_SEVERITIES, FEEDBACK_SEVERITY_LABELS),
+			},
 			answeredBy: { by: "mover" },
 			need: { blocking: true },
 		},
@@ -126,7 +154,10 @@ export const FEEDBACK_TRIAGE_CHECKLIST = defineChecklist({
 			id: "route",
 			prompt: "Which route does it take?",
 			fix: "Pick issue, revision, new requirement, answer or duplicate.",
-			answer: { kind: "choice", options: options(FEEDBACK_ROUTES, FEEDBACK_ROUTE_LABELS) },
+			answer: {
+				kind: "choice",
+				options: options(FEEDBACK_ROUTES, FEEDBACK_ROUTE_LABELS),
+			},
 			answeredBy: { by: "mover" },
 			need: { blocking: true },
 		},
@@ -165,7 +196,11 @@ export const REQUIREMENT_READY_CHECKLIST = defineChecklist({
 			prompt: "Who is it for?",
 			fix: "Name at least one persona it is for.",
 			answer: text(2000),
-			answeredBy: { by: "record", field: "revision.spec.personas", label: "personas" },
+			answeredBy: {
+				by: "record",
+				field: "revision.spec.personas",
+				label: "personas",
+			},
 			need: required,
 		},
 		{
@@ -189,7 +224,11 @@ export const REQUIREMENT_READY_CHECKLIST = defineChecklist({
 			prompt: "Which checkable business criteria does it hold?",
 			fix: "Write at least one business criterion on its head revision.",
 			answer: text(2000),
-			answeredBy: { by: "record", field: "revision.criteria", label: "business criteria" },
+			answeredBy: {
+				by: "record",
+				field: "revision.criteria",
+				label: "business criteria",
+			},
 			need: required,
 		},
 		{
@@ -197,7 +236,11 @@ export const REQUIREMENT_READY_CHECKLIST = defineChecklist({
 			prompt: "Is a blocking question still open?",
 			fix: "Answer each blocking question, or mark it not blocking.",
 			answer: text(2000),
-			answeredBy: { by: "record", field: "revision.spec.openQuestions", label: "open questions" },
+			answeredBy: {
+				by: "record",
+				field: "revision.spec.openQuestions",
+				label: "open questions",
+			},
 			need: required,
 		},
 		{
@@ -205,7 +248,11 @@ export const REQUIREMENT_READY_CHECKLIST = defineChecklist({
 			prompt: "Which workflows does it touch?",
 			fix: "Link each workflow design it changes or serves.",
 			answer: text(2000),
-			answeredBy: { by: "record", field: "requirement.workflows", label: "linked workflow designs" },
+			answeredBy: {
+				by: "record",
+				field: "requirement.workflows",
+				label: "linked workflow designs",
+			},
 			need: required,
 		},
 		{
@@ -213,7 +260,11 @@ export const REQUIREMENT_READY_CHECKLIST = defineChecklist({
 			prompt: "What is out of scope?",
 			fix: "List what it leaves out, or leave it unanswered.",
 			answer: text(2000),
-			answeredBy: { by: "record", field: "revision.spec.scopeOut", label: "out of scope" },
+			answeredBy: {
+				by: "record",
+				field: "revision.spec.scopeOut",
+				label: "out of scope",
+			},
 			need: { blocking: false, recommended: "Nothing stated." },
 		},
 		{
@@ -232,7 +283,11 @@ export const REQUIREMENT_ACCEPTANCE_CHECKLIST = defineChecklist({
 	id: "requirement_acceptance",
 	title: "Acceptance",
 	gates: { machine: "requirement", from: ["agreed"], to: "accepted" },
-	design: { flow: "requirement-lifecycle", revision: 15, step: "acceptance_check" },
+	design: {
+		flow: "requirement-lifecycle",
+		revision: 15,
+		step: "acceptance_check",
+	},
 	shapes: ["57f88d2f"],
 	questions: [
 		{
@@ -240,7 +295,11 @@ export const REQUIREMENT_ACCEPTANCE_CHECKLIST = defineChecklist({
 			prompt: "Has a release shipped every live issue?",
 			fix: "Wait for a release to ship each one, or drop those not being built.",
 			answer: text(2000),
-			answeredBy: { by: "record", field: "requirement.issues", label: "linked issues" },
+			answeredBy: {
+				by: "record",
+				field: "requirement.issues",
+				label: "linked issues",
+			},
 			need: required,
 		},
 		{
@@ -248,7 +307,11 @@ export const REQUIREMENT_ACCEPTANCE_CHECKLIST = defineChecklist({
 			prompt: "Does every current criterion pass on the running build?",
 			fix: "Have each one judged on the running build; a fail is filed as feedback.",
 			answer: text(2000),
-			answeredBy: { by: "record", field: "requirement.coverage", label: "verdicts on the running build" },
+			answeredBy: {
+				by: "record",
+				field: "requirement.coverage",
+				label: "verdicts on the running build",
+			},
 			need: required,
 		},
 		{
@@ -256,7 +319,11 @@ export const REQUIREMENT_ACCEPTANCE_CHECKLIST = defineChecklist({
 			prompt: "Does each counted verdict cite its evidence?",
 			fix: "Judge each one again, citing what the verdict was taken from.",
 			answer: text(2000),
-			answeredBy: { by: "record", field: "requirement.evidence", label: "verdict evidence" },
+			answeredBy: {
+				by: "record",
+				field: "requirement.evidence",
+				label: "verdict evidence",
+			},
 			need: required,
 		},
 	],
@@ -278,10 +345,17 @@ export const WORKFLOW_APPROVAL_CHECKLIST = defineChecklist({
 				kind: "choice",
 				options: [
 					{ value: "flow", label: "A flow: steps an item passes through" },
-					{ value: "structure", label: "A structure: parts and how they connect" },
+					{
+						value: "structure",
+						label: "A structure: parts and how they connect",
+					},
 				],
 			},
-			answeredBy: { by: "record", field: "design.template", label: "diagram template" },
+			answeredBy: {
+				by: "record",
+				field: "design.template",
+				label: "diagram template",
+			},
 			need: required,
 		},
 		{
@@ -289,7 +363,11 @@ export const WORKFLOW_APPROVAL_CHECKLIST = defineChecklist({
 			prompt: "Which business criteria does each step serve?",
 			fix: "Trace the business criteria its steps serve, on the requirements linking it.",
 			answer: text(2000),
-			answeredBy: { by: "record", field: "design.traces", label: "criteria traced to its steps" },
+			answeredBy: {
+				by: "record",
+				field: "design.traces",
+				label: "criteria traced to its steps",
+			},
 			need: required,
 		},
 		{
@@ -297,7 +375,11 @@ export const WORKFLOW_APPROVAL_CHECKLIST = defineChecklist({
 			prompt: "Who owns each step, and who does it wait on?",
 			fix: "Name an owner, lane or persona on its steps.",
 			answer: text(2000),
-			answeredBy: { by: "record", field: "design.owners", label: "step owners and lanes" },
+			answeredBy: {
+				by: "record",
+				field: "design.owners",
+				label: "step owners and lanes",
+			},
 			need: required,
 		},
 		{
@@ -305,7 +387,11 @@ export const WORKFLOW_APPROVAL_CHECKLIST = defineChecklist({
 			prompt: "Is each refusal, return and failure drawn?",
 			fix: "Draw each refusal, return and failure as a condition, test or failure edge.",
 			answer: text(2000),
-			answeredBy: { by: "record", field: "design.exceptions", label: "conditions, tests and failure edges" },
+			answeredBy: {
+				by: "record",
+				field: "design.exceptions",
+				label: "conditions, tests and failure edges",
+			},
 			need: required,
 			when: { question: "shape", isOneOf: ["flow"] },
 		},
@@ -314,7 +400,11 @@ export const WORKFLOW_APPROVAL_CHECKLIST = defineChecklist({
 			prompt: "What changed from the last approved revision?",
 			fix: "Propose the revision again so its change can be computed.",
 			answer: text(2000),
-			answeredBy: { by: "record", field: "design.changes", label: "computed change" },
+			answeredBy: {
+				by: "record",
+				field: "design.changes",
+				label: "computed change",
+			},
 			need: required,
 		},
 	],
@@ -325,7 +415,11 @@ export const BREAKDOWN_CHECKLIST = defineChecklist({
 	id: "breakdown",
 	title: "Breakdown",
 	gates: { machine: "suggestion", from: ["proposed"], to: "accepted" },
-	design: { flow: "requirement-lifecycle", revision: 15, step: "breakdown_check" },
+	design: {
+		flow: "requirement-lifecycle",
+		revision: 15,
+		step: "breakdown_check",
+	},
 	shapes: ["2fe61f83"],
 	questions: [
 		{
@@ -335,7 +429,10 @@ export const BREAKDOWN_CHECKLIST = defineChecklist({
 			answer: {
 				kind: "choice",
 				options: [
-					{ value: "breakdown", label: "A breakdown of a requirement into issues" },
+					{
+						value: "breakdown",
+						label: "A breakdown of a requirement into issues",
+					},
 					{ value: "other", label: "Another kind of suggestion" },
 				],
 			},
@@ -347,16 +444,25 @@ export const BREAKDOWN_CHECKLIST = defineChecklist({
 			prompt: "Does each issue hold criteria traced to a business criterion?",
 			fix: "Give each issue criteria, each tracing a current business criterion.",
 			answer: text(2000),
-			answeredBy: { by: "record", field: "payload.issues.criteria", label: "issue criteria" },
+			answeredBy: {
+				by: "record",
+				field: "payload.issues.criteria",
+				label: "issue criteria",
+			},
 			need: required,
 			when: { question: "kind", isOneOf: ["breakdown"] },
 		},
 		{
 			id: "coverage",
-			prompt: "Is every current business criterion traced, or listed uncovered?",
+			prompt:
+				"Is every current business criterion traced, or listed uncovered?",
 			fix: "Trace each one from an issue, or list it uncovered with a reason.",
 			answer: text(2000),
-			answeredBy: { by: "record", field: "payload.uncovered", label: "traces and uncovered list" },
+			answeredBy: {
+				by: "record",
+				field: "payload.uncovered",
+				label: "traces and uncovered list",
+			},
 			need: required,
 			when: { question: "kind", isOneOf: ["breakdown"] },
 		},
@@ -365,7 +471,11 @@ export const BREAKDOWN_CHECKLIST = defineChecklist({
 			prompt: "Does each issue state its complexity?",
 			fix: "Give each issue a complexity.",
 			answer: text(2000),
-			answeredBy: { by: "record", field: "payload.issues.complexity", label: "complexity" },
+			answeredBy: {
+				by: "record",
+				field: "payload.issues.complexity",
+				label: "complexity",
+			},
 			need: required,
 			when: { question: "kind", isOneOf: ["breakdown"] },
 		},
@@ -383,23 +493,35 @@ export const RELEASE_APPROVAL_CHECKLIST = defineChecklist({
 	id: "release_approval",
 	title: "Release approval",
 	gates: { machine: "release_approval", from: ["pending"], to: "approved" },
-	design: { flow: "requirement-lifecycle", revision: 15, step: "release_check" },
-	shapes: ["48b305a2"],
+	design: {
+		flow: "requirement-lifecycle",
+		revision: 15,
+		step: "release_check",
+	},
+	shapes: ["48b305a2", "0e81fd2f"],
 	questions: [
 		{
 			id: "carried",
 			prompt: "Which requirements does it carry, each at which revision?",
 			fix: "Cut the release again from issues that landed.",
 			answer: text(2000),
-			answeredBy: { by: "record", field: "release.requirements", label: "requirements carried" },
+			answeredBy: {
+				by: "record",
+				field: "release.requirements",
+				label: "requirements carried",
+			},
 			need: required,
 		},
 		{
 			id: "verdicts",
-			prompt: "Is every carried criterion's latest verdict a pass?",
-			fix: "Have each one judged on the commit it ships; a fail is filed as feedback.",
+			prompt: "Is every carried criterion proven on the commit it ships?",
+			fix: "Have each judged a pass on the commit it ships, by the project's judge; a fail is filed as feedback.",
 			answer: text(2000),
-			answeredBy: { by: "record", field: "release.verdicts", label: "latest verdicts" },
+			answeredBy: {
+				by: "record",
+				field: "release.verdicts",
+				label: "proven criteria",
+			},
 			need: required,
 		},
 		{
@@ -432,6 +554,10 @@ export function isChecklistId(id: string): id is ChecklistId {
 export function checklistsOn(machine: {
 	readonly edges: readonly { readonly checklist?: string }[];
 }): (typeof CHECKLISTS)[ChecklistId][] {
-	const ids = [...new Set(machine.edges.flatMap((e) => (e.checklist ? [e.checklist] : [])))];
+	const ids = [
+		...new Set(
+			machine.edges.flatMap((e) => (e.checklist ? [e.checklist] : [])),
+		),
+	];
 	return ids.filter(isChecklistId).map((id) => CHECKLISTS[id]);
 }

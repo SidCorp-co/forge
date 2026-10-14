@@ -140,7 +140,7 @@ const page = async (who: keyof typeof tokens, view = 'user', version = '0.1.0') 
 
 describe('the page counts what it proves once (BC-5)', () => {
   // QA 0.4.0-dev.218: "9 of 26 criteria proven" in the header beside 6 rows under the requirement.
-  // The header and the list read one rule, the one a requirement counts by (`requirements:unverifiedWhy`,
+  // The header and the list read one rule, the one a requirement counts by (contracts `verified-rule.ts:unverifiedWhy`,
   // the owner's ruling of 2026-10-14): a short is met short of its wording and is never proven
   it('reads the header and the requirements list by the requirement rule, a short not proven', async () => {
     const w = await releaseWorldOfFour();

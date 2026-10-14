@@ -41,7 +41,6 @@ export { roomSettleWriter } from './room-settle.js';
 export { linkIssueRefusal } from './rules.js';
 export { actOnStaleDraftAnswer, registerStaleDraftAct } from './stale-draft-act.js';
 export { sweepStaleDrafts } from './stale-drafts.js';
-export { type JudgedVerdict, judgesVerdict, unverifiedWhy } from './standing-coverage.js';
 export {
   criterionVerdictOf,
   deliveredAmong,

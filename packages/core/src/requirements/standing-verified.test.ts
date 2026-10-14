@@ -1,7 +1,7 @@
 // What counts as verified on a requirement's coverage (REQ-35 decision 7b261fca): BC-9 read passing
 // on the ISS-463 builder's own verdicts alone, one short and one pass, though the project runs
 // independent QA. Only a pass from someone other than the builder counts as verified now; a short
-// never does (`standing-coverage.ts:unverifiedWhy`).
+// never does (contracts `verified-rule.ts:unverifiedWhy`).
 import type { PolicyQaMode } from '@forge/contracts/project-config';
 import { describe, expect, it } from 'vitest';
 import { deliveryAt, type StandingIssueCriterion } from './standing.js';

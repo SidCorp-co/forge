@@ -119,6 +119,7 @@ export function ReleaseProperties({ r, forecast, besideReader = false }: { r: Re
                   segments={[
                     { key: "proven", label: label("releaseProof", "proven"), count: c.proven, tone: "ready" },
                     { key: "failing", label: label("releaseProof", "failing"), count: c.failing, tone: "err" },
+                    { key: "unproven", label: label("releaseProof", "unproven"), count: c.unproven, tone: "neutral" },
                     { key: "open", label: label("releaseProof", "open"), count: c.open, tone: "neutral" },
                   ]}
                 />

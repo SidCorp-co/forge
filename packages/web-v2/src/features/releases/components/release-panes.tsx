@@ -277,7 +277,7 @@ export function CriteriaPane({ r }: { r: ReleaseDetail }) {
                   {c.bc ? <span className="ml-2 font-mono text-12 text-subtle">{c.bc}</span> : null}
                 </span>
                 <Tooltip
-                  label={[c.identity, c.reason ? `${t("releases.reason")} ${c.reason}` : null, c.judgedAt ? `${c.judgedBy === "agent" ? t("releases.anAgent") : t("releases.aPerson")}, ${time.dateTime(c.judgedAt)}` : null]
+                  label={[c.identity, c.reason ? `${t("releases.reason")} ${c.reason}` : null, c.unverified ? `${t("releases.notProven")} ${c.unverified}` : null, c.judgedAt ? `${c.judgedBy === "agent" ? t("releases.anAgent") : t("releases.aPerson")}, ${time.dateTime(c.judgedAt)}` : null]
                     .filter(Boolean)
                     .join("\n") || t("releases.noVerdict")}
                   multiline

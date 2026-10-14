@@ -154,31 +154,6 @@ export function releaseBuildOf(
 	return COMMIT.test(head) ? head : null;
 }
 
-/**
- * The standing a release counts one criterion it carries by (BC-5, BC-13): the newest verdict on the
- * commit `build`, or `unjudged` where none is on it, so a verdict on an earlier build never counts
- * here; with no cut build (a draft) the newest verdict, which is what a draft is cut on. The release
- * record's totals count `criterionCountsAsPass` of this, as the issue gate does; the release page
- * counts the same rows by the rule a requirement counts by (core `release-page/claims.ts:readClaims`),
- * so a short, or under an independent judge the builder's own pass, is proven on the record's gate
- * and not on the page.
- */
-export function releaseStandingOf(
-	verdicts: readonly ReleaseVerdictReading[],
-	build: string | null,
-): CriterionStanding {
-	const newestFirst = [...verdicts].sort((a, b) => b.at.localeCompare(a.at));
-	const counted =
-		build === null
-			? newestFirst[0]
-			: newestFirst.find(
-					(v) => v.identityKind === "commit" && v.commitSha === build,
-				);
-	if (!counted) return "unjudged";
-	if (counted.identityKind === "commit_unresolved") return "unresolved";
-	return counted.verdict;
-}
-
 // ---- highlights (BC-2, BC-3) ----
 
 export const RELEASE_HIGHLIGHTS_MIN = 1;
@@ -393,7 +368,7 @@ export interface ReleasePageHeader {
 
 /**
  * One carried criterion proven on `header.build` by the rule a requirement counts by (core
- * `requirements:unverifiedWhy`), in its own wording, so two criteria proving one requirement criterion
+ * contracts `verified-rule.ts:unverifiedWhy`), in its own wording, so two criteria proving one requirement criterion
  * read apart: `issueKey` and `n` name it, and `code` is the requirement criterion it traces (null
  * where it traces none). `short` is false on every page read since a short stopped counting as proven
  * (2026-10-14); a share frozen before then may carry true, and reads as it was frozen.

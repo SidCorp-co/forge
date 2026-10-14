@@ -69,8 +69,7 @@ export const RELEASE_STATE_GLYPHS: Record<ReleaseState, string> = {
 };
 
 export const RELEASE_STATE_HINTS: Record<ReleaseState, string> = {
-	draft:
-		"draft: merged issues wait at the gate; no version holds them yet",
+	draft: "draft: merged issues wait at the gate; no version holds them yet",
 	in_progress:
 		"in_progress: a release run is promoting, deploying or verifying the version",
 	awaiting_approval:
@@ -147,10 +146,16 @@ export interface ReleasePerson {
 	kind: "human" | "agent";
 }
 
+/**
+ * What a release, or one issue it carries, proves of its criteria, by the verified rule (core
+ * contracts `verified-rule.ts:verifiedOf`, REQ-35 decision 7b261fca): `unproven` is judged and not proven — a short,
+ * or a pass the rule does not count — never "not judged yet".
+ */
 export const RELEASE_PROOFS = [
 	"proven",
 	"failing",
 	"open",
+	"unproven",
 	"unrecorded",
 ] as const;
 export type ReleaseProof = (typeof RELEASE_PROOFS)[number];
@@ -159,6 +164,7 @@ export const RELEASE_PROOF_LABELS: Record<ReleaseProof, string> = {
 	proven: "Proven",
 	failing: "Failing",
 	open: "Not judged yet",
+	unproven: "Judged, not proven",
 	unrecorded: "No criteria recorded",
 };
 
@@ -166,13 +172,18 @@ export const RELEASE_PROOF_TONES: Record<ReleaseProof, IssueStatusTone> = {
 	proven: "ready",
 	failing: "err",
 	open: "neutral",
+	unproven: "neutral",
 	unrecorded: "neutral",
 };
 
 export interface ReleaseCriteriaTotals {
+	/** Proven by the verified rule: a pass it counts. */
 	proven: number;
 	failing: number;
+	/** Not judged on the build: no verdict, skipped, or unresolved. */
 	open: number;
+	/** Judged and not proven: a short, or a pass the verified rule does not count. */
+	unproven: number;
 	total: number;
 }
 
@@ -499,6 +510,10 @@ export interface ReleaseCriterionView {
 	reason: string | null;
 	judgedAt: string | null;
 	judgedBy: "human" | "agent" | null;
+	/** Whether the release counts it proven, by the verified rule (contracts `verified-rule.ts:verifiedOf`). */
+	proven: boolean;
+	/** Where its pass or short does not count as proven, why; null otherwise. */
+	unverified: string | null;
 }
 
 export interface ReleaseIssueCriteria {

@@ -38,7 +38,7 @@ export const PROBE_TIMEOUT_MS = 10 * 60 * 1000;
 const SHAPE =
   'the saved answer of `GET /api/issues/:id/criteria` (`{ criteria: [{ n, class, probe, latest }] }`), or `none` for a run that names no issue';
 
-/** The verdicts a criterion stands on (contracts `criterionCountsAsPass`: `short` counts as a pass). */
+/** The verdicts a criterion stands on at a merge check (contracts `verdict-identity.ts:EARNING_VERDICTS`: `short` is met, though never proven). */
 const STANDING_VERDICTS = ['pass', 'short'];
 
 /**

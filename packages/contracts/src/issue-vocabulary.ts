@@ -1,6 +1,5 @@
 import type { IssueStatus } from "./issue-machine.js";
 import type { REGISTRY_ISSUE_PRIORITIES } from "./pipeline-registry.js";
-import { verdictEarns } from "./verdict-identity.js";
 
 /** A run's steps, in order: core's `workSteps`, held equal by core's `pipeline/registry.test.ts`. */
 export const WORK_STEPS = [
@@ -160,9 +159,8 @@ export const ISSUE_CATEGORY_LABELS: Record<string, string> = {
 };
 
 /** What one issue criterion reads as on every screen: its latest verdict, with an abbreviated
- *  backfilled commit read as unresolved. `short` is drawn as itself, never as a pass, though an
- *  issue's gates count it as one (`criterionCountsAsPass`); a requirement's coverage never does
- *  (REQ-35 decision 7b261fca). */
+ *  backfilled commit read as unresolved. `short` is drawn as itself, never as a pass, and proves
+ *  nothing: no count of proof counts it (`verified-rule.ts:verifiedOf`, REQ-35 decision 7b261fca). */
 export const CRITERION_STANDINGS = [
 	"pass",
 	"short",
@@ -203,14 +201,9 @@ export const CRITERION_STANDING_GLYPHS: Record<CriterionStanding, string> = {
 	unjudged: "○",
 };
 
-/** Whether a criterion's standing earns it: a pass, or a short (met, short of its wording). */
-export const criterionCountsAsPass = (standing: CriterionStanding): boolean =>
-	verdictEarns(standing);
-
 export const CRITERION_STANDING_HINTS: Record<CriterionStanding, string> = {
 	pass: "pass: the latest verdict passed",
-	short:
-		"short: met, short of its wording, not blocking; never verifies a requirement criterion",
+	short: "short: met, short of its wording; never counts as proven",
 	fail: "fail: the latest verdict failed",
 	skipped: "skipped: judged and skipped with a reason; never counts as a pass",
 	unresolved:

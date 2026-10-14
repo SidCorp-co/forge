@@ -1,6 +1,7 @@
 import type { LandingArtifact, ReadPaths } from '@forge/contracts/landing-artifacts';
+import type { PolicyQaMode } from '@forge/contracts/project-config';
 import type { ReleaseNotes } from '@forge/contracts/release-notes';
-import { type ReleaseVerdictReading, releaseStandingOf } from '@forge/contracts/release-page';
+import type { ReleaseVerdictReading } from '@forge/contracts/release-page';
 import type { ReleaseCriterionView, ReleasePerson } from '@forge/contracts/releases';
 import type { RequirementState } from '@forge/contracts/requirements';
 import { requirementKey } from '@forge/contracts/requirements';
@@ -9,6 +10,7 @@ import {
   criterionStandingOf,
   identityPhraseOf,
 } from '@forge/contracts/verdict-identity';
+import { verifiedOf } from '@forge/contracts/verified-rule';
 import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, jobs } from '../db/schema.js';
@@ -24,6 +26,7 @@ import {
 } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
+import { readEffectivePolicy } from '../project-config/index.js';
 import { standingsOf } from '../requirements/index.js';
 import type { CompletionFacts } from './release-view.js';
 
@@ -57,6 +60,8 @@ export interface ReleaseFacts {
   issues: Map<string, IssueFact>;
   requirements: Map<string, CompletionFacts>;
   cutters: Map<string, ReleasePerson>;
+  /** The project's judge (`qa`), which the verified rule reads (contracts `verified-rule.ts:verifiedOf`). */
+  judge: PolicyQaMode | null;
 }
 
 /** One verdict a carried criterion earned, as a release reads it. */
@@ -66,7 +71,7 @@ export interface CarriedVerdict extends ReleaseVerdictReading {
   reason: string | null;
   evidence: readonly string[];
   agency: 'human' | 'agent';
-  /** Recorded by the issue's builder (`issues/built-by.ts`): the verified rule reads it (`requirements:unverifiedWhy`). */
+  /** Recorded by the issue's builder (`issues/built-by.ts`): the verified rule reads it (contracts `verified-rule.ts:unverifiedWhy`). */
   byBuilder: boolean;
   /** Names who recorded it, an account or a box. */
   authored: boolean;
@@ -118,24 +123,43 @@ export async function carriedVerdictsOf(
 }
 
 /**
- * An issue's criteria as the release whose build is `build` counts them (`releaseStandingOf`): the
- * newest verdict on that build, or not judged where none is on it. A release with no cut build reads
- * each by its latest verdict.
+ * An issue's criteria as the release whose build is `build` counts them, by the one rule every count
+ * of proof reads (contracts `verified-rule.ts:verifiedOf`, REQ-35 decision 7b261fca): of the verdicts on that build,
+ * the one the criterion stands on is the judge's, and only a pass the rule counts as verified proves
+ * it. A short never does, nor, under an independent judge, the builder's own pass; where neither
+ * counts, `unverified` says why. A release with no cut build reads every verdict since the last
+ * reopen, its newest shown; one with a build reads only that build's, so a verdict on an earlier
+ * build never counts, and none on it reads not judged.
  */
-export function criteriaAt(issue: IssueFact, build: string | null): ReleaseCriterionView[] {
-  if (build === null) return issue.criteria;
+export function criteriaAt(
+  issue: IssueFact,
+  build: string | null,
+  judge: PolicyQaMode | null,
+): ReleaseCriterionView[] {
   return issue.criteria.map((c) => {
-    const verdicts = issue.verdicts.get(c.n) ?? [];
-    const on = [...verdicts]
-      .reverse()
-      .find((v) => v.identityKind === 'commit' && v.commitSha === build);
+    const newestFirst = [...(issue.verdicts.get(c.n) ?? [])].reverse();
+    const counted =
+      build === null
+        ? newestFirst
+        : newestFirst.filter((v) => v.identityKind === 'commit' && v.commitSha === build);
+    const read = verifiedOf(counted, judge);
+    const stands = read.stands;
+    const proven = read.proven && stands?.identityKind !== 'commit_unresolved';
+    const unverified = proven ? null : read.why;
+    if (build === null) return { ...c, proven, unverified };
     return {
       ...c,
-      standing: releaseStandingOf(verdicts, build),
-      identity: on ? commitIdentityPhrase(build) : null,
-      reason: on?.reason ?? null,
-      judgedAt: on?.at ?? null,
-      judgedBy: on?.agency ?? null,
+      standing: !stands
+        ? 'unjudged'
+        : stands.identityKind === 'commit_unresolved'
+          ? 'unresolved'
+          : stands.verdict,
+      identity: stands ? commitIdentityPhrase(build) : null,
+      reason: stands?.reason ?? null,
+      judgedAt: stands?.at ?? null,
+      judgedBy: stands?.agency ?? null,
+      proven,
+      unverified,
     };
   });
 }
@@ -153,6 +177,9 @@ function criterionView(c: CriterionWithVerdict, voidedBy: Date | undefined): Rel
     reason: latest?.reason ?? null,
     judgedAt: latest?.createdAt ?? null,
     judgedBy: latest?.authorAgency ?? null,
+    // set by `criteriaAt`, which reads every verdict by the verified rule
+    proven: false,
+    unverified: null,
   };
 }
 
@@ -228,7 +255,7 @@ export async function loadReleaseFacts(
   runIds: readonly string[],
 ): Promise<ReleaseFacts> {
   const ids = [...new Set(issueIds)];
-  const [rows, prefix, cutters] = await Promise.all([
+  const [rows, prefix, cutters, policy] = await Promise.all([
     ids.length === 0
       ? Promise.resolve([])
       : db
@@ -250,6 +277,7 @@ export async function loadReleaseFacts(
           .where(and(eq(issues.projectId, projectId), inArray(issues.id, ids))),
     activeIssuePrefix(projectId),
     cuttersOf(runIds),
+    readEffectivePolicy(projectId),
   ]);
   const [criteria, reopened, closed, reqs] = await Promise.all([
     listCriteriaOf(db, ids),
@@ -306,5 +334,5 @@ export async function loadReleaseFacts(
       }
     }
   }
-  return { issues: byIssue, requirements: reqs, cutters };
+  return { issues: byIssue, requirements: reqs, cutters, judge: policy?.document.qa ?? null };
 }
