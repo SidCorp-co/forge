@@ -12,6 +12,7 @@
 
 - **A stored test credential no longer reaches an issue comment.** A comment written on the web or by an agent tool that carries one is refused, naming where; text Forge writes itself gets a marker saying where it is read.
 - **A stored test credential written as `&#64;` or split by markup is refused too.** It was stored because only the characters sent were matched; a comment is now matched as it reads, on the web and through the agent tool.
+- **A stored test credential hidden by an invisible character is refused too.** A status-change reason is now kept with the credential replaced, as its comment is, and values already stored in activity, transition logs and questions are replaced on deploy.
 - **A viewer can no longer deploy, cancel or roll back a Coolify binding.** The web API let any project member through; it now asks for the member role, as the agent tool always did, and says which role was held.
 - **Another person's comment cannot be rewritten by an agent, and a reply cannot hang under another issue.** Agents could edit any comment and name any parent; editing now needs the author or a project admin, as in the web.
 - **A viewer can no longer edit or delete a comment they wrote.** The web let the author through whatever their role, for instance after a demotion; it now asks for the member role, as the agent tool did.
