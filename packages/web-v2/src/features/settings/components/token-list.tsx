@@ -100,7 +100,7 @@ function describing(level: (token: PatToken) => string): DataTableColumn<PatToke
       cellClassName: "px-3",
       cell: (t) => (
         <Badge tone={t.boundProjectId ? "cobalt" : "neutral"}>
-          <Truncated text={level(t)} className="max-w-36" />
+          <Truncated text={level(t)} className="max-w-32" />
         </Badge>
       ),
     },
