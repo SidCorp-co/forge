@@ -58,22 +58,27 @@ describe("a Chrome that cannot be used is refused by name", () => {
   });
 
   it("spends one launch clock on finding the endpoint and opening its socket, so a stall in the socket is the launch's too", async () => {
-    const stalled = createServer();
+    let reached = 0;
+    const stalled = createServer(() => {
+      reached += 1;
+    });
     await new Promise<void>((up) => stalled.listen(0, "127.0.0.1", up));
     const { port } = stalled.address() as AddressInfo;
-    const ANNOUNCES_AFTER_MS = 1_000;
-    const LAUNCH_MS = 1_500;
+    const ANNOUNCES_AFTER_MS = 2_000;
+    const LAUNCH_MS = 2_500;
     const announcing = join(dir, "announcing-chrome");
     writeFileSync(
       announcing,
       `#!/bin/sh\nsleep ${ANNOUNCES_AFTER_MS / 1000}\necho "DevTools listening on ws://127.0.0.1:${port}/devtools/browser/x" >&2\nexec sleep 30\n`,
     );
     chmodSync(announcing, 0o755);
+    // Separate clocks would give the socket a second full budget (rejecting at 4.5s); one clock rejects at 2.5s, leaving 2s of slack for a loaded host.
     const start = Date.now();
     try {
       await expect(launchChrome({ chrome: announcing, launchMs: LAUNCH_MS })).rejects.toThrow(
         `Chrome at ${announcing} first launch did not finish within ${LAUNCH_MS}ms`,
       );
+      expect(reached).toBe(1);
       expect(Date.now() - start).toBeLessThan(ANNOUNCES_AFTER_MS + LAUNCH_MS);
     } finally {
       stalled.close();
