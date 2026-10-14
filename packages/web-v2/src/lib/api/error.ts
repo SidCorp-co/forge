@@ -89,6 +89,13 @@ const BARE_SERVER_TEXT = new RegExp(
   'i',
 );
 
+/** A server failure said in words: a status code is a number nobody reading a screen can act on. */
+function serverFailure(status: number): string {
+  if (status === 503) return 'The server is unavailable right now. Try again in a moment.';
+  if (status === 502 || status === 504) return 'The server did not answer in time. Try again in a moment.';
+  return 'The server ran into a problem and could not finish the request.';
+}
+
 export function formatApiError(err: unknown): string {
   if (err instanceof ApiError) {
     const mergeMark = mergeMarkSentence(err);
@@ -97,10 +104,10 @@ export function formatApiError(err: unknown): string {
     if (claimed) return claimed;
     if (err.code && FRIENDLY_CODES[err.code]) return FRIENDLY_CODES[err.code];
     if (err.status >= 500 && BARE_SERVER_TEXT.test(err.message.trim())) {
-      return `The server could not complete the request (${err.status}).`;
+      return serverFailure(err.status);
     }
     if (err.message) return err.message;
-    return `Request failed (${err.status})`;
+    return err.status >= 500 ? serverFailure(err.status) : 'The server refused the request and said nothing about why.';
   }
   if (err instanceof Error) return err.message;
   return 'Unknown error';
@@ -109,7 +116,8 @@ export function formatApiError(err: unknown): string {
 /** A failure as a sentence of its own, so what a message says next starts after a full stop. */
 export function formatApiReason(err: unknown): string {
   const text = formatApiError(err).trim();
-  return /[.!?]$/.test(text) ? text : `${text}.`;
+  const opened = /^[a-z]/.test(text) ? `${text.charAt(0).toUpperCase()}${text.slice(1)}` : text;
+  return /[.!?]$/.test(opened) ? opened : `${opened}.`;
 }
 
 

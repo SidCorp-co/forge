@@ -34,37 +34,40 @@ import { MembersTab } from "./members-tab";
 import { ModulesTab } from "./modules-tab";
 import { MemoryTab } from "./memory-tab";
 import { PipelineTab } from "./pipeline-tab";
-import { RepoTab } from "./repo-tab";
-import { TestingTab } from "./testing-tab";
+import { ShapeTab } from "./shape-tab";
 
-const TAB_VALUES = [
-	"basics",
-	"repo",
-	"runners",
-	"testing",
+export const TAB_VALUES = [
+	"general",
+	"shape",
 	"pipeline",
-	"memory",
-	"labels",
-	"modules",
-	"members",
+	"runners",
 	"integrations",
-	"advanced",
+	"members",
+	"taxonomy",
+	"memory",
 ] as const;
 type ProjectSettingsTab = (typeof TAB_VALUES)[number];
 
-const TABS: TabItem[] = [
-	{ value: "basics", label: "Basics" },
-	{ value: "repo", label: "Repository" },
-	{ value: "runners", label: "Runners" },
-	{ value: "testing", label: "Testing" },
+export const TABS: TabItem[] = [
+	{ value: "general", label: "General" },
+	{ value: "shape", label: "Shape & release" },
 	{ value: "pipeline", label: "Pipeline" },
-	{ value: "memory", label: "Memory" },
-	{ value: "labels", label: "Labels" },
-	{ value: "modules", label: "Modules" },
-	{ value: "members", label: "Members" },
+	{ value: "runners", label: "Runners" },
 	{ value: "integrations", label: "Integrations" },
-	{ value: "advanced", label: "Advanced" },
+	{ value: "members", label: "Members" },
+	{ value: "taxonomy", label: "Labels & modules" },
+	{ value: "memory", label: "Memory" },
 ];
+
+/** The eleven-tab screen's addresses, each sent to the tab that now holds what it showed. */
+export const TAB_ALIASES: Readonly<Record<string, ProjectSettingsTab>> = {
+	basics: "general",
+	advanced: "general",
+	repo: "shape",
+	testing: "shape",
+	labels: "taxonomy",
+	modules: "taxonomy",
+};
 
 export function ProjectSettingsScreen({ slug }: { slug: string }) {
 	// Resolve slug → id/role from the projects list, then fetch the full detail
@@ -77,7 +80,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 	const listItem = projectsQ.data?.find((p) => p.slug === slug);
 	const detailQ = useProject(listItem?.id);
 
-	const [tab, setTab] = useTabParam<ProjectSettingsTab>(TAB_VALUES, "basics");
+	const [tab, setTab] = useTabParam<ProjectSettingsTab>(TAB_VALUES, "general", TAB_ALIASES);
 	const leave = useLeaveGuardAttempt();
 
 	if (projectsQ.isLoading || (listItem && detailQ.isLoading)) {
@@ -160,7 +163,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 						{!canEdit && (
 							<p className="fg-body-sm mb-4 border-b border-line pb-3 text-muted">
 								{isProjectAdmin
-									? "Basics, Repo, Testing, Pipeline, Integrations and Advanced need an org owner/admin — you can still manage Members and Labels."
+									? "General, Shape & release, Pipeline and Integrations need an org owner/admin — you can still manage Members, Labels & modules, Runners and Memory."
 									: "You have read-only access to these settings."}
 							</p>
 						)}
@@ -170,20 +173,13 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 
 			<PageContainer>
 				<div className="max-w-4xl">
-					{tab === "basics" && (
-						<BasicsTab project={project} canEdit={canEdit} />
+					{tab === "general" && (
+						<>
+							<BasicsTab project={project} canEdit={canEdit} />
+							<AdvancedTab project={project} canEdit={canEdit} />
+						</>
 					)}
-					{tab === "repo" && <RepoTab project={project} canEdit={canEdit} />}
-					{tab === "runners" && (
-						<ProjectRunnersScreen
-							projectId={project.id}
-							canEdit={canEdit || isProjectAdmin}
-							embedded
-						/>
-					)}
-					{tab === "testing" && (
-						<TestingTab projectId={project.id} canEdit={canEdit} />
-					)}
+					{tab === "shape" && <ShapeTab project={project} canEdit={canEdit} />}
 					{tab === "pipeline" && (
 						<PipelineTab
 							projectId={project.id}
@@ -191,23 +187,15 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 							slug={project.slug}
 						/>
 					)}
-					{tab === "memory" && (
-						<MemoryTab
-							project={project}
-							canEdit={canEdit || isProjectAdmin}
-						/>
-					)}
-					{tab === "labels" && (
-						<LabelsTab
+					{tab === "runners" && (
+						<ProjectRunnersScreen
 							projectId={project.id}
 							canEdit={canEdit || isProjectAdmin}
+							embedded
 						/>
 					)}
-					{tab === "modules" && (
-						<ModulesTab
-							projectId={project.id}
-							canEdit={canEdit || isProjectAdmin}
-						/>
+					{tab === "integrations" && (
+						<IntegrationsTab projectId={project.id} canEdit={canEdit} />
 					)}
 					{tab === "members" && (
 						<MembersTab
@@ -215,11 +203,23 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 							canEdit={canEdit || isProjectAdmin}
 						/>
 					)}
-					{tab === "integrations" && (
-						<IntegrationsTab projectId={project.id} canEdit={canEdit} />
+					{tab === "taxonomy" && (
+						<>
+							<LabelsTab
+								projectId={project.id}
+								canEdit={canEdit || isProjectAdmin}
+							/>
+							<ModulesTab
+								projectId={project.id}
+								canEdit={canEdit || isProjectAdmin}
+							/>
+						</>
 					)}
-					{tab === "advanced" && (
-						<AdvancedTab project={project} canEdit={canEdit} />
+					{tab === "memory" && (
+						<MemoryTab
+							project={project}
+							canEdit={canEdit || isProjectAdmin}
+						/>
 					)}
 				</div>
 			</PageContainer>

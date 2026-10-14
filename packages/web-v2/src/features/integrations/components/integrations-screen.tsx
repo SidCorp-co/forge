@@ -11,8 +11,6 @@
 
 import { useCallback, useMemo, useState } from "react";
 import {
-  Card,
-  CardContent,
   EmptyState,
   ErrorState,
   HelpButton,
@@ -239,9 +237,9 @@ export function IntegrationsScreen() {
           onRetry={() => connections.refetch()}
         />
       ) : items.length === 0 ? (
-        <Card>
-          <CardContent>{renderEmpty()}</CardContent>
-        </Card>
+        <div className="border-y border-line" data-testid="connections-empty">
+          {renderEmpty()}
+        </div>
       ) : (
         <div className="flex flex-col gap-3">
           {groups.map((g) => (

@@ -6465,6 +6465,8 @@
 
 ### Changed
 
+- **Project settings has eight tabs; Shape & release says what kind of project it is.** Pick one of four shapes, see whether a release can start, edit repository and environments together. A change that strands waiting issues is refused. (ISS-1171)
+
 - **Putting an issue on hold now asks why, and the thread says so.** A hold with no reason is refused by name, and each hold posts its reason on the thread. (ISS-1251)
 
 - **Many issues can be held at once, with one reason.** The bulk menu offers On hold again and asks why once. A blank reason is now refused as a missing reason, not "too small". (ISS-1251)

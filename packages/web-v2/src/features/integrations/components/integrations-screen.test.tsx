@@ -121,3 +121,17 @@ describe("a credential reached only through a binding", () => {
     expect(screen.getByRole("button", { name: /^disable$/i })).toBeInTheDocument();
   });
 });
+
+// ISS-1171, carried from the ISS-1262 judge: the owner's rule is flat, with no card mosaic.
+describe("a space with no connections", () => {
+  it("draws its empty state flat, ruled by hairlines rather than boxed in a rounded card", () => {
+    connections = [];
+    mount();
+    const empty = screen.getByTestId("connections-empty");
+    expect(empty).toHaveTextContent("No connections yet");
+    for (let el: HTMLElement | null = empty; el; el = el.parentElement) {
+      expect(el.className).not.toMatch(/\brounded-(md|lg|xl)\b.*\bborder\b|\bborder\b.*\brounded-(md|lg|xl)\b/);
+    }
+    expect(empty.querySelector(".rounded-lg, .rounded-xl")).toBeNull();
+  });
+});

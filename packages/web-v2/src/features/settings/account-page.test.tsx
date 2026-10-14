@@ -166,7 +166,7 @@ describe("when one of the two routes fails", () => {
 
 		const banner = await screen.findByText(/Nothing was saved/i);
 		expect(banner.textContent).toBe(
-			"Nothing was saved: The server could not complete the request (500). Your other edits are still here — Save sends them again.",
+			"Nothing was saved. The server ran into a problem and could not finish the request. Your other edits are still here — Save sends them again.",
 		);
 	});
 
@@ -180,7 +180,7 @@ describe("when one of the two routes fails", () => {
 
 		const banner = await screen.findByText(/Theme and language saved, but not the rest/i);
 		expect(banner.textContent).toBe(
-			"Theme and language saved, but not the rest: the preferences store is down. Your other edits are still here — Save sends them again.",
+			"Theme and language saved, but not the rest. The preferences store is down. Your other edits are still here — Save sends them again.",
 		);
 		expect(prefs.theme).toBe("dark");
 		expect(instructions().value).toBe("Be brief.");

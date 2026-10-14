@@ -2,7 +2,7 @@
 
 // Project-centric Runners screen. Rendered as the Project Settings → Runners
 // tab (`/projects/[slug]/settings?tab=runners`, `embedded`). The project is the
-// primary control surface: configure the repo URL + deploy key, assign devices,
+// primary control surface: attach the deploy key, assign devices,
 // and watch each device's workspace provision (clone → skills → mcp) as a live
 // stepper. Workspace-level `/runners` is the device-global roll-up (pair /
 // rename / revoke); project membership (admin) gates the writes here.
@@ -25,11 +25,10 @@ import {
   PageTitle,
   Select,
   Skeleton,
-  Textarea,
   useNow,
   SettingsSection,
 } from "@/design";
-import { useUpdateProject } from "@/features/project-settings/hooks";
+import Link from "next/link";
 import { useProject } from "@/features/projects/hooks";
 import { PrivateKeyCreateSlideOver } from "@/features/resources/components/private-key-create-slideover";
 import { useOrgSshKeys } from "@/features/resources/hooks";
@@ -94,37 +93,30 @@ function CopyButton({
 }
 
 /**
- * Repo URL + Git-access card (ISS-628). The deploy key is picked from the
- * project's org-scoped Private Keys pool (Resources → Private Keys) rather
- * than generated/pasted inline — a key created here or there is the same
- * pool entry, reusable across every project in the org.
+ * Git-access card (ISS-628): the deploy key, picked from the project's org-scoped Private Keys pool
+ * (Resources → Private Keys) rather than generated/pasted inline — a key created here or there is
+ * the same pool entry, reusable across every project in the org. The repository URL and workspace
+ * setup it clones with are edited under Settings → Shape & release (ISS-1171).
  */
 function GitConfigCard({
 	projectId,
 	orgId,
-	repoUrl,
-	workspaceSetup,
+	slug,
 	canEdit,
 }: {
 	projectId: string;
 	orgId: string | null;
-	repoUrl: string | null;
-	workspaceSetup: string | null;
+	slug: string | undefined;
 	canEdit: boolean;
 }) {
-	const update = useUpdateProject(projectId);
 	const cred = useGitCredential(projectId);
 	const setCred = useSetGitCredential(projectId);
 	const delCred = useDeleteGitCredential(projectId);
 	const testCred = useTestGitCredential(projectId);
 	const pool = useOrgSshKeys(orgId);
-	const [url, setUrl] = useState(repoUrl ?? "");
-	const [setup, setSetup] = useState(workspaceSetup ?? "");
 	const [createOpen, setCreateOpen] = useState(false);
 	const [detachConfirmOpen, setDetachConfirmOpen] = useState(false);
 
-	const urlDirty = url.trim() !== (repoUrl ?? "");
-	const setupDirty = setup.trim() !== (workspaceSetup ?? "");
 	const credData = cred.data;
 	const poolKeys = pool.data ?? [];
 
@@ -138,72 +130,28 @@ function GitConfigCard({
 			<div className="mb-4 flex items-center justify-between gap-3">
 				<CardTitle>Git access</CardTitle>
 				<HelpButton
-					summary="Optional. Set the repo URL + pick a deploy key from this org's Private Keys pool so any device assigned to this project auto-clones and pushes — one key, reusable across every project. Leave blank to set folders up by hand."
+					summary="Optional. Pick a deploy key from this org's Private Keys pool so any device assigned to this project auto-clones and pushes — one key, reusable across every project. Leave it unset to set folders up by hand."
 					actions={[
-						"Set the SSH clone URL (git@host:org/repo.git)",
 						"Pick a key from the org pool, or create a new one",
 						"Manage the pool from Resources → Private Keys",
-						"Write the workspace setup steps so agents do not have to guess them",
+						"Set the clone URL and workspace setup under Settings → Shape & release",
 					]}
 				/>
 			</div>
 			<div className="flex flex-col gap-5">
-				<div className="flex items-end gap-2">
-					<div className="flex-1">
-						<Field
-							label="Repo URL"
-							hint="SSH clone URL. A newly-assigned device clones from here when its folder is missing."
-						>
-							<Input
-								value={url}
-								onChange={(e) => setUrl(e.target.value)}
-								placeholder="git@github.com:org/repo.git"
-								disabled={!canEdit}
-								spellCheck={false}
-								maxLength={500}
-							/>
-						</Field>
-					</div>
-					<Button
-						variant="secondary"
-						icon="check"
-						loading={update.isPending}
-						disabled={!canEdit || !urlDirty}
-						onClick={() => update.mutate({ repoUrl: url.trim() || null })}
-					>
-						Save
-					</Button>
-				</div>
+				<p className="fg-body-sm text-subtle">
+					The repository URL a device clones from, and the setup steps it runs, are set under{" "}
+					{slug ? (
+						<Link href={`/projects/${slug}/settings?tab=shape`} className="text-accent-text hover:underline">
+							Shape &amp; release
+						</Link>
+					) : (
+						"Shape & release"
+					)}
+					.
+				</p>
 
-				<div className="border-t border-line-subtle pt-4">
-					<Field
-						label="Workspace setup"
-						hint="How to bring a fresh or broken checkout of this repo to a state that can build, test and commit — install commands, hook setup, toolchain quirks. Leave blank and an agent works it out each time, then records what it found here."
-					>
-						<Textarea
-							value={setup}
-							onChange={(e) => setSetup(e.target.value)}
-							placeholder={"pnpm install --frozen-lockfile\npnpm prepare   # writes .husky, without it every commit refuses"}
-							disabled={!canEdit}
-							spellCheck={false}
-							maxLength={8000}
-							rows={5}
-						/>
-					</Field>
-					<div className="mt-2 flex justify-end">
-						<Button
-							variant="secondary"
-							icon="check"
-							loading={update.isPending}
-							disabled={!canEdit || !setupDirty}
-							onClick={() => update.mutate({ workspaceSetup: setup.trim() || null })}
-						>
-							Save
-						</Button>
-					</div>
-				</div>
-
-				<div className="border-t border-line-subtle pt-4">
+				<div>
 					<span className="fg-label">Deploy key</span>
 					{cred.isLoading ? (
 						<Skeleton className="mt-2 h-20 w-full" />
@@ -986,8 +934,7 @@ export function ProjectRunnersScreen({
 			<GitConfigCard
 				projectId={projectId}
 				orgId={project.data?.orgId ?? null}
-				repoUrl={project.data?.repoUrl ?? null}
-				workspaceSetup={project.data?.workspaceSetup ?? null}
+				slug={project.data?.slug}
 				canEdit={!!canEdit}
 			/>
 
