@@ -251,6 +251,22 @@ describe('each rule, planted once, continued', () => {
     expect(findings.map((f) => f.detail).join(' ')).toContain('CONFLCIT');
   });
 
+  it('typo-code: a comment inside the declaration does not end it early', async () => {
+    const app = new Hono();
+    app.get(
+      '/api/issues',
+      describeOperation({
+        summary: 's',
+        responses: { 200: json(z.object({})), 409: fail('CONFLCIT', 'two writers') },
+      }),
+      (c) => c.json({}),
+    );
+    const reference = await buildReference(app, { version: 't' });
+    const source = `${BUILT_IN}\nfail(/* ) */ 'CONFLCIT', 'two writers'); fail(\n // )\n 'CONFLCIT')`;
+    const findings = checkReference({ reference, source });
+    expect(rules(findings)).toEqual(['typo-code document']);
+  });
+
   it('typo-code: a code a handler throws is written, so it is not named', async () => {
     const app = new Hono();
     app.get(

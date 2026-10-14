@@ -43,7 +43,7 @@ function declaredInputs(entry: RouteEntry): Set<Read> {
 
 type Thrown = { status: number; code: string };
 
-/** The text of each balanced `(...)` that opens at `from`, skipping what a string literal holds. */
+/** The text of each balanced `(...)` that opens at `from`, skipping what a string literal or a comment holds. */
 function balanced(text: string, from: number): string {
   let depth = 0;
   let quote: string | null = null;
@@ -54,7 +54,16 @@ function balanced(text: string, from: number): string {
       else if (ch === quote) quote = null;
       continue;
     }
-    if (ch === "'" || ch === '"' || ch === '`') quote = ch;
+    const next = text[i + 1];
+    if (ch === '/' && next === '/') {
+      const end = text.indexOf('\n', i);
+      if (end === -1) return text.slice(from);
+      i = end;
+    } else if (ch === '/' && next === '*') {
+      const end = text.indexOf('*/', i + 2);
+      if (end === -1) return text.slice(from);
+      i = end + 1;
+    } else if (ch === "'" || ch === '"' || ch === '`') quote = ch;
     else if (ch === '(') depth++;
     else if (ch === ')' && --depth === 0) return text.slice(from, i + 1);
   }
