@@ -35,7 +35,7 @@ p, li { color: var(--muted); }
 a { color: var(--accent); }
 section { border-top: 1px solid var(--line); margin-top: 2rem; padding-top: .5rem; }
 code { font: .9em ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--fg); }
-pre.mermaid { overflow-x: auto; padding: 1rem 0; }
+pre.mermaid { overflow-x: auto; max-width: 100%; padding: 1rem 0; }
 ol { padding-left: 1.2rem; }
 `;
 
@@ -47,6 +47,7 @@ export function renderReferencePage(openApiUrl: string): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Forge core API reference</title>
+<link rel="icon" href="data:,">
 </head>
 <body>
 <script id="api-reference" data-url="${escapeHtml(openApiUrl)}" data-configuration='{"hideClientButton":true,"defaultHttpClient":{"targetKey":"shell","clientKey":"curl"}}'></script>
@@ -87,6 +88,7 @@ ${steps}
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Forge core API flows</title>
+<link rel="icon" href="data:,">
 <style>${STYLE}</style>
 </head>
 <body>
@@ -99,6 +101,8 @@ ${sections}
 <script>
   mermaid.initialize({
     startOnLoad: true,
+    sequence: { useMaxWidth: false },
+    flowchart: { useMaxWidth: false },
     theme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default',
   });
 </script>

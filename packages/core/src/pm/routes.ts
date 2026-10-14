@@ -56,15 +56,20 @@ const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 /** A refused operator spawn: rate limit 429, no pool prompt 422, every other guard 409. */
-function spawnRefusal(reason: Exclude<SpawnPmSessionResult, { ok: true }>['reason']) {
+function spawnRefusal(reason: SpawnRefusalReason) {
   const status = reason === 'rate-limited' ? 429 : reason === 'pool-job-no-prompt' ? 422 : 409;
   const message = reason === 'pool-job-no-prompt' ? PM_NO_PROMPT_MESSAGE : reason;
-  return new HTTPException(status, { message, cause: { code: reasonToCode(reason) } });
+  return new HTTPException(status, { message, cause: { code: SPAWN_REFUSAL_CODES[reason] } });
 }
 
-function reasonToCode(reason: Exclude<SpawnPmSessionResult, { ok: true }>['reason']): string {
-  return reason.toUpperCase().replace(/-/g, '_');
-}
+type SpawnRefusalReason = Exclude<SpawnPmSessionResult, { ok: true }>['reason'];
+
+const SPAWN_REFUSAL_CODES: Record<SpawnRefusalReason, string> = {
+  disabled: 'DISABLED',
+  'trigger-masked': 'TRIGGER_MASKED',
+  'rate-limited': 'RATE_LIMITED',
+  'pool-job-no-prompt': 'POOL_JOB_NO_PROMPT',
+};
 
 function detachIndex(fn: () => Promise<void>): void {
   queueMicrotask(() => {

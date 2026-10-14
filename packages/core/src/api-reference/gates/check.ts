@@ -9,8 +9,8 @@ import type { RouteEntry } from '../document/registry.js';
  */
 export type CheckInput = {
   readonly reference: Reference;
-  /** The text of every non-test source file, joined: where a declared error code must be written. */
-  readonly source: string;
+  /** Every quoted string the non-test source writes outside a `fail(...)` declaration (`written-codes.fixture.ts`): where a declared error code must be written. */
+  readonly written: ReadonlySet<string>;
 };
 
 type Read = 'json' | 'query' | 'form' | 'raw' | 'param';
@@ -43,7 +43,7 @@ function declaredInputs(entry: RouteEntry): Set<Read> {
 
 type Thrown = { status: number; code: string };
 
-/** The text of each balanced `(...)` that opens at `from`, skipping what a string literal holds. */
+/** The text of each balanced `(...)` that opens at `from`, skipping what a string literal or a comment holds. */
 function balanced(text: string, from: number): string {
   let depth = 0;
   let quote: string | null = null;
@@ -54,7 +54,16 @@ function balanced(text: string, from: number): string {
       else if (ch === quote) quote = null;
       continue;
     }
-    if (ch === "'" || ch === '"' || ch === '`') quote = ch;
+    const next = text[i + 1];
+    if (ch === '/' && next === '/') {
+      const end = text.indexOf('\n', i);
+      if (end === -1) return text.slice(from);
+      i = end;
+    } else if (ch === '/' && next === '*') {
+      const end = text.indexOf('*/', i + 2);
+      if (end === -1) return text.slice(from);
+      i = end + 1;
+    } else if (ch === "'" || ch === '"' || ch === '`') quote = ch;
     else if (ch === '(') depth++;
     else if (ch === ')' && --depth === 0) return text.slice(from, i + 1);
   }
@@ -97,7 +106,7 @@ function walkRefs(node: unknown, visit: (ref: string) => void): void {
   }
 }
 
-export function checkReference({ reference, source }: CheckInput): Finding[] {
+export function checkReference({ reference, written }: CheckInput): Finding[] {
   const findings: Finding[] = [...reference.findings];
   const { document, routes } = reference;
 
@@ -150,7 +159,7 @@ export function checkReference({ reference, source }: CheckInput): Finding[] {
     for (const codes of byStatus.values()) for (const code of codes) named.add(code);
   }
   for (const code of [...named].sort()) {
-    if (!source.includes(`'${code}'`) && !source.includes(`"${code}"`)) {
+    if (!written.has(code)) {
       findings.push({
         rule: 'typo-code',
         route: 'document',
