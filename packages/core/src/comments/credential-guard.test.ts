@@ -166,6 +166,26 @@ describe('what core writes in place of a stored credential', () => {
     expect(text).toContain('credential #1');
   });
 
+  it('falls back to a bare marker where the marker wording itself holds a stored value', () => {
+    const wording = credentialsFrom({
+      testCredentials: [
+        { label: 'login', username: 'u', password: 'environments.testCredentials' },
+      ],
+    });
+    const once = withholdCredentials('pw environments.testCredentials end', wording);
+    expect(once.text).toBe('pw [withheld] end');
+    expect(withholdCredentials(once.text, wording).text).toBe(once.text);
+  });
+
+  it('names no credential where its label and its position both hold a stored value', () => {
+    const named = credentialsFrom({
+      testCredentials: [{ label: 'credential #1', username: 'u', password: 'credential #1' }],
+    });
+    const { text, ids } = withholdCredentials('use credential #1 now', named);
+    expect(text).toBe('use [withheld] now');
+    expect(ids).toEqual(['']);
+  });
+
   it('is idempotent: withholding a withheld text changes nothing', () => {
     const once = withholdCredentials(`as ${LONG_USER} / ${LONG_PASSWORD} / viewer1`, stored);
     expect(withholdCredentials(once.text, stored)).toEqual({ text: once.text, ids: [] });

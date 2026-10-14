@@ -88,13 +88,14 @@ function matching(text: string, credentials: readonly StoredCredential[]): Store
 }
 
 /**
- * A credential row's own label, unless the label holds a stored value: a label equal to its
- * password would otherwise be written into the marker that exists to keep the password out.
+ * What a row is called in a marker and a log line: its label, else its position, else nothing.
+ * A name that holds a stored value is skipped, because a label equal to its password would be
+ * written into the marker that exists to keep the password out.
  */
 function identify(label: string, position: number, values: readonly string[]): string {
   const probe = values.map((value) => ({ value, id: '' }));
-  const safe = label.trim() !== '' && spansOf(label, probe).length === 0;
-  return safe ? label.trim() : `credential #${position + 1}`;
+  const candidates = [label.trim(), `credential #${position + 1}`];
+  return candidates.find((one) => one !== '' && spansOf(one, probe).length === 0) ?? '';
 }
 
 /**
@@ -201,7 +202,7 @@ export function credentialRefusal(hit: CredentialHit): MessageRefusal {
 
 /** What stands in the text where a value was: names the credential and where it is read. */
 export function withheldMarker(id: string): string {
-  return `[withheld: test credential "${id}", read at ${READ_AT}]`;
+  return id === '' ? '[withheld]' : `[withheld: test credential "${id}", read at ${READ_AT}]`;
 }
 
 /** The text core writes, with its stored credentials replaced in place and everything else kept. */
@@ -225,7 +226,9 @@ export function withholdCredentials(
     const named = covered.length > 0 ? covered : matching(text, credentials);
     const label = [...new Set(named.map((one) => one.id))].join('", "');
     for (const one of named) if (!ids.includes(one.id)) ids.push(one.id);
-    out += `${text.slice(from, start)}${withheldMarker(label)}`;
+    const marker = withheldMarker(label);
+    const safe = spansOf(marker, credentials).length === 0 ? marker : withheldMarker('');
+    out += `${text.slice(from, start)}${safe}`;
     from = end;
   }
   return { text: out + text.slice(from), ids };
@@ -235,7 +238,7 @@ export function withholdCredentials(
 export function reportWithheld(issueId: string, ids: readonly string[]): void {
   if (ids.length === 0) return;
   logger.warn(
-    { issueId, credentials: ids },
+    { issueId, credentials: ids.map((id) => id || 'a credential with no safe name') },
     'comment: a stored test credential was withheld from text core wrote onto an issue',
   );
 }

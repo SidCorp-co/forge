@@ -1,6 +1,6 @@
 import { and, asc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { BodyFormat } from '../body/formats.js';
-import { prepareBody } from '../body/prepare.js';
+import { type PreparedBody, prepareBody } from '../body/prepare.js';
 import { db, type Tx } from '../db/client.js';
 import { comments, issues, users } from '../db/schema.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
@@ -280,15 +280,19 @@ async function writtenByAnAgent(
 async function guardCredentials(
   projectId: string,
   issueId: string,
-  body: string,
+  sent: { raw: string; prepared: PreparedBody },
   mode: 'refuse' | 'withhold',
   tx: Tx,
 ): Promise<{ body: string; warnings: string[] }> {
+  const body = sent.prepared.body;
   const credentials = await loadStoredCredentials(projectId, tx);
   if (credentials.length === 0) return { body, warnings: [] };
   if (mode === 'refuse') {
-    const hit = findCredential(body, credentials);
-    if (hit) throw new MessageRefusedError('comment-write', [credentialRefusal(hit)]);
+    // HTML is stored serialised, so `&` reaches the row as `&amp;`: the text as sent, as stored and as read are all held to it.
+    for (const text of [sent.raw, sent.prepared.text, body]) {
+      const hit = findCredential(text, credentials);
+      if (hit) throw new MessageRefusedError('comment-write', [credentialRefusal(hit)]);
+    }
     return { body, warnings: [] };
   }
   const withheld = withholdCredentials(body, credentials);
@@ -315,7 +319,7 @@ export async function insertComment(input: NewComment, tx: Tx = db): Promise<Wri
     ? await guardCredentials(
         context.projectId,
         input.issueId,
-        prepared.body,
+        { raw: input.body, prepared },
         input.credentials ?? 'refuse',
         tx,
       )
@@ -373,7 +377,13 @@ export async function updateCommentBody(
     await screenAgentComment(context.projectId, input.body, db);
   }
   const guarded = context
-    ? await guardCredentials(context.projectId, existing.issueId, prepared.body, 'refuse', db)
+    ? await guardCredentials(
+        context.projectId,
+        existing.issueId,
+        { raw: input.body, prepared },
+        'refuse',
+        db,
+      )
     : { body: prepared.body, warnings: [] };
 
   const [row] = await db

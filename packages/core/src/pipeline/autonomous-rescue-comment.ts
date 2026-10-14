@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { postSystemComment } from '../comments/system-write.js';
+import { postSystemComment, withholdForIssue } from '../comments/system-write.js';
 import { db } from '../db/client.js';
 import { comments, type IssueStatus } from '../db/schema.js';
 import { logger } from '../logger.js';
@@ -31,7 +31,8 @@ export async function postCapReachedComment(args: {
   driveSessions: number;
 }): Promise<void> {
   try {
-    const body = buildCapReachedCommentBody(args);
+    const written = buildCapReachedCommentBody(args);
+    const body = await withholdForIssue(args.issueId, written);
     const existing = await db
       .select({ id: comments.id, body: comments.body })
       .from(comments)
@@ -41,7 +42,7 @@ export async function postCapReachedComment(args: {
     await postSystemComment({
       issueId: args.issueId,
       authorId: args.authorId,
-      body,
+      body: written,
     });
   } catch (err) {
     logger.error({ err, issueId: args.issueId }, 'autonomous-rescue-cap: failed to post comment');

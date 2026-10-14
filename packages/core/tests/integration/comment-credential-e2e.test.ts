@@ -38,6 +38,7 @@ let mods: {
   insertSystemComment: typeof import('../../src/comments/system-write.js').insertSystemComment;
   insertComment: typeof import('../../src/comments/service.js').insertComment;
   logger: typeof import('../../src/logger.js').logger;
+  postCapReachedComment: typeof import('../../src/pipeline/autonomous-rescue-comment.js').postCapReachedComment;
 };
 
 beforeAll(async () => {
@@ -54,6 +55,8 @@ beforeAll(async () => {
     insertSystemComment: (await import('../../src/comments/system-write.js')).insertSystemComment,
     insertComment: (await import('../../src/comments/service.js')).insertComment,
     logger: (await import('../../src/logger.js')).logger,
+    postCapReachedComment: (await import('../../src/pipeline/autonomous-rescue-comment.js'))
+      .postCapReachedComment,
   };
 }, 180_000);
 
@@ -280,6 +283,61 @@ describe.each(Object.entries(edits))('an edit through %s', (_name, edit) => {
     await storeCredentials(projectId);
     const id = await aComment(await issue(), callers.member.userId, 'the first words');
     expect(await edit(callers.member, id, 'rewritten')).not.toHaveProperty('refused');
+  });
+});
+
+describe('a comment written as HTML', () => {
+  const HTML_PASSWORD = 'Tom&Jerry-Secret-12';
+
+  async function storeHtmlPassword(): Promise<void> {
+    await harness.db.execute(
+      sql`UPDATE projects SET environments = ${JSON.stringify({
+        testCredentials: [{ label: 'html', username: 'u', password: HTML_PASSWORD }],
+      })}::jsonb WHERE id = ${projectId}`,
+    );
+  }
+
+  it.each([
+    ['entity-encoded', '<p>Tom&amp;Jerry-Secret-12</p>'],
+    ['literal', '<p>Tom&Jerry-Secret-12</p>'],
+  ])('is refused when the %s password is in it, and stores nothing', async (_how, html) => {
+    await storeHtmlPassword();
+    const here = await issue();
+    const { refused } = await callRest(
+      server.baseUrl,
+      callers.member.jwt,
+      'POST',
+      `/api/issues/${here}/comments`,
+      { body: html, format: 'html' },
+    );
+    expect(refused).toContain('stored-test-credential');
+    expect(await bodies(here)).toEqual([]);
+  });
+});
+
+describe('a report core repeats about an issue', () => {
+  it('is posted once where a stored credential sits in its own words', async () => {
+    await harness.db.execute(
+      sql`UPDATE projects SET environments = ${JSON.stringify({
+        testCredentials: [{ label: 'odd', username: 'u', password: 'awaiting_release' }],
+      })}::jsonb WHERE id = ${projectId}`,
+    );
+    const here = await issue();
+    const args = {
+      issueId: here,
+      authorId: ownerId,
+      fromStatus: 'awaiting_release' as const,
+      cap: 3,
+      driveSessions: 3,
+    };
+
+    await mods.postCapReachedComment(args);
+    await mods.postCapReachedComment(args);
+
+    const stored = await bodies(here);
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).not.toContain('awaiting_release');
+    expect(stored[0]).toContain('[withheld');
   });
 });
 
