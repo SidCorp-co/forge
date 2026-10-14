@@ -7,17 +7,20 @@
  * place by a marker. Real Postgres, because what is claimed is what is STORED, read back.
  */
 
-import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  type Caller,
-  callRest,
-  callTool,
-  type Door,
-  type Role,
-  seedRoles,
-} from '../helpers/door-parity.js';
+  aComment,
+  anIssue,
+  createDoors,
+  editDoors,
+  PASSWORD,
+  SHORT,
+  storeCredentials,
+  storedBody,
+  USERNAME,
+} from '../helpers/comment-credential-fixture.js';
+import { type Caller, callRest, type Role, seedRoles } from '../helpers/door-parity.js';
 import {
   setupTestDatabase,
   startTestServer,
@@ -72,32 +75,8 @@ beforeEach(async () => {
   callers = seeded.callers;
 });
 
-const USERNAME = 'qa-user@sidcorp.test';
-const PASSWORD = 'Correct-Horse-9!';
-const SHORT = 'viewer1';
-
-async function storeCredentials(id: string): Promise<void> {
-  const environments = {
-    preview: null,
-    live: { url: 'https://live.example.test' },
-    testCredentials: [
-      { label: 'staging admin', username: USERNAME, password: PASSWORD },
-      { label: 'viewer', username: SHORT, password: 'v1' },
-    ],
-  };
-  await harness.db.execute(
-    sql`UPDATE projects SET environments = ${JSON.stringify(environments)}::jsonb WHERE id = ${id}`,
-  );
-}
-
-let seq = 0;
 async function issue(): Promise<string> {
-  const id = randomUUID();
-  seq += 1;
-  await harness.db.execute(sql`
-    INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
-    VALUES (${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, 'open', ${ownerId})`);
-  return id;
+  return anIssue(harness.db, projectId, ownerId);
 }
 
 async function bodies(issueId: string): Promise<string[]> {
@@ -126,7 +105,7 @@ describe('the run-ended comment, where a master closed a run with a reason', () 
       [9],
       'next: nothing',
     );
-    await storeCredentials(project.id);
+    await storeCredentials(harness.db, project.id);
 
     await mods.writeRunEvidence({
       deviceId: device.id,
@@ -151,7 +130,7 @@ describe('the run-ended comment, where a master closed a run with a reason', () 
       [9],
       `next: log in with ${PASSWORD.toUpperCase()} then retry`,
     );
-    await storeCredentials(project.id);
+    await storeCredentials(harness.db, project.id);
 
     await mods.writeRunEvidence({
       deviceId: device.id,
@@ -171,7 +150,7 @@ describe('the run-ended comment, where a master closed a run with a reason', () 
       [9],
       null,
     );
-    await storeCredentials(project.id);
+    await storeCredentials(harness.db, project.id);
 
     await mods.writeRunEvidence({
       deviceId: device.id,
@@ -233,18 +212,11 @@ const ENCODED: Array<[string, string]> = [
   ['a backslash escape', 'log in as qa\\-user@sidcorp.test'],
 ];
 
-type Write = (who: Caller, issueId: string, body: string) => Promise<Door>;
-
-const creates: Record<string, Write> = {
-  'REST POST /api/issues/:id/comments': (who, issueId, body) =>
-    callRest(server.baseUrl, who.jwt, 'POST', `/api/issues/${issueId}/comments`, { body }),
-  'forge_comments create': (who, issueId, body) =>
-    callTool(who.pat, 'forge_comments', { action: 'create', data: { issue: issueId, body } }),
-};
+const creates = createDoors(() => server.baseUrl);
 
 describe.each(Object.entries(creates))('a comment written through %s', (_name, create) => {
   it('is refused naming the position and where the value is read, and stores nothing', async () => {
-    await storeCredentials(projectId);
+    await storeCredentials(harness.db, projectId);
     const here = await issue();
 
     const { refused } = await create(callers.member, here, `first line\nlog in as ${USERNAME}`);
@@ -259,7 +231,7 @@ describe.each(Object.entries(creates))('a comment written through %s', (_name, c
   });
 
   it.each(ENCODED)('is refused where the value is written with %s', async (_how, text) => {
-    await storeCredentials(projectId);
+    await storeCredentials(harness.db, projectId);
     const here = await issue();
     const { refused } = await create(callers.member, here, text);
     expect(refused, 'what a reader sees as a credential must be refused').toContain(
@@ -270,7 +242,7 @@ describe.each(Object.entries(creates))('a comment written through %s', (_name, c
   });
 
   it('is refused for a password in another letter case', async () => {
-    await storeCredentials(projectId);
+    await storeCredentials(harness.db, projectId);
     const here = await issue();
     const { refused } = await create(callers.member, here, `pw ${PASSWORD.toLowerCase()}`);
     expect(refused).toBeDefined();
@@ -278,7 +250,7 @@ describe.each(Object.entries(creates))('a comment written through %s', (_name, c
   });
 
   it('stores a body that carries no credential byte for byte', async () => {
-    await storeCredentials(projectId);
+    await storeCredentials(harness.db, projectId);
     const here = await issue();
     const plain = `the ${SHORT} account, a v1 release,\nand a second line `;
     expect(await create(callers.member, here, plain)).not.toHaveProperty('refused');
@@ -293,51 +265,31 @@ describe.each(Object.entries(creates))('a comment written through %s', (_name, c
   });
 });
 
-async function aComment(issueId: string, authorId: string, body: string): Promise<string> {
-  const id = randomUUID();
-  await harness.db.execute(sql`
-    INSERT INTO comments (id, issue_id, author_id, body) VALUES (${id}, ${issueId}, ${authorId}, ${body})`);
-  return id;
-}
-
-type Edit = (who: Caller, commentId: string, body: string) => Promise<Door>;
-
-const edits: Record<string, Edit> = {
-  'REST PATCH /api/comments/:id': (who, id, body) =>
-    callRest(server.baseUrl, who.jwt, 'PATCH', `/api/comments/${id}`, { body }),
-  'forge_comments update': (who, id, body) =>
-    callTool(who.pat, 'forge_comments', { action: 'update', documentId: id, data: { body } }),
-};
+const edits = editDoors(() => server.baseUrl);
 
 describe.each(Object.entries(edits))('an edit through %s', (_name, edit) => {
   it('is refused when the new body carries a stored credential, and the old words stay', async () => {
-    await storeCredentials(projectId);
-    const id = await aComment(await issue(), callers.member.userId, 'the first words');
+    await storeCredentials(harness.db, projectId);
+    const id = await aComment(harness.db, await issue(), callers.member.userId, 'the first words');
 
     const { refused } = await edit(callers.member, id, `now with ${PASSWORD}`);
 
     expect(refused).toContain('stored-test-credential');
     expect(refused).not.toContain(PASSWORD);
-    const rows = (await harness.db.execute(
-      sql`SELECT body FROM comments WHERE id = ${id}`,
-    )) as unknown as Array<{ body: string }>;
-    expect(rows[0]?.body).toBe('the first words');
+    expect(await storedBody(harness.db, id)).toBe('the first words');
   });
 
   it.each(ENCODED)('is refused where the new body writes the value with %s', async (_how, text) => {
-    await storeCredentials(projectId);
-    const id = await aComment(await issue(), callers.member.userId, 'the first words');
+    await storeCredentials(harness.db, projectId);
+    const id = await aComment(harness.db, await issue(), callers.member.userId, 'the first words');
     const { refused } = await edit(callers.member, id, text);
     expect(refused).toContain('stored-test-credential');
-    const rows = (await harness.db.execute(
-      sql`SELECT body FROM comments WHERE id = ${id}`,
-    )) as unknown as Array<{ body: string }>;
-    expect(rows[0]?.body).toBe('the first words');
+    expect(await storedBody(harness.db, id)).toBe('the first words');
   });
 
   it('admits a body that carries none', async () => {
-    await storeCredentials(projectId);
-    const id = await aComment(await issue(), callers.member.userId, 'the first words');
+    await storeCredentials(harness.db, projectId);
+    const id = await aComment(harness.db, await issue(), callers.member.userId, 'the first words');
     expect(await edit(callers.member, id, 'rewritten')).not.toHaveProperty('refused');
   });
 });
@@ -400,7 +352,7 @@ describe('a report core repeats about an issue', () => {
 
 describe('text core writes itself onto an issue', () => {
   it('replaces a stored credential in place, keeps the surrounding text, and logs the label', async () => {
-    await storeCredentials(projectId);
+    await storeCredentials(harness.db, projectId);
     const here = await issue();
     const warn = vi.spyOn(mods.logger, 'warn');
 
@@ -425,7 +377,7 @@ describe('text core writes itself onto an issue', () => {
   });
 
   it('withholds from a writer that goes through insertComment and passes withhold, never refusing it', async () => {
-    await storeCredentials(projectId);
+    await storeCredentials(harness.db, projectId);
     const here = await issue();
 
     const written = await mods.insertComment({
@@ -444,7 +396,7 @@ describe('text core writes itself onto an issue', () => {
   });
 
   it('stores a text that carries none untouched, and withholding twice changes nothing', async () => {
-    await storeCredentials(projectId);
+    await storeCredentials(harness.db, projectId);
     const here = await issue();
     const plain = 'a plain note about the viewer1 account';
     await mods.insertSystemComment({ issueId: here, authorId: ownerId, body: plain });

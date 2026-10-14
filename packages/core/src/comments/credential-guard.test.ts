@@ -5,6 +5,12 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import {
+  charactersTakenOut,
+  codePoint,
+  SEQUENCES_TAKEN_OUT,
+} from '../prompt/handed-read.fixture.js';
+import { readAsHanded } from '../prompt/sanitize.js';
+import {
   credentialRefusal,
   credentialsFrom,
   findCredential,
@@ -336,6 +342,85 @@ describe('a value written so that only a reader sees it', () => {
 
   it('leaves ordinary markdown and a short value in a longer sentence alone', () => {
     const text = '# Heading\n\n- a **bold** item with `code`, the viewer1 account and a v1 release';
+    expect(withholdCredentials(text, stored)).toEqual({ text, ids: [] });
+  });
+});
+
+describe('a value split by what an agent is not handed', () => {
+  const TAKEN_OUT = charactersTakenOut();
+  /** The long username with `between` after its fifth character, where an agent reads it whole. */
+  const split = (between: string): string =>
+    `${LONG_USER.slice(0, 5)}${between}${LONG_USER.slice(5)}`;
+
+  it('plants every character the read takes out, read off the read itself', () => {
+    expect(TAKEN_OUT.map(codePoint)).toEqual(
+      expect.arrayContaining([
+        'U+00AD',
+        'U+200B',
+        'U+202E',
+        'U+2060',
+        'U+FEFF',
+        'U+E0000',
+        'U+E007F',
+      ]),
+    );
+    for (const one of TAKEN_OUT) expect(readAsHanded(`a${one}b`).text).toBe('ab');
+  });
+
+  it.each(TAKEN_OUT.map((one) => [codePoint(one), one]))(
+    'finds the value with %s inside it, at the column it starts in as written',
+    (_name, one) => {
+      const hit = findCredential(`line one\nlog in as ${split(one)} today`, stored);
+      expect(hit).toMatchObject({ id: 'staging admin', line: 2, column: 11 });
+      expect(hit?.near).not.toContain(LONG_USER.slice(5));
+    },
+  );
+
+  it.each(SEQUENCES_TAKEN_OUT)('finds the value with %s inside it', (_name, between) => {
+    expect(findCredential(`log in as ${split(between)}`, stored)).toMatchObject({
+      id: 'staging admin',
+      line: 1,
+      column: 11,
+    });
+  });
+
+  it('finds a value that holds such a character itself, written as it is stored', () => {
+    const odd = credentialsFrom({
+      testCredentials: [{ label: 'odd', password: 'pass\u200Bword-0123456' }],
+    });
+    expect(findCredential('pw pass\u200Bword-0123456', odd)).toMatchObject({ id: 'odd' });
+    expect(findCredential('pw password-0123456', odd)).toMatchObject({ id: 'odd' });
+  });
+
+  it('withholds the value in place with the character inside it, keeping the text around it', () => {
+    for (const one of TAKEN_OUT) {
+      const { text, ids } = withholdCredentials(`as ${split(one)}, then stopped`, stored);
+      expect(ids).toEqual(['staging admin']);
+      expect(text).toBe(`as ${withheldMarker('staging admin')}, then stopped`);
+    }
+  });
+
+  it('withholds what an agent would draw from what it is handed', () => {
+    const text = `log in as qa-user@sid<\u200Bb></b>corp.test`;
+    expect(findCredential(readAsText(text), stored)).toBeNull();
+    const { ids } = withholdCredentials(text, stored);
+    expect(ids).toEqual(['staging admin']);
+  });
+
+  it('takes a value the read shortens below twelve characters as a short one, so no marker is refused', () => {
+    const odd = credentialsFrom({
+      testCredentials: [{ label: 'odd', password: 'withheld\u200B\u200B\u200B\u200B' }],
+    });
+    const sentence = 'password: withheld';
+    expect(withholdCredentials(sentence, odd)).toEqual({ text: sentence, ids: [] });
+    const alone = withholdCredentials('withheld', odd);
+    expect(alone.ids).toEqual(['odd']);
+    expect(findCredential(alone.text, odd)).toBeNull();
+    expect(withholdCredentials(alone.text, odd)).toEqual({ text: alone.text, ids: [] });
+  });
+
+  it('leaves a short value with such a character beside it in a sentence alone', () => {
+    const text = 'the viewer1\u200B account';
     expect(withholdCredentials(text, stored)).toEqual({ text, ids: [] });
   });
 });

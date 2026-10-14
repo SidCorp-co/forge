@@ -3,6 +3,7 @@ import { db, type Tx } from '../db/client.js';
 import { issues, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 import type { MessageRefusal } from '../messaging/contract.js';
+import { readAsHanded } from '../prompt/sanitize.js';
 import { readAsText } from './reading.js';
 
 /** The rule a refusal is filed under, so a caller reads which check refused rather than a prose guess. */
@@ -42,17 +43,33 @@ function bare(text: string): string {
 /** Lower-case one code point at a time, so the same text folds the same way whole or in part. */
 const fold = (text: string): string => text.replace(/[\s\S]/gu, (one) => one.toLowerCase());
 
-/** The folded text with, for each of its code units, where in the original it began and ended. */
-function foldedWithOffsets(text: string): { folded: string; starts: number[]; ends: number[] } {
+type Reading = (text: string) => { text: string; origin: readonly number[] | null };
+
+/**
+ * The two readings every match is taken on. A value is sought in each in that same reading of
+ * itself, so a value split by a character the agent's read takes out is whole for the check as it
+ * is for the agent, and a value that itself holds such a character is still found as written.
+ */
+const READINGS: readonly Reading[] = [(text) => ({ text, origin: null }), readAsHanded];
+
+/** The text in one reading, folded, with for each code unit where in `text` it began and ended. */
+function foldedWithOffsets(
+  text: string,
+  reading: Reading,
+): { folded: string; starts: number[]; ends: number[] } {
+  const read = reading(text);
+  const from = (i: number): number => (read.origin ? (read.origin[i] as number) : i);
   let folded = '';
   const starts: number[] = [];
   const ends: number[] = [];
   let at = 0;
-  for (const one of text) {
+  for (const one of read.text) {
     const lower = one.toLowerCase();
+    const begin = from(at);
+    const end = from(at + one.length - 1) + 1;
     for (let i = 0; i < lower.length; i += 1) {
-      starts.push(at);
-      ends.push(at + one.length);
+      starts.push(begin);
+      ends.push(end);
     }
     folded += lower;
     at += one.length;
@@ -60,24 +77,32 @@ function foldedWithOffsets(text: string): { folded: string; starts: number[]; en
   return { folded, starts, ends };
 }
 
-function isWholeText(text: string, value: string): boolean {
-  if (fold(text.trim()) === fold(value.trim()) && value.trim() !== '') return true;
-  const held = fold(bare(value));
-  return held.length > 0 && fold(bare(text)) === held;
+/** Whether a value is matched anywhere or only as the whole text, by its length in the reading at hand. */
+const anywhere = (held: string): boolean => held.length >= SECRET_LENGTH;
+
+/** Whether `seen` is `held` and nothing else, quotes and stray punctuation at the edges aside. */
+function isWhole(seen: string, held: string): boolean {
+  if (held.trim() !== '' && fold(seen.trim()) === fold(held.trim())) return true;
+  const core = fold(bare(held));
+  return core.length > 0 && fold(bare(seen)) === core;
 }
 
-/** The half-open spans of `text` a stored credential covers, overlaps merged, in order. */
+/** The half-open spans of `text` a stored credential covers, in either reading, overlaps merged, in order. */
 function spansOf(text: string, credentials: readonly StoredCredential[]): Array<[number, number]> {
-  const { folded, starts, ends } = foldedWithOffsets(text);
   const found: Array<[number, number]> = [];
-  for (const { value } of credentials) {
-    if (value.length >= SECRET_LENGTH) {
-      const needle = fold(value);
+  for (const reading of READINGS) {
+    const { folded, starts, ends } = foldedWithOffsets(text, reading);
+    const seen = reading(text).text;
+    for (const { value } of credentials) {
+      const held = reading(value).text;
+      if (!anywhere(held)) {
+        if (isWhole(seen, held)) found.push([0, text.length]);
+        continue;
+      }
+      const needle = fold(held);
       for (let at = folded.indexOf(needle); at >= 0; at = folded.indexOf(needle, at + 1)) {
         found.push([starts[at] as number, ends[at + needle.length - 1] as number]);
       }
-    } else if (isWholeText(text, value)) {
-      found.push([0, text.length]);
     }
   }
   found.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
@@ -92,11 +117,12 @@ function spansOf(text: string, credentials: readonly StoredCredential[]): Array<
 
 /** Each distinct credential that matches `text`, in the order the project stores them. */
 function matching(text: string, credentials: readonly StoredCredential[]): StoredCredential[] {
-  const lowered = fold(text);
   return credentials.filter((one) =>
-    one.value.length >= SECRET_LENGTH
-      ? lowered.includes(fold(one.value))
-      : isWholeText(text, one.value),
+    READINGS.some((reading) => {
+      const seen = reading(text).text;
+      const held = reading(one.value).text;
+      return anywhere(held) ? fold(seen).includes(fold(held)) : isWhole(seen, held);
+    }),
   );
 }
 
@@ -238,11 +264,27 @@ export function withheldMarker(id: string): string {
   return id === '' ? '[withheld]' : `[withheld: test credential "${id}", read at ${READ_AT}]`;
 }
 
+/** The texts a comment reads as once markdown is drawn: from what is stored, and from what an agent is handed. */
+export function readsAs(text: string): string[] {
+  const drawn = readAsText(text);
+  const handedDrawn = readAsText(readAsHanded(text).text);
+  return handedDrawn === drawn ? [drawn] : [drawn, handedDrawn];
+}
+
+function findWhenDrawn(
+  text: string,
+  credentials: readonly StoredCredential[],
+): CredentialHit | null {
+  for (const drawn of readsAs(text)) {
+    const hit = findCredential(drawn, credentials);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 /** True where `text` carries a stored value, written out or only read off it. */
 function holdsCredential(text: string, credentials: readonly StoredCredential[]): boolean {
-  return (
-    spansOf(text, credentials).length > 0 || findCredential(readAsText(text), credentials) !== null
-  );
+  return spansOf(text, credentials).length > 0 || findWhenDrawn(text, credentials) !== null;
 }
 
 /** The letters a last-resort marker is tried with: a-z, then the CJK block, so one is always free. */
@@ -313,7 +355,7 @@ function withholdWhatReadsAsOne(
   credentials: readonly StoredCredential[],
   seen: readonly string[],
 ): Withheld {
-  const hit = findCredential(readAsText(text), credentials);
+  const hit = findWhenDrawn(text, credentials);
   if (!hit) return { text, ids: seen };
   const ids = [...seen];
   const mark = (id: string): string => {
@@ -321,11 +363,11 @@ function withholdWhatReadsAsOne(
     return safeMarker(id, credentials);
   };
   const lines = text.split('\n').map((line) => {
-    const found = findCredential(readAsText(line), credentials);
+    const found = findWhenDrawn(line, credentials);
     return found ? mark(found.id) : line;
   });
   const byLine = lines.join('\n');
-  if (!findCredential(readAsText(byLine), credentials)) return { text: byLine, ids };
+  if (!findWhenDrawn(byLine, credentials)) return { text: byLine, ids };
   return { text: mark(hit.id), ids };
 }
 

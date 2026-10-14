@@ -123,3 +123,102 @@ describe('raw SQL that names the comments table without writing its name', () =>
     expect(found(source)).toEqual(['2 unresolved']);
   });
 });
+
+describe("raw SQL built with drizzle's join and append", () => {
+  it.each([
+    [
+      'a query appended onto a verb, chained',
+      ['db.execute(sql`insert into `.append(sql`«comments» (body) values (1)`));'],
+      ['2 write'],
+    ],
+    [
+      'a query appended onto a verb held by a constant',
+      [
+        'const q = sql`insert into `;',
+        'q.append(sql`«comments» (body) values (1)`);',
+        'db.execute(q);',
+      ],
+      ['2 unresolved', '3 write'],
+    ],
+    [
+      'a verb in sql.raw joined to the table',
+      [
+        "db.execute(sql.join([sql.raw('insert into'), comments, sql.raw('(body) values (1)')], sql.raw(' ')));",
+      ],
+      ['2 write'],
+    ],
+    [
+      'a verb and the table as two sql parts, joined with no separator',
+      ['db.execute(sql.join([sql`DELETE FROM`, sql`«comments»`]));'],
+      ['2 write'],
+    ],
+    [
+      'a verb and the table joined by an empty separator',
+      ['db.execute(sql.join([sql`DELETE FROM`, sql`«comments»`], sql``));'],
+      ['2 write'],
+    ],
+    [
+      'the verb split into words, joined',
+      ["db.execute(sql.join([sql.raw('insert'), sql.raw('into'), c], sql.raw(' ')));"],
+      ['2 write'],
+    ],
+    [
+      'an update whose table is joined between the verb and its set',
+      ['db.execute(sql.join([sql`update`, s.comments, sql`set body = 1`], sql` `));'],
+      ['2 write'],
+    ],
+    [
+      'parts held by a constant array',
+      [
+        "const parts = [sql.raw('delete from'), comments];",
+        "db.execute(sql.join(parts, sql.raw(' ')));",
+      ],
+      ['2 unresolved', '3 write'],
+    ],
+    [
+      'a verb appended onto a query the scan cannot read, the table appended after it',
+      [
+        'const q = sql.empty();',
+        'q.append(sql`delete from `);',
+        'q.append(sql`«comments»`);',
+        'db.execute(q);',
+      ],
+      ['3 unresolved'],
+    ],
+  ])("reads through drizzle's join and append: %s", (_how, lines, expected) => {
+    const source = [
+      [
+        IMPORT,
+        "import { comments as c } from '../db/schema.js';",
+        "import * as s from '../db/schema.js';",
+      ].join(' '),
+      ...lines,
+    ].join('\n');
+    expect(found(source)).toEqual(expected);
+  });
+
+  it('names a verb whose table is out of its sight, saying where it went', () => {
+    const source = [IMPORT, "db.execute(sql.join([sql.raw('delete from'), table()]));"].join('\n');
+    expect(found(source)).toEqual(['2 unresolved']);
+    const source2 = [IMPORT, 'const q = sql`insert into `;', 'more(q);'].join('\n');
+    expect(writes(source2).map((w) => w.how)).toEqual([
+      expect.stringContaining(
+        "a write verb whose table is joined or appended out of the scan's sight",
+      ),
+    ]);
+  });
+
+  it('is quiet for a join of columns, a form append and an array join that write nothing', () => {
+    const source = [
+      IMPORT,
+      'export const go = (db: any, cols: string[], form: any, id: string) => {',
+      '  db.execute(sql`update runner_releases set «sql.join(cols.map((c) => sql`«c» = 1`), sql`, `)» where id = «id»`);',
+      "  form.append('update', id);",
+      "  const words = ['insert', 'delete'].join(', ');",
+      '  db.execute(sql.join([sql`select 1 from`, comments], sql` `));',
+      '  return words;',
+      '};',
+    ].join('\n');
+    expect(found(source)).toEqual([]);
+  });
+});
