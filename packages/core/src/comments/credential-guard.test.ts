@@ -216,7 +216,7 @@ describe('what core writes in place of a stored credential', () => {
     expect(findCredential(readAsText(whole.text), wording)).toBeNull();
   });
 
-  it('numbers the bare marker where a stored value matches the bare marker too', () => {
+  it('marks with a letter no stored value holds where a stored value matches the bare marker too', () => {
     const clash = credentialsFrom({
       testCredentials: [
         { label: 'login', username: 'withheld', password: 'environments.testCredentials' },
@@ -228,6 +228,21 @@ describe('what core writes in place of a stored credential', () => {
     const literal = withholdCredentials('pw environments.testCredentials end', clash);
     expect(findCredential(literal.text, clash)).toBeNull();
     expect(literal.text.startsWith('pw [withheld ')).toBe(true);
+    expect(withholdCredentials(once.text, clash).text).toBe(once.text);
+  });
+
+  it('still withholds where many stored values each match a family of markers', () => {
+    const rows = [
+      'withheld',
+      ...Array.from({ length: 9 }, (_, i) => `withheld ${i + 1}`),
+      ...Array.from({ length: 90 }, (_, i) => `[withheld ${i + 10}`),
+      'environments.testCredentials',
+    ].map((password, i) => ({ label: `row ${i}`, username: '', password }));
+    const many = credentialsFrom({ testCredentials: rows });
+    const once = withholdCredentials('environments&#46;testCredentials', many);
+    expect(findCredential(once.text, many)).toBeNull();
+    expect(findCredential(readAsText(once.text), many)).toBeNull();
+    expect(withholdCredentials(once.text, many).text).toBe(once.text);
   });
 
   it('names no credential where its label and its position both hold a stored value', () => {

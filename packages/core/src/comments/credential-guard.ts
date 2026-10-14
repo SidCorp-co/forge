@@ -245,21 +245,30 @@ function holdsCredential(text: string, credentials: readonly StoredCredential[])
   );
 }
 
+/** The letters a last-resort marker is tried with: a-z, then the CJK block, so one is always free. */
+function* markerLetters(): Generator<string> {
+  for (let code = 0x61; code <= 0x7a; code += 1) yield String.fromCharCode(code);
+  for (let code = 0x4e00; code <= 0x9fff; code += 1) yield String.fromCharCode(code);
+}
+
 /**
- * The marker for `id`, or a bare one where the named marker would carry a stored value. A bare
- * marker can match too (a stored username `withheld`), so the next is numbered: no stored value
- * matches two of them, so one of as many as there are credentials, plus one, is clear.
+ * The marker for `id`; the bare one where the named marker would carry a stored value; and where a
+ * stored value matches the bare one too, a marker holding a letter that no stored value contains.
+ * No value of twelve characters or more can sit inside a marker of which no run without that letter
+ * is that long, and no shorter one can equal a marker it cannot spell.
  */
 function safeMarker(id: string, credentials: readonly StoredCredential[]): string {
   const named = withheldMarker(id);
   if (!holdsCredential(named, credentials)) return named;
-  for (let n = 0; n <= credentials.length; n += 1) {
-    const bare = n === 0 ? withheldMarker('') : `[withheld ${n}]`;
-    if (!holdsCredential(bare, credentials)) return bare;
+  const bare = withheldMarker('');
+  if (!holdsCredential(bare, credentials)) return bare;
+  const written = fold(credentials.map((one) => one.value).join(''));
+  for (const letter of markerLetters()) {
+    if (written.includes(letter)) continue;
+    const marker = `[withheld ${letter}]`;
+    if (!holdsCredential(marker, credentials)) return marker;
   }
-  throw new Error(
-    'no withheld marker is clear of the stored credentials: a value matches them all',
-  );
+  throw new Error('no withheld marker is clear of the stored credentials');
 }
 
 /** The text core writes, with its stored credentials replaced in place and everything else kept. */
