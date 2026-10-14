@@ -89,6 +89,21 @@ describe('the pages', () => {
     expect(html).toContain('href="/api/reference"');
   });
 
+  it('keep each diagram at the size it is drawn, so a narrow screen scrolls it inside its own frame', async () => {
+    const document = await documentWith(['POST', '/api/pat'], ['GET', '/api/issues/:id']);
+    const html = renderFlowsPage([flow], document, '/api/reference');
+    expect(html).toContain('sequence: { useMaxWidth: false }');
+    expect(html).toContain('pre.mermaid { overflow-x: auto; max-width: 100%');
+  });
+
+  it('name an icon on both pages, so the browser does not ask the host for /favicon.ico', async () => {
+    const document = await documentWith(['POST', '/api/pat'], ['GET', '/api/issues/:id']);
+    expect(renderReferencePage('/api/openapi.json')).toContain('<link rel="icon" href="data:,">');
+    expect(renderFlowsPage([flow], document, '/api/reference')).toContain(
+      '<link rel="icon" href="data:,">',
+    );
+  });
+
   it('load the renderers from a pinned version with the hash of the file read', () => {
     const html = renderReferencePage('/api/openapi.json');
     expect(html).toMatch(/@scalar\/api-reference@\d+\.\d+\.\d+\//);

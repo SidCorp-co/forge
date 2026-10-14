@@ -9,7 +9,7 @@ import type { RouteEntry } from '../document/registry.js';
  */
 export type CheckInput = {
   readonly reference: Reference;
-  /** The text of every non-test source file, joined: where a declared error code must be written. */
+  /** The text of every non-test source file, joined: where a declared error code must be written, outside the `fail(...)` that declares it. */
   readonly source: string;
 };
 
@@ -85,6 +85,19 @@ export function thrownInline(handlerSource: string): Thrown[] {
   return out;
 }
 
+/** The source with every `fail(...)` call taken out, since a code a descriptor declares is not a place any handler writes it. */
+export function withoutDeclarations(source: string): string {
+  let out = '';
+  let at = 0;
+  for (const m of source.matchAll(/(?<![\w$.])fail\(/g)) {
+    const open = (m.index ?? 0) + m[0].length - 1;
+    if (open < at) continue;
+    out += source.slice(at, m.index);
+    at = open + balanced(source, open).length;
+  }
+  return out + source.slice(at);
+}
+
 function walkRefs(node: unknown, visit: (ref: string) => void): void {
   if (Array.isArray(node)) {
     for (const child of node) walkRefs(child, visit);
@@ -145,12 +158,13 @@ export function checkReference({ reference, source }: CheckInput): Finding[] {
     }
   }
 
+  const written = withoutDeclarations(source);
   const named = new Set<string>();
   for (const byStatus of reference.errors.values()) {
     for (const codes of byStatus.values()) for (const code of codes) named.add(code);
   }
   for (const code of [...named].sort()) {
-    if (!source.includes(`'${code}'`) && !source.includes(`"${code}"`)) {
+    if (!written.includes(`'${code}'`) && !written.includes(`"${code}"`)) {
       findings.push({
         rule: 'typo-code',
         route: 'document',

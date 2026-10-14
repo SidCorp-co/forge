@@ -75,6 +75,17 @@ integration run, with `RESPONSE_CONFORMANCE=1`, fails a request whose JSON answe
 against the schema declared for its status. That run is a post-merge job (ISS-1370), so what the
 integration suite does not exercise is held by `tsc` alone.
 
+**What the check does not see** (ISS-1371). It reads each handler's own text, so a request input read
+or a status thrown inside a helper the handler calls goes unseen: the read is not matched to a
+declared schema and the thrown code is not matched to a declared answer. Both are caught only where
+the handler also names them, or where the integration run's conformance meets the answer. Following
+calls into same-package helpers would need a call graph over the composed app, which `Function.toString`
+cannot give and which a type-aware pass would have to build, so the gap is priced rather than
+closed. It ends when the check reads helpers through that pass, or when a read of the request
+may only be made in a handler and a refusal only be thrown through one table. The declared codes are
+held in the other direction: a code written nowhere outside the `fail(...)` that declares it fails
+the check as a typo.
+
 **MCP reaches the database beside the API.** 19 of the 49 tool files under
 `packages/core/src/mcp/tools/` import the database module directly, for example
 `forge-issues.ts`, `forge-jobs.ts` and `forge-runners.ts`. Whether each one duplicates a route or

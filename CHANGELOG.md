@@ -126,7 +126,7 @@
 
 ### Added
 
-- **The API publishes its own reference.** `/api/openapi.json` describes every route's input, answers, errors and permission, `/api/reference` renders it and `/api/reference/flows` draws four flows; none needs a login.
+- **The API publishes its own reference.** `/api/openapi.json` describes every route's input, answers, errors and permission, `/api/reference` renders it and `/api/reference/flows` draws four flows; none needs a login. (ISS-1371)
 
 - **A run now records which copy of the policy decided it.** The box reports the `forge` plugin copy its pane loaded, or says why it cannot, and the run keeps that. A copy core cannot read is refused by name.
 
@@ -6405,6 +6405,8 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+
+- **Marking every notification read refuses a body that names a project.** `POST /api/notifications/mark-all-read` used to accept a `projectId`, ignore it and mark every project's notifications read; it now answers 400 naming the field. Send no body. (ISS-1371)
 
 - **A settings page has one Save, and asks before you leave it unsaved.** Basics, Repository, Testing, Pipeline and Account save everything changed together and name what is wrong beside the field. Reload, link, tab or Back asks first. (ISS-1262)
 

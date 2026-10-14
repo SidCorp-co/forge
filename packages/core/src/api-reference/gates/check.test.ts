@@ -230,6 +230,44 @@ describe('each rule, planted once, continued', () => {
     expect(findings[0]?.detail).toContain('CONFLCIT');
   });
 
+  it('typo-code: a code is not written by the descriptor that declares it, in either form of fail', async () => {
+    const app = new Hono();
+    app.get(
+      '/api/issues',
+      describeOperation({
+        summary: 's',
+        responses: {
+          200: json(z.object({})),
+          409: fail('CONFLCIT', 'two writers'),
+          410: fail({ GONEE: 'was here' }),
+        },
+      }),
+      (c) => c.json({}),
+    );
+    const reference = await buildReference(app, { version: 't' });
+    const declaring = `${BUILT_IN}\nexport const x = describeOperation({ responses: { 409: fail('CONFLCIT', 'two writers'), 410: fail({ GONEE: 'was here' }) } });`;
+    const findings = checkReference({ reference, source: declaring });
+    expect(rules(findings)).toEqual(['typo-code document', 'typo-code document']);
+    expect(findings.map((f) => f.detail).join(' ')).toContain('CONFLCIT');
+  });
+
+  it('typo-code: a code a handler throws is written, so it is not named', async () => {
+    const app = new Hono();
+    app.get(
+      '/api/issues',
+      describeOperation({
+        summary: 's',
+        responses: { 200: json(z.object({})), 409: fail('CONFLICT', 'two writers') },
+      }),
+      () => {
+        throw new HTTPException(409, { message: 'x', cause: { code: 'CONFLICT' } });
+      },
+    );
+    const reference = await buildReference(app, { version: 't' });
+    const source = `${BUILT_IN}\nfail('CONFLICT', 'two writers'); throw new HTTPException(409, { cause: { code: 'CONFLICT' } });`;
+    expect(checkReference({ reference, source })).toEqual([]);
+  });
+
   it('omitted: a route the document does not carry is named', async () => {
     const app = new Hono();
     app.get('/api/issues', ok, (c) => c.json({}));

@@ -1,10 +1,18 @@
 import { Hono } from 'hono';
+import { z } from 'zod';
 import pkg from '../../../package.json' with { type: 'json' };
-import { describeOperation, raw } from '../declare/describe.js';
+import { describeOperation, json, raw } from '../declare/describe.js';
 import { buildReference, type Reference } from '../document/build.js';
 import type { RouteSource } from '../document/registry.js';
 import { FLOWS } from './flows.js';
 import { renderFlowsPage, renderReferencePage } from './page.js';
+
+/** The document as far as a client can rely on it: the OpenAPI version, who it describes, and the operations by path. */
+const documentSchema = z.looseObject({
+  openapi: z.literal('3.1.0'),
+  info: z.looseObject({ title: z.string(), version: z.string() }),
+  paths: z.record(z.string(), z.record(z.string(), z.unknown())),
+});
 
 /**
  * The reference of an app, built from its route table on first use and kept: the table is fixed
@@ -28,7 +36,7 @@ export function referenceRoutes(reference: () => Promise<Reference>): Hono {
       summary: 'The API reference as an OpenAPI 3.1 document',
       description:
         'Generated from the routes of the running app. It needs no credential and states, for every operation, its inputs, its answers and the access it needs.',
-      responses: { 200: raw('application/json', 'The OpenAPI 3.1 document') },
+      responses: { 200: json(documentSchema, 'The OpenAPI 3.1 document') },
     }),
     async (c) => c.json((await reference()).document),
   );

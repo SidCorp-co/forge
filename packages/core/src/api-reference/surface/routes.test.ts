@@ -46,6 +46,22 @@ describe('GET /api/openapi.json', () => {
     expect(await a.text()).toBe(await b.text());
   });
 
+  it('declares the object it answers, not a string', async () => {
+    const document = (await (await app.request('/api/openapi.json')).json()) as {
+      paths: Record<
+        string,
+        Record<
+          string,
+          { responses: Record<string, { content: Record<string, { schema: unknown }> }> }
+        >
+      >;
+    };
+    const schema =
+      document.paths['/api/openapi.json']?.get?.responses['200']?.content['application/json']
+        ?.schema;
+    expect(schema).toMatchObject({ type: 'object', required: ['openapi', 'info', 'paths'] });
+  });
+
   it('refuses a method it does not serve, by name, and not by serving the document', async () => {
     const res = await app.request('/api/openapi.json', { method: 'POST' });
     expect(res.status).toBe(404);
