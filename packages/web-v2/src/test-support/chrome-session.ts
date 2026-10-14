@@ -124,8 +124,8 @@ export async function launchChrome({ chrome = chromeBinary(), launchMs = WARM_LA
     child.once("exit", (code) => fail(new Error(`Chrome at ${chrome} exited with ${code} before it was listening: ${heard.trim().slice(-300)}`)));
   });
   try {
-    const url = await within(`Chrome at ${chrome} first launch`, launchMs, listening);
-    const send = await within(`Chrome at ${chrome} opening its DevTools socket`, launchMs, connect(url));
+    const launched = (async () => connect(await listening))();
+    const send = await within(`Chrome at ${chrome} first launch`, launchMs, launched);
     return {
       chrome,
       async evaluateWhenReady(pageUrl, expression, waitMs) {

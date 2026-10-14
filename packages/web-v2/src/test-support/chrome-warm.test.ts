@@ -6,7 +6,7 @@
 // before any case, each on its own clock, and leaves one browser that every case reuses; a slow or
 // missing Chrome fails naming the path tried and is never a test that timed out.
 
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -16,10 +16,11 @@ import { chromeBinary, launchChrome, WARM_HOOK_MS, WARM_LAUNCH_MS, WARM_STYLESHE
 const dir = mkdtempSync(join(tmpdir(), "forge-chrome-warm-test-"));
 const SLOW = join(dir, "slow-chrome");
 const DELAYED = join(dir, "delayed-chrome");
+const LAUNCHES = join(dir, "launches");
 const DELAY_MS = 3_000;
 beforeAll(() => {
   writeFileSync(SLOW, "#!/bin/sh\nexec sleep 5\n");
-  writeFileSync(DELAYED, `#!/bin/sh\nsleep ${DELAY_MS / 1000}\nexec "${chromeBinary()}" "$@"\n`);
+  writeFileSync(DELAYED, `#!/bin/sh\necho x >> "${LAUNCHES}"\nsleep ${DELAY_MS / 1000}\nexec "${chromeBinary()}" "$@"\n`);
   chmodSync(SLOW, 0o755);
   chmodSync(DELAYED, 0o755);
 });
@@ -31,6 +32,8 @@ afterEach(async () => {
   if (named === undefined) delete process.env.CHROME_BIN;
   else process.env.CHROME_BIN = named;
 });
+
+const launchesOf = (_launcher: string) => (existsSync(LAUNCHES) ? readFileSync(LAUNCHES, "utf8").split("\n").filter(Boolean).length : 0);
 
 const markup =
   '<table aria-label="T"><tbody><tr><td class="sticky">row</td><td><button type="button" aria-label="go">go</button></td></tr></tbody></table>';
@@ -50,6 +53,10 @@ describe("the clocks the warm-up runs on", () => {
 describe("a Chrome that cannot be used is refused by name", () => {
   it("fails a slow launch with its own message naming Chrome, the path and the clock, not a test timeout", async () => {
     await expect(launchChrome({ chrome: SLOW, launchMs: 300 })).rejects.toThrow(`Chrome at ${SLOW} first launch did not finish within 300ms`);
+  });
+
+  it("holds the socket's opening inside the same launch clock, so a stall there is the launch's too", async () => {
+    await expect(launchChrome({ chrome: SLOW, launchMs: 100 })).rejects.toThrow("first launch did not finish within 100ms");
   });
 
   it("fails the same way through warmChrome, so a beforeAll names it", async () => {
@@ -81,15 +88,13 @@ describe("the browser is launched once and reused", () => {
     expect(chromeLaunches()).toBe(before + 1);
   }, WARM_HOOK_MS);
 
-  it("pays a slow launch once, in the warm-up, and no measurement after it carries any of it", async () => {
+  it("pays a slow launch once, in the warm-up, and no measurement after it starts another browser", async () => {
     process.env.CHROME_BIN = DELAYED;
     const warmStart = Date.now();
     await warmChrome();
     expect(Date.now() - warmStart).toBeGreaterThanOrEqual(DELAY_MS);
-    for (const width of [390, 1280, 390]) {
-      const start = Date.now();
-      await measureReach(markup, width === 390 ? 356 : 894, width);
-      expect(Date.now() - start).toBeLessThan(DELAY_MS);
-    }
+    expect(launchesOf(DELAYED)).toBe(1);
+    for (const width of [390, 1280, 390]) await measureReach(markup, width === 390 ? 356 : 894, width);
+    expect(launchesOf(DELAYED)).toBe(1);
   }, WARM_HOOK_MS);
 });
