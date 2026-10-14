@@ -1,3 +1,4 @@
+import { sentence } from '../declare/prose.js';
 import type { OpenApiDocument } from '../document/build.js';
 import { type Flow, operationOfStep, toMermaid } from './flows.js';
 
@@ -77,8 +78,11 @@ export function renderFlowsPage(
       const steps = flow.steps
         .map((step) => {
           const op = operationOfStep(document, step.call);
-          const summary = typeof op?.summary === 'string' ? ` — ${escapeHtml(op.summary)}` : '';
-          return `<li><code>${escapeHtml(step.call)}</code>${summary}. ${escapeHtml(step.note)}</li>`;
+          const prose = [typeof op?.summary === 'string' ? op.summary : '', step.note]
+            .map(sentence)
+            .filter(Boolean)
+            .join(' ');
+          return `<li><code>${escapeHtml(step.call)}</code> — ${escapeHtml(prose)}</li>`;
         })
         .join('\n');
       return `<section id="${escapeHtml(flow.id)}">
