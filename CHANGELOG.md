@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.242] - 2026-10-14
+
+A short counts as met, design approvals never land issues, recoveries say why
+
+### Fixed
+
+- **An issue's tally says met, not passing.** A short meets its criterion and is never proven; a design-only issue is refused awaiting_release outside git too; a person handing an issue back to open or approved must say why.
+
 ## [0.4.0-dev.241] - 2026-10-14
 
 A short never proves a release, and a design approval alone lands no code
