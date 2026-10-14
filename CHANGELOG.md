@@ -11,6 +11,7 @@
 ### Security
 
 - **A stored test credential no longer reaches an issue comment.** A comment written on the web or by an agent tool that carries one is refused, naming where; text Forge writes itself gets a marker saying where it is read.
+- **A stored test credential written so that only a reader sees it is refused too.** A username split by `**`, empty tags or a link, or written as `&#64;` or `&excl;`, was stored because the match was on the characters sent; a comment is now held to the text it reads as, markdown drawn and character references decoded, on the web and through the agent tool, on create and on edit.
 - **A viewer can no longer deploy, cancel or roll back a Coolify binding.** The web API let any project member through; it now asks for the member role, as the agent tool always did, and says which role was held.
 - **Another person's comment cannot be rewritten by an agent, and a reply cannot hang under another issue.** Agents could edit any comment and name any parent; editing now needs the author or a project admin, as in the web.
 - **A viewer can no longer edit or delete a comment they wrote.** The web let the author through whatever their role, for instance after a demotion; it now asks for the member role, as the agent tool did.
@@ -3178,6 +3179,7 @@
 
 ### Fixed
 
+- **Closing a run with a checkpoint that declares another source is refused by name.** It answered a server error; it now answers 400 naming `source` and the one valid value, `reconstructed_from_box`, and leaves the run open to be closed again.
 - **A notification names its subject and opens it.** A runner, session, step, schedule or project in the title; a sweep is one row expanding to its issues. A resolved row is no longer unread; filter by type and unread. (ISS-1168)
 
 - **A path the API does not serve is answered 404, whoever asks.** It used to read 401, a wrong credential or not an admin, from a guard. A real route kept from a token still refuses it. (ISS-1305)

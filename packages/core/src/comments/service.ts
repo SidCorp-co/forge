@@ -15,6 +15,7 @@ import {
   withholdCredentials,
 } from './credential-guard.js';
 import { type CommentCursor, encodeCommentCursor } from './cursor.js';
+import { readAsText } from './reading.js';
 import { screenAgentComment, screenRecordFence } from './screen.js';
 
 export type CommentThreadRow = {
@@ -292,6 +293,7 @@ async function guardCredentials(
   if (mode === 'refuse') {
     // HTML is stored serialised, so `&` reaches the row as `&amp;`, and an attribute keeps its decoded text: each form is held to it.
     const readings: Array<[string, CredentialPlace]> = [[sent.raw, 'sent']];
+    if (sent.prepared.format !== 'html') readings.push([readAsText(sent.raw), 'read']);
     if (sent.prepared.format === 'html') {
       readings.push(
         [sent.prepared.text, 'prose'],

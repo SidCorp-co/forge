@@ -12,6 +12,7 @@ import {
   withheldMarker,
   withholdCredentials,
 } from './credential-guard.js';
+import { readAsText } from './reading.js';
 
 const LONG_USER = 'qa-user@sidcorp.test';
 const LONG_PASSWORD = 'Correct-Horse-9!';
@@ -254,5 +255,43 @@ describe("the readers of a project's stored credentials", () => {
     expect(byProject.map((one) => one.value)).toEqual(['u', 'p-0123456789ab']);
     const byIssue = await real.loadCredentialsByIssue(['issue-1'], executor);
     expect(byIssue.get('issue-1')?.map((one) => one.value)).toEqual(['u', 'p-0123456789ab']);
+  });
+});
+
+describe('a value written so that only a reader sees it', () => {
+  const FORMS: Array<[string, string]> = [
+    ['a numeric character reference', 'log in as qa-user&#64;sidcorp.test please'],
+    ['a named character reference', 'the password is Correct-Horse-9&excl; ok'],
+    ['empty tags', 'log in as qa-user@sid<b></b>corp.test please'],
+    ['emphasis marks', 'log in as qa-user@sid**corp**.test please'],
+    ['a link around part of it', 'log in as [qa-user@sid](https://x.test)corp.test please'],
+    ['a backslash escape', 'log in as qa\\-user@sidcorp.test please'],
+    ['a hard line break between parts of tags', 'log in as qa-user@<i>sid</i>corp.test please'],
+  ];
+
+  it.each(FORMS)('is withheld in place where it is written with %s', (_how, text) => {
+    const { text: out, ids } = withholdCredentials(text, stored);
+    expect(ids).toContain('staging admin');
+    expect(findCredential(readAsText(out), stored), 'nothing a reader sees is left').toBeNull();
+    expect(out).toContain('[withheld: test credential "staging admin"');
+  });
+
+  it('keeps the lines that carry none when only one line is written that way', () => {
+    const { text } = withholdCredentials(
+      'first line\nlog in as qa-user&#64;sidcorp.test\nlast line',
+      stored,
+    );
+    expect(text.split('\n')[0]).toBe('first line');
+    expect(text.split('\n')[2]).toBe('last line');
+  });
+
+  it('leaves a code span alone, where a character reference is drawn as written', () => {
+    const text = 'the literal is `qa-user&#64;sidcorp.test` in a code span';
+    expect(withholdCredentials(text, stored)).toEqual({ text, ids: [] });
+  });
+
+  it('leaves ordinary markdown and a short value in a longer sentence alone', () => {
+    const text = '# Heading\n\n- a **bold** item with `code`, the viewer1 account and a v1 release';
+    expect(withholdCredentials(text, stored)).toEqual({ text, ids: [] });
   });
 });

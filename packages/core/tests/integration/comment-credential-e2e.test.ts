@@ -223,6 +223,16 @@ describe('the run-ended comment, where a master closed a run with a reason', () 
   });
 });
 
+/** The same stored values written so that only a reader, not a literal match on the body, sees them. */
+const ENCODED: Array<[string, string]> = [
+  ['a numeric character reference', 'log in as qa-user&#64;sidcorp.test'],
+  ['a named character reference', 'the password is Correct-Horse-9&excl;'],
+  ['empty tags splitting the value', 'log in as qa-user@sid<b></b>corp.test'],
+  ['emphasis inside the value', 'log in as qa-user@sid**corp**.test'],
+  ['a link wrapping part of the value', 'log in as [qa-user@sid](https://x.test)corp.test'],
+  ['a backslash escape', 'log in as qa\\-user@sidcorp.test'],
+];
+
 type Write = (who: Caller, issueId: string, body: string) => Promise<Door>;
 
 const creates: Record<string, Write> = {
@@ -245,6 +255,17 @@ describe.each(Object.entries(creates))('a comment written through %s', (_name, c
     expect(refused).toContain('line 2, column 11');
     expect(refused).toContain('environments.testCredentials');
     expect(refused, 'the refusal must not echo the value it refuses').not.toContain(USERNAME);
+    expect(await bodies(here)).toEqual([]);
+  });
+
+  it.each(ENCODED)('is refused where the value is written with %s', async (_how, text) => {
+    await storeCredentials(projectId);
+    const here = await issue();
+    const { refused } = await create(callers.member, here, text);
+    expect(refused, 'what a reader sees as a credential must be refused').toContain(
+      'stored-test-credential',
+    );
+    expect(refused).toContain('the text the comment reads as');
     expect(await bodies(here)).toEqual([]);
   });
 
@@ -297,6 +318,17 @@ describe.each(Object.entries(edits))('an edit through %s', (_name, edit) => {
 
     expect(refused).toContain('stored-test-credential');
     expect(refused).not.toContain(PASSWORD);
+    const rows = (await harness.db.execute(
+      sql`SELECT body FROM comments WHERE id = ${id}`,
+    )) as unknown as Array<{ body: string }>;
+    expect(rows[0]?.body).toBe('the first words');
+  });
+
+  it.each(ENCODED)('is refused where the new body writes the value with %s', async (_how, text) => {
+    await storeCredentials(projectId);
+    const id = await aComment(await issue(), callers.member.userId, 'the first words');
+    const { refused } = await edit(callers.member, id, text);
+    expect(refused).toContain('stored-test-credential');
     const rows = (await harness.db.execute(
       sql`SELECT body FROM comments WHERE id = ${id}`,
     )) as unknown as Array<{ body: string }>;

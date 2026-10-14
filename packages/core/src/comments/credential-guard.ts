@@ -3,6 +3,7 @@ import { db, type Tx } from '../db/client.js';
 import { issues, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 import type { MessageRefusal } from '../messaging/contract.js';
+import { readAsText } from './reading.js';
 
 /** The rule a refusal is filed under, so a caller reads which check refused rather than a prose guess. */
 export const STORED_CREDENTIAL_RULE = 'stored-test-credential';
@@ -197,13 +198,14 @@ export function findCredential(
 }
 
 /** Which form of a comment a position is counted in. */
-export type CredentialPlace = 'sent' | 'prose' | 'stored' | 'decoded';
+export type CredentialPlace = 'sent' | 'prose' | 'stored' | 'decoded' | 'read';
 
 const WHERE: Record<CredentialPlace, string> = {
   sent: 'the body as sent',
   prose: 'the text the HTML reads as, markup removed',
   stored: 'the HTML as it is stored',
   decoded: 'the stored HTML with its entities decoded',
+  read: 'the text the comment reads as, markdown drawn and character references decoded',
 };
 
 /** The refusal a caller's write meets: what was found, where, and where the value is read instead. */
@@ -247,6 +249,11 @@ export function withholdCredentials(
   text: string,
   credentials: readonly StoredCredential[],
 ): Withheld {
+  const literal = withholdLiteral(text, credentials);
+  return withholdWhatReadsAsOne(literal.text, credentials, literal.ids);
+}
+
+function withholdLiteral(text: string, credentials: readonly StoredCredential[]): Withheld {
   const spans = spansOf(text, credentials);
   if (spans.length === 0) return { text, ids: [] };
   let out = '';
@@ -263,6 +270,32 @@ export function withholdCredentials(
     from = end;
   }
   return { text: out + text.slice(from), ids };
+}
+
+/**
+ * A value written as `&#97;dmin`, `ad**min**` or `ad<b></b>min` is not in the text as it stands but
+ * is what a reader sees. Where the text reads as a credential, each line that does is replaced by a
+ * marker, and the whole text where no single line carries it.
+ */
+function withholdWhatReadsAsOne(
+  text: string,
+  credentials: readonly StoredCredential[],
+  seen: readonly string[],
+): Withheld {
+  const hit = findCredential(readAsText(text), credentials);
+  if (!hit) return { text, ids: seen };
+  const ids = [...seen];
+  const mark = (id: string): string => {
+    if (!ids.includes(id)) ids.push(id);
+    return withheldMarker(id);
+  };
+  const lines = text.split('\n').map((line) => {
+    const found = findCredential(readAsText(line), credentials);
+    return found ? mark(found.id) : line;
+  });
+  const byLine = lines.join('\n');
+  if (!findCredential(readAsText(byLine), credentials)) return { text: byLine, ids };
+  return { text: mark(hit.id), ids };
 }
 
 /** Says a withhold happened: the issue and the credentials' identifiers, never a value. */
