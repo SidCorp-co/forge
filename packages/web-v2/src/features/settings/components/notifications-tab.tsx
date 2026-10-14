@@ -182,7 +182,7 @@ function InboxFilterBar({
   onChange: (next: InboxFilter) => void;
 }) {
   return (
-    <div role="group" aria-label="Filter notifications" className="flex flex-wrap items-center gap-x-4 gap-y-2">
+    <fieldset aria-label="Filter notifications" className="m-0 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 border-0 p-0">
       <div className="flex items-center gap-1">
         {([false, true] as const).map((unreadOnly) => (
           <button
@@ -214,7 +214,7 @@ function InboxFilterBar({
           options={[{ value: ALL_TYPES, label: "All types" }, ...TYPE_FILTER_OPTIONS]}
         />
       </div>
-    </div>
+    </fieldset>
   );
 }
 

@@ -4,8 +4,7 @@
  * The kernel keeps this invariant on runs and jobs, in both directions. On the entity a person
  * reads off the board it was kept by nobody: `stranded-issues.ts` watches `waiting` and
  * merged-and-stranded, `issue-run-invariant.ts` watches three statuses, and between them most of a
- * board went unread — and all three only ever emitted a notification, so a row they did see stayed
- * exactly where it was.
+ * board went unread, and all three only ever emitted a notification.
  *
  * This pass has two arms. One reads every non-terminal status that is not declared at rest, writes
  * what it found onto the row itself, and releases a lease that has lapsed by its own terms. The
