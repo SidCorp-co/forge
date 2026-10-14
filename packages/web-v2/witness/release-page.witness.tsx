@@ -1,8 +1,8 @@
-// A release page's "What this release proves" witnessed at phone and desktop width (REQ-40 BC-5,
-// ISS-492): seven criteria of one issue proving one requirement criterion are drawn as seven rows a
-// reader tells apart, under that criterion said once, and the requirement is counted in its own
-// criteria. J7 on 0.4.0-dev.222 saw the same sentence drawn seven times. The developer view's notes
-// then open, so a clip of the run shows both.
+// A release page witnessed at phone and desktop width (REQ-40 BC-5, ISS-492): the change's row opens
+// on seven criteria of one issue proving one requirement criterion, drawn as seven lines a reader
+// tells apart, and the requirement's row opens on that criterion said once, counted in its own
+// criteria. J7 on 0.4.0-dev.222 saw the same sentence drawn seven times. The Technical view's What it
+// changes then opens, so a clip of the run shows both.
 //
 //   pnpm --filter web-v2 witness witness/release-page.witness.tsx --out <dir> --clip
 
@@ -37,6 +37,9 @@ const page = releasePage({
       business: { total: 26, proven: [{ code: "BC-18", statement: BC18 }] },
     },
   ],
+  improvements: [{ issueKey: "ISS-451", kind: "improved", section: "Changed", line: "Every refusal now names the field to fix and how to fix it." }],
+  fixes: [],
+  knownIssues: [],
   technical: TECHNICAL,
 });
 
@@ -53,20 +56,26 @@ createRoot(root).render(
 );
 
 const req = () => document.querySelector("[data-testid=page-requirement]");
+const changeRow = () => document.querySelector("[data-testid=page-change][data-row-key=ISS-451]");
+const settle = () => new Promise((ok) => setTimeout(ok, 50));
 
-function proves(): string[] {
+async function proves(): Promise<string[]> {
   const r = req();
-  if (!r) return ["no requirement is drawn"];
+  const c = changeRow();
+  if (!r || !c) return ["no requirement or no ISS-451 row is drawn"];
   const wrong: string[] = [];
-  const rows = [...r.querySelectorAll("[data-testid=page-proven-row]")].map((e) => (e.textContent ?? "").trim());
-  if (rows.length !== 7) wrong.push(`REQ-34 draws ${rows.length} rows, not 7`);
-  if (new Set(rows).size !== rows.length) wrong.push(`REQ-34 draws ${rows.length} rows and only ${new Set(rows).size} read apart`);
+  c.querySelector<HTMLButtonElement>("button")?.click();
+  r.querySelector<HTMLButtonElement>("button")?.click();
+  await settle();
+  const lines = [...c.querySelectorAll("[data-testid=page-row-detail] li")].map((e) => (e.textContent ?? "").trim());
+  if (lines.length !== 7) wrong.push(`ISS-451 opens on ${lines.length} criteria, not 7`);
+  if (new Set(lines).size !== lines.length) wrong.push(`ISS-451 draws ${lines.length} lines and only ${new Set(lines).size} read apart`);
   const said = (r.textContent ?? "").split(BC18).length - 1;
-  if (said !== 1) wrong.push(`BC-18's wording is drawn ${said} times, not once`);
+  if (said !== 1) wrong.push(`BC-18's wording is drawn ${said} times under REQ-34, not once`);
   const count = r.querySelector("[data-testid=page-requirement-count]")?.textContent ?? "";
-  if (count !== "1 of its 26 criteria proven on this build") wrong.push(`the requirement's count reads "${count}"`);
-  for (const row of r.querySelectorAll("[data-testid=page-proven-row]")) {
-    if (row.getBoundingClientRect().right > window.innerWidth) wrong.push(`a row runs past the window: ${(row.textContent ?? "").slice(0, 40)}`);
+  if (count !== "1 of its 26 criteria proven") wrong.push(`the requirement's count reads "${count}"`);
+  for (const line of c.querySelectorAll("[data-testid=page-row-detail] li")) {
+    if (line.getBoundingClientRect().right > window.innerWidth) wrong.push(`a line runs past the window: ${(line.textContent ?? "").slice(0, 40)}`);
   }
   if (document.documentElement.scrollWidth > window.innerWidth) wrong.push(`the page scrolls sideways: ${document.documentElement.scrollWidth} px in ${window.innerWidth}`);
   return wrong;

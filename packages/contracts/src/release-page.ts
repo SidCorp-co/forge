@@ -21,7 +21,9 @@ import {
 import {
 	digestWordCount,
 	WHATS_NEW_KINDS,
+	WHATS_NEW_SECTIONS,
 	type WhatsNewKind,
+	type WhatsNewSection,
 } from "./whats-new.js";
 
 /** `user` reads what changed for them; `developer` adds the technical notes (BC-9). */
@@ -426,10 +428,15 @@ export interface ReleasePageRequirement extends ReleasePageCriteria {
 	business: { total: number; proven: ReleasePageCode[] } | null;
 }
 
-/** One user-facing line (`customer-notes.ts:customerNotes` output), with the kind its section reads as. */
+/**
+ * One user-facing line (`customer-notes.ts:customerNotes` output), with the kind its section reads
+ * as and the section itself, so a Security entry groups apart from the fixes its kind folds it into;
+ * `section` is null or absent where a row was made before it carried one (a share frozen earlier).
+ */
 export interface ReleasePageChange {
 	issueKey: string;
 	kind: WhatsNewKind;
+	section?: WhatsNewSection | null;
 	line: string;
 }
 
@@ -451,8 +458,9 @@ export interface ReleaseActionItem {
 }
 
 /** Whether an ask's sentence already names its artifact, so a reader prints the ref once. */
-export const actionSaysRef = (a: Pick<ReleaseActionItem, "sentence" | "ref">): boolean =>
-	a.sentence.includes(a.ref);
+export const actionSaysRef = (
+	a: Pick<ReleaseActionItem, "sentence" | "ref">,
+): boolean => a.sentence.includes(a.ref);
 
 export interface ReleaseKnownIssue {
 	issueKey: string;
@@ -542,7 +550,11 @@ export interface ReleaseTechnicalNotes {
  * invented: `no_note` where it has none, `held` where its line names what a reader cannot follow,
  * `reworked` where it was reopened after this release claimed it and its line now says a later round.
  */
-export const RELEASE_PAGE_UNNOTED_WHYS = ["no_note", "held", "reworked"] as const;
+export const RELEASE_PAGE_UNNOTED_WHYS = [
+	"no_note",
+	"held",
+	"reworked",
+] as const;
 
 export interface ReleasePageUnnoted {
 	issueKey: string;
@@ -588,6 +600,7 @@ const ProvenSchema = z.strictObject({
 const ChangeSchema = z.strictObject({
 	issueKey: z.string().min(1),
 	kind: z.enum(WHATS_NEW_KINDS),
+	section: z.enum(WHATS_NEW_SECTIONS).nullable().default(null),
 	line: z.string().min(1),
 });
 
@@ -781,6 +794,8 @@ export const RELEASE_PAGE_REFUSAL_CODES = [
 	"RELEASE_SEEN_NOT_SERVING",
 	/** The running instance declares no environment name to count a seen mark against. */
 	"RELEASE_SEEN_ENVIRONMENT_UNKNOWN",
+	/** The release carries nothing a summary could say: no change, no requirement (`release-digest.ts`). */
+	"RELEASE_SUMMARY_UNDERIVABLE",
 ] as const;
 export type ReleasePageRefusalCode =
 	(typeof RELEASE_PAGE_REFUSAL_CODES)[number];

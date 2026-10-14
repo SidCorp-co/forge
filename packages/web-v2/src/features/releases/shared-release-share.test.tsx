@@ -1,6 +1,6 @@
 import { ReleasePageSnapshotSchema } from "@forge/contracts/release-page";
 import { type ShareReleaseSnapshot, ShareReleaseSnapshotSchema } from "@forge/contracts/shares";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { releasePage } from "@/test/release-page";
 import { fakeCore, renderWithQuery } from "@/test/render";
@@ -36,10 +36,15 @@ describe("a shared release page", () => {
     expect(calls).toEqual([{ method: "POST", path: "/shares/open", body: { token: TOKEN } }]);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Release 0.4.0");
     expect(screen.getByText(/read-only snapshot/)).toBeTruthy();
-    expect(screen.getByTestId("page-improvements")).toHaveTextContent("Releases read as pages.");
-    expect(screen.getByTestId("page-known-issues")).toHaveTextContent("Falls short");
-    // a reader may not be a member: no link into the project, and no share or export acts
-    expect(container.querySelectorAll("a")).toHaveLength(0);
+    expect(screen.getByTestId("page-summary")).toHaveAttribute("data-state", "derived");
+    expect(screen.getByTestId("page-group-new")).toHaveTextContent("Releases read as pages");
+    const open = screen.getAllByTestId("page-known-issue")[0];
+    if (!open) throw new Error("no open row");
+    fireEvent.click(within(open).getAllByRole("button")[0]);
+    expect(open).toHaveTextContent("Falls short");
+    // a reader may not be a member: no link into the project (only the page's own anchors), and no share or export acts
+    expect([...container.querySelectorAll("a")].filter((a) => !a.getAttribute("href")?.startsWith("#"))).toHaveLength(0);
+    expect(screen.queryByTestId("page-row-technical")).toBeNull();
     expect(screen.queryByTestId("release-page-actions")).toBeNull();
   });
 

@@ -32,19 +32,14 @@ const LABEL: Record<ReleaseTab, ProductCopyKey> = {
   notes: "releases.tab.notes",
 };
 
-/** The release as a reader reads it, in the view the person chose; the switch and the share and export acts sit above it. */
+/** The release as a reader reads it, in the view the person chose. */
 function ReaderPane({ projectId, slug, version, view }: { projectId: string; slug: string; version: string; view: ReleasePageViewKind }) {
   const t = useCopy();
   const q = useReleasePage(projectId, version, view);
   return (
     <DetailPane label={t("releases.page.loading")} testId="release-page-reader">
       <QueryBoundary query={q} loadingLabel={t("releases.page.loading")}>
-        {(page) => (
-          <div className="grid gap-5">
-            <ReleasePageActions projectId={projectId} page={page} />
-            <ReleaseReader page={page} slug={slug} authed />
-          </div>
-        )}
+        {(page) => <ReleaseReader page={page} slug={slug} authed />}
       </QueryBoundary>
     </DetailPane>
   );
@@ -57,6 +52,8 @@ export function ReleasePage({ projectId, slug, version }: { projectId: string; s
   const q = useRelease(projectId, version);
   const forecastQ = useDraftReleaseForecast(projectId, q.data?.release.state === "draft");
   const list = useReleases(projectId);
+  // the same read the reader pane holds: the share and export acts sit beside the view switch
+  const pageQ = useReleasePage(projectId, version, view);
   return (
     <QueryBoundary query={q} loadingLabel={t("releases.loadingOne")}>
       {(data) => {
@@ -94,7 +91,7 @@ export function ReleasePage({ projectId, slug, version }: { projectId: string; s
             <EndedAttempt r={r} slug={slug} />
             {r.continuedAs ? <ContinuedAs to={r.continuedAs} slug={slug} className="border-b border-line-subtle px-8 py-2 max-md:px-4" /> : null}
             <ReleasePhoneStanding r={r} forecast={forecastQ.data} />
-            <div className="flex items-center gap-3 border-b border-line-subtle px-8 py-2.5 max-md:px-4" data-testid="release-view-bar">
+            <div className="flex flex-wrap items-center gap-3 border-b border-line-subtle px-8 py-2.5 max-md:px-4" data-testid="release-view-bar">
               <span data-tour="rel-technical" data-testid="release-view-switch" title={t("releases.page.view.label")}>
                 <SegmentedControl
                   options={RELEASE_PAGE_VIEWS.map((v) => ({ value: v, label: t(`releases.page.view.${v}`) }))}
@@ -102,6 +99,11 @@ export function ReleasePage({ projectId, slug, version }: { projectId: string; s
                   onChange={onView}
                 />
               </span>
+              {pageQ.data ? (
+                <span className="ml-auto">
+                  <ReleasePageActions projectId={projectId} page={pageQ.data} />
+                </span>
+              ) : null}
             </div>
             <ReaderPane projectId={projectId} slug={slug} version={r.version} view={view} />
             {view === "developer" ? (

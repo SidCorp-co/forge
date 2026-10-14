@@ -79,6 +79,7 @@ export function changesOf(notes: ReleaseDetail['notes']): {
   const changes: ReleasePageChange[] = [];
   for (const section of notes.sections) {
     if (!isWhatsNewSection(section.section)) continue;
+    const named = section.section;
     const lines = view.sections.find((s) => s.section === section.section)?.lines ?? [];
     const keys = section.entries
       .filter((e) => !folded.has(e.key) && !held.has(e.key))
@@ -86,7 +87,7 @@ export function changesOf(notes: ReleaseDetail['notes']): {
     const kind = WHATS_NEW_KIND_OF_SECTION[section.section];
     keys.forEach((issueKey, i) => {
       const line = lines[i];
-      if (line) changes.push({ issueKey, kind, line });
+      if (line) changes.push({ issueKey, kind, section: named, line });
     });
   }
   const titleOf = (key: string) =>

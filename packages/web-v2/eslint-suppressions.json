@@ -137,16 +137,6 @@
       "count": 3
     }
   },
-  "src/features/releases/components/release-page-actions.test.tsx": {
-    "@typescript-eslint/require-await": {
-      "count": 1
-    }
-  },
-  "src/features/releases/components/release-page.test.tsx": {
-    "@typescript-eslint/require-await": {
-      "count": 1
-    }
-  },
   "src/features/releases/components/release-requirements.test.tsx": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 6
@@ -220,11 +210,6 @@
   "src/features/suggestions/components/suggestion-list.test.tsx": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 5
-    }
-  },
-  "src/features/tours/components/tour-launcher.test.tsx": {
-    "@typescript-eslint/unbound-method": {
-      "count": 1
     }
   },
   "src/features/visual-blocks/dates.test.tsx": {

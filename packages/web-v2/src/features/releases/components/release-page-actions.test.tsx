@@ -2,12 +2,20 @@
 // back to the page's words, and a share created for the release's version.
 
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { releasePage } from "@/test/release-page";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { ReleasePageActions } from "./release-page-actions";
 
 afterEach(() => vi.unstubAllGlobals());
+
+/** Export is one menu beside Share: open it and pick the item by its name. */
+async function exportAs(name: string) {
+  const user = userEvent.setup();
+  await user.click(screen.getByTestId("release-page-export"));
+  await user.click(await screen.findByRole("menuitem", { name }));
+}
 
 function captureSaves() {
   const saved: Blob[] = [];
@@ -25,21 +33,25 @@ function captureSaves() {
 
 describe("exporting a release page", () => {
   it("copies the Markdown, made of the user sections with the clip as an absolute link", async () => {
-    const writeText = vi.fn(async () => undefined);
+    // user-event puts its own clipboard on navigator at setup, so the stub goes on after it
+    const user = userEvent.setup();
+    const writeText = vi.fn(() => Promise.resolve());
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
     renderWithQuery(<ReleaseActions />);
-    fireEvent.click(screen.getByTestId("release-page-copy"));
+    await user.click(screen.getByTestId("release-page-export"));
+    await user.click(await screen.findByRole("menuitem", { name: "Copy Markdown" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
     const md = (writeText.mock.calls[0] as unknown as [string])[0];
     expect(md).toContain("# Release 0.4.0");
     expect(md).toContain(`(${window.location.origin}/api/attachments/00000000-0000-4000-8000-000000000001/download)`);
-    expect(await screen.findByText("Copied")).toBeTruthy();
+    await user.click(screen.getByTestId("release-page-export"));
+    expect(await screen.findByRole("menuitem", { name: "Copied" })).toBeTruthy();
   });
 
   it("saves the Markdown as release-<version>.md", async () => {
     const { saved, names } = captureSaves();
     renderWithQuery(<ReleaseActions />);
-    fireEvent.click(screen.getByTestId("release-page-markdown"));
+    await exportAs("Download Markdown");
     expect(names).toEqual(["release-0.4.0.md"]);
     expect(await saved[0]?.text()).toContain("## Known issues");
   });
@@ -47,7 +59,7 @@ describe("exporting a release page", () => {
   it("saves an email as an .eml whose bodies decode to the page's words", async () => {
     const { saved, names } = captureSaves();
     renderWithQuery(<ReleaseActions />);
-    fireEvent.click(screen.getByTestId("release-page-email"));
+    await exportAs("Download email");
     expect(names).toEqual(["release-0.4.0.eml"]);
     const eml = (await saved[0]?.text()) ?? "";
     expect(eml).toContain("X-Unsent: 1");
@@ -65,7 +77,7 @@ describe("exporting a release page", () => {
   it("offers export without share to a viewer who may not share", () => {
     renderWithQuery(<ReleasePageActions projectId="p1" page={releasePage({ can: { share: false, export: true, approve: false } })} />);
     expect(screen.queryByTestId("release-page-share")).toBeNull();
-    expect(screen.getByTestId("release-page-markdown")).toBeTruthy();
+    expect(screen.getByTestId("release-page-export")).toBeTruthy();
   });
 });
 

@@ -108,6 +108,7 @@ describe('improvements and fixes in user terms (BC-6)', () => {
         ],
       },
       { section: 'Fixed', entries: [entry('ISS-5', 'A saved filter no longer resets.')] },
+      { section: 'Security', entries: [entry('ISS-7', 'Reset links stop working once used.')] },
     ],
     designs: [],
     withoutNotes: [{ key: 'ISS-6', title: 'Untold change' }],
@@ -116,14 +117,26 @@ describe('improvements and fixes in user terms (BC-6)', () => {
     attention: [],
   };
 
-  it('keeps each line with its issue and the kind its section reads as', () => {
+  it('keeps each line with its issue, the kind its section reads as, and the section itself', () => {
     const out = changesOf(notes);
     expect(out.improvements).toEqual([
-      { issueKey: 'ISS-1', kind: 'new', line: 'Nurses see reminders.' },
-      { issueKey: 'ISS-2', kind: 'improved', line: 'Reports load faster.' },
+      { issueKey: 'ISS-1', kind: 'new', section: 'Added', line: 'Nurses see reminders.' },
+      { issueKey: 'ISS-2', kind: 'improved', section: 'Changed', line: 'Reports load faster.' },
     ]);
+    // a Security entry reads as a fix and keeps its section, so the page groups it apart
     expect(out.fixes).toEqual([
-      { issueKey: 'ISS-5', kind: 'fixed', line: 'A saved filter no longer resets.' },
+      {
+        issueKey: 'ISS-5',
+        kind: 'fixed',
+        section: 'Fixed',
+        line: 'A saved filter no longer resets.',
+      },
+      {
+        issueKey: 'ISS-7',
+        kind: 'fixed',
+        section: 'Security',
+        line: 'Reset links stop working once used.',
+      },
     ]);
   });
 

@@ -1,0 +1,1 @@
+**A release page now reads in thirty seconds.** It opens on a short summary and counts by kind, then one short line per change; criteria, keys and technical notes open under each row, behind a Technical view.
