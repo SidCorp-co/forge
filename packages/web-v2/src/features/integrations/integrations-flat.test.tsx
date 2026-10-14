@@ -131,11 +131,16 @@ afterEach(cleanup);
 const WITH_SECTION = PROVIDER_MODULES.filter((m) => m.section !== null);
 const WITH_CONNECTION_FORM = PROVIDER_MODULES.filter((m) => m.connectionSection !== null);
 
+function loaderOf(name: string, kind: "section" | "connectionSection") {
+  const load = PROVIDER_MODULES.find((m) => m.provider === name)?.[kind];
+  if (!load) throw new Error(`provider ${name} has no ${kind} to render`);
+  return load;
+}
+
 describe("each provider's section, over a stubbed connection, draws no box", () => {
   it.each(WITH_SECTION.map((m) => m.provider))("%s", async (name) => {
     provider = name;
-    const module = PROVIDER_MODULES.find((m) => m.provider === name);
-    const { default: Section } = await (module?.section as NonNullable<typeof module.section>)();
+    const { default: Section } = await loaderOf(name, "section")();
     const { container } = render(wrap(<Section projectId={PROJECT} />));
     // The bound integration is what a section draws its form from: read it only once it has been handed over.
     await settled([`/projects/${PROJECT}/integrations`]);
@@ -147,8 +152,7 @@ describe("each provider's section, over a stubbed connection, draws no box", () 
 describe("each provider's connection form, over a stubbed connection, draws no box", () => {
   it.each(WITH_CONNECTION_FORM.map((m) => m.provider))("%s", async (name) => {
     provider = name;
-    const module = PROVIDER_MODULES.find((m) => m.provider === name);
-    const { default: Form } = await (module?.connectionSection as NonNullable<typeof module.connectionSection>)();
+    const { default: Form } = await loaderOf(name, "connectionSection")();
     const { container } = render(
       wrap(<Form connection={{ id: CONNECTION, config: { baseUrl: "https://stub.example.com" } }} canManage />),
     );

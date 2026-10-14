@@ -1,16 +1,11 @@
-// The owner's rule for a settings page, as two reads: the class lists a source file writes, and the
-// class list an element carries once rendered. A flat page rules its sections with a hairline on one
-// side and takes its hierarchy from type and whitespace, so a container drawn as a box fails both.
+// The owner's flat-settings rule as two reads: the class lists a source writes, and the classes a
+// rendered element carries. A flat page rules its sections with one hairline and has no boxes.
 
-/** Every class list in a source file: each string literal that could hold one. */
 export function classLists(source: string): string[] {
   return [...source.matchAll(/"([^"\n]*)"|`([^`]*)`/g)].map((m) => m[1] ?? m[2] ?? "");
 }
 
-/**
- * A container drawn as a box: all four sides bordered, or rounded and filled and padded. A pill, a
- * fixed-size control, an inline control such as a segmented switch and a code readout are not containers.
- */
+/** All four sides bordered, or rounded and filled and padded. Pills, fixed-size and inline controls and code readouts are not containers. */
 export function boxedContainer(classes: string): boolean {
   const t = classes.split(/\s+/).filter(Boolean);
   const rounded = t.some((x) => /^rounded-(sm|md|lg|xl|2xl)$/.test(x));
@@ -21,11 +16,7 @@ export function boxedContainer(classes: string): boolean {
   return (bordered || (rounded && filled)) && !exempt;
 }
 
-/**
- * The boxed containers in a rendered tree, by the classes they carry. The form controls a person
- * types into or presses are the design system's own and are not containers; a notice is a toned
- * message (a Banner colours its own border inline) and a status or alert is announced, not laid out.
- */
+/** Boxed containers in a rendered tree. Controls, announced status and a Banner (which colours its own border inline) are not containers. */
 export function boxedInTree(root: Element): string[] {
   const CONTROLS = new Set(["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A"]);
   return [root, ...root.querySelectorAll("*")]
