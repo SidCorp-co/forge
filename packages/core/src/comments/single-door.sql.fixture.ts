@@ -2,7 +2,7 @@ import ts from 'typescript';
 import type { Model } from './single-door.model.fixture.js';
 import { type FileFacts, TABLE, unwrap } from './single-door.parse.fixture.js';
 
-/** Stands in the text where a part could not be read, so a write verb followed by it names no table. */
+/** Stands for a part of a text that could not be read. */
 const UNREAD = '\uE000';
 
 export const WRITES_ON_COMMENTS = [
@@ -11,7 +11,7 @@ export const WRITES_ON_COMMENTS = [
   /\bdelete\s+from\s+(?:only\s+)?(?:"?public"?\.)?"?comments"?\b/i,
 ];
 
-/** A write whose table is a part nobody read: SQL-shaped, so a sentence that says "update" is not one. */
+/** SQL-shaped, so a sentence that says "update" is not one: a write verb whose table is unread. */
 const WRITE_OF_UNREAD =
   /\b(?:(?:insert\s+into|delete\s+from)\s+(?:only\s+)?(?:"?public"?\.)?"?\uE000|update\s+(?:only\s+)?(?:"?public"?\.)?"?\uE000"?\s+set\b)/i;
 

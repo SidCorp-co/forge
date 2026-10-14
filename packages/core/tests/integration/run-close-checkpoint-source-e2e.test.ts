@@ -1,6 +1,6 @@
 /**
  * ISS-1389 — a run close whose checkpoint declares any source but the one this server reads is
- * refused by name with the valid source, where it used to answer 500 from `writeRunEvidence`.
+ * refused by name with the valid source, and is not a server error.
  *
  * The close route is the box's only door to that function, so what is claimed is the answer a box
  * gets over it, and that a refused close leaves the run session open to be closed again.

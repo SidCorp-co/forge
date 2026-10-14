@@ -1,6 +1,5 @@
 import { z } from 'zod';
 
-/** The one thing a checkpoint can say it is: the box's half, rebuilt from what the box still holds. */
 const RECONSTRUCTION_SOURCE = 'reconstructed_from_box';
 
 /** Refused by name, with the one valid source, where a checkpoint declares anything else. */
