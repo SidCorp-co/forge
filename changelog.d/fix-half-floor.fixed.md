@@ -1,1 +1,0 @@
-**The Ask Agent panel's Half is never narrower than 360px.** Where Large is already 360px, no Half is offered and the size control says the window is too narrow; a Half kept from before opens at Large.

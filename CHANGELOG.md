@@ -9,6 +9,21 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.239] - 2026-10-14
+
+Ask Agent Half floor, requirements move only by hand, verified counts and proposal diffs
+
+### Changed
+
+- **Work finished by hand is claimed before it opens.** The issue guide now says to take the lease while the issue is a draft, because opening it wakes the masters that could take it.
+- **A requirement no longer moves on by itself.** A complete checklist only lets a person or an agent propose, accept or agree it; the five-minute sweep that did it for them is gone.
+- **A proposal awaiting you opens on its changes.** A requirement revision you can accept shows its diff, and a design you can approve opens with Changes on, each folded stage or boundary counting its changed steps; everything else stays folded.
+
+### Fixed
+
+- **The Ask Agent panel's Half is never narrower than 360px.** Where Large is already 360px, no Half is offered and the size control says the window is too narrow; a Half kept from before opens at Large.
+- **A requirement's verified count no longer takes a short or the builder's own pass.** Only a pass counts; under independent QA it must come from someone other than the builder, and an unattributed pass does not.
+
 ## [0.4.0-dev.238] - 2026-10-14
 
 Project settings read as properties, with a Testing tab and folded raw documents
