@@ -352,7 +352,7 @@ export const forgeRequirementReviseTool: ContextScopedMcpToolFactory = (ctx) => 
   reach: 'project',
   route: '/api/projects',
   grant: 'projects:write',
-  description: `Draft a revision of an EXISTING requirement (REQ-n) a wish changes: read it with forge_requirement first and write the whole revision on top of its head — every criterion that stays, kept with its code, plus the change. Kind left out keeps the head's, and with it the head's picture; where the kind changes or the head shows none, draw it: ${DRAWS} ${WRITE_RULE}`,
+  description: `Draft a revision of an EXISTING requirement (REQ-n) a wish changes: read it with forge_requirement first and write the whole revision on top of its head — every criterion that stays, kept with its code, plus the change. Kind left out keeps the head's, and with it the head's picture; spec left out keeps the head's, and spec {} clears it; where the kind changes or the head shows none, draw it: ${DRAWS} ${WRITE_RULE}`,
   inputSchema: zodToMcpSchema(reviseInput),
   handler: async (args) => {
     const { projectId, requirement, baseRevision, ...write } = reviseInput.parse(args);

@@ -30,7 +30,7 @@ revisionRoutes.post(
   reqParam,
   strictBody(
     z.strictObject({ baseRevision: z.number().int().min(1).nullable(), ...revisionFields }),
-    "{ baseRevision, reason, spec?, kind?: process | rule | screen | report | null, picture?: { kind, content, alt? } drawn with it (alt left out is written from the content), tldr?, changeSummary?, writtenLang?: en | vi, criteria: [{ code?, body, form? }] } — baseRevision is the head you read; kind left out is the head's",
+    "{ baseRevision, reason, spec?, kind?: process | rule | screen | report | null, picture?: { kind, content, alt? } drawn with it (alt left out is written from the content), tldr?, changeSummary?, writtenLang?: en | vi, criteria: [{ code?, body, form? }] } — baseRevision is the head you read; kind and spec left out are the head's, and spec {} clears it",
   ),
   draftPictureFits('head'),
   holdChatWrite('requirement_revision'),
@@ -49,7 +49,7 @@ revisionRoutes.put(
   revisionParam,
   strictBody(
     z.strictObject(revisionFields),
-    "{ reason, spec?, kind?: process | rule | screen | report | null, picture?: { kind, content, alt? } drawn with it (alt left out is written from the content), tldr?, changeSummary?, writtenLang?: en | vi, criteria: [{ code?, body, form? }] } rewrites a draft revision whole; a code the draft or its base holds keeps that code, no code takes the next one; kind left out keeps the draft's",
+    "{ reason, spec?, kind?: process | rule | screen | report | null, picture?: { kind, content, alt? } drawn with it (alt left out is written from the content), tldr?, changeSummary?, writtenLang?: en | vi, criteria: [{ code?, body, form? }] } rewrites a draft revision whole; a code the draft or its base holds keeps that code, no code takes the next one; kind and spec left out keep the draft's, and spec {} clears it",
   ),
   async (c) => {
     const { id, req, n } = c.req.valid('param');

@@ -205,6 +205,7 @@ export const requirementCriterionSchema = z.strictObject({
 /** A revision as a suggestion proposes it: the draft's kind and its picture ride with it (REQ-35 BC-10). */
 const revisionWrite = {
 	reason: z.string().trim().min(1).max(REASON_TEXT_MAX),
+	/** Left out, a revision carries the head's spec (an edit of the open draft keeps the draft's); `{}` clears it. */
 	spec: requirementSpecSchema.optional(),
 	tldr: z.string().max(4_000).nullable().optional(),
 	changeSummary: z.string().max(4_000).nullable().optional(),
