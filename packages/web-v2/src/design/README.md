@@ -38,7 +38,8 @@ A page that fits none of the five is a design question, not a sixth layout. Ask 
 | `Section` | a flush heading, an act at its right, and a body. Never a card |
 | `PropertyList` / `Property` | label and value rows in a main column |
 | `FactsRail` / `FactsGroup` / `Fact` | label and value rows in a detail rail |
-| `StatRow` / `StatCell` | headline numbers in one flush row |
+| `StatRow` / `StatCell` | headline numbers in one flush row; given `cells`, it wraps into even lines |
+| `ContentsList` / `ContentsMenu` | a long page's groups: a list atop the facts rail marking the one in view, or one menu control where there is no rail |
 | `SettingsGroup` / `SettingRow` / `FormActions` | labelled controls, a hint or a refusal under each, one save bar |
 | `Disclosure` | a fold: label, count or summary, chevron |
 | `EmptyState` / `LoadingState` / `ErrorState` | the three non-content states of any section |

@@ -1,0 +1,1 @@
+**Detail pages fill the space up to the facts rail.** No blank band between content and rail. A release page lists its contents atop the rail, marking the group you are reading; narrow screens get one menu.

@@ -72,6 +72,7 @@ export { NotificationsMenu, type NotificationItem, type NotificationAction, type
 export { StreamingText } from "./patterns/streaming-text";
 export { SlideOver } from "./patterns/slide-over";
 export { Menu, type MenuItem } from "./patterns/menu";
+export { ContentsList, ContentsMenu, useCurrentAnchor, type ContentsItem } from "./patterns/page-contents";
 export { HoverCard, useHoverCard } from "./patterns/hover-card";
 export { AcceptStep } from "./patterns/accept-step";
 export { Markdown } from "./patterns/markdown";

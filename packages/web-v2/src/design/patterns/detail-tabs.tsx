@@ -56,10 +56,11 @@ export function DetailLayout({ children, rail, testId, dataKey, railCollapsed = 
   );
 }
 
-/** A tab's view: one column of readable width, set against the left edge under the tabs. */
+/** A tab's view: the main column's full width up to the rail, under the tabs. No cap of its own: a
+ *  capped pane left a blank band between the content and the rail on a wide screen. */
 export function DetailPane({ children, label, testId }: { children: ReactNode; label: string; testId?: string }) {
   return (
-    <section className="max-w-[900px] px-8 pb-16 pt-6 max-md:px-4" aria-label={label} data-testid={testId}>
+    <section className="px-8 pb-16 pt-6 max-md:px-4" aria-label={label} data-testid={testId}>
       {children}
     </section>
   );

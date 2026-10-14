@@ -74,6 +74,28 @@ describe("the release page screen", () => {
     expect(calls.some((c) => c.path === "/projects/p1/releases/0.4.0/page?view=developer")).toBe(true);
   });
 
+  it("lists the page's contents at the top of the rail, above its facts, and keeps the reader's menu for where the rail falls under the page", async () => {
+    serve();
+    renderWithQuery(<ReleasePage projectId="p1" slug="forge" version="0.4.0" />);
+    const list = await screen.findByTestId("release-rail-contents");
+    const rail = screen.getByTestId("facts-rail");
+    expect(rail).toContainElement(list);
+    // first in the rail, before the release's own facts
+    expect(list.compareDocumentPosition(within(rail).getByTestId("release-facts")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(list).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual([
+      "#release-highlights",
+      "#release-new",
+      "#release-fixed",
+      "#release-requirements",
+      "#release-open",
+      "#release-other",
+      "#release-admin",
+    ]);
+    // the rail's list shows from 1024px, the reader's one-control menu only below it
+    expect(list.parentElement?.className).toMatch(/(^|\s)max-lg:hidden(\s|$)/);
+    expect(screen.getByTestId("page-contents").className).toMatch(/(^|\s)lg:hidden(\s|$)/);
+  });
+
   it("switches to the Technical view from the switch and back", async () => {
     serve();
     renderWithQuery(<ReleasePage projectId="p1" slug="forge" version="0.4.0" />);
