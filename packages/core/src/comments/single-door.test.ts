@@ -128,6 +128,30 @@ const PLANTS: Plant[] = [
     at: 1,
   },
   {
+    form: 'raw SQL appended onto a write verb',
+    plant: [
+      "import { comments } from '../db/schema.js';",
+      'db.execute(sql`insert into `.append(sql`$' + '{comments} (body) values (1)`));',
+    ].join('\n'),
+    at: 2,
+  },
+  {
+    form: 'raw SQL joined from a verb in sql.raw and the table',
+    plant: [
+      "import { comments } from '../db/schema.js';",
+      "db.execute(sql.join([sql.raw('insert into'), comments], sql.raw(' ')));",
+    ].join('\n'),
+    at: 2,
+  },
+  {
+    form: 'raw SQL joined from a verb and the table as two sql parts',
+    plant: [
+      "import { comments } from '../db/schema.js';",
+      'db.execute(sql.join([sql`DELETE FROM`, sql`$' + '{comments}`]));',
+    ].join('\n'),
+    at: 2,
+  },
+  {
     form: 'a table held by an exported constant that is a namespace',
     barrel: "import * as s from '../db/schema.js';\nexport const dbSchema = s;",
     plant: "import { dbSchema } from './barrel.js';\ndb.insert(dbSchema['comments']);",

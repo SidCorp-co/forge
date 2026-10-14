@@ -39,6 +39,7 @@ import {
   reasonWaived,
   requiresAuthoredReason,
 } from './transition-reason.js';
+import { withholdTransitionText } from './transition-withhold.js';
 
 export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>([
   'awaiting_release',
@@ -247,7 +248,7 @@ export async function transitionIssueStatus(
   issue: TransitionIssueRow,
   requestedStatus: IssueStatus,
   actor: TransitionActor,
-  options: ApplyStatusTransitionOptions = {},
+  sent: ApplyStatusTransitionOptions = {},
 ): Promise<StatusTransitionResult> {
   const fromStatus = issue.status;
   const [archived] = await archivedAmong(db, [issue.id]);
@@ -257,6 +258,7 @@ export async function transitionIssueStatus(
       status: fromStatus,
     });
   }
+  const options = await withholdTransitionText(issue.id, sent);
 
   if (!options.skip && !canTransitionFree(fromStatus, requestedStatus)) {
     const replacement = RETIRED_STATUS_REPLACEMENTS.get(requestedStatus);
