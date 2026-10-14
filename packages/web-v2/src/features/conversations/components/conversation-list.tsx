@@ -1,5 +1,5 @@
 
-import { useMemo, useState } from "react";
+import { type ComponentProps, useMemo, useState } from "react";
 import {
   Button,
   ConfirmDialog,
@@ -95,11 +95,13 @@ function filterMenu(o: {
   ];
 }
 
-function FilterTrigger({ filtered, label }: { filtered: boolean; label: string }) {
+/** A menu's trigger: the props and ref the menu hands it go to the button itself, not the span around it. */
+export function FilterTrigger({ filtered, label, ...trigger }: { filtered: boolean; label: string } & ComponentProps<"button">) {
   const t = useCopy();
   return (
     <span className="relative inline-flex">
       <IconButton
+        {...trigger}
         icon="filter"
         variant="secondary"
         aria-label={filtered ? t("shell.list.filterShowing", { label }) : t("shell.list.filter")}

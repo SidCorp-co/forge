@@ -1,11 +1,15 @@
 // The row menu is base-ui's Menu: its panel portals to <body>, so a menu opened in a clipping table
 // box shows whole (ISS-1172), and the keyboard, dismissal and scroll lock are the library's. These
 // pin what the wrapper promises on top: inert items do not run, checked items read as checkboxes,
-// and a run of grouped items is one labelled group.
+// a run of grouped items is one labelled group, and the trigger it is given IS the trigger: never
+// wrapped in a second element with role=button, which nested one button inside another.
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import type { ComponentProps } from "react";
+import { Button } from "@/design/primitives/button";
+import { IconButton } from "@/design/primitives/icon-button";
 import { Table, TBody, TD, TR } from "@/design/primitives/table";
 import { Menu, type MenuItem } from "./menu";
 
@@ -31,6 +35,26 @@ function InTable({ items }: { items: MenuItem[] }) {
 }
 
 const trigger = () => screen.getByRole("button", { name: "Row actions" });
+
+const INTERACTIVE = 'button, a[href], input, select, textarea, [role="button"], [role="link"], [role="menuitem"], [tabindex]:not([tabindex="-1"])';
+
+/** Every interactive element that sits inside another interactive element: a screen reader meets
+ *  two controls for one, and a keyboard user a stop that does nothing. */
+function nestedInteractive(root: HTMLElement): string[] {
+  return [...root.querySelectorAll<HTMLElement>(INTERACTIVE)]
+    .filter((el) => el.parentElement?.closest(INTERACTIVE))
+    .map((el) => `${el.tagName.toLowerCase()} inside ${el.parentElement?.closest(INTERACTIVE)?.tagName.toLowerCase() ?? "?"}`);
+}
+
+/** A trigger drawn by a component around its button, as a list's filter is: it hands the menu's props to the button. */
+function DotTrigger(props: ComponentProps<"button">) {
+  return (
+    <span className="relative inline-flex">
+      <IconButton {...props} icon="filter" aria-label="Filter" />
+      <span aria-hidden className="absolute -right-0.5 -top-0.5 size-2" />
+    </span>
+  );
+}
 
 async function openWithKeyboard(user: ReturnType<typeof userEvent.setup>) {
   trigger().focus();
@@ -162,5 +186,37 @@ describe("Menu", () => {
     expect(project).not.toContainElement(screen.getByRole("menuitem", { name: "Platform" }));
     expect(screen.getByRole("group", { name: "Ecosystem" })).toContainElement(screen.getByRole("menuitem", { name: "Platform" }));
     expect(screen.getByRole("menuitem", { name: "Edit" }).closest('[role="group"]')).toBeNull();
+  });
+
+  it("makes the trigger it is given the trigger itself: one button, nothing interactive nested in another", async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <>
+        <InTable items={[{ label: "Edit" }]} />
+        <Menu trigger={<Button size="sm">Export</Button>} items={[{ label: "PDF" }]} />
+        <Menu trigger={<IconButton icon="more" aria-label="More" />} items={[{ label: "Archive" }]} />
+        <Menu trigger={<DotTrigger />} items={[{ label: "Open only" }]} />
+      </>,
+    );
+    expect(nestedInteractive(container)).toEqual([]);
+    for (const name of ["Row actions", "Export", "More", "Filter"]) {
+      const button = screen.getByRole("button", { name });
+      expect(button.tagName).toBe("BUTTON");
+      expect(button).toHaveAttribute("aria-haspopup", "menu");
+      expect(button).not.toHaveAttribute("tabindex", "-1");
+    }
+    // the button is what opens and reports the menu, so its state is the menu's
+    const more = screen.getByRole("button", { name: "More" });
+    expect(more).toHaveAttribute("aria-expanded", "false");
+    await user.click(more);
+    await screen.findByRole("menuitem", { name: "Archive" });
+    expect(more).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("opens from a trigger component that hands its props to the button inside it", async () => {
+    const user = userEvent.setup();
+    render(<Menu trigger={<DotTrigger />} items={[{ label: "Open only" }]} />);
+    await user.click(screen.getByRole("button", { name: "Filter" }));
+    expect(await screen.findByRole("menuitem", { name: "Open only" })).toBeInTheDocument();
   });
 });
