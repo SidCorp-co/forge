@@ -112,6 +112,57 @@ describe('the stall bound', () => {
   });
 });
 
+describe('the stall bound, from the time a box took the job', () => {
+  const readTaken = (rows: ReleaseAttemptRow[], takenAgoMs: number | null) =>
+    readBounds(rows, { now: NOW, takenAt: takenAgoMs === null ? null : at(takenAgoMs) });
+  const stall = (rows: ReleaseAttemptRow[], takenAgoMs: number | null) =>
+    readTaken(rows, takenAgoMs).bounds.find((b) => b.name === 'stall');
+
+  it('is crossed for a run that took a job and wrote nothing, past the threshold', () => {
+    const reading = readTaken([], BOUND_DEFAULTS.stall + 1);
+
+    expect(stall([], BOUND_DEFAULTS.stall + 1)).toMatchObject({
+      crossed: true,
+      measuredMs: BOUND_DEFAULTS.stall + 1,
+    });
+    expect(reading.holding).toBe(true);
+    expect(reading.crossedNames).toEqual(['stall']);
+  });
+
+  it('is not crossed inside the threshold, nor at it', () => {
+    expect(stall([], BOUND_DEFAULTS.stall - 1)?.crossed).toBe(false);
+    expect(stall([], BOUND_DEFAULTS.stall)?.crossed).toBe(false);
+  });
+
+  it('measures from the newest write where the ledger holds one newer than the job', () => {
+    const rows = [attempt({ stage: 'verify', startedAt: at(60_000) })];
+
+    expect(stall(rows, BOUND_DEFAULTS.stall + 1)).toMatchObject({
+      crossed: false,
+      measuredMs: 60_000,
+    });
+  });
+
+  it('measures from the job where it is newer than every write, before any promotion', () => {
+    const rows = [attempt({ stage: 'verify', startedAt: at(BOUND_DEFAULTS.stall * 2) })];
+
+    expect(stall(rows, 60_000)).toMatchObject({ crossed: false, measuredMs: 60_000 });
+    expect(stall(rows, BOUND_DEFAULTS.stall + 5)?.crossed).toBe(true);
+  });
+
+  it('reads as it always did where no job time is given', () => {
+    const rows = [attempt({ stage: 'verify', startedAt: at(BOUND_DEFAULTS.stall * 2) })];
+
+    expect(readBounds(rows, { now: NOW }).bounds.find((b) => b.name === 'stall')).toMatchObject({
+      crossed: false,
+      measuredMs: null,
+    });
+    expect(
+      readBounds(rows, { now: NOW, takenAt: null }).bounds.find((b) => b.name === 'stall')?.crossed,
+    ).toBe(false);
+  });
+});
+
 describe('the regression bound', () => {
   it('says no attempt has settled on a run with none', () => {
     const rows = [attempt({ stage: 'promote', startedAt: at(600_000) })];

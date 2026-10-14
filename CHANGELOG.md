@@ -3183,6 +3183,8 @@
 
 ### Fixed
 
+- **A release batch whose box went silent no longer blocks the project.** After 25 minutes with nothing written to its ledger it is cancelled and its issues return to the release gate, so a new release can start. (ISS-1319)
+- **Writing a step handoff for a run that does not exist is refused by name.** It answered a server error; it now answers 404 naming `pipelineRunId`, over REST and through the tool. (ISS-1319)
 - **Closing a run with a checkpoint that declares another source is refused by name.** It answered a server error; it now answers 400 naming `source` and the one valid value, `reconstructed_from_box`, and leaves the run open to be closed again.
 - **A refused public docs address, reached from a docs page, offers the docs' search.** The refusal shows the search box and the doors, and says so when the guide index cannot be reached. (ISS-1415)
 

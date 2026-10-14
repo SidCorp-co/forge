@@ -137,6 +137,17 @@ export class ReleaseBatchAbortedError extends Error {
 }
 
 /**
+ * An abort asked to stamp a run only while a condition held, and the condition no longer did: the
+ * run was paused, finished or aborted between the read that chose it and the write.
+ */
+export class ReleaseBatchNotAbortableError extends Error {
+  constructor(public readonly runId: string) {
+    super(`release batch ${runId} is no longer one this abort may stamp`);
+    this.name = 'ReleaseBatchNotAbortableError';
+  }
+}
+
+/**
  * A finish is already running on this batch for another commit. A second commit
  * is a different claim about what shipped, not a retry of the first.
  */

@@ -12,7 +12,7 @@
 // claim release to `releasing-recovery.ts`, which is also what a batch that
 // died without either outcome goes through.
 
-import { eq, inArray, sql } from 'drizzle-orm';
+import { eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues, type PipelineRunStatus } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
@@ -48,6 +48,7 @@ import { claimConflictAt } from './claim-conflicts.js';
 import {
   BatchInFlightError,
   NoReleaseGateError,
+  ReleaseBatchNotAbortableError,
   ReleaseFinishFenceLostError,
   ReleaseIssuesUnnamedError,
   ReleaseNotVerifiedError,
@@ -460,26 +461,38 @@ export type PromotedRosterSettlement = 'hold' | 'return-to-gate';
 
 export interface AbortReleaseBatchOptions {
   promotedRoster?: PromotedRosterSettlement | undefined;
+  /** Who the roster's comments are written as where no person aborted: a sweep's caller names one. */
+  commentAs?: string | undefined;
+  /** Abort only while this holds on the run row at the stamp; otherwise `ReleaseBatchNotAbortableError`. */
+  onlyWhen?: SQL | undefined;
   /** Test seam: runs after the roster is recovered and before its account is settled. */
   afterRosterRecovered?: (() => Promise<void>) | undefined;
 }
 
+/**
+ * Cancel a release batch and put its roster back. `actorUserId` is the person who asked, or `null`
+ * for a sweep, in which case the stamp names no person and comments go out as `commentAs`.
+ */
 export async function abortReleaseBatch(
   runId: string,
   reason: string,
-  actorUserId: string,
+  actorUserId: string | null,
   options: AbortReleaseBatchOptions = {},
 ): Promise<AbortReleaseBatchResult> {
   // First, so a finish sees the abort before the recovery and the cancel below (abort-stamp.ts).
   const stampId = await stampAbort(runId, {
     reason,
-    by: actorUserId,
+    by: actorUserId ?? '',
     holdPromotedRoster: options.promotedRoster !== 'return-to-gate',
+    ...(options.onlyWhen ? { when: options.onlyWhen } : {}),
   });
+  if (stampId === null) throw new ReleaseBatchNotAbortableError(runId);
+  const commentAuthor = actorUserId ?? options.commentAs;
   const recovery = await recoverStrandedReleasing(runId, {
     reason: `batch release aborted: ${reason}`,
-    actorUserId,
-    comment: true,
+    ...(actorUserId === null ? {} : { actorUserId }),
+    ...(commentAuthor === undefined ? {} : { commentAuthorId: commentAuthor }),
+    comment: commentAuthor !== undefined,
     settlePromotedRoster: options.promotedRoster === 'return-to-gate',
   });
   await options.afterRosterRecovered?.();

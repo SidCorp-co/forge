@@ -26,7 +26,10 @@ export const writeHandoff = describeOperation({
   responses: {
     201: json(handoffWrittenSchema, 'The row id and its timestamps'),
     403: fail('FORBIDDEN', NOT_MEMBER),
-    404: fail('NOT_FOUND', 'the issue is not in `projectId`'),
+    404: fail(
+      'NOT_FOUND',
+      'the issue is not in `projectId`, or `pipelineRunId` names no run in it',
+    ),
   },
 });
 

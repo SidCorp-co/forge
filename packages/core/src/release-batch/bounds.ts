@@ -58,11 +58,14 @@ function readRegression(readings: ReleaseAttemptRow[]): { crossed: boolean; why:
 /**
  * The three bounds, measured against one run's ledger.
  *
- * `now` is injected so the reading is testable without real time.
+ * `now` is injected so the reading is testable without real time. `takenAt` is when a box took
+ * the run's job: given, it is where a run's silence is measured from once the ledger holds nothing
+ * newer, so a run that took its job and died before promoting reads as stalled. Without it the
+ * stall bound reads only a run that has promoted.
  */
 export function readBounds(
   attempts: ReleaseAttemptRow[],
-  opts: { now?: number; total?: number; stall?: number } = {},
+  opts: { now?: number; total?: number; stall?: number; takenAt?: Date | null } = {},
 ): BoundsReading {
   const now = opts.now ?? Date.now();
   const totalThreshold = opts.total ?? BOUND_DEFAULTS.total;
@@ -90,12 +93,17 @@ export function readBounds(
           why: 'time since this run first promoted',
         };
 
-  const lastWrite = attempts
-    .flatMap((a) => [a.startedAt.getTime(), a.settledAt?.getTime() ?? Number.NEGATIVE_INFINITY])
-    .reduce<number | null>((max, t) => (max === null || t > max ? t : max), null);
+  const takenAt = opts.takenAt?.getTime() ?? null;
+  const lastWrite = [
+    ...attempts.flatMap((a) => [
+      a.startedAt.getTime(),
+      a.settledAt?.getTime() ?? Number.NEGATIVE_INFINITY,
+    ]),
+    ...(takenAt === null ? [] : [takenAt]),
+  ].reduce<number | null>((max, t) => (max === null || t > max ? t : max), null);
   const stallFrom = lastWrite !== null && Number.isFinite(lastWrite) ? lastWrite : firstPromotion;
   const stall: BoundReading =
-    firstPromotion === null || stallFrom === null
+    stallFrom === null || (firstPromotion === null && takenAt === null)
       ? {
           name: 'stall',
           crossed: false,
@@ -108,7 +116,7 @@ export function readBounds(
           crossed: now - stallFrom > stallThreshold,
           measuredMs: now - stallFrom,
           thresholdMs: stallThreshold,
-          why: 'time since the newest write to this run’s ledger',
+          why: 'time since the newest write to this run’s ledger, or since a box took its job where that is newer',
         };
 
   const regression: BoundReading = {

@@ -4,6 +4,7 @@ import {
   deleteIssueContext,
   getIssueContexts,
   IssueNotInProject,
+  PipelineRunNotFound,
   writeIssueContext,
 } from '../../pipeline/issue-context-store.js';
 import {
@@ -59,7 +60,8 @@ export const forgeStepHandoffWriteTool: ContextScopedMcpToolFactory = ({ princip
         actor: principalHookActor(principal),
       });
     } catch (err) {
-      if (err instanceof IssueNotInProject) throw new Error(`NOT_FOUND: ${err.message}`);
+      if (err instanceof IssueNotInProject || err instanceof PipelineRunNotFound)
+        throw new Error(`NOT_FOUND: ${err.message}`);
       throw err;
     }
   },

@@ -12,6 +12,7 @@ import {
   deleteIssueContext,
   getIssueContexts,
   IssueNotInProject,
+  PipelineRunNotFound,
   writeIssueContext,
 } from './issue-context-store.js';
 import {
@@ -86,7 +87,7 @@ stepHandoffRoutes.post(
       const r = await writeIssueContext({ ...body, kind: 'handoff', actor: resolveActor(c) });
       return c.json(answer(handoffWrittenSchema, r), 201);
     } catch (err) {
-      if (err instanceof IssueNotInProject) {
+      if (err instanceof IssueNotInProject || err instanceof PipelineRunNotFound) {
         throw new HTTPException(404, { message: err.message, cause: { code: 'NOT_FOUND' } });
       }
       throw err;
