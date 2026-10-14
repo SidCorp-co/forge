@@ -72,7 +72,7 @@ describe('accessProse', () => {
     expect(accessProse(accessOf('GET', '/api/issues/:id'), true)).toBe(
       '**Permission:** `issues:read`. A personal or agent token must be granted it. A token fenced to projects can use this route.',
     );
-    expect(accessProse(accessOf('GET', '/api/invitations/:token'), true)).toContain(
+    expect(accessProse(accessOf('GET', '/api/devices'), true)).toContain(
       "Only a token that carries its owner's whole reach",
     );
   });
@@ -96,6 +96,13 @@ describe('accessProse', () => {
     const prose = accessProse(accessOf('POST', '/api/auth/refresh'), false);
     expect(prose).toContain('**Bearer:** not read.');
     expect(prose).not.toMatch(/no credential|Credential/);
+  });
+
+  it('claims no permission for a route the map files under a grant but whose gates read no bearer', () => {
+    const prose = accessProse(accessOf('GET', '/api/invitations/:token'), false);
+    expect(prose).toContain('**Bearer:** not read.');
+    expect(prose).toContain('no permission is checked');
+    expect(prose).not.toMatch(/must be granted|whole reach|account:read/);
   });
 
   it('says nothing for a route with no access, which the check names instead', () => {

@@ -105,7 +105,9 @@ describe('the API reference of the composed app', () => {
       const access = operation['x-forge-access'];
       if (!access) return [`${entry.key} carries no access`];
       const shown = access.permission
-        ? `**Permission:** \`${access.permission}\``
+        ? entry.takesBearer
+          ? `**Permission:** \`${access.permission}\``
+          : '**Bearer:** not read.'
         : `**Door:** \`${access.door}\``;
       return operation.description?.startsWith(shown) ? [] : [`${entry.key} does not say ${shown}`];
     });

@@ -55,7 +55,12 @@ export function asksForBearer(access: Access | null, gatesTakeBearer: boolean): 
 export function accessProse(access: Access | null, gatesTakeBearer: boolean): string {
   if (!access) return '';
   const paragraphs: string[] = [];
-  if (access.door === 'token') {
+  const readsNone = !BEARERLESS_DOORS.has(access.door) && !asksForBearer(access, gatesTakeBearer);
+  if (access.door === 'token' && readsNone) {
+    paragraphs.push(
+      '**Bearer:** not read. This route takes no bearer token, so no permission is checked; any other credential it reads is named in its inputs.',
+    );
+  } else if (access.door === 'token') {
     const reach =
       access.reach === 'project'
         ? 'A token fenced to projects can use this route.'
@@ -69,7 +74,7 @@ export function accessProse(access: Access | null, gatesTakeBearer: boolean): st
       `**Door:** \`${access.door}\`. ${turnedAway}${sentence(access.reason)} ${sentence(access.instead)}`,
     );
   }
-  if (!BEARERLESS_DOORS.has(access.door) && !asksForBearer(access, gatesTakeBearer)) {
+  if (readsNone && access.door !== 'token') {
     paragraphs.push(
       '**Bearer:** not read. This route takes no bearer token; any other credential it reads is named in its inputs.',
     );
