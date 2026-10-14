@@ -117,7 +117,7 @@ const STICKY_FLOOR_PX = 128;
 const STICKY_CAP_PX = 160;
 
 async function measured(markup: string, table: string, column = PHONE_COLUMN, viewport = PHONE) {
-  const { reach, overflowing, stickyWidest, pinned, broken, clipped, scrolling, pillLines, headerLost, bodyRows } = await measureReach(markup, column, viewport);
+  const { reach, overflowing, stickyWidest, pinned, broken, clipped, scrolling, pillLines, pills, headerLost, bodyRows } = await measureReach(markup, column, viewport);
   return {
     reach: reach.filter((r) => r.table === table),
     overflowing: overflowing.filter((o) => o.startsWith(`${table}:`)),
@@ -127,6 +127,7 @@ async function measured(markup: string, table: string, column = PHONE_COLUMN, vi
     clipped: clipped.filter((c) => c.table === table),
     scrolling: scrolling.filter((s) => s.startsWith(`${table}:`)),
     pillLines,
+    pills: pills.filter((p) => p.table === table),
     headerLost: headerLost.filter((h) => h === table),
     bodyRows: bodyRows[table] ?? 0,
   };
@@ -347,8 +348,18 @@ describe("the level pill of a token bound to a project", () => {
     expect(pillLines[`Project: ${PROJECT}`]).toBe(1);
   });
 
-  it("reads on one line at 1280px", async () => {
-    const { pillLines } = await measured(draw(), "Tokens that can reach your account", DESKTOP_COLUMN, DESKTOP);
+  it("sits inside the table's frame at 390px before anything is scrolled sideways, with the whole name in its title", async () => {
+    const { pills } = await measured(draw(), "Tokens that can reach your account");
+    const pill = pills.find((p) => p.text.includes(PROJECT.slice(0, 20)));
+    expect(pill, `no pill for the project in ${JSON.stringify(pills)}`).toBeDefined();
+    expect(pill?.framed, "the pill runs past the table's frame, so its end is found only by scrolling sideways").toBe(true);
+    expect(pill?.titled).toBe(true);
+  });
+
+  it("reads on one line at 1280px with the table inside its frame, and the whole name in its title", async () => {
+    const { pillLines, pills, scrolling } = await measured(draw(), "Tokens that can reach your account", DESKTOP_COLUMN, DESKTOP);
     expect(pillLines[`Project: ${PROJECT}`]).toBe(1);
+    expect(pills.find((p) => p.text === `Project: ${PROJECT}`)).toMatchObject({ framed: true, titled: true });
+    expect(scrolling).toEqual([]);
   });
 });

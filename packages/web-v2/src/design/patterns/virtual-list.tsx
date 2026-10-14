@@ -90,7 +90,7 @@ export function VirtualList<Row>({
   return (
     <div
       ref={virtual.scrollerRef}
-      {...virtual.trackFocus}
+      {...virtual.scrollerEvents}
       className={cn("max-h-[min(70vh,40rem)] overflow-y-auto", className)}
     >
       {/* The feed's rows are all the keyboard has: each is a tab stop, and PageDown/PageUp are the quick way down. */}

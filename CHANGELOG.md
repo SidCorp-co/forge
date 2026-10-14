@@ -3169,7 +3169,9 @@
 
 ### Fixed
 
-- **Three small repairs on API Tokens and Agents.** A project name in the Level pill reads on one line, the Agents project hint is a sentence, and each row's "Self" button is "Edit self". (ISS-1264)
+- **Jumping to the end of a long list lands on the last row.** The notification inbox and tables of more than 100 rows came to rest hundreds of pixels short when the rows were taller than expected, and only a second scroll reached the end. (ISS-1264)
+
+- **Three small repairs on API Tokens and Agents.** A project name in the Level pill reads on one line and is cut to fit beside the name, with the whole of it on hover, the Agents project hint is a sentence, and each row's "Self" button is "Edit self". (ISS-1264)
 
 - **Settings pages are flat, and notices read cleanly.** Pipeline, Runners and Integrations use hairline rows; an empty weekly-reading field is marked; a half-saved page ends its reason with a stop; a phone toast no longer shifts the page. (ISS-1262)
 - **"Start queued issues automatically" can be switched off, and settings pages are flat.** It holds the entry gate instead of sending a refused value; cards give way to hairline sections. A backlog starts valid under the intake gate. (ISS-1262)
@@ -6412,9 +6414,9 @@
 
 ### Changed
 
-- **Projects opens as a list on a phone, and the Overview is flat.** The cards stay from 640px up, and a view you pick wins. Overview sections are type over a hairline, with no cards. (ISS-1264)
+- **Projects opens as a list on a phone, and the Overview is flat.** The cards stay from 640px up, and a view you pick wins and is still there after a reload. Overview sections are type over a hairline, with no cards. (ISS-1264)
 
-- **The notification inbox is one scrolling list.** Settings → Notifications loads the next 25 as you reach the end, with no pages, and PageDown and PageUp move between rows. (ISS-1264)
+- **The notification inbox is one scrolling list.** Settings → Notifications loads the next 25 as you reach the end, with no pages, and PageDown and PageUp move between rows. A failed load of the next 25 is asked once, then waits for Retry. (ISS-1264)
 
 - **Marking every notification read refuses a body that names a project.** `POST /api/notifications/mark-all-read` used to accept a `projectId`, ignore it and mark every project's notifications read; it now answers 400 naming the field. Send no body. (ISS-1371)
 

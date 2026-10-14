@@ -213,7 +213,7 @@ export function DataTable<Row>({
         ? {
             bounded: true,
             scrollerRef: virtual.scrollerRef,
-            scrollerProps: virtual.trackFocus,
+            scrollerProps: virtual.scrollerEvents,
             "aria-rowcount": shown.length + 1,
           }
         : {})}

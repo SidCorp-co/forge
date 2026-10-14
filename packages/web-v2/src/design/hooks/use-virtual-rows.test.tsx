@@ -54,7 +54,7 @@ afterEach(() => {
 function Rows({ count, enabled = true }: { count: number; enabled?: boolean }) {
   const virtual = useVirtualRows({ count, estimateSize: ROW, enabled, overscan: 2 });
   return (
-    <div ref={virtual.scrollerRef} data-testid="scroller" {...virtual.trackFocus}>
+    <div ref={virtual.scrollerRef} data-testid="scroller" {...virtual.scrollerEvents}>
       <output data-testid="total">{virtual.totalSize}</output>
       <output data-testid="after">{virtual.gapAfter}</output>
       {virtual.rows.map((row) => (
@@ -100,5 +100,47 @@ describe("useVirtualRows", () => {
     expect(drawn()).toContain(1);
     const far = document.querySelector<HTMLElement>(`[data-index="${drawn().find((i) => i > 500)}"]`) as HTMLElement;
     expect(Number(far.dataset.gap)).toBeGreaterThan(ROW * 100);
+  });
+
+  it("aims again at the last row when a scroll comes to rest at the end of rows only estimated", async () => {
+    // Every row is measured at twice the height it was estimated at, so the end moves once they are.
+    restore();
+    restore = stubLayout((el) => {
+      if (el.dataset.testid === "scroller") return { width: 300, height: FRAME };
+      if (el.dataset.index !== undefined) return { width: 300, height: ROW * 2 };
+      return undefined;
+    });
+    render(<Rows count={1000} />);
+    await act(async () => {});
+    const scroller = document.querySelector<HTMLElement>('[data-testid="scroller"]') as HTMLElement;
+    const total = () => Number(document.querySelector('[data-testid="total"]')?.textContent);
+    Object.defineProperty(scroller, "scrollHeight", { configurable: true, get: () => total() });
+
+    await act(async () => {
+      scroller.scrollTop = total() - FRAME;
+      fireEvent.scroll(scroller);
+    });
+    await act(async () => {
+      await new Promise((later) => setTimeout(later, 100));
+    });
+
+    expect(drawn()).toContain(999);
+    expect(scroller.scrollTop).toBeGreaterThanOrEqual(total() - FRAME - 1);
+  });
+
+  it("does not move a scroll that has not come to rest at the end", async () => {
+    render(<Rows count={1000} />);
+    await act(async () => {});
+    const scroller = document.querySelector<HTMLElement>('[data-testid="scroller"]') as HTMLElement;
+    Object.defineProperty(scroller, "scrollHeight", { configurable: true, get: () => 1000 * ROW });
+    await act(async () => {
+      scroller.scrollTop = ROW * 400;
+      fireEvent.scroll(scroller);
+    });
+    await act(async () => {
+      await new Promise((later) => setTimeout(later, 100));
+    });
+    expect(scroller.scrollTop).toBe(ROW * 400);
+    expect(drawn()).not.toContain(999);
   });
 });

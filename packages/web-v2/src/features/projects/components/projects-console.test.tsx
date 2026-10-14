@@ -9,7 +9,7 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectConsoleItem } from "../types";
-import { ProjectsConsole } from "./projects-console";
+import { PROJECTS_VIEW_KEY, ProjectsConsole } from "./projects-console";
 
 expect.extend(matchers);
 
@@ -52,6 +52,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  window.localStorage.clear();
 });
 
 const showList = () => fireEvent.click(screen.getByRole("button", { name: "List" }));
@@ -275,5 +276,58 @@ describe("the view the console opens in", () => {
     await act(async () => {});
     showList();
     expect(table()).toBeInTheDocument();
+  });
+
+  it("is the view a person picked, after a reload, on a phone and on a wide screen", async () => {
+    atWidth(true);
+    const phone = render(<ProjectsConsole />);
+    await act(async () => {});
+    showCards();
+    expect(window.localStorage.getItem(PROJECTS_VIEW_KEY)).toBe('"cards"');
+    phone.unmount();
+    render(<ProjectsConsole />);
+    await act(async () => {});
+    expect(table()).toBeNull();
+    expect(cardNames()).toHaveLength(3);
+    cleanup();
+
+    atWidth(false);
+    const wide = render(<ProjectsConsole />);
+    await act(async () => {});
+    showList();
+    wide.unmount();
+    render(<ProjectsConsole />);
+    await act(async () => {});
+    expect(table()).toBeInTheDocument();
+  });
+
+  it("falls back to the breakpoint when no pick was made, or the stored one is not a view", async () => {
+    atWidth(true);
+    window.localStorage.setItem(PROJECTS_VIEW_KEY, '"grid"');
+    const bad = render(<ProjectsConsole />);
+    await act(async () => {});
+    expect(table()).toBeInTheDocument();
+    bad.unmount();
+
+    window.localStorage.setItem(PROJECTS_VIEW_KEY, "not json {");
+    render(<ProjectsConsole />);
+    await act(async () => {});
+    expect(table()).toBeInTheDocument();
+  });
+
+  it("renders, and honours a pick for the page, where storage cannot be read or written", async () => {
+    const refuse = () => {
+      throw new DOMException("storage is blocked", "SecurityError");
+    };
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(refuse);
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(refuse);
+    atWidth(true);
+    render(<ProjectsConsole />);
+    await act(async () => {});
+    expect(table()).toBeInTheDocument();
+    showCards();
+    expect(table()).toBeNull();
+    expect(cardNames()).toHaveLength(3);
+    vi.restoreAllMocks();
   });
 });
