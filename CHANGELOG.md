@@ -3184,6 +3184,7 @@
 ### Fixed
 
 - **Closing a run with a checkpoint that declares another source is refused by name.** It answered a server error; it now answers 400 naming `source` and the one valid value, `reconstructed_from_box`, and leaves the run open to be closed again.
+- **A refused public docs address, reached from a docs page, offers the docs' search.** The refusal shows the search box and the doors, and says so when the guide index cannot be reached. (ISS-1415)
 
 - **A refused or unknown public docs address looks like Forge documentation.** A plain request for one still answers 404 naming what was asked for, now under the documentation's header and name with the three doors to go back to. (ISS-1293)
 

@@ -19,10 +19,13 @@ import { coreFileUrl } from "@/lib/utils/core-url";
 import type { GuideScope } from "../api";
 import { AUDIENCES, type Audience, DOORS, doorHref, INDEX_PATH, ONE_CORPUS } from "../audience";
 import { type PublicDoc, docsBehind, doorSections } from "../corpus";
-import { ALL_DOORS_LINK_TEXT, type Refusal } from "../missing";
+import { ALL_DOORS_LINK_TEXT, type Refusal, SEARCH_UNAVAILABLE } from "../missing";
 
 /** What the reader shows: a door's page list, or one page by its href, unique across both homes. */
-export type ReaderView = { kind: "door"; audience: Audience } | { kind: "page"; href: string };
+export type ReaderView =
+  | { kind: "door"; audience: Audience }
+  | { kind: "page"; href: string }
+  | { kind: "refused"; refusal: Refusal };
 
 function resultItem(doc: PublicDoc, activeHref: string | null): DocsNavItem {
   return {
@@ -196,6 +199,7 @@ export function PublicReader({
 }) {
   const { query, setQuery, results } = useSearch(corpus);
   const doc = view.kind === "page" ? (corpus.find((d) => d.href === view.href) ?? null) : null;
+  // A refusal names no door, so its sidebar is the search and every door as the way on.
   const audience: Audience | null =
     view.kind === "door" ? view.audience : doc ? doc.audience : null;
   const toc = useMemo(() => (doc ? deriveToc(doc.body) : []), [doc]);
@@ -240,6 +244,8 @@ export function PublicReader({
   if (view.kind === "door") {
     const docs = doorSections(corpus, view.audience).flatMap((section) => section.docs);
     content = <DoorPage audience={view.audience} docs={docs} scope={scope} />;
+  } else if (view.kind === "refused") {
+    content = <RefusalCopy refusal={view.refusal} />;
   } else if (!doc) {
     // The server resolved this href from the same corpus, so a miss here is a defect, said so.
     content = (
@@ -269,13 +275,24 @@ export function PublicReader({
   );
 }
 
-/** An address naming no page or door. It needs nothing from core, so a refusal still renders
- *  when core is down, and offers every door as the way on. */
+function RefusalCopy({ refusal }: { refusal: Refusal }) {
+  return (
+    <div className="flex max-w-[72ch] flex-col gap-2">
+      <PageTitle className="fg-h2 text-fg">{refusal.heading}</PageTitle>
+      <p className="fg-body-sm text-muted">{refusal.body}</p>
+    </div>
+  );
+}
+
+/** An address naming no page or door, when the guide index could not be reached to search: every
+ *  door as the way on, and the reason there is no search said rather than left out. With the index
+ *  in hand a refusal is a `PublicReader` view, which offers the search. */
 export function PublicRefusal({ refusal }: { refusal: Refusal }) {
   return (
     <div className="mx-auto flex max-w-[72ch] flex-col gap-4 py-8">
       <PageTitle className="fg-h2 text-fg">{refusal.heading}</PageTitle>
       <p className="fg-body-sm text-muted">{refusal.body}</p>
+      <p className="fg-body-sm text-muted">{SEARCH_UNAVAILABLE}</p>
       <nav aria-label="Ways in" className="flex flex-col gap-1">
         {AUDIENCES.map((a) => (
           <Link key={a} href={doorHref(a)} className={LINK_CLASS}>

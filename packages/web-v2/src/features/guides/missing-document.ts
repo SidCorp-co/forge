@@ -62,7 +62,8 @@ nav{display:flex;flex-direction:column;gap:.25rem}
 
 /** A self-contained HTML 404 for an address naming nothing, served by the middleware, which can
  *  neither render React nor name the app's hashed stylesheet. It shows what `GuideShell` and
- *  `PublicRefusal` show a client-side navigation. */
+ *  the refusal in `PublicReader` show a client-side navigation, less the search a page without
+ *  JavaScript could not run. */
 export function refusalDocument({ heading, body }: Refusal): string {
   const h = escapeHtml(heading);
   const doors = AUDIENCES.map(

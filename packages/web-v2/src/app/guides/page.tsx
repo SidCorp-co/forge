@@ -31,9 +31,19 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
 export default async function GuidesPage({ searchParams }: Props) {
   const asked = readPublicRequest(toSearchParams(await searchParams), HELP_SLUGS);
   if (asked.kind === "refused") {
+    // The refusal offers the docs' search, which needs the index; with core down it says so and
+    // keeps the doors, rather than failing a page that names nothing of core's.
+    const reached = await Promise.all([fetchGuideCorpus(), fetchGuideScope()]).then(
+      ([guides, scope]) => ({ corpus: buildCorpus(HELP_DOCS, guides), scope }),
+      () => null,
+    );
     return (
       <GuideShell>
-        <PublicRefusal refusal={asked.refusal} />
+        {reached ? (
+          <PublicReader scope={reached.scope} corpus={reached.corpus} view={asked} />
+        ) : (
+          <PublicRefusal refusal={asked.refusal} />
+        )}
       </GuideShell>
     );
   }
