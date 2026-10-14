@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.241] - 2026-10-14
+
+A short never proves a release, and a design approval alone lands no code
+
+### Fixed
+
+- **A short is never proven, anywhere.** The release record, its approval and the criteria hold count proof as requirements do; a design approval's stamp alone no longer enters awaiting_release; a kernel hand-back says why on the issue.
+
 ## [0.4.0-dev.240] - 2026-10-14
 
 The sidebar gets its own graphite layer, and nothing advances without its mover
