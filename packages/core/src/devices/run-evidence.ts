@@ -19,6 +19,7 @@
 
 import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
+import { postSystemComment } from '../comments/system-write.js';
 import { db } from '../db/client.js';
 import { agentSessions, comments, devices, issues, pipelineRuns } from '../db/schema.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
@@ -318,12 +319,15 @@ async function insertCommentOnce(args: {
       )
       .limit(1);
     if (existing.length > 0) return false;
-    await tx.insert(comments).values({
-      issueId: args.issueId,
-      authorId: args.authorId,
-      authorDeviceId: args.deviceId,
-      body: args.body,
-    });
+    await postSystemComment(
+      {
+        issueId: args.issueId,
+        authorId: args.authorId,
+        authorDeviceId: args.deviceId,
+        body: args.body,
+      },
+      tx,
+    );
     return true;
   });
 }
@@ -361,12 +365,15 @@ async function insertHeldReportOnChange(args: {
       .orderBy(desc(comments.createdAt), desc(comments.id))
       .limit(1);
     if (latest?.body.includes(`\`${args.marker}\``)) return false;
-    await tx.insert(comments).values({
-      issueId: args.issueId,
-      authorId: args.authorId,
-      authorDeviceId: args.deviceId,
-      body: args.body,
-    });
+    await postSystemComment(
+      {
+        issueId: args.issueId,
+        authorId: args.authorId,
+        authorDeviceId: args.deviceId,
+        body: args.body,
+      },
+      tx,
+    );
     return true;
   });
 }

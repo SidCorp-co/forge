@@ -1,7 +1,8 @@
 import { REDACTED, redactedMessage, redactQueryParams } from '@forge/observability';
 import { and, eq, sql } from 'drizzle-orm';
+import { postSystemComment } from '../comments/system-write.js';
 import { db, type Tx } from '../db/client.js';
-import { comments, type IssueStatus, issues, projects } from '../db/schema.js';
+import { type IssueStatus, issues, projects } from '../db/schema.js';
 import { releaseAttempts } from '../db/schema-release-ledger.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
@@ -310,7 +311,7 @@ export async function recoverStrandedReleasing(
             }),
           );
         } else {
-          await db.insert(comments).values({
+          await postSystemComment({
             issueId: issue.id,
             authorId: author,
             body: promoted
@@ -469,7 +470,7 @@ async function noteOnRoster(
           }),
         );
       } else {
-        await db.insert(comments).values({
+        await postSystemComment({
           issueId: issue.id,
           authorId: author,
           body: `${options.reason}. ${note(issue.projectId)}`,

@@ -65,7 +65,10 @@ pub struct ChoiceArgs {
 pub struct CloseArgs {
     /// The run id `run declare` answered.
     pub run_id: String,
-    /// Why it is over — kept on the row for whoever reads it next.
+    /// Why it is over — kept on the row for whoever reads it next, and posted into the
+    /// run-ended comment on every issue the run held. Core is the gate for what that comment may
+    /// say: this box cannot see the project's stored test credentials, so a reason naming one is
+    /// sent as written and core replaces the value in the comment with a marker.
     #[arg(long)]
     pub reason: Option<String>,
 }

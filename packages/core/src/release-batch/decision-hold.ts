@@ -14,6 +14,7 @@
  */
 
 import { and, eq, sql } from 'drizzle-orm';
+import { postSystemComment } from '../comments/system-write.js';
 import { db, type Tx } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
 import { comments, issues, jobs, pipelineRuns } from '../db/schema.js';
@@ -86,7 +87,7 @@ async function pointOthersAt(
       .where(and(eq(comments.issueId, member.id), eq(comments.body, body)))
       .limit(1);
     if (same.length === 0) {
-      await tx.insert(comments).values({ issueId: member.id, authorId: job.createdBy, body });
+      await postSystemComment({ issueId: member.id, authorId: job.createdBy, body }, tx);
     }
   }
 }

@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm';
+import { postSystemComment } from '../comments/system-write.js';
 import { db } from '../db/client.js';
 import { comments, type IssueStatus } from '../db/schema.js';
 import { logger } from '../logger.js';
@@ -37,7 +38,7 @@ export async function postCapReachedComment(args: {
       .where(eq(comments.issueId, args.issueId));
     if (existing.some((c) => c.body === body)) return;
 
-    await db.insert(comments).values({
+    await postSystemComment({
       issueId: args.issueId,
       authorId: args.authorId,
       body,

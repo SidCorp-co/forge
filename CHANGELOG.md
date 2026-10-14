@@ -10,6 +10,7 @@
 
 ### Security
 
+- **A test credential stored on a project no longer reaches an issue comment.** A run-close reason that named one was posted whole into the run-ended comment, where the CLI had refused the same text. A comment written through the web or an agent tool is now refused naming the line and column of the value, and text Forge writes itself has the value replaced in place by a marker saying where it is read.
 - **A viewer can no longer deploy, cancel or roll back a Coolify binding.** The web API let any project member through; it now asks for the member role, as the agent tool always did, and says which role was held.
 - **Another person's comment cannot be rewritten by an agent, and a reply cannot hang under another issue.** Agents could edit any comment and name any parent; editing now needs the author or a project admin, as in the web.
 - **A viewer can no longer edit or delete a comment they wrote.** The web let the author through whatever their role, for instance after a demotion; it now asks for the member role, as the agent tool did.

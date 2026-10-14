@@ -4,6 +4,14 @@ import { prepareBody } from '../body/prepare.js';
 import { db, type Tx } from '../db/client.js';
 import { comments, issues, users } from '../db/schema.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
+import { MessageRefusedError } from '../messaging/contract.js';
+import {
+  credentialRefusal,
+  findCredential,
+  loadStoredCredentials,
+  reportWithheld,
+  withholdCredentials,
+} from './credential-guard.js';
 import { type CommentCursor, encodeCommentCursor } from './cursor.js';
 import { screenAgentComment, screenRecordFence } from './screen.js';
 
@@ -216,6 +224,12 @@ export type NewComment = {
    * is the dormancy: a door that cannot read the declaration warns rather than refuses.
    */
   declaresRecordRoute?: boolean | undefined;
+  /**
+   * What a stored test credential in `body` does. A caller's write is refused by name and is the
+   * default; a writer core runs on its own, with no person to refuse to, passes `withhold` and has
+   * the value replaced in place.
+   */
+  credentials?: 'refuse' | 'withhold' | undefined;
 };
 
 /** A written comment plus whatever the sanitizer removed on the way in. */
@@ -259,6 +273,35 @@ async function writtenByAnAgent(
   return row?.kind === 'agent';
 }
 
+/**
+ * The body as it may be stored, and what was withheld from it. Refuses a caller's text that holds
+ * one of the project's stored test credentials; replaces it in place where the writer is core.
+ */
+async function guardCredentials(
+  projectId: string,
+  issueId: string,
+  body: string,
+  mode: 'refuse' | 'withhold',
+  tx: Tx,
+): Promise<{ body: string; warnings: string[] }> {
+  const credentials = await loadStoredCredentials(projectId, tx);
+  if (credentials.length === 0) return { body, warnings: [] };
+  if (mode === 'refuse') {
+    const hit = findCredential(body, credentials);
+    if (hit) throw new MessageRefusedError('comment-write', [credentialRefusal(hit)]);
+    return { body, warnings: [] };
+  }
+  const withheld = withholdCredentials(body, credentials);
+  if (withheld.ids.length === 0) return { body, warnings: [] };
+  reportWithheld(issueId, withheld.ids);
+  return {
+    body: withheld.text,
+    warnings: [
+      `a stored test credential was withheld from this comment: ${withheld.ids.join(', ')}`,
+    ],
+  };
+}
+
 export async function insertComment(input: NewComment, tx: Tx = db): Promise<WrittenComment> {
   const prepared = prepareBody({ raw: input.body, format: input.format });
   const fence = screenRecordFence(input.body, input.declaresRecordRoute === true);
@@ -268,18 +311,33 @@ export async function insertComment(input: NewComment, tx: Tx = db): Promise<Wri
     await screenAgentComment(context.projectId, input.body, tx);
   }
 
-  const { format: _ignored, declaresRecordRoute: _declared, ...rest } = input;
+  const guarded = context
+    ? await guardCredentials(
+        context.projectId,
+        input.issueId,
+        prepared.body,
+        input.credentials ?? 'refuse',
+        tx,
+      )
+    : { body: prepared.body, warnings: [] };
+
+  const {
+    format: _ignored,
+    declaresRecordRoute: _declared,
+    credentials: _credentials,
+    ...rest
+  } = input;
   const [row] = await tx
     .insert(comments)
     .values({
       ...rest,
-      body: prepared.body,
+      body: guarded.body,
       format: prepared.format,
       stage: context?.stage ?? null,
     })
     .returning(commentThreadColumns);
   if (!row) throw new Error('comment insert returned no row');
-  return { row, warnings: [...prepared.warnings, ...fence] };
+  return { row, warnings: [...prepared.warnings, ...fence, ...guarded.warnings] };
 }
 
 /**
@@ -310,15 +368,18 @@ export async function updateCommentBody(
     .where(eq(comments.id, commentId))
     .limit(1);
   if (!existing) return null;
-  if (await writtenByAnAgent(existing, db)) {
-    const context = await loadStageContext(existing.issueId);
-    if (context) await screenAgentComment(context.projectId, input.body, db);
+  const context = await loadStageContext(existing.issueId);
+  if (context && (await writtenByAnAgent(existing, db))) {
+    await screenAgentComment(context.projectId, input.body, db);
   }
+  const guarded = context
+    ? await guardCredentials(context.projectId, existing.issueId, prepared.body, 'refuse', db)
+    : { body: prepared.body, warnings: [] };
 
   const [row] = await db
     .update(comments)
     .set({
-      body: prepared.body,
+      body: guarded.body,
       format: prepared.format,
       updatedAt: new Date(),
     })

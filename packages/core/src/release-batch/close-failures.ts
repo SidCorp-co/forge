@@ -2,9 +2,9 @@
 // (`pipeline_runs.metadata.closeFailures[issueId]`): the next finish reads it to say a repeat in
 // the comment already there, and the roster reads it to say what Release now will meet (ISS-1381 r4).
 
-import { and, eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
+import { insertSystemComment, rewriteSystemComment } from '../comments/system-write.js';
 import { db } from '../db/client.js';
-import { comments } from '../db/schema.js';
 
 export interface CloseFailureRecord {
   /** `refused` names a rule the issue broke; `failed` reached no decision. */
@@ -99,18 +99,18 @@ export async function sayCloseFailure(args: {
   const body = args.body(repeats);
   let commentId: string | null = null;
   if (same?.commentId) {
-    const [row] = await db
-      .update(comments)
-      .set({ body, updatedAt: sql`now()` })
-      .where(and(eq(comments.id, same.commentId), eq(comments.issueId, args.issueId)))
-      .returning({ id: comments.id });
-    commentId = row?.id ?? null;
+    commentId = await rewriteSystemComment({
+      commentId: same.commentId,
+      issueId: args.issueId,
+      body,
+    });
   }
   if (!commentId) {
-    const [row] = await db
-      .insert(comments)
-      .values({ issueId: args.issueId, authorId: args.authorId, body })
-      .returning({ id: comments.id });
+    const row = await insertSystemComment({
+      issueId: args.issueId,
+      authorId: args.authorId,
+      body,
+    });
     commentId = row?.id ?? null;
   }
   const record: Omit<CloseFailureRecord, 'at'> = {

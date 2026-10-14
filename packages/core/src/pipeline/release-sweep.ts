@@ -7,6 +7,7 @@
 // (`release-hold.ts`), never on the log alone.
 
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { postSystemComment, withholdForIssue } from '../comments/system-write.js';
 import { db } from '../db/client.js';
 import { comments, issues } from '../db/schema.js';
 import { type IssueCriteriaReport, unearnedCriteriaReports } from '../issues/criteria-verdicts.js';
@@ -134,14 +135,14 @@ async function reportClaimedFailure(
     (r) => !(r.status === RELEASE_GATE_STATUS && r.releaseBatchRunId === null),
   );
   for (const row of claimed) {
-    const body = claimedFailureBody(message, row.releaseBatchRunId);
+    const body = await withholdForIssue(row.id, claimedFailureBody(message, row.releaseBatchRunId));
     try {
       const existing = await db
         .select({ body: comments.body })
         .from(comments)
         .where(eq(comments.issueId, row.id));
       if (existing.some((c) => c.body === body)) continue;
-      await db.insert(comments).values({ issueId: row.id, authorId, body });
+      await postSystemComment({ issueId: row.id, authorId, body });
     } catch (err) {
       logger.error({ err, issueId: row.id }, 'release-sweep: failed to post the failure comment');
     }
