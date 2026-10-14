@@ -100,7 +100,7 @@ describe.each(REFUSALS)("the 404 document for %s looks like Forge documentation"
   it("offers every door and the landing as the way back", () => {
     const html = make();
     for (const a of AUDIENCES) {
-      expect(html).toContain(`<a href="${doorHref(a)}">${DOORS[a].label.replace("'", "'")}</a>`);
+      expect(html).toContain(`<a href="${doorHref(a)}">${DOORS[a].label}</a>`);
     }
     expect(html).toContain('<a href="/guides">All three ways in</a>');
   });
