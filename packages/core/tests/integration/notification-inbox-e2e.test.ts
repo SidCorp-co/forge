@@ -385,6 +385,35 @@ describe('the list filters before it paginates', () => {
     expect((await inbox()).total).toBe(10);
   });
 
+  it('keeps a group whole when a filter would leave one of its records', async () => {
+    const other = await createTestProject(harness.db, owner, { name: 'Billing' });
+    const groupKey = 'sweep:owed-close:29866100';
+    const groupTitle = 'Issues whose code shipped and whose close was never written';
+    for (const [n, projectId] of [
+      [1, project.id],
+      [2, other.id],
+    ] as const) {
+      await mods.recordAndDeliver({
+        recipients: [owner],
+        projectId,
+        type: 'pipeline_wedge',
+        title: `Record ${n}`,
+        resolutionKey: `wedge:cross-${n}`,
+        groupKey,
+        groupTitle,
+      });
+    }
+    for (const query of [`?projectId=${project.id}`, `?projectId=${other.id}`, '?openOnly=true']) {
+      const page = await inbox(query);
+      expect(page.total, query).toBe(1);
+      const [row] = page.items as [Row];
+      expect(row.members, query).toBe(2);
+      expect(row.title, query).toBe(groupTitle);
+      expect(row.issueId, query).toBeNull();
+      expect(row.projectId, query).toBeNull();
+    }
+  });
+
   it('refuses a type nothing writes, by name', async () => {
     const res = await app.request('/api/notifications?type=comment_added', { headers: auth() });
     expect(res.status).toBe(400);

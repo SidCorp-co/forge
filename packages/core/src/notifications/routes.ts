@@ -176,24 +176,26 @@ notificationRoutes.get(
     const { projectId, openOnly, type, unread, page, pageSize } = c.req.valid('query');
     const userId = c.get('userId');
 
-    const conditions = [eq(notificationDeliveries.userId, userId)];
-    if (projectId) conditions.push(eq(notifications.projectId, projectId));
-    if (type) conditions.push(eq(notifications.type, type));
+    // The filters choose WHICH deliveries are listed; they never thin out what a listed delivery
+    // carries, or a group seen through a project filter would read as the one record that survived.
+    const ofRecords = [sql`cn.kind IS NOT NULL`];
+    if (projectId) ofRecords.push(sql`cn.project_id = ${projectId}`);
+    if (type) ofRecords.push(sql`cn.type = ${type}`);
+    if (openOnly) ofRecords.push(sql`(cn.resolved_at IS NULL AND ${stillTrueOf(carried)})`);
+    const conditions = [
+      eq(notificationDeliveries.userId, userId),
+      sql`EXISTS (
+        SELECT 1 FROM notification_delivery_members cb
+        JOIN notifications cn ON cn.id = cb.notification_id
+        WHERE cb.delivery_id = ${notificationDeliveries.id} AND ${and(...ofRecords)}
+      )`,
+    ];
     if (unread) conditions.push(unreadDelivery);
-    if (openOnly) {
-      conditions.push(isNull(notifications.resolvedAt));
-      conditions.push(stillTrue);
-    }
     const where = and(...conditions);
 
     const [totalRow] = await db
       .select({ n: countDistinct(notificationDeliveries.id) })
       .from(notificationDeliveries)
-      .innerJoin(
-        notificationDeliveryMembers,
-        eq(notificationDeliveryMembers.deliveryId, notificationDeliveries.id),
-      )
-      .innerJoin(notifications, eq(notifications.id, notificationDeliveryMembers.notificationId))
       .where(where);
 
     // A delivery carrying several records belongs to none of them: its title is the cause, and the

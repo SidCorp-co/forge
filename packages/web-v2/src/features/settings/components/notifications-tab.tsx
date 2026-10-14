@@ -441,10 +441,7 @@ function NotificationItem({
               <button
                 type="button"
                 aria-expanded={open}
-                onClick={() => {
-                  if (!open) opened();
-                  onToggle();
-                }}
+                onClick={onToggle}
                 className={toggleClass}
               >
                 {grouped
@@ -463,7 +460,7 @@ function NotificationItem({
       {open && (
         <div className="pb-2 pl-0">
           {row.explanation && <p className="fg-caption max-w-prose text-muted">{row.explanation}</p>}
-          {grouped && <MemberList deliveryId={row.id} />}
+          {grouped && <MemberList deliveryId={row.id} onOpened={opened} />}
         </div>
       )}
     </div>
@@ -471,7 +468,7 @@ function NotificationItem({
 }
 
 /** The records behind a grouped row, still-true ones first, each opening its own subject. */
-function MemberList({ deliveryId }: { deliveryId: string }) {
+function MemberList({ deliveryId, onOpened }: { deliveryId: string; onOpened: () => void }) {
   const membersQ = useNotificationMembers(deliveryId);
   if (membersQ.isLoading) return <p className="fg-caption py-2 text-muted">Loading…</p>;
   if (membersQ.isError) {
@@ -494,7 +491,7 @@ function MemberList({ deliveryId }: { deliveryId: string }) {
         return (
           <li key={m.id} className="flex items-center justify-between gap-3">
             {href ? (
-              <Link href={href} className={`${linkClass} min-w-0 font-normal`}>
+              <Link href={href} onClick={onOpened} className={`${linkClass} min-w-0 font-normal`}>
                 {text}
               </Link>
             ) : (

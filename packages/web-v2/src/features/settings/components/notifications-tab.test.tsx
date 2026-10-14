@@ -465,6 +465,24 @@ describe("a sweep's row", () => {
     expect(screen.getByText("The step that owed the close did not write it.")).toBeInTheDocument();
   });
 
+  it("is read when a member is followed, and not when it is merely opened", async () => {
+    server.ask = async () => ({ items: [group()], totalCount: 1 });
+    server.members = async () => [member(1)];
+    const marked: string[] = [];
+    const { notificationsApi } = await import("@/features/notifications/api");
+    notificationsApi.markRead = (id: string) => {
+      marked.push(id);
+      return Promise.resolve({} as NotificationRow);
+    };
+    open();
+    await loaded();
+    fireEvent.click(screen.getByRole("button", { name: "2 of 3 still open — show" }));
+    const link = await screen.findByRole("link", { name: "ISS-41 shipped but never closed — Invoicing" });
+    expect(marked).toEqual([]);
+    fireEvent.click(link);
+    await waitFor(() => expect(marked).toEqual(["n1"]));
+  });
+
   it("names a failed load of its members, with a way to try again", async () => {
     server.ask = async () => ({ items: [group()], totalCount: 1 });
     server.members = () => Promise.reject(new Error("down"));
