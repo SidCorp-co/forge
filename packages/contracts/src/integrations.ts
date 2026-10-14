@@ -261,6 +261,30 @@ export interface IntegrationBindingUpdateInput {
   secrets?: Record<string, unknown>;
 }
 
+/**
+ * One project a connection is bound into by `POST /integration-connections` or
+ * `POST /integration-connections/:id/bindings`: the binding-v1 document's fields the call does not
+ * choose itself (its id, connection and revision are the call's).
+ */
+export interface ConnectionBindingItem {
+  projectId: string;
+  role: BindingRole;
+  /** A binding-v1 target, `provider` included. */
+  target: Record<string, unknown>;
+  agentAccess?: AgentAccess;
+  instructions?: string;
+}
+
+/** A binding one of those calls wrote. */
+export interface ConnectionBindingWritten {
+  projectId: string;
+  bindingId: string;
+  revision: number;
+  /** False where the project's switched-off binding for the same slot was written again. */
+  created: boolean;
+  effects: Record<string, unknown>;
+}
+
 export interface ConnectionCreateInput {
   provider: IntegrationProvider;
   displayName?: string;
@@ -268,6 +292,8 @@ export interface ConnectionCreateInput {
   secrets?: Record<string, unknown>;
   /** Present = org-owned connection (requires org admin); absent = personal. */
   orgId?: string;
+  /** The projects bound in the same call; one refusal writes nothing, the connection included. */
+  bindings?: ConnectionBindingItem[];
 }
 
 export interface ConnectionUpdateInput {
@@ -280,6 +306,11 @@ export interface ConnectionUpdateInput {
 /** `{ connection }` — connection list items, create (201) + update. */
 export interface ConnectionResponse {
   connection: ConnectionSummary;
+}
+
+/** `POST /integration-connections`: the connection, and the bindings written with it. */
+export interface ConnectionCreateResponse extends ConnectionResponse {
+  bindings: ConnectionBindingWritten[];
 }
 
 /**
@@ -366,6 +397,29 @@ export const INTEGRATION_REFUSAL_CODES = [
 ] as const;
 
 export type IntegrationRefusalCode = (typeof INTEGRATION_REFUSAL_CODES)[number];
+
+/**
+ * Why a browser GitHub sent back could not finish connecting, carried to the web Integrations page
+ * as `?github=<cause>` instead of a JSON refusal on the API's origin (FB-128). The first group
+ * spends no code: the return is not provably the person's own, so the App is not named. The rest
+ * are the person's own return, and name the App wherever its code could be spent to learn it.
+ */
+export const GITHUB_CONNECT_STRANDS = [
+  'no_session',
+  'email_unverified',
+  'code_missing',
+  'state_missing',
+  'state_invalid',
+  'state_other_user',
+  'state_expired',
+  'not_admin',
+  'vault_missing',
+  'conversion_failed',
+  'save_failed',
+  'install_missing',
+  'install_unmatched',
+] as const;
+export type GitHubConnectStrand = (typeof GITHUB_CONNECT_STRANDS)[number];
 /** The codes a verified inbound delivery is refused with, once its refused row is recorded. */
 export type InboundRefusalCode = Extract<IntegrationRefusalCode, `WEBHOOK_${string}`>;
 

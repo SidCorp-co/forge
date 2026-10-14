@@ -121,9 +121,9 @@ const SECRET_DOORS: Readonly<Record<string, string>> = {
   'integration-door/webhook-inbound-routes.ts':
     'a webhook verified against its binding’s secret; a chat credential in that header verifies as nothing',
   'integrations/github/connect.ts':
-    'verifyConnectState checks an HMAC-signed connect state, which a PAT never is',
+    'readConnectState checks an HMAC-signed connect state, which a PAT never is',
   'integration-door/github-connect-routes.ts':
-    'the GitHub callbacks check their connect state behind requireAuth, where the chat write rule runs',
+    'the GitHub callbacks check their connect state behind requireAuthOrLand, which admits through requireAuth, where the chat write rule runs',
   'integrations/identity/github.ts':
     'exchanges GitHub’s code at its token endpoint; a PAT is no OAuth code',
   'integrations/identity/oidc.ts':

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { bindingRoles } from '../db/release-axes.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { AGENT_ACCESS_VALUES } from './agent-access.js';
 import { retiredStagesField } from './binding-shape.js';
@@ -76,7 +77,28 @@ export const updateSchema = z.object({
   agentAccess: agentAccessField,
 });
 
-/** Body for `POST /integration-connections` — the owner-scoped half, with no binding shape. */
+/**
+ * One project a connection is bound into, as `POST /integration-connections` and
+ * `POST /integration-connections/:id/bindings` take it: the binding-v1 document's fields the call
+ * does not fill itself. The document's `id`, `connection` and revision are the call's to choose.
+ */
+export const bindingItemSchema = z.strictObject({
+  projectId: z.uuid(),
+  role: z.enum(bindingRoles),
+  /** A binding-v1 target, `provider` included, exactly as the document takes it. */
+  target: z.record(z.string(), z.unknown()),
+  agentAccess: z.enum(AGENT_ACCESS_VALUES).optional(),
+  instructions: z.string().min(1).max(4000).optional(),
+});
+
+export type BindingItem = z.infer<typeof bindingItemSchema>;
+
+export const bindingItemsSchema = z.array(bindingItemSchema).min(1).max(50);
+
+/**
+ * Body for `POST /integration-connections`: the owner-scoped connection and, in the same call, the
+ * projects it is bound into. One refusal among `bindings` writes nothing, the connection included.
+ */
 export const connectionCreateSchema = z
   .object({
     provider: z.string().min(1).max(60),
@@ -84,6 +106,7 @@ export const connectionCreateSchema = z
     config: z.record(z.string(), z.unknown()).default({}),
     secrets: z.record(z.string(), z.unknown()).default({}),
     orgId: z.uuid().optional(),
+    bindings: bindingItemsSchema.optional(),
   })
   .transform((value, ctx) => {
     const decl = declarationOrIssue(value.provider, ctx);

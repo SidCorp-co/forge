@@ -1,0 +1,1 @@
+**A connection is added and bound on Integrations in one step.** One save binds every chosen project, or refuses naming the project and target; agents use the same call. GitHub never strands an App on an error page.

@@ -1,6 +1,7 @@
 import { withArticle } from '@forge/contracts/articles';
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import type { BindingRole as RowRole } from '../db/release-axes.js';
+import type { IntegrationConnectionRow } from '../integrations/index.js';
 import { bindEffects } from './bind-effects.js';
 import { drizzleBindingStore, type StoredBinding } from './binding-store.js';
 import { decodeTarget, encodeTarget } from './binding-target-codec.js';
@@ -88,8 +89,10 @@ async function connectionRefusals(
   userId: string,
   doc: BindingDocument,
   heldConnection: string | null,
+  pending: IntegrationConnectionRow | null,
 ): Promise<ApiRefusal[]> {
-  const connection = await store.readConnection(doc.connection);
+  const connection =
+    pending?.id === doc.connection ? pending : await store.readConnection(doc.connection);
   const notFound = (why: string): ApiRefusal[] => [
     {
       code: 'CONNECTION_NOT_FOUND',
@@ -170,8 +173,9 @@ async function documentRefusals(args: {
   doc: BindingDocument;
   current: Awaited<ReturnType<typeof store.readBinding>>;
   encoded: ReturnType<typeof encodeTarget>;
+  pending: IntegrationConnectionRow | null;
 }): Promise<ApiRefusal[]> {
-  const { projectId, userId, bindingId, doc, current, encoded } = args;
+  const { projectId, userId, bindingId, doc, current, encoded, pending } = args;
   const refusals: ApiRefusal[] = [];
   if (doc.id !== bindingId) {
     refusals.push({
@@ -183,7 +187,7 @@ async function documentRefusals(args: {
   const agentAccess = doc.agentAccess ?? 'none';
   const active = doc.active ?? true;
   refusals.push(
-    ...(await connectionRefusals(projectId, userId, doc, current?.connectionId ?? null)),
+    ...(await connectionRefusals(projectId, userId, doc, current?.connectionId ?? null, pending)),
   );
   refusals.push(
     ...(await bindEffects.refusals({
@@ -208,7 +212,7 @@ async function documentRefusals(args: {
 }
 
 /** The refusal for a write the compare-and-set did not take. */
-function casRefusal(
+export function casRefusal(
   result: Extract<Awaited<ReturnType<typeof store.casBinding>>, { ok: false }>,
   ctx: {
     baseRevision: number | null;
@@ -232,14 +236,36 @@ function casRefusal(
   };
 }
 
-export async function writeBinding(input: {
+/** A binding write every check passed, ready for the store. */
+export interface PlannedBinding {
+  projectId: string;
+  bindingId: string;
+  baseRevision: number | null;
+  doc: BindingDocument;
+  encoded: ReturnType<typeof encodeTarget>;
+  agentAccess: NonNullable<BindingDocument['agentAccess']>;
+  active: boolean;
+}
+
+export type BindingPlan =
+  | { ok: true; plan: PlannedBinding }
+  | { ok: false; refusals: ApiRefusal[] };
+
+/**
+ * Every check a binding document meets before it is written, with nothing written. `pending` is a
+ * connection the same call creates and has not stored yet: the document may name it, and its
+ * target is verified through it.
+ */
+export async function planBinding(input: {
   projectId: string;
   bindingId: string;
   userId: string;
   baseRevision: number | null;
   raw: unknown;
-}): Promise<BindingWriteOutcome> {
+  pending?: IntegrationConnectionRow | null;
+}): Promise<BindingPlan> {
   const { projectId, bindingId, userId, baseRevision, raw } = input;
+  const pending = input.pending ?? null;
   const current = await store.readBinding(bindingId);
   const held = heldRefusal(current, projectId, bindingId, baseRevision);
   if (held) return { ok: false, refusals: [held] };
@@ -250,7 +276,15 @@ export async function writeBinding(input: {
   const encoded = encodeTarget(doc.target);
   const agentAccess = doc.agentAccess ?? 'none';
   const active = doc.active ?? true;
-  const refusals = await documentRefusals({ projectId, userId, bindingId, doc, current, encoded });
+  const refusals = await documentRefusals({
+    projectId,
+    userId,
+    bindingId,
+    doc,
+    current,
+    encoded,
+    pending,
+  });
   if (refusals.length > 0) return { ok: false, refusals };
   const unverified = await bindEffects.targetRefusals({
     projectId,
@@ -259,42 +293,82 @@ export async function writeBinding(input: {
     config: encoded.config,
     held:
       current?.connectionId === doc.connection && isRecord(current.config) ? current.config : null,
+    ...(pending?.id === doc.connection ? { connection: pending } : {}),
   });
   if (unverified.length > 0) return { ok: false, refusals: unverified };
+  return {
+    ok: true,
+    plan: { projectId, bindingId, baseRevision, doc, encoded, agentAccess, active },
+  };
+}
 
-  const result = await store.casBinding({
-    id: bindingId,
-    projectId,
+export function casWriteOf(plan: PlannedBinding, pending: IntegrationConnectionRow | null) {
+  const { doc, encoded } = plan;
+  return {
+    id: plan.bindingId,
+    projectId: plan.projectId,
     connectionId: doc.connection,
     provider: encoded.provider,
     role: doc.role,
     config: encoded.config,
     label: encoded.label,
-    agentAccess,
-    active,
+    agentAccess: plan.agentAccess,
+    active: plan.active,
     instructions: doc.instructions ?? null,
-    baseRevision,
-    integrationSecret: () => bindEffects.inboundSecret(doc.connection),
+    baseRevision: plan.baseRevision,
+    integrationSecret: () =>
+      bindEffects.inboundSecret(doc.connection, pending?.id === doc.connection ? pending : null),
+  };
+}
+
+export async function effectsOf(
+  plan: PlannedBinding,
+  result: { created: boolean; changed: boolean },
+): Promise<Record<string, unknown>> {
+  if (!result.changed) return {};
+  return bindEffects.afterWrite({
+    bindingId: plan.bindingId,
+    projectId: plan.projectId,
+    connectionId: plan.doc.connection,
+    provider: plan.encoded.provider,
+    role: plan.doc.role,
+    config: plan.encoded.config,
+    created: result.created,
   });
+}
+
+export async function writeBinding(input: {
+  projectId: string;
+  bindingId: string;
+  userId: string;
+  baseRevision: number | null;
+  raw: unknown;
+}): Promise<BindingWriteOutcome> {
+  const planned = await planBinding(input);
+  if (!planned.ok) return planned;
+  const { plan } = planned;
+  const result = await store.casBinding(casWriteOf(plan, null));
   if (!result.ok) {
-    return { ok: false, refusals: [casRefusal(result, { baseRevision, bindingId, doc, encoded })] };
+    return {
+      ok: false,
+      refusals: [
+        casRefusal(result, {
+          baseRevision: plan.baseRevision,
+          bindingId: plan.bindingId,
+          doc: plan.doc,
+          encoded: plan.encoded,
+        }),
+      ],
+    };
   }
-  const effects = result.changed
-    ? await bindEffects.afterWrite({
-        bindingId,
-        projectId,
-        connectionId: doc.connection,
-        provider: encoded.provider,
-        role: doc.role,
-        config: encoded.config,
-        created: result.created,
-      })
-    : {};
   return {
     ok: true,
-    held: { revision: result.stored.revision, document: { ...doc, agentAccess, active } },
+    held: {
+      revision: result.stored.revision,
+      document: { ...plan.doc, agentAccess: plan.agentAccess, active: plan.active },
+    },
     created: result.created,
-    effects,
+    effects: await effectsOf(plan, result),
   };
 }
 

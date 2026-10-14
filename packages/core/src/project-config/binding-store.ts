@@ -1,5 +1,5 @@
 import { and, eq, isNotNull } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { db, type TxOnly } from '../db/client.js';
 import type { AgentAccess, BindingRole } from '../db/release-axes.js';
 import { integrationBindings, integrationConnections } from '../db/schema.js';
 import { encryptSecret, isVaultConfigured } from '../integrations/index.js';
@@ -22,7 +22,7 @@ export interface StoredBinding {
   revision: number;
 }
 
-interface ConnectionFacts {
+export interface ConnectionFacts {
   id: string;
   provider: string;
   ownerType: 'user' | 'org';
@@ -30,7 +30,7 @@ interface ConnectionFacts {
   active: boolean;
 }
 
-interface BindingWrite {
+export interface BindingWrite {
   id: string;
   projectId: string;
   connectionId: string;
@@ -43,7 +43,7 @@ interface BindingWrite {
   instructions: string | null;
 }
 
-type BindingCasResult =
+export type BindingCasResult =
   | { ok: true; stored: StoredBinding; created: boolean; changed: boolean }
   | { ok: false; reason: 'stale'; storedRevision: number | null }
   | { ok: false; reason: 'foreign' }
@@ -62,6 +62,81 @@ const bindingColumns = {
   instructions: integrationBindings.instructions,
   revision: integrationBindings.revision,
 };
+
+export type CasWrite = BindingWrite & {
+  baseRevision: number | null;
+  integrationSecret: () => Promise<string>;
+};
+
+/** The write a transaction was rolled back for. */
+class NotTaken extends Error {
+  constructor(
+    readonly index: number,
+    readonly result: Exclude<BindingCasResult, { ok: true }>,
+  ) {
+    super(`binding write ${index} was not taken: ${result.reason}`);
+  }
+}
+
+/** One compare-and-set, inside the transaction it is given. */
+async function casIn(
+  tx: TxOnly,
+  { baseRevision, integrationSecret, ...write }: CasWrite,
+): Promise<BindingCasResult> {
+  await lockXact(tx, 'projectConfigBinding', write.id);
+  const [current] = await tx
+    .select(bindingColumns)
+    .from(integrationBindings)
+    .where(eq(integrationBindings.id, write.id))
+    .limit(1);
+  if (current && current.projectId !== write.projectId) {
+    return { ok: false as const, reason: 'foreign' as const };
+  }
+  const storedRevision = current?.revision ?? null;
+  if (storedRevision !== baseRevision) {
+    return { ok: false as const, reason: 'stale' as const, storedRevision };
+  }
+  const values = {
+    connectionId: write.connectionId,
+    provider: write.provider,
+    role: write.role,
+    config: write.config,
+    label: write.label,
+    agentAccess: write.agentAccess,
+    active: write.active,
+    instructions: write.instructions,
+  };
+  if (
+    current &&
+    current.active === values.active &&
+    current.instructions === values.instructions &&
+    current.connectionId === values.connectionId &&
+    current.provider === values.provider &&
+    current.role === values.role &&
+    current.label === values.label &&
+    current.agentAccess === values.agentAccess &&
+    JSON.stringify(current.config) === JSON.stringify(values.config)
+  ) {
+    return { ok: true as const, stored: current, created: false, changed: false };
+  }
+  const [row] = current
+    ? await tx
+        .update(integrationBindings)
+        .set({ ...values, updatedAt: new Date() })
+        .where(eq(integrationBindings.id, write.id))
+        .returning(bindingColumns)
+    : await tx
+        .insert(integrationBindings)
+        .values({
+          id: write.id,
+          projectId: write.projectId,
+          integrationSecretEnc: encryptSecret(await integrationSecret()),
+          ...values,
+        })
+        .returning(bindingColumns);
+  if (!row) throw new Error('project-config: binding write returned no row');
+  return { ok: true as const, stored: row, created: !current, changed: true };
+}
 
 export const drizzleBindingStore = {
   async readBinding(id: string): Promise<StoredBinding | null> {
@@ -102,72 +177,47 @@ export const drizzleBindingStore = {
     return can(actorFor(userId), 'org.admin', orgResource(orgId));
   },
 
-  async casBinding({
-    baseRevision,
-    integrationSecret,
-    ...write
-  }: BindingWrite & {
-    baseRevision: number | null;
-    integrationSecret: () => Promise<string>;
-  }): Promise<BindingCasResult> {
+  async casBinding(write: CasWrite): Promise<BindingCasResult> {
     try {
-      return await db.transaction(async (tx) => {
-        await lockXact(tx, 'projectConfigBinding', write.id);
-        const [current] = await tx
-          .select(bindingColumns)
-          .from(integrationBindings)
-          .where(eq(integrationBindings.id, write.id))
-          .limit(1);
-        if (current && current.projectId !== write.projectId) {
-          return { ok: false as const, reason: 'foreign' as const };
-        }
-        const storedRevision = current?.revision ?? null;
-        if (storedRevision !== baseRevision) {
-          return { ok: false as const, reason: 'stale' as const, storedRevision };
-        }
-        const values = {
-          connectionId: write.connectionId,
-          provider: write.provider,
-          role: write.role,
-          config: write.config,
-          label: write.label,
-          agentAccess: write.agentAccess,
-          active: write.active,
-          instructions: write.instructions,
-        };
-        if (
-          current &&
-          current.active === values.active &&
-          current.instructions === values.instructions &&
-          current.connectionId === values.connectionId &&
-          current.provider === values.provider &&
-          current.role === values.role &&
-          current.label === values.label &&
-          current.agentAccess === values.agentAccess &&
-          JSON.stringify(current.config) === JSON.stringify(values.config)
-        ) {
-          return { ok: true as const, stored: current, created: false, changed: false };
-        }
-        const [row] = current
-          ? await tx
-              .update(integrationBindings)
-              .set({ ...values, updatedAt: new Date() })
-              .where(eq(integrationBindings.id, write.id))
-              .returning(bindingColumns)
-          : await tx
-              .insert(integrationBindings)
-              .values({
-                id: write.id,
-                projectId: write.projectId,
-                integrationSecretEnc: encryptSecret(await integrationSecret()),
-                ...values,
-              })
-              .returning(bindingColumns);
-        if (!row) throw new Error('project-config: binding write returned no row');
-        return { ok: true as const, stored: row, created: !current, changed: true };
-      });
+      return await db.transaction((tx) => casIn(tx, write));
     } catch (err) {
       if (isUniqueViolation(err)) return { ok: false, reason: 'service-clash' };
+      throw err;
+    }
+  },
+
+  /**
+   * Several writes as one: `before` runs first in the same transaction (the connection a create
+   * binds), then each write in its own savepoint. The first write the store does not take rolls
+   * every one of them back, `before` included, and is answered by its index.
+   */
+  async casBindings(
+    writes: readonly CasWrite[],
+    before?: (tx: TxOnly) => Promise<void>,
+  ): Promise<
+    | { ok: true; results: Extract<BindingCasResult, { ok: true }>[] }
+    | { ok: false; index: number; result: Exclude<BindingCasResult, { ok: true }> }
+  > {
+    try {
+      const results = await db.transaction(async (tx) => {
+        if (before) await before(tx);
+        const taken: Extract<BindingCasResult, { ok: true }>[] = [];
+        for (const [index, write] of writes.entries()) {
+          let result: BindingCasResult;
+          try {
+            result = await tx.transaction((sp) => casIn(sp, write));
+          } catch (err) {
+            if (!isUniqueViolation(err)) throw err;
+            result = { ok: false, reason: 'service-clash' };
+          }
+          if (!result.ok) throw new NotTaken(index, result);
+          taken.push(result);
+        }
+        return taken;
+      });
+      return { ok: true, results };
+    } catch (err) {
+      if (err instanceof NotTaken) return { ok: false, index: err.index, result: err.result };
       throw err;
     }
   },

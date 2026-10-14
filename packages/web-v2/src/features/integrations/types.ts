@@ -1,7 +1,7 @@
 
 import type { IntegrationHealthResult } from "@forge/contracts/integrations";
 
-export type { IntegrationCardStatus as CardStatus, IntegrationStatusCard as StatusCard, IntegrationsStatus, IntegrationDeliveryRow as IntegrationDelivery, ConfirmProdDeployResult, BindingRole, CoolifyConfigInput, CoolifyTargetInput, CoolifySecretsInput, EpodsystemConfigInput, EpodsystemSecretsInput, SentryConfigInput, SentrySecretsInput, RocketchatConfigInput, RocketchatSecretsInput, BindingSummary, ConnectionSummary, ConnectionCreateInput, ConnectionUpdateInput, ConnectionResponse, ConnectionListResponse, BindingListResponse, ConnectionBindingsResponse, McpServerPreviewEntry, McpPreviewResponse } from "@forge/contracts/integrations";
+export type { IntegrationCardStatus as CardStatus, IntegrationStatusCard as StatusCard, IntegrationsStatus, IntegrationDeliveryRow as IntegrationDelivery, ConfirmProdDeployResult, BindingRole, CoolifyConfigInput, CoolifyTargetInput, CoolifySecretsInput, EpodsystemConfigInput, EpodsystemSecretsInput, SentryConfigInput, SentrySecretsInput, RocketchatConfigInput, RocketchatSecretsInput, BindingSummary, ConnectionSummary, ConnectionCreateInput, ConnectionCreateResponse, ConnectionBindingItem, ConnectionBindingWritten, ConnectionUpdateInput, ConnectionResponse, ConnectionListResponse, BindingListResponse, ConnectionBindingsResponse, McpServerPreviewEntry, McpPreviewResponse } from "@forge/contracts/integrations";
 
 // === ISS-524 / ISS-526 — Sentry integration config shape ===
 
@@ -28,6 +28,12 @@ interface InstallationRepo {
   owner: string;
   repo: string;
   fullName: string;
+}
+
+/** `GET /integration-connections/:id/targets`: binding-v1 targets a `bindings[].target` takes as they stand. */
+export interface ConnectionTargetsResponse {
+  targets: Array<{ provider: "github"; installationId: number; owner: string; repo: string }>;
+  truncated: boolean;
 }
 
 export interface GitHubRepositoriesResponse {

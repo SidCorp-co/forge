@@ -82,6 +82,8 @@ export const PROJECT_CONFIG_REFUSAL_CODES = [
 	"BINDING_ROLLBACK_MOVED",
 	"AGENT_ACCESS_UNSUPPORTED",
 	"AGENT_ACCESS_NEEDS_ORG_ADMIN",
+	"PROJECT_NOT_ADMINISTERED",
+	"TARGETS_NOT_LISTED",
 	...BINDING_TARGET_REFUSAL_CODES,
 ] as const;
 
@@ -90,6 +92,7 @@ export type ProjectConfigRefusalCode =
 export const PROJECT_CONFIG_REFUSAL_STATUSES = {
 	STALE_BASE: 409,
 	AGENT_ACCESS_NEEDS_ORG_ADMIN: 403,
+	PROJECT_NOT_ADMINISTERED: 403,
 } as const satisfies RefusalStatuses<ProjectConfigRefusalCode>;
 
 /** Reading an environment's deployed state through its binding. */

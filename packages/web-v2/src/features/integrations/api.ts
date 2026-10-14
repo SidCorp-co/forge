@@ -2,8 +2,12 @@ import { apiClient } from "@/lib/api/client";
 import type {
   BindingListResponse,
   ConfirmProdDeployResult,
+  ConnectionBindingItem,
+  ConnectionBindingWritten,
   ConnectionBindingsResponse,
   ConnectionCreateInput,
+  ConnectionCreateResponse,
+  ConnectionTargetsResponse,
   ConnectionListResponse,
   ConnectionResponse,
   ConnectionUpdateInput,
@@ -84,11 +88,12 @@ export const integrationsApi = {
 
   githubConnect: (
     projectId: string,
-    params: { org?: string; orgId?: string },
+    params: { org?: string; orgId?: string; returnTo?: "integrations" },
   ) => {
     const qs = new URLSearchParams();
     if (params.org) qs.set("org", params.org);
     if (params.orgId) qs.set("orgId", params.orgId);
+    if (params.returnTo) qs.set("returnTo", params.returnTo);
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
     return apiClient<GitHubConnectStart>(
       `/projects/${projectId}/integrations/github/connect${suffix}`,
@@ -136,12 +141,25 @@ export const integrationConnectionsApi = {
   /** `GET /api/integration-connections` — connections owned by the caller. */
   list: () => apiClient<ConnectionListResponse>(`/integration-connections`),
 
-  /** `POST /api/integration-connections` — create a connection (201). */
+  /** `POST /api/integration-connections` — create a connection and bind it into `bindings[]`'s
+   *  projects in the same call (201); one refusal writes nothing, the connection included. */
   create: (body: ConnectionCreateInput) =>
-    apiClient<ConnectionResponse>(`/integration-connections`, {
+    apiClient<ConnectionCreateResponse>(`/integration-connections`, {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  /** `POST /api/integration-connections/:id/bindings` — bind an existing connection into several
+   *  projects as one write. */
+  bind: (id: string, bindings: ConnectionBindingItem[]) =>
+    apiClient<{ bindings: ConnectionBindingWritten[] }>(`/integration-connections/${id}/bindings`, {
+      method: "POST",
+      body: JSON.stringify({ bindings }),
+    }),
+
+  /** `GET /api/integration-connections/:id/targets` — what this connection can be bound to. */
+  targets: (id: string) =>
+    apiClient<ConnectionTargetsResponse>(`/integration-connections/${id}/targets`),
 
   update: (id: string, body: ConnectionUpdateInput) =>
     apiClient<ConnectionResponse>(`/integration-connections/${id}`, {

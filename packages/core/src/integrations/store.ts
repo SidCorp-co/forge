@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { type Said, sayEn } from '@forge/contracts/said';
 import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
@@ -145,7 +146,7 @@ export function buildContextFromBinding<
   };
 }
 
-interface CreateConnectionInput {
+export interface CreateConnectionInput {
   ownerType?: IntegrationOwnerType;
   ownerId: string;
   provider: IntegrationProvider;
@@ -154,21 +155,41 @@ interface CreateConnectionInput {
   secrets?: Record<string, unknown> | null;
 }
 
+/**
+ * The row a create will write, before it is written: what a binding written in the same call is
+ * checked against while the connection does not exist yet. {@link createConnection} inserts
+ * exactly this row, so the checked row and the stored one are one.
+ */
+export function pendingConnectionRow(
+  input: CreateConnectionInput & { id?: string },
+  now = new Date(),
+): IntegrationConnectionRow {
+  return {
+    id: input.id ?? randomUUID(),
+    ownerType: input.ownerType ?? 'user',
+    ownerId: input.ownerId,
+    provider: input.provider,
+    displayName: input.displayName ?? null,
+    config: input.config ?? {},
+    secretsEnc: input.secrets ? encryptJson(input.secrets) : null,
+    active: true,
+    breakerOpenedAt: null,
+    lastHealthStatus: null,
+    lastHealthDetail: null,
+    lastHealthSays: null,
+    lastHealthAt: null,
+    inboundEndpointObserved: null,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 export async function createConnection(
-  input: CreateConnectionInput,
+  input: CreateConnectionInput | IntegrationConnectionRow,
+  tx: Tx = db,
 ): Promise<IntegrationConnectionRow> {
-  const [row] = await db
-    .insert(integrationConnections)
-    .values({
-      ownerType: input.ownerType ?? 'user',
-      ownerId: input.ownerId,
-      provider: input.provider,
-      displayName: input.displayName ?? null,
-      config: input.config ?? {},
-      secretsEnc: input.secrets ? encryptJson(input.secrets) : null,
-      active: true,
-    })
-    .returning();
+  const values = 'secretsEnc' in input ? input : pendingConnectionRow(input);
+  const [row] = await tx.insert(integrationConnections).values(values).returning();
   if (!row) throw new Error('createConnection: insert returned no row');
   return row;
 }

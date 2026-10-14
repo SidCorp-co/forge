@@ -1,15 +1,20 @@
+import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { say } from '@forge/contracts/said';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { z } from 'zod';
+import { listInstallationRepositories } from '../integrations/github/index.js';
 import {
   adapterOrRefuse,
   applySecretsPatch,
   assertVaultConfigured,
+  bindingItemsSchema,
   buildContextFromBinding,
   connectionConfigSchemaForProvider,
   connectionCreateSchema,
   connectionUpdateSchema,
   createConnection,
+  decryptConnectionSecrets,
   defaultConnectionDisplayName,
   effectiveConfig,
   findConnectionById,
@@ -20,6 +25,7 @@ import {
   listConnectionsForPrincipalUser,
   notFound,
   notifyConnectionChanged,
+  pendingConnectionRow,
   raceWithTimeout,
   reportedBindingIdentities,
   softDeleteConnection,
@@ -30,12 +36,15 @@ import {
   updateConnection,
   withdrawNulls,
 } from '../integrations/index.js';
+import { SourceHostCallError } from '../integrations/source-host/index.js';
 import { loadOrgRole } from '../lib/authz.js';
+import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireOrgHeld } from '../permissions/index.js';
 import { readDeployMap } from '../project-config/index.js';
+import { bindConnectionInto } from './connect-and-bind.js';
 
 /**
  * Reading a connection, as opposed to managing it. Every principal the list
@@ -100,7 +109,7 @@ integrationConnectionsRoutes.post('/', zValidator('json', connectionCreateSchema
     if (!orgRole) throw notFound('org');
     requireOrgHeld(body.orgId, orgRole, 'org.admin');
   }
-  const connection = await createConnection({
+  const connection = pendingConnectionRow({
     ownerType: body.orgId ? 'org' : 'user',
     ownerId: body.orgId ?? userId,
     provider: body.provider,
@@ -108,8 +117,81 @@ integrationConnectionsRoutes.post('/', zValidator('json', connectionCreateSchema
     config: body.config,
     secrets: body.secrets,
   });
+  if (!body.bindings) {
+    await createConnection(connection);
+    notifyConnectionChanged(body.provider, connection.id);
+    return c.json({ connection: summarizeConnection(connection), bindings: [] }, 201);
+  }
+  const bound = await bindConnectionInto({
+    userId,
+    connection,
+    items: body.bindings,
+    store: true,
+  });
+  if (!bound.ok) return refused(c, bound.refusals, 'CONFIG_REFUSED');
   notifyConnectionChanged(body.provider, connection.id);
-  return c.json({ connection: summarizeConnection(connection) }, 201);
+  return c.json({ connection: summarizeConnection(connection), bindings: bound.bindings }, 201);
+});
+
+/** Bind a connection that already exists into several projects, as one write. */
+integrationConnectionsRoutes.post(
+  '/:id/bindings',
+  zValidator('json', z.strictObject({ bindings: bindingItemsSchema })),
+  async (c) => {
+    const userId = c.get('userId');
+    const connection = await loadConnection(c.req.param('id'), userId, 'read');
+    const bound = await bindConnectionInto({
+      userId,
+      connection,
+      items: c.req.valid('json').bindings,
+    });
+    if (!bound.ok) return refused(c, bound.refusals, 'CONFIG_REFUSED');
+    return c.json({ bindings: bound.bindings });
+  },
+);
+
+/**
+ * What this connection can be bound to, as binding-v1 targets a `bindings[].target` takes as they
+ * stand: the repositories a GitHub App's installations granted. A provider whose target is typed
+ * rather than listed is refused by name, with the fields its target takes.
+ */
+integrationConnectionsRoutes.get('/:id/targets', async (c) => {
+  const connection = await loadConnection(c.req.param('id'), c.get('userId'), 'read');
+  if (connection.provider !== 'github') {
+    return refused(
+      c,
+      [
+        {
+          code: 'TARGETS_NOT_LISTED',
+          path: '',
+          detail: `a ${connection.provider} connection's targets are not listed here; its binding-v1 target is typed with the fields ${SCHEMA_BASE}/binding-v1.json names for target.provider "${connection.provider}".`,
+        },
+      ],
+      'CONFIG_REFUSED',
+    );
+  }
+  const { appId, privateKey } = decryptConnectionSecrets<{ appId?: string; privateKey?: string }>(
+    connection,
+  );
+  if (!appId || !privateKey) throw badRequest({ id: 'the App was never converted' });
+  try {
+    const listed = await listInstallationRepositories({ appId, privateKey });
+    return c.json({
+      targets: listed.repositories.map((r) => ({
+        provider: 'github' as const,
+        installationId: r.installationId,
+        owner: r.owner,
+        repo: r.repo,
+      })),
+      truncated: listed.truncated,
+    });
+  } catch (err) {
+    if (!(err instanceof SourceHostCallError)) throw err;
+    throw new HTTPException(502, {
+      message: `${err.message}, so the repositories this App can see are unknown${err.detail ? `: ${err.detail}` : ''}`,
+      cause: { code: 'GITHUB_REFUSED', details: { httpStatus: err.status } },
+    });
+  }
 });
 
 integrationConnectionsRoutes.get('/:id/bindings', async (c) => {

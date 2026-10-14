@@ -1,5 +1,6 @@
 export { personGateOf, readApprovals } from './approvals.js';
 export { encryptPlaintextBindingSecrets, setBindingInboundSecret } from './binding-store.js';
+export { type BindingsItem, slotFor, writeBindings } from './bindings-many.js';
 export { readContentLanguage } from './content-language.js';
 export {
   dispatchStateOf,

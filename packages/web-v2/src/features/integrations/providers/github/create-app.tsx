@@ -48,13 +48,29 @@ function AppOwner({ projectId }: { projectId: string }) {
   );
 }
 
-export function CreateApp({ projectId, onBack }: { projectId: string; onBack: (() => void) | null }) {
+/**
+ * Start the manifest flow for `projectId`, whose name the App takes and whose org owns it. Begun
+ * from the workspace Integrations page (`returnTo`), the install step lands back there, where the
+ * new App is bound into its projects.
+ */
+export function CreateApp({
+  projectId,
+  onBack,
+  returnTo,
+}: {
+  projectId: string;
+  onBack: (() => void) | null;
+  returnTo?: "integrations";
+}) {
   const connect = useGitHubConnect(projectId);
   const [org, setOrg] = useState("");
   const t = useCopy();
 
   const start = async () => {
-    const res = await connect.mutateAsync({ org: org.trim() || undefined });
+    const res = await connect.mutateAsync({
+      ...(org.trim() ? { org: org.trim() } : {}),
+      ...(returnTo ? { returnTo } : {}),
+    });
     submitManifest(res);
   };
 
