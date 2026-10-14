@@ -137,12 +137,13 @@ describe('a person records "could not judge"', () => {
     expect((await counted(issueId, req)).latest).toBeNull();
   });
 
-  it('a short counts as a pass, and judging it again as could not judge takes the pass away', async () => {
+  // REQ-35 decision 7b261fca: a short is no verification, so the requirement's coverage never counts it
+  it("a short counts as a pass on the issue and the release fold, not on the requirement's coverage, and could not judge takes the pass away", async () => {
     const { issueId, req } = await tracedClosedIssue();
     expect((await judge(issueId, 'short', 'Met, short of its wording')).status).toBe(201);
     expect(await counted(issueId, req)).toMatchObject({
       tally: expect.objectContaining({ passing: 1, skipped: 0 }),
-      bc: 'passing',
+      bc: 'not_judged',
       release: { proven: 1, open: 0 },
     });
 

@@ -1,0 +1,1 @@
+**A requirement's verified count no longer takes a short or the builder's own pass.** Only a pass counts; under independent QA it must come from someone other than the builder, and an unattributed pass does not.

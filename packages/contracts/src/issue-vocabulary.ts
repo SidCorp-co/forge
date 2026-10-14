@@ -160,8 +160,9 @@ export const ISSUE_CATEGORY_LABELS: Record<string, string> = {
 };
 
 /** What one issue criterion reads as on every screen: its latest verdict, with an abbreviated
- *  backfilled commit read as unresolved. `short` is drawn as itself, never as a pass, though the gate
- *  and coverage count it as one (`criterionCountsAsPass`). */
+ *  backfilled commit read as unresolved. `short` is drawn as itself, never as a pass, though an
+ *  issue's gates count it as one (`criterionCountsAsPass`); a requirement's coverage never does
+ *  (REQ-35 decision 7b261fca). */
 export const CRITERION_STANDINGS = [
 	"pass",
 	"short",
@@ -209,7 +210,7 @@ export const criterionCountsAsPass = (standing: CriterionStanding): boolean =>
 export const CRITERION_STANDING_HINTS: Record<CriterionStanding, string> = {
 	pass: "pass: the latest verdict passed",
 	short:
-		"short: met, short of its wording, not blocking; counts as a pass",
+		"short: met, short of its wording, not blocking; never verifies a requirement criterion",
 	fail: "fail: the latest verdict failed",
 	skipped: "skipped: judged and skipped with a reason; never counts as a pass",
 	unresolved:

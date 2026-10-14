@@ -40,6 +40,8 @@ export interface BandNodeData extends Record<string, unknown> {
   label: string;
   summary: BandSummary;
   hits: number;
+  /** The steps it folds that the diff marks, while Changes is on: a proposal's changes show before the band opens. */
+  changed: number;
   rel: boolean;
 }
 
@@ -170,7 +172,7 @@ function BandNode({ data }: NodeProps & { data: BandNodeData }) {
   const t = useCopy();
   const { summary } = data;
   return (
-    <div className="wfc-card" data-summary="true" data-rel={data.rel} data-hit={data.hits > 0} data-testid="workflow-band">
+    <div className="wfc-card" data-summary="true" data-rel={data.rel} data-hit={data.hits > 0} data-mark={data.changed > 0 ? "changed" : undefined} data-testid="workflow-band">
       {ends}
       <div className="wfc-sum">
         <PageSectionTitle className="fg-h4">{data.label}</PageSectionTitle>
@@ -201,6 +203,11 @@ function BandNode({ data }: NodeProps & { data: BandNodeData }) {
         {data.hits > 0 ? (
           <span className="wfc-badge" data-tone="hits">
             {t("workflows.node.found", { n: data.hits })}
+          </span>
+        ) : null}
+        {data.changed > 0 ? (
+          <span className="wfc-badge" data-tone="mark" data-testid="workflow-band-changed">
+            {t("workflows.node.changed", { n: data.changed })}
           </span>
         ) : null}
       </div>

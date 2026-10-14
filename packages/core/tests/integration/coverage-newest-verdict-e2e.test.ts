@@ -186,11 +186,11 @@ describe('the newest verdict across the rows tracing a BC is the one that counts
       counts: { displayId: 'ISS-2', verdict: 'fail' },
     });
 
-    await judge(a, 1, 'short', NEW, '2026-10-07T10:00:00Z');
+    await judge(a, 1, 'pass', NEW, '2026-10-07T10:00:00Z');
 
     expect(await bc(req, 'BC-1')).toMatchObject({
       verdict: 'passing',
-      counts: { displayId: 'ISS-1', verdict: 'short', commit: NEW },
+      counts: { displayId: 'ISS-1', verdict: 'pass', commit: NEW },
     });
   });
 

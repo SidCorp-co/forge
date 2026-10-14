@@ -37,11 +37,15 @@ const nodeStroke = (n: Node) => (n.type === "c4box" && (n.data as C4BoxData).on 
  * `GET …/system-graph`) → view (`viewOf`, by level and detail) → layout (`layoutView`, ELK) → nodes and
  * edges here. It opens on Every system when that reads at 12px in the view, else on Boundaries.
  */
-/** A level or a graph of its own starts over: a new choice of detail, nothing opened, and a fresh fit. */
+/**
+ * A level or a graph of its own starts over: a new choice of detail, nothing opened, and a fresh fit.
+ * The revision a graph is compared against is not one: Changes turned on or off redraws the same
+ * design, so the reader's detail, the boundaries they opened and where they looked all stay.
+ */
 export function C4Canvas(props: WorkflowCanvasProps) {
   const [param] = useQueryParam("level");
   const g = props.graph;
-  return <C4View key={`${levelOf(param, props.compact)}|${g?.workflowId ?? ""}|${g?.revision ?? ""}|${g?.against ?? ""}`} {...props} />;
+  return <C4View key={`${levelOf(param, props.compact)}|${g?.workflowId ?? ""}|${g?.revision ?? ""}`} {...props} />;
 }
 
 const levelOf = (param: string | null, compact = false): Level => (!compact && param === "containers" ? "containers" : "context");
@@ -212,7 +216,8 @@ function C4View(props: WorkflowCanvasProps) {
 
 type Focus = Lit | null;
 
-function c4Nodes(
+/** The diagram's boxes and frames as React Flow nodes, each marked by the focus, the search, the diff and health. */
+export function c4Nodes(
   diagram: Diagram,
   o: {
     step: string | null;
@@ -230,12 +235,15 @@ function c4Nodes(
   });
   for (const x of diagram.boxes) {
     const ids = x.node.steps;
+    // a box that folds steps (a boundary, or the system at Context) counts the changes it hides
+    const changed = x.node.node ? 0 : ids.filter((s) => diff?.steps.has(s)).length;
     const data: C4BoxData = {
       box: x,
       on: step !== null && ids.includes(step),
       rel: !focus || ids.some((s) => focus.nodes.has(s)),
       hit: ids.some((s) => hits.has(s)),
-      mark: x.node.node ? (diff?.steps.get(x.node.id) ?? null) : null,
+      mark: x.node.node ? (diff?.steps.get(x.node.id) ?? null) : changed > 0 ? "changed" : null,
+      changed,
       health: health?.on ? HEALTH_MARKER_KINDS.filter((k) => ids.some((id) => health.nodes.get(id)?.kinds.includes(k))) : [],
       canOpen: o.onFold !== null,
     };

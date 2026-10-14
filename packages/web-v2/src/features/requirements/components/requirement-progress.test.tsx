@@ -2,7 +2,7 @@
 // strip at the top of the main column, on every width, says whom it waits on, where it stands on the
 // lifecycle and the step after, and k/n verified; the criteria read as a checklist whose every verdict
 // is a glyph dot named on it, never a colour alone; revisions, decisions and activity stay folded until
-// opened. The strip's steps are the lifecycle's own, and the page reads one waiting-on, the strip's, so
+// opened, save a proposal awaiting this reader, which opens on its diff (decision on question 20c74d56). The strip's steps are the lifecycle's own, and the page reads one waiting-on, the strip's, so
 // nothing else on it can disagree. REQ-43 BC-5, BC-8, BC-10 (ISS-496 part C): the header's badge says
 // the state, so the bar names no step and an ended one's banner says only that nothing is owed; the
 // counts per verdict live in the criteria's filter pills; past revisions and decisions sit in Activity.
@@ -219,14 +219,14 @@ describe("the strip's words", () => {
 // ISS-461 round 3, REQ-35 BC-5: the strip names whom the requirement actually waits on, as core's
 // standing says it (`requirements/standing-work.ts`), and links what that wait is about.
 describe("revisions, decisions and activity", () => {
-  it("fold a proposal's diff until opened, and keep the revisions that stood for Activity (REQ-43 BC-8)", async () => {
+  it("open a proposal awaiting this reader on its diff, and keep the revisions that stood for Activity (REQ-43 BC-8)", async () => {
     core();
     page("revisions");
     expect(screen.getByTestId("open-revision")).toHaveTextContent("Thay doi 2");
-    expect(screen.queryByTestId("revision-diff")).toBeNull();
+    expect(screen.getByTestId("revision-diff")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /All revisions/ })).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: /Changes against r1/ }));
-    expect(screen.getByTestId("revision-diff")).toBeInTheDocument();
+    expect(screen.queryByTestId("revision-diff")).toBeNull();
   });
 
   it("fold every revision under Activity until opened", async () => {

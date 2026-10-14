@@ -145,6 +145,7 @@
     "shell.dock.size.custom": "Custom ({width} px)",
     "shell.dock.size.customShort": "Custom",
     "shell.dock.size.half": "Half",
+    "shell.dock.size.halfCannotFit": "No Half: window too narrow",
     "shell.dock.size.label": "Panel size: {size}",
     "shell.dock.size.large": "Large",
     "shell.dock.thisPage": "This page",

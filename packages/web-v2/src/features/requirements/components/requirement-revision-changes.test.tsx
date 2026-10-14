@@ -43,7 +43,8 @@ describe("a revision's changes on the Revisions view", () => {
 
   it("shows a change of what the requirement is in the open revision's diff", async () => {
     const [open, current] = reqDetail.revisions as RequirementDetail["revisions"];
-    revisions({ ...reqDetail, revisions: [{ ...(open as RequirementDetail["revisions"][number]), kind: "rule" }, { ...(current as RequirementDetail["revisions"][number]), kind: null }] });
+    // a draft this reader cannot decide yet: its diff is folded until opened (REQ-35 BC-7)
+    revisions({ ...reqDetail, revisions: [{ ...(open as RequirementDetail["revisions"][number]), state: "draft", kind: "rule" }, { ...(current as RequirementDetail["revisions"][number]), kind: null }] });
     await userEvent.setup().click(within(screen.getByTestId("open-revision-diff")).getByRole("button"));
     const kind = await screen.findByTestId("revision-diff-kind");
     expect(kind).toHaveTextContent("What this requirement is");
