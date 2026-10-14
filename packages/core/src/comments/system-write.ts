@@ -69,7 +69,7 @@ export interface SystemCommentRow {
   parentId: string | null;
 }
 
-/** Post one system-authored comment and read back the row, for a writer that needs its id. */
+/** The same write, reading the row back for a writer that needs its id. */
 export async function insertSystemComment(
   row: SystemComment,
   executor: Tx = db,
@@ -87,10 +87,7 @@ export async function insertSystemComment(
   return written;
 }
 
-/**
- * Rewrite a comment core posted earlier, withholding any stored credential from the new body.
- * Returns the comment's id, or `null` when it is gone or sits on another issue.
- */
+/** Replace the body of a comment core posted earlier; its id, or `null` when it is gone or on another issue. */
 export async function rewriteSystemComment(
   args: { commentId: string; issueId: string; body: string },
   executor: Tx = db,

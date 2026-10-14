@@ -5,7 +5,6 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
-import { insertSystemComment } from '../comments/system-write.js';
 import { db } from '../db/client.js';
 import { issues, pmConfig, pmDecisions, pmPolicies } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
@@ -21,6 +20,7 @@ import {
 } from '../middleware/auth.js';
 import { closeEscalationTasks } from '../notifications/close-escalation.js';
 import { hooks } from '../pipeline/hooks.js';
+import { postOperatorReply } from './decisions-service.js';
 import {
   configPatchSchema,
   createPolicy,
@@ -152,12 +152,7 @@ pmRoutes.post(
         .limit(1);
       if (!issue || issue.projectId !== projectId) continue;
 
-      const inserted = await insertSystemComment({
-        issueId,
-        authorId: userId,
-        body,
-        parentId: null,
-      });
+      const inserted = await postOperatorReply({ issueId, userId, body });
       if (!inserted) continue;
       await hooks.emit('commentCreated', {
         issueId,

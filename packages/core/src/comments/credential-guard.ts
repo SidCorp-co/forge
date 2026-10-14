@@ -7,7 +7,6 @@ import type { MessageRefusal } from '../messaging/contract.js';
 /** The rule a refusal is filed under, so a caller reads which check refused rather than a prose guess. */
 export const STORED_CREDENTIAL_RULE = 'stored-test-credential';
 
-/** The guide whose rule 2 says why, and the place the value is read instead. */
 const GUIDE_SLUG = 'project-settings-and-test-credentials';
 const READ_AT = '`forge_projects.get` → `environments.testCredentials`';
 
@@ -18,7 +17,6 @@ const READ_AT = '`forge_projects.get` → `environments.testCredentials`';
  */
 const SECRET_LENGTH = 12;
 
-/** One stored credential value, and what a reader is told it was without being told what it is. */
 export interface StoredCredential {
   /** The value itself. Never leaves this module in a marker, a log line or a refusal. */
   readonly value: string;
@@ -26,7 +24,6 @@ export interface StoredCredential {
   readonly id: string;
 }
 
-/** Where in a text a stored credential sits. */
 export interface CredentialHit {
   readonly id: string;
   /** 1-based, in the text as written; a value that is the whole text reports the first line and column. */
@@ -169,10 +166,7 @@ function positionOf(text: string, offset: number): { line: number; column: numbe
   return { line, column: offset - (before.lastIndexOf('\n') + 1) + 1 };
 }
 
-/**
- * Where the first stored credential sits in `text`, or `null` when none does. The `near` quote is
- * cut from a copy with every stored value already masked, so no cut can leave part of one showing.
- */
+/** The first stored credential in `text` and where it sits, or `null`; `near` is cut after masking every value. */
 export function findCredential(
   text: string,
   credentials: readonly StoredCredential[],
