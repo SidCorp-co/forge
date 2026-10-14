@@ -95,6 +95,7 @@ describe('the pages', () => {
     expect(html).toContain('sequence: { useMaxWidth: false }');
     expect(html).toContain('overflow-x: auto; max-width: 100%');
     expect(html).toContain('scroll it sideways');
+    expect(html).toContain('new ResizeObserver(showWhereWider)');
     expect(html).toContain('tabindex="0"');
   });
 

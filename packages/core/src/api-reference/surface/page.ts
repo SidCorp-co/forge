@@ -114,14 +114,20 @@ ${sections}
     flowchart: { useMaxWidth: false },
     theme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default',
   });
+  const frames = [...document.querySelectorAll('pre.mermaid')];
+  const hints = frames.map((frame) => {
+    const hint = document.createElement('p');
+    hint.className = 'scroll-hint';
+    hint.hidden = true;
+    hint.textContent = 'This diagram is wider than the screen: scroll it sideways.';
+    frame.before(hint);
+    return hint;
+  });
+  const showWhereWider = () =>
+    frames.forEach((frame, i) => { hints[i].hidden = frame.scrollWidth <= frame.clientWidth; });
   mermaid.run().then(() => {
-    for (const frame of document.querySelectorAll('pre.mermaid')) {
-      if (frame.scrollWidth <= frame.clientWidth) continue;
-      const hint = document.createElement('p');
-      hint.className = 'scroll-hint';
-      hint.textContent = 'This diagram is wider than the screen: scroll it sideways.';
-      frame.before(hint);
-    }
+    showWhereWider();
+    new ResizeObserver(showWhereWider).observe(document.body);
   });
 </script>
 </body>
