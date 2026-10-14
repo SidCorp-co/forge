@@ -31,151 +31,170 @@ settings Forge writes for you, and paste them into Cursor.
 
 3. Choose the **API Tokens** tab.
 
-   **Check:** a form titled **Create a token** is at the top.
+   **Check:** a list titled **Your tokens** is at the top of the tab.
 
-4. In **Name**, type `Cursor`.
+4. Scroll down, below **Your tokens**, to the form titled **Create a token**.
+
+   **Check:** the form's first box, **Name**, is in view.
+
+5. In **Name**, type `Cursor`.
 
    **Check:** the name shows in the box.
 
-5. Under **Scopes**, tick **write**; **read** is already ticked for you. Read lets
-   the assistant look things up; write lets it make changes for you, such as
-   filing an issue or adding a comment.
+6. Under **Scopes**, tick **write**; **read** is already ticked for you. Read lets
+   the assistant look things up; write lets it make changes for you, such as filing
+   an issue or adding a comment.
 
    **Check:** both **read** and **write** are ticked.
 
-6. In **Bind to a project**, choose the project you want to ask about. The token
+7. Under **Permissions**, choose **Only the permissions I pick**.
+
+   **Check:** a list of permissions, each with a box, appears under that choice, and
+   none of them is ticked.
+
+8. Tick `issues:read`. The form needs at least one permission, and these permissions
+   limit a different way into Forge from the one your assistant uses, so the
+   smallest one is enough. What your assistant may do is set by **Scopes** and by
+   **Bind to a project**.
+
+   **Check:** `issues:read` is the only permission ticked.
+
+9. In **Bind to a project**, choose the project you want to ask about. The token
    then works for that project only.
 
    **Check:** the box shows the project's name.
 
-7. Choose **Create token**.
+10. Choose **Create token**.
 
-   **Check:** a panel titled **Token created** appears; or, if Forge wants to
-   confirm it is you first, a **Confirm password** box or a **Continue with**
-   button appears instead.
+    **Check:** a panel titled **Token created** appears; or, if Forge wants to
+    confirm it is you first, a **Confirm password** box or a **Continue with**
+    button appears instead.
 
-8. If the **Token created** panel has not appeared, follow **If Forge asks you to
-   confirm it is you** at the end of this page. You come back to step 9 when the
-   panel is showing.
+11. If the **Token created** panel has not appeared, follow
+    **If Forge asks you to confirm it is you** at the end of this page. You come
+    back to step 12 when the panel is showing.
 
-   **Check:** the panel titled **Token created** shows a long code that starts
-   with `forge_pat_`.
+    **Check:** the panel titled **Token created** shows a long code that starts with
+    `forge_pat_`.
 
-9. Choose **Copy to clipboard**. Forge shows the code only this once.
+12. Choose **Copy to clipboard**. Forge shows the code only this once.
 
-   **Check:** a notice reading **Copied to clipboard** appears.
+    **Check:** a notice reading **Copied to clipboard** appears.
 
-10. Paste the code into your note.
+13. Paste the code into your note.
 
     **Check:** your note holds the whole code, starting with `forge_pat_`.
 
-11. Choose **Done** to close the panel.
+14. Choose **Done** to close the panel.
 
     **Check:** you are back on the **API Tokens** tab, and your new token is listed
     under **Your tokens**.
 
-12. Choose the **MCP** tab.
+15. Choose the **MCP** tab.
 
     **Check:** a card titled **Connect a client** shows an **Endpoint** and a
     **Project**.
 
-13. In **Project**, choose the project you chose in step 6. It may already be
+16. In **Project**, choose the project you chose in step 9. It may already be
     showing.
 
-    **Check:** under **Config snippet**, a sentence reads *"This snippet
-    configures"* followed by your project's name.
+    **Check:** under **Config snippet**, a sentence reads
+    *"This snippet configures"* followed by your project's name.
 
-14. Choose the **Cursor** tab above the snippet.
+17. Choose the **Cursor** tab above the snippet.
 
     **Check:** the words above the snippet name the file `~/.cursor/mcp.json`.
 
-15. Choose **Copy**.
+18. Choose **Copy**.
 
     **Check:** the button changes to **Copied ✓**.
 
-16. Paste the snippet into your note, under the code.
+19. Paste the snippet into your note, under the code.
 
-    **Check:** your note holds the code and, below it, a block that starts with
-    `{` and contains `"mcpServers"`.
+    **Check:** your note holds the code and, below it, a block that starts with `{`
+    and contains `"mcpServers"`.
 
-17. In the block, replace `<YOUR_TOKEN_HERE>` — angle brackets included — with the
-    code from step 10, keeping the word `Bearer` and the space after it.
+20. In the block, replace `<YOUR_TOKEN_HERE>` — angle brackets included — with the
+    code from step 13, keeping the word `Bearer` and the space after it.
 
-    **Check:** the line reads `"Authorization": "Bearer forge_pat_…"` with your
-    code where the dots are, and no `<` or `>` is left in the block.
+    **Check:** the line reads `"Authorization": "Bearer forge_pat_…"` with your code
+    where the dots are, and no `<` or `>` is left in the block.
 
-18. Open Cursor's settings. On a Mac, press **Cmd+Shift+J**. On Windows, press
+21. Open Cursor's settings. On a Mac, press **Cmd+Shift+J**. On Windows, press
     **Ctrl+Shift+J**.
 
     **Check:** a page titled **Cursor Settings** opens.
 
-19. Choose the section named **MCP** in the list on the left — in some versions
-    it is called **Tools & MCP**.
+22. Choose the section named **MCP** in the list on the left — in some versions it
+    is called **Tools & MCP**.
 
     **Check:** the page lists connected services, or says there are none yet.
 
-20. Choose the button that adds a new server —
-    **Add Custom MCP** or **New MCP Server**, depending on your version.
+23. Choose the button that adds a new server — **Add Custom MCP** or
+    **New MCP Server**, depending on your version.
 
     **Check:** Cursor opens a file called `mcp.json` in an editor tab. It is
-    `~/.cursor/mcp.json`: on a Mac, the `.cursor` folder inside your home folder;
-    on Windows, `C:\Users\<your name>\.cursor\mcp.json`.
+    `~/.cursor/mcp.json`: on a Mac, the `.cursor` folder inside your home folder; on
+    Windows, `C:\Users\<your name>\.cursor\mcp.json`.
 
-21. If the file is empty, or holds only `{}` or `"mcpServers": {}` with nothing
+24. If the file is empty, or holds only `{}` or `"mcpServers": {}` with nothing
     between those last braces, select everything in it — **Cmd+A** on a Mac,
     **Ctrl+A** on Windows.
 
     **Check:** if you did, everything in the editor tab is highlighted.
 
-22. If you selected everything, paste the block from your note in its place.
+25. If you selected everything, paste the block from your note in its place.
 
-    **Check:** if you did, the file holds `"forge"` inside `"mcpServers"`, with
-    your token in it.
+    **Check:** if you did, the file holds `"forge"` inside `"mcpServers"`, with your
+    token in it.
 
-23. If the file already listed other servers under `"mcpServers"` when Cursor
-    opened it, follow **If the file already lists other servers** at the end of
-    this page. You go
-    on to step 24 when you have finished it.
+26. If the file already listed other servers under `"mcpServers"` when Cursor opened
+    it, follow **If the file already lists other servers** at the end of this page.
+    You go on to step 27 when you have finished it.
 
     **Check:** the file holds `"forge"` inside `"mcpServers"`, with your token in
     it.
 
-24. Save the file — **Cmd+S** on a Mac, **Ctrl+S** on Windows.
+27. Save the file — **Cmd+S** on a Mac, **Ctrl+S** on Windows.
 
     **Check:** the editor tab no longer marks the file as changed.
 
-25. Go back to the **Cursor Settings** tab.
+28. Go back to the **Cursor Settings** tab.
 
     **Check:** **forge** is listed.
 
-26. If a switch beside **forge** is off, turn it on.
+29. If a switch beside **forge** is off, turn it on.
 
     **Check:** **forge** shows a green dot and a count of its tools.
 
-27. Open Cursor's chat — **Cmd+L** on a Mac, **Ctrl+L** on Windows.
+30. Open Cursor's chat — **Cmd+L** on a Mac, **Ctrl+L** on Windows.
 
     **Check:** a chat panel opens beside the editor.
 
-28. Ask: *"What issues are open in Forge right now?"*
+31. Type: *"What issues are open in Forge right now?"*
+
+    **Check:** your question shows where you type, and it has not been sent yet.
+
+32. Press Enter to send it.
 
     **Check:** Cursor asks your permission to run a tool from `forge`.
 
-29. Allow it.
+33. Allow it.
 
     **Check:** Cursor answers with issues from your project.
 
-30. Delete the note. The token now lives in Cursor's settings file, and you will
-    not need the copy again.
+34. Delete the note. The token now lives in Cursor's settings file, and you will not
+    need the copy again.
 
     **Check:** the note is gone from your notes app.
 
 ## If Forge asks you to confirm it is you
 
 Forge sometimes checks that it is really you before it makes a token. After
-step 7 you see either a **Confirm password** box or a **Continue with** button
+step 10 you see either a **Confirm password** box or a **Continue with** button
 instead of the **Token created** panel. Do the part below that matches what you
 see. Either way you finish with the **Token created** panel, and then you go on
-to step 9.
+to step 12.
 
 If you see a **Confirm password** box:
 
@@ -235,5 +254,5 @@ connection works in every folder you open in Cursor. It lasts until you remove
 the `forge` block from `mcp.json` or revoke the token on Forge's **API Tokens**
 tab.
 
-If step 25 shows no **forge**, or step 26 shows a red dot, see
+If step 28 shows no **forge**, or step 29 shows a red dot, see
 [When it does not work](?path=connect-an-assistant/when-it-does-not-work).

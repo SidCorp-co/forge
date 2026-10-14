@@ -116,11 +116,11 @@ function sentencesOf(text: string): string[] {
 }
 
 const JOINS_TWO_ACTS =
-  /,\s*then\b|\bthen\s+(?:choose|type|paste|copy|open|press|select|tick|save|go|sign|click|replace|delete|follow)\b|\band\s+(?:choose|paste|copy|tick|open|save|select|click|replace|restart|download|install|delete|sign|follow|quit|pick|add|ask|run|close|start|allow|turn|give)\b/i;
+  /,\s*then\b|\bthen\s+(?:choose|type|paste|copy|open|press|select|tick|save|go|sign|click|replace|delete|follow)\b|\band\s+(?:choose|paste|copy|tick|open|save|select|click|replace|restart|download|install|delete|sign|follow|quit|pick|add|ask|run|close|start|allow|turn|give|press)\b/i;
 
 /**
  * What makes one numbered step ask for more than one thing. Bounded on purpose: it holds the wordings a
- * bundled step took (a second sentence that starts an act, ", then", "and paste"). A sentence that
+ * bundled step took (a second sentence that starts an act, ", then", "and paste", "and press"). A sentence that
  * begins "On a Mac" or "On Windows" starts no act of its own: the reader does only one of the pair.
  */
 function bundledActs(step: string): string[] {
@@ -291,7 +291,7 @@ describe("one action to a step, on the four setup pages", () => {
       [/\bthe project you chose in step/, /Bind to a project/],
       [/\bthe code (?:in your note )?from step/, /forge_pat_/],
       [/\bthe Endpoint from step/, /\*\*Endpoint\*\*/],
-      [/\bstep \d+ below says how/, /terminal/i],
+      [/\bsteps? \d+(?: to \d+)? below says? how/, /terminal/i],
     ];
     const wrong: string[] = [];
     for (const ref of stepReferences(body(page))) {
@@ -315,6 +315,30 @@ describe("one action to a step, on the four setup pages", () => {
     expect(scopes).toMatch(/\*\*Check:\*\* both \*\*read\*\* and \*\*write\*\* are ticked\./);
   });
 
+  // tokens-tab.tsx starts the Permissions choice empty and refuses Create token until one is made, so
+  // a page that skips it stops every reader at the create step with no Check that says why.
+  it.each(SETUP_PAGES)("%s makes the Permissions choice the form requires, right after Scopes", (page) => {
+    const steps = mainSteps(body(page));
+    const at = (re: RegExp) => steps.findIndex((s) => re.test(instructionsOf(s)));
+    const scopes = at(/^Under \*\*Scopes\*\*/);
+    const pick = at(/^Under \*\*Permissions\*\*, choose \*\*Only the permissions I pick\*\*\./);
+    const tick = at(/^Tick `issues:read`\./);
+    const create = at(/^Choose \*\*Create token\*\*\./);
+    expect(scopes).toBeGreaterThanOrEqual(0);
+    expect([pick, tick]).toEqual([scopes + 1, scopes + 2]);
+    expect(create).toBeGreaterThan(tick);
+    expect(steps[tick]).toMatch(/\*\*Check:\*\* `issues:read` is the only permission ticked\./);
+  });
+
+  // The tab draws Your tokens first and Create a token below it (tokens-tab.tsx), even with no tokens.
+  it.each(SETUP_PAGES)("%s finds the Create a token form below Your tokens, where the tab draws it", (page) => {
+    const steps = mainSteps(body(page));
+    const tab = steps.findIndex((s) => /^\d+\. Choose the \*\*API Tokens\*\* tab\./.test(s));
+    expect(steps[tab]).toMatch(/\*\*Check:\*\* a list titled \*\*Your tokens\*\* is at the top of the tab\./);
+    expect(instructionsOf(steps[tab + 1] ?? "")).toMatch(/below \*\*Your tokens\*\*, to the form titled \*\*Create a token\*\*/);
+    expect(body(page)).not.toMatch(/\*\*Create a token\*\* is at the top/);
+  });
+
   it.each(SETUP_PAGES)("%s gives the password box and the sign-in provider a Check of their own", (page) => {
     const text = body(page);
     expect(text).toMatch(/^## If Forge asks you to confirm it is you$/m);
@@ -336,6 +360,9 @@ describe("the one-action rule, each against the step it would let through", () =
     ["Go to `https://nodejs.org` and download the installer.", true],
     ["Add a new one and pick its kind.", true],
     ["Save, and restart the app if it asks you to.", true],
+    ["Open a terminal. On a Mac, press **Cmd+Space**, type `Terminal` and press Enter.", true],
+    ["Type `claude mcp list` and press Enter.", true],
+    ["Press Enter to open the terminal.", false],
     ["Under **Scopes**, tick **write**; **read** is already ticked for you. Read lets the assistant look things up.", false],
     ["Open Claude Desktop's settings. On a Mac, choose **Claude** › **Settings…**. On Windows, choose **☰** › **File** › **Settings…**.", false],
     ["Replace `<YOUR_TOKEN_HERE>` with the code from step 10, keeping the word `Bearer`.", false],

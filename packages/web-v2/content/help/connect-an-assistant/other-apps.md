@@ -43,150 +43,201 @@ pieces are.
 
 3. Choose the **API Tokens** tab.
 
-   **Check:** a form titled **Create a token** is at the top.
+   **Check:** a list titled **Your tokens** is at the top of the tab.
 
-4. In **Name**, type the name of your app.
+4. Scroll down, below **Your tokens**, to the form titled **Create a token**.
+
+   **Check:** the form's first box, **Name**, is in view.
+
+5. In **Name**, type the name of your app.
 
    **Check:** the name shows in the box.
 
-5. Under **Scopes**, tick **write**; **read** is already ticked for you. Read lets
-   the assistant look things up; write lets it make changes for you, such as
-   filing an issue or adding a comment.
+6. Under **Scopes**, tick **write**; **read** is already ticked for you. Read lets
+   the assistant look things up; write lets it make changes for you, such as filing
+   an issue or adding a comment.
 
    **Check:** both **read** and **write** are ticked.
 
-6. In **Bind to a project**, choose the project you want to ask about. The token
+7. Under **Permissions**, choose **Only the permissions I pick**.
+
+   **Check:** a list of permissions, each with a box, appears under that choice, and
+   none of them is ticked.
+
+8. Tick `issues:read`. The form needs at least one permission, and these permissions
+   limit a different way into Forge from the one your assistant uses, so the
+   smallest one is enough. What your assistant may do is set by **Scopes** and by
+   **Bind to a project**.
+
+   **Check:** `issues:read` is the only permission ticked.
+
+9. In **Bind to a project**, choose the project you want to ask about. The token
    then works for that project only.
 
    **Check:** the box shows the project's name.
 
-7. Choose **Create token**.
+10. Choose **Create token**.
 
-   **Check:** a panel titled **Token created** appears; or, if Forge wants to
-   confirm it is you first, a **Confirm password** box or a **Continue with**
-   button appears instead.
+    **Check:** a panel titled **Token created** appears; or, if Forge wants to
+    confirm it is you first, a **Confirm password** box or a **Continue with**
+    button appears instead.
 
-8. If the **Token created** panel has not appeared, follow **If Forge asks you to
-   confirm it is you** at the end of this page. You come back to step 9 when the
-   panel is showing.
+11. If the **Token created** panel has not appeared, follow
+    **If Forge asks you to confirm it is you** at the end of this page. You come
+    back to step 12 when the panel is showing.
 
-   **Check:** the panel titled **Token created** shows a long code that starts
-   with `forge_pat_`.
+    **Check:** the panel titled **Token created** shows a long code that starts with
+    `forge_pat_`.
 
-9. Choose **Copy to clipboard**. Forge shows the code only this once.
+12. Choose **Copy to clipboard**. Forge shows the code only this once.
 
-   **Check:** a notice reading **Copied to clipboard** appears.
+    **Check:** a notice reading **Copied to clipboard** appears.
 
-10. Paste the code into your note.
+13. Paste the code into your note.
 
     **Check:** your note holds the whole code, starting with `forge_pat_`.
 
-11. Choose **Done** to close the panel.
+14. Choose **Done** to close the panel.
 
     **Check:** you are back on the **API Tokens** tab, and your new token is listed
     under **Your tokens**.
 
-12. Choose the **MCP** tab.
+15. Choose the **MCP** tab.
 
     **Check:** a card titled **Connect a client** shows an **Endpoint** and a
     **Project**.
 
-13. In **Project**, choose the project you chose in step 6. It may already be
+16. In **Project**, choose the project you chose in step 9. It may already be
     showing.
 
-    **Check:** under **Config snippet**, a sentence reads *"This snippet
-    configures"*, then your project's name, then a short grey label — the
-    project's short name.
+    **Check:** under **Config snippet**, a sentence reads
+    *"This snippet configures"*, then your project's name, then a short grey label —
+    the project's short name.
 
-14. Copy the address under **Endpoint**.
+17. Copy the address under **Endpoint**.
 
     **Check:** the address is highlighted.
 
-15. Paste the address into your note.
+18. Paste the address into your note.
 
-    **Check:** your note holds an address that starts with `https://` and ends
-    with `/mcp`.
+    **Check:** your note holds an address that starts with `https://` and ends with
+    `/mcp`.
 
-16. Copy the grey short name.
+19. Copy the grey short name.
 
     **Check:** the short name is highlighted.
 
-17. Paste the short name into your note.
+20. Paste the short name into your note.
 
     **Check:** your note holds the token, the address and the short name.
 
-18. In your app, open the place where it lists connected services. Its label is
-    often **MCP**, **MCP servers**, **Connectors**, **Tools** or
-    **Integrations**.
+21. In your app, open the place where it lists connected services. Its label is
+    often **MCP**, **MCP servers**, **Connectors**, **Tools** or **Integrations**.
 
     **Check:** you see a list of connected services, or a button to add one.
 
-19. Choose to add a new connected service.
+22. Choose to add a new connected service.
 
     **Check:** the app asks which kind to add, asks for a name and an address, or
     asks you to paste a block of settings.
 
-20. If the app asks which kind to add, choose the kind that connects to an
-    address — often called **Streamable HTTP**, **HTTP**, **Remote** or **URL**.
+23. If the app asks which kind to add, choose the kind that connects to an address —
+    often called **Streamable HTTP**, **HTTP**, **Remote** or **URL**.
 
     **Check:** if the app has such a kind, it now asks for a name and an address.
 
-21. If your app offers only a kind that starts a program (**Command** or
-    **stdio**), follow **If your app only starts programs** at the end of this
-    page. You go on to step 28 when you have finished it.
+24. If your app offers only a kind that starts a program (**Command** or **stdio**),
+    follow **If your app only starts programs** at the end of this page. You go on
+    to step 38 when you have finished it.
 
     **Check:** if you followed it, your app shows the settings you gave it, with
     your token in them.
 
-22. If your app asked you to paste a block of settings, follow **If your app asks
-    for a block of settings** at the end of this page. You go on to step 28 when
-    you have finished it.
+25. If your app asked you to paste a block of settings, follow
+    **If your app asks for a block of settings** at the end of this page. You go on
+    to step 38 when you have finished it.
 
-    **Check:** if you followed it, your app shows the block, with your token in
-    it.
+    **Check:** if you followed it, your app shows the block, with your token in it.
 
-23. For the name, type `forge`.
+26. For the name, type `forge`.
 
     **Check:** the name box shows `forge`.
 
-24. Copy the address from your note.
+27. Copy the address from your note.
 
     **Check:** the address is highlighted.
 
-25. Paste the address into the address box.
+28. Paste the address into the address box.
 
     **Check:** the address box shows the address ending in `/mcp`.
 
-26. Add a header named `Authorization` whose value is `Bearer`, a space, and your
-    token.
+29. Choose to add a header. Apps label it **Add header**, **Headers** or a **+**
+    beside **Headers**.
 
-    **Check:** the value reads `Bearer forge_pat_…`, with your token where the
-    dots are.
+    **Check:** the app shows an empty box for the header's name and one for its
+    value.
 
-27. Add a second header named `X-Forge-Project-Slug` whose value is the short name
-    from your note.
+30. In the header's name box, type `Authorization`.
 
-    **Check:** two headers are listed.
+    **Check:** the name box shows `Authorization`.
 
-28. Save.
+31. In the header's value box, type `Bearer` followed by one space.
+
+    **Check:** the value box shows `Bearer`, with the cursor one space after it.
+
+32. Copy the code from your note.
+
+    **Check:** the code is highlighted.
+
+33. Paste the code into the value box, after the space.
+
+    **Check:** the value reads `Bearer forge_pat_…`, with your token where the dots
+    are.
+
+34. Choose to add a second header.
+
+    **Check:** a second pair of empty boxes appears, for a name and a value.
+
+35. In the new header's name box, type `X-Forge-Project-Slug`.
+
+    **Check:** the name box shows `X-Forge-Project-Slug`.
+
+36. Copy the short name from your note.
+
+    **Check:** the short name is highlighted.
+
+37. Paste the short name into the new header's value box.
+
+    **Check:** two headers are listed, `Authorization` and `X-Forge-Project-Slug`,
+    each with its value.
+
+38. Save.
 
     **Check:** **forge** is listed, or your app asks you to restart it.
 
-29. If your app asks you to restart, restart it.
+39. If your app asks you to restart, restart it.
 
     **Check:** **forge** is listed as connected, and your app shows its tools or a
     count of them.
 
-30. In a new chat, ask: *"What issues are open in Forge right now?"*
+40. Start a new chat.
 
-    **Check:** your app asks permission to use a tool from `forge`, or goes
-    straight to an answer.
+    **Check:** the new chat is empty and waiting for your question.
 
-31. If your app asked permission, allow it.
+41. Type: *"What issues are open in Forge right now?"*
+
+    **Check:** your question shows where you type, and it has not been sent yet.
+
+42. Send the question. Most apps send it when you press Enter.
+
+    **Check:** your app asks permission to use a tool from `forge`, or goes straight
+    to an answer.
+
+43. If your app asked permission, allow it.
 
     **Check:** the answer names issues from your project.
 
-32. Delete the note. The token now lives in your app's settings, and you will not
+44. Delete the note. The token now lives in your app's settings, and you will not
     need the copy again.
 
     **Check:** the note is gone from your notes app.
@@ -194,10 +245,10 @@ pieces are.
 ## If Forge asks you to confirm it is you
 
 Forge sometimes checks that it is really you before it makes a token. After
-step 7 you see either a **Confirm password** box or a **Continue with** button
+step 10 you see either a **Confirm password** box or a **Continue with** button
 instead of the **Token created** panel. Do the part below that matches what you
 see. Either way you finish with the **Token created** panel, and then you go on
-to step 9.
+to step 12.
 
 If you see a **Confirm password** box:
 
