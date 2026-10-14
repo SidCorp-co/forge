@@ -1,1 +1,0 @@
-**A release that shipped no longer holds the issues it could not close.** They wait at the release gate unclaimed, so the next release claims them without an abort; only a release that deployed and never shipped holds its roster.
