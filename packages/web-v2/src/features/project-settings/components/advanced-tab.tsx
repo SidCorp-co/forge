@@ -38,9 +38,12 @@ export function AdvancedSettings({ project, canEdit }: { project: ProjectDetail;
           </Disclosure>
         </div>
       </SettingsGroup>
-      <div id="project-acts" className="scroll-mt-24 border-t border-line pt-2" {...{ [CONTENTS_LABEL]: t("settings.project.advanced.archive") }}>
+      {/* each act is listed in the contents under its own heading; moving only where there is somewhere to move to */}
+      <div className="border-t border-line pt-2">
         {canEdit && <MoveToOrg project={project} />}
-        <ArchiveProject project={project} canEdit={canEdit} />
+        <div id="archive-project" className="scroll-mt-24" {...{ [CONTENTS_LABEL]: t("settings.project.advanced.archive") }}>
+          <ArchiveProject project={project} canEdit={canEdit} />
+        </div>
       </div>
     </div>
   );
@@ -134,31 +137,33 @@ function MoveToOrg({ project }: { project: ProjectDetail }) {
   }
 
   return (
-    <PageSection>
-      <PageSectionBody>
-        <SectionTitle className="fg-h3 mb-4 text-accent-text!">{t("settings.project.advanced.move")}</SectionTitle>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-          <div className="flex-1 sm:max-w-80">
-            <Field label={t("settings.project.advanced.destination")}>
-              <Select
-                options={targets.map((o) => ({ value: o.id, label: o.name }))}
-                value={targetOrgId}
-                onChange={(v) => setTargetOrgId(v)}
-                placeholder={t("settings.project.advanced.destinationPlaceholder")}
-              />
-            </Field>
+    <div id="move-project" className="scroll-mt-24" {...{ [CONTENTS_LABEL]: t("settings.project.advanced.move") }}>
+      <PageSection>
+        <PageSectionBody>
+          <SectionTitle className="fg-h3 mb-4 text-accent-text!">{t("settings.project.advanced.move")}</SectionTitle>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+            <div className="flex-1 sm:max-w-80">
+              <Field label={t("settings.project.advanced.destination")}>
+                <Select
+                  options={targets.map((o) => ({ value: o.id, label: o.name }))}
+                  value={targetOrgId}
+                  onChange={(v) => setTargetOrgId(v)}
+                  placeholder={t("settings.project.advanced.destinationPlaceholder")}
+                />
+              </Field>
+            </div>
+            <Button
+              variant="primary"
+              loading={update.isPending}
+              disabled={!targetOrgId}
+              onClick={move}
+              className="min-h-11"
+            >
+              {t("settings.project.advanced.moveAct")}
+            </Button>
           </div>
-          <Button
-            variant="primary"
-            loading={update.isPending}
-            disabled={!targetOrgId}
-            onClick={move}
-            className="min-h-11"
-          >
-            {t("settings.project.advanced.moveAct")}
-          </Button>
-        </div>
-      </PageSectionBody>
-    </PageSection>
+        </PageSectionBody>
+      </PageSection>
+    </div>
   );
 }

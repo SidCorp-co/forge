@@ -170,6 +170,7 @@ function ProfileAccounts({
 
 export function TestingSettings({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
   const t = useCopy();
+  const time = useTimeFormat();
   const profiles = useTestingProfiles(projectId);
   const secrets = useSecretNames(projectId);
   const project = useProjectDocument(projectId);
@@ -201,7 +202,7 @@ export function TestingSettings({ projectId, canEdit }: { projectId: string; can
         {unused.length > 0 ? (
           <RowList label={t("settings.project.testing.otherSecrets")}>
             {unused.map((s) => (
-              <RowItem key={s.ref} title={<span translate="no">{s.ref}</span>} facts={[t("settings.project.testing.valueSet", { at: s.updatedAt.slice(0, 10) }), t("settings.project.testing.usedNowhere")]} />
+              <RowItem key={s.ref} title={<span translate="no">{s.ref}</span>} facts={[t("settings.project.testing.valueSet", { at: time.date(s.updatedAt) }), t("settings.project.testing.usedNowhere")]} />
             ))}
           </RowList>
         ) : (

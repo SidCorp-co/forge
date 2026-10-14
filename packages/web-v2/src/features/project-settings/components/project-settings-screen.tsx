@@ -4,7 +4,7 @@
 // Testing (the accounts a run tests with), Connections, and Advanced for the raw documents. The section lives in `?tab=`; a link written against the old flat tabs is
 // moved to the section that now holds its content (`sections.ts:LEGACY_TABS`). The page is the detail
 // template: the section's groups in the main column, and a rail beside it listing them (the group in
-// view marked); below 1024px the rail gives way to one contents menu at the top.
+// view marked); below 1024px the rail is not drawn and one contents menu at the top stands in.
 import { useEffect, useState } from "react";
 import { CONTENTS_LABEL, ContentsList, ContentsMenu, DetailLayout, DetailPane, EmptyState, ErrorState, FactsRail, PageTitle, ProjectLoader, ScreenTabs, type TabItem, useContentsIn } from "@/design";
 import { useProject, useProjectsIncludingArchived } from "@/features/projects";
@@ -102,13 +102,12 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 			/>
 			<DetailLayout
 				testId="settings-layout"
+				// the rail lists the section's groups and holds no facts: below 1024px the menu at the top stands in
+				contentsRail
 				rail={
-					// only beside the page: below 1024px the menu at the top stands in, and the rail is not drawn under the content
-					<div className="max-lg:hidden lg:contents">
-						<FactsRail label={t("settings.project.contents")}>
-							<ContentsList items={contents} label={t("settings.project.contents")} testId="settings-contents" />
-						</FactsRail>
-					</div>
+					<FactsRail label={t("settings.project.contents")}>
+						<ContentsList items={contents} label={t("settings.project.contents")} testId="settings-contents" />
+					</FactsRail>
 				}
 			>
 				<DetailPane label={t(LABEL[tab])} testId="settings-pane">
@@ -144,7 +143,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 								<IntegrationsTab projectId={project.id} canEdit={canEdit} />
 							</div>
 							<div id="runners" className="mt-8 scroll-mt-24 border-t border-line pt-6" {...{ [CONTENTS_LABEL]: t("settings.project.runnersHeading") }}>
-								<h2 className="fg-h3 text-accent-text!">{t("settings.project.runnersHeading")}</h2>
+								{/* the runner screen titles its own parts (Add a device, Assigned devices); the contents name the place */}
 								<ProjectRunnersScreen projectId={project.id} canEdit={canManage} embedded />
 							</div>
 						</>
