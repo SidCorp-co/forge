@@ -8,14 +8,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { BIOME, biomeView } from './verify-memo-native.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const FILES = ['scripts/biome.json', 'scripts/a.mjs'];
+const FILES = ['biome.json', 'scripts/a.mjs'];
 let base;
 
-/** A checkout holding the repository's scripts config and one file formatted by it, under `parent`. */
+/** A checkout holding the repository's root biome config and one script formatted by it, under `parent`. */
 function checkoutUnder(parent) {
   const root = join(base, parent, 'checkout');
   mkdirSync(join(root, 'scripts'), { recursive: true });
-  cpSync(join(REPO, 'scripts', 'biome.json'), join(root, 'scripts', 'biome.json'));
+  cpSync(join(REPO, 'biome.json'), join(root, 'biome.json'));
   writeFileSync(join(root, 'scripts', 'a.mjs'), "export const a = 'x';\n");
   symlinkSync(join(REPO, 'node_modules'), join(root, 'node_modules'));
   return root;

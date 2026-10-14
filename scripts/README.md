@@ -195,6 +195,12 @@ meaning what its row says. Measured 2026-08-25.
 - **No `biome.json` comments.** A comment inside it makes biome **silently ignore the whole
   enclosing block** — no config error, the `overrides` just stop applying. Put the reasoning in the
   commit message.
+- **Every biome config is one biome finds by walking up from where it runs, and every lint domain is
+  named, not detected.** Under a checkout path with a `.cache` component biome found neither a nested
+  `root: false` config nor the domains it detects from a manifest, so `scripts lint` formatted with
+  defaults and `web-v2` lost its React rules: one commit red there and green elsewhere. `biome.json`
+  at the root holds the scripts config, `packages/web-v2/biome.json` names `react` and `next`, and
+  `scripts/biome-path.test.mjs` lays the same fixture under both kinds of path.
 
 ### archmap
 

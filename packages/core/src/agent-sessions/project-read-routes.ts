@@ -14,10 +14,11 @@ import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
-import { buildListEnvelope, overfetch } from '../mcp/tools/list-envelope.js';
+import { overfetch } from '../mcp/tools/list-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { decodeSessionCursor, SessionCursorInvalidError } from './cursor.js';
 import * as ref from './project-read-routes-reference.js';
-import { listAgentSessionsForMcp, readAgentSession } from './service.js';
+import { listAgentSessionsForMcp, readAgentSession, sessionListEnvelope } from './service.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -46,24 +47,28 @@ agentSessionProjectReadRoutes.get(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { issueId, status, limit } = c.req.valid('query');
+    const { issueId, status, limit, cursor } = c.req.valid('query');
     await assertMember(id, c.get('userId'));
+
+    let after: ReturnType<typeof decodeSessionCursor> | undefined;
+    if (cursor !== undefined) {
+      try {
+        after = decodeSessionCursor(cursor);
+      } catch (err) {
+        if (err instanceof SessionCursorInvalidError) throw badRequest({ cursor: err.message });
+        throw err;
+      }
+    }
 
     const rows = await listAgentSessionsForMcp({
       projectId: id,
       status,
       issueId,
       limit: overfetch(limit),
+      after,
     });
 
-    return c.json(
-      buildListEnvelope({
-        key: 'sessions',
-        items: rows,
-        limit,
-        hint: 'narrow with status/issueId filters',
-      }),
-    );
+    return c.json(sessionListEnvelope(rows, limit, 'narrow with status/issueId filters'));
   },
 );
 
