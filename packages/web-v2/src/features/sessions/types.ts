@@ -100,7 +100,10 @@ export interface SessionRow {
    *  (the list endpoint omits it). The read-only render fallback when the
    *  per-turn `/turns` table is empty (ISS-348). */
   messages?: unknown[];
-  totalMessages?: number;
+  /** Null when `transcript` is `not-recorded`: a lane that keeps no transcript in core has no count. */
+  totalMessages?: number | null;
+  /** `not-recorded` for master and run_session sessions: core never holds their transcript. */
+  transcript?: 'recorded' | 'not-recorded';
   /** Per-session dollar cost rolled up from usage_records, attached by the list
    *  endpoint (ISS-391). 0 when the session has no usage rows yet. */
   estimatedCost?: number;

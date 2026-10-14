@@ -9,6 +9,8 @@ import {
   isAgentSessionKind,
   kindTuple,
   NON_CLIENT_SESSION_KINDS,
+  SESSION_TRANSCRIPT_BY_KIND,
+  TRANSCRIPTLESS_SESSION_KINDS,
 } from './session-kinds.js';
 
 const SRC = resolve(fileURLToPath(new URL('../', import.meta.url)));
@@ -88,5 +90,21 @@ describe('a session says its own species', () => {
     expect(isAgentSessionKind('agent')).toBe(false);
     expect(isAgentSessionKind('')).toBe(false);
     expect(isAgentSessionKind(null)).toBe(false);
+  });
+});
+
+describe('which lanes put a transcript in core (ISS-1241)', () => {
+  it('classifies every session kind, so a kind added to the vocabulary is a decision and not a default', () => {
+    expect(Object.keys(SESSION_TRANSCRIPT_BY_KIND).sort()).toEqual([...agentSessionKinds].sort());
+  });
+
+  it('names master and run_session as the lanes that keep none, and no other', () => {
+    expect([...TRANSCRIPTLESS_SESSION_KINDS]).toEqual(['master', 'run_session']);
+  });
+
+  it('keeps chat, pipeline and pm as recorded, the lanes whose carrier writes the turn ledger', () => {
+    for (const kind of ['chat', 'pipeline', 'pm'] as const) {
+      expect(SESSION_TRANSCRIPT_BY_KIND[kind]).toBe('recorded');
+    }
   });
 });

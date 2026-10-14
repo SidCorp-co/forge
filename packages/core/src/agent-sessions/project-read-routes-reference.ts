@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
 import { agentSessionStatuses } from '../db/schema.js';
+import { sessionTranscripts } from '../db/session-vocabulary.js';
 import { sessionSchema } from './routes-reference.js';
 
 export const paramSchema = z.object({ id: z.uuid() });
@@ -34,7 +35,7 @@ export const sessionSummarySchema = sessionSchema
     createdAt: true,
     updatedAt: true,
   })
-  .extend({ messageCount: z.number().nullable() });
+  .extend({ messageCount: z.number().nullable(), transcript: z.enum(sessionTranscripts) });
 
 /** Rows are trimmed to the response-size cap, and then `truncated`, `truncatedBy` and `notice` say so. */
 export const projectSessionsSchema = z.object({
@@ -61,14 +62,16 @@ export const listProjectSessions = describeOperation({
 export const sessionDetailSchema = z.object({
   session: sessionSchema.omit({ messages: true }).extend({
     messageCount: z.number().nullable(),
-    totalMessages: z.number(),
+    totalMessages: z.number().nullable(),
+    transcript: z.enum(sessionTranscripts),
     messages: z.array(z.unknown()),
   }),
 });
 
 export const readProjectSession = describeOperation({
   summary: 'Read one session of a project with the last 20 messages of its transcript',
-  description: '`totalMessages` is the length of the whole transcript.',
+  description:
+    '`totalMessages` is the length of the whole transcript, and equals `messageCount`. Both are `null` when `transcript` is `not-recorded`: master and run_session sessions keep no transcript in core, so no count is a count of what they did.',
   responses: {
     200: json(sessionDetailSchema),
     403: notMember,

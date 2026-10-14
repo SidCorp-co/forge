@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { describeOperation, empty, fail, json } from '../api-reference/declare/describe.js';
 import { tableRow } from '../api-reference/declare/rows.js';
 import { agentSessionStatuses, agentSessions, sessionRuntimeStates } from '../db/schema.js';
+import { sessionTranscripts } from '../db/session-vocabulary.js';
 
 export const listQuerySchema = z
   .object({
@@ -60,6 +61,7 @@ export const sessionSchema = tableRow(agentSessions);
 /** A session as a list shows it: no transcript, with its cost and the last line said. */
 export const sessionListItemSchema = sessionSchema.omit({ messages: true }).extend({
   messageCount: z.number().nullable(),
+  transcript: z.enum(sessionTranscripts),
   estimatedCost: z.number(),
   lastMessagePreview: z.string().nullable(),
 });
