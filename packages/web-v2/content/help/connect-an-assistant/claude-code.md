@@ -69,8 +69,8 @@ and run it in a terminal.
 10. Choose **Create token**.
 
     **Check:** a panel titled **Token created** appears; or, if Forge wants to
-    confirm it is you first, a **Confirm password** box or a **Continue with**
-    button appears instead.
+    confirm it is you first, a **Confirm password** box with the cursor in it, or a
+    **Continue with** button, comes into view instead.
 
 11. If the **Token created** panel has not appeared, follow
     **If Forge asks you to confirm it is you** at the end of this page. You come
@@ -81,7 +81,8 @@ and run it in a terminal.
 
 12. Choose **Copy to clipboard**. Forge shows the code only this once.
 
-    **Check:** a notice reading **Copied to clipboard** appears.
+    **Check:** a notice reading **Copied to clipboard** appears near the top of the
+    screen, over the panel.
 
 13. Paste the code into your note.
 
@@ -138,50 +139,56 @@ and run it in a terminal.
 
     **Check:** a terminal window opens, with a line waiting for you to type.
 
-24. Copy the whole line from your note, from `claude` to the closing quote.
+24. In your note, drag from `claude` at the start of the line to the closing quote
+    at its end.
 
-    **Check:** the whole line is highlighted.
+    **Check:** the whole line is highlighted, from `claude` to the closing quote.
 
-25. Paste the line into the terminal.
+25. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the line.
+
+    **Check:** the line is still highlighted. A copy changes nothing on the screen;
+    the next paste shows it worked.
+
+26. Paste the line into the terminal.
 
     **Check:** the terminal shows the line, with the cursor after it. It has not run
     yet.
 
-26. Press Enter.
+27. Press Enter.
 
     **Check:** the terminal prints `Added HTTP MCP server forge with URL:` followed
     by the Endpoint from step 15 and `to user config`.
 
-27. Type `claude mcp list`.
+28. Type `claude mcp list`.
 
     **Check:** the terminal shows `claude mcp list` after the prompt. It has not run
     yet.
 
-28. Press Enter.
+29. Press Enter.
 
     **Check:** a line starts with `forge:` and ends with `✔ Connected`.
 
-29. Type `claude`.
+30. Type `claude`.
 
     **Check:** the terminal shows `claude` after the prompt. It has not run yet.
 
-30. Press Enter.
+31. Press Enter.
 
     **Check:** Claude Code starts and waits for your question.
 
-31. Type: *"What issues are open in Forge right now?"*
+32. Type: *"What issues are open in Forge right now?"*
 
     **Check:** your question shows where you type, and it has not been sent yet.
 
-32. Press Enter to send it.
+33. Press Enter to send it.
 
     **Check:** Claude Code asks your permission to use a tool from `forge`.
 
-33. Allow it.
+34. Allow it.
 
     **Check:** Claude Code answers with issues from your project.
 
-34. Delete the note. The token now lives in Claude Code's own settings, and you will
+35. Delete the note. The token now lives in Claude Code's own settings, and you will
     not need the copy again.
 
     **Check:** the note is gone from your notes app.
@@ -228,6 +235,6 @@ has twenty examples. The connection works from any folder you start Claude Code
 in, and it lasts until you remove it with `claude mcp remove forge -s user` or
 revoke the token on the **API Tokens** tab.
 
-If step 28 shows `✘ Failed to connect`, see
+If step 29 shows `✘ Failed to connect`, see
 [When it does not work](?path=connect-an-assistant/when-it-does-not-work) — the
 words after it say which of the five problems it is.

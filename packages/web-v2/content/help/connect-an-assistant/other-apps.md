@@ -79,8 +79,8 @@ pieces are.
 10. Choose **Create token**.
 
     **Check:** a panel titled **Token created** appears; or, if Forge wants to
-    confirm it is you first, a **Confirm password** box or a **Continue with**
-    button appears instead.
+    confirm it is you first, a **Confirm password** box with the cursor in it, or a
+    **Continue with** button, comes into view instead.
 
 11. If the **Token created** panel has not appeared, follow
     **If Forge asks you to confirm it is you** at the end of this page. You come
@@ -91,7 +91,8 @@ pieces are.
 
 12. Choose **Copy to clipboard**. Forge shows the code only this once.
 
-    **Check:** a notice reading **Copied to clipboard** appears.
+    **Check:** a notice reading **Copied to clipboard** appears near the top of the
+    screen, over the panel.
 
 13. Paste the code into your note.
 
@@ -114,130 +115,157 @@ pieces are.
     *"This snippet configures"*, then your project's name, then a short grey label —
     the project's short name.
 
-17. Copy the address under **Endpoint**.
+17. Drag across the address under **Endpoint**, from `https` to `/mcp`, to
+    highlight it.
 
-    **Check:** the address is highlighted.
+    **Check:** the whole address is highlighted, from `https://` to `/mcp`.
 
-18. Paste the address into your note.
+18. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the address.
+
+    **Check:** the address is still highlighted. A copy changes nothing on the
+    screen; the next paste shows it worked.
+
+19. Paste the address into your note.
 
     **Check:** your note holds an address that starts with `https://` and ends with
     `/mcp`.
 
-19. Copy the grey short name.
+20. Drag across the grey short name to highlight it.
 
-    **Check:** the short name is highlighted.
+    **Check:** the whole short name is highlighted, and nothing outside the grey
+    label is.
 
-20. Paste the short name into your note.
+21. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the short name.
+
+    **Check:** the short name is still highlighted. A copy changes nothing on the
+    screen; the next paste shows it worked.
+
+22. Paste the short name into your note.
 
     **Check:** your note holds the token, the address and the short name.
 
-21. In your app, open the place where it lists connected services. Its label is
+23. In your app, open the place where it lists connected services. Its label is
     often **MCP**, **MCP servers**, **Connectors**, **Tools** or **Integrations**.
 
     **Check:** you see a list of connected services, or a button to add one.
 
-22. Choose to add a new connected service.
+24. Choose to add a new connected service.
 
     **Check:** the app asks which kind to add, asks for a name and an address, or
     asks you to paste a block of settings.
 
-23. If the app asks which kind to add, choose the kind that connects to an address —
+25. If the app asks which kind to add, choose the kind that connects to an address —
     often called **Streamable HTTP**, **HTTP**, **Remote** or **URL**.
 
     **Check:** if the app has such a kind, it now asks for a name and an address.
 
-24. If your app offers only a kind that starts a program (**Command** or **stdio**),
+26. If your app offers only a kind that starts a program (**Command** or **stdio**),
     follow **If your app only starts programs** at the end of this page. You go on
-    to step 38 when you have finished it.
+    to step 43 when you have finished it.
 
     **Check:** if you followed it, your app shows the settings you gave it, with
     your token in them.
 
-25. If your app asked you to paste a block of settings, follow
+27. If your app asked you to paste a block of settings, follow
     **If your app asks for a block of settings** at the end of this page. You go on
-    to step 38 when you have finished it.
+    to step 43 when you have finished it.
 
     **Check:** if you followed it, your app shows the block, with your token in it.
 
-26. For the name, type `forge`.
+28. For the name, type `forge`.
 
     **Check:** the name box shows `forge`.
 
-27. Copy the address from your note.
+29. In your note, drag across the address to highlight it.
 
-    **Check:** the address is highlighted.
+    **Check:** the whole address is highlighted, from `https://` to `/mcp`.
 
-28. Paste the address into the address box.
+30. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the address.
+
+    **Check:** the address is still highlighted. A copy changes nothing on the
+    screen; the next paste shows it worked.
+
+31. Paste the address into the address box.
 
     **Check:** the address box shows the address ending in `/mcp`.
 
-29. Choose to add a header. Apps label it **Add header**, **Headers** or a **+**
+32. Choose to add a header. Apps label it **Add header**, **Headers** or a **+**
     beside **Headers**.
 
     **Check:** the app shows an empty box for the header's name and one for its
     value.
 
-30. In the header's name box, type `Authorization`.
+33. In the header's name box, type `Authorization`.
 
     **Check:** the name box shows `Authorization`.
 
-31. In the header's value box, type `Bearer` followed by one space.
+34. In the header's value box, type `Bearer` followed by one space.
 
     **Check:** the value box shows `Bearer`, with the cursor one space after it.
 
-32. Copy the code from your note.
+35. In your note, drag across the code to highlight it.
 
-    **Check:** the code is highlighted.
+    **Check:** the whole code is highlighted, from `forge_pat_` to its last character.
 
-33. Paste the code into the value box, after the space.
+36. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the code.
+
+    **Check:** the code is still highlighted. A copy changes nothing on the
+    screen; the next paste shows it worked.
+
+37. Paste the code into the value box, after the space.
 
     **Check:** the value reads `Bearer forge_pat_…`, with your token where the dots
     are.
 
-34. Choose to add a second header.
+38. Choose to add a second header.
 
     **Check:** a second pair of empty boxes appears, for a name and a value.
 
-35. In the new header's name box, type `X-Forge-Project-Slug`.
+39. In the new header's name box, type `X-Forge-Project-Slug`.
 
     **Check:** the name box shows `X-Forge-Project-Slug`.
 
-36. Copy the short name from your note.
+40. In your note, drag across the short name to highlight it.
 
-    **Check:** the short name is highlighted.
+    **Check:** the whole short name is highlighted.
 
-37. Paste the short name into the new header's value box.
+41. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the short name.
+
+    **Check:** the short name is still highlighted. A copy changes nothing on the
+    screen; the next paste shows it worked.
+
+42. Paste the short name into the new header's value box.
 
     **Check:** two headers are listed, `Authorization` and `X-Forge-Project-Slug`,
     each with its value.
 
-38. Save.
+43. Save.
 
     **Check:** **forge** is listed, or your app asks you to restart it.
 
-39. If your app asks you to restart, restart it.
+44. If your app asks you to restart, restart it.
 
     **Check:** **forge** is listed as connected, and your app shows its tools or a
     count of them.
 
-40. Start a new chat.
+45. Start a new chat.
 
     **Check:** the new chat is empty and waiting for your question.
 
-41. Type: *"What issues are open in Forge right now?"*
+46. Type: *"What issues are open in Forge right now?"*
 
     **Check:** your question shows where you type, and it has not been sent yet.
 
-42. Send the question. Most apps send it when you press Enter.
+47. Send the question. Most apps send it when you press Enter.
 
     **Check:** your app asks permission to use a tool from `forge`, or goes straight
     to an answer.
 
-43. If your app asked permission, allow it.
+48. If your app asked permission, allow it.
 
     **Check:** the answer names issues from your project.
 
-44. Delete the note. The token now lives in your app's settings, and you will not
+49. Delete the note. The token now lives in your app's settings, and you will not
     need the copy again.
 
     **Check:** the note is gone from your notes app.
@@ -280,8 +308,8 @@ If you see a **Continue with** button:
 ## If your app only starts programs
 
 Some apps can only connect by starting a program on your computer. For those, use
-the same small helper Claude Desktop uses: install **Node.js** from
-`https://nodejs.org` (the **LTS** installer) first, then give your app:
+the same small helper Claude Desktop uses. It needs **Node.js**, and your app
+gives it these settings:
 
 | Setting | Value |
 |---|---|
@@ -290,10 +318,145 @@ the same small helper Claude Desktop uses: install **Node.js** from
 | Environment variable `AUTH_HEADER` | `Bearer`, a space, and your token |
 | Environment variable `FORGE_PROJECT` | the project's short name |
 
-Type the two header arguments exactly as shown, with no space after the colon —
-the helper fills in `${AUTH_HEADER}` and `${FORGE_PROJECT}` from the two
-environment variables. [Connect Claude Desktop](?path=connect-an-assistant/claude-desktop)
-shows the same settings written out in full.
+The helper fills in `${AUTH_HEADER}` and `${FORGE_PROJECT}` from the two
+environment variables. The steps below give your app those settings one at a time.
+
+1. Install **Node.js** by following steps 1 to 10 of [Connect Claude
+   Desktop](?path=connect-an-assistant/claude-desktop).
+
+   **Check:** the Node.js installer's last screen says the installation is complete.
+
+2. In your app, choose the kind of connection that starts a program — often
+   **Command**, **stdio** or **Local**.
+
+   **Check:** the app asks for a command and for its arguments.
+
+3. In the command box, type `npx`.
+
+   **Check:** the command box shows `npx`.
+
+4. Type `-y` as the first argument.
+
+   **Check:** the first argument reads exactly `-y`.
+
+5. Start the next argument — with Enter where the app takes one argument per line,
+   or with the app's button that adds one.
+
+   **Check:** an empty place for the second argument is ready.
+
+6. Type `mcp-remote@0.14.3` as the second argument.
+
+   **Check:** the second argument reads exactly `mcp-remote@0.14.3`.
+
+7. Start the next argument — with Enter where the app takes one argument per line,
+   or with the app's button that adds one.
+
+   **Check:** an empty place for the third argument is ready.
+
+8. In your note, drag across the address to highlight it.
+
+   **Check:** the whole address is highlighted, from `https://` to `/mcp`.
+
+9. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the address.
+
+   **Check:** the address is still highlighted. A copy changes nothing on the
+   screen; the next paste shows it worked.
+
+10. Paste the address as the third argument.
+
+    **Check:** the third argument is the address, ending in `/mcp`.
+
+11. Start the next argument — with Enter where the app takes one argument per line,
+    or with the app's button that adds one.
+
+    **Check:** an empty place for the fourth argument is ready.
+
+12. Type `--header` as the fourth argument.
+
+    **Check:** the fourth argument reads exactly `--header`.
+
+13. Start the next argument — with Enter where the app takes one argument per line,
+    or with the app's button that adds one.
+
+    **Check:** an empty place for the fifth argument is ready.
+
+14. Type `Authorization:${AUTH_HEADER}` as the fifth argument.
+
+    **Check:** the fifth argument reads exactly `Authorization:${AUTH_HEADER}`, with
+    no space after the colon.
+
+15. Start the next argument — with Enter where the app takes one argument per line,
+    or with the app's button that adds one.
+
+    **Check:** an empty place for the sixth argument is ready.
+
+16. Type `--header` as the sixth argument.
+
+    **Check:** the sixth argument reads exactly `--header`.
+
+17. Start the next argument — with Enter where the app takes one argument per line,
+    or with the app's button that adds one.
+
+    **Check:** an empty place for the seventh argument is ready.
+
+18. Type `X-Forge-Project-Slug:${FORGE_PROJECT}` as the seventh argument.
+
+    **Check:** seven arguments are listed, in this order: `-y`, `mcp-remote@0.14.3`,
+    your address, `--header`, `Authorization:${AUTH_HEADER}`, `--header`,
+    `X-Forge-Project-Slug:${FORGE_PROJECT}`.
+
+19. Add an environment variable. Apps label it **Env**, **Environment** or a **+**
+    beside one of those.
+
+    **Check:** the app shows an empty box for the variable's name and one for its
+    value.
+
+20. In the variable's name box, type `AUTH_HEADER`.
+
+    **Check:** the name box shows `AUTH_HEADER`.
+
+21. In the variable's value box, type `Bearer` followed by one space.
+
+    **Check:** the value box shows `Bearer`, with the cursor one space after it.
+
+22. In your note, drag across the code to highlight it.
+
+    **Check:** the whole code is highlighted, from `forge_pat_` to its last
+    character.
+
+23. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the code.
+
+    **Check:** the code is still highlighted. A copy changes nothing on the screen;
+    the next paste shows it worked.
+
+24. Paste the code into the value box, after the space.
+
+    **Check:** the value reads `Bearer forge_pat_…`, with your token where the dots
+    are.
+
+25. Add a second environment variable.
+
+    **Check:** a second pair of empty boxes appears, for a name and a value.
+
+26. In the new variable's name box, type `FORGE_PROJECT`.
+
+    **Check:** the name box shows `FORGE_PROJECT`.
+
+27. In your note, drag across the short name to highlight it.
+
+    **Check:** the whole short name is highlighted.
+
+28. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the short name.
+
+    **Check:** the short name is still highlighted. A copy changes nothing on the
+    screen; the next paste shows it worked.
+
+29. Paste the short name into the new variable's value box.
+
+    **Check:** two variables are listed, `AUTH_HEADER` and `FORGE_PROJECT`, each
+    with its value.
+
+Now go on to step 43.
 
 ## If your app asks for a block of settings
 

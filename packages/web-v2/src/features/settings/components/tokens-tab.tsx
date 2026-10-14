@@ -11,7 +11,7 @@
 //     `:provider/reauth-start` (ISS-167). The form draft survives the redirect
 //     via sessionStorage; the callback returns with `?reauth=ok` /
 //     `?reauth_error=<code>` which this tab consumes on mount.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Button,
   Checkbox,
@@ -106,6 +106,15 @@ export function TokensTab() {
   // Fresh-auth re-prompt.
   const [needsReauth, setNeedsReauth] = useState(false);
   const [password, setPassword] = useState("");
+  // The re-auth field opens below the whole form, under the fold on a laptop screen, so it is
+  // brought into view, and the password box focused, the moment it is asked for.
+  const reauthRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!needsReauth) return;
+    const field = reauthRef.current;
+    field?.scrollIntoView({ block: "center", behavior: "smooth" });
+    field?.querySelector<HTMLInputElement>('input[type="password"]')?.focus({ preventScroll: true });
+  }, [needsReauth]);
 
   const tokens = tokensQ.data?.tokens ?? [];
   // The menu the door will accept, served beside the list so the form cannot
@@ -276,8 +285,8 @@ export function TokensTab() {
     <div className="space-y-8">
       {tokensQ.isLoading && (
         <div className="space-y-2.5">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-14 w-full rounded-lg" />
+          {["first", "second", "third"].map((row) => (
+            <Skeleton key={row} className="h-14 w-full rounded-lg" />
           ))}
         </div>
       )}
@@ -369,45 +378,47 @@ export function TokensTab() {
               />
             </Field>
 
-            {needsReauth && hasPassword && (
-              <Field
-                label="Confirm password"
-                required
-                hint="Token creation requires a recent sign-in."
-              >
-                <Input
-                  type="password"
-                  value={password}
-                  autoComplete="current-password"
-                  placeholder="Your account password"
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </Field>
-            )}
+            <div ref={reauthRef} className="space-y-4 empty:hidden">
+              {needsReauth && hasPassword && (
+                <Field
+                  label="Confirm password"
+                  required
+                  hint="Token creation requires a recent sign-in."
+                >
+                  <Input
+                    type="password"
+                    value={password}
+                    autoComplete="current-password"
+                    placeholder="Your account password"
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </Field>
+              )}
 
-            {needsReauth && !hasPassword && (
-              <Field
-                label="Re-authenticate"
-                hint={
-                  linkedProviders.length > 0
-                    ? "Token creation requires a recent sign-in. Confirm with your sign-in provider — you'll come right back here with the form intact."
-                    : "Token creation requires a recent sign-in, but this account has no password and no linked sign-in provider. Ask an administrator for help."
-                }
-              >
-                <div className="flex flex-wrap gap-3 pt-1">
-                  {linkedProviders.map((p) => (
-                    <Button
-                      key={p}
-                      variant="primary"
-                      onClick={() => startSsoReauth(p)}
-                      className="min-h-11"
-                    >
-                      Continue with {PROVIDER_LABELS[p] ?? p}
-                    </Button>
-                  ))}
-                </div>
-              </Field>
-            )}
+              {needsReauth && !hasPassword && (
+                <Field
+                  label="Re-authenticate"
+                  hint={
+                    linkedProviders.length > 0
+                      ? "Token creation requires a recent sign-in. Confirm with your sign-in provider — you'll come right back here with the form intact."
+                      : "Token creation requires a recent sign-in, but this account has no password and no linked sign-in provider. Ask an administrator for help."
+                  }
+                >
+                  <div className="flex flex-wrap gap-3 pt-1">
+                    {linkedProviders.map((p) => (
+                      <Button
+                        key={p}
+                        variant="primary"
+                        onClick={() => startSsoReauth(p)}
+                        className="min-h-11"
+                      >
+                        Continue with {PROVIDER_LABELS[p] ?? p}
+                      </Button>
+                    ))}
+                  </div>
+                </Field>
+              )}
+            </div>
 
             <div className="flex flex-wrap gap-3">
               {needsReauth ? (

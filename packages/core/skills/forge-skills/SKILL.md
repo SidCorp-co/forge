@@ -74,7 +74,8 @@ dispatched by a status.
 |---|---|---|
 | issue-flow | plugin (the project's `plugins` designation) | the whole walk from `open` to `closed` |
 | forge-master | compiled into `forge-runner`, written at bind and when a master is placed | the resident master's method |
-| forge-onboard · forge-product-map | project copy, `installOnly` | survey the repo, seed knowledge / the product map |
+| forge-onboard | project copy, `installOnly`, adopted from the global skill when a domain template is applied; the name is reserved, so `forge_skills_create` and a rename onto it are refused | survey the repo, seed knowledge |
+| forge-product-map | project copy, `installOnly` | seed the product map |
 | forge-reconcile · forge-verify-skill | Forge-owned, name-reserved | police skill updates; verify a skill installed |
 | forge-message-shape | Forge-owned meta prompt, served live over MCP | the shape of a message to a person |
 | forge-skills | this one, served live over MCP | author and ship project skills |
