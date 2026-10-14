@@ -8,6 +8,7 @@ import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
 import {
   type FocusEvent,
   type RefObject,
+  type UIEvent,
   useCallback,
   useLayoutEffect,
   useRef,
@@ -50,8 +51,12 @@ export interface VirtualRows {
   reached: number;
   /** Ref for each drawn row, which carries `data-index`: it reports the row's measured height. */
   measureRow: (node: Element | null) => void;
-  /** Spread on the scroller: it learns which row holds focus. */
-  trackFocus: { onFocus: (event: FocusEvent<HTMLElement>) => void; onBlur: (event: FocusEvent<HTMLElement>) => void };
+  /** Spread on the scroller: it learns which row holds focus, and re-aims a scroll that ends at the end of rows not yet measured. */
+  scrollerEvents: {
+    onFocus: (event: FocusEvent<HTMLElement>) => void;
+    onBlur: (event: FocusEvent<HTMLElement>) => void;
+    onScroll: (event: UIEvent<HTMLElement>) => void;
+  };
   /** Scrolls row `index` into the document and into view, then puts focus on it. */
   focusRow: (index: number) => void;
 }
@@ -141,7 +146,23 @@ export function useVirtualRows({
     [virtualizer, settle, getKey],
   );
 
-  const trackFocus = {
+  // A jump to the end is aimed at estimated rows and rests short: aim at the last row again from the
+  // bottom and the library settles on it as the rows measure. The aim's own events are not answered.
+  const aimedFrom = useRef<{ top: number; height: number } | null>(null);
+  const reachedEnd = (event: UIEvent<HTMLElement>) => {
+    const scroller = event.currentTarget;
+    const { scrollTop, clientHeight, scrollHeight } = scroller;
+    if (!enabled || count === 0 || scrollHeight === 0 || scrollTop + clientHeight < scrollHeight - 1) {
+      aimedFrom.current = null;
+      return;
+    }
+    if (aimedFrom.current?.top === scrollTop && aimedFrom.current.height === scrollHeight) return;
+    aimedFrom.current = { top: scrollTop, height: scrollHeight };
+    virtualizer.scrollToIndex(count - 1, { align: "end" });
+  };
+
+  const scrollerEvents = {
+    onScroll: reachedEnd,
     onFocus: (event: FocusEvent<HTMLElement>) => {
       const row = (event.target as HTMLElement).closest<HTMLElement>(ROW);
       if (!row || !event.currentTarget.contains(row)) {
@@ -164,7 +185,7 @@ export function useVirtualRows({
     reached: reachedIndex,
     gapAfter: rows.length === 0 ? totalSize : Math.max(0, totalSize - reached),
     measureRow: virtualizer.measureElement,
-    trackFocus,
+    scrollerEvents,
     focusRow,
   };
 }

@@ -9,6 +9,8 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "@/lib/api/client";
+import { createQueryClient } from "@/providers/query-provider";
 import { stubLayout } from "@/test-support/layout";
 import type { NotificationRow } from "../types";
 
@@ -85,6 +87,17 @@ function serving(total: number, asked: number[] = []) {
 
 function open() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <NotificationsTab />
+    </QueryClientProvider>,
+  );
+}
+
+/** The app's own query client, with its retries kept and their wait taken out, so a 5xx is asked as often as it is in the app. */
+function openOnTheAppsPolicy() {
+  const client = createQueryClient();
+  client.setDefaultOptions({ queries: { ...client.getDefaultOptions().queries, retryDelay: 0 } });
   return render(
     <QueryClientProvider client={client}>
       <NotificationsTab />
@@ -236,6 +249,51 @@ describe("the inbox at its edges", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(asked).toEqual([1, 2, 2]));
     await waitFor(() => expect(screen.queryByText("Couldn't load more.")).toBeNull());
+  });
+});
+
+describe("a failed ask for the next 25, on the query client the app runs", () => {
+  it("is asked once, then waits for Retry, and each press of Retry asks once more", async () => {
+    const asked: number[] = [];
+    let failing = true;
+    server.ask = async (page) => {
+      asked.push(page);
+      if (page === 2 && failing) throw new ApiError(503, "unavailable");
+      const from = (page - 1) * PAGE;
+      return { items: Array.from({ length: PAGE }, (_, i) => row(from + i + 1)), totalCount: 1300 };
+    };
+    openOnTheAppsPolicy();
+    await loaded();
+    await scrollTo(ROW * PAGE);
+    await screen.findByText("Couldn't load more.");
+    // Long enough for the client's own retries, had it been left to make them.
+    await act(async () => {
+      await new Promise((later) => setTimeout(later, 150));
+    });
+    expect(asked).toEqual([1, 2]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await screen.findByText("Couldn't load more.");
+    await act(async () => {
+      await new Promise((later) => setTimeout(later, 150));
+    });
+    expect(asked).toEqual([1, 2, 2]);
+
+    failing = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.queryByText("Couldn't load more.")).toBeNull());
+    expect(asked).toEqual([1, 2, 2, 2]);
+  });
+
+  it("keeps the client's retries for the first rows, which have no Retry beside them yet", async () => {
+    const asked: number[] = [];
+    server.ask = async (page) => {
+      asked.push(page);
+      throw new ApiError(503, "unavailable");
+    };
+    openOnTheAppsPolicy();
+    expect(await screen.findByText("Couldn't load notifications")).toBeInTheDocument();
+    expect(asked).toEqual([1, 1, 1]);
   });
 });
 

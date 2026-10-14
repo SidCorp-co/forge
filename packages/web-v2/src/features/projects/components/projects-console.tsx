@@ -19,6 +19,7 @@ import {
   useMediaQuery,
 } from '@/design';
 import { formatApiError } from '@/lib/api/error';
+import { usePersistedState } from '@/lib/utils/use-persisted-state';
 import { useActiveOrg } from '@/features/orgs/active-org';
 import { blindSearchEmpty, isAttention, unreadStatements, workspaceTotals } from '../derive';
 import { DEFAULT_PROJECT_SORT, isDefaultSort, PROJECT_MODEL_COLUMNS } from '../columns';
@@ -56,6 +57,13 @@ const NO_FILTERS: Record<string, string> = {};
 
 const PHONE_WIDTH = 'not all and (min-width: 40rem)';
 
+export const PROJECTS_VIEW_KEY = 'web-v2:projects-view';
+
+/** The view a person picked, as stored: anything but one of the two views reads as no pick at all. */
+function pickOf(stored: unknown): ProjectView | null {
+  return stored === 'cards' || stored === 'list' ? stored : null;
+}
+
 export function ProjectsConsole() {
   const { items: allItems, isLoading, isError, error, healthRead, refetch, toggle } = useProjectsConsole();
   const router = useRouter();
@@ -64,8 +72,10 @@ export function ProjectsConsole() {
   const [createOpen, setCreateOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<ProjectSortState>(DEFAULT_PROJECT_SORT);
-  // Flat rows, no card mosaic: a phone opens as the list, a view the person picks wins.
-  const [pickedView, setView] = useState<ProjectView | null>(null);
+  // Flat rows, no card mosaic: a phone opens as the list, and a view the person picks wins, kept in
+  // this browser. Where storage is blocked the pick lasts as long as the page.
+  const [stored, setView] = usePersistedState<unknown>(PROJECTS_VIEW_KEY, null);
+  const pickedView = pickOf(stored);
   const phone = useMediaQuery(PHONE_WIDTH);
   const view: ProjectView = pickedView ?? (phone ? 'list' : 'cards');
   const [attentionOnly, setAttentionOnly] = useState(false);

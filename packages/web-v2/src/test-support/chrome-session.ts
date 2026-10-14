@@ -41,8 +41,23 @@ export interface LaunchOptions {
   launchMs?: number;
 }
 
+/** A tab at a phone's size with touch on: what a person does to a page, and what the browser says of it. */
+export interface Tab {
+  evaluate<T = unknown>(expression: string): Promise<T>;
+  /** Calls a function declaration with `argument` passed as data, never spliced into code. */
+  call<T = unknown>(functionDeclaration: string, argument: unknown): Promise<T>;
+  /** Polls `expression` until it is truthy, failing with `what` it was waiting for. */
+  waitFor(expression: string, waitMs: number, what: string): Promise<void>;
+  tap(x: number, y: number): Promise<void>;
+  pressTab(): Promise<void>;
+  /** The name the accessibility tree gives the first element `selector` matches: what a screen reader says. */
+  accessibleName(selector: string): Promise<string>;
+}
+
 export interface ChromeSession {
   chrome: string;
+  /** Opens `pageUrl` in a tab `width` px wide and runs `run` in it, then closes the tab. */
+  withTab<T>(pageUrl: string, width: number, run: (tab: Tab) => Promise<T>): Promise<T>;
   /** Opens `url` in a tab, returns what `expression` evaluates to once it is non-empty ("" at `waitMs`), and closes the tab. */
   evaluateWhenReady(url: string, expression: string, waitMs: number): Promise<string>;
   close(): Promise<void>;
@@ -139,6 +154,57 @@ export async function launchChrome({ chrome = chromeBinary(), launchMs = WARM_LA
             if (Date.now() > until) return "";
             await new Promise((later) => setTimeout(later, 25));
           }
+        } finally {
+          await send("Target.closeTarget", { targetId }).catch(() => undefined);
+        }
+      },
+      async withTab(pageUrl, width, run) {
+        const { targetId } = (await send("Target.createTarget", { url: "about:blank" })) as { targetId: string };
+        try {
+          const { sessionId } = (await send("Target.attachToTarget", { targetId, flatten: true })) as { sessionId: string };
+          const tab = (method: string, params: object = {}) => send(method, params, sessionId);
+          await tab("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: true });
+          await tab("Emulation.setTouchEmulationEnabled", { enabled: true });
+          await tab("Accessibility.enable");
+          await tab("Page.navigate", { url: pageUrl });
+          const evaluate = async <V>(expression: string): Promise<V> => {
+            const reply = (await tab("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true })) as { result: { value?: V }; exceptionDetails?: { text: string; exception?: { description?: string } } };
+            if (reply.exceptionDetails) throw new Error(`The page threw while evaluating ${expression.slice(0, 80)}: ${reply.exceptionDetails.exception?.description ?? reply.exceptionDetails.text}`);
+            return reply.result.value as V;
+          };
+          const call = async <V>(functionDeclaration: string, argument: unknown): Promise<V> => {
+            const { result: global } = (await tab("Runtime.evaluate", { expression: "globalThis" })) as { result: { objectId: string } };
+            const reply = (await tab("Runtime.callFunctionOn", { functionDeclaration, objectId: global.objectId, arguments: [{ value: argument }], returnByValue: true, awaitPromise: true })) as { result: { value?: V }; exceptionDetails?: { text: string; exception?: { description?: string } } };
+            if (reply.exceptionDetails) throw new Error(`The page threw in ${functionDeclaration.slice(0, 80)}: ${reply.exceptionDetails.exception?.description ?? reply.exceptionDetails.text}`);
+            return reply.result.value as V;
+          };
+          return await run({
+            evaluate,
+            call,
+            async waitFor(expression, waitMs, what) {
+              const until = Date.now() + waitMs;
+              while (!(await evaluate<unknown>(expression).catch(() => false))) {
+                if (Date.now() > until) throw new Error(`Chrome waited ${waitMs}ms for ${what} and the page never reached it.`);
+                await new Promise((later) => setTimeout(later, 25));
+              }
+            },
+            async tap(x, y) {
+              await tab("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+              await tab("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+            },
+            async pressTab() {
+              const key = { key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 };
+              await tab("Input.dispatchKeyEvent", { type: "rawKeyDown", ...key });
+              await tab("Input.dispatchKeyEvent", { type: "keyUp", ...key });
+            },
+            async accessibleName(selector) {
+              const { root } = (await tab("DOM.getDocument", {})) as { root: { nodeId: number } };
+              const { nodeId } = (await tab("DOM.querySelector", { nodeId: root.nodeId, selector })) as { nodeId: number };
+              if (!nodeId) throw new Error(`No element matches ${selector}, so the accessibility tree has no name for it.`);
+              const { nodes } = (await tab("Accessibility.getPartialAXTree", { nodeId, fetchRelatives: false })) as { nodes: { name?: { value?: string } }[] };
+              return nodes[0]?.name?.value ?? "";
+            },
+          });
         } finally {
           await send("Target.closeTarget", { targetId }).catch(() => undefined);
         }
