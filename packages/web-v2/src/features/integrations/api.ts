@@ -15,6 +15,7 @@ import type {
   IntegrationsStatus,
   GitHubConnectStart,
   GitHubRepositoriesResponse,
+  GitLabRepositoriesResponse,
   McpPreviewResponse,
   RocketchatRoom,
   UpdateIntegrationInput,
@@ -99,6 +100,12 @@ export const integrationsApi = {
   githubRepositories: (projectId: string, connectionId: string) =>
     apiClient<GitHubRepositoriesResponse>(
       `/projects/${projectId}/integrations/github/repositories?connectionId=${encodeURIComponent(connectionId)}`,
+    ),
+
+  /** The GitLab projects the connection's token can push to; `search` narrows on GitLab's side. */
+  gitlabRepositories: (projectId: string, connectionId: string, search: string) =>
+    apiClient<GitLabRepositoriesResponse>(
+      `/projects/${projectId}/integrations/gitlab/repositories?connectionId=${encodeURIComponent(connectionId)}${search ? `&search=${encodeURIComponent(search)}` : ""}`,
     ),
 
   coolifyApplications: (

@@ -4,5 +4,7 @@ export { ProjectIntegrations } from "./components/project-integrations-panel";
 export { useBindConnection, useConnections, useIsOrgAdmin } from "./hooks";
 export { coolify } from "./providers/coolify";
 export { CoolifyTargetsField } from "./providers/coolify/targets-field";
+export { gitlab } from "./providers/gitlab";
+export { GitLabRepositoryField, gitlabBindingOf } from "./providers/gitlab/repository";
 export { providerLabel, providerModule, useProviderLabel } from "./providers/registry";
-export type { AgentAccess, BindingRole, ConnectionSummary, CoolifyTargetInput } from "./types";
+export type { AgentAccess, BindingRole, ConnectionSummary, CoolifyTargetInput, GitLabRepository } from "./types";

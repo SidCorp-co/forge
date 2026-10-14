@@ -35,6 +35,20 @@ export interface GitHubRepositoriesResponse {
   truncated: boolean;
 }
 
+/** One GitLab project a connection's token can push to (`GET .../integrations/gitlab/repositories`). */
+export interface GitLabRepository {
+  pathWithNamespace: string;
+  id: number;
+  defaultBranch: string | null;
+  webUrl: string | null;
+}
+
+export interface GitLabRepositoriesResponse {
+  repositories: GitLabRepository[];
+  truncated: boolean;
+  host: string;
+}
+
 export interface GitHubConnectStart {
   postUrl: string;
   state: string;

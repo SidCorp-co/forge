@@ -21,6 +21,7 @@ import { useBindConnection, useConnections, useIsOrgAdmin } from "@/features/int
 import { providerLabel, providerModule } from "@/features/integrations";
 import { bindingRefusalText } from "@/features/integrations";
 import { coolify } from "@/features/integrations";
+import { gitlab, GitLabRepositoryField, gitlabBindingOf } from "@/features/integrations";
 import { CoolifyTargetsField } from "@/features/integrations";
 import { providerCanDeploy } from "@forge/contracts/deploy-capability";
 import type {
@@ -28,6 +29,7 @@ import type {
   BindingRole,
   ConnectionSummary,
   CoolifyTargetInput,
+  GitLabRepository,
 } from "@/features/integrations";
 
 // What the binding is FOR — DECLARED by the person, never derived from the
@@ -105,6 +107,7 @@ function ShareForm({
   const [role, setRole] = useState<BindingRole>("service");
   const [agentAccess, setAgentAccess] = useState<AgentAccess>(AGENT_ACCESS_CLOSED);
   const [applications, setApplications] = useState<CoolifyTargetInput[]>([NO_APPLICATION]);
+  const [repository, setRepository] = useState<GitLabRepository | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const t = useCopy();
   const language = useInterfaceLanguage();
@@ -113,6 +116,9 @@ function ShareForm({
   const provider = selected?.provider;
   const canDeploy = provider === undefined ? true : providerCanDeploy(provider);
   const namesApplications = provider === coolify.provider;
+  // a GitLab connection is a token and a host; each project picks the repository it reaches, unless
+  // an older connection still names one for every project bound to it
+  const picksRepository = provider === gitlab.provider && !(typeof selected?.config.projectPath === "string");
   const providerName = provider ? providerLabel(provider, language) : t("integrations.share.thisProvider");
   // No binding exists yet, so the risk class comes off the provider's own module. `none` renders no
   // control at all — that provider has no agent path for a grant to open.
@@ -125,7 +131,11 @@ function ShareForm({
       return;
     }
     if (!selected) return;
-    const missing = namesApplications ? applicationsRefusal(applications, t) : null;
+    const missing = namesApplications
+      ? applicationsRefusal(applications, t)
+      : picksRepository && !repository
+        ? t("integrations.share.needRepository")
+        : null;
     setFormError(missing);
     if (missing) return;
     bind.mutate(
@@ -133,7 +143,11 @@ function ShareForm({
         connectionId,
         provider: selected.provider,
         role,
-        binding: namesApplications ? { targets: applicationsOf(applications) } : {},
+        binding: namesApplications
+          ? { targets: applicationsOf(applications) }
+          : repository && provider === gitlab.provider
+            ? gitlabBindingOf(repository)
+            : {},
         ...agentAccessBody(agentPathKind, agentAccess),
       },
       {
@@ -142,6 +156,7 @@ function ShareForm({
           setRole("service");
           setAgentAccess(AGENT_ACCESS_CLOSED);
           setApplications([NO_APPLICATION]);
+          setRepository(null);
         },
       },
     );
@@ -156,6 +171,7 @@ function ShareForm({
           onChange={(v) => {
             setConnectionId(v);
             setApplications([NO_APPLICATION]);
+            setRepository(null);
             setFormError(null);
           }}
           placeholder={loading ? t("integrations.provider.loading") : t("integrations.share.select")}
@@ -196,6 +212,17 @@ function ShareForm({
             setFormError(null);
           }}
           inherited={false}
+        />
+      )}
+      {provider === gitlab.provider && (
+        <GitLabRepositoryField
+          projectId={projectId}
+          connectionId={connectionId}
+          value={repository?.pathWithNamespace ?? null}
+          onPick={(repo) => {
+            setRepository(repo);
+            setFormError(null);
+          }}
         />
       )}
       <AgentAccessChoice

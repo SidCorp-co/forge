@@ -118,6 +118,19 @@ export function useGitHubRepositories(
   });
 }
 
+export function useGitLabRepositories(
+  projectId: string | undefined,
+  connectionId: string | undefined,
+  search = "",
+) {
+  return useQuery({
+    queryKey: ["integrations", "gitlab-repos", projectId, connectionId, search],
+    queryFn: () => integrationsApi.gitlabRepositories(projectId as string, connectionId as string, search),
+    enabled: !!projectId && !!connectionId,
+    placeholderData: (previous) => previous,
+  });
+}
+
 /** ISS-925 — the deploy-target pick-list. `auth` is either a saved binding or
  *  the credential still in the create form, so the picker works on a first save. */
 export function useCoolifyApplications(
