@@ -24,8 +24,18 @@ import type {
 	ProjectUpdateInput,
 } from "./types";
 
+/** Where a page says the outcome of a save itself, a toast from the hook would say it a second time. */
+export interface SaveToastOptions {
+	toastSuccess?: boolean;
+	/** False where a banner beside the page's save bar says the refusal instead. */
+	toastFailure?: boolean;
+}
+
 /** PATCH project basics/repo. Invalidates the detail + console list. */
-export function useUpdateProject(id: string | undefined) {
+export function useUpdateProject(
+	id: string | undefined,
+	{ toastSuccess = true, toastFailure = true }: SaveToastOptions = {},
+) {
 	const qc = useQueryClient();
 	const { toast } = useToast();
 	return useMutation({
@@ -34,14 +44,16 @@ export function useUpdateProject(id: string | undefined) {
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["project", id] });
 			qc.invalidateQueries({ queryKey: ["projects"] });
-			toast({ title: "Project saved", tone: "success" });
+			if (toastSuccess) toast({ title: "Project saved", tone: "success" });
 		},
-		onError: (err) =>
+		onError: (err) => {
+			if (!toastFailure) return;
 			toast({
 				title: "Couldn't save project",
 				description: formatApiError(err),
 				tone: "error",
-			}),
+			});
+		},
 	});
 }
 
@@ -98,7 +110,10 @@ export function usePipelineConfig(id: string | undefined) {
 	});
 }
 
-export function useUpdatePipelineConfig(id: string | undefined) {
+export function useUpdatePipelineConfig(
+	id: string | undefined,
+	{ toastSuccess = true, toastFailure = true }: SaveToastOptions = {},
+) {
 	const qc = useQueryClient();
 	const { toast } = useToast();
 	return useMutation({
@@ -106,7 +121,7 @@ export function useUpdatePipelineConfig(id: string | undefined) {
 			projectSettingsApi.updatePipelineConfig(id as string, write),
 		onSuccess: (data) => {
 			qc.setQueryData(["project", id, "pipeline-config"], data);
-			toast({ title: "Pipeline config saved", tone: "success" });
+			if (toastSuccess) toast({ title: "Pipeline config saved", tone: "success" });
 			if (data.warnings?.length) {
 				toast({
 					title: "Saved with warnings",
@@ -115,12 +130,14 @@ export function useUpdatePipelineConfig(id: string | undefined) {
 				});
 			}
 		},
-		onError: (err) =>
+		onError: (err) => {
+			if (!toastFailure) return;
 			toast({
 				title: "Couldn't save pipeline config",
 				description: formatPipelineConfigError(err),
 				tone: "error",
-			}),
+			});
+		},
 	});
 }
 
@@ -139,7 +156,10 @@ export function useEnvironments(id: string | undefined) {
 /** PATCH the environments document: the keys Shape & release changed, and the values it
  *  read them against. A cleared field sends `null` for that key alone, so a key the form
  *  never showed survives the save (ISS-1170). */
-export function useUpdateEnvironments(id: string | undefined) {
+export function useUpdateEnvironments(
+	id: string | undefined,
+	{ toastSuccess = true, toastFailure = true }: SaveToastOptions = {},
+) {
 	const qc = useQueryClient();
 	const { toast } = useToast();
 	return useMutation({
@@ -148,20 +168,25 @@ export function useUpdateEnvironments(id: string | undefined) {
 		onSuccess: (data: { environments: EnvironmentsConfig }) => {
 			qc.setQueryData(["project", id, "environments"], data);
 			qc.invalidateQueries({ queryKey: ["project", id] });
-			toast({ title: "Testing settings saved", tone: "success" });
+			if (toastSuccess) toast({ title: "Shape & release saved", tone: "success" });
 		},
-		onError: (err) =>
+		onError: (err) => {
+			if (!toastFailure) return;
 			toast({
-				title: "Couldn't save testing settings",
+				title: "Couldn't save Shape & release",
 				description: formatSettingsWriteError(err),
 				tone: "error",
-			}),
+			});
+		},
 	});
 }
 
 /** Replace `agentConfig.plugins` whole. Invalidates the project detail so the
  *  Plugins section and the read-only agent-config block both refresh. */
-export function useUpdatePlugins(id: string | undefined) {
+export function useUpdatePlugins(
+	id: string | undefined,
+	{ toastSuccess = true, toastFailure = true }: SaveToastOptions = {},
+) {
 	const qc = useQueryClient();
 	const { toast } = useToast();
 	return useMutation({
@@ -169,14 +194,16 @@ export function useUpdatePlugins(id: string | undefined) {
 			projectSettingsApi.updatePlugins(id as string, plugins),
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["project", id] });
-			toast({ title: "Plugins saved", tone: "success" });
+			if (toastSuccess) toast({ title: "Plugins saved", tone: "success" });
 		},
-		onError: (err) =>
+		onError: (err) => {
+			if (!toastFailure) return;
 			toast({
 				title: "Couldn't save plugins",
 				description: formatApiError(err),
 				tone: "error",
-			}),
+			});
+		},
 	});
 }
 

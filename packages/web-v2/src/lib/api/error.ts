@@ -1,7 +1,7 @@
 import { parsePath } from '@forge/contracts/document-patch';
 import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
 import { claimConflictSentence } from './claim-conflict';
-import { ApiError } from './client';
+import { ApiError, isReasonPhrase, unsaidFailure } from './client';
 
 const FRIENDLY_CODES: Record<string, string> = {
   UNAUTHENTICATED: 'Your session has expired. Please sign in again.',
@@ -71,43 +71,41 @@ function mergeMarkSentence(err: ApiError): string | null {
   return null;
 }
 
-/** The text a server error carries when nothing wrote it: the HTTP status text, which says nothing a person can use. */
-const BARE_SERVER_TEXT = new RegExp(
-  `^(${[
-    'internal server error',
-    'not implemented',
-    'bad gateway',
-    'service unavailable',
-    'gateway timeout',
-    'http version not supported',
-    'variant also negotiates',
-    'insufficient storage',
-    'loop detected',
-    'not extended',
-    'network authentication required',
-  ].join('|')})\\.?$`,
-  'i',
-);
-
-/** A server failure said in words: a status code is a number nobody reading a screen can act on. */
-function serverFailure(status: number): string {
-  if (status === 503) return 'The server is unavailable right now. Try again in a moment.';
-  if (status === 502 || status === 504) return 'The server did not answer in time. Try again in a moment.';
-  return 'The server ran into a problem and could not finish the request.';
+/**
+ * The two project writes refused for the work they would strand, in the web's own words. Core's
+ * sentence is written for agents, with its code, field names and API routes; a person here acts on
+ * the issues the banner links, so the steps are the controls those issues carry.
+ */
+function strandedWorkSentence(err: ApiError): string | null {
+  if (err.code !== 'RELEASE_CHAIN_STRANDS_WORK' && err.code !== 'PROJECT_KIND_STRANDS_WORK') return null;
+  const total = (err.details as { total?: unknown } | undefined)?.total;
+  if (typeof total !== 'number' || total < 1) return null;
+  const one = total === 1;
+  const it = one ? 'it' : 'them';
+  if (err.code === 'RELEASE_CHAIN_STRANDS_WORK') {
+    return (
+      `${total} ${one ? 'issue waits' : 'issues wait'} at ${ISSUE_STATUS_LABELS.awaiting_release}, and with no release path nothing would ever release ${it}. ` +
+      `Release ${it} first, or return ${one ? 'it' : 'each one'} to ${ISSUE_STATUS_LABELS.developed}, then save again. ` +
+      `Closing ${it} is not a way out: a close says the work shipped.`
+    );
+  }
+  const outsideGit = detailStr(err.details, 'to') === 'website';
+  const remark = outsideGit ? 'naming where its work landed' : 'from its merged pull request';
+  return (
+    `${total} open ${one ? 'issue carries a merge mark' : 'issues carry merge marks'} that would stop counting as a landing once this project ${outsideGit ? 'has no repository' : 'has a repository'}. ` +
+    `Finish ${it} first, or press Unmark on ${one ? 'it' : 'each one'}, save the new shape, then mark ${one ? 'it' : 'each one'} merged again ${remark}.`
+  );
 }
 
 export function formatApiError(err: unknown): string {
   if (err instanceof ApiError) {
-    const mergeMark = mergeMarkSentence(err);
-    if (mergeMark) return mergeMark;
+    const worded = mergeMarkSentence(err) ?? strandedWorkSentence(err);
+    if (worded) return worded;
     const claimed = err.code === 'CLAIM_CONFLICT' ? claimConflictSentence(err.details) : null;
     if (claimed) return claimed;
     if (err.code && FRIENDLY_CODES[err.code]) return FRIENDLY_CODES[err.code];
-    if (err.status >= 500 && BARE_SERVER_TEXT.test(err.message.trim())) {
-      return serverFailure(err.status);
-    }
-    if (err.message) return err.message;
-    return err.status >= 500 ? serverFailure(err.status) : 'The server refused the request and said nothing about why.';
+    if (!err.message.trim() || isReasonPhrase(err.message)) return unsaidFailure(err.status);
+    return err.message;
   }
   if (err instanceof Error) return err.message;
   return 'Unknown error';

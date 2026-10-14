@@ -31,23 +31,77 @@ export class ApiError extends Error {
   }
 }
 
+/** The standard HTTP reason phrases. A message that is one of these, whole, is the status's name
+ *  and not anything the server said about this request. */
+const REASON_PHRASES = new Set(
+  [
+    'bad request', 'unauthorized', 'payment required', 'forbidden', 'not found',
+    'method not allowed', 'not acceptable', 'proxy authentication required', 'request timeout',
+    'conflict', 'gone', 'length required', 'precondition failed', 'payload too large',
+    'content too large', 'request entity too large', 'uri too long', 'unsupported media type',
+    'range not satisfiable', 'expectation failed', "i'm a teapot", 'misdirected request',
+    'unprocessable entity', 'unprocessable content', 'locked', 'failed dependency', 'too early',
+    'upgrade required', 'precondition required', 'too many requests',
+    'request header fields too large', 'unavailable for legal reasons',
+    'internal server error', 'not implemented', 'bad gateway', 'service unavailable',
+    'gateway timeout', 'http version not supported', 'variant also negotiates',
+    'insufficient storage', 'loop detected', 'not extended', 'network authentication required',
+  ],
+);
+
+/** Whether a message says nothing beyond the status it came with. */
+export function isReasonPhrase(text: string): boolean {
+  return REASON_PHRASES.has(text.trim().replace(/\.$/, '').toLowerCase());
+}
+
+/** A failure the server answered without saying why, in words a person can act on. */
+export function unsaidFailure(status: number): string {
+  switch (status) {
+    case 401:
+      return 'Your session has expired. Please sign in again.';
+    case 403:
+      return 'You do not have access to do that.';
+    case 404:
+      return 'What this asked for was not found. It may have been moved or deleted.';
+    case 408:
+      return 'The request took too long to reach the server. Try again.';
+    case 409:
+      return 'Something changed since this page loaded. Reload it, then try again.';
+    case 413:
+      return 'What was sent is larger than the server accepts.';
+    case 429:
+      return 'Too many requests in a short time. Wait a moment, then try again.';
+    case 502:
+    case 504:
+      return 'The server did not answer in time. Try again in a moment.';
+    case 503:
+      return 'The server is unavailable right now. Try again in a moment.';
+  }
+  return status >= 500
+    ? 'The server ran into a problem and could not finish the request.'
+    : 'The server refused the request without saying why.';
+}
+
+/** What the server said, where it said anything; a body with no message of its own (an empty
+ *  400, a proxy's 429 page) is carried as {@link unsaidFailure}, never as the reason phrase. */
 async function parseErrorBody(res: Response): Promise<{
   message: string;
   code?: string;
   details?: unknown;
   body?: unknown;
 }> {
+  const said = (text: unknown) =>
+    typeof text === 'string' && text.trim() !== '' && !isReasonPhrase(text) ? text : unsaidFailure(res.status);
   try {
     const body = await res.json();
     if (body && typeof body === 'object') {
-      const msg = typeof body.message === 'string' ? body.message : res.statusText;
       const code = typeof body.code === 'string' ? body.code : undefined;
-      return { message: msg, code, details: body.details, body };
+      return { message: said(body.message), code, details: body.details, body };
     }
-    return { message: res.statusText, body };
+    return { message: said(null), body };
   } catch {
   }
-  return { message: res.statusText };
+  return { message: said(null) };
 }
 
 /**

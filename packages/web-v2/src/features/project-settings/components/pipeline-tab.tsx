@@ -103,8 +103,9 @@ function PipelinePage({
   /** The plugins the project designates, as stored. */
   plugins: PluginDesignation[];
 }) {
-  const update = useUpdatePipelineConfig(projectId);
-  const updatePlugins = useUpdatePlugins(projectId);
+  // A refused save is said once, by the banners in the save bar.
+  const update = useUpdatePipelineConfig(projectId, { toastFailure: false });
+  const updatePlugins = useUpdatePlugins(projectId, { toastFailure: false });
   const runnersQ = useProjectRunners(projectId);
   const [pluginsFailure, setPluginsFailure] = useState<{ configSaved: boolean; reason: string } | null>(
     null,

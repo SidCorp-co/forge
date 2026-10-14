@@ -3188,6 +3188,7 @@
 
 ### Fixed
 
+- **A refused settings save reads in words, once.** An empty refusal no longer reads "Bad Request"; shape refusals name what to press; the release blocker opens where a live deploy target is added; narrow screens hint at more tabs. (ISS-1171)
 - **A cancelled release says which silence it measured.** Its reason, and the release run's stall reading, name whether nothing was written since a box took the job or since the release's last write. (ISS-1319)
 - **A release batch whose box went silent no longer blocks the project.** After 25 minutes with nothing written to its ledger it is cancelled and its issues return to the release gate, so a new release can start. (ISS-1319)
 - **Writing a step handoff for a run that does not exist is refused by name.** It answered a server error; it now answers 404 naming `pipelineRunId`, over REST and through the tool. (ISS-1319)

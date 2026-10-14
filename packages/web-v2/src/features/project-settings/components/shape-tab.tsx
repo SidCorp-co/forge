@@ -19,6 +19,7 @@ import {
 import { useIssues } from "@/features/issues/hooks";
 import type { ProjectDetail } from "@/features/projects/types";
 import { formatApiError } from "@/lib/api/error";
+import { useToast } from "@/providers/toast-provider";
 import { documentWrite } from "../document-write";
 import {
   documentPathOfField,
@@ -29,7 +30,7 @@ import {
   locateField,
   parseEnvironments,
 } from "../environments-form";
-import { useEnvironments, useUpdateEnvironments, useUpdateProject } from "../hooks";
+import { type SaveToastOptions, useEnvironments, useUpdateEnvironments, useUpdateProject } from "../hooks";
 import {
   chainOf,
   IN_FLIGHT,
@@ -54,6 +55,8 @@ import {
   ShapeConfirm,
   StrandedNotice,
 } from "./shape-sections";
+
+const QUIET: SaveToastOptions = { toastSuccess: false, toastFailure: false };
 
 export function ShapeTab({ project, canEdit }: { project: ProjectDetail; canEdit: boolean }) {
   const envQ = useEnvironments(project.id);
@@ -129,8 +132,10 @@ function ShapePage({
 }) {
   const slug = project.slug;
   const storedChain = (project.releaseChain ?? []) as ReleaseChainEntry[];
-  const updateProject = useUpdateProject(project.id);
-  const updateEnv = useUpdateEnvironments(project.id);
+  // The tab says how a save went itself: one toast for the save, its refusal once, in the bar.
+  const updateProject = useUpdateProject(project.id, QUIET);
+  const updateEnv = useUpdateEnvironments(project.id, QUIET);
+  const { toast } = useToast();
   const countsQ = useIssues(project.id, { pageSize: 1 });
 
   const shapeRead = useMemo(() => readShape(project), [project]);
@@ -192,7 +197,7 @@ function ShapePage({
     }
     if (envForm.dirty) {
       try {
-        await envForm.save(async (now) => {
+        const ran = await envForm.save(async (now) => {
           const w = documentWrite(
             environmentsDocument(envForm.seeded),
             environmentsDocument(now),
@@ -200,11 +205,14 @@ function ShapePage({
           );
           if (w) await updateEnv.mutateAsync(w);
         });
+        if (!ran) return;
       } catch {
         // The refusal itself is the banner below, read off the mutation.
         setHalfSaved(projectSaved);
+        return;
       }
     }
+    toast({ title: "Shape & release saved", tone: "success" });
   }
 
   function save() {

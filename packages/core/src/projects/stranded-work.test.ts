@@ -26,14 +26,22 @@ describe('chainStrandsWork', () => {
   });
 
   it('names both ways out, and says a close is not one', () => {
-    const r = chainStrandsWork(['ISS-7']);
+    const r = chainStrandsWork(['ISS-7', 'ISS-8']);
     expect(r.message).toContain('Release them first');
     expect(r.message).toContain('return each one to `developed`');
     expect(r.message).toContain('Closing them is not a way out');
   });
 
-  it('speaks of one issue in the singular', () => {
-    expect(chainStrandsWork(['ISS-7']).message).toContain('1 of its issue waits at');
+  it('speaks of one issue in the singular, with the noun still counted among its issues', () => {
+    const one = chainStrandsWork(['ISS-7']).message;
+    expect(one).toContain('while 1 of its issues waits at');
+    expect(one).toContain('Release it first, or return it to `developed`');
+    expect(one).toContain('Closing it is not a way out');
+    expect(one).not.toMatch(/\bthem\b|\bthey\b|of its issue wait/);
+  });
+
+  it('speaks of several issues in the plural', () => {
+    expect(chainStrandsWork(keys(2)).message).toContain('while 2 of its issues wait at');
   });
 
   it(`names at most ${STRANDED_NAMED_MAX} keys and counts the rest, while details keep all of them`, () => {
@@ -62,7 +70,13 @@ describe('kindStrandsWork', () => {
     expect(r.message.startsWith(`${PROJECT_KIND_STRANDS_WORK}: `)).toBe(true);
     expect(r.message).toContain('from `standard` to `website`');
     expect(r.message).toContain('ISS-4');
-    expect(r.details).toEqual({ issues: ['ISS-4'], total: 1 });
+    expect(r.details).toEqual({
+      issues: ['ISS-4'],
+      total: 1,
+      from: 'standard',
+      to: 'website',
+      landingShape: 'git',
+    });
   });
 
   it('tells the caller to pin each issue to the lane its mark was written for', () => {

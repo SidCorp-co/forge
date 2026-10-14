@@ -10,7 +10,7 @@
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LeaveGuardProvider, useSettingsForm } from "@/design";
@@ -157,7 +157,14 @@ describe("the Release section's prose", () => {
 
 		const stops = screen.getByRole("list", { name: "What stops a release" });
 		const undeclared = screen.getByRole("list", { name: "What is not declared" });
-		expect(stops.textContent).toContain("RELEASE_TARGET_UNDECLARED");
+		const [target] = stops.querySelectorAll("li");
+		expect(target.textContent?.startsWith("This project declares a release but has no live deploy target")).toBe(true);
+		expect(target.textContent).not.toContain("RELEASE_TARGET_UNDECLARED");
+		expect(target.getAttribute("data-code")).toBe("RELEASE_TARGET_UNDECLARED");
+		expect(within(target).getByRole("link", { name: "Add a live deploy target" })).toHaveAttribute(
+			"href",
+			"/projects/desk/settings?tab=integrations&add=live-deploy-target",
+		);
 		expect(undeclared.querySelectorAll("li")).toHaveLength(1);
 		expect(undeclared.textContent).toContain("No rollback declared");
 		expect(undeclared.textContent).not.toContain("no live deploy binding");
@@ -176,9 +183,10 @@ describe("the Release section's prose", () => {
 
 		draw(<ReleaseSection projectId={PROJECT_ID} />);
 
-		expect(screen.getByRole("list", { name: "What stops a release" }).textContent).toContain(
-			"RELEASE_RUNNER_AMBIGUOUS",
-		);
+		const stops = screen.getByRole("list", { name: "What stops a release" });
+		expect(stops.querySelector("li")?.getAttribute("data-code")).toBe("RELEASE_RUNNER_AMBIGUOUS");
+		expect(stops.textContent).toContain("Two live bindings name different release runners");
+		expect(stops.textContent).not.toContain("RELEASE_RUNNER_AMBIGUOUS");
 		expect(screen.getByRole("list", { name: "What is not declared" }).textContent).not.toContain(
 			"Two live bindings name different release runners",
 		);
