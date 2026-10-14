@@ -65,7 +65,10 @@ is named out of the token grant with its reason in `auth/pat-permissions.ts:PAT_
 route is an operation carrying the input schemas its handler validates with (read from the
 validator the route runs through, `packages/core/src/api-reference/declare/validator.ts:zValidator`, or declared with
 `declaresInput` where the handler parses its own), every status it can answer with a schema or the
-error envelope and the codes it can give, and the permission or the named exclusion that reaches it.
+error envelope and the codes it can give, and the permission or the named exclusion that reaches it,
+which the page states at the head of the operation and not only in `x-forge-access`. Whether an
+operation asks for a bearer is read from the gates in its own chain (`middleware/declarations.ts:takesBearer`),
+up to its own handler, so a route that reads none, a sign-in or a pairing, is shown with none whatever its door.
 `api-reference/gates/reference.test.ts` runs in the core unit job over the composed app and names the
 route that has no declared answer, reads an input no schema declares, throws a status or code its
 descriptor omits, carries a schema JSON Schema cannot hold, or is the step of a flow that names no

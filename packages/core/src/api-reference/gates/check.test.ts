@@ -268,6 +268,30 @@ describe('each rule, planted once, continued', () => {
     expect(findings.map((f) => f.rule)).toContain('path-collision');
   });
 
+  it('unread-chain: a route no request path reaches through the router is named, never read as an empty chain', async () => {
+    const app = new Hono();
+    app.get(
+      '/api/issues/:id{[a-f]{3}}',
+      zValidator('param', z.object({ id: z.string() }), hook),
+      ok,
+      (c) => c.json({}),
+    );
+    const { findings } = await checked(app);
+    const named = findings.find((f) => f.rule === 'unread-chain');
+    expect(named?.route).toBe('GET /api/issues/:id{[a-f]{3}}');
+    expect(named?.detail).toContain('no request path reaches');
+  });
+
+  it('operation-id-clash: two routes that would share one operationId are named with both', async () => {
+    const app = new Hono();
+    app.get('/api/issues/a', ok, (c) => c.json({}));
+    app.get('/api/issues-a', ok, (c) => c.json({}));
+    const { findings } = await checked(app);
+    const named = findings.filter((f) => f.rule === 'operation-id-clash');
+    expect(named.map((f) => f.route)).toEqual(['GET /api/issues/a']);
+    expect(named[0]?.detail).toBe('operationId getApiIssuesA is also GET /api/issues-a');
+  });
+
   it('dangling-ref: a $ref that names no schema is named', async () => {
     const app = new Hono();
     app.get('/api/issues', ok, (c) => c.json({}));
