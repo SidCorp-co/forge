@@ -259,7 +259,8 @@ const stages = PAGES.flatMap((p, i) =>
       if (docked()) {
         const room = window.innerWidth - Math.round(rect(q("[data-witness=page]")).left);
         const large = Math.max(PANEL_FLOOR, room - PAGE_MIN_WIDTH);
-        const want = size === "large" ? large : Math.round(large / 2);
+        // half is held to its 360px floor, and is large where large is at that floor too
+        const want = size === "large" ? large : Math.min(large, Math.max(PANEL_FLOOR, Math.round(large / 2)));
         const drawn = Math.round(rect(q("[data-testid=chat-dock]")).width);
         if (drawn !== want) return [`the panel is ${drawn} px at ${size}, not ${want}`, ...laidOut()];
       }

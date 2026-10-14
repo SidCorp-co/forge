@@ -23,6 +23,8 @@ import { InRouter } from "./router";
 
 const SIDEBAR = 280;
 const PANEL_FLOOR = 360;
+/** Half's own floor (REQ-31, decided 2026-10-14 on ISS-493): where large is at it too, there is no Half. */
+const HALF_FLOOR = 360;
 const BOARD = 880;
 
 // every case is a browser's first open after this change: it kept a 650px width under the old key,
@@ -65,8 +67,12 @@ function expected() {
   const pageLeft = Math.round(q("[data-witness=page]")?.getBoundingClientRect().left ?? 0);
   const room = window.innerWidth - pageLeft;
   const large = Math.max(PANEL_FLOOR, room - PAGE_MIN_WIDTH);
-  return { room, large, half: Math.round(large / 2) };
+  const half = Math.min(large, Math.max(HALF_FLOOR, Math.round(large / 2)));
+  return { room, large, half, offered: half < large };
 }
+
+/** What the switch names the panel at when it is at half: Large where half is large and not offered. */
+const halfShown = () => (expected().offered ? "Half" : "Large");
 
 /** The panel's own layout at whatever width it is drawn: the title whole, every header control inside, no sideways scroll. */
 function laidOut(): string[] {
@@ -123,6 +129,13 @@ function reads(shown: string): string[] {
   if (marked !== (narrow ? short : shown)) wrong.push(`the size control marks "${marked}", not "${narrow ? short : shown}"`);
   for (const size of ["Half", "Large"]) {
     const t = c.querySelector<HTMLElement>(`[data-segment=${size.toLowerCase()}]`);
+    if (size === "Half" && !expected().offered) {
+      // no Half where large is at the floor: its place says why, and is not a target
+      if (!t) wrong.push("the size control neither offers Half nor says why it does not");
+      else if (t.closest("button")) wrong.push(`Half is a target where large is ${expected().large} px, the floor Half shares`);
+      else if (!t.innerText.trim()) wrong.push("the size control's place for Half says nothing");
+      continue;
+    }
     if (!t) wrong.push(`the size control does not show ${size}`);
     else if (t.tagName !== "BUTTON") wrong.push(`${size} is drawn on the switch but is not a target of its own`);
     else if (t.getAttribute("aria-pressed") !== String(shown === size)) wrong.push(`${size} reads aria-pressed=${t.getAttribute("aria-pressed")} while the panel is at ${shown}`);
@@ -161,6 +174,8 @@ async function reach(from: "half" | "large" | "custom" | "board"): Promise<strin
   const { large, half } = expected();
   await dragTo(from === "large" || from === "custom" ? window.innerWidth : 10);
   if (from === "custom") {
+    // no width lies between the sizes where they are one: a drag keeps large
+    if (!expected().offered) return [...at(large, "large a drag keeps where the sizes are one"), ...reads("Large")];
     const between = Math.round((large + half) / 2) + 20;
     await dragTo(between);
     return [...at(between, "dragged"), ...reads(`Custom (${between} px)`)];
@@ -171,20 +186,22 @@ async function reach(from: "half" | "large" | "custom" | "board"): Promise<strin
     const want = boardOver(half);
     return [...at(want.drawn, "board-widened"), ...reads(want.shown)];
   }
-  return [...at(from === "large" ? large : half, from), ...reads(from === "large" ? "Large" : "Half")];
+  return [...at(from === "large" ? large : half, from), ...reads(from === "large" ? "Large" : halfShown())];
 }
 
 /** From each width the panel is drawn at, a click on each size on the switch: one stage each. */
 const clicks = (["half", "large", "custom", "board"] as const).flatMap((from) =>
   (["half", "large"] as const).flatMap((to) => {
-    const named = to === "large" ? "Large" : "Half";
+    const named = () => (to === "large" ? "Large" : halfShown());
     const drawn = () => (to === "large" ? expected().large : expected().half);
+    // where no Half is offered there is nothing to click: the panel stays large and keeps what it kept
+    const keptAfter = () => (to === "half" && !expected().offered ? [] : keeps(to));
     const click = {
       name: `from-${from}-click-${to}`,
       run: async () => {
         const off = (await reach(from)).map((w) => `before the click: ${w}`);
         await press(to);
-        return [...off, ...at(drawn(), `${to} the click on ${named} names`), ...keeps(to), ...reads(named)];
+        return [...off, ...at(drawn(), `${to} the click on ${named()} names`), ...keptAfter(), ...reads(named())];
       },
     };
     if (from !== "board") return [click];
@@ -193,7 +210,7 @@ const clicks = (["half", "large", "custom", "board"] as const).flatMap((from) =>
       run: async () => {
         boardStore.close();
         await frame();
-        return [...at(drawn(), `${to} kept once the board closes`), ...keeps(to)];
+        return [...at(drawn(), `${to} kept once the board closes`), ...keptAfter()];
       },
     };
     return [click, closed];
@@ -236,7 +253,7 @@ const stages = docked()
           await dragTo(window.innerWidth);
           const wrong = at(large, "large a drag past it stops at");
           await dragTo(10);
-          return [...wrong, ...at(half, "half a drag below it stops at"), ...reads("Half")];
+          return [...wrong, ...at(half, "half a drag below it stops at"), ...reads(halfShown())];
         },
       },
       { name: "at-custom", run: () => reach("custom") },
