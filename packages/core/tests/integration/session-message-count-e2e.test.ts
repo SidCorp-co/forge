@@ -288,6 +288,41 @@ describe('a session that records a transcript reads its length', () => {
   });
 });
 
+describe('a transcript longer than its ledger reads the transcript on every surface', () => {
+  for (const kind of ['chat', 'pipeline'] as const) {
+    it(`${kind}: 324 transcript entries with 1 ledger row read 324 on the list and the detail alike`, async () => {
+      const w = await seedWorld();
+      const messages = transcriptOf(324);
+      const id = await insertSession(w, kind, messages);
+      await writeLedger(id, [], messages.slice(0, 1));
+      const ledgerRows = await harness.db.execute<{ n: number }>(
+        sql`SELECT count(*)::int AS n FROM agent_session_turns WHERE agent_session_id = ${id}::uuid`,
+      );
+      expect((ledgerRows[0] as { n: number }).n).toBe(1);
+
+      const r = await readEverywhere(w, id);
+      for (const row of [r.restList, r.crossList, r.restGet, r.mcpList, r.mcpGet]) {
+        expect(row.messageCount).toBe(324);
+        expect(row.transcript).toBe('recorded');
+      }
+      expect(r.restGet.totalMessages).toBe(324);
+      expect(r.mcpGet.totalMessages).toBe(324);
+    });
+  }
+
+  it('a ledger that is behind by one entry does not hold the count one short', async () => {
+    const w = await seedWorld();
+    const messages = transcriptOf(10);
+    const id = await insertSession(w, 'chat', messages);
+    await writeLedger(id, [], messages.slice(0, 9));
+
+    const r = await readEverywhere(w, id);
+    for (const row of [r.restList, r.crossList, r.restGet, r.mcpList, r.mcpGet]) {
+      expect(row.messageCount).toBe(10);
+    }
+  });
+});
+
 describe('the two counts agree', () => {
   it('on every lane the detail reads one number for messageCount and totalMessages', async () => {
     const w = await seedWorld();

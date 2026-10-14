@@ -124,14 +124,14 @@ describe('agent_sessions reads that must not carry a transcript', () => {
     expect(Object.keys(rows[0] ?? {})).not.toContain('messages');
   });
 
-  it('counts a list row off the turn ledger', async () => {
+  it('counts a list row off the transcript, never off a ledger that holds fewer rows', async () => {
     await seedSession({ messageCount: 35, turns: 7 });
 
     const rows = await listAgentSessionsForMcp({ projectId, limit: 10 });
 
-    // 7 turns, not the 35 messages — the ledger is the source, and a value of 35 here would mean
-    // the transcript was read after all.
-    expect(rows[0]?.messageCount).toBe(7);
+    // 35 messages, not the 7 turns the ledger holds: the ledger is an index derived from the
+    // transcript, and the detail read answers 35 for this session, so the list must too.
+    expect(rows[0]?.messageCount).toBe(35);
   });
 
   it('reads the transcript length, NOT zero and NOT null, for a recorded-lane session the turn ledger does not cover', async () => {
