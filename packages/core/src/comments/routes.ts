@@ -56,6 +56,7 @@ import {
   commentThreadColumns,
   insertComment,
   listIssueCommentPage,
+  deleteComment as removeComment,
   updateCommentBody,
 } from './service.js';
 import { attachAuthors, buildCommentTree } from './tree.js';
@@ -367,7 +368,7 @@ commentRoutes.delete(
     const comment = await loadComment(id);
     await assertMayChangeComment(userId, comment).catch(rethrowChangeForbidden);
 
-    await db.delete(comments).where(eq(comments.id, id));
+    await removeComment(id);
     await hooks.emit('commentDeleted', {
       issueId: comment.issueId,
       projectId: comment.projectId,
