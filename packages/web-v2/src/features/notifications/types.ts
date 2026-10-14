@@ -10,8 +10,13 @@ export interface NotificationRow {
   kind: string;
   tier: string;
   title: string;
+  /** What is specific to a single record; null where the delivery carries several. */
   body: string | null;
+  /** What the sweep behind this delivery means and what to do, once — from its detector. */
+  explanation: string | null;
   readAt: string | null;
+  /** Still asks to be read: no read stamp, not a resolved notice, and something left to look at. */
+  unread: boolean;
   /** Non-null when this delivery groups several records under one cause. */
   groupKey: string | null;
   /** True when this delivery announces that a condition CLEARED. */
@@ -20,6 +25,10 @@ export interface NotificationRow {
   members: number;
   openMembers: number;
   severity: NotificationSeverity | null;
+  /** Null where the records of a grouped delivery span projects. */
+  projectSlug: string | null;
+  projectName: string | null;
+  /** Null where the delivery carries several records, since none of them is its subject. */
   issueId: string | null;
   secondaryIssueId: string | null;
   agentSessionId: string | null;
@@ -36,6 +45,8 @@ export interface NotificationMember {
   body: string | null;
   severity: NotificationSeverity | null;
   projectId: string | null;
+  projectSlug: string | null;
+  projectName: string | null;
   issueId: string | null;
   secondaryIssueId: string | null;
   resolvedAt: string | null;

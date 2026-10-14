@@ -64,20 +64,3 @@ export interface CreatePatInput {
    *  null/omitted = user-level (all the user's projects). */
   boundProjectId?: string | null;
 }
-
-export interface NotificationRow {
-  id: string;
-  notificationId: string;
-  projectId: string | null;
-  type: string;
-  kind: string;
-  title: string;
-  body: string | null;
-  readAt: string | null;
-  members: number;
-  openMembers: number;
-  resolvedNotice: boolean;
-  issueId: string | null;
-  agentSessionId: string | null;
-  createdAt: string;
-}

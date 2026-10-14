@@ -20,6 +20,7 @@ import { issueWorkInFlightSql } from '../issues/issue-lease.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
+import { sweepGroup } from '../notifications/explanations.js';
 import { projectAdminUserIdsFor } from '../notifications/project-admins.js';
 import { holderFanout, readClaim } from './lease-fanout.js';
 import { readReleaseHold } from './release-hold.js';
@@ -39,7 +40,6 @@ import {
   strandReason,
   strandRuleFor,
 } from './strand-rules.js';
-import { sweepGroupKey } from './stranded-issues.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
 
 /** A USE of the fleet-wide predicate, never a second copy: `issues/issue-lease.ts` is the only
@@ -520,13 +520,11 @@ async function surface(args: {
     issueId: row.id,
     type: 'issue_stranded',
     resolutionKey: strandResolutionKey(row.id),
-    groupKey: sweepGroupKey('idle-issues', now),
-    groupTitle: 'Issues in a live status with no live work behind them',
+    ...sweepGroup('idle-issues', now),
     title: headline,
     body:
       `${opening} ${asSentence(record.reason)} ` +
-      `It is waiting for ${record.waitingFor}, and ${record.owes === 'human' ? 'a person' : 'an agent'} owes the next move. ` +
-      'Nothing was moved: the finding is on the issue itself, under `strand`.',
+      `It is waiting for ${record.waitingFor}, and ${record.owes === 'human' ? 'a person' : 'an agent'} owes the next move.`,
   });
   return sent?.delivered ?? 0;
 }

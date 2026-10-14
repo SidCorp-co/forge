@@ -135,8 +135,8 @@ export async function finalizeIntake(
       projectId,
       issueId: issue.id,
       type: 'intake_pending',
-      title: 'Issue awaiting intake review',
-      body: `"${issue.title}" was parked at draft by the intake gate — approve (draft → open) to let it enter the pipeline, or close to reject.`,
+      title: `Awaiting intake review: ${issue.title}`,
+      body: 'Parked at draft by the intake gate — approve (draft → open) to let it enter the pipeline, or close to reject.',
     });
   } catch (err) {
     logger.warn(

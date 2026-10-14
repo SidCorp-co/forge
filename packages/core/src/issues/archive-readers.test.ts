@@ -107,6 +107,7 @@ const NOT_DISCOVERY: Record<string, string> = {
   'memory/extraction.ts': 'by issue id',
   'messaging/gather.ts': 'the ids and seqs a message cites',
   'metrics/queries.ts': 'throughput and cycle-time aggregates, no issue identity',
+  'notifications/deliver.ts': 'by issue id',
   'notifications/notify-mentions.ts': 'by issue id',
   'notifications/notify-transitions.ts': 'by issue id',
   'jobs/loop-monitor-axis.ts':

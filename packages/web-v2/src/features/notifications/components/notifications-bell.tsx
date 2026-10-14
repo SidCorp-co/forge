@@ -18,6 +18,7 @@ import {
   useDeclineInvitation,
 } from "../hooks";
 import { toNotificationItem, toInvitationItem } from "../map";
+import { secondaryHref, subjectHref } from "../subject";
 import type { PendingInvitation } from "../types";
 import { type DeliveryNotification, useNotificationDelivery } from "../use-notification-delivery";
 import { useOpenIndicator } from "../use-open-indicator";
@@ -136,31 +137,14 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
               onClick: () => {
                 markRead.mutate(row.id);
                 onClose();
-                const target = projects?.find((p) => p.id === row.projectId);
-                if (target) router.push(`/projects/${target.slug}/issues/${row.secondaryIssueId}`);
+                const href = secondaryHref(row);
+                if (href) router.push(href);
               },
             },
           ]);
         }),
     ],
-    [pendingItems, notificationRows, markRead, projects, router, onClose],
-  );
-  const onSelectNotification = useCallback(
-    (id: string) => {
-      const row = notificationRows.find((n) => n.id === id);
-      if (row && row.readAt === null) markRead.mutate(id);
-      onClose();
-      if (!row?.projectId) return; // mark-read only, no dead-end
-      const target = projects?.find((p) => p.id === row.projectId);
-      if (!target) return;
-      if (row.type === "reconcile_gate_pending") {
-        router.push(`/projects/${target.slug}/library?tab=updates`);
-        return;
-      }
-      if (!row.issueId) return;
-      router.push(`/projects/${target.slug}/issues/${row.issueId}`);
-    },
-    [notificationRows, markRead, projects, router, onClose],
+    [pendingItems, notificationRows, markRead, router, onClose],
   );
 
   // ISS-1063 — a grouped delivery expands to the records it carries. The fetch is
@@ -185,13 +169,29 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
   const onSelectMember = useCallback(
     (memberId: string) => {
       const member = membersQuery.data?.find((m) => m.id === memberId);
-      if (!member?.projectId || !member.issueId) return;
-      const target = projects?.find((p) => p.id === member.projectId);
-      if (!target) return;
+      const href = member ? subjectHref(member) : null;
+      if (!href) return;
       onClose();
-      router.push(`/projects/${target.slug}/issues/${member.issueId}`);
+      router.push(href);
     },
-    [membersQuery.data, projects, router, onClose],
+    [membersQuery.data, router, onClose],
+  );
+  // A row opens its subject. A grouped row has none of its own, since its records are the subjects,
+  // so selecting it reads it and opens the group instead.
+  const onSelectNotification = useCallback(
+    (id: string) => {
+      const row = notificationRows.find((n) => n.id === id);
+      if (row && row.readAt === null) markRead.mutate(id);
+      if (!row) return;
+      if (row.members > 1) {
+        onToggleGroup(id);
+        return;
+      }
+      onClose();
+      const href = subjectHref(row);
+      if (href) router.push(href);
+    },
+    [notificationRows, markRead, router, onClose, onToggleGroup],
   );
 
   // Realtime delivery bridge (ISS-510): toast + browser channels for incoming

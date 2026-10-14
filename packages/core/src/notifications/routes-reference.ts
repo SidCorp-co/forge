@@ -19,6 +19,11 @@ export const closedSchema = z.object({
 export const deliveryListItemSchema = z.object({
   id: z.string(),
   readAt: z.date().nullable(),
+  unread: z
+    .boolean()
+    .describe(
+      'Still asks to be read: no `readAt`, not a resolved notice, and carrying an event or a record that is still true',
+    ),
   groupKey: z.string().nullable(),
   resolvedNotice: z.boolean(),
   createdAt: z.date(),
@@ -27,11 +32,24 @@ export const deliveryListItemSchema = z.object({
   type: z.string(),
   kind: z.string(),
   tier: z.string(),
-  title: z.string(),
-  body: z.string().nullable(),
+  title: z
+    .string()
+    .describe(
+      'The record’s own title for one record, the cause for several, which name no one issue',
+    ),
+  body: z
+    .string()
+    .nullable()
+    .describe('Only what is specific to a single record; null for several'),
+  explanation: z
+    .string()
+    .nullable()
+    .describe('What the sweep that wrote this means and what to do, once, from its detector'),
   severity: z.string().nullable(),
-  projectId: z.string().nullable(),
-  issueId: z.string().nullable(),
+  projectId: z.string().nullable().describe('Null where the records span projects'),
+  projectSlug: z.string().nullable(),
+  projectName: z.string().nullable(),
+  issueId: z.string().nullable().describe('Null where the delivery carries several records'),
   secondaryIssueId: z.string().nullable(),
   agentSessionId: z.string().nullable(),
   notificationId: z.string(),
@@ -58,6 +76,8 @@ export const deliveryMemberSchema = z.object({
   body: z.string().nullable(),
   severity: z.string().nullable(),
   projectId: z.string().nullable(),
+  projectSlug: z.string().nullable(),
+  projectName: z.string().nullable(),
   issueId: z.string().nullable(),
   secondaryIssueId: z.string().nullable(),
   resolvedAt: z.date().nullable(),
@@ -83,6 +103,8 @@ export const markAllRead = describeOperation({
 
 export const listNotifications = describeOperation({
   summary: 'List the caller’s notifications, newest first',
+  description:
+    'One row per delivery. `type` and `unread=true` narrow the list before it is paged, so the total and every page count only the matches.',
   responses: { 200: json(deliveryListSchema, 'One page of deliveries, with the list envelope') },
 });
 

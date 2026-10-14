@@ -1,4 +1,4 @@
-import { and, countDistinct, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, countDistinct, desc, eq, inArray, isNull, type SQLWrapper, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -10,11 +10,14 @@ import {
   notificationDeliveries,
   notificationDeliveryMembers,
   notifications,
+  notificationTypes,
+  projects,
 } from '../db/schema.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
 import { recordAndDeliver } from './deliver.js';
+import { explanationOfGroupKey } from './explanations.js';
 import {
   closedSchema,
   deleteNotification,
@@ -35,12 +38,18 @@ import { silenceRoutes } from './silences-routes.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
+const flag = z
+  .union([z.literal('true'), z.literal('false'), z.boolean()])
+  .optional()
+  .transform((v) => v === true || v === 'true');
+
 const listQuerySchema = z.object({
   projectId: z.uuid().optional(),
-  openOnly: z
-    .union([z.literal('true'), z.literal('false'), z.boolean()])
-    .optional()
-    .transform((v) => v === true || v === 'true'),
+  openOnly: flag,
+  /** Only deliveries of this type — applied before the page is cut, so a page is all matches. */
+  type: z.enum(notificationTypes).optional(),
+  /** Only deliveries that are still unread, as {@link unreadDelivery} reads it. */
+  unread: flag,
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
 });
@@ -68,9 +77,31 @@ const conflict = (message: string) =>
  * is what made the owner's bell read 5663 while 3914 of those rows were status changes.
  * A `pending` or `inhibited` condition is not here either — nobody was told about it.
  */
-const stillTrue = sql`(
-  (${notifications.kind} = 'condition' AND ${notifications.state} = 'firing')
-  OR (${notifications.kind} = 'task' AND ${notifications.state} IN ('open', 'acknowledged'))
+const stillTrueOf = (n: { kind: SQLWrapper; state: SQLWrapper }) => sql`(
+  (${n.kind} = 'condition' AND ${n.state} = 'firing')
+  OR (${n.kind} = 'task' AND ${n.state} IN ('open', 'acknowledged'))
+)`;
+const stillTrue = stillTrueOf(notifications);
+
+/**
+ * ISS-1168 — whether a delivery still asks to be read, as state and not as text.
+ *
+ * `read_at` says whether a PERSON looked, and nothing but a person writes it. Whether there is still
+ * anything to look at is a fact about the records: a delivery that announces a resolution is history,
+ * a delivery whose conditions and tasks have all ended has nothing left to ask, and an event cannot
+ * end, so it asks until it is read. Deriving it keeps both facts true: resolving a condition writes
+ * no read stamp for somebody who never looked, and the owner's inbox still stops demanding it.
+ */
+const carried = { kind: sql`cn.kind`, state: sql`cn.state` };
+const unreadDelivery = sql`(
+  ${notificationDeliveries.readAt} IS NULL
+  AND NOT ${notificationDeliveries.resolvedNotice}
+  AND EXISTS (
+    SELECT 1 FROM notification_delivery_members cb
+    JOIN notifications cn ON cn.id = cb.notification_id
+    WHERE cb.delivery_id = ${notificationDeliveries.id}
+      AND (cn.kind = 'signal' OR (cn.resolved_at IS NULL AND ${stillTrueOf(carried)}))
+  )
 )`;
 
 export const notificationRoutes = new Hono<{ Variables: AuthVars }>();
@@ -142,11 +173,13 @@ notificationRoutes.get(
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
-    const { projectId, openOnly, page, pageSize } = c.req.valid('query');
+    const { projectId, openOnly, type, unread, page, pageSize } = c.req.valid('query');
     const userId = c.get('userId');
 
     const conditions = [eq(notificationDeliveries.userId, userId)];
     if (projectId) conditions.push(eq(notifications.projectId, projectId));
+    if (type) conditions.push(eq(notifications.type, type));
+    if (unread) conditions.push(unreadDelivery);
     if (openOnly) {
       conditions.push(isNull(notifications.resolvedAt));
       conditions.push(stillTrue);
@@ -163,6 +196,10 @@ notificationRoutes.get(
       .innerJoin(notifications, eq(notifications.id, notificationDeliveryMembers.notificationId))
       .where(where);
 
+    // A delivery carrying several records belongs to none of them: its title is the cause, and the
+    // body, the issue and the project are only reported where every record agrees, because `min()`
+    // of three members is an arbitrary one of them (ISS-1168).
+    const several = sql`count(*) > 1`;
     const rows = await db
       .select({
         id: notificationDeliveries.id,
@@ -170,18 +207,29 @@ notificationRoutes.get(
         groupKey: notificationDeliveries.groupKey,
         resolvedNotice: notificationDeliveries.resolvedNotice,
         createdAt: notificationDeliveries.createdAt,
+        unread: sql<boolean>`${unreadDelivery}`,
         members: sql<number>`count(${notificationDeliveryMembers.notificationId})::int`,
         openMembers: sql<number>`(count(*) FILTER (WHERE ${notifications.resolvedAt} IS NULL AND ${stillTrue}))::int`,
         type: sql<string>`min(${notifications.type})`,
         kind: sql<string>`min(${notifications.kind})`,
         tier: sql<string>`min(${notifications.tier})`,
-        title: sql<string>`coalesce(${notificationDeliveries.title}, min(${notifications.title}))`,
-        body: sql<string | null>`min(${notifications.body})`,
+        title: sql<string>`CASE WHEN ${notificationDeliveries.resolvedNotice} OR ${several} THEN coalesce(${notificationDeliveries.title}, min(${notifications.title})) ELSE min(${notifications.title}) END`,
+        body: sql<
+          string | null
+        >`CASE WHEN ${notificationDeliveries.resolvedNotice} OR ${several} THEN NULL ELSE min(${notifications.body}) END`,
         severity: sql<string | null>`min(${notifications.severity})`,
-        projectId: sql<string | null>`min(${notifications.projectId}::text)`,
-        issueId: sql<string | null>`min(${notifications.issueId}::text)`,
-        secondaryIssueId: sql<string | null>`min(${notifications.secondaryIssueId}::text)`,
-        agentSessionId: sql<string | null>`min(${notifications.agentSessionId}::text)`,
+        projectId: sql<
+          string | null
+        >`CASE WHEN count(DISTINCT ${notifications.projectId}) = 1 AND count(${notifications.projectId}) = count(*) THEN min(${notifications.projectId}::text) END`,
+        issueId: sql<
+          string | null
+        >`CASE WHEN ${several} THEN NULL ELSE min(${notifications.issueId}::text) END`,
+        secondaryIssueId: sql<
+          string | null
+        >`CASE WHEN ${several} THEN NULL ELSE min(${notifications.secondaryIssueId}::text) END`,
+        agentSessionId: sql<
+          string | null
+        >`CASE WHEN ${several} THEN NULL ELSE min(${notifications.agentSessionId}::text) END`,
         notificationId: sql<string>`min(${notifications.id}::text)`,
       })
       .from(notificationDeliveries)
@@ -196,11 +244,35 @@ notificationRoutes.get(
       .limit(pageSize)
       .offset((page - 1) * pageSize);
 
+    const named = await projectsNamed(rows.map((r) => r.projectId));
+    const items = rows.map((r) => ({
+      ...r,
+      explanation: explanationOfGroupKey(r.groupKey),
+      projectSlug: (r.projectId && named.get(r.projectId)?.slug) || null,
+      projectName: (r.projectId && named.get(r.projectId)?.name) || null,
+    }));
+
     return c.json(
-      answer(deliveryListSchema, listResponse(c, rows, totalRow?.n ?? 0, fromPage(page, pageSize))),
+      answer(
+        deliveryListSchema,
+        listResponse(c, items, totalRow?.n ?? 0, fromPage(page, pageSize)),
+      ),
     );
   },
 );
+
+/** The slug and name of each project a page of rows is about, in one read. */
+async function projectsNamed(
+  ids: readonly (string | null)[],
+): Promise<Map<string, { slug: string; name: string }>> {
+  const wanted = [...new Set(ids.filter((id): id is string => id !== null))];
+  if (wanted.length === 0) return new Map();
+  const found = await db
+    .select({ id: projects.id, slug: projects.slug, name: projects.name })
+    .from(projects)
+    .where(inArray(projects.id, wanted));
+  return new Map(found.map((p) => [p.id, { slug: p.slug, name: p.name }]));
+}
 
 /**
  * Mark one delivery read, or unread.
@@ -271,6 +343,8 @@ notificationRoutes.get(
         body: notifications.body,
         severity: notifications.severity,
         projectId: notifications.projectId,
+        projectSlug: projects.slug,
+        projectName: projects.name,
         issueId: notifications.issueId,
         secondaryIssueId: notifications.secondaryIssueId,
         resolvedAt: notifications.resolvedAt,
@@ -279,6 +353,7 @@ notificationRoutes.get(
       })
       .from(notificationDeliveryMembers)
       .innerJoin(notifications, eq(notifications.id, notificationDeliveryMembers.notificationId))
+      .leftJoin(projects, eq(projects.id, notifications.projectId))
       .where(eq(notificationDeliveryMembers.deliveryId, id))
       .orderBy(
         desc(sql`(${notifications.resolvedAt} IS NULL AND ${stillTrue})`),

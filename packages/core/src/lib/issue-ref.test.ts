@@ -5,6 +5,7 @@ import {
   issueRefNeedsHeldPrefixes,
   LEGACY_ISSUE_PREFIX,
   parseIssueRef,
+  textNamesIssueRef,
   validateIssuePrefix,
 } from './issue-ref.js';
 
@@ -116,5 +117,27 @@ describe('validateIssuePrefix', () => {
     if (out.ok) throw new Error('expected a refusal');
     expect(out.reason).toBe('reserved');
     expect(out.message).toContain('legacy');
+  });
+});
+
+describe('textNamesIssueRef', () => {
+  it('finds a reference at the start, the middle and the end of a text', () => {
+    expect(textNamesIssueRef('ISS-12 is wedged', 'ISS-12')).toBe(true);
+    expect(textNamesIssueRef('Blocked: ISS-12 waits', 'ISS-12')).toBe(true);
+    expect(textNamesIssueRef('moved ISS-12', 'ISS-12')).toBe(true);
+  });
+
+  it('does not read a longer reference, or another project’s, as this one', () => {
+    expect(textNamesIssueRef('ISS-123 is wedged', 'ISS-12')).toBe(false);
+    expect(textNamesIssueRef('FD-ISS-12 is wedged', 'ISS-12')).toBe(false);
+    expect(textNamesIssueRef('XISS-12 is wedged', 'ISS-12')).toBe(false);
+  });
+
+  it('finds the reference after a near miss earlier in the text', () => {
+    expect(textNamesIssueRef('ISS-123 then ISS-12', 'ISS-12')).toBe(true);
+  });
+
+  it('is false for a text naming no reference', () => {
+    expect(textNamesIssueRef('Pipeline wedge: heartbeat hop miss on job', 'ISS-12')).toBe(false);
   });
 });

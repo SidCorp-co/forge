@@ -6,8 +6,8 @@ import { ASSERTS_WORK_IN_PROGRESS } from '../issues/status-sets.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
+import { sweepGroup } from '../notifications/explanations.js';
 import { projectAdminUserIds } from '../notifications/project-admins.js';
-import { sweepGroupKey } from './stranded-issues.js';
 
 /**
  * How long an issue may assert work with no run behind it before it is named.
@@ -135,14 +135,11 @@ async function emit(
     issueId: args.row.issueId,
     type: 'issue_stranded',
     resolutionKey,
-    groupKey: sweepGroupKey('orphan-assertion', args.now),
-    groupTitle: 'Issues asserting work in progress with no run behind them',
+    ...sweepGroup('orphan-assertion', args.now),
     title: `${args.ref} says work is in progress with no run behind it`,
     body:
       `${args.ref} (${args.row.status}) has asserted work in progress since ` +
-      `${args.row.since} and no job, issue run or run session is live for it. ` +
-      'Nothing has been moved: whether the issue or the run record is the wrong half is not ' +
-      'decidable from here.',
+      `${args.row.since} and no job, issue run or run session is live for it.`,
   });
 }
 
