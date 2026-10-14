@@ -1,5 +1,5 @@
 // A record page's first screen (REQ-43 BC-3): the issue, requirement, feedback item, release, run,
-// session, workflow design, contract and agent report pages, each in the shell as app/(workspace)/layout.tsx draws it, at 1440 by 900. Every stage counts the
+// session, workflow design, contract and agent report pages, each in the shell as src/routes/_workspace/route.tsx draws it, at 1440 by 900. Every stage counts the
 // words a person sees before scrolling — the top bar the page puts its header in and the page under
 // it — and fails a page over 300.
 //

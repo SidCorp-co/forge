@@ -29,7 +29,8 @@
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
+import { buildPage, viteFor } from "./build-page.mjs";
 
 const WEB = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const USAGE = "usage: node witness/run.mjs <entry.witness.tsx> --out <dir> [--clip]";
@@ -53,51 +54,6 @@ function argsOf(argv) {
   return { entry: path, out: resolve(process.cwd(), out), clip };
 }
 
-
-/** Vite with the app's own Tailwind and React plugins and its aliases, read from vite.config.ts. */
-async function viteFor(mode) {
-  const [vite, { default: tailwindcss }, { default: react }] = await Promise.all(
-    ["vite", "@tailwindcss/vite", "@vitejs/plugin-react"].map((name) =>
-      import(name).catch(() => cannot(`${name} does not resolve from packages/web-v2; run pnpm install at the repository root`)),
-    ),
-  );
-  const app = await vite.loadConfigFromFile({ command: "build", mode }, resolve(WEB, "vite.config.ts"), WEB, "silent");
-  if (!app) cannot("packages/web-v2/vite.config.ts did not load");
-  const shared = { root: WEB, configFile: false, logLevel: "error", resolve: { alias: app.config.resolve?.alias } };
-  return { vite, shared, plugins: [tailwindcss(), react()] };
-}
-
-async function buildPage(entry, out) {
-  const { vite, shared, plugins } = await viteFor("production");
-  // the entry and the app's stylesheet are bundled as one page: the stylesheets components import
-  // themselves (the workflow canvas, the board) land in the same app.css, so a canvas is drawn as the
-  // app draws it; nothing an earlier run left in `<out>` is read as this one's
-  for (const old of ["app.js", "app.css", "components.css", "page.ts"]) rmSync(resolve(out, old), { force: true });
-  const page = resolve(out, "page.ts");
-  writeFileSync(page, `import ${JSON.stringify(resolve(WEB, "src/styles/globals.css"))};\nimport ${JSON.stringify(entry)};\n`);
-  await vite.build({
-    ...shared,
-    plugins,
-    mode: "production",
-    define: { "process.env.NODE_ENV": '"production"' },
-    build: {
-      outDir: out,
-      emptyOutDir: false,
-      copyPublicDir: false,
-      minify: false,
-      // fonts and images ride inside app.css and app.js: the page is opened from file:// with no server
-      assetsInlineLimit: Number.MAX_SAFE_INTEGER,
-      lib: { entry: page, formats: ["iife"], name: "witness", fileName: () => "app.js", cssFileName: "app" },
-    },
-  });
-  rmSync(page, { force: true });
-  writeFileSync(
-    resolve(out, "index.html"),
-    `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="app.css"></head>` +
-      '<body><div id="root"></div><script>window.process={env:{NODE_ENV:"production"}}</script><script src="app.js"></script></body></html>',
-  );
-  return pathToFileURL(resolve(out, "index.html")).href;
-}
 
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -279,11 +235,12 @@ async function writeClip(send, recording, width, ceiling, out, name) {
   return [];
 }
 
-async function witnessCase(cdp, session, url, c, out, ceiling) {
+async function witnessCase(cdp, session, url, c, out, ceiling, thrown) {
   const send = (method, params) => cdp.send(method, params, session);
   const metrics = (height) =>
     send("Emulation.setDeviceMetricsOverride", { width: c.width, height, deviceScaleFactor: 1, mobile: c.width < 600 });
   await metrics(900);
+  const threwBefore = thrown.length;
   const loaded = cdp.next("Page.loadEventFired");
   await send("Page.navigate", { url });
   await loaded;
@@ -300,7 +257,10 @@ async function witnessCase(cdp, session, url, c, out, ceiling) {
     return wrong;
   };
   for (let i = 0; i < 100 && !(await value("Boolean(window.__witness && window.__witness.ready())")); i++) await pause(100);
-  if (!(await value("Boolean(window.__witness && window.__witness.ready())"))) return [`${c.name}: the entry never said it was ready`];
+  if (!(await value("Boolean(window.__witness && window.__witness.ready())"))) {
+    const threw = thrown.slice(threwBefore);
+    return [`${c.name}: the entry never said it was ready${threw.length ? `; the page threw: ${threw.join(" | ")}` : ", and the page threw nothing"}`];
+  }
   const failures = [];
   // a page laid out wider than its window and scaled down would measure nothing a phone shows
   const laidOut = await value("window.innerWidth");
@@ -361,13 +321,22 @@ async function main() {
     cdp.on("Runtime.consoleAPICalled", (p, from) => {
       if (from === sessionId && p.type === "log") console.log(`witness: page says ${p.args.map((a) => a.value ?? a.description ?? "").join(" ")}`);
     });
+    // an entry that throws as it loads sets no cases, and one that throws as it renders never says it is
+    // ready; what it threw is the reason, so it is kept to be said
+    const thrown = [];
+    cdp.on("Runtime.exceptionThrown", (p, from) => {
+      // the message and the frame that threw it; the rest of the stack is React's own
+      if (from === sessionId) thrown.push((p.exceptionDetails.exception?.description ?? p.exceptionDetails.text).split("\n").slice(0, 2).join(" ").replace(/\s+/g, " "));
+    });
     await cdp.send("Runtime.enable", {}, sessionId);
     const loaded = cdp.next("Page.loadEventFired");
     await cdp.send("Page.navigate", { url }, sessionId);
     await loaded;
     const cases = (await cdp.send("Runtime.evaluate", { expression: "window.__witness && window.__witness.cases", returnByValue: true }, sessionId)).result.value;
-    if (!Array.isArray(cases) || cases.length === 0) cannot(`${basename(entry)} set no window.__witness.cases`);
-    for (const c of cases) failures.push(...(await witnessCase(cdp, sessionId, url, c, out, ceiling)));
+    if (!Array.isArray(cases) || cases.length === 0) {
+      cannot(`${basename(entry)} set no window.__witness.cases${thrown.length ? `; the page threw: ${thrown.join(" | ")}` : ", and the page threw nothing"}`);
+    }
+    for (const c of cases) failures.push(...(await witnessCase(cdp, sessionId, url, c, out, ceiling, thrown)));
     console.log(`witness: ${basename(entry)}, ${cases.length} case(s), screenshots${clip ? " and clips" : ""} in ${out}`);
   } finally {
     cdp?.close();
