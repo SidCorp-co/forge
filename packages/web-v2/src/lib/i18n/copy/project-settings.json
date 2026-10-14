@@ -388,7 +388,8 @@
     "settings.project.env.profileNamed": "Profile {profile}",
     "settings.project.env.liveNow": "Live now",
     "settings.project.env.edit": "Edit",
-    "settings.project.env.done": "Done"
+    "settings.project.env.done": "Done",
+    "settings.project.contents": "On this page"
   },
   "vi": {
     "settings.project.advanced.archive": "Lưu trữ project",

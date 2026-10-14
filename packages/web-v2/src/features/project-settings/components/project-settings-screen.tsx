@@ -2,9 +2,11 @@
 // Per-project settings (ISS-316), grouped by what a person comes to change rather than by the
 // document each value is stored in: General, People, Work, Delivery (with the environments), Preview,
 // Testing (the accounts a run tests with), Connections, and Advanced for the raw documents. The section lives in `?tab=`; a link written against the old flat tabs is
-// moved to the section that now holds its content (`sections.ts:LEGACY_TABS`).
-import { useEffect } from "react";
-import { EmptyState, ErrorState, PageContainer, PageTitle, ProjectLoader, ScreenTabs, type TabItem } from "@/design";
+// moved to the section that now holds its content (`sections.ts:LEGACY_TABS`). The page is the detail
+// template: the section's groups in the main column, and a rail beside it listing them (the group in
+// view marked); below 1024px the rail gives way to one contents menu at the top.
+import { useEffect, useState } from "react";
+import { CONTENTS_LABEL, ContentsList, ContentsMenu, DetailLayout, DetailPane, EmptyState, ErrorState, FactsRail, PageTitle, ProjectLoader, ScreenTabs, type TabItem, useContentsIn } from "@/design";
 import { useProject, useProjectsIncludingArchived } from "@/features/projects";
 import type { ProjectDetail } from "@/features/projects";
 import { canManageProject, isOrgAdmin } from "@/features/projects";
@@ -65,6 +67,8 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 	const listItem = projectsQ.data?.find((p) => p.slug === slug);
 	const detailQ = useProject(listItem?.id);
 	const [tab, setTab] = useTabParam<SettingsSection>(SETTINGS_SECTIONS, "general");
+	const [region, setRegion] = useState<HTMLDivElement | null>(null);
+	const contents = useContentsIn(region);
 	useLegacyTab(setTab);
 	useAnchor(tab, Boolean(detailQ.data));
 
@@ -93,25 +97,40 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 				tabs={tabs}
 				value={tab}
 				onChange={(v) => setTab(v as SettingsSection)}
+				width="max-w-none"
 				header={<Header project={project} canEdit={canEdit} canManage={canManage} />}
 			/>
-			<PageContainer>
-				<div className={tab === "connections" ? undefined : "max-w-4xl"}>
+			<DetailLayout
+				testId="settings-layout"
+				rail={
+					// only beside the page: below 1024px the menu at the top stands in, and the rail is not drawn under the content
+					<div className="max-lg:hidden lg:contents">
+						<FactsRail label={t("settings.project.contents")}>
+							<ContentsList items={contents} label={t("settings.project.contents")} testId="settings-contents" />
+						</FactsRail>
+					</div>
+				}
+			>
+				<DetailPane label={t(LABEL[tab])} testId="settings-pane">
+					<ContentsMenu items={contents} label={t("settings.project.contents")} testId="settings-contents-menu" className="-mt-2 mb-2 lg:hidden" />
+					<div ref={setRegion}>
 					{tab === "general" && <GeneralSettings project={project} canEdit={canEdit} />}
 					{tab === "people" && (
 						<>
-							<MembersTab projectId={project.id} canEdit={canManage} />
-							<div id="shares" className="scroll-mt-24 border-t border-line">
+							<div id="members" className="scroll-mt-24" {...{ [CONTENTS_LABEL]: t("settings.project.people.members") }}>
+								<MembersTab projectId={project.id} canEdit={canManage} />
+							</div>
+							<div id="shares" className="scroll-mt-24 border-t border-line" {...{ [CONTENTS_LABEL]: t("settings.project.people.shareLinks") }}>
 								<ShareSettings projectId={project.id} isAdmin={canManage} />
 							</div>
 						</>
 					)}
 					{tab === "work" && (
 						<>
-							<div id="modules" className="scroll-mt-24">
+							<div id="modules" className="scroll-mt-24" {...{ [CONTENTS_LABEL]: t("settings.project.work.modules") }}>
 								<ModulesTab projectId={project.id} canEdit={canManage} />
 							</div>
-							<div id="labels" className="scroll-mt-24 border-t border-line">
+							<div id="labels" className="scroll-mt-24 border-t border-line" {...{ [CONTENTS_LABEL]: t("settings.project.work.labels") }}>
 								<LabelsTab projectId={project.id} canEdit={canManage} />
 							</div>
 						</>
@@ -121,18 +140,19 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 					{tab === "testing" && <TestingSettings projectId={project.id} canEdit={canEdit} />}
 					{tab === "connections" && (
 						<>
-							<div id="integrations" className="scroll-mt-24">
+							<div id="integrations" className="scroll-mt-24" {...{ [CONTENTS_LABEL]: t("integrations.title") }}>
 								<IntegrationsTab projectId={project.id} canEdit={canEdit} />
 							</div>
-							<div id="runners" className="mt-8 max-w-4xl scroll-mt-24 border-t border-line pt-6">
+							<div id="runners" className="mt-8 scroll-mt-24 border-t border-line pt-6" {...{ [CONTENTS_LABEL]: t("settings.project.runnersHeading") }}>
 								<h2 className="fg-h3 text-accent-text!">{t("settings.project.runnersHeading")}</h2>
 								<ProjectRunnersScreen projectId={project.id} canEdit={canManage} embedded />
 							</div>
 						</>
 					)}
 					{tab === "advanced" && <AdvancedSettings project={project} canEdit={canEdit} />}
-				</div>
-			</PageContainer>
+					</div>
+				</DetailPane>
+			</DetailLayout>
 		</div>
 	);
 }

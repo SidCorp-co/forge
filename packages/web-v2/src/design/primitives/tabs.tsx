@@ -1,5 +1,6 @@
 
 import { Tabs as ShadcnTabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils/cn";
 import { Badge } from "./badge";
 
 export interface TabItem {
@@ -12,14 +13,16 @@ export interface TabsProps {
   tabs: TabItem[];
   value: string;
   onChange?: (value: string) => void;
+  /** One line that scrolls sideways inside its own scroller (`ScreenTabs`), in place of wrapping. */
+  scroll?: boolean;
 }
 
-export function Tabs({ tabs, value, onChange }: TabsProps) {
+export function Tabs({ tabs, value, onChange, scroll = false }: TabsProps) {
   return (
     <ShadcnTabs value={value} onValueChange={(next) => onChange?.(next as string)} className="gap-0">
       <TabsList
         variant="line"
-        className="h-auto! w-full flex-wrap justify-start gap-1 rounded-none border-b border-line p-0"
+        className={cn("h-auto! justify-start gap-1 rounded-none border-b border-line p-0", scroll ? "w-max min-w-full flex-nowrap" : "w-full flex-wrap")}
       >
         {tabs.map((t) => {
           const active = t.value === value;

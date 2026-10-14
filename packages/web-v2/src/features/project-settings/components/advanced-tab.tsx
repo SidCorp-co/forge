@@ -5,7 +5,7 @@
 // the two acts on the project itself: moving it to another organization and archiving it (ISS-353),
 // both org-admin only and both confirmed first.
 import { useState } from "react";
-import { Button, Disclosure, PageSection, PageSectionBody, Field, Input, SectionTitle, Select, SettingsGroup } from "@/design";
+import { Button, CONTENTS_LABEL, Disclosure, PageSection, PageSectionBody, Field, Input, SectionTitle, Select, SettingsGroup } from "@/design";
 import { useOrgs } from "@/features/orgs";
 import type { ProjectDetail } from "@/features/projects";
 import { isOrgAdmin } from "@/features/projects";
@@ -38,7 +38,7 @@ export function AdvancedSettings({ project, canEdit }: { project: ProjectDetail;
           </Disclosure>
         </div>
       </SettingsGroup>
-      <div className="border-t border-line pt-2">
+      <div id="project-acts" className="scroll-mt-24 border-t border-line pt-2" {...{ [CONTENTS_LABEL]: t("settings.project.advanced.archive") }}>
         {canEdit && <MoveToOrg project={project} />}
         <ArchiveProject project={project} canEdit={canEdit} />
       </div>

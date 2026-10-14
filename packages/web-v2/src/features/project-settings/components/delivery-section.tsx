@@ -6,7 +6,7 @@
 // right now is read underneath, from core's release readiness.
 import { withArticle } from "@forge/contracts/articles";
 import { useState } from "react";
-import { Button, IconButton, Input, keyedRows, SettingRow, SettingsGroup, Skeleton, useListKeys } from "@/design";
+import { Button, CONTENTS_LABEL, IconButton, Input, keyedRows, SettingRow, SettingsGroup, Skeleton, useListKeys } from "@/design";
 import { useBindingDocuments, useEnvironmentState, usePolicyDocument, useTestingProfiles, useWritePolicy } from "@/features/project-config";
 import type { EnvironmentState } from "@/features/project-config";
 import { type DocumentDraft, sectionOf, useDocumentDraft } from "@/features/project-config";
@@ -394,7 +394,6 @@ function AutomationGroup({ policy, off }: { policy: DocumentDraft; off: boolean 
 		<SettingsGroup id="automation" title={t("settings.project.delivery.automation")} summary={policy.declared ? undefined : t("settings.project.delivery.automationUndeclared")}>
 			<ChoiceSetting draft={policy} path={["qa"]} options={optionsOf(t, "settings.project.delivery.qa", ["self", "independent"])} label={t("settings.project.delivery.qaLabel")} disabled={off} />
 			<SettingRow
-				inline
 				label={t("settings.project.delivery.intake")}
 				error={refusalError(policy.refusedAt(["intake"]))}
 				control={
@@ -402,7 +401,7 @@ function AutomationGroup({ policy, off }: { policy: DocumentDraft; off: boolean 
 						aria-label={t("settings.project.delivery.intake")}
 						value={str(obj(policy.get(["intake"])).mode) || "manual"}
 						disabled={off}
-						width="w-44"
+						width="sm:max-w-md"
 						options={optionsOf(t, "settings.project.delivery.intakeMode", ["auto", "manual"])}
 						onChange={(e) => policy.set(["intake", "mode"], e.target.value)}
 					/>
@@ -413,6 +412,7 @@ function AutomationGroup({ policy, off }: { policy: DocumentDraft; off: boolean 
 }
 
 export function DeliverySettings({ project, canEdit }: { project: ProjectDetail; canEdit: boolean }) {
+	const t = useCopy();
 	const draft = useProjectDraft(project.id);
 	const policyQ = usePolicyDocument(project.id);
 	const policy = useDocumentDraft(policyQ.data, useWritePolicy(project.id), () => policyQ.refetch(), policyTemplate());
@@ -427,7 +427,7 @@ export function DeliverySettings({ project, canEdit }: { project: ProjectDetail;
 			<ReleasePathGroup draft={draft} off={off} />
 			{policy.ready && <AutomationGroup policy={policy} off={!canEdit} />}
 			<SaveBar section={section} canEdit={canEdit} />
-			<div id="release-state" className="scroll-mt-24 border-t border-line pt-6">
+			<div id="release-state" className="scroll-mt-24 border-t border-line pt-6" {...{ [CONTENTS_LABEL]: t("settings.project.release.title") }}>
 				<ReleaseSettings projectId={project.id} slug={project.slug} />
 			</div>
 		</div>

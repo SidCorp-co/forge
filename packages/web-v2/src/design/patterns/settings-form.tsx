@@ -5,10 +5,18 @@
 // card around a group: a hairline and whitespace part them.
 
 import type { ReactNode } from "react";
+import { CONTENTS_LABEL } from "./page-contents";
 
 export function SettingsGroup({ id, title, summary, right, children, testId }: { id?: string; title: ReactNode; summary?: ReactNode; right?: ReactNode; children: ReactNode; testId?: string }) {
   return (
-    <section id={id} aria-label={typeof title === "string" ? title : undefined} className="scroll-mt-24 border-t border-line py-6 first:border-t-0 first:pt-0" data-testid={testId}>
+    <section
+      id={id}
+      aria-label={typeof title === "string" ? title : undefined}
+      // a group with a place and a name is listed in its page's contents (`useContentsIn`)
+      {...(id && typeof title === "string" ? { [CONTENTS_LABEL]: title } : {})}
+      className="scroll-mt-24 border-t border-line py-6 first:border-t-0 first:pt-0"
+      data-testid={testId}
+    >
       <div className="flex flex-wrap items-center gap-3">
         <h3 className="fg-h3 text-accent-text!">{title}</h3>
         {right ? <div className="ml-auto flex items-center gap-2">{right}</div> : null}

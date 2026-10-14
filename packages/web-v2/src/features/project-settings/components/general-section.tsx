@@ -145,7 +145,7 @@ export function GeneralSettings({ project, canEdit }: { project: ProjectDetail; 
 	return (
 		<div>
 			{!draft.declared && <UndeclaredNotice slug={project.slug} />}
-			<SettingsGroup title={t("settings.project.general.identity")}>
+			<SettingsGroup id="identity" title={t("settings.project.general.identity")}>
 				<TextSetting draft={draft} path={["project", "name"]} label={t("settings.project.general.name")} disabled={off} />
 				<TextSetting
 					draft={draft}
@@ -164,11 +164,11 @@ export function GeneralSettings({ project, canEdit }: { project: ProjectDetail; 
 					}
 				/>
 			</SettingsGroup>
-			<SettingsGroup title={t("settings.project.general.languageGroup")}>
+			<SettingsGroup id="language" title={t("settings.project.general.languageGroup")}>
 				<LanguageField draft={draft} disabled={off} />
 				<TermsField draft={draft} disabled={off} />
 			</SettingsGroup>
-			<SettingsGroup title={t("settings.project.general.rules")}>
+			<SettingsGroup id="rules" title={t("settings.project.general.rules")}>
 				<SwitchSetting
 					draft={draft}
 					path={["plan", "approval", "required"]}
