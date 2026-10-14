@@ -52,6 +52,16 @@ Object.assign(window, {
       focused: (document.activeElement as HTMLElement | null)?.closest<HTMLElement>("[data-index]")?.dataset.index ?? null,
     };
   },
+  /** Whether the first row is in view, and which row holds focus. */
+  atTop: () => {
+    const first = drawn().find((el) => el.dataset.index === "0");
+    const frame = scroller().getBoundingClientRect();
+    const box = first?.getBoundingClientRect();
+    return {
+      firstInView: box !== undefined && box.bottom > frame.top && box.top < frame.bottom,
+      focused: (document.activeElement as HTMLElement | null)?.closest<HTMLElement>("[data-index]")?.dataset.index ?? null,
+    };
+  },
   ready: false,
 });
 Promise.all([document.fonts.load('400 15px "Hanken Grotesk"'), new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))]).then(() => {

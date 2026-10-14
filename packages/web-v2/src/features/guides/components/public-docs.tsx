@@ -17,15 +17,9 @@ import {
 import { deriveToc, searchDocs } from "@/features/docs/reader";
 import { coreFileUrl } from "@/lib/utils/core-url";
 import type { GuideScope } from "../api";
-import { AUDIENCES, type Audience, DOORS, ONE_CORPUS } from "../audience";
-import {
-  INDEX_PATH,
-  type PublicDoc,
-  docsBehind,
-  doorHref,
-  doorSections,
-} from "../corpus";
-import type { Refusal } from "../missing";
+import { AUDIENCES, type Audience, DOORS, doorHref, INDEX_PATH, ONE_CORPUS } from "../audience";
+import { type PublicDoc, docsBehind, doorSections } from "../corpus";
+import { ALL_DOORS_LINK_TEXT, type Refusal } from "../missing";
 
 /** What the reader shows: a door's page list, or one page by its href, unique across both homes. */
 export type ReaderView = { kind: "door"; audience: Audience } | { kind: "page"; href: string };
@@ -289,7 +283,7 @@ export function PublicRefusal({ refusal }: { refusal: Refusal }) {
           </Link>
         ))}
         <Link href={INDEX_PATH} className={LINK_CLASS}>
-          All three ways in
+          {ALL_DOORS_LINK_TEXT}
         </Link>
       </nav>
     </div>

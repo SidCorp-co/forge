@@ -81,6 +81,19 @@ describe("a plain request for a refused /guides address", () => {
     expect(fetchGuide).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    ...REFUSED.slice(0, 3),
+    "/guides/no-such-guide",
+  ])("answers %s inside Forge documentation's own header and doors, not a bare document", async (path) => {
+    const html = await (await ask(path, DOCUMENT)).text();
+
+    expect(html).toContain('<a class="brand" href="/guides">Forge documentation</a>');
+    expect(html).toContain('href="/guides?for=user"');
+    expect(html).toContain('href="/guides?for=assistant-setup"');
+    expect(html).toContain('href="/guides?for=agent"');
+    expect(html).not.toMatch(/Forge guides/i);
+  });
+
   it("varies on the headers that tell the two apart, so a cache keeps them apart", async () => {
     const res = await ask(REFUSED[0], DOCUMENT);
 

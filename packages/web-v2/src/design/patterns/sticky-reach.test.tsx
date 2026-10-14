@@ -379,3 +379,35 @@ describe.each(FONTS)("the level pill of a token bound to a project, in $name", (
     });
   }
 });
+
+// ISS-1264 round 5: the tokens a real account holds, one of them a paired box named for its device
+// id. The table has to fit the 894px the settings page leaves it at 1280px, with Expires and Revoke
+// inside the frame, and every Revoke has to be reachable at 390px.
+describe("the API Tokens table with the tokens a real account holds", () => {
+  const BOX = "device:72286b74-3a1c-4f0e-9c2d-5a8b1e7f4d90";
+  const REAL = () => [
+    token(BOX, { grant: "named", permissions: ["issues:read", "issues:write"], expiresAt: "2027-09-01T00:00:00.000Z", lastUsedAt: "2026-10-13T00:00:00.000Z" }),
+    token("iss974-walk-2", { grant: "full", scopes: ["read", "write", "admin"], lastUsedAt: "2026-10-02T00:00:00.000Z" }),
+    token("ci", { grant: "named", permissions: ["issues:read"], boundProjectId: "p1", expiresAt: "2027-01-01T00:00:00.000Z" }),
+    token("a-token-named-by-someone-who-likes-long-names-0123456789", { scopes: ["read"], expiresAt: "2027-03-01T00:00:00.000Z" }),
+    token("AdminHub UI", { grant: "full", scopes: ["read", "write"] }),
+  ];
+  const draw = () =>
+    renderToStaticMarkup(<TokenList tokens={REAL()} level={(t) => (t.boundProjectId ? "Project: Forge Platform Development" : "User-level")} onRevoke={() => {}} revoking={false} />);
+
+  it("fits its frame at 1280px, with Expires and every Revoke inside it", async () => {
+    const { scrolling, reach, pills } = await measured(draw(), "Tokens that can reach your account", DESKTOP_COLUMN, DESKTOP);
+    expect(scrolling, "the table is wider than the frame the settings page leaves it").toEqual([]);
+    expect(reach.filter((r) => r.control.startsWith("Revoke")).length).toBe(5);
+    expect(unframed(reach)).toEqual([]);
+    expect(pills.filter((p) => !p.framed)).toEqual([]);
+  });
+
+  it("keeps every Revoke reachable at 390px, with the name column inside its cap", async () => {
+    const { reach, overflowing, stickyWidest } = await measured(draw(), "Tokens that can reach your account");
+    expect(reach.filter((r) => r.control.startsWith("Revoke")).length).toBe(5);
+    expect(clearOf(reach)).toEqual([]);
+    expect(overflowing).toEqual([]);
+    expect(stickyWidest).toBeLessThanOrEqual(STICKY_CAP_PX);
+  });
+});

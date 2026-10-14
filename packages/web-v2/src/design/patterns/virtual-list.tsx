@@ -80,7 +80,7 @@ export function VirtualList<Row>({
       event.key === "PageDown" ? Math.min(at + 1, last)
       : event.key === "PageUp" ? Math.max(at - 1, 0)
       : event.key === "End" && !event.shiftKey && !event.altKey && !event.metaKey ? last
-      : event.key === "Home" && event.ctrlKey ? 0
+      : event.key === "Home" && !event.shiftKey && !event.altKey && !event.metaKey ? 0
       : null;
     if (next === null) return;
     event.preventDefault();
