@@ -1,4 +1,6 @@
-import type { IssueStatus } from '../db/schema.js';
+import { eq, sql } from 'drizzle-orm';
+import { type IssueStatus, issues } from '../db/schema.js';
+import { designOnlyMarkSql } from './design-delivery.js';
 import {
   type LandingShape,
   landingRoute,
@@ -28,16 +30,27 @@ function closedMeansShipped(shape: LandingShape | null, held?: MergeMarkKind): s
  * The `merged` guard (`@forge/contracts/issue-machine:ISSUE_MACHINE`): `awaiting_release` and
  * `closed` are entered only by an issue whose merge is recorded, as this project's shape records
  * one. Recording it moves no status. Null where the merge stands.
+ *
+ * A mark that is a design approval's stamp alone (`design-delivery.ts:designOnlyMarkSql`) stands for
+ * the `design_delivered` close and never for `awaiting_release`: that status waits for a release, and
+ * no release carries a design-only issue (`release-batch/create.ts:withoutDesignOnly`, REQ-45 BC-4).
+ * Taken as a merge there, the approval of a design an issue drew passed a code carrier on to the
+ * release before any code was marked (ISS-526, forge-dev, 2026-10-14). Refused by name.
  */
 export async function mergeNotRecorded(
   executor: MergeRecordExecutor,
   args: { issueId: string; to: IssueStatus },
 ): Promise<
-  (ShippedRuleRefusal & { code: 'CLOSE_REQUIRES_SHIPPED' | 'MERGE_NOT_RECORDED' }) | null
+  | (ShippedRuleRefusal & {
+      code: 'CLOSE_REQUIRES_SHIPPED' | 'MERGE_NOT_RECORDED' | 'MERGE_DESIGN_ONLY';
+    })
+  | null
 > {
   const code = args.to === 'closed' ? 'CLOSE_REQUIRES_SHIPPED' : 'MERGE_NOT_RECORDED';
   const evidence = await readLandingEvidence(executor, args.issueId);
-  if (evidence && !landingShortfall(evidence.columns, evidence.shape)) return null;
+  if (evidence && !landingShortfall(evidence.columns, evidence.shape)) {
+    return args.to === 'awaiting_release' ? await designStampOnly(executor, args.issueId) : null;
+  }
   if (!evidence || evidence.shape === 'git') {
     return {
       code,
@@ -84,5 +97,38 @@ export function refuseUnmarkOnClosed(status: IssueStatus): ShippedRuleRefusal | 
       'exit `closed` has — and then `unmark`, or take `dropped` from `reopen` where the work ' +
       'never landed at all.',
     details: { status: 'closed', moveTo: 'reopen', useInstead: 'dropped' },
+  };
+}
+
+/** Why a design approval's stamp alone does not enter `awaiting_release`, or null where the mark is more. */
+async function designStampOnly(
+  executor: MergeRecordExecutor,
+  issueId: string,
+): Promise<(ShippedRuleRefusal & { code: 'MERGE_DESIGN_ONLY' }) | null> {
+  const [row] = await executor
+    .select({
+      designOnly: sql<boolean>`${designOnlyMarkSql(sql`${issues}`)}`,
+      artifacts: issues.mergedArtifacts,
+    })
+    .from(issues)
+    .where(eq(issues.id, issueId))
+    .limit(1);
+  if (!row?.designOnly) return null;
+  const designs = (row.artifacts ?? []).map((a) => a.ref).join(', ');
+  return {
+    code: 'MERGE_DESIGN_ONLY',
+    detail:
+      `\`awaiting_release\` waits for a release, and this issue's only mark is the approval of design ${designs}, ` +
+      'which records no commit, no landing of code and no changed paths, so no release carries it. ' +
+      'Where the issue delivers code, mark the commit that landed it (`POST /api/issues/:id/merge` with `commit`, ' +
+      'or the paths the box read as `changedPaths`), then move it. Where the design is all it delivers, close it ' +
+      'through `design_delivered` (move it to `closed`) once its revisions are approved.',
+    details: {
+      to: 'awaiting_release',
+      mark: 'design_only',
+      designs: (row.artifacts ?? []).map((a) => a.ref),
+      requires: ['commit', 'changedPaths'],
+      useInstead: 'closed',
+    },
   };
 }

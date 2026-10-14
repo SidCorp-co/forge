@@ -147,3 +147,50 @@ describe('the design-only close (REQ-45 BC-4)', () => {
     expect(await statusOf(id)).toBe('in_progress');
   });
 });
+
+// A design approval stamps the issue that drew it (`design-landing.ts:markApprovedDesign`). On
+// forge-dev, 2026-10-14, that stamp alone let ISS-526, a code carrier, enter `awaiting_release`
+// before any code was marked. `awaiting_release` waits for a release, and none carries a design-only
+// issue, so the stamp never enters it; it still closes a design-only issue (`design_delivered`).
+describe('a design stamp alone does not enter awaiting_release', () => {
+  beforeEach(async () => {
+    await seedProjectDocument(projectId, ownerId, { environments: {} });
+  });
+
+  it('refuses awaiting_release by name on an issue whose only mark is a design approval', async () => {
+    const id = await issueAt('in_progress', 'design');
+    await drawRevision(id, 'approve');
+
+    const res = await api(token, 'POST', `/api/issues/${id}/transition`, {
+      toStatus: 'awaiting_release',
+    });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    expect(refusalCodes(res)).toEqual(['MERGE_DESIGN_ONLY']);
+    expect(JSON.stringify(res.body)).toContain('issue-lifecycle rev 2');
+    expect(JSON.stringify(res.body)).toContain('changedPaths');
+    expect(await statusOf(id)).toBe('in_progress');
+  });
+
+  it('lets the same issue on once a commit is marked over the stamp', async () => {
+    const id = await issueAt('in_progress', 'design');
+    await db.execute(sql`UPDATE issues SET merged_commit_sha = ${'b'.repeat(40)} WHERE id = ${id}`);
+
+    const res = await api(token, 'POST', `/api/issues/${id}/transition`, {
+      toStatus: 'awaiting_release',
+    });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(await statusOf(id)).toBe('awaiting_release');
+  });
+
+  it('still closes a design-only issue on its stamp once its revision is approved', async () => {
+    const id = await issueAt('in_progress', 'design');
+    await drawRevision(id, 'approve');
+
+    const res = await api(token, 'POST', `/api/issues/${id}/transition`, { toStatus: 'closed' });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(await statusOf(id)).toBe('closed');
+  });
+});
