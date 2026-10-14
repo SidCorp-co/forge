@@ -15,3 +15,11 @@ export function refuses<M extends object>(middleware: M, thrown: readonly Refusa
 export function refusalsOf(handler: object): readonly Refusal[] {
   return refusals.get(handler) ?? [];
 }
+
+/** The codes a gate throws when a bearer credential is missing or does not verify. */
+const BEARER_REFUSALS: ReadonlySet<string> = new Set(['UNAUTHENTICATED', 'INVALID_TOKEN']);
+
+/** Whether a route's gates turn a missing or invalid bearer away, which is what reading one means. */
+export function takesBearer(thrown: readonly Refusal[]): boolean {
+  return thrown.some((r) => r.status === 401 && BEARER_REFUSALS.has(r.code));
+}

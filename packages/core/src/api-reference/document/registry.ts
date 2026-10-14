@@ -1,5 +1,5 @@
 import { findTargetHandler } from 'hono/utils/handler';
-import { type Refusal, refusalsOf } from '../../middleware/declarations.js';
+import { type Refusal, refusalsOf, takesBearer } from '../../middleware/declarations.js';
 import { type OperationDeclaration, operationDeclarations } from '../declare/describe.js';
 import { type ValidatorDeclaration, validatorDeclarations } from '../declare/validator.js';
 
@@ -16,6 +16,8 @@ export type RouteEntry = {
   readonly operations: readonly OperationDeclaration[];
   /** What every gate in the chain that runs for this request can refuse with. */
   readonly refusals: readonly Refusal[];
+  /** Whether a gate that runs for this request turns a missing or invalid bearer away. */
+  readonly takesBearer: boolean;
   /** Why the chain could not be read, or null when it was. */
   readonly unread: string | null;
 };
@@ -41,7 +43,9 @@ function samplePath(path: string, sample: string): string {
 
 /**
  * Every route of the composed app, read off its route table and router. The chain is what the
- * router matches for a path that reaches the route, so a `use('/x/*')` gate is read as the route's.
+ * router matches for a path that reaches the route, up to and including the route's own handler:
+ * a `use('/x/*')` gate registered before it is read as the route's, and one registered after it
+ * never runs, because the handler answers without calling `next`.
  */
 export function readRoutes(app: RouteSource): RouteEntry[] {
   const own = new Map<string, RouteRecord[]>();
@@ -65,14 +69,16 @@ export function readRoutes(app: RouteSource): RouteEntry[] {
           ([[, record]]) => record.method === 'ALL' || `${record.method} ${record.path}` === key,
         )
         .map(([[handler]]) => handler as object);
-      if (handlers.includes(last.handler as object)) {
-        chain = handlers;
+      const own = handlers.indexOf(last.handler as object);
+      if (own >= 0) {
+        chain = handlers.slice(0, own + 1);
         break;
       }
     }
     const targets = (chain ?? (records.map((r) => r.handler) as object[])).map(
       (h) => findTargetHandler(h as never) as object,
     );
+    const refusals = targets.flatMap((h) => refusalsOf(h));
     entries.push({
       key,
       method,
@@ -80,7 +86,8 @@ export function readRoutes(app: RouteSource): RouteEntry[] {
       handler: findTargetHandler(last.handler as never) as object,
       validators: targets.flatMap((h) => validatorDeclarations.get(h) ?? []),
       operations: targets.flatMap((h) => operationDeclarations.get(h) ?? []),
-      refusals: targets.flatMap((h) => refusalsOf(h)),
+      refusals,
+      takesBearer: takesBearer(refusals),
       unread:
         chain === null
           ? `no request path reaches ${key} through the router (tried ${SAMPLES.length} sample values)`

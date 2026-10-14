@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { refusalsOf } from '../../middleware/declarations.js';
@@ -82,5 +82,30 @@ describe('the PAT door table is the door', () => {
     const pairs = PAT_DOOR_REFUSALS.map((r) => `${r.status} ${r.code}`);
     expect(new Set(pairs).size).toBe(pairs.length);
     expect(PAT_DOOR_REFUSALS.filter((r) => r.when.length < 10)).toEqual([]);
+  });
+});
+
+describe('every rule the check can name is planted', () => {
+  const here = (path: string) => fileURLToPath(new URL(path, import.meta.url));
+  const sources = ['../document/build.ts', 'check.ts'].map((file) =>
+    readFileSync(here(file), 'utf8'),
+  );
+  const tests = ['../document', '.']
+    .flatMap((dir) =>
+      readdirSync(here(dir))
+        .filter((file) => file.endsWith('.test.ts'))
+        .map((file) => readFileSync(here(`${dir}/${file}`), 'utf8')),
+    )
+    .join('\n');
+
+  it('has a test titled for each rule a source file writes, so a rule cannot be added and never watched going red', () => {
+    const rules = [
+      ...new Set(
+        sources.flatMap((text) => [...text.matchAll(/\brule: '([a-z-]+)'/g)].map((m) => m[1])),
+      ),
+    ];
+    expect(rules.length).toBeGreaterThanOrEqual(16);
+    const unplanted = rules.filter((rule) => !new RegExp(`it\\(\\s*['"\`]${rule}:`).test(tests));
+    expect(unplanted).toEqual([]);
   });
 });

@@ -79,6 +79,46 @@ describe('the flows an agent drives', () => {
   });
 });
 
+describe('the steps of each flow, read as sentences', () => {
+  it('are each written as one: a capital to begin and a stop to end', () => {
+    const notSentences = FLOWS.flatMap((f) =>
+      f.steps
+        .filter((s) => !/^[A-Z0-9].*[.!?]$/.test(s.note))
+        .map((s) => `${f.id}: ${s.call}: ${s.note}`),
+    );
+    expect(notSentences).toEqual([]);
+  });
+
+  it('are listed on the page as a sentence after the summary, whatever case the note was written in', async () => {
+    const document = await documentWith(['POST', '/api/pat'], ['GET', '/api/issues/:id']);
+    const html = renderFlowsPage([flow], document, '/api/reference');
+    expect(html).toContain(
+      '<li><code>POST /api/pat</code> — POST /api/pat. Minted; secret once.</li>',
+    );
+    expect(html).toContain(
+      '<li><code>GET /api/issues/:id</code> — GET /api/issues/:id. Allowed.</li>',
+    );
+  });
+
+  it('are listed with no lowercase word after a full stop, on every real flow', async () => {
+    const document = await documentWith(
+      ...FLOWS.flatMap((f) =>
+        f.steps.map((s): [string, string] => {
+          const [method, path] = s.call.split(' ');
+          return [method ?? '', path ?? ''];
+        }),
+      ),
+    );
+    const html = renderFlowsPage(FLOWS, document, '/api/reference');
+    const items = [...html.matchAll(/<li>(.*)<\/li>/g)].map((m) =>
+      (m[1] ?? '').replace(/<[^>]+>/g, ''),
+    );
+    expect(items.length).toBe(FLOWS.flatMap((f) => f.steps).length);
+    expect(items.filter((text) => /[.!?] [a-z]/.test(text))).toEqual([]);
+    expect(items.filter((text) => !/[.!?]$/.test(text))).toEqual([]);
+  });
+});
+
 describe('the pages', () => {
   it('render the flows page with a diagram and the steps of each flow, escaped', async () => {
     const document = await documentWith(['POST', '/api/pat'], ['GET', '/api/issues/:id']);

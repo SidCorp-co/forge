@@ -4,7 +4,7 @@ import {
   patPermissionWanted,
   patPrefixForPath,
 } from '../../auth/pat-permissions.js';
-import { accessOf } from './access.js';
+import { accessOf, accessProse, asksForBearer } from './access.js';
 
 describe('accessOf', () => {
   it('names for a read the permission the PAT door itself would ask for', () => {
@@ -44,5 +44,55 @@ describe('accessOf', () => {
 
   it('answers null for a path in neither list, which no composed route may be', () => {
     expect(accessOf('GET', '/unlisted/route')).toBeNull();
+  });
+});
+
+describe('asksForBearer', () => {
+  it('asks for none at a door that takes none, whatever the gates read', () => {
+    for (const path of ['/api/health', '/api/uploads/:id', '/api/webhooks/in/:slug']) {
+      expect(asksForBearer(accessOf('POST', path), true)).toBe(false);
+    }
+  });
+
+  it('asks where a gate reads one, and not where none does, behind a session or a box door', () => {
+    expect(asksForBearer(accessOf('POST', '/api/devices/heartbeat'), true)).toBe(true);
+    expect(asksForBearer(accessOf('POST', '/api/devices/login/init'), false)).toBe(false);
+    expect(asksForBearer(accessOf('POST', '/api/auth/local'), false)).toBe(false);
+    expect(asksForBearer(accessOf('GET', '/api/issues/:id'), true)).toBe(true);
+  });
+
+  it('asks on the MCP door by name, and never for a route with no access', () => {
+    expect(asksForBearer(accessOf('POST', '/mcp'), false)).toBe(true);
+    expect(asksForBearer(null, true)).toBe(false);
+  });
+});
+
+describe('accessProse', () => {
+  it('says the permission a token must be granted, and how far its reach goes', () => {
+    expect(accessProse(accessOf('GET', '/api/issues/:id'), true)).toBe(
+      '**Permission:** `issues:read`. A personal or agent token must be granted it. A token fenced to projects can use this route.',
+    );
+    expect(accessProse(accessOf('GET', '/api/invitations/:token'), true)).toContain(
+      "Only a token that carries its owner's whole reach",
+    );
+  });
+
+  it('says the door of an exclusion with its reason and the way in, as sentences', () => {
+    const prose = accessProse(accessOf('POST', '/api/pat'), true);
+    expect(prose).toContain('**Door:** `session`.');
+    expect(prose).toContain('No permission grants a token this route.');
+    expect(prose).toContain('Use a session (browser/desktop login).');
+    expect(prose).not.toContain('Credential:');
+  });
+
+  it('says that a route reads no bearer where none is read, and nothing of the kind for a public one', () => {
+    expect(accessProse(accessOf('POST', '/api/devices/login/init'), false)).toContain(
+      '**Credential:** none. This route reads no bearer.',
+    );
+    expect(accessProse(accessOf('GET', '/api/health'), false)).not.toContain('Credential:');
+  });
+
+  it('says nothing for a route with no access, which the check names instead', () => {
+    expect(accessProse(null, false)).toBe('');
   });
 });
