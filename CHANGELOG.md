@@ -3178,7 +3178,7 @@
 
 - **Jumping to the end of a long list lands on the last row.** The inbox and tables of over 100 rows stopped hundreds of pixels short when rows ran tall, and only a second scroll reached the end. (ISS-1264)
 
-- **Three small repairs on API Tokens and Agents.** A project name in the Level pill reads on one line, cut to fit, full name on hover; the Agents hint is a sentence; each "Self" button is "Edit self". (ISS-1264)
+- **Three small repairs on API Tokens and Agents.** A project name in the Level pill reads on one line, cut to fit, whole on hover, focus or tap; the Agents hint is a sentence; "Self" is "Edit self". (ISS-1264)
 
 - **Settings pages are flat, and notices read cleanly.** Pipeline, Runners and Integrations use hairline rows; an empty weekly-reading field is marked; a half-saved page ends its reason with a stop; a phone toast no longer shifts the page. (ISS-1262)
 - **"Start queued issues automatically" can be switched off, and settings pages are flat.** It holds the entry gate instead of sending a refused value; cards give way to hairline sections. A backlog starts valid under the intake gate. (ISS-1262)

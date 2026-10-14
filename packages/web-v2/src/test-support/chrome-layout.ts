@@ -14,12 +14,22 @@ const WEB_V2 = resolve(__dirname, "../..");
 
 let stylesheet: Promise<string> | undefined;
 
-/** The app's own stylesheet, compiled from `globals.css` over every class the sources use. */
+const FONT_FILES = [
+  { family: "Hanken Grotesk", file: "hanken-grotesk-latin-variable.woff2", weight: "100 900" },
+  { family: "JetBrains Mono", file: "jetbrains-mono-latin-variable.woff2", weight: "400 800" },
+];
+const fontFaces = () =>
+  FONT_FILES.map(({ family, file, weight }) => `@font-face{font-family:"${family}";font-weight:${weight};src:url("file://${join(WEB_V2, "src/app/fonts", file)}") format("woff2")}`).join("");
+
+/** Resolves once the app's fonts are in, so a page measures in the face users get and not in whatever the machine falls back to. */
+export const APP_FONTS_LOADED = `Promise.all([document.fonts.load('400 15px "Hanken Grotesk"'), document.fonts.load('600 15px "Hanken Grotesk"'), document.fonts.load('400 15px "JetBrains Mono"')])`;
+
+/** The app's own stylesheet, compiled from `globals.css` over every class the sources use, after the faces `next/font` loads in the app. */
 export function appStylesheet(): Promise<string> {
   stylesheet ??= (async () => {
     const from = join(WEB_V2, "src/app/globals.css");
     const result = await postcss([tailwind({ base: WEB_V2 }) as never]).process(readFileSync(from, "utf8"), { from });
-    return result.css;
+    return fontFaces() + result.css;
   })();
   return stylesheet;
 }
@@ -215,7 +225,7 @@ export async function measureReach(markup: string, width: number, viewport: numb
   }
   const chrome = await runningChrome();
   const css = await appStylesheet();
-  const inner = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><style>${css}</style></head><body style="margin:0"><div style="width:${width}px">${markup}</div><script>${MEASURE}</script></body></html>`;
+  const inner = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><style>${css}</style></head><body style="margin:0"><div style="width:${width}px">${markup}</div><script>${APP_FONTS_LOADED}.then(() => {${MEASURE}});</script></body></html>`;
   const outer = `<!doctype html><html><body style="margin:0"><iframe src="inner.html" style="width:${viewport}px;height:1200px;border:0"></iframe><pre id="reach"></pre><script>addEventListener("message", (e) => { document.getElementById("reach").textContent = e.data; });</script></body></html>`;
   const dir = mkdtempSync(join(tmpdir(), "forge-chrome-layout-"));
   try {

@@ -331,8 +331,8 @@ describe("a table of more than 100 rows, windowed", () => {
   });
 });
 
-// The pill is measured under the fonts a machine may fall back to as well as the app's own, since a
-// line is counted by where its text sits and the same pill sits differently in each font.
+// The app's own faces (Hanken Grotesk, JetBrains Mono) are loaded by the harness. The pill is also
+// measured in the fonts a machine may fall back to, where the same pill sits differently.
 const FONTS = [
   { name: "the app's font", css: "" },
   { name: "a wide sans (DejaVu Sans)", css: '*{font-family:"DejaVu Sans",sans-serif !important}' },
@@ -371,4 +371,11 @@ describe.each(FONTS)("the level pill of a token bound to a project, in $name", (
     expect(pillLines[`Project: ${PROJECT}`]).toBe(1);
     expect(pills.find((p) => p.text === `Project: ${PROJECT}`)).toMatchObject({ framed: true, titled: true });
   });
+
+  if (css === "") {
+    it("keeps the table inside its frame at 1280px in the app's own fonts", async () => {
+      const { scrolling } = await measured(draw(), "Tokens that can reach your account", DESKTOP_COLUMN, DESKTOP);
+      expect(scrolling).toEqual([]);
+    });
+  }
 });

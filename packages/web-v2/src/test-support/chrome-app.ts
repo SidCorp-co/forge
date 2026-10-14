@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { build } from "esbuild";
 import { appStylesheet, runningChrome } from "./chrome-layout";
+import type { Tab } from "./chrome-session";
 
 const WEB_V2 = resolve(__dirname, "../..");
 
@@ -50,6 +51,20 @@ export async function runInApp<T>(entry: string, scenario: string, viewport: num
     const body = await chrome.evaluateWhenReady(`file://${join(dir, "outer.html")}`, 'document.getElementById("reach")?.textContent ?? ""', waitMs);
     if (!body) throw new Error(`Chrome loaded ${entry} for the scenario "${scenario}" at ${viewport}px and no report came back within ${waitMs}ms: the page threw before it reported, or the scenario never finished.`);
     return JSON.parse(Buffer.from(body, "base64").toString("utf8")) as T;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** Opens `entry` in a real phone-sized tab with touch on, and hands `run` a tab to tap, press keys in and read the accessibility tree of. */
+export async function withApp<T>(entry: string, scenario: string, width: number, run: (tab: Tab) => Promise<T>): Promise<T> {
+  const chrome = await runningChrome();
+  const [js, css] = await Promise.all([bundled(entry), appStylesheet()]);
+  const dir = mkdtempSync(join(tmpdir(), "forge-chrome-app-"));
+  try {
+    writeFileSync(join(dir, "app.js"), js);
+    writeFileSync(join(dir, "page.html"), `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}</style></head><body style="margin:0"><div id="root"></div><script src="app.js"></script></body></html>`);
+    return await chrome.withTab(`file://${join(dir, "page.html")}#${encodeURIComponent(scenario)}`, width, run);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
