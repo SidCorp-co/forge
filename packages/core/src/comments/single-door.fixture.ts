@@ -7,6 +7,7 @@ import {
   unwrap,
   WRITING_CALLS,
 } from './single-door.parse.fixture.js';
+import { rawSqlFindings, WRITES_ON_COMMENTS } from './single-door.sql.fixture.js';
 
 /**
  * A finding: `write` is the comments table written, `unresolved` a write whose table the scan could
@@ -18,12 +19,6 @@ export interface CommentWrite {
   how: string;
   kind: 'write' | 'unresolved';
 }
-
-const RAW_WRITES = [
-  /\binsert\s+into\s+(?:only\s+)?(?:"?public"?\.)?"?comments"?\b/i,
-  /\bupdate\s+(?:only\s+)?(?:"?public"?\.)?"?comments"?\s+set\b/i,
-  /\bdelete\s+from\s+(?:only\s+)?(?:"?public"?\.)?"?comments"?\b/i,
-];
 
 /** The builder methods a drizzle write is followed by, which `Map.delete` and `hash.update` are not. */
 const BUILDER_CALLS = new Set([
@@ -226,8 +221,9 @@ class Inspector {
   }
 
   strings(): void {
+    for (const raw of rawSqlFindings(this.model, this.f)) this.report(raw.at, raw.kind, raw.how);
     for (const node of this.f.strings) {
-      if (RAW_WRITES.some((re) => re.test(node.text)))
+      if (WRITES_ON_COMMENTS.some((re) => re.test(node.text)))
         this.report(node, 'write', 'raw SQL on comments');
     }
   }
@@ -324,5 +320,6 @@ export function commentWrites(
     pass.references(anyHelper);
     pass.strings();
   }
-  return found.sort((a, c) => a.file.localeCompare(c.file) || a.line - c.line);
+  const once = new Map(found.map((w) => [`${w.file}:${w.line}:${w.kind}`, w]));
+  return [...once.values()].sort((a, c) => a.file.localeCompare(c.file) || a.line - c.line);
 }

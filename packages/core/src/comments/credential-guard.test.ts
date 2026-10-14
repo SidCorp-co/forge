@@ -12,6 +12,7 @@ import {
   withheldMarker,
   withholdCredentials,
 } from './credential-guard.js';
+import { readAsText } from './reading.js';
 
 const LONG_USER = 'qa-user@sidcorp.test';
 const LONG_PASSWORD = 'Correct-Horse-9!';
@@ -200,6 +201,50 @@ describe('what core writes in place of a stored credential', () => {
     expect(withholdCredentials(once.text, wording).text).toBe(once.text);
   });
 
+  it('falls back to a bare marker where the value is written encoded and the marker holds it', () => {
+    const wording = credentialsFrom({
+      testCredentials: [
+        { label: 'login', username: 'u', password: 'environments.testCredentials' },
+      ],
+    });
+    const once = withholdCredentials('pw environments&#46;testCredentials end\nsecond', wording);
+    expect(once.text).toBe('[withheld]\nsecond');
+    expect(findCredential(once.text, wording)).toBeNull();
+    expect(findCredential(readAsText(once.text), wording)).toBeNull();
+    expect(withholdCredentials(once.text, wording).text).toBe(once.text);
+    const whole = withholdCredentials('environments&#46;test&#67;redentials', wording);
+    expect(findCredential(readAsText(whole.text), wording)).toBeNull();
+  });
+
+  it('marks with a letter no stored value holds where a stored value matches the bare marker too', () => {
+    const clash = credentialsFrom({
+      testCredentials: [
+        { label: 'login', username: 'withheld', password: 'environments.testCredentials' },
+      ],
+    });
+    const once = withholdCredentials('environments&#46;testCredentials', clash);
+    expect(findCredential(once.text, clash)).toBeNull();
+    expect(findCredential(readAsText(once.text), clash)).toBeNull();
+    const literal = withholdCredentials('pw environments.testCredentials end', clash);
+    expect(findCredential(literal.text, clash)).toBeNull();
+    expect(literal.text.startsWith('pw [withheld ')).toBe(true);
+    expect(withholdCredentials(once.text, clash).text).toBe(once.text);
+  });
+
+  it('still withholds where many stored values each match a family of markers', () => {
+    const rows = [
+      'withheld',
+      ...Array.from({ length: 9 }, (_, i) => `withheld ${i + 1}`),
+      ...Array.from({ length: 90 }, (_, i) => `[withheld ${i + 10}`),
+      'environments.testCredentials',
+    ].map((password, i) => ({ label: `row ${i}`, username: '', password }));
+    const many = credentialsFrom({ testCredentials: rows });
+    const once = withholdCredentials('environments&#46;testCredentials', many);
+    expect(findCredential(once.text, many)).toBeNull();
+    expect(findCredential(readAsText(once.text), many)).toBeNull();
+    expect(withholdCredentials(once.text, many).text).toBe(once.text);
+  });
+
   it('names no credential where its label and its position both hold a stored value', () => {
     const named = credentialsFrom({
       testCredentials: [{ label: 'credential #1', username: 'u', password: 'credential #1' }],
@@ -254,5 +299,43 @@ describe("the readers of a project's stored credentials", () => {
     expect(byProject.map((one) => one.value)).toEqual(['u', 'p-0123456789ab']);
     const byIssue = await real.loadCredentialsByIssue(['issue-1'], executor);
     expect(byIssue.get('issue-1')?.map((one) => one.value)).toEqual(['u', 'p-0123456789ab']);
+  });
+});
+
+describe('a value written so that only a reader sees it', () => {
+  const FORMS: Array<[string, string]> = [
+    ['a numeric character reference', 'log in as qa-user&#64;sidcorp.test please'],
+    ['a named character reference', 'the password is Correct-Horse-9&excl; ok'],
+    ['empty tags', 'log in as qa-user@sid<b></b>corp.test please'],
+    ['emphasis marks', 'log in as qa-user@sid**corp**.test please'],
+    ['a link around part of it', 'log in as [qa-user@sid](https://x.test)corp.test please'],
+    ['a backslash escape', 'log in as qa\\-user@sidcorp.test please'],
+    ['a hard line break between parts of tags', 'log in as qa-user@<i>sid</i>corp.test please'],
+  ];
+
+  it.each(FORMS)('is withheld in place where it is written with %s', (_how, text) => {
+    const { text: out, ids } = withholdCredentials(text, stored);
+    expect(ids).toContain('staging admin');
+    expect(findCredential(readAsText(out), stored), 'nothing a reader sees is left').toBeNull();
+    expect(out).toContain('[withheld: test credential "staging admin"');
+  });
+
+  it('keeps the lines that carry none when only one line is written that way', () => {
+    const { text } = withholdCredentials(
+      'first line\nlog in as qa-user&#64;sidcorp.test\nlast line',
+      stored,
+    );
+    expect(text.split('\n')[0]).toBe('first line');
+    expect(text.split('\n')[2]).toBe('last line');
+  });
+
+  it('leaves a code span alone, where a character reference is drawn as written', () => {
+    const text = 'the literal is `qa-user&#64;sidcorp.test` in a code span';
+    expect(withholdCredentials(text, stored)).toEqual({ text, ids: [] });
+  });
+
+  it('leaves ordinary markdown and a short value in a longer sentence alone', () => {
+    const text = '# Heading\n\n- a **bold** item with `code`, the viewer1 account and a v1 release';
+    expect(withholdCredentials(text, stored)).toEqual({ text, ids: [] });
   });
 });

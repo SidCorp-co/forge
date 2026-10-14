@@ -73,6 +73,8 @@ export interface FileFacts {
   calls: ts.CallExpression[];
   refs: ts.Node[];
   strings: ts.LiteralLikeNode[];
+  /** Text built in place: a tagged or interpolated template, and a chain of `+` that holds a string. */
+  texts: ts.Expression[];
   /** Names this file declares or imports from a sibling module, as opposed to a package or a global. */
   ownNames: Set<string>;
   /** The interfaces and type aliases this file declares, by name. */
@@ -195,6 +197,7 @@ function parseFresh(file: string, text: string): FileFacts {
     calls: [],
     refs: [],
     strings: [],
+    texts: [],
     ownNames: new Set(),
     types: new Map(),
   };
@@ -292,6 +295,8 @@ function parseFresh(file: string, text: string): FileFacts {
       facts.assignments.push(node);
     } else if (ts.isCallExpression(node)) {
       facts.calls.push(node);
+    } else if (isBuiltText(node)) {
+      facts.texts.push(node);
     } else if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
       facts.strings.push(node);
     } else if (ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)) {
@@ -402,4 +407,18 @@ export function isNamedPath(node: ts.Expression): boolean {
     current = unwrap(current.expression);
   }
   return ts.isIdentifier(current);
+}
+
+/** The outermost of a tagged template, an interpolated template or a `+` chain: where text is built. */
+function isBuiltText(node: ts.Node): node is ts.Expression {
+  if (ts.isTaggedTemplateExpression(node)) return true;
+  if (ts.isTemplateExpression(node)) return !ts.isTaggedTemplateExpression(node.parent);
+  return (
+    ts.isBinaryExpression(node) &&
+    node.operatorToken.kind === ts.SyntaxKind.PlusToken &&
+    !(
+      ts.isBinaryExpression(node.parent) &&
+      node.parent.operatorToken.kind === ts.SyntaxKind.PlusToken
+    )
+  );
 }

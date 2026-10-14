@@ -11,6 +11,7 @@
 ### Security
 
 - **A stored test credential no longer reaches an issue comment.** A comment written on the web or by an agent tool that carries one is refused, naming where; text Forge writes itself gets a marker saying where it is read.
+- **A stored test credential written as `&#64;` or split by markup is refused too.** It was stored because only the characters sent were matched; a comment is now matched as it reads, on the web and through the agent tool.
 - **A viewer can no longer deploy, cancel or roll back a Coolify binding.** The web API let any project member through; it now asks for the member role, as the agent tool always did, and says which role was held.
 - **Another person's comment cannot be rewritten by an agent, and a reply cannot hang under another issue.** Agents could edit any comment and name any parent; editing now needs the author or a project admin, as in the web.
 - **A viewer can no longer edit or delete a comment they wrote.** The web let the author through whatever their role, for instance after a demotion; it now asks for the member role, as the agent tool did.
@@ -3182,6 +3183,7 @@
 
 ### Fixed
 
+- **Closing a run with a checkpoint that declares another source is refused by name.** It answered a server error; it now answers 400 naming `source` and the one valid value, `reconstructed_from_box`, and leaves the run open to be closed again.
 - **A refused public docs address, reached from a docs page, offers the docs' search.** The refusal shows the search box and the doors, and says so when the guide index cannot be reached. (ISS-1415)
 
 - **A refused or unknown public docs address looks like Forge documentation.** A plain request for one still answers 404 naming what was asked for, now under the documentation's header and name with the three doors to go back to. (ISS-1293)

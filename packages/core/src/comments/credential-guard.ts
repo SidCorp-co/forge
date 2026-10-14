@@ -3,6 +3,7 @@ import { db, type Tx } from '../db/client.js';
 import { issues, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 import type { MessageRefusal } from '../messaging/contract.js';
+import { readAsText } from './reading.js';
 
 /** The rule a refusal is filed under, so a caller reads which check refused rather than a prose guess. */
 export const STORED_CREDENTIAL_RULE = 'stored-test-credential';
@@ -197,13 +198,14 @@ export function findCredential(
 }
 
 /** Which form of a comment a position is counted in. */
-export type CredentialPlace = 'sent' | 'prose' | 'stored' | 'decoded';
+export type CredentialPlace = 'sent' | 'prose' | 'stored' | 'decoded' | 'read';
 
 const WHERE: Record<CredentialPlace, string> = {
   sent: 'the body as sent',
   prose: 'the text the HTML reads as, markup removed',
   stored: 'the HTML as it is stored',
   decoded: 'the stored HTML with its entities decoded',
+  read: 'the text the comment reads as, markdown drawn and character references decoded',
 };
 
 /** The refusal a caller's write meets: what was found, where, and where the value is read instead. */
@@ -236,6 +238,39 @@ export function withheldMarker(id: string): string {
   return id === '' ? '[withheld]' : `[withheld: test credential "${id}", read at ${READ_AT}]`;
 }
 
+/** True where `text` carries a stored value, written out or only read off it. */
+function holdsCredential(text: string, credentials: readonly StoredCredential[]): boolean {
+  return (
+    spansOf(text, credentials).length > 0 || findCredential(readAsText(text), credentials) !== null
+  );
+}
+
+/** The letters a last-resort marker is tried with: a-z, then the CJK block, so one is always free. */
+function* markerLetters(): Generator<string> {
+  for (let code = 0x61; code <= 0x7a; code += 1) yield String.fromCharCode(code);
+  for (let code = 0x4e00; code <= 0x9fff; code += 1) yield String.fromCharCode(code);
+}
+
+/**
+ * The marker for `id`; the bare one where the named marker would carry a stored value; and where a
+ * stored value matches the bare one too, a marker holding a letter that no stored value contains.
+ * No value of twelve characters or more can sit inside a marker of which no run without that letter
+ * is that long, and no shorter one can equal a marker it cannot spell.
+ */
+function safeMarker(id: string, credentials: readonly StoredCredential[]): string {
+  const named = withheldMarker(id);
+  if (!holdsCredential(named, credentials)) return named;
+  const bare = withheldMarker('');
+  if (!holdsCredential(bare, credentials)) return bare;
+  const written = fold(credentials.map((one) => one.value).join(''));
+  for (const letter of markerLetters()) {
+    if (written.includes(letter)) continue;
+    const marker = `[withheld ${letter}]`;
+    if (!holdsCredential(marker, credentials)) return marker;
+  }
+  throw new Error('no withheld marker is clear of the stored credentials');
+}
+
 /** The text core writes, with its stored credentials replaced in place and everything else kept. */
 export interface Withheld {
   readonly text: string;
@@ -247,6 +282,11 @@ export function withholdCredentials(
   text: string,
   credentials: readonly StoredCredential[],
 ): Withheld {
+  const literal = withholdLiteral(text, credentials);
+  return withholdWhatReadsAsOne(literal.text, credentials, literal.ids);
+}
+
+function withholdLiteral(text: string, credentials: readonly StoredCredential[]): Withheld {
   const spans = spansOf(text, credentials);
   if (spans.length === 0) return { text, ids: [] };
   let out = '';
@@ -257,12 +297,36 @@ export function withholdCredentials(
     const named = covered.length > 0 ? covered : matching(text, credentials);
     const label = [...new Set(named.map((one) => one.id))].join('", "');
     for (const one of named) if (!ids.includes(one.id)) ids.push(one.id);
-    const marker = withheldMarker(label);
-    const safe = spansOf(marker, credentials).length === 0 ? marker : withheldMarker('');
-    out += `${text.slice(from, start)}${safe}`;
+    out += `${text.slice(from, start)}${safeMarker(label, credentials)}`;
     from = end;
   }
   return { text: out + text.slice(from), ids };
+}
+
+/**
+ * A value written as `&#97;dmin`, `ad**min**` or `ad<b></b>min` is not in the text as it stands but
+ * is what a reader sees. Where the text reads as a credential, each line that does is replaced by a
+ * marker, and the whole text where no single line carries it.
+ */
+function withholdWhatReadsAsOne(
+  text: string,
+  credentials: readonly StoredCredential[],
+  seen: readonly string[],
+): Withheld {
+  const hit = findCredential(readAsText(text), credentials);
+  if (!hit) return { text, ids: seen };
+  const ids = [...seen];
+  const mark = (id: string): string => {
+    if (!ids.includes(id)) ids.push(id);
+    return safeMarker(id, credentials);
+  };
+  const lines = text.split('\n').map((line) => {
+    const found = findCredential(readAsText(line), credentials);
+    return found ? mark(found.id) : line;
+  });
+  const byLine = lines.join('\n');
+  if (!findCredential(readAsText(byLine), credentials)) return { text: byLine, ids };
+  return { text: mark(hit.id), ids };
 }
 
 /** Says a withhold happened: the issue and the credentials' identifiers, never a value. */
