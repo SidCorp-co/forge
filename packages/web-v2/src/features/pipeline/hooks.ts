@@ -34,17 +34,6 @@ export function useRun(runId: string | undefined, enabled = true) {
   });
 }
 
-/** Issue subtasks for the RunDetail Tasks tab. Keyed `['issue',id,'tasks']`.
- *  Only fetched when the SlideOver is open. */
-export function useIssueTasks(issueId: string | undefined, enabled = true) {
-  return useQuery({
-    queryKey: ["issue", issueId, "tasks"],
-    queryFn: () => pipelineApi.tasksForIssue(issueId as string),
-    enabled: enabled && !!issueId,
-    staleTime: 30_000,
-  });
-}
-
 /** Per-step durations + cost; cross-project when `opts` names no project. `enabled: false` sends nothing meanwhile. */
 export function useStepDurations(opts: AnalyticsOpts = {}, enabled = true) {
   return useQuery({

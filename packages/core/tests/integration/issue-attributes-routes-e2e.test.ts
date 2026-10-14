@@ -54,28 +54,8 @@ afterAll(async () => {
   if (harness) await harness.cleanup();
 });
 
-/**
- * `issue_attribute_defs` is reference data seeded by migration 0245, and
- * `truncateAll` empties it with everything else — so every test here restores
- * it from the same registry the write validates against. Without it the FK
- * fails and the route answers the drift refusal instead, which is its own test
- * below.
- */
-async function seedDefs(): Promise<void> {
-  const { ATTRIBUTE_REGISTRY } = await import('../../src/issues/attributes/registry.js');
-  for (const def of ATTRIBUTE_REGISTRY) {
-    await harness.db.execute(sql`
-      INSERT INTO issue_attribute_defs (key, label, value_type, cardinality, written_by, surfaces, required)
-      VALUES (${def.key}, ${def.label}, ${def.valueType}, ${def.cardinality}, ${def.writtenBy},
-              ${JSON.stringify(def.surfaces)}::jsonb, ${def.required})
-      ON CONFLICT (key) DO NOTHING
-    `);
-  }
-}
-
 beforeEach(async () => {
   await truncateAll(harness.db);
-  await seedDefs();
 });
 
 type Rendered = {
@@ -110,13 +90,13 @@ async function seed() {
   `);
   const otherRows = await harness.db.execute<{ id: string }>(sql`
     INSERT INTO issues (project_id, title, created_by_id)
-    VALUES (${project.id}, 'the issue it supersedes', ${owner.id})
+    VALUES (${project.id}, 'the issue it is carried by', ${owner.id})
     RETURNING id
   `);
   const issueId = (issueRows[0] as { id: string }).id;
   const commentRows = await harness.db.execute<{ id: string }>(sql`
     INSERT INTO comments (issue_id, author_id, body)
-    VALUES (${issueId}, ${owner.id}, 'This one supersedes the other; here is why in a sentence.')
+    VALUES (${issueId}, ${owner.id}, 'This one is carried by the other; here is why in a sentence.')
     RETURNING id
   `);
   const offIssueCommentRows = await harness.db.execute<{ id: string }>(sql`
@@ -149,11 +129,11 @@ const read = (issueId: string, jwt: string) =>
 describe('POST /api/issues/:id/attributes', () => {
   it('writes one typed row and answers with the issue records', async () => {
     const { issueId, otherIssueId, jwt } = await seed();
-    const res = await write(issueId, jwt, [{ key: 'supersedes', value: otherIssueId }]);
+    const res = await write(issueId, jwt, [{ key: 'obligation_carrier', value: otherIssueId }]);
     expect(res.status).toBe(201);
     const body = (await res.json()) as WriteResult;
     expect(body.written).toBe(1);
-    expect(body.attributes.map((a) => a.key)).toEqual(['supersedes']);
+    expect(body.attributes.map((a) => a.key)).toEqual(['obligation_carrier']);
   });
 
   it('lands a typed value in the column its key declares', async () => {
@@ -168,7 +148,7 @@ describe('POST /api/issues/:id/attributes', () => {
   it('keeps the pointer back to the comment that asserted it', async () => {
     const { issueId, otherIssueId, commentId, jwt } = await seed();
     await write(issueId, jwt, [
-      { key: 'supersedes', value: otherIssueId, sourceCommentId: commentId },
+      { key: 'obligation_carrier', value: otherIssueId, sourceCommentId: commentId },
     ]);
     const rows = await harness.db.execute<{ source_comment_id: string }>(
       sql`SELECT source_comment_id FROM issue_attributes WHERE issue_id = ${issueId}`,
@@ -184,7 +164,7 @@ describe('POST /api/issues/:id/attributes', () => {
     const { issueId, otherIssueId, jwt } = await seed();
     const res = await write(issueId, jwt, [
       {
-        key: 'supersedes',
+        key: 'obligation_carrier',
         value: otherIssueId,
         sourceCommentId: '00000000-0000-4000-8000-00000000dead',
       },
@@ -198,7 +178,7 @@ describe('POST /api/issues/:id/attributes', () => {
   it('refuses a sourceCommentId naming a comment on another issue', async () => {
     const { issueId, otherIssueId, offIssueCommentId, jwt } = await seed();
     const res = await write(issueId, jwt, [
-      { key: 'supersedes', value: otherIssueId, sourceCommentId: offIssueCommentId },
+      { key: 'obligation_carrier', value: otherIssueId, sourceCommentId: offIssueCommentId },
     ]);
     expect(res.status).toBe(400);
     expect((await res.json()).code).toBe('SOURCE_COMMENT_OFF_ISSUE');
@@ -215,7 +195,7 @@ describe('POST /api/issues/:id/attributes', () => {
     const refused = (await res.json()) as { code: string; message: string };
     expect(refused.code).toBe('UNREGISTERED_KEY');
     expect(refused.message).toContain('not_a_key');
-    expect(refused.message).toContain('supersedes');
+    expect(refused.message).toContain('obligation_carrier');
   });
 
   it('refuses a value of the wrong declared type by name', async () => {
@@ -227,32 +207,33 @@ describe('POST /api/issues/:id/attributes', () => {
 
   it('refuses a caller holding less than writer on the project', async () => {
     const { issueId, otherIssueId, readerJwt } = await seed();
-    const res = await write(issueId, readerJwt, [{ key: 'supersedes', value: otherIssueId }]);
+    const res = await write(issueId, readerJwt, [
+      { key: 'obligation_carrier', value: otherIssueId },
+    ]);
     expect(res.status).toBe(403);
   });
 
-  it('names the drift when the code registry and the seed disagree', async () => {
-    const { issueId, jwt } = await seed();
-    await harness.db.execute(sql`DELETE FROM issue_attribute_defs WHERE key = 'human_required'`);
-    const res = await write(issueId, jwt, [{ key: 'human_required', value: true }]);
-    expect(res.status).toBe(409);
-    const refused = (await res.json()) as { code: string; message: string };
-    expect(refused.code).toBe('ATTRIBUTE_DEF_MISSING');
-    expect(refused.message).toContain('human_required');
-    expect(refused.message).toContain('drifted');
+  it('refuses a key that was retired, as one nobody registered', async () => {
+    const { issueId, otherIssueId, jwt } = await seed();
+    for (const key of ['blocking', 'supersedes']) {
+      const res = await write(issueId, jwt, [{ key, value: otherIssueId }]);
+      expect(res.status).toBe(400);
+      const refused = (await res.json()) as { code: string; message: string };
+      expect(refused.code).toBe('UNREGISTERED_KEY');
+      expect(refused.message).toContain(`\`${key}\` is not a registered attribute`);
+      expect(refused.message).toContain('obligation_carrier');
+    }
   });
 
-  it('keeps the value a batch that fails mid-write would otherwise have deleted', async () => {
-    const { issueId, otherIssueId, jwt } = await seed();
+  it('refuses a batch naming a single-row key twice by name, and keeps the stored value', async () => {
+    const { issueId, jwt } = await seed();
     await write(issueId, jwt, [{ key: 'human_required', value: true }]);
-    // `supersedes` still validates in code, so the batch reaches the delete of
-    // the cardinality-one row and then fails on the defs FK on the insert.
-    await harness.db.execute(sql`DELETE FROM issue_attribute_defs WHERE key = 'supersedes'`);
     const res = await write(issueId, jwt, [
       { key: 'human_required', value: false },
-      { key: 'supersedes', value: otherIssueId },
+      { key: 'human_required', value: true },
     ]);
-    expect(res.status).toBe(409);
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { code: string }).code).toBe('DUPLICATE_SINGLE_KEY');
     const rows = await harness.db.execute<{ value_bool: boolean }>(
       sql`SELECT value_bool FROM issue_attributes WHERE issue_id = ${issueId} AND key = 'human_required'`,
     );
@@ -273,7 +254,7 @@ describe('GET /api/issues/:id/attributes', () => {
   it('answers with the issue records, each carrying its source comment', async () => {
     const { issueId, otherIssueId, commentId, jwt } = await seed();
     await write(issueId, jwt, [
-      { key: 'supersedes', value: otherIssueId, sourceCommentId: commentId },
+      { key: 'obligation_carrier', value: otherIssueId, sourceCommentId: commentId },
     ]);
     const res = await read(issueId, jwt);
     expect(res.status).toBe(200);

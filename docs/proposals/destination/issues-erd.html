@@ -136,9 +136,9 @@
     <text x="720" y="617" font-size="9.5" fill="#cf222e">only after the gate moves out</text>
   </g>
 
-  <text x="40" y="662" font-size="11.5" fill="#cf222e" font-weight="700">Removed — 7 tables:</text>
-  <text x="180" y="662" font-size="11.5" fill="#59636e">tasks · issue_attribute_defs · ux_findings · rocketchat_question_threads · rocketchat_thread_openings</text>
-  <text x="180" y="681" font-size="11.5" fill="#59636e">phase_journal + issue_step_contexts → run_journal.   jobs and pipeline_runs, with the staged lane.   Two added — net −7.</text>
+  <text x="40" y="662" font-size="11.5" fill="#cf222e" font-weight="700">Removed tables:</text>
+  <text x="180" y="662" font-size="11.5" fill="#59636e">tasks · issue_attribute_defs (ux_findings went with migration 0260; the two rocketchat tables are read and stay)</text>
+  <text x="180" y="681" font-size="11.5" fill="#59636e">phase_journal + issue_step_contexts → run_journal.   jobs and pipeline_runs, with the staged lane.   Two added.</text>
   <text x="40" y="702" font-size="11.5" fill="#cf222e" font-weight="700">Also removed:</text>
   <text x="140" y="702" font-size="11.5" fill="#59636e">issue_step_contexts.verdict · pass_rate / approve_rate · EAV keys `blocking` and `supersedes` · work-evidence's jobs.type arm</text>
 </svg>
@@ -148,9 +148,9 @@
 <tr><th>Removed</th><th>Measured basis</th><th>What answers it instead</th></tr>
 <tr><td class="x"><code>tasks</code> (table, 2 files, REST, 4 MCP actions, a UI tab, 2 enums)</td><td>Born to mirror a Claude Code session's task list. Core already ingests that: <code>agent-stream-parser.ts:134</code> turns <code>TodoWrite</code> into a <code>{type:'todos'}</code> block on every turn, automatically. No prompt fact or SKILL.md tells an agent to write <code>tasks</code>, so no agent ever does</td><td>Live checklist → the todos block. Durable checklist → <code>issues.plan</code></td></tr>
 <tr><td class="x"><code>issue_attribute_defs</code></td><td>0 writes, 0 reads, by drizzle identifier and raw SQL alike</td><td>The TS registry, which is already the only authority</td></tr>
-<tr><td class="x"><code>ux_findings</code></td><td>0 occurrences outside its own <code>pgTable</code> declaration</td><td>—</td></tr>
-<tr><td class="x"><code>rocketchat_question_threads</code></td><td>0 occurrences outside its declaration</td><td rowspan="2"><code>rocketchat_threads</code>, which already carries <code>kind:'issue'</code></td></tr>
-<tr><td class="x"><code>rocketchat_thread_openings</code></td><td>3 writers, <strong>0 readers</strong> — written on every open, never read back</td></tr>
+<tr><td><code>ux_findings</code></td><td>Already dropped by migration 0260</td><td>—</td></tr>
+<tr><td><code>rocketchat_question_threads</code></td><td><strong>Kept.</strong> The SQL name of the live <code>rocketchatThreads</code> registry (399 rows on beta, 386 of kind issue), read across the integration</td><td>—</td></tr>
+<tr><td><code>rocketchat_thread_openings</code></td><td><strong>Kept.</strong> The cross-instance lease taken by <code>threadForIssueIn</code>; the row its <code>INSERT ... ON CONFLICT ... RETURNING</code> returns is the read, and no row means another instance is opening the thread</td><td>—</td></tr>
 <tr><td class="x"><code>issue_step_contexts.verdict</code> + <code>pass_rate</code> / <code>approve_rate</code></td><td><code>extractVerdict</code> is non-null only for <code>step='review'</code>/<code>'test'</code>, steps the driver does not run. Both metrics are live keys in <code>z.enum(METRICS)</code>, so column, enum and route go together</td><td>Nothing — the series was empty forward</td></tr>
 <tr><td class="x">EAV <code>blocking</code>, <code>supersedes</code></td><td>Zero call sites. They let an agent assert a blocking relation that gates nothing</td><td><code>issue_dependencies</code></td></tr>
 <tr><td class="x"><code>pipeline_runs_issue_open_uq</code></td><td>Scoped <code>WHERE kind='issue'</code>; issue flow opens <code>kind='system'</code> with <code>issue_id</code> NULL, so it guards nothing</td><td><code>issue_claims</code></td></tr>
@@ -172,7 +172,7 @@
 <tr><td>1</td><td>The close gate reads <code>issues.merged_commit_sha</code> instead of scanning handoffs</td><td><code>run_journal</code> cannot be append-only while a gate reads a row that gets upserted. Merging first leaves two live paths</td></tr>
 <tr><td>2</td><td><code>phase_journal</code> + <code>issue_step_contexts</code> → <code>run_journal</code></td><td>Its REST route and 4 MCP verbs are the plugin's contract — a second half this repo cannot gate, so it ships behind the new store, not beside it</td></tr>
 <tr><td>3</td><td><code>issue_claims</code> lands and both lanes claim through it</td><td>Removing the old lease before the claim exists leaves nothing holding one-worker-per-issue</td></tr>
-<tr><td>4</td><td>The pure deletions — <code>tasks</code>, <code>issue_attribute_defs</code>, <code>ux_findings</code>, the two rocketchat tables, <code>verdict</code>, the two EAV keys</td><td>Independent of the above. Each migration counts what it drops and aborts naming any row the new schema cannot represent</td></tr>
+<tr><td>4</td><td>The pure deletions — <code>tasks</code>, <code>issue_attribute_defs</code>, <code>verdict</code>, the two EAV keys</td><td>Independent of the above. Each migration counts what it drops and aborts naming any row the new schema cannot represent</td></tr>
 </table>
 
 <h2>3b · Removing jobs and pipeline_runs — what actually goes</h2>

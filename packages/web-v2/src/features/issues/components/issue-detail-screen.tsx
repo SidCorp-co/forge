@@ -3,18 +3,17 @@
 // web-v2 Issue detail (`/projects/[slug]/issues/[id]`, ISS-294). Live via WS on the keys
 // `['issue',id]` / `['comments',id]` / `['activities',id]` — the event-router invalidates
 // exactly those, so a query keyed anything else here stops updating and nothing reports it.
+//
+// The sections this file draws are flat, with no Card: after the banners and the description, the
+// main column reads Steps, Acceptance criteria, Agent plan, then the Comments / Activity region,
+// each ruled off from the one above by a hairline. The Properties rail sits beside it behind a
+// hairline at `lg` and under it as a disclosure below.
 
 import {
-  Badge,
   Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
   Checkbox,
   Collapsible,
   EmptyPanelLine,
-  EmptyState,
   ErrorState,
   HelpButton,
   IconButton,
@@ -40,7 +39,7 @@ import { useRoom } from "@/lib/ws/use-room";
 import { useToast } from "@/providers/toast-provider";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   canonicalIssueId,
   deriveBlockerState,
@@ -63,7 +62,6 @@ import {
   useIssue,
   useStepDurations,
   useStepHandoffs,
-  useTasks,
 } from "../detail-hooks";
 import {
   useIssueCost,
@@ -72,7 +70,7 @@ import {
   useProjectMembers,
 } from "../hooks";
 import { useIssuePark } from "../park";
-import type { IssueAgentSession, IssueStatus, TaskRow } from "../types";
+import type { IssueAgentSession, IssueStatus } from "../types";
 import { ActivityFeed } from "./activity-feed";
 import { AwaitingReleaseBanner } from "./awaiting-release-banner";
 import { BlockerBanner } from "./blocker-banner";
@@ -86,25 +84,8 @@ import { PropertiesRail } from "./properties-rail";
 import { SessionGroupTimeline } from "./session-group-timeline";
 import { StepArtifactCard } from "./step-artifact-card";
 
-const TASK_STATUS_TONE: Record<
-  TaskRow["status"],
-  "neutral" | "cobalt" | "amber" | "green"
-> = {
-  backlog: "neutral",
-  todo: "neutral",
-  in_progress: "cobalt",
-  in_review: "amber",
-  done: "green",
-};
-
-const TASK_STATUS_LABELS: Record<TaskRow["status"], string> = {
-  backlog: "Backlog",
-  todo: "To do",
-  in_progress: "In progress",
-  in_review: "In review",
-  done: "Done",
-};
-
+/** An empty or unread Steps line drawn flush: a hairline above in place of the card's border. */
+const FLAT_PANEL_LINE = "rounded-none border-0 border-t border-line-subtle bg-transparent px-0 shadow-none";
 
 interface IssueDetailScreenProps {
   projectId: string;
@@ -137,7 +118,6 @@ export function IssueDetailScreen({
   const canonicalId = canonicalIssueId(id, issueQ.data?.id);
   const commentsQ = useComments(canonicalId, projectId);
   const activityQ = useActivity(canonicalId, projectId);
-  const tasksQ = useTasks(canonicalId, projectId);
   const attachmentsQ = useAttachments(canonicalId, projectId);
   const depsQ = useIssueDeps(canonicalId, true, projectId);
   const costQ = useIssueCost(canonicalId, true, projectId);
@@ -303,7 +283,6 @@ export function IssueDetailScreen({
       label: "Activity",
       count: activityQ.data?.items.length,
     },
-    { value: "tasks", label: "Tasks", count: tasksQ.data?.length },
   ];
 
   return (
@@ -340,7 +319,7 @@ export function IssueDetailScreen({
             reader to choose Reopen at the top of the issue page, on whatever screen they read it. */}
         <div className="flex basis-full flex-wrap items-center gap-2 sm:flex-none sm:basis-auto">
           <HelpButton
-            summary="The full record for one issue: pipeline progress, description, acceptance criteria, the agent plan, and Comments / Activity / Tasks."
+            summary="The full record for one issue: pipeline progress, description, acceptance criteria, the agent plan, and Comments / Activity."
             actions={[
               "Edit properties (status, priority, complexity) in the rail",
               "Run / pause / reopen the pipeline from the header",
@@ -460,124 +439,92 @@ export function IssueDetailScreen({
           <SessionGroupTimeline sessions={issue.agentSessions ?? []} />
 
           {handoffsQ.isLoading || durationsQ.isLoading ? (
-            <EmptyPanelLine title="Steps" status="Loading…" />
+            <EmptyPanelLine title="Steps" status="Loading…" className={FLAT_PANEL_LINE} />
           ) : handoffsQ.isError || durationsQ.isError ? (
             <EmptyPanelLine
               title="Steps"
               status="Couldn't load"
               detail={formatApiError(handoffsQ.isError ? handoffsQ.error : durationsQ.error)}
+              className={FLAT_PANEL_LINE}
             />
           ) : stepOutcomes.length === 0 ? (
             <EmptyPanelLine
               title="Steps"
               status="None yet"
               detail="Steps appear here as agents record them."
+              className={FLAT_PANEL_LINE}
             />
           ) : (
-            <Card>
-              <CardHeader>
-                <CardTitle>Steps</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {stepOutcomes.map((outcome) => (
-                    <StepArtifactCard
-                      key={outcome.step}
-                      outcome={outcome}
-                      open={expandedStep === outcome.step}
-                      onToggle={() =>
-                        setExpandedStep((cur) => (cur === outcome.step ? null : outcome.step))
-                      }
-                    />
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+            <FlatSection title="Steps">
+              <div className="space-y-2">
+                {stepOutcomes.map((outcome) => (
+                  <StepArtifactCard
+                    key={outcome.step}
+                    outcome={outcome}
+                    open={expandedStep === outcome.step}
+                    onToggle={() =>
+                      setExpandedStep((cur) => (cur === outcome.step ? null : outcome.step))
+                    }
+                  />
+                ))}
+              </div>
+            </FlatSection>
           )}
 
           {checklist.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Acceptance criteria</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2">
-                  {checklist.map((item) => (
-                    <li key={item.key}>
-                      <Checkbox
-                        checked={item.checked}
-                        disabled
-                        label={item.text}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
+            <FlatSection title="Acceptance criteria">
+              <ul className="space-y-2">
+                {checklist.map((item) => (
+                  <li key={item.key}>
+                    <Checkbox
+                      checked={item.checked}
+                      disabled
+                      label={item.text}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </FlatSection>
           )}
 
           {issue.plan && (
-            <Collapsible title="Agent plan">
-              <Markdown>{issue.plan}</Markdown>
-            </Collapsible>
+            <div className="border-t border-line-subtle">
+              <Collapsible title="Agent plan" flat>
+                <Markdown>{issue.plan}</Markdown>
+              </Collapsible>
+            </div>
           )}
 
-          <Card id="issue-comments">
-            <CardContent>
-              <Tabs tabs={tabs} value={tab} onChange={setTab} />
-              <div className="mt-4">
-                {tab === "comments" &&
-                  (commentsQ.isLoading ? (
-                    <TabLoading />
-                  ) : commentsQ.isError ? (
-                    <TabError query={commentsQ} what="comments" />
-                  ) : (
-                    <CommentThread
-                      issueId={issue.id}
-                      comments={commentsQ.data?.items ?? []}
-                      members={membersQ.data}
-                      readOnly={!canWrite}
-                    />
-                  ))}
-                {tab === "activity" &&
-                  (activityQ.isLoading ? (
-                    <TabLoading />
-                  ) : activityQ.isError ? (
-                    <TabError query={activityQ} what="activity" />
-                  ) : (
-                    <ActivityFeed items={activityQ.data?.items ?? []} />
-                  ))}
-                {tab === "tasks" &&
-                  (tasksQ.isLoading ? (
-                    <TabLoading />
-                  ) : tasksQ.isError ? (
-                    <TabError query={tasksQ} what="tasks" />
-                  ) : (tasksQ.data?.length ?? 0) === 0 ? (
-                    <EmptyState
-                      title="No tasks"
-                      message="This issue has no sub-tasks."
-                      mascot={false}
-                    />
-                  ) : (
-                    <ul className="space-y-2">
-                      {tasksQ.data?.map((t) => (
-                        <li
-                          key={t.id}
-                          className="flex items-center justify-between gap-3 rounded-md border border-line-subtle px-3 py-2"
-                        >
-                          <span className="fg-body-sm min-w-0 truncate text-fg">
-                            {t.title}
-                          </span>
-                          <Badge tone={TASK_STATUS_TONE[t.status]}>
-                            {TASK_STATUS_LABELS[t.status]}
-                          </Badge>
-                        </li>
-                      ))}
-                    </ul>
-                  ))}
-              </div>
-            </CardContent>
-          </Card>
+          <section
+            id="issue-comments"
+            aria-label="Comments and activity"
+            className="border-t border-line-subtle pt-4"
+          >
+            <Tabs tabs={tabs} value={tab} onChange={setTab} />
+            <div className="mt-4">
+              {tab === "comments" &&
+                (commentsQ.isLoading ? (
+                  <TabLoading />
+                ) : commentsQ.isError ? (
+                  <TabError query={commentsQ} what="comments" />
+                ) : (
+                  <CommentThread
+                    issueId={issue.id}
+                    comments={commentsQ.data?.items ?? []}
+                    members={membersQ.data}
+                    readOnly={!canWrite}
+                  />
+                ))}
+              {tab === "activity" &&
+                (activityQ.isLoading ? (
+                  <TabLoading />
+                ) : activityQ.isError ? (
+                  <TabError query={activityQ} what="activity" />
+                ) : (
+                  <ActivityFeed items={activityQ.data?.items ?? []} />
+                ))}
+            </div>
+          </section>
         </div>
 
         {/* Properties rail — desktop sidebar (sticky so it stays in view while
@@ -585,29 +532,26 @@ export function IssueDetailScreen({
             `self-start` keeps the grid item at content height so sticky has room;
             `top-20` clears the pinned action bar; a max-height + scroll keeps a
             long rail (many deps) usable. */}
-        <aside className="hidden lg:sticky lg:top-20 lg:block lg:max-h-[calc(100dvh-6rem)] lg:self-start lg:overflow-y-auto">
-          <Card>
-            <CardHeader>
-              <CardTitle>Properties</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <PropertiesRail
-                issue={issue}
-                slug={slug}
-                cost={costQ.data}
-                deps={depsQ.data}
-                pending={pending || !canWrite}
-                onPatch={onPatch}
-                onTransition={onTransition}
-                onEditModules={canWrite ? () => setModulePickerOpen(true) : undefined}
-                canMarkMerged={canWrite}
-                park={statusPark}
-              />
-            </CardContent>
-          </Card>
+        <aside
+          aria-label="Properties"
+          className="hidden lg:sticky lg:top-20 lg:block lg:max-h-[calc(100dvh-6rem)] lg:self-start lg:overflow-y-auto lg:border-l lg:border-line-subtle lg:pl-6"
+        >
+          <h2 className="fg-label mb-2">Properties</h2>
+          <PropertiesRail
+            issue={issue}
+            slug={slug}
+            cost={costQ.data}
+            deps={depsQ.data}
+            pending={pending || !canWrite}
+            onPatch={onPatch}
+            onTransition={onTransition}
+            onEditModules={canWrite ? () => setModulePickerOpen(true) : undefined}
+            canMarkMerged={canWrite}
+            park={statusPark}
+          />
         </aside>
-        <div className="lg:hidden">
-          <Collapsible title="Properties" defaultOpen>
+        <div className="border-t border-line-subtle lg:hidden">
+          <Collapsible title="Properties" defaultOpen flat>
             <PropertiesRail
               issue={issue}
               slug={slug}
@@ -636,7 +580,17 @@ export function IssueDetailScreen({
   );
 }
 
-/** Skeleton placeholder for the detail tab bodies (comments / activity / tasks)
+/** A main-column section drawn flat: a hairline above, a label heading, then its content. */
+function FlatSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section aria-label={title} className="border-t border-line-subtle pt-4">
+      <h2 className="fg-label mb-3">{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+/** Skeleton placeholder for the detail tab bodies (comments / activity)
  *  while their queries load — replaces the bare "Loading …" text (ISS-308 F1). */
 function TabLoading() {
   return (

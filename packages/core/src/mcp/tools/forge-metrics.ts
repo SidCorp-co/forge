@@ -1,6 +1,11 @@
 import { z } from 'zod';
 import { jobTypes } from '../../db/job-vocabulary.js';
-import { BUCKETS, METRICS, runTimeseries, stepDurationsForProject } from '../../metrics/queries.js';
+import {
+  BUCKETS,
+  metricSchema,
+  runTimeseries,
+  stepDurationsForProject,
+} from '../../metrics/queries.js';
 import {
   buildRetryRescuesReport,
   buildSessionFailuresReport,
@@ -80,7 +85,7 @@ export const forgeMetricsProjectStepDurationsTool: ContextScopedMcpToolFactory =
 const timeseriesInputSchema = z
   .object({
     projectId: z.uuid(),
-    metric: z.enum(METRICS),
+    metric: metricSchema,
     days: z.number().int().min(1).max(90).optional().default(30),
     bucket: z.enum(BUCKETS).optional().default('day'),
     groupBy: z.literal('step').optional(),

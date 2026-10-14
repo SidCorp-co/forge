@@ -2543,6 +2543,11 @@
   (ISS-1313)
 
 ### Removed
+- **Subtasks are gone.** `/api/tasks` and `/api/issues/:id/tasks` answer 404, `forge_issues` refuses `createTask`, `listTasks`, `updateTask` and `deleteTask`, and the Tasks tabs are removed. All 359 subtasks are deleted, and the priority 354 of them carried is withdrawn. (ISS-1132)
+- **`pass_rate` and `approve_rate` are gone from the metrics.** Asking for either is refused by name as retired, with the metrics still served listed. (ISS-1132)
+- **The attribute keys `blocking` and `supersedes` are gone.** Writing either is refused as unregistered; a blocking relation is a dependency edge. (ISS-1132)
+- **A refused `verdict` or `review` fence no longer names the step-context route,** which holds no typed verdict. It says no store holds one whole. (ISS-1132)
+
 - **`GET /api/me/recent-changes` is gone.** Nothing called it, and it still listed issues of archived projects. (ISS-1371)
 - **The Runs / Spend / Lead time switch on Top workspaces is gone.** Press the Runs, Spend or Median lead header instead; the ranking is still the server's, largest first. (ISS-1263)
 - **Forge no longer writes your release steps.** A project that declares its own procedure gets it;
@@ -3168,6 +3173,8 @@
   set is now 59.
 
 ### Fixed
+
+- **A session's message count no longer reads 0 for work it never recorded.** Master and run sessions keep no transcript here, so they show no count and `transcript: not-recorded`; older sessions show their real length. (ISS-1241)
 
 - **Jumping to the end of a long list lands on the last row.** The notification inbox and tables of more than 100 rows came to rest hundreds of pixels short when the rows were taller than expected, and only a second scroll reached the end. (ISS-1264)
 
@@ -6413,6 +6420,8 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+
+- **An attribute that holds one value per issue now holds exactly one row.** Two simultaneous writers could leave two; the second now replaces the first, and a batch naming the key twice is refused. (ISS-1132)
 
 - **Projects opens as a list on a phone, and the Overview is flat.** The cards stay from 640px up, and a view you pick wins and is still there after a reload. Overview sections are type over a hairline, with no cards. (ISS-1264)
 

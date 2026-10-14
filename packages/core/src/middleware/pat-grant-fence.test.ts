@@ -120,7 +120,6 @@ describe('a token granted nothing reaches the whole menu', () => {
     ['/api/comments'],
     ['/api/attachments'],
     ['/api/labels'],
-    ['/api/tasks'],
     ['/api/pipeline-runs'],
     ['/api/jobs'],
     ['/api/issue-step-contexts'],

@@ -97,7 +97,6 @@ vi.mock('./lib.js', async (importOriginal) => ({
 vi.mock('../../issues/read-service.js', async (importOriginal) => ({
   ...((await importOriginal()) as Record<string, unknown>),
   findIssueById: async () => stored,
-  findIssueProjectId: async () => PROJECT_ID,
 }));
 vi.mock('../../issues/list-service.js', () => ({ listIssueRows: async () => listRows }));
 vi.mock('../../issues/issue-prefix-read.js', () => ({

@@ -13,10 +13,9 @@
 
 export function forgeIssuesDescription(refClause: string): string {
   return (
-    `Issues and their tasks; every sub-action is in the action enum. ${refClause}\n` +
+    `Issues; every sub-action is in the action enum. ${refClause}\n` +
     'READING. list returns a summary projection - it omits the five heavy fields the fields ' +
     'enum names - to stay under the response token cap; get returns the full body. ' +
-    'filters.issue and filters.taskStatus belong to listTasks - list REFUSES them, use get. ' +
     'Triage with list, get only the one issue you are about to work, and never re-get a body ' +
     'already loaded this session; after a lean forge_step_start manifest (bodyTruncated:true) ' +
     'pull just the fields:[...] you need. Read hasMore before calling any count complete: a ' +
@@ -120,9 +119,6 @@ export function forgeIssuesDescription(refClause: string): string {
     'work can be archived; anything else is refused by name and nothing is written. ' +
     'filters.includeArchived:true lists archived rows too. A transition or a new edge naming ' +
     'an archived issue is refused (ISSUE_ARCHIVED) until it is unarchived.\n' +
-    'TASKS. createTask needs data.issueId + data.taskTitle; listTasks needs filters.issue and ' +
-    'accepts filters.taskStatus; updateTask/deleteTask take the task UUID as documentId. Tasks ' +
-    'inherit project membership from their issue.\n' +
     'ATTACHMENTS. Use forge_uploads (presigned URL) for anything past a tiny snippet; base64 ' +
     'in data.attachments[] is slow and burns context, though it still works for up to 10 tiny ' +
     'files (total <= UPLOADS_MAX_BYTES) and on partial failure returns attachments plus ' +

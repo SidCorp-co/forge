@@ -7,11 +7,13 @@ import {
   devices,
   emailVerificationTokens,
   feedbackReports,
+  issueAttributes,
   issueDependencies,
   issueDependencyKinds,
   issueLabels,
   issuePriorities,
   issueStatuses,
+  issueStepContexts,
   issues,
   jobEventKinds,
   jobEvents,
@@ -34,7 +36,6 @@ import {
   projectsRelations,
   promptBlobs,
   refreshTokens,
-  tasks,
   type users,
 } from './schema.js';
 import { activityLog, actorTypes } from './schema-activity.js';
@@ -649,23 +650,21 @@ describe('db/schema — pm_policies', () => {
   });
 });
 
-describe('tasks table (ISS-146 cascade verification)', () => {
-  it('issue_id references issues.id with onDelete cascade so tasks are cleaned up atomically', () => {
-    const cfg = getTableConfig(tasks);
-    const issueFk = cfg.foreignKeys.find((fk) =>
-      fk.reference().columns.some((c) => c.name === 'issue_id'),
-    );
-    if (!issueFk) throw new Error('issue_id FK not found on tasks');
-    expect(issueFk.onDelete).toBe('cascade');
+describe('the issue data plane holds no table or column nothing reads (ISS-1132)', () => {
+  it('has no verdict column and no verdict index on issue_step_contexts', () => {
+    const cfg = getTableConfig(issueStepContexts);
+    expect(cfg.columns.map((c) => c.name)).not.toContain('verdict');
+    expect(cfg.indexes.map((i) => i.config.name)).not.toContain('issue_step_contexts_verdict_idx');
   });
 
-  it('project_id references projects.id with onDelete cascade', () => {
-    const cfg = getTableConfig(tasks);
-    const projectFk = cfg.foreignKeys.find((fk) =>
-      fk.reference().columns.some((c) => c.name === 'project_id'),
+  it('keeps a single-row attribute key single by a partial unique index, with no foreign key on key', () => {
+    const cfg = getTableConfig(issueAttributes);
+    const index = cfg.indexes.find((i) => i.config.name === 'issue_attributes_single_row_uq');
+    expect(index?.config.unique && index.config.where !== undefined).toBe(true);
+    const fkOnKey = cfg.foreignKeys.some((fk) =>
+      fk.reference().columns.some((c) => c.name === 'key'),
     );
-    if (!projectFk) throw new Error('project_id FK not found on tasks');
-    expect(projectFk.onDelete).toBe('cascade');
+    expect(fkOnKey).toBe(false);
   });
 });
 
