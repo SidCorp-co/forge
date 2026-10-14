@@ -17,6 +17,22 @@ No gate compares it with `principal.scopes`. Outside `assertPrincipalIsAdmin` (t
 and a handful of tools that check `write` themselves (`forge-release-batch`, `forge-projects`),
 a token holding only `read` can create issues, comment and change fields through `/mcp`.
 
+## The named permissions are not read on /mcp either
+
+Found on ISS-1289 (2026-10-14). A token's named permissions decide what it reaches on REST
+(`middleware/pat-rest-surface.ts:assertGranted`), but `/mcp` is listed in
+`auth/pat-permissions.ts:PAT_UNGRANTABLE` as the door *where each tool fences itself*, and nothing
+under `packages/core/src/mcp` reads `principal.permissions`. On forge-beta at `7a2968e`, a token
+granted `issues:read` alone listed knowledge entries through `forge_knowledge`, while REST
+`/api/memory` refused it with `PAT_PERMISSION_REQUIRED`. ISS-972 put the MCP surface's own
+permission model out of scope, so the gap is declared; what is undecided is whether a grant binds on
+`/mcp`, and which permission each tool needs.
+
+The connect-an-assistant pages lean on it: they have the reader choose **Only the permissions I
+pick** and tick `issues:read`, saying these permissions limit a different way into Forge. A change
+that makes `/mcp` read grants rewrites that step in the same change, to the permissions the tools
+need or to **Full access**.
+
 ## Why it was not closed on ISS-1175
 
 The gate itself is one comparison in `requirePat`: a `write`-class request from a token without
