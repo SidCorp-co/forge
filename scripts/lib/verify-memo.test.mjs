@@ -121,6 +121,19 @@ describe('the key', () => {
     expect(key(built).key).not.toBe(builtBefore);
   });
 
+  it('holds, of a built directory filtered by `only`, the files it keeps and not the rest', () => {
+    put('.gitignore', 'out\n');
+    commit();
+    put('out/dev/types/routes.d.ts', 'one');
+    put('out/dev/cache/blob', 'one');
+    const built = { roots: ['src'], built: [{ path: 'out', only: /(^|\/)types\/.+$/ }] };
+    const before = key(built).key;
+    put('out/dev/cache/blob', 'two');
+    expect(key(built).key).toBe(before);
+    put('out/dev/types/routes.d.ts', 'two');
+    expect(key(built).key).not.toBe(before);
+  });
+
   it('holds a single built file by content, and a probed path by its name, kind and size and not by what it holds', () => {
     put('.gitignore', 'gen.d.ts\nbuildinfo\n');
     commit();
@@ -291,6 +304,16 @@ describe('the audit of a trace against a declaration', () => {
     ).toEqual([]);
     expect(faults([R('docs/n.md')], probed)).toEqual(['read docs/n.md']);
     expect(faults([`P ${join(root, 'docs/n.md')}`])).toEqual(['stat docs/n.md']);
+  });
+
+  it('accepts a read a filtered built directory keeps, and names one it leaves out', () => {
+    put('.gitignore', 'out\n');
+    commit();
+    put('out/dev/types/routes.d.ts', 'one');
+    put('out/dev/cache/blob', 'one');
+    const filtered = { ...decl, built: [{ path: 'out', only: /(^|\/)types\/.+$/ }] };
+    expect(faults([R('out/dev/types/routes.d.ts')], filtered)).toEqual([]);
+    expect(faults([R('out/dev/cache/blob')], filtered)).toEqual(['read out/dev/cache/blob']);
   });
 
   it('names a read of an ignored file inside a root, which no key holds', () => {
@@ -560,6 +583,36 @@ describe('what verify declares', () => {
       if (d.uncached) expect(d.uncached.length).toBeGreaterThan(20);
       else expect(d.roots).toEqual(expect.arrayContaining(['pnpm-lock.yaml', '.gitignore']));
     }
+  });
+
+  it('accepts, for every check that runs TypeScript over web-v2, what `next build` and `next dev` leave in the package', () => {
+    put('.gitignore', 'packages/web-v2/.next\npackages/*/AGENTS.md\npackages/*/CLAUDE.md\n');
+    commit();
+    const written = [
+      'packages/web-v2/.next/package.json',
+      'packages/web-v2/.next/types/routes.d.ts',
+      'packages/web-v2/.next/dev/package.json',
+      'packages/web-v2/.next/dev/types/routes.d.ts',
+      'packages/web-v2/.next/dev/types/validator.ts',
+    ];
+    for (const rel of [...written, 'packages/web-v2/AGENTS.md', 'packages/web-v2/CLAUDE.md']) put(rel, 'x');
+    put('packages/web-v2/.next/dev/cache/turbopack/blob', 'x');
+    const lines = [
+      ...written.map((rel) => `R ${join(root, rel)}`),
+      `P ${join(root, 'packages/web-v2/AGENTS.md')}`,
+      `P ${join(root, 'packages/web-v2/CLAUDE.md')}`,
+    ];
+    for (const label of ['archmap', 'conformance levels', 'conformance audit']) {
+      const faults = audit({ root, decl: INPUTS[label], tree: new Tree(root), lines, git: null });
+      expect(faults, label).toEqual([]);
+    }
+    const check = { label: 'archmap', cmd: ['node', 'check.mjs'] };
+    const keyed = () => keyFor({ check, decl: INPUTS.archmap, tree: new Tree(root), git: null, env: {} }).key;
+    const before = keyed();
+    put('packages/web-v2/.next/dev/cache/turbopack/blob', 'a build nobody reads');
+    expect(keyed()).toBe(before);
+    put('packages/web-v2/.next/dev/types/routes.d.ts', 'a route moved');
+    expect(keyed()).not.toBe(before);
   });
 
   it('lists what the store holds and names the checks it never files', () => {
