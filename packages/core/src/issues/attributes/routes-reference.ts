@@ -30,12 +30,12 @@ export const writeAttributes = describeOperation({
       WRONG_TYPE: 'a value is not of the type its key holds',
       OBLIGATION_UNOWNED: 'an obligation was asserted with no owner',
       EMPTY_TEXT: 'a text value is empty',
+      DUPLICATE_SINGLE_KEY: 'one batch names a key that holds one row per issue more than once',
       SOURCE_COMMENT_NOT_FOUND: '`sourceCommentId` names no comment',
       SOURCE_COMMENT_OFF_ISSUE: '`sourceCommentId` names a comment on another issue',
     }),
     403: fail('FORBIDDEN', 'the caller is not a project member with write access'),
     404: fail('NOT_FOUND', 'the issue does not exist'),
-    409: fail('ATTRIBUTE_DEF_MISSING', "the registry's two lists disagree about a key"),
   },
 });
 

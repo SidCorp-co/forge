@@ -9,7 +9,6 @@ import type {
   IssueParkResponse,
   StepDurationRow,
   StepHandoffRow,
-  TaskRow,
 } from "./types";
 
 interface ActivityEnvelope {
@@ -50,10 +49,6 @@ export const issueDetailApi = {
   /** `GET /api/issues/:id/activity` — reverse-chron timeline + `nextBefore`. */
   listActivity: (id: string, limit = 50, projectId?: string) =>
     apiClient<ActivityEnvelope>(withProject(`/issues/${id}/activity?limit=${limit}`, projectId)),
-
-  /** `GET /api/issues/:id/tasks` — flat task rows. */
-  listTasks: (id: string, projectId?: string) =>
-    apiClient<TaskRow[]>(withProject(`/issues/${id}/tasks`, projectId)),
 
   /** `GET /api/issues/:id/attachments` — rows with download `url`. */
   listAttachments: (id: string, projectId?: string) =>

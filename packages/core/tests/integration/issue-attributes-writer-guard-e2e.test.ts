@@ -66,22 +66,8 @@ afterAll(async () => {
   if (harness) await harness.cleanup();
 });
 
-/** Reference data migration 0245 seeds and `truncateAll` empties. */
-async function seedDefs(): Promise<void> {
-  const { ATTRIBUTE_REGISTRY } = await import('../../src/issues/attributes/registry.js');
-  for (const def of ATTRIBUTE_REGISTRY) {
-    await harness.db.execute(sql`
-      INSERT INTO issue_attribute_defs (key, label, value_type, cardinality, written_by, surfaces, required)
-      VALUES (${def.key}, ${def.label}, ${def.valueType}, ${def.cardinality}, ${def.writtenBy},
-              ${JSON.stringify(def.surfaces)}::jsonb, ${def.required})
-      ON CONFLICT (key) DO NOTHING
-    `);
-  }
-}
-
 beforeEach(async () => {
   await truncateAll(harness.db);
-  await seedDefs();
 });
 
 /** An id no comment carries, spelled the way a caller would spell one. */
@@ -177,7 +163,7 @@ describe('the MCP door inherits the writer’s refusals (ISS-1158)', () => {
   it('refuses a sourceCommentId naming a comment on another issue, by name', async () => {
     const { issueId, otherIssueId, offIssueCommentId, pat } = await seed();
     const res = await callMcpSetAttributes(pat, issueId, [
-      { key: 'supersedes', value: otherIssueId, sourceCommentId: offIssueCommentId },
+      { key: 'obligation_carrier', value: otherIssueId, sourceCommentId: offIssueCommentId },
     ]);
     expect(res.isError).toBe(true);
     expect(res.text).toContain('SOURCE_COMMENT_OFF_ISSUE');
@@ -186,7 +172,7 @@ describe('the MCP door inherits the writer’s refusals (ISS-1158)', () => {
   it('writes no row for a batch refused on its sourceCommentId', async () => {
     const { issueId, otherIssueId, offIssueCommentId, pat } = await seed();
     await callMcpSetAttributes(pat, issueId, [
-      { key: 'supersedes', value: otherIssueId, sourceCommentId: offIssueCommentId },
+      { key: 'obligation_carrier', value: otherIssueId, sourceCommentId: offIssueCommentId },
     ]);
     expect(await attributeRows(issueId)).toHaveLength(0);
   });
@@ -208,7 +194,7 @@ describe('the MCP door inherits the writer’s refusals (ISS-1158)', () => {
   it('refuses a sourceCommentId naming no comment, by name', async () => {
     const { issueId, otherIssueId, pat } = await seed();
     const res = await callMcpSetAttributes(pat, issueId, [
-      { key: 'supersedes', value: otherIssueId, sourceCommentId: ABSENT_COMMENT_ID },
+      { key: 'obligation_carrier', value: otherIssueId, sourceCommentId: ABSENT_COMMENT_ID },
     ]);
     expect(res.isError).toBe(true);
     expect(res.text).toContain('SOURCE_COMMENT_NOT_FOUND');
@@ -220,7 +206,7 @@ describe('a refusal tells the caller what was wrong, not how it would have been 
     const { issueId, otherIssueId, offIssueCommentId, pat } = await seed();
     for (const sourceCommentId of [ABSENT_COMMENT_ID, offIssueCommentId]) {
       const res = await callMcpSetAttributes(pat, issueId, [
-        { key: 'supersedes', value: otherIssueId, sourceCommentId },
+        { key: 'obligation_carrier', value: otherIssueId, sourceCommentId },
       ]);
       expect(res.isError).toBe(true);
       expectNoSql(res.text);
@@ -231,20 +217,23 @@ describe('a refusal tells the caller what was wrong, not how it would have been 
     const { issueId, otherIssueId, offIssueCommentId, jwt } = await seed();
     for (const sourceCommentId of [ABSENT_COMMENT_ID, offIssueCommentId]) {
       const res = await write(issueId, jwt, [
-        { key: 'supersedes', value: otherIssueId, sourceCommentId },
+        { key: 'obligation_carrier', value: otherIssueId, sourceCommentId },
       ]);
       expect(res.status).toBe(400);
       expectNoSql(JSON.stringify(await res.json()));
     }
   });
 
-  it('names the registry drift at the MCP door rather than handing up the insert', async () => {
+  it('names a repeated single-row key at the MCP door rather than handing up the upsert', async () => {
     const { issueId, pat } = await seed();
-    await harness.db.execute(sql`DELETE FROM issue_attribute_defs WHERE key = 'human_required'`);
-    const res = await callMcpSetAttributes(pat, issueId, [{ key: 'human_required', value: true }]);
+    const res = await callMcpSetAttributes(pat, issueId, [
+      { key: 'human_required', value: true },
+      { key: 'human_required', value: false },
+    ]);
     expect(res.isError).toBe(true);
-    expect(res.text).toContain('ATTRIBUTE_DEF_MISSING');
+    expect(res.text).toContain('DUPLICATE_SINGLE_KEY');
     expectNoSql(res.text);
+    expect(await attributeRows(issueId)).toHaveLength(0);
   });
 });
 
@@ -255,7 +244,7 @@ describe('a uuid is case-insensitive, and the comparison that reads it must be t
     // of pure digits cannot make this pass without exercising the case at all.
     expect(commentId).toMatch(/[a-f]/);
     const res = await write(issueId, jwt, [
-      { key: 'supersedes', value: otherIssueId, sourceCommentId: commentId.toUpperCase() },
+      { key: 'obligation_carrier', value: otherIssueId, sourceCommentId: commentId.toUpperCase() },
     ]);
     expect(res.status).toBe(201);
   });
@@ -263,7 +252,7 @@ describe('a uuid is case-insensitive, and the comparison that reads it must be t
   it('lands the same row the lowercase spelling would have landed', async () => {
     const { issueId, otherIssueId, commentId, jwt } = await seed();
     await write(issueId, jwt, [
-      { key: 'supersedes', value: otherIssueId, sourceCommentId: commentId.toUpperCase() },
+      { key: 'obligation_carrier', value: otherIssueId, sourceCommentId: commentId.toUpperCase() },
     ]);
     const rows = await attributeRows(issueId);
     expect(rows).toHaveLength(1);
@@ -278,7 +267,7 @@ describe('the refusal is the writer’s, so a third caller inherits it', () => {
       setIssueAttributes([
         {
           issueId,
-          key: 'supersedes',
+          key: 'obligation_carrier',
           value: otherIssueId,
           sourceCommentId: offIssueCommentId,
         },
@@ -292,7 +281,7 @@ describe('the refusal is the writer’s, so a third caller inherits it', () => {
       setIssueAttributes([
         {
           issueId,
-          key: 'supersedes',
+          key: 'obligation_carrier',
           value: otherIssueId,
           sourceCommentId: ABSENT_COMMENT_ID,
         },
@@ -305,7 +294,7 @@ describe('the HTTP door keeps the refusals ISS-1113 criterion 9 was judged on', 
   it('answers 400 SOURCE_COMMENT_NOT_FOUND in the wording it shipped with', async () => {
     const { issueId, otherIssueId, jwt } = await seed();
     const res = await write(issueId, jwt, [
-      { key: 'supersedes', value: otherIssueId, sourceCommentId: ABSENT_COMMENT_ID },
+      { key: 'obligation_carrier', value: otherIssueId, sourceCommentId: ABSENT_COMMENT_ID },
     ]);
     expect(res.status).toBe(400);
     const body = (await res.json()) as { code: string; message: string };
@@ -318,7 +307,7 @@ describe('the HTTP door keeps the refusals ISS-1113 criterion 9 was judged on', 
   it('answers 400 SOURCE_COMMENT_OFF_ISSUE in the wording it shipped with', async () => {
     const { issueId, otherIssueId, offIssueCommentId, jwt } = await seed();
     const res = await write(issueId, jwt, [
-      { key: 'supersedes', value: otherIssueId, sourceCommentId: offIssueCommentId },
+      { key: 'obligation_carrier', value: otherIssueId, sourceCommentId: offIssueCommentId },
     ]);
     expect(res.status).toBe(400);
     const body = (await res.json()) as { code: string; message: string };

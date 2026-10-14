@@ -135,24 +135,19 @@ describe('a caller that declared it can write a record elsewhere', () => {
     expect(refused.details?.refusals?.map((r) => r.rule)).toEqual(['record-in-comment']);
   });
 
-  it('is told the route its own kind goes to, where a store holds that kind', async () => {
-    const { issueId, jwt } = await seed();
-    const verdict = (await (
-      await post(issueId, jwt, fenced('verdict'), 'record-route')
-    ).json()) as Refused;
-    expect(verdict.details?.refusals?.[0]?.why).toContain('POST /api/issue-step-contexts');
-  });
-
-  it('is told no store holds a kind core cannot represent, rather than a route it would be refused at', async () => {
-    const { issueId, jwt } = await seed();
-    const baseline = (await (
-      await post(issueId, jwt, fenced('baseline'), 'record-route')
-    ).json()) as Refused;
-    const why = baseline.details?.refusals?.[0]?.why ?? '';
-    expect(why).toContain('no store here holds');
-    expect(why).toContain('POST /api/issues/:id/attributes');
-    expect(why).not.toContain('issue-step-contexts');
-  });
+  it.each(['verdict', 'baseline'])(
+    'is told no store holds a %s, rather than a route it would be refused at',
+    async (kind) => {
+      const { issueId, jwt } = await seed();
+      const refused = (await (
+        await post(issueId, jwt, fenced(kind), 'record-route')
+      ).json()) as Refused;
+      const why = refused.details?.refusals?.[0]?.why ?? '';
+      expect(why).toContain('no store here holds');
+      expect(why).toContain('POST /api/issues/:id/attributes');
+      expect(why).not.toContain('issue-step-contexts');
+    },
+  );
 
   it('writes nothing when it is refused', async () => {
     const { issueId, jwt } = await seed();
@@ -273,7 +268,7 @@ describe('a fence whose tag rides on the fence itself', () => {
     expect(res.status).toBe(400);
     const refused = (await res.json()) as Refused;
     expect(refused.details?.refusals?.map((r) => r.rule)).toEqual(['record-in-comment']);
-    expect(refused.details?.refusals?.[0]?.why).toContain('POST /api/issue-step-contexts');
+    expect(refused.details?.refusals?.[0]?.why).toContain('no store here holds');
   });
 
   it('is written 201 with the warning where the caller declared nothing', async () => {

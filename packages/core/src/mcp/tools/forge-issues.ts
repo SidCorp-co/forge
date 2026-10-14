@@ -5,7 +5,6 @@ import {
   issueComplexities,
   issuePriorities,
   issueStatuses,
-  taskStatuses,
   waitingKinds,
 } from '../../db/issue-vocabulary.js';
 import { actorAgency } from '../../issues/actor-agency.js';
@@ -38,7 +37,7 @@ import {
 import { mergeMarkFields } from '../../issues/merge-record.js';
 import { parkQuestionNotMinted } from '../../issues/park-question.js';
 import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from '../../issues/patch-fields.js';
-import { findIssueById, findIssueProjectId, type IssueRow } from '../../issues/read-service.js';
+import { findIssueById, type IssueRow } from '../../issues/read-service.js';
 import { applyIssueRelations, issueRelationInputSchema } from '../../issues/relations-service.js';
 import { ReleaseNotesSchema } from '../../issues/release-notes.js';
 import { IssueSearchKeyRefused } from '../../issues/search-term.js';
@@ -46,15 +45,6 @@ import { sessionContextExpectSchema, sessionContextSchema } from '../../issues/s
 import { updateIssueFields } from '../../issues/update-service.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
 import { markUntrusted, sanitizeUntrusted } from '../../prompt/sanitize.js';
-import {
-  createTask as createTaskRow,
-  deleteTask as deleteTaskRow,
-  findTaskById,
-  listTasksForIssue,
-  type TaskListRow,
-  type TaskRow,
-  updateTask as updateTaskRow,
-} from '../../tasks/task-service.js';
 import { refuseStrayArchiveFields, runArchiveAction } from './forge-issues-archive.js';
 import { forgeIssuesDescription } from './forge-issues-description.js';
 import { toMcpIssueError } from './forge-issues-errors.js';
@@ -91,8 +81,6 @@ const filtersSchema = z
     createdAfter: z.string().optional(),
     createdBefore: z.string().optional(),
     updatedAfter: z.string().optional(),
-    issue: issueRefSchema.optional(),
-    taskStatus: z.enum(taskStatuses).optional(),
     label: z
       .union([z.string().trim().min(1), z.array(z.string().trim().min(1)).max(50)])
       .optional(),
@@ -136,12 +124,6 @@ const dataObject = z
     mergedAt: z.string().optional(),
     note: z.string().max(10_000).optional(),
     issueId: issueRefSchema.optional(),
-    taskTitle: z.string().trim().min(1).max(500).optional(),
-    taskDescription: z.string().max(50_000).nullable().optional(),
-    taskStatus: z.enum(taskStatuses).optional(),
-    taskPriority: z.enum(issuePriorities).optional(),
-    isAgentTask: z.boolean().optional(),
-    taskAcceptanceCriteria: z.array(z.string()).nullable().optional(),
     relations: z.array(issueRelationInputSchema).max(20).optional(),
     reason: z.string().trim().min(1).max(10_000).optional(),
     waitingKind: z.enum(waitingKinds).optional(),
@@ -203,10 +185,6 @@ const inputSchema = z
       'create',
       'update',
       'transition',
-      'createTask',
-      'listTasks',
-      'updateTask',
-      'deleteTask',
       'mark_merged',
       'unmark',
       'setAttributes',
@@ -433,59 +411,6 @@ export async function serializeManifestWithAttachments(
   return { ...serializeManifest(row, prefix), attachments, labels: issueLabelsList };
 }
 
-function serializeTask(row: TaskRow): Record<string, unknown> {
-  return {
-    documentId: row.id,
-    issueId: row.issueId,
-    projectId: row.projectId,
-    title: row.title,
-    description: row.description,
-    status: row.status,
-    priority: row.priority,
-    assigneeId: row.assigneeId,
-    isAgentTask: row.isAgentTask,
-    agentStatus: row.agentStatus,
-    acceptanceCriteria: row.acceptanceCriteria,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  };
-}
-
-/**
- * Body-free projection for the `listTasks` surface — omits `description`
- * (up to 50KB each) so a list over many tasks never overflows the MCP token
- * cap. Full task body stays reachable via `action=updateTask` / `getTask`.
- * Do NOT widen this back to `serializeTask()` for the list path.
- */
-function serializeTaskListRow(row: TaskListRow): Record<string, unknown> {
-  return {
-    documentId: row.id,
-    issueId: row.issueId,
-    projectId: row.projectId,
-    title: row.title,
-    status: row.status,
-    priority: row.priority,
-    assigneeId: row.assigneeId,
-    isAgentTask: row.isAgentTask,
-    agentStatus: row.agentStatus,
-    acceptanceCriteria: row.acceptanceCriteria,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  };
-}
-
-async function loadIssueProjectId(issueId: string): Promise<string> {
-  const projectId = await findIssueProjectId(issueId);
-  if (!projectId) throw new Error('NOT_FOUND: issue not found');
-  return projectId;
-}
-
-async function loadTaskForAccess(taskId: string): Promise<TaskRow> {
-  const row = await findTaskById(taskId);
-  if (!row) throw new Error('NOT_FOUND: task not found');
-  return row;
-}
-
 /** A key the project cannot answer reaches the caller as `<ISSUE_KEY_* code>: <sentence>` once the
  *  server strips the status word, the `BAD_REQUEST: <code>: <message>` shape the other tools use. */
 async function listIssueRowsOrRefuse(...args: Parameters<typeof listIssueRows>) {
@@ -549,13 +474,6 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
 
         const issuesLimit = input.limit ?? 25;
         const f = input.filters;
-        for (const key of ['issue', 'taskStatus'] as const) {
-          if (f?.[key] !== undefined) {
-            throw new Error(
-              `BAD_REQUEST: filters.${key} is applied only by action 'listTasks' — for one issue use action 'get' with its documentId`,
-            );
-          }
-        }
         const rows = await listIssueRowsOrRefuse(
           projectId,
           {
@@ -843,83 +761,6 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           }
           throw err;
         }
-      }
-
-      case 'listTasks': {
-        const ref = input.filters?.issue;
-        if (!ref) throw new Error('BAD_REQUEST: filters.issue required for listTasks');
-        const issueId = await refs.issue('filters.issue', ref);
-        const projectId = await loadIssueProjectId(issueId);
-        await assertPrincipalIsMember(principal, projectId);
-
-        const tasksLimit = input.limit ?? 25;
-        const rows = await listTasksForIssue(issueId, {
-          status: input.filters?.taskStatus,
-          limit: overfetch(tasksLimit),
-        });
-
-        return buildListEnvelope({
-          key: 'tasks',
-          items: rows.map((r) => serializeTaskListRow(r)),
-          limit: tasksLimit,
-          hint: 'filter by taskStatus, or fetch tasks individually',
-          order: 'asc',
-        });
-      }
-
-      case 'createTask': {
-        const data = input.data;
-        if (!data?.issueId) throw new Error('BAD_REQUEST: data.issueId required for createTask');
-        if (!data.taskTitle) throw new Error('BAD_REQUEST: data.taskTitle required for createTask');
-        const issueId = await refs.issue('data.issueId', data.issueId);
-        const projectId = await loadIssueProjectId(issueId);
-        await assertPrincipalIsWriter(principal, projectId);
-
-        const created = await createTaskRow({
-          issueId,
-          projectId,
-          title: data.taskTitle,
-          description: data.taskDescription ?? null,
-          status: data.taskStatus,
-          priority: data.taskPriority,
-          isAgentTask: data.isAgentTask,
-          acceptanceCriteria: data.taskAcceptanceCriteria ?? null,
-          actor: principalHookActor(principal),
-        });
-
-        return { task: serializeTask(created) };
-      }
-
-      case 'updateTask': {
-        if (!input.documentId) throw new Error('BAD_REQUEST: documentId required for updateTask');
-        const row = await loadTaskForAccess(refs.task('documentId', input.documentId));
-        await assertPrincipalIsWriter(principal, row.projectId);
-
-        const data = input.data ?? {};
-        const updates: Record<string, unknown> = {};
-        if (data.taskTitle !== undefined) updates.title = data.taskTitle;
-        if (data.taskDescription !== undefined) updates.description = data.taskDescription;
-        if (data.taskStatus !== undefined) updates.status = data.taskStatus;
-        if (data.taskPriority !== undefined) updates.priority = data.taskPriority;
-        if (data.isAgentTask !== undefined) updates.isAgentTask = data.isAgentTask;
-        if (data.taskAcceptanceCriteria !== undefined) {
-          updates.acceptanceCriteria = data.taskAcceptanceCriteria;
-        }
-
-        const updated = await updateTaskRow(row, updates, principalHookActor(principal), [
-          'acceptanceCriteria',
-        ]);
-        if (!updated) throw new Error('NOT_FOUND: task not found');
-
-        return { task: serializeTask(updated) };
-      }
-
-      case 'deleteTask': {
-        if (!input.documentId) throw new Error('BAD_REQUEST: documentId required for deleteTask');
-        const row = await loadTaskForAccess(refs.task('documentId', input.documentId));
-        await assertPrincipalIsWriter(principal, row.projectId);
-        await deleteTaskRow(row, principalHookActor(principal));
-        return { deleted: true, documentId: row.id };
       }
     }
   },

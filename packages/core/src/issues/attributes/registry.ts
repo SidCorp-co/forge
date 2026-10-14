@@ -1,3 +1,4 @@
+import { singleRowAttributeKeys } from '../../db/issue-vocabulary.js';
 import type { AttributeValueType, AttributeWriter } from '../../db/schema.js';
 
 export interface AttributeDef {
@@ -10,12 +11,13 @@ export interface AttributeDef {
   readonly required: boolean;
 }
 
-export const ATTRIBUTE_REGISTRY: readonly AttributeDef[] = [
+type AttributeDeclaration = Omit<AttributeDef, 'cardinality'>;
+
+const DECLARED: readonly AttributeDeclaration[] = [
   {
     key: 'obligation',
     label: 'Outstanding',
     valueType: 'text',
-    cardinality: 'many',
     writtenBy: 'agent',
     surfaces: ['state', 'exception'],
     required: false,
@@ -24,7 +26,6 @@ export const ATTRIBUTE_REGISTRY: readonly AttributeDef[] = [
     key: 'obligation_owner',
     label: 'Owed by',
     valueType: 'ref_user',
-    cardinality: 'one',
     writtenBy: 'agent',
     surfaces: ['state'],
     required: true,
@@ -33,7 +34,6 @@ export const ATTRIBUTE_REGISTRY: readonly AttributeDef[] = [
     key: 'obligation_carrier',
     label: 'Carried by',
     valueType: 'ref_issue',
-    cardinality: 'one',
     writtenBy: 'agent',
     surfaces: ['state'],
     required: false,
@@ -42,7 +42,6 @@ export const ATTRIBUTE_REGISTRY: readonly AttributeDef[] = [
     key: 'delivered',
     label: 'Delivered',
     valueType: 'number',
-    cardinality: 'one',
     writtenBy: 'agent',
     surfaces: ['state', 'pulse'],
     required: false,
@@ -51,34 +50,14 @@ export const ATTRIBUTE_REGISTRY: readonly AttributeDef[] = [
     key: 'delivered_of',
     label: 'Of',
     valueType: 'number',
-    cardinality: 'one',
     writtenBy: 'agent',
     surfaces: ['state', 'pulse'],
-    required: false,
-  },
-  {
-    key: 'blocking',
-    label: 'Blocking',
-    valueType: 'ref_issue',
-    cardinality: 'many',
-    writtenBy: 'agent',
-    surfaces: ['state'],
-    required: false,
-  },
-  {
-    key: 'supersedes',
-    label: 'Supersedes',
-    valueType: 'ref_issue',
-    cardinality: 'one',
-    writtenBy: 'agent',
-    surfaces: ['state'],
     required: false,
   },
   {
     key: 'human_required',
     label: 'Needs a person',
     valueType: 'bool',
-    cardinality: 'one',
     writtenBy: 'agent',
     surfaces: ['state', 'exception'],
     required: false,
@@ -87,7 +66,6 @@ export const ATTRIBUTE_REGISTRY: readonly AttributeDef[] = [
     key: 'irreversible_if_wrong',
     label: 'Irreversible if wrong',
     valueType: 'text',
-    cardinality: 'one',
     writtenBy: 'agent',
     surfaces: ['decision'],
     required: false,
@@ -96,12 +74,19 @@ export const ATTRIBUTE_REGISTRY: readonly AttributeDef[] = [
     key: 'source',
     label: 'Source',
     valueType: 'ref_comment',
-    cardinality: 'one',
     writtenBy: 'agent',
     surfaces: ['evidence'],
     required: false,
   },
 ];
+
+const SINGLE_ROW: ReadonlySet<string> = new Set(singleRowAttributeKeys);
+
+/** A key is single-row exactly when `singleRowAttributeKeys` lists it, the list the unique index is built from. */
+export const ATTRIBUTE_REGISTRY: readonly AttributeDef[] = DECLARED.map((d) => ({
+  ...d,
+  cardinality: SINGLE_ROW.has(d.key) ? 'one' : 'many',
+}));
 
 const BY_KEY = new Map(ATTRIBUTE_REGISTRY.map((d) => [d.key, d]));
 

@@ -7,7 +7,6 @@ import { describe, expect, it } from 'vitest';
 import { verdictEvidenceRefusals } from './evidence-citation.js';
 import { parseForgeRecord } from './forge-record.js';
 import {
-  destinationFor,
   ISSUE_ASSERTION_ROUTE,
   RECORD_GUIDE_SLUG,
   RECORD_RULE_IDS,
@@ -44,16 +43,8 @@ describe('record-in-comment', () => {
     expect(refusal?.rule).toBe('record-in-comment');
   });
 
-  it('sends a verdict to the step-context route', () => {
-    expect(destinationFor('verdict')).toBe('POST /api/issue-step-contexts');
-    const refusal = recordInCommentRefusal(parseForgeRecord(bodyOf('verdict')));
-    expect(refusal?.why).toContain('POST /api/issue-step-contexts');
-    expect(refusal?.why).not.toContain('/attributes');
-  });
-
-  it('names no route for a kind no store holds whole, and says so', () => {
-    for (const kind of ['baseline', 'decision', 'merged', 'somethingelse']) {
-      expect(destinationFor(kind)).toBeNull();
+  it('names no route for any kind, a verdict and a review included, and says no store holds it', () => {
+    for (const kind of ['verdict', 'review', 'baseline', 'decision', 'merged', 'somethingelse']) {
       const why = recordInCommentRefusal(parseForgeRecord(bodyOf(kind)))?.why ?? '';
       expect(why).toContain('no store here holds');
       expect(why).toContain(ISSUE_ASSERTION_ROUTE);
@@ -61,9 +52,8 @@ describe('record-in-comment', () => {
     }
   });
 
-  it('takes the unsupported path for a kind that names something on Object.prototype', () => {
+  it('takes the same path for a kind that names something on Object.prototype', () => {
     for (const kind of ['constructor', 'tostring', 'valueof']) {
-      expect(destinationFor(kind)).toBeNull();
       const why = recordInCommentRefusal(parseForgeRecord(bodyOf(kind)))?.why ?? '';
       expect(why).toContain('no store here holds');
       expect(why).not.toContain('function');

@@ -16,7 +16,7 @@
 import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { ISSUE_REF_INPUTS, TASK_REF_INPUTS } from '../../src/mcp/tools/issue-ref-input.js';
+import { ISSUE_REF_INPUTS } from '../../src/mcp/tools/issue-ref-input.js';
 import {
   createTestProject,
   createTestProjectMember,
@@ -50,22 +50,8 @@ afterAll(async () => {
   if (harness) await harness.cleanup();
 });
 
-/** Reference data migration 0245 seeds and `truncateAll` empties. */
-async function seedDefs(): Promise<void> {
-  const { ATTRIBUTE_REGISTRY } = await import('../../src/issues/attributes/registry.js');
-  for (const def of ATTRIBUTE_REGISTRY) {
-    await harness.db.execute(sql`
-      INSERT INTO issue_attribute_defs (key, label, value_type, cardinality, written_by, surfaces, required)
-      VALUES (${def.key}, ${def.label}, ${def.valueType}, ${def.cardinality}, ${def.writtenBy},
-              ${JSON.stringify(def.surfaces)}::jsonb, ${def.required})
-      ON CONFLICT (key) DO NOTHING
-    `);
-  }
-}
-
 beforeEach(async () => {
   await truncateAll(harness.db);
-  await seedDefs();
 });
 
 const SEQ = 7;
@@ -161,11 +147,6 @@ const ARGS: Record<string, (ref: string, projectId: string) => Record<string, un
     data: { issueId: ref, target: 'feature' },
   }),
   unmark: (ref) => ({ action: 'unmark', data: { issueId: ref } }),
-  createTask: (ref) => ({
-    action: 'createTask',
-    data: { issueId: ref, taskTitle: 'a task reached by key' },
-  }),
-  listTasks: (ref) => ({ action: 'listTasks', filters: { issue: ref } }),
 };
 
 describe('every registered issue reference takes the display key (ISS-1179)', () => {
@@ -291,14 +272,14 @@ describe('a key that resolves to nothing is refused by name (ISS-1179)', () => {
   });
 });
 
-describe('a task reference takes the task uuid alone (ISS-1179)', () => {
-  for (const { action, field } of TASK_REF_INPUTS) {
-    it(`${action} refuses a display key in ${field}, saying where the uuid comes from`, async () => {
+describe('the task actions are gone (ISS-1132)', () => {
+  for (const action of ['createTask', 'listTasks', 'updateTask', 'deleteTask']) {
+    it(`${action} is refused by the tool's own unknown-action refusal`, async () => {
       const w = await seed();
-      const res = await call(w.pat, { action, documentId: KEY, projectId: w.projectId });
+      const res = await call(w.pat, { action, projectId: w.projectId });
       expect(res.isError).toBe(true);
-      expect(res.text).toContain('is the TASK uuid');
-      expect(res.text).toContain("action 'listTasks'");
+      expect(res.text).toContain('action');
+      expect(res.text).not.toContain('Task');
     });
   }
 });
@@ -317,27 +298,23 @@ describe('the handler routes no reference around the registry (ISS-1179)', () =>
     );
     const handler = src.slice(src.indexOf('handler: async (args)'));
     const reads = [
-      ...handler.matchAll(
-        /\binput\.documentId\b|\binput\.data\?\.issueId\b|\bdata\.issueId\b|\binput\.filters\?\.issue\b/g,
-      ),
+      ...handler.matchAll(/\binput\.documentId\b|\binput\.data\?\.issueId\b|\bdata\.issueId\b/g),
     ];
     expect(
       reads.length,
       'no reference field is read at all — this test has lost its subject',
     ).toBeGreaterThan(0);
 
-    /** The locals a `refs.issue`/`refs.task` call is given, so a read bound to one is routed. */
+    /** The locals a `refs.issue` call is given, so a read bound to one is routed. */
     const routedNames = new Set(
-      [...handler.matchAll(/refs\.(?:issue|task)\([^,]+,\s*([A-Za-z_$][\w$.?]*)/g)].map(
-        (m) => m[1] ?? '',
-      ),
+      [...handler.matchAll(/refs\.issue\([^,]+,\s*([A-Za-z_$][\w$.?]*)/g)].map((m) => m[1] ?? ''),
     );
 
     for (const read of reads) {
       const line = handler
         .slice(handler.lastIndexOf('\n', read.index) + 1, handler.indexOf('\n', read.index))
         .trim();
-      const routed = /refs\.(?:issue|task)\(/.test(line);
+      const routed = /refs\.issue\(/.test(line);
       const guarded = line.startsWith('if (!');
       const bound = /^const\s+([A-Za-z_$][\w$]*)\s*=/.exec(line);
       const handedOn = bound ? routedNames.has(bound[1] ?? '') : false;
@@ -363,6 +340,5 @@ describe('the handler routes no reference around the registry (ISS-1179)', () =>
         ),
       ].sort();
     expect(named('issue')).toEqual([...new Set(ISSUE_REF_INPUTS.map((i) => i.field))].sort());
-    expect(named('task')).toEqual([...new Set(TASK_REF_INPUTS.map((i) => i.field))].sort());
   });
 });

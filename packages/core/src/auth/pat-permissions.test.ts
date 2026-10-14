@@ -47,7 +47,7 @@ function covers(
   return patGrantCovers(granted, patPermissionWanted(path, level));
 }
 
-const REACHABLE_ON_2026_09_10 = [
+const AT_EPOCH_1 = [
   '/api/attachments',
   '/api/comments',
   '/api/issue-step-contexts',
@@ -64,7 +64,6 @@ const REACHABLE_ON_2026_09_10 = [
   '/api/schedules',
   '/api/skill-facts',
   '/api/skills',
-  '/api/tasks',
 ];
 
 /** ISS-1373 — what the menu grew by, written out so a prefix cannot join it quietly. */
@@ -97,7 +96,7 @@ const ADDED_AT_EPOCH_2 = [
 
 describe('a token keeps the reach it was minted with', () => {
   it('holds epoch 1 to exactly the prefixes a PAT could reach before the menu grew', () => {
-    expect(prefixesAt(1)).toEqual([...REACHABLE_ON_2026_09_10].sort());
+    expect(prefixesAt(1)).toEqual([...AT_EPOCH_1].sort());
   });
 
   it('puts every prefix added since at epoch 2', () => {
@@ -105,9 +104,7 @@ describe('a token keeps the reach it was minted with', () => {
   });
 
   it('declares no epoch but those two, and mints at the highest', () => {
-    expect(patPermissionPrefixes()).toEqual(
-      [...REACHABLE_ON_2026_09_10, ...ADDED_AT_EPOCH_2].sort(),
-    );
+    expect(patPermissionPrefixes()).toEqual([...AT_EPOCH_1, ...ADDED_AT_EPOCH_2].sort());
     expect(PAT_GRANT_EPOCH).toBe(2);
   });
 
