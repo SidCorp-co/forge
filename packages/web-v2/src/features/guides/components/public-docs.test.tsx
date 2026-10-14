@@ -468,6 +468,23 @@ describe("what was typed into the search, kept in the address", () => {
   });
 });
 
+describe("Back to a search, on a reader that stayed mounted", () => {
+  it("restores the words of the entry Back lands on, not the ones typed since", () => {
+    window.history.replaceState(null, "", "/guides?for=user");
+    reader({ kind: "door", audience: "user" });
+    const field = screen.getByRole("textbox", { name: "Search every page" });
+    fireEvent.change(field, { target: { value: "status" } });
+    window.history.pushState(null, "", "/guides?path=issue-statuses");
+    fireEvent.change(field, { target: { value: "runner" } });
+    window.history.replaceState(null, "", "/guides?for=user&q=status");
+    fireEvent(window, new PopStateEvent("popstate"));
+    expect(field).toHaveValue("status");
+    expect(within(screen.getByRole("list", { name: "Search results" })).getAllByRole("link")[0]).toHaveTextContent(
+      /^Read an issue's status/,
+    );
+  });
+});
+
 describe("the landing's ways in", () => {
   it("are flat rows parted by hairlines, with no card around a door", () => {
     landing();

@@ -87,10 +87,16 @@ export const QUERY_PARAM = "q";
 
 /** The search, its words kept in the address as they are typed, so Back from a result returns to
  *  them and a reload or a shared link opens on them. Replacing the history entry rather than adding
- *  one keeps Back a step through pages, not keystrokes, and asks the server for nothing. */
+ *  one keeps Back a step through pages, not keystrokes, and asks the server for nothing. Back can
+ *  land on a reader still mounted from the page before, so the words are read again on `popstate`. */
 function useSearch(corpus: readonly PublicDoc[]) {
   const params = useSearchParams();
   const [query, setQuery] = useState(() => params?.get(QUERY_PARAM) ?? "");
+  useEffect(() => {
+    const restore = () => setQuery(new URLSearchParams(window.location.search).get(QUERY_PARAM) ?? "");
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, []);
   const results = useMemo(() => searchDocs(corpus, query), [corpus, query]);
   const onQuery = (next: string) => {
     setQuery(next);
