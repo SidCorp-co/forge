@@ -71,7 +71,7 @@ export function OverviewScreen() {
   }
 
   return (
-    <PageContainer className="flex flex-col gap-4">
+    <PageContainer className="flex flex-col gap-6">
       <header>
         <PageTitle className="fg-h2">Overview{orgLabel ? ` · ${orgLabel}` : ''}</PageTitle>
         <p className="fg-body-sm mt-0.5 text-muted">

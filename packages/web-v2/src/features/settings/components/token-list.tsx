@@ -95,7 +95,15 @@ function describing(level: (token: PatToken) => string): DataTableColumn<PatToke
     {
       id: "level",
       header: "Level",
-      cell: (t) => <Badge tone={t.boundProjectId ? "cobalt" : "neutral"}>{level(t)}</Badge>,
+      // A pill on one line is wider than its broken form, and 8px less padding here keeps the table inside its frame at 1280px.
+      headerClassName: "px-3",
+      cellClassName: "px-3",
+      // A project name reads whole on one line: a pill breaks at its hyphens otherwise, and the column grows to the name.
+      cell: (t) => (
+        <span className="whitespace-nowrap">
+          <Badge tone={t.boundProjectId ? "cobalt" : "neutral"}>{level(t)}</Badge>
+        </span>
+      ),
     },
     { id: "scopes", header: "Scopes", cell: (t) => <ScopeBadges scopes={t.scopes} /> },
     { id: "grant", header: "Grant", cell: (t) => <GrantBadge token={t} /> },

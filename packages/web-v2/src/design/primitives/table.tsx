@@ -1,12 +1,22 @@
 "use client";
 
-import type { HTMLAttributes, TdHTMLAttributes, ThHTMLAttributes } from "react";
+import {
+  type ComponentProps,
+  type HTMLAttributes,
+  type RefObject,
+  type TdHTMLAttributes,
+  type ThHTMLAttributes,
+  useCallback,
+} from "react";
 import { useScrollEdges } from "@/design/hooks/use-scroll-edges";
 import { cn } from "@/lib/utils/cn";
 
 /* Calm data table — borders do the structural work; rows hover to --bg-hover. */
 
 const DEFAULT_REGION_NAME = "Table, scrolls sideways";
+const BOUNDED_REGION_NAME = "Table, scrolls";
+
+const BOUNDED_FRAME = "max-h-[min(70vh,40rem)] overflow-y-auto";
 
 /**
  * The card clips only its corners; the scroller inside it is exactly its width
@@ -19,24 +29,40 @@ const DEFAULT_REGION_NAME = "Table, scrolls sideways";
 export function Table({
   className,
   stickyStart = false,
+  bounded = false,
+  scrollerRef: outerRef,
+  scrollerProps,
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledBy,
   ...props
 }: HTMLAttributes<HTMLTableElement> & {
   /** The first column is `sticky`: the start cue gives way to the hairline its cells draw. */
   stickyStart?: boolean;
+  /** A height of its own, which a windowed table needs to know what is in view; it is a tab stop. */
+  bounded?: boolean;
+  /** The scroller element, for a table that windows its rows by what the scroller shows. */
+  scrollerRef?: RefObject<HTMLDivElement | null>;
+  scrollerProps?: Pick<HTMLAttributes<HTMLDivElement>, "onFocus" | "onBlur">;
 }) {
-  const [scrollerRef, edges] = useScrollEdges<HTMLDivElement>();
-  const overflows = edges.start || edges.end;
+  const [edgesRef, edges] = useScrollEdges<HTMLDivElement>();
+  const scrollerRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      edgesRef.current = node;
+      if (outerRef) outerRef.current = node;
+    },
+    [edgesRef, outerRef],
+  );
+  const overflows = edges.start || edges.end || bounded;
   const regionName = ariaLabelledBy
     ? { "aria-labelledby": ariaLabelledBy }
-    : { "aria-label": ariaLabel ?? DEFAULT_REGION_NAME };
+    : { "aria-label": ariaLabel ?? (bounded ? BOUNDED_REGION_NAME : DEFAULT_REGION_NAME) };
   return (
     <div className="relative overflow-hidden rounded-lg border border-line bg-surface has-[>[role=region]:focus-visible]:outline-2 has-[>[role=region]:focus-visible]:outline-offset-2 has-[>[role=region]:focus-visible]:outline-cobalt">
       <div
         ref={scrollerRef}
         data-edge-start={edges.start}
-        className="relative overflow-x-auto [contain:inline-size] focus-visible:shadow-none"
+        className={cn("relative overflow-x-auto [contain:inline-size] focus-visible:shadow-none", bounded && BOUNDED_FRAME)}
+        {...scrollerProps}
         {...(overflows ? { role: "region", tabIndex: 0, ...regionName } : {})}
       >
         <table
@@ -68,15 +94,19 @@ function EdgeCue({ side, visible }: { side: "start" | "end"; visible: boolean })
   );
 }
 
-export function THead({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
-  return <thead className={cn("border-b border-line", className)} {...props} />;
+// The hairline is a pseudo-element because a collapsed table's cell border stays behind when it sticks.
+const STUCK_HEAD =
+  "[&_th]:sticky [&_th]:top-0 [&_th]:z-[2] [&_th]:bg-surface [&_th]:after:absolute [&_th]:after:inset-x-0 [&_th]:after:bottom-0 [&_th]:after:h-px [&_th]:after:bg-line [&_th]:after:content-['']";
+
+export function THead({ className, stuck = false, ...props }: HTMLAttributes<HTMLTableSectionElement> & { stuck?: boolean }) {
+  return <thead className={cn("border-b border-line", stuck && STUCK_HEAD, className)} {...props} />;
 }
 
 export function TBody(props: HTMLAttributes<HTMLTableSectionElement>) {
   return <tbody {...props} />;
 }
 
-export function TR({ className, ...props }: HTMLAttributes<HTMLTableRowElement>) {
+export function TR({ className, ...props }: ComponentProps<"tr">) {
   return (
     <tr
       className={cn("group/row border-b border-line-subtle transition-colors last:border-0 hover:bg-hover", className)}

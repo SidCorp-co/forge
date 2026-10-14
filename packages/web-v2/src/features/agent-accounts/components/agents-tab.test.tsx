@@ -150,11 +150,19 @@ describe("AgentsTab — the shared table", () => {
     expect(within(rows()[0] as HTMLElement).getByRole("button", { name: "agent-9" })).toBeInTheDocument();
   });
 
-  it("opens the self editor under the table from a row's Self action", () => {
+  it("opens the self editor under the table from a row's Edit self action, which says what it opens", () => {
     render(<AgentsTab />);
-    fireEvent.click(screen.getByRole("button", { name: "Self, agent-0" }));
+    expect(screen.queryByRole("button", { name: /^Self,/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Edit self, agent-0" }));
     expect(screen.getByText("self editor")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Close self, agent-0" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Close editor, agent-0" })).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("names each row's own agent on its button, so no two buttons read alike", () => {
+    render(<AgentsTab />);
+    const names = screen.getAllByRole("button", { name: /^Edit self, / }).map((b) => b.getAttribute("aria-label"));
+    expect(new Set(names).size).toBe(names.length);
+    expect(names.length).toBeGreaterThan(1);
   });
 });
 

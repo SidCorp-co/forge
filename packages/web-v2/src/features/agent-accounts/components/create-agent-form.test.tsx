@@ -30,6 +30,14 @@ function choose(search: string, name: string) {
 }
 
 describe("CreateAgentForm", () => {
+  it("says what the projects are for in a sentence that parses", () => {
+    render(<CreateAgentForm orgId="o1" />);
+    expect(
+      screen.getByText("Every project this agent works on. A box paired as this agent reaches these projects and no others."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/paired as it reaches/)).toBeNull();
+  });
+
   it("sends exactly the chosen project ids with the handle", async () => {
     render(<CreateAgentForm orgId="o1" />);
     fireEvent.change(screen.getByPlaceholderText("forge-vm"), { target: { value: "forge-vm" } });

@@ -102,7 +102,7 @@ export function CreateAgentForm({ orgId }: { orgId: string }) {
 
           <Field
             label="Projects"
-            hint="Every project this agent works on. A box paired as it reaches these and no others."
+            hint="Every project this agent works on. A box paired as this agent reaches these projects and no others."
             error={touched && noProjects ? "Pick at least one project." : undefined}
           >
             {isLoading ? (
