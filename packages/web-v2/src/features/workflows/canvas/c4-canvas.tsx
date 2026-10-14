@@ -212,7 +212,8 @@ function C4View(props: WorkflowCanvasProps) {
 
 type Focus = Lit | null;
 
-function c4Nodes(
+/** The diagram's boxes and frames as React Flow nodes, each marked by the focus, the search, the diff and health. */
+export function c4Nodes(
   diagram: Diagram,
   o: {
     step: string | null;
@@ -230,12 +231,15 @@ function c4Nodes(
   });
   for (const x of diagram.boxes) {
     const ids = x.node.steps;
+    // a box that folds steps (a boundary, or the system at Context) counts the changes it hides
+    const changed = x.node.node ? 0 : ids.filter((s) => diff?.steps.has(s)).length;
     const data: C4BoxData = {
       box: x,
       on: step !== null && ids.includes(step),
       rel: !focus || ids.some((s) => focus.nodes.has(s)),
       hit: ids.some((s) => hits.has(s)),
-      mark: x.node.node ? (diff?.steps.get(x.node.id) ?? null) : null,
+      mark: x.node.node ? (diff?.steps.get(x.node.id) ?? null) : changed > 0 ? "changed" : null,
+      changed,
       health: health?.on ? HEALTH_MARKER_KINDS.filter((k) => ids.some((id) => health.nodes.get(id)?.kinds.includes(k))) : [],
       canOpen: o.onFold !== null,
     };

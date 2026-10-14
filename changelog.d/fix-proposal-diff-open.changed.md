@@ -1,1 +1,1 @@
-**A proposal awaiting you opens on its changes.** A requirement revision you can accept shows its diff, and a design you can approve opens with Changes on, each folded stage counting its changed steps; everything else stays folded.
+**A proposal awaiting you opens on its changes.** A requirement revision you can accept shows its diff, and a design you can approve opens with Changes on, each folded stage or boundary counting its changed steps; everything else stays folded.

@@ -104,6 +104,7 @@
 /* The name wraps inside the box less 56px (layout.ts:linesOf); with a count chip that room is all on the chip's side. */
 .wfc-c4[data-count="true"] { padding-right: 44px; }
 .wfc-c4-chip { position: absolute; top: 6px; right: 6px; display: inline-flex; align-items: center; gap: 2px; padding: 0 6px; border-radius: 999px; background: var(--bg-sunken); font-weight: 600; line-height: 1.5; color: var(--fg-muted); font-variant-numeric: tabular-nums; }
+.wfc-c4-changed { position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); padding: 0 6px; border: 1px solid var(--amber-500); border-radius: 999px; background: var(--bg-surface); font-weight: 600; line-height: 1.5; color: var(--amber-600); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .wfc-c4-title { display: block; max-width: 100%; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wfc-c4[data-kind="focal"] .wfc-c4-title { font-weight: 700; white-space: normal; }
 .wfc-c4-frame { box-sizing: border-box; display: flex; align-items: flex-start; padding: 8px 12px; border: 1px dashed var(--wf-slate); border-radius: 10px; background: color-mix(in srgb, var(--wf-slate) 3%, transparent); }
