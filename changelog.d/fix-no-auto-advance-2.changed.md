@@ -1,1 +1,0 @@
-**Nothing re-pins, approves or verifies by itself.** A design approval leaves requirements to their re-pin, a pin-only design revision waits for its approver, and feedback past its window waits on a triager; the release page proves only verified passes.
