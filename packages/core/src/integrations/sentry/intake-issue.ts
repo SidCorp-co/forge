@@ -1,7 +1,8 @@
 import { and, eq, type SQL, sql } from 'drizzle-orm';
 import { readThresholds } from '../../admin/thresholds.js';
+import { postSystemComment } from '../../comments/system-write.js';
 import { db } from '../../db/client.js';
-import { comments, issues, projects } from '../../db/schema.js';
+import { issues, projects } from '../../db/schema.js';
 import { TransitionError, transitionIssueStatus } from '../../issues/apply-transition.js';
 import { logger } from '../../logger.js';
 import { judgeSentryIssue, type SentryAdmissionThresholds } from './admission.js';
@@ -266,18 +267,21 @@ async function observe(
     const grew = issue.count !== null && previousCount !== null && issue.count > previousCount;
 
     if (grew) {
-      await tx.insert(comments).values({
-        issueId: existing.id,
-        authorId,
-        body: [
-          `Sentry has seen \`${shortId}\` again.`,
-          '',
-          `- Events: ${issue.count} (was ${previousCount})`,
-          `- Users affected: ${issue.userCount ?? 'not reported'}`,
-          `- Last seen: ${issue.lastSeen ?? 'not reported'}`,
-          ...(issue.permalink ? ['', issue.permalink] : []),
-        ].join('\n'),
-      });
+      await postSystemComment(
+        {
+          issueId: existing.id,
+          authorId,
+          body: [
+            `Sentry has seen \`${shortId}\` again.`,
+            '',
+            `- Events: ${issue.count} (was ${previousCount})`,
+            `- Users affected: ${issue.userCount ?? 'not reported'}`,
+            `- Last seen: ${issue.lastSeen ?? 'not reported'}`,
+            ...(issue.permalink ? ['', issue.permalink] : []),
+          ].join('\n'),
+        },
+        tx,
+      );
     }
 
     await tx

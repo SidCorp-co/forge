@@ -11,8 +11,9 @@
 // instead, and the residual is priced on ISS-1129.
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
+import { postSystemComment } from '../comments/system-write.js';
 import { db } from '../db/client.js';
-import { comments, issues, pipelineRuns } from '../db/schema.js';
+import { issues, pipelineRuns } from '../db/schema.js';
 import { releaseAttempts } from '../db/schema-release-ledger.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
 import { logger } from '../logger.js';
@@ -180,7 +181,7 @@ export async function recordPerformedRelease(
 
   for (const issue of roster) {
     try {
-      await db.insert(comments).values({ issueId: issue.id, authorId: userId, body: note });
+      await postSystemComment({ issueId: issue.id, authorId: userId, body: note });
     } catch (err) {
       logger.warn({ err, issueId: issue.id, runId: run.id }, 'release-record: comment failed');
       // With no probe the note is the issue's only word that nothing verified it, so no close.

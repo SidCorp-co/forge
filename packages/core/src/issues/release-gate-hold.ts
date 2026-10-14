@@ -1,5 +1,5 @@
-import { db } from '../db/client.js';
-import { comments, type IssueStatus } from '../db/schema.js';
+import { postSystemComment } from '../comments/system-write.js';
+import type { IssueStatus } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { ReleaseTargetUndeclaredError, resolveReleaseGate } from '../release-batch/gate.js';
 import type { ActorAgency } from './actor-agency.js';
@@ -48,7 +48,7 @@ async function gateOf(projectId: string): Promise<IssueStatus | null> {
 /** The note a held close leaves on the issue, after the hold has committed; its failure is logged, never thrown. */
 export async function postReleaseGateHoldComment(issueId: string, authorId: string): Promise<void> {
   try {
-    await db.insert(comments).values({
+    await postSystemComment({
       issueId,
       authorId,
       body: `Held at the release gate — merged, not shipped. Every \`blocks\`-dependent can dispatch now, because a dependent is held by this issue's STATUS and \`awaiting_release\` is one that releases it; nothing here writes \`merged_at\`. The issue closes when a release ships it, and that close is refused until the shipped-work claim is on the row — \`forge_issues\` \`mark_merged\` naming where it landed.`,

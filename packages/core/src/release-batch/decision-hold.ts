@@ -14,6 +14,7 @@
  */
 
 import { and, eq, sql } from 'drizzle-orm';
+import { postSystemComment, withholdForIssue } from '../comments/system-write.js';
 import { db, type Tx } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
 import { comments, issues, jobs, pipelineRuns } from '../db/schema.js';
@@ -78,15 +79,16 @@ async function pointOthersAt(
   anchorId: string,
 ): Promise<void> {
   const display = (await issueDisplayIds([anchorId], tx)).get(anchorId) ?? anchorId;
-  const body = pointerBody(display);
+  const written = pointerBody(display);
   for (const member of others) {
+    const body = await withholdForIssue(member.id, written, tx);
     const same = await tx
       .select({ id: comments.id })
       .from(comments)
       .where(and(eq(comments.issueId, member.id), eq(comments.body, body)))
       .limit(1);
     if (same.length === 0) {
-      await tx.insert(comments).values({ issueId: member.id, authorId: job.createdBy, body });
+      await postSystemComment({ issueId: member.id, authorId: job.createdBy, body: written }, tx);
     }
   }
 }

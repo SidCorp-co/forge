@@ -1,6 +1,7 @@
 import { z } from 'zod';
+import { insertSystemComment } from '../comments/system-write.js';
 import { db } from '../db/client.js';
-import { comments, projectKinds } from '../db/schema.js';
+import { projectKinds } from '../db/schema.js';
 import type { Actor } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import {
@@ -105,11 +106,8 @@ export async function writeAuditComment(
   authorId: string,
   body: string,
 ): Promise<AuditComment | null> {
-  const [row] = await db
-    .insert(comments)
-    .values({ issueId, authorId, body, parentId: null })
-    .returning({ id: comments.id, body: comments.body, parentId: comments.parentId });
-  return row ?? null;
+  const row = await insertSystemComment({ issueId, authorId, body, parentId: null });
+  return row ? { id: row.id, body: row.body, parentId: row.parentId } : null;
 }
 
 export class MergeMarkerError extends Error {

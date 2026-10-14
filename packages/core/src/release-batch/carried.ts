@@ -12,8 +12,8 @@
  */
 
 import { sql } from 'drizzle-orm';
+import { postSystemComments } from '../comments/system-write.js';
 import { db } from '../db/client.js';
-import { comments } from '../db/schema.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
 import type { RangeCommit } from '../projects/repository-reader.js';
 import { readProjectBranches } from '../projects/service.js';
@@ -306,7 +306,7 @@ export async function noteShipUnverified(args: {
   const shipped = check.carried.filter((i) => i.decision === 'ship-unverified');
   if (shipped.length === 0) return;
   const decider = await personLabel(userId);
-  await db.insert(comments).values(
+  await postSystemComments(
     shipped.map((i) => ({
       issueId: i.issueId,
       authorId: userId,

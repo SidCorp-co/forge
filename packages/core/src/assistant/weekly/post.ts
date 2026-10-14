@@ -11,6 +11,7 @@ import {
   persistCommentAttachment,
   validateCommentAttachment,
 } from '../../comments/attachment-service.js';
+import { insertSystemComment, postSystemComment } from '../../comments/system-write.js';
 import { db } from '../../db/client.js';
 import { comments } from '../../db/schema.js';
 import { failureLine, type WeeklyReport } from '../bench/history/report.js';
@@ -26,10 +27,11 @@ export interface PostWeeklyArgs {
 export async function postWeeklyComment(args: PostWeeklyArgs): Promise<{ commentId: string }> {
   const files = args.report.files.map((f) => ({ ...f, bytes: Buffer.from(f.text, 'utf8') }));
   for (const f of files) validateCommentAttachment({ name: f.name, mime: f.mime, bytes: f.bytes });
-  const [inserted] = await db
-    .insert(comments)
-    .values({ issueId: args.issueId, authorId: args.authorId, body: args.report.body })
-    .returning({ id: comments.id });
+  const inserted = await insertSystemComment({
+    issueId: args.issueId,
+    authorId: args.authorId,
+    body: args.report.body,
+  });
   if (!inserted) throw new Error('the report comment was not inserted');
   const written: string[] = [];
   try {
@@ -59,7 +61,7 @@ export async function postWeeklyFailure(args: {
   windowId: string;
   error: { name: string; message: string };
 }): Promise<void> {
-  await db.insert(comments).values({
+  await postSystemComment({
     issueId: args.issueId,
     authorId: args.authorId,
     body: failureLine(args.windowId, args.error),
