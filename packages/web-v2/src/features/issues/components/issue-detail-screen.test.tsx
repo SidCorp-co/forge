@@ -186,6 +186,12 @@ describe("an issue page in the person's view", () => {
     expect(visibleWords(root)).toBeLessThanOrEqual(300);
   });
 
+  it("fills its column up to the rail: no width cap leaves a blank band between the content and the rail", async () => {
+    const root = await page();
+    const main = within(root).getByTestId("issue-page-main");
+    for (let el: HTMLElement | null = main; el && el !== root; el = el.parentElement) expect(el.className).not.toMatch(/(^|\s)max-w-/);
+  });
+
   it("opens on Now, Needs you and Done by, then the criteria rows, and holds the long record folded", async () => {
     const root = await page();
     const order = ["issue-now", "issue-needs-you", "view-criteria", "issue-details"].map((id) => within(root).getByTestId(id));
