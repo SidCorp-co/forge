@@ -73,7 +73,7 @@ export function criterionTextRefusal(answers: unknown): FeedbackRefusal | null {
 /** The criterion a triage named, as core found it: standing now on its requirement, or not found. */
 export type FoundCriterion =
   | { found: true; id: string; requirementId: string; requirementKey: string }
-  | { found: false };
+  | { found: false; awaitingAccept?: string };
 
 /**
  * A named criterion must stand at its requirement's current revision, and be one of the item's own
@@ -86,6 +86,13 @@ export function criterionFitRefusal(
   item: { key: string; requirement: { id: string; key: string } | null },
 ): FeedbackRefusal | null {
   const ref = `${named.requirement} ${named.code}`;
+  if (!found.found && found.awaitingAccept) {
+    return refusal(
+      'FEEDBACK_CRITERION_INVALID',
+      '/answers/criterion',
+      `${ref} is written on ${found.awaitingAccept}, which has no accepted revision, so it does not stand yet. Accept a revision of ${found.awaitingAccept} first, or answer "${NO_CRITERION}".`,
+    );
+  }
   if (!found.found) {
     return refusal(
       'FEEDBACK_CRITERION_INVALID',

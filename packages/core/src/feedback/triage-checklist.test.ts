@@ -54,6 +54,19 @@ describe('the violated criterion', () => {
     ).toContain('REQ-3 BC-2 is not a criterion');
   });
 
+  it('names a criterion written on a requirement with no accepted revision as that, not as missing', () => {
+    const detail = criterionFitRefusal(
+      named,
+      { found: false, awaitingAccept: 'REQ-3' },
+      { key: 'FB-4', requirement: null },
+    )?.detail;
+    expect(detail).toContain('REQ-3 BC-2 is written on REQ-3, which has no accepted revision');
+    expect(detail).toContain('Accept a revision of REQ-3 first');
+    expect(detail, 'the old wording says the criterion does not exist').not.toContain(
+      'is not a criterion',
+    );
+  });
+
   it("must be of the item's own requirement where it is about one", () => {
     expect(
       criterionFitRefusal(named, found, { key: 'FB-4', requirement: { id: 'r9', key: 'REQ-9' } })

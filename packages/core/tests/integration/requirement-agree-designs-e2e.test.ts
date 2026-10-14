@@ -13,6 +13,7 @@ let token = '';
 let projectId = '';
 let workflowId = '';
 let req = '';
+let ownerId = '';
 
 const at = (path: string) => `/api/projects/${projectId}${path}`;
 
@@ -34,6 +35,7 @@ const codesOf = (body: Body): string[] =>
 
 beforeAll(async () => {
   const owner = (await createTestUser({ verified: true })).id;
+  ownerId = owner;
   token = await userToken(owner);
   projectId = (await createTestProject(owner)).id;
 
@@ -112,5 +114,66 @@ describe('once the design is approved', () => {
     expect(s.waitingOn).toMatchObject({ kind: 'you', act: 'agree r1' });
     expect((s.facts as Body).unapprovedDesigns).toEqual([]);
     await ok(api(token, 'POST', at(`/requirements/${req}/agree`), { revision: 1, reason: 'ok' }));
+  });
+});
+
+describe('a design whose only linking requirement has traces but no accepted revision', () => {
+  it('is refused naming the missing accept and the traced count, and approves once the revision is accepted', async () => {
+    const document = JSON.parse(
+      readFileSync(
+        new URL('../fixtures/workflows/post-discharge.design.json', import.meta.url),
+        'utf8',
+      ),
+    );
+    document.project = projectId;
+    document.flow = 'refunds';
+    const made = await ok(
+      api(token, 'POST', at('/workflows'), { baseRevision: null, document }),
+      201,
+    );
+    const flowId = (made.document as Body).id as string;
+    await ok(api(token, 'POST', at(`/workflows/${flowId}/design/propose`), { revision: 1 }));
+    const draft = (
+      await ok(
+        api(token, 'POST', at('/requirements'), {
+          title: 'Refunds reach the card',
+          reason: 'buyers are refunded',
+          criteria: [{ body: 'A refund reaches the card it was paid by.' }],
+          designs: ['refunds'],
+        }),
+        201,
+      )
+    ).key as string;
+    await ok(
+      api(token, 'PUT', at(`/requirements/${draft}/criteria/BC-1/steps`), {
+        workflow: 'refunds',
+        steps: ['call'],
+      }),
+    );
+
+    const res = await api(token, 'POST', at(`/workflows/${flowId}/design/decision`), {
+      revision: 1,
+      decision: 'approve',
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    const criteria = (
+      (res.body.error as { refusals: { path: string; detail: string }[] }).refusals ?? []
+    ).find((r) => r.path === '/answers/criteria');
+    expect(criteria?.detail).toContain(
+      `${draft} has 1 business criterion traced to its steps, but no accepted revision, so none counts yet.`,
+    );
+    expect(criteria?.detail, 'the traces exist: tracing again changes nothing').not.toContain(
+      'none of their business criteria is traced',
+    );
+
+    await makeAgreeReady(projectId, Number(draft.slice(4)), ownerId);
+    await ok(api(token, 'POST', at(`/requirements/${draft}/revisions/1/propose`), {}));
+    await ok(api(token, 'POST', at(`/requirements/${draft}/revisions/1/accept`), { reason: 'ok' }));
+    await ok(
+      api(token, 'POST', at(`/workflows/${flowId}/design/decision`), {
+        revision: 1,
+        decision: 'approve',
+      }),
+    );
   });
 });

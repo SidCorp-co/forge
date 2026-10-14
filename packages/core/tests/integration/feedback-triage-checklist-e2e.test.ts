@@ -158,6 +158,38 @@ describe('a triage missing an answer is refused naming the question (criterion 1
     expect(await statusOf(fb)).toBe('new');
   });
 
+  it('names a criterion of a requirement with no accepted revision as waiting on the accept, not as missing', async () => {
+    const draft = (
+      await ok(
+        on('POST', '/requirements', {
+          title: 'Sorting is kept',
+          reason: 'the board forgets it',
+          criteria: [{ body: 'The board keeps its sort across a reload.' }],
+        }),
+        201,
+      )
+    ).key as string;
+    const fb = await fileBug('The board forgets its sort, again');
+    const [refusal] = await refused(
+      on('POST', `/feedback/${fb}/triage`, {
+        route: 'issue',
+        answers: { criterion: `${draft} BC-1`, severity: 'low', reproduced: 'x' },
+      }),
+    );
+    expect(refusal).toMatchObject({
+      code: 'FEEDBACK_CRITERION_INVALID',
+      path: '/answers/criterion',
+    });
+    expect(refusal?.detail).toContain(
+      `${draft} BC-1 is written on ${draft}, which has no accepted revision`,
+    );
+    expect(
+      refusal?.detail,
+      'the criterion exists; saying it does not sends the triager to look for another',
+    ).not.toContain('is not a criterion');
+    expect(await statusOf(fb)).toBe('new');
+  });
+
   it('serves the checklist the triage is judged by, as the form, the agent input and where it stands', async () => {
     const fb = await fileBug('The board is slow');
     const [read] = (await ok(on('GET', `/feedback/${fb}/checklist`))).checklists as Doc[];

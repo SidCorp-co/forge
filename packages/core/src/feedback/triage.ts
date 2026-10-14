@@ -155,7 +155,7 @@ async function criterionIn(
   tx: Tx,
   projectId: string,
   named: { requirement: string; code: string },
-): Promise<Criterion | { found: false }> {
+): Promise<Criterion | { found: false; awaitingAccept?: string }> {
   const seq = Number(named.requirement.slice('REQ-'.length));
   const rows = (await tx.execute(sql`
     SELECT c.id, r.id AS requirement_id, r.req_seq, r.status
@@ -168,7 +168,21 @@ async function criterionIn(
      LIMIT 1
   `)) as unknown as Array<{ id: string; requirement_id: string; req_seq: number; status: string }>;
   const row = rows[0];
-  if (!row) return { found: false };
+  if (!row) {
+    // written on a requirement with no accepted revision: said as that, not as "no such criterion"
+    const drafted = (await tx.execute(sql`
+      SELECT r.req_seq
+        FROM requirement_criteria c
+        JOIN requirements r ON r.id = c.requirement_id
+       WHERE r.project_id = ${projectId} AND r.req_seq = ${seq} AND c.code = ${named.code}
+         AND r.current_revision IS NULL AND r.status <> 'dropped'
+       LIMIT 1
+    `)) as unknown as Array<{ req_seq: number }>;
+    const waiting = drafted[0];
+    return waiting
+      ? { found: false, awaitingAccept: requirementKey(Number(waiting.req_seq)) }
+      : { found: false };
+  }
   return {
     found: true,
     id: row.id,
