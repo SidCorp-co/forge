@@ -22,7 +22,7 @@ import {
 } from '../../src/issues/index.js';
 import { askQuestion } from '../../src/questions/index.js';
 import { finishReleaseBatch } from '../../src/release-batch/finish.js';
-import { closeWorld, settleOutbox, startQueue, testEnv } from '../helpers/ecosystem-world.js';
+import { closeWorld, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import {
   addProjectMember,
   createTestProject,
@@ -50,9 +50,6 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  // A finish emits a release an outbox consumer reads after the test returns; truncating under that
-  // delivery deadlocks it against the TRUNCATE, so it is let finish first.
-  await settleOutbox();
   await truncateAll();
   ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
