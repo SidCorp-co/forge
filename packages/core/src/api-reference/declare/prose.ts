@@ -1,4 +1,3 @@
-/** A fragment as a sentence: its first letter capital and a full stop at the end, never two. */
 export function sentence(text: string): string {
   const trimmed = text.trim();
   if (trimmed === '') return '';

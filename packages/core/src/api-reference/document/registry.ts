@@ -42,10 +42,8 @@ function samplePath(path: string, sample: string): string {
 }
 
 /**
- * Every route of the composed app, read off its route table and router. The chain is what the
- * router matches for a path that reaches the route, up to and including the route's own handler:
- * a `use('/x/*')` gate registered before it is read as the route's, and one registered after it
- * never runs, because the handler answers without calling `next`.
+ * Every route of the composed app, read off its route table and router. The chain runs up to the
+ * route's own handler: a gate registered after it never runs, as the handler answers without `next`.
  */
 export function readRoutes(app: RouteSource): RouteEntry[] {
   const own = new Map<string, RouteRecord[]>();
