@@ -1,0 +1,1 @@
+**Settings fit beside their rail at every width.** A runner row keeps its device's name on a phone, the integrations table folds its columns by its own width, and Computation's switch no longer repeats its heading.

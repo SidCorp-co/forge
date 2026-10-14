@@ -76,3 +76,19 @@ describe("the Runners screen row for a limited runner", () => {
 		expect(container.textContent).not.toMatch(/Account said it resets/);
 	});
 });
+
+// At 390px the row's heading (device, platform, version) and its acts (Re-provision, Unassign) did not
+// fit one line and could not wrap: the device name, the one part that could shrink, truncated to
+// nothing, and the version printed under Re-provision. jsdom draws no layout, so this holds the
+// layout's contract: both lines may wrap, and the name may shrink without leaving the row.
+describe("the Runners screen row on a narrow screen", () => {
+	it("names its device, letting the acts and the badges wrap instead of drawing over them", () => {
+		renderRow(fb87Runner);
+		const head = screen.getByTestId("runner-row-head");
+		expect(head, "the acts cannot drop under the heading").toHaveClass("flex-wrap");
+		expect(screen.getByTestId("runner-device-name")).toHaveTextContent("sid-xeon-1-dev");
+		const heading = screen.getByTestId("runner-device-name").parentElement;
+		expect(heading, "the badges cannot drop under the device name").toHaveClass("flex-wrap");
+		expect(screen.getByTestId("runner-device-name")).toHaveClass("min-w-0");
+	});
+});
