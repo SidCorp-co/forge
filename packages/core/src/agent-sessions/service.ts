@@ -17,13 +17,7 @@ import { kindTuple, TRANSCRIPTLESS_SESSION_KINDS } from '../jobs/session-kinds.j
 /** SQL true for a row whose lane keeps no transcript in core (master, run_session). */
 const lanePutsNoTranscriptInCore = sql`${agentSessions.kind} IN ${kindTuple(TRANSCRIPTLESS_SESSION_KINDS)}`;
 
-/**
- * The one definition of how many entries a session holds, read by the list and the detail alike so
- * the two cannot disagree. The transcript is the record: the turn ledger is an index derived from
- * it, and a session written before the ledger synced holds fewer ledger rows than transcript
- * entries, so a count taken from the ledger reads a partial number for it. A count nobody writes is
- * not a count: null only for a lane that records no transcript.
- */
+/** The one count of a session's entries, read by list and detail alike; null only for a lane that records no transcript. */
 const transcriptLength = sql<number | null>`CASE WHEN ${lanePutsNoTranscriptInCore} THEN NULL
   ELSE coalesce(jsonb_array_length(${agentSessions.messages}), 0) END`;
 
