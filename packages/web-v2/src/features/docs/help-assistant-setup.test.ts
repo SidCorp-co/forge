@@ -81,6 +81,81 @@ function stepsWithoutACheck(markdown: string): string[] {
   });
 }
 
+/** The paragraphs of a step that tell the reader to do something: everything before its Check. */
+function instructionsOf(step: string): string {
+  const paragraphs = step.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  if (/^\*\*Check:\*\*/.test(paragraphs.at(-1) ?? "")) paragraphs.pop();
+  return paragraphs.join(" ").replace(/^\d+\.\s+/, "");
+}
+
+/** What a sentence says once the labels the reader's screen shows, and the text they type, are out of it. */
+function plainWords(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/\*\*[^*\n]+\*\*/g, "X")
+    .replace(/\*[^*\n]+\*/g, "X")
+    .replace(/`[^`\n]+`/g, "X")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const ACT =
+  "Choose|Type|Paste|Copy|Open|Press|Select|Tick|Replace|Save|Quit|Go|Click|Download|Install|Add|Delete|Ask|Run|Close|Sign|Pick|Start|Allow|Look|Follow|Restart|Keep|Leave|Turn|Give|Work|Use|Move|Wait";
+
+/** A sentence that begins an act, once a leading "If …," condition is set aside. */
+function startsAnAct(sentence: string): boolean {
+  return new RegExp(`^(?:${ACT})\\b`, "i").test(sentence.replace(/^(?:If|When|Once)\b[^,]*,\s*/, ""));
+}
+
+/** The sentences of a paragraph, as the reader meets them. */
+function sentencesOf(text: string): string[] {
+  return plainWords(text)
+    .split(/(?<=[.!?:])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+const JOINS_TWO_ACTS =
+  /,\s*then\b|\bthen\s+(?:choose|type|paste|copy|open|press|select|tick|save|go|sign|click|replace|delete|follow)\b|\band\s+(?:choose|paste|copy|tick|open|save|select|click|replace|restart|download|install|delete|sign|follow|quit|pick|add|ask|run|close|start|allow|turn|give)\b/i;
+
+/**
+ * What makes one numbered step ask for more than one thing. Bounded on purpose: it holds the wordings a
+ * bundled step took (a second sentence that starts an act, ", then", "and paste"). A sentence that
+ * begins "On a Mac" or "On Windows" starts no act of its own: the reader does only one of the pair.
+ */
+function bundledActs(step: string): string[] {
+  const reasons: string[] = [];
+  const text = instructionsOf(step);
+  const sentences = sentencesOf(text);
+  const acts = sentences.filter((s) => startsAnAct(s));
+  if (acts.length > 1) reasons.push(`${acts.length} sentences start an act: ${sentences.join(" | ")}`);
+  const joined = JOINS_TWO_ACTS.exec(plainWords(text));
+  if (joined) reasons.push(`one sentence joins two acts at "${joined[0]}"`);
+  return reasons;
+}
+
+/** A Check says what the reader sees; an act inside it is one the step did not ask for. */
+function checkAsksForAnAct(step: string): string[] {
+  const paragraphs = step.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  const check = paragraphs.at(-1) ?? "";
+  if (!/^\*\*Check:\*\*/.test(check)) return [];
+  return sentencesOf(check.replace(/^\*\*Check:\*\*\s*/, ""))
+    .map((s) => s.replace(/^\(/, ""))
+    .filter((s) => startsAnAct(s));
+}
+
+/** Every "step N" the page says, with the sentence it stands in: the numbers move when a step is added. */
+function stepReferences(markdown: string): Array<{ number: number; sentence: string }> {
+  const refs: Array<{ number: number; sentence: string }> = [];
+  for (const sentence of sentencesOf(prose(markdown).replace(/^---[\s\S]*?^---/m, ""))) {
+    for (const m of sentence.matchAll(/\b[Ss]teps? (\d+)(?:(?: and | to |, )(\d+))?/g)) {
+      refs.push({ number: Number(m[1]), sentence });
+      if (m[2]) refs.push({ number: Number(m[2]), sentence });
+    }
+  }
+  return refs;
+}
+
 /** "MCP" outside the page that explains it, and not quoting a label the reader's screen shows. */
 function unquotedMcp(markdown: string): string[] {
   const outsideQuotes = prose(markdown).replace(/\*\*[^*\n]+\*\*/g, "").replace(/`[^`\n]+`/g, "");
@@ -187,6 +262,101 @@ describe("the assistant-setup step rule, over every page of that audience", () =
   });
 });
 
+describe("one action to a step, on the four setup pages", () => {
+  it.each(SETUP_PAGES)("%s asks for one action in each numbered step", (page) => {
+    const bundled = numberedSteps(body(page))
+      .map((step) => ({ step: step.split("\n")[0], reasons: bundledActs(step) }))
+      .filter((s) => s.reasons.length > 0);
+    expect(bundled).toEqual([]);
+  });
+
+  it.each(SETUP_PAGES)("%s keeps every act out of a Check line", (page) => {
+    const asked = numberedSteps(body(page))
+      .map((step) => ({ step: step.split("\n")[0], acts: checkAsksForAnAct(step) }))
+      .filter((s) => s.acts.length > 0);
+    expect(asked).toEqual([]);
+  });
+
+  it.each(SETUP_PAGES)("%s sends every 'step N' it mentions to a step that exists", (page) => {
+    const count = mainSteps(body(page)).length;
+    const dangling = stepReferences(body(page)).filter((r) => r.number < 1 || r.number > count);
+    expect(dangling).toEqual([]);
+  });
+
+  // A number that still resolves can point at the wrong step after a renumbering, so the
+  // references that name what they point at are held to that.
+  it.each(SETUP_PAGES)("%s sends each 'step N' that names a thing to the step holding it", (page) => {
+    const steps = mainSteps(body(page));
+    const named: Array<[RegExp, RegExp]> = [
+      [/\bthe project you chose in step/, /Bind to a project/],
+      [/\bthe code (?:in your note )?from step/, /forge_pat_/],
+      [/\bthe Endpoint from step/, /\*\*Endpoint\*\*/],
+      [/\bstep \d+ below says how/, /terminal/i],
+    ];
+    const wrong: string[] = [];
+    for (const ref of stepReferences(body(page))) {
+      for (const [phrase, holds] of named) {
+        if (phrase.test(ref.sentence) && !holds.test(steps[ref.number - 1] ?? "")) {
+          wrong.push(`step ${ref.number} is not the one that holds ${holds}: ${ref.sentence}`);
+        }
+      }
+    }
+    expect(wrong).toEqual([]);
+  });
+
+  // The form shows read ticked when it opens (tokens-tab.tsx: useState<PatScope[]>(["read"])), so a
+  // step telling the reader to tick both has them click read and clear it.
+  it.each(SETUP_PAGES)("%s tells the reader to tick write, and that read is already ticked", (page) => {
+    const scopes = mainSteps(body(page)).find((s) => /\*\*Scopes\*\*/.test(s)) ?? "";
+    const instruction = instructionsOf(scopes);
+    expect(instruction).toMatch(/tick \*\*write\*\*/);
+    expect(instruction).toMatch(/\*\*read\*\* is already ticked/);
+    expect(instruction).not.toMatch(/tick both/i);
+    expect(scopes).toMatch(/\*\*Check:\*\* both \*\*read\*\* and \*\*write\*\* are ticked\./);
+  });
+
+  it.each(SETUP_PAGES)("%s gives the password box and the sign-in provider a Check of their own", (page) => {
+    const text = body(page);
+    expect(text).toMatch(/^## If Forge asks you to confirm it is you$/m);
+    const section = /^## If Forge asks you to confirm it is you\n([\s\S]*?)(?=^## |(?![\s\S]))/m.exec(text)?.[1] ?? "";
+    const steps = numberedSteps(section);
+    expect(steps.length).toBeGreaterThanOrEqual(5);
+    expect(stepsWithoutACheck(section)).toEqual([]);
+    expect(section).toMatch(/\*\*Confirm password\*\*/);
+    expect(section).toMatch(/\*\*Confirm & create\*\*/);
+    expect(section).toMatch(/\*\*Continue with\*\*/);
+  });
+});
+
+describe("the one-action rule, each against the step it would let through", () => {
+  it.each([
+    ["Choose **Create token**, then type your password.", true],
+    ["Copy the code and paste it into your note.", true],
+    ["Choose **Copy to clipboard**. Paste the code into your note.", true],
+    ["Go to `https://nodejs.org` and download the installer.", true],
+    ["Add a new one and pick its kind.", true],
+    ["Save, and restart the app if it asks you to.", true],
+    ["Under **Scopes**, tick **write**; **read** is already ticked for you. Read lets the assistant look things up.", false],
+    ["Open Claude Desktop's settings. On a Mac, choose **Claude** › **Settings…**. On Windows, choose **☰** › **File** › **Settings…**.", false],
+    ["Replace `<YOUR_TOKEN_HERE>` with the code from step 10, keeping the word `Bearer`.", false],
+    ["If the window is empty, select everything in it.", false],
+  ])("%s", (instruction, bundles) => {
+    const step = `1. ${instruction}\n\n   **Check:** something shows.`;
+    expect(bundledActs(step).length > 0).toBe(bundles);
+  });
+
+  it("refuses an act inside a Check, and lets a sentence about what the screen shows through", () => {
+    expect(checkAsksForAnAct("1. Open it.\n\n   **Check:** it is listed. If a switch is off, turn it on.")).toHaveLength(1);
+    expect(checkAsksForAnAct("1. Open it.\n\n   **Check:** it is listed. Go back to step 16.")).toHaveLength(1);
+    expect(checkAsksForAnAct("1. Open it.\n\n   **Check:** it is listed with a green dot.")).toEqual([]);
+  });
+
+  it("reads a step number, a pair of them and a range, and ignores prose that has none", () => {
+    const page = "Do it as in step 4. Steps 5 and 6 say how. Skip steps 7 to 9. Nothing here.";
+    expect(stepReferences(page).map((r) => r.number)).toEqual([4, 5, 6, 7, 9]);
+  });
+});
+
 describe("those rules, each against the page it would let through", () => {
   it("refuses a step with no Check line, and one whose Check is not its last word", () => {
     const page = [
@@ -290,9 +460,9 @@ describe("the Claude Desktop page's three ways into a file that already has text
   });
 
   it("names those three cases on the page, and pastes a block with no comma of its own", () => {
-    expect(desktop()).toMatch(/followed by other connections[\s\S]*type a comma/);
-    expect(desktop()).toMatch(/with nothing between the braces[\s\S]*Type no\s+comma/);
-    expect(desktop()).toMatch(/no `"mcpServers"` at all[\s\S]*type `},`/);
+    expect(desktop()).toMatch(/followed by other connections[\s\S]*Type a comma/);
+    expect(desktop()).toMatch(/with nothing between the braces[\s\S]*no comma after it/);
+    expect(desktop()).toMatch(/no `"mcpServers"` at all[\s\S]*Type `},`/);
     expect(fragment().endsWith("}")).toBe(true);
   });
 });

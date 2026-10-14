@@ -32,117 +32,199 @@ pieces are.
 
 ## Steps
 
-1. In Forge, select your initials at the bottom of the left-hand menu, then choose
-   **Account & Settings**.
+1. In Forge, select your initials at the bottom of the left-hand menu.
+
+   **Check:** a short menu opens, with **Account & Settings** in it.
+
+2. Choose **Account & Settings**.
 
    **Check:** the Settings page opens, with tabs along the top that include
    **API Tokens** and **MCP**.
 
-2. Choose the **API Tokens** tab.
+3. Choose the **API Tokens** tab.
 
    **Check:** a form titled **Create a token** is at the top.
 
-3. In **Name**, type the name of your app.
+4. In **Name**, type the name of your app.
 
    **Check:** the name shows in the box.
 
-4. Under **Scopes**, tick both **read** and **write**. Read lets the assistant
-   look things up; write lets it file issues and add comments for you.
+5. Under **Scopes**, tick **write**; **read** is already ticked for you. Read lets
+   the assistant look things up; write lets it make changes for you, such as
+   filing an issue or adding a comment.
 
-   **Check:** both boxes are ticked.
+   **Check:** both **read** and **write** are ticked.
 
-5. In **Bind to a project**, choose the project you want to ask about. The token
+6. In **Bind to a project**, choose the project you want to ask about. The token
    then works for that project only.
 
    **Check:** the box shows the project's name.
 
-6. Choose **Create token**. If Forge asks for your password, type it and choose
-   **Confirm & create**. If it offers **Continue with** your sign-in provider
-   instead, choose that, sign in, and choose **Create token** again once you are
-   back on this page.
+7. Choose **Create token**.
 
-   **Check:** a panel titled **Token created** shows a long code that starts with
-   `forge_pat_`.
+   **Check:** a panel titled **Token created** appears; or, if Forge wants to
+   confirm it is you first, a **Confirm password** box or a **Continue with**
+   button appears instead.
 
-7. Choose **Copy to clipboard**, and paste the code into your note. Forge shows it
-   only this once.
+8. If the **Token created** panel has not appeared, follow **If Forge asks you to
+   confirm it is you** at the end of this page. You come back to step 9 when the
+   panel is showing.
 
-   **Check:** your note holds the whole code, starting with `forge_pat_`.
+   **Check:** the panel titled **Token created** shows a long code that starts
+   with `forge_pat_`.
 
-8. Choose **Done** to close the panel.
+9. Choose **Copy to clipboard**. Forge shows the code only this once.
 
-   **Check:** your new token is listed under **Your tokens**.
+   **Check:** a notice reading **Copied to clipboard** appears.
 
-9. Choose the **MCP** tab.
+10. Paste the code into your note.
 
-   **Check:** a card titled **Connect a client** shows an **Endpoint** and a
-   **Project**.
+    **Check:** your note holds the whole code, starting with `forge_pat_`.
 
-10. Make sure **Project** shows the project you chose in step 5, and choose it if
-    it does not.
+11. Choose **Done** to close the panel.
+
+    **Check:** you are back on the **API Tokens** tab, and your new token is listed
+    under **Your tokens**.
+
+12. Choose the **MCP** tab.
+
+    **Check:** a card titled **Connect a client** shows an **Endpoint** and a
+    **Project**.
+
+13. In **Project**, choose the project you chose in step 6. It may already be
+    showing.
 
     **Check:** under **Config snippet**, a sentence reads *"This snippet
     configures"*, then your project's name, then a short grey label — the
     project's short name.
 
-11. Copy the address under **Endpoint** into your note.
+14. Copy the address under **Endpoint**.
+
+    **Check:** the address is highlighted.
+
+15. Paste the address into your note.
 
     **Check:** your note holds an address that starts with `https://` and ends
     with `/mcp`.
 
-12. Copy the grey short name into your note.
+16. Copy the grey short name.
+
+    **Check:** the short name is highlighted.
+
+17. Paste the short name into your note.
 
     **Check:** your note holds the token, the address and the short name.
 
-13. In your app, open the place where it lists connected services. Its label is
+18. In your app, open the place where it lists connected services. Its label is
     often **MCP**, **MCP servers**, **Connectors**, **Tools** or
     **Integrations**.
 
     **Check:** you see a list of connected services, or a button to add one.
 
-14. Choose to add a new one, and pick the kind that connects to an address —
-    often called **Streamable HTTP**, **HTTP**, **Remote** or **URL**. If your app
-    offers only a kind that starts a program (**Command** or **stdio**), follow
-    **If your app only starts programs** below instead.
+19. Choose to add a new connected service.
 
-    **Check:** the app asks for a name and an address. (If it asks you to paste a
-    block of settings instead, use the **Generic** tab on Forge's **MCP** tab:
-    copy its block, replace `<YOUR_TOKEN_HERE>` with your token, paste it, and go
-    on to step 19.)
+    **Check:** the app asks which kind to add, asks for a name and an address, or
+    asks you to paste a block of settings.
 
-15. For the name, type `forge`.
+20. If the app asks which kind to add, choose the kind that connects to an
+    address — often called **Streamable HTTP**, **HTTP**, **Remote** or **URL**.
+
+    **Check:** if the app has such a kind, it now asks for a name and an address.
+
+21. If your app offers only a kind that starts a program (**Command** or
+    **stdio**), follow **If your app only starts programs** at the end of this
+    page. You go on to step 28 when you have finished it.
+
+    **Check:** if you followed it, your app shows the settings you gave it, with
+    your token in them.
+
+22. If your app asked you to paste a block of settings, follow **If your app asks
+    for a block of settings** at the end of this page. You go on to step 28 when
+    you have finished it.
+
+    **Check:** if you followed it, your app shows the block, with your token in
+    it.
+
+23. For the name, type `forge`.
 
     **Check:** the name box shows `forge`.
 
-16. For the address, paste the address from your note.
+24. Copy the address from your note.
+
+    **Check:** the address is highlighted.
+
+25. Paste the address into the address box.
 
     **Check:** the address box shows the address ending in `/mcp`.
 
-17. Add a header named `Authorization` whose value is `Bearer`, a space, and your
+26. Add a header named `Authorization` whose value is `Bearer`, a space, and your
     token.
 
     **Check:** the value reads `Bearer forge_pat_…`, with your token where the
     dots are.
 
-18. Add a second header named `X-Forge-Project-Slug` whose value is the short name
+27. Add a second header named `X-Forge-Project-Slug` whose value is the short name
     from your note.
 
     **Check:** two headers are listed.
 
-19. Save, and restart the app if it asks you to.
+28. Save.
+
+    **Check:** **forge** is listed, or your app asks you to restart it.
+
+29. If your app asks you to restart, restart it.
 
     **Check:** **forge** is listed as connected, and your app shows its tools or a
     count of them.
 
-20. In a new chat, ask: *"What issues are open in Forge right now?"*
+30. In a new chat, ask: *"What issues are open in Forge right now?"*
 
-    **Check:** your app asks permission to use a tool from `forge`, or uses one;
-    the answer names issues from your project.
+    **Check:** your app asks permission to use a tool from `forge`, or goes
+    straight to an answer.
 
-21. Delete the note. The token now lives in your app's settings, and you will not
+31. If your app asked permission, allow it.
+
+    **Check:** the answer names issues from your project.
+
+32. Delete the note. The token now lives in your app's settings, and you will not
     need the copy again.
 
     **Check:** the note is gone from your notes app.
+
+## If Forge asks you to confirm it is you
+
+Forge sometimes checks that it is really you before it makes a token. After
+step 7 you see either a **Confirm password** box or a **Continue with** button
+instead of the **Token created** panel. Do the part below that matches what you
+see. Either way you finish with the **Token created** panel, and then you go on
+to step 9.
+
+If you see a **Confirm password** box:
+
+1. Type the password you sign in to Forge with into the **Confirm password** box.
+
+   **Check:** the box shows dots, one for each character you typed.
+
+2. Choose **Confirm & create**.
+
+   **Check:** a panel titled **Token created** shows a long code that starts with
+   `forge_pat_`.
+
+If you see a **Continue with** button:
+
+1. Choose **Continue with** your sign-in provider.
+
+   **Check:** your sign-in provider's own page opens.
+
+2. Sign in there.
+
+   **Check:** you are back on Forge's **API Tokens** tab, with the form as you
+   left it.
+
+3. Choose **Create token** again.
+
+   **Check:** a panel titled **Token created** shows a long code that starts with
+   `forge_pat_`.
 
 ## If your app only starts programs
 
@@ -161,6 +243,25 @@ Type the two header arguments exactly as shown, with no space after the colon �
 the helper fills in `${AUTH_HEADER}` and `${FORGE_PROJECT}` from the two
 environment variables. [Connect Claude Desktop](?path=connect-an-assistant/claude-desktop)
 shows the same settings written out in full.
+
+## If your app asks for a block of settings
+
+1. In Forge, choose the **Generic** tab above the snippet on the **MCP** tab.
+
+   **Check:** the snippet is a block of settings that holds `<YOUR_TOKEN_HERE>`.
+
+2. Choose **Copy**.
+
+   **Check:** the button changes to **Copied ✓**.
+
+3. Paste the block into your app's box for it.
+
+   **Check:** the box shows the block.
+
+4. In the block, replace `<YOUR_TOKEN_HERE>` with your token, keeping the word
+   `Bearer` and the space after it.
+
+   **Check:** no `<` or `>` is left in the block.
 
 ## If something goes wrong
 
