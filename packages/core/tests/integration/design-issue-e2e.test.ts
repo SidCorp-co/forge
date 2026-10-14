@@ -288,7 +288,13 @@ describe('an approval records the approved revision on the issue that drew it (I
     expect(row?.merged_artifacts).toEqual([
       { surface: 'design', ref: 'marked-flow@rev1', change: 'changed' },
     ]);
-    expect(await mergeNotRecorded(db, { issueId: issue.id, to: 'awaiting_release' })).toBeNull();
+    // the landing is the design's, so it closes through design_delivered and never waits at
+    // awaiting_release for a release no roster gives it: refused there by name, outside git too
+    expect(await mergeNotRecorded(db, { issueId: issue.id, to: 'awaiting_release' })).toMatchObject({
+      code: 'MERGE_DESIGN_ONLY',
+      details: { mark: 'design_only', designs: ['marked-flow@rev1'], useInstead: 'closed' },
+    });
+    expect(await mergeNotRecorded(db, { issueId: issue.id, to: 'closed' })).toBeNull();
   });
 
   it('re-points a landing written at propose to the revision approved, and says what it replaced', async () => {
@@ -317,6 +323,25 @@ describe('an approval records the approved revision on the issue that drew it (I
     const notice = posted.map((c) => c.body).find((b) => b.includes('was approved'));
     expect(notice).toContain('revision 2');
     expect(notice).toContain(proposedLanding);
+  });
+
+  it('keeps a landing that names code outside git, so the issue stays a code carrier the release takes', async () => {
+    const landing = 'hop storefront: the checkout page, live';
+    const issue = await plantIssue(outsideProject, 'in_progress', {
+      mergedAt: new Date('2026-10-01T10:00:00Z'),
+      landing,
+    });
+    await db.execute(
+      sql`UPDATE issues SET merged_artifacts = ${JSON.stringify([{ surface: 'ui', ref: 'checkout', change: 'changed' }])}::jsonb WHERE id = ${issue.id}`,
+    );
+    const id = await proposedDesign(outsideProject, 'kept-code-flow', issue.id);
+
+    const approved = ok(await decide(outsideProject, id, 1, 'approve'));
+    expect(approved.designIssue).toMatchObject({ issueId: issue.id, action: 'kept' });
+    const row = await markOf(issue.id);
+    expect(row?.merged_landing).toBe(landing);
+    expect(row?.merged_artifacts).toEqual([{ surface: 'ui', ref: 'checkout', change: 'changed' }]);
+    expect(await mergeNotRecorded(db, { issueId: issue.id, to: 'awaiting_release' })).toBeNull();
   });
 
   it('keeps a merge Forge observed', async () => {

@@ -181,7 +181,8 @@ design issue the table below holds:
 
 | shape | the row holds | the approval |
 |---|---|---|
-| `outside_git` | no mark, or a mark somebody's word wrote (`asserted`, `landed`) | stamps `merged_at` and sets `merged_landing` to the approved revision — `repointed` where a mark stood, the landing it replaced named in the notice it posts |
+| `outside_git` | no mark, or a mark somebody's word wrote (`asserted`, `landed`) naming no artifacts or only `design` ones | stamps `merged_at` and sets `merged_landing` to the approved revision — `repointed` where a mark stood, the landing it replaced named in the notice it posts |
+| `outside_git` | a mark whose artifacts name a surface other than `design` | keeps it: that is the code the issue landed, and taking it for the design would make the issue design-only |
 | `outside_git` | a merge Forge `observed` | keeps it |
 | `git` | no mark | stamps `merged_at` (`asserted`: a git mark names no revision; the notice names it) |
 | `git` | any mark | keeps it |
@@ -193,6 +194,11 @@ shipped and posts a notice saying so. This is the one place a mark standing
 on somebody's word is replaced rather than refused `MARK_ALREADY_STANDS`: a landing written at
 propose names a revision that was not yet approved, and the approval is better evidence than that
 word (ISS-262). Like every mark it moves no status.
+
+Whatever the shape, an issue whose mark is the design's alone is design-only: it closes through
+`design_delivered` and `awaiting_release` refuses it `MERGE_DESIGN_ONLY` (`merged-at.ts:mergeNotRecorded`),
+since no release roster carries it (`release-batch/create.ts:withoutDesignOnly`). Outside git it once
+entered `awaiting_release` on its design landing and stood there with no release ever taking it.
 
 The forecast (`packages/core/src/forecast/`) does not read an issue landed by `merged_at` alone: it reads
 landed by status — `awaiting_release` or `closed` — so an open issue carrying a mark is forecast as work,

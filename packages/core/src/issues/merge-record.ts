@@ -218,8 +218,11 @@ export async function recordIssueMerge(
  * The landing the approval of a design revision records on the issue that drew it (ISS-262). On a
  * shape that names landings (`landing` given) it is written over an unmarked row or a mark resting on
  * somebody's word, and the mark then names the approved revision rather than the one proposed; a
- * merge Forge observed is never written over. Where no landing is named (git) it stamps only a row
- * that carries none. Called in the decision's transaction: docs/modules/issues/merge-mark.md.
+ * merge Forge observed is never written over, and neither is a landing whose artifacts name anything
+ * but design: that is the code the issue landed, and taking it for the design would leave the issue
+ * design-only, which `awaiting_release` refuses (`merged-at.ts:mergeNotRecorded`). Where no landing is
+ * named (git) it stamps only a row that carries none. Called in the decision's transaction:
+ * docs/modules/issues/merge-mark.md.
  */
 export async function recordDesignLanding(
   executor: Tx,
@@ -243,6 +246,8 @@ export async function recordDesignLanding(
       : and(
           sql`coalesce(trim(${issues.mergedCommitSha}), '') = ''`,
           sql`(${issues.mergedAt} IS NULL OR ${issues.mergedLanding} IS DISTINCT FROM ${landing})`,
+          sql`NOT EXISTS (SELECT 1 FROM jsonb_array_elements(coalesce(${issues.mergedArtifacts}, '[]'::jsonb)) a
+                           WHERE a->>'surface' IS DISTINCT FROM 'design')`,
         );
   const [wrote] = await executor
     .update(issues)
