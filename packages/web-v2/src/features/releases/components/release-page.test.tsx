@@ -51,7 +51,7 @@ function serve() {
 
 beforeEach(() => {
   window.history.replaceState(null, "", "/projects/forge/releases/0.4.0");
-  vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 404 })));
+  vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response("", { status: 404 }))));
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -74,14 +74,14 @@ describe("the release page screen", () => {
     expect(calls.some((c) => c.path === "/projects/p1/releases/0.4.0/page?view=developer")).toBe(true);
   });
 
-  it("switches to the developer view from the switch and back", async () => {
+  it("switches to the Technical view from the switch and back", async () => {
     serve();
     renderWithQuery(<ReleasePage projectId="p1" slug="forge" version="0.4.0" />);
     await screen.findByTestId("release-reader");
-    fireEvent.click(screen.getByRole("button", { name: "Developer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Technical" }));
     await waitFor(() => expect(window.location.search).toContain("view=developer"));
     expect(await screen.findByTestId("page-technical")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "User" }));
+    fireEvent.click(screen.getByRole("button", { name: "Overview" }));
     await waitFor(() => expect(screen.queryByTestId("page-technical")).toBeNull());
   });
 });
@@ -130,20 +130,25 @@ describe("the header, the Proof panel and the list say one count (BC-5)", () => 
       return { body: {} };
     });
     renderWithQuery(<ReleasePage projectId="p1" slug="forge" version="0.4.0" />);
-    const header = await screen.findByTestId("page-header-verified");
+    const header = await screen.findByTestId("page-header");
     expect(header).toHaveTextContent("Partly verified: 4 of 6 criteria proven");
     // said once: the rail beside the reader carries no Proof panel (REQ-43 BC-5)
     expect(screen.queryByTestId("facts-proof")).toBeNull();
     expect(screen.queryByTestId("release-verified-by")).toBeNull();
-    // every proven issue criterion is a row; the rest are the known issues
-    const rows = screen.getAllByTestId("page-proven-row");
-    expect(rows).toHaveLength(4);
-    expect(rows.length + screen.getAllByTestId("page-known-issue").length).toBe(6);
-    // a user's view counts in the pills, marks each row, and names no issue, number or code (REQ-43 BC-7, BC-10)
-    expect(screen.queryByTestId("page-requirement-count")).toBeNull();
-    expect(screen.getAllByTestId("page-proven-short")).toHaveLength(1);
-    expect(rows[2]).toHaveTextContent(/^✓the reminder names the patient$/);
-    expect(within(screen.getByTestId("page-untraced")).getByTestId("page-proven-row")).toHaveTextContent(/^✓the list loads in a second$/);
+    // the requirement's 3 proven rows, the untraced one, and the 2 still open sum to the header's 6
+    expect(screen.getByTestId("page-requirement")).toHaveTextContent("Checks passed: 3");
+    const open = screen.getAllByTestId("page-known-issue").map((r) => Number(within(r).getByText(/^\d+ open$/).textContent?.split(" ")[0]));
+    expect(3 + (page.untraced?.proven.length ?? 0) + open.reduce((a, b) => a + b, 0)).toBe(6);
+    // a row opened in a user's view marks each criterion and names no issue number or code (REQ-43 BC-7, BC-10)
+    const iss2 = screen.getAllByTestId("page-change").find((r) => r.getAttribute("data-row-key") === "ISS-2");
+    if (!iss2) throw new Error("no ISS-2 row");
+    fireEvent.click(within(iss2).getAllByRole("button")[0]);
+    const lines = [...within(iss2).getByTestId("page-row-detail").querySelectorAll("li")].map((l) => l.textContent);
+    expect(lines).toEqual(["✓the reminder names the patient"]);
+    const iss1 = screen.getAllByTestId("page-change").find((r) => r.getAttribute("data-row-key") === "ISS-1");
+    if (!iss1) throw new Error("no ISS-1 row");
+    fireEvent.click(within(iss1).getAllByRole("button")[0]);
+    expect([...within(iss1).getByTestId("page-row-detail").querySelectorAll("li")].map((l) => l.textContent)).toEqual(["✓A nurse sees the reminder", "≈A nurse sees it on a phone"]);
   });
 });
 

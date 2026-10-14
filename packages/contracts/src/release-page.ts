@@ -458,8 +458,9 @@ export interface ReleaseActionItem {
 }
 
 /** Whether an ask's sentence already names its artifact, so a reader prints the ref once. */
-export const actionSaysRef = (a: Pick<ReleaseActionItem, "sentence" | "ref">): boolean =>
-	a.sentence.includes(a.ref);
+export const actionSaysRef = (
+	a: Pick<ReleaseActionItem, "sentence" | "ref">,
+): boolean => a.sentence.includes(a.ref);
 
 export interface ReleaseKnownIssue {
 	issueKey: string;
@@ -549,7 +550,11 @@ export interface ReleaseTechnicalNotes {
  * invented: `no_note` where it has none, `held` where its line names what a reader cannot follow,
  * `reworked` where it was reopened after this release claimed it and its line now says a later round.
  */
-export const RELEASE_PAGE_UNNOTED_WHYS = ["no_note", "held", "reworked"] as const;
+export const RELEASE_PAGE_UNNOTED_WHYS = [
+	"no_note",
+	"held",
+	"reworked",
+] as const;
 
 export interface ReleasePageUnnoted {
 	issueKey: string;

@@ -32,19 +32,29 @@ const CLAUSE_WORDS_MIN = 6;
  * its last clause that fits, or else its first words and an ellipsis. `cut` says the row says less
  * than the line, so the reader is offered the rest.
  */
-export function releaseRowHeadline(line: string): { text: string; cut: boolean } {
+export function releaseRowHeadline(line: string): {
+	text: string;
+	cut: boolean;
+} {
 	const whole = line.trim();
 	const sentence = (SENTENCE_END.exec(whole)?.[1] ?? whole).trim();
 	const words = wordsOf(sentence);
 	const rest = wordsOf(whole).length > words.length;
-	if (words.length <= RELEASE_ROW_WORDS_MAX) return { text: sentence, cut: rest };
+	if (words.length <= RELEASE_ROW_WORDS_MAX)
+		return { text: sentence, cut: rest };
 	const head = words.slice(0, RELEASE_ROW_WORDS_MAX);
 	let comma = -1;
 	head.forEach((w, i) => {
 		if (w.endsWith(",")) comma = i;
 	});
 	if (comma + 1 >= CLAUSE_WORDS_MIN)
-		return { text: head.slice(0, comma + 1).join(" ").replace(/,$/u, ""), cut: true };
+		return {
+			text: head
+				.slice(0, comma + 1)
+				.join(" ")
+				.replace(/,$/u, ""),
+			cut: true,
+		};
 	return { text: `${head.join(" ")}…`, cut: true };
 }
 

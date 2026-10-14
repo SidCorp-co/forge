@@ -41,14 +41,14 @@ describe("Help → Tours", () => {
     await within(integrations).findByText(/revision 2 · Updated/);
     expect(within(integrations).getByTestId("tour-updated-dot")).toBeInTheDocument();
     const release = screen.getByTestId("tour-row-release-what-changes");
-    expect(release).toHaveTextContent("2 steps · revision 3 · Not seen");
+    expect(release).toHaveTextContent("2 steps · revision 4 · Not seen");
     expect(within(release).queryByTestId("tour-updated-dot")).toBeNull();
   });
 
   it("reads Seen for a tour finished at its revision", async () => {
-    serve([{ key: "tour:release-what-changes", value: { revision: 3, outcome: "completed", at }, updatedAt: at }]);
+    serve([{ key: "tour:release-what-changes", value: { revision: 4, outcome: "completed", at }, updatedAt: at }]);
     renderWithQuery(<ToursSheet open onClose={() => {}} />);
-    expect(await screen.findByText(/revision 3 · Seen/)).toBeInTheDocument();
+    expect(await screen.findByText(/revision 4 · Seen/)).toBeInTheDocument();
   });
 });
 

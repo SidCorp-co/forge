@@ -1,11 +1,12 @@
-// The release page a reader sees (REQ-40): each section from the page core served, the truth rule's
-// known issues in plain words, the clip played from the bytes the session may fetch, and the
-// technical notes only where the page carries them.
+// The release page a reader sees (REQ-40), read in thirty seconds: a summary and where it stands
+// first, the changes counted by group with each count a link, a contents line, then one short row per
+// change whose detail (the full note, the keys, the criteria, the technical note) opens under it. The
+// clip plays from the bytes the session may fetch; the technical note is never on a share.
 
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { releasePage, TECHNICAL } from "@/test/release-page";
-import { renderWithQuery } from "@/test/render";
+import { fakeCore, renderWithQuery } from "@/test/render";
 import { ReleaseReader } from "./release-reader";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
@@ -24,133 +25,252 @@ afterEach(() => {
   URLS.length = 0;
 });
 
-describe("the reader's header (BC-1, BC-12)", () => {
-  it("heads with when it was released, where it runs, the build, how it was verified and who approved it", () => {
-    renderWithQuery(<ReleaseReader page={releasePage({ view: "developer" })} slug="forge" authed={false} />);
-    const h = screen.getByTestId("page-header");
-    expect(within(h).getByTestId("page-header-runs-at")).toHaveTextContent("https://forge.example");
-    expect(within(h).getByTestId("page-header-build")).toHaveTextContent("aaaaaaa");
-    expect(within(h).getByTestId("page-header-verified")).toHaveTextContent("Verified: 2 criteria proven");
-    expect(within(h).getByTestId("page-header-approval")).toHaveTextContent(/^ApprovalApproved by Ada, /);
-    expect(within(h).getByTestId("page-header-released")).not.toHaveTextContent("Not released yet");
-  });
+/** The row of a change, by the words its row says. */
+const changeRow = (text: string) => {
+  const row = screen.getAllByTestId("page-change").find((r) => r.textContent?.includes(text));
+  if (!row) throw new Error(`no change row says "${text}"`);
+  return row;
+};
+const open = (row: HTMLElement) => fireEvent.click(within(row).getAllByRole("button")[0]);
 
-  it("leaves the build, a sha, to the developer view (REQ-43 BC-7)", () => {
+describe("the summary a release opens on", () => {
+  it("says what it brings by group, the requirement it completes, its highlights and what is still open", () => {
     renderWithQuery(<ReleaseReader page={releasePage()} slug="forge" authed={false} />);
-    expect(screen.queryByTestId("page-header-build")).toBeNull();
-    expect(screen.getByTestId("page-header")).not.toHaveTextContent("aaaaaaa");
+    const summary = screen.getByTestId("page-summary");
+    expect(summary).toHaveAttribute("data-state", "derived");
+    expect([...summary.querySelectorAll("p")].map((p) => p.textContent)).toEqual([
+      "This release brings 1 new feature and 1 fix, plus 1 change with no note for users yet.",
+      "It completes “Release page”.",
+      "Highlights: Every release has a page.",
+      "2 acceptance checks are still open on 2 changes.",
+    ]);
   });
 
-  it("says approval was not asked, and that a draft has no build, rather than leaving the rows blank", () => {
-    const page = releasePage({ view: "developer" });
+  it("refuses by name, rather than a filler line, where the release carries nothing to summarise", () => {
+    renderWithQuery(
+      <ReleaseReader
+        page={releasePage({ improvements: [], fixes: [], withoutNotes: [], requirements: [], knownIssues: [], highlights: { state: "none", why: "no requirement" } })}
+        authed={false}
+      />,
+    );
+    const summary = screen.getByTestId("page-summary");
+    expect(summary).toHaveAttribute("data-state", "refused");
+    expect(summary).toHaveAttribute("data-code", "RELEASE_SUMMARY_UNDERIVABLE");
+    expect(summary).toHaveTextContent("No summary: release 0.4.0 carries no change and completes or advances no requirement");
+  });
+});
+
+describe("where the release stands, in one line (BC-1, BC-12)", () => {
+  it("says it is live and where, who approved it and what it proved, and never shows the build", () => {
+    renderWithQuery(<ReleaseReader page={releasePage({ view: "developer", technical: TECHNICAL })} slug="forge" authed={false} />);
+    const h = screen.getByTestId("page-header");
+    expect(h).toHaveTextContent(/Live on https:\/\/forge\.example since /);
+    expect(h).toHaveTextContent("Approved by Ada");
+    expect(h).toHaveTextContent("Verified: 2 criteria proven");
+    expect(h).not.toHaveTextContent("aaaaaaa");
+    // an admin step is listed as its own group, so the line does not also speak for it
+    expect(h).not.toHaveTextContent(/admin steps/i);
+  });
+
+  it("says a draft is not released or deployed, and that approval was not asked", () => {
+    const page = releasePage();
     renderWithQuery(
       <ReleaseReader
         page={{ ...page, header: { ...page.header, state: "draft", releasedAt: null, environment: null, build: null, approval: { required: false, state: "not_asked", by: null, at: null } } }}
         authed={false}
       />,
     );
-    expect(screen.getByTestId("page-header-approval")).toHaveTextContent("Not asked");
-    expect(screen.getByTestId("page-header-build")).toHaveTextContent("Not cut yet");
-    expect(screen.getByTestId("page-header-released")).toHaveTextContent("Not released yet");
-    expect(screen.getByTestId("page-header-runs-at")).toHaveTextContent("Not deployed");
+    const h = screen.getByTestId("page-header");
+    expect(h).toHaveTextContent("Not released yet, not deployed");
+    expect(h).toHaveTextContent("Not asked");
+  });
+
+  it("says there is no admin step only where the range was read, and that it was not checked where it was not", () => {
+    const { unmount } = renderWithQuery(<ReleaseReader page={releasePage({ actionRequired: [] })} authed={false} />);
+    expect(screen.getByTestId("page-header")).toHaveTextContent("Admin: none");
+    expect(screen.queryByTestId("page-actions")).toBeNull();
+    unmount();
+    renderWithQuery(<ReleaseReader page={releasePage({ actionRequired: [], shipped: { state: "unread", why: "the repository was unreachable" } })} authed={false} />);
+    expect(screen.getByTestId("page-header")).toHaveTextContent("Admin steps not checked yet");
+    expect(screen.getByTestId("page-header")).not.toHaveTextContent("Admin: none");
+    expect(screen.getByTestId("page-header")).not.toHaveTextContent("unreachable");
   });
 });
 
-describe("the sections the release page reads (BC-5..8)", () => {
-  it("marks each requirement's outcome and each proven criterion, counts them in the pills, and names no code, in a user's view (REQ-43 BC-7, BC-10)", () => {
-    const base = releasePage();
-    const page = { ...base, requirements: [...base.requirements, { ...base.requirements[0], key: "REQ-41", title: "Moves one", completes: false } as (typeof base.requirements)[number]] };
-    renderWithQuery(<ReleaseReader page={page} slug="forge" authed={false} />);
-    const r = screen.getAllByTestId("page-requirement")[0];
-    expect(within(r).getByTestId("page-requirement-mark")).toHaveAccessibleName("Completes it");
-    expect(r).not.toHaveTextContent("Completes it");
-    expect(within(r).queryByTestId("page-requirement-count")).toBeNull();
-    for (const c of within(r).getAllByTestId("page-proven-code")) expect(c.textContent).not.toMatch(/BC-\d/);
-    expect(within(r).getAllByTestId("page-proven-row")[0]).toHaveTextContent(/^✓The page shows the version and date\.$/);
-    const pills = within(screen.getByTestId("page-requirements-filter")).getAllByRole("button");
-    expect(pills.map((b) => b.textContent)).toEqual(["All2", "Completes it1", "Moves it forward1"]);
-    fireEvent.click(screen.getByTestId("page-requirements-filter-advances"));
-    expect(screen.getAllByTestId("page-requirement").map((e) => within(e).getByRole("link").textContent)).toEqual(["REQ-41"]);
+describe("the changes at a glance, and the contents line", () => {
+  it("counts each group and links a count to its group, leaving an empty group counted and unlinked", () => {
+    renderWithQuery(<ReleaseReader page={releasePage()} authed={false} />);
+    const cell = (k: string) => screen.getByTestId(`page-glance-${k}`);
+    const counts = ["new", "improved", "fixed", "security", "other", "open"].map((k) => [k, cell(k).textContent?.replace(/\D/g, "")]);
+    expect(counts).toEqual([["new", "1"], ["improved", "0"], ["fixed", "1"], ["security", "0"], ["other", "1"], ["open", "2"]]);
+    expect(cell("new")).toHaveAttribute("href", "#release-new");
+    expect(cell("open")).toHaveAttribute("href", "#release-open");
+    expect(cell("improved")).not.toHaveAttribute("href");
+    // every link lands on a group that is on the page
+    for (const k of ["new", "fixed", "other", "open"]) {
+      const target = cell(k).getAttribute("href")?.slice(1) ?? "";
+      expect(document.getElementById(target)).not.toBeNull();
+    }
   });
 
-  it("lists the requirement with the criterion it proves live and what is not yet proven", () => {
-    renderWithQuery(<ReleaseReader page={releasePage({ view: "developer" })} slug="forge" authed={false} />);
-    const r = screen.getByTestId("page-requirement");
-    expect(r).toHaveTextContent("REQ-40");
-    // counted in the requirement's own criteria, each proven one said once with the rows proving it
-    expect(within(r).getByTestId("page-requirement-count")).toHaveTextContent("2 of its 13 criteria proven on this build");
-    const codes = within(r).getAllByTestId("page-proven-code");
-    expect(codes.map((c) => c.getAttribute("data-code"))).toEqual(["BC-1", "BC-2"]);
-    expect(codes[0]).toHaveTextContent("BC-1Each release has a page.");
-    expect(within(codes[0]).getAllByTestId("page-proven-row").map((row) => row.textContent)).toEqual([
-      "✓ISS-1 #1The page shows the version and date.",
-      "✓ISS-1 #2The page names who approved it.",
-    ]);
-    // a criterion met but short of its wording is proven and says so, beside it
-    expect(within(r).getAllByTestId("page-proven-short")).toHaveLength(1);
-    expect(within(codes[1]).getByTestId("page-proven-short")).toHaveAccessibleName("short of its wording");
-    expect(codes[1]).toHaveTextContent("≈ISS-1 #3Each release opens on highlights.");
-    expect(within(r).queryByTestId("page-unproven")).toBeNull();
-    expect(within(r).getByRole("link", { name: "REQ-40" })).toHaveAttribute("href", "/projects/forge/requirements/REQ-40");
+  it("groups a Security entry apart from the fixes its kind folds it into", () => {
+    const page = releasePage();
+    renderWithQuery(
+      <ReleaseReader page={{ ...page, fixes: [...page.fixes, { issueKey: "ISS-7", kind: "fixed", section: "Security", line: "Reset links stop working once used." }] }} authed={false} />,
+    );
+    expect(screen.getByTestId("page-glance-security").textContent).toMatch(/1$/);
+    expect(screen.getByTestId("page-glance-fixed").textContent).toMatch(/1$/);
+    expect(within(screen.getByTestId("page-group-security")).getByText("Reset links stop working once used")).toBeTruthy();
+    expect(screen.getByTestId("page-group-fixed")).not.toHaveTextContent("Reset links");
   });
 
-  it("draws seven criteria proving one requirement criterion as seven rows a reader tells apart", () => {
+  it("names exactly the groups the page draws, in reading order", () => {
+    renderWithQuery(<ReleaseReader page={releasePage()} authed={false} />);
+    const links = within(screen.getByTestId("page-contents")).getAllByRole("link");
+    expect(links.map((a) => a.textContent)).toEqual(["Highlights", "New features", "Fixes", "Requirements", "Still open", "Other changes", "Admin steps"]);
+    expect(links.map((a) => a.getAttribute("href"))).toEqual(["#release-highlights", "#release-new", "#release-fixed", "#release-requirements", "#release-open", "#release-other", "#release-admin"]);
+  });
+});
+
+describe("each change as one short row (BC-6)", () => {
+  const LONG =
+    "You can now save any product to your wishlist from its page or straight from the product grid and your list follows you to every device you sign in on.";
+
+  it("says at most fifteen words, and the full line only once the row is opened", () => {
+    renderWithQuery(<ReleaseReader page={releasePage({ improvements: [{ issueKey: "ISS-1", kind: "new", section: "Added", line: LONG }] })} authed={false} />);
+    const row = changeRow("You can now save");
+    const title = row.querySelector("button span span")?.textContent ?? "";
+    expect(title.replace(/…$/, "").split(/\s+/)).toHaveLength(15);
+    expect(title.endsWith("…")).toBe(true);
+    expect(row).not.toHaveTextContent("every device");
+    open(row);
+    expect(within(row).getByTestId("page-row-detail")).toHaveTextContent(LONG);
+  });
+
+  it("shows no criterion, no requirement and no note behind a row until it is opened, then each with its links", () => {
+    renderWithQuery(<ReleaseReader page={releasePage()} slug="forge" authed={false} />);
+    const row = changeRow("Releases read as pages");
+    expect(row).not.toHaveTextContent("The page shows the version and date.");
+    expect(within(row).getByRole("button")).toHaveAttribute("aria-expanded", "false");
+    open(row);
+    expect(within(row).getAllByRole("button")[0]).toHaveAttribute("aria-expanded", "true");
+    const detail = within(row).getByTestId("page-row-detail");
+    expect(detail).toHaveTextContent("Checks: 3 passed, 0 open");
+    expect(detail).toHaveTextContent("The page shows the version and date.");
+    expect(within(detail).getByRole("link", { name: "Issue ISS-1" })).toHaveAttribute("href", "/projects/forge/issues/ISS-1");
+    expect(within(detail).getByRole("link", { name: "Requirement REQ-40" })).toHaveAttribute("href", "/projects/forge/requirements/REQ-40");
+  });
+
+  it("never shows a technical note on a share, nor reads one", () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    renderWithQuery(<ReleaseReader page={releasePage()} authed={false} />);
+    const row = changeRow("Releases read as pages");
+    open(row);
+    expect(within(row).getByTestId("page-row-detail")).toBeTruthy();
+    expect(within(row).queryByTestId("page-row-technical")).toBeNull();
+    expect(within(row).queryByRole("link")).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("reads a member's technical note from the Technical view only when the row is opened", async () => {
+    const calls = fakeCore((c) => (c.path === "/projects/p1/releases/0.4.0/page?view=developer" ? { body: releasePage({ view: "developer", technical: TECHNICAL }) } : undefined));
+    renderWithQuery(<ReleaseReader page={releasePage()} slug="forge" authed />);
+    expect(calls.filter((c) => c.path.includes("view=developer"))).toHaveLength(0);
+    const row = changeRow("Releases read as pages");
+    open(row);
+    expect(await within(row).findByTestId("page-row-technical")).toHaveTextContent("Reads release-read through sections.ts.");
+    expect(calls.filter((c) => c.path.includes("view=developer"))).toHaveLength(1);
+  });
+
+  it("draws seven criteria of one issue as seven lines a reader tells apart", () => {
     // J7 on 0.4.0-dev.222: REQ-34 drew `BC-18 A refusal says…` seven times, under one repeated React key
     const base = releasePage();
     const seven = Array.from({ length: 7 }, (_, i) => ({ code: "BC-18", statement: `refusal ${i + 1} names its field`, short: false, issueKey: "ISS-451", n: i + 1 }));
     const page = {
       ...base,
       view: "developer" as const,
+      improvements: [{ issueKey: "ISS-451", kind: "improved" as const, section: "Changed" as const, line: "Refusals name their field." }],
       requirements: [
         { key: "REQ-34", title: "Refusals", completes: false, proven: seven, unproven: 30, business: { total: 26, proven: [{ code: "BC-18", statement: "A refusal says in plain words what to fix, on that field." }] } },
       ],
     };
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     renderWithQuery(<ReleaseReader page={page} authed={false} />);
-    const r = screen.getByTestId("page-requirement");
-    expect(within(r).getAllByText("A refusal says in plain words what to fix, on that field.")).toHaveLength(1);
-    const rows = within(r).getAllByTestId("page-proven-row").map((row) => row.textContent);
-    expect(new Set(rows).size).toBe(7);
-    expect(within(r).getByTestId("page-requirement-count")).toHaveTextContent("1 of its 26 criteria proven on this build");
+    const row = changeRow("Refusals name their field");
+    open(row);
+    const lines = [...within(row).getByTestId("page-row-detail").querySelectorAll("li")].map((l) => l.textContent);
+    expect(new Set(lines).size).toBe(7);
     expect(errors.mock.calls.flat().join(" ")).not.toMatch(/same key/);
-    errors.mockRestore();
+  });
+});
+
+describe("requirements, still open and other changes (BC-5, BC-8)", () => {
+  it("draws a requirement as one row, its own criteria proven only behind it", () => {
+    renderWithQuery(<ReleaseReader page={releasePage()} slug="forge" authed={false} />);
+    const r = screen.getByTestId("page-requirement");
+    expect(r).toHaveTextContent("Completes");
+    expect(r).toHaveTextContent("Release page");
+    expect(r).toHaveTextContent("Checks passed: 3");
+    expect(within(r).queryByTestId("page-requirement-count")).toBeNull();
+    open(r);
+    const count = within(r).getByTestId("page-requirement-count");
+    expect(count).toHaveTextContent("2 of its 13 criteria proven");
+    expect(r).toHaveTextContent("Each release has a page.");
+    expect(within(r).getByRole("link", { name: "Requirement REQ-40" })).toHaveAttribute("href", "/projects/forge/requirements/REQ-40");
   });
 
-  it("splits improvements from fixes in the user's words, with no issue key", () => {
+  it("draws one row per issue with criteria still open, each criterion as what it is behind it", () => {
     renderWithQuery(<ReleaseReader page={releasePage()} authed={false} />);
-    expect(within(screen.getByTestId("page-improvements")).getByText("Releases read as pages.")).toBeTruthy();
-    expect(within(screen.getByTestId("page-fixes")).getByText("Dates show correctly.")).toBeTruthy();
-    expect(screen.getByTestId("page-changes")).not.toHaveTextContent("ISS-1");
+    const rows = screen.getAllByTestId("page-known-issue");
+    expect(rows.map((r) => r.getAttribute("data-row-key"))).toEqual(["ISS-3", "ISS-4"]);
+    expect(rows[0]).toHaveTextContent("1 open");
+    expect(rows[0]).not.toHaveTextContent("Known issues are listed.");
+    open(rows[0]);
+    expect(rows[0]).toHaveTextContent("Known issues are listed. (Falls short)");
+    open(rows[1]);
+    expect(rows[1]).toHaveTextContent("A developer view adds notes. (Not yet judged)");
   });
 
-  it("names the changes that have no note for users, behind a fold", () => {
-    renderWithQuery(<ReleaseReader page={releasePage()} authed={false} />);
-    const unnoted = screen.getByTestId("page-unnoted");
-    expect(unnoted).toHaveTextContent("1 change has no note for users");
-    expect(within(unnoted).queryByText("Rename a helper")).toBeNull();
-    screen.getByTestId("page-unnoted-toggle").click();
-    return waitFor(() => expect(within(unnoted).getByText(/Rename a helper/)).toBeTruthy());
-  });
-
-  it("names an issue reworked in a later release instead of showing its later line", () => {
+  // BC-11: the user view says the criterion's words and its state; QA's reason and the other build
+  // it was judged on are the Technical view's, even where the page carries them
+  it("shows QA's reason and the other build in the Technical view only", () => {
     const page = releasePage();
-    renderWithQuery(
-      <ReleaseReader
-        page={{ ...page, withoutNotes: [{ issueKey: "ISS-455", title: "Intake drafts", why: "reworked" }] }}
-        authed={false}
-      />,
-    );
-    screen.getByTestId("page-unnoted-toggle").click();
-    return waitFor(() => expect(screen.getByTestId("page-unnoted")).toHaveTextContent("Intake drafts (reworked in a later release)"));
+    const carried = page.knownIssues.map((k) => ({ ...k, reason: k.reason ?? "judged on another commit", elsewhere: k.elsewhere ?? { verdict: "pass" as const, commitSha: "b".repeat(40) } }));
+    const user = renderWithQuery(<ReleaseReader page={{ ...page, view: "user", knownIssues: carried }} authed={false} />);
+    for (const r of screen.getAllByTestId("page-known-issue")) open(r);
+    expect(screen.getByTestId("page-known-issues")).not.toHaveTextContent("the list is empty on mobile");
+    expect(screen.getByTestId("page-known-issues")).not.toHaveTextContent("bbbbbbb");
+    user.unmount();
+    renderWithQuery(<ReleaseReader page={{ ...page, view: "developer", knownIssues: carried }} authed={false} />);
+    const rows = screen.getAllByTestId("page-known-issue");
+    for (const r of rows) open(r);
+    expect(rows[0]).toHaveTextContent("the list is empty on mobile");
+    expect(rows[1]).toHaveTextContent("Judged pass on build bbbbbbb instead");
   });
 
-  it("says what an admin must do, naming the artifact that owes it, or that nothing is required", () => {
-    const { unmount } = renderWithQuery(<ReleaseReader page={releasePage()} authed={false} />);
+  it("draws no Still open group where nothing is open, and counts it as nothing to follow", () => {
+    renderWithQuery(<ReleaseReader page={releasePage({ knownIssues: [] })} authed={false} />);
+    expect(screen.queryByTestId("page-known-issues")).toBeNull();
+    expect(screen.getByTestId("page-glance-open")).not.toHaveAttribute("href");
+  });
+
+  it("names the changes with no note for users, and one reworked in a later release, by their titles", () => {
+    const page = releasePage();
+    renderWithQuery(<ReleaseReader page={{ ...page, withoutNotes: [...page.withoutNotes, { issueKey: "ISS-455", title: "Intake drafts", why: "reworked" }] }} authed={false} />);
+    const rows = within(screen.getByTestId("page-unnoted")).getAllByTestId("page-unnoted-row");
+    expect(rows[0]).toHaveTextContent("Rename a helper");
+    expect(rows[0]).toHaveTextContent("no note yet");
+    expect(rows[1]).toHaveTextContent("Intake drafts");
+    expect(rows[1]).toHaveTextContent("reworked in a later release");
+  });
+});
+
+describe("admin steps (BC-7)", () => {
+  it("says what an admin must do, naming the artifact that owes it", () => {
+    renderWithQuery(<ReleaseReader page={releasePage()} authed={false} />);
     expect(screen.getByTestId("page-action")).toHaveTextContent("Run the database migration before opening the app.");
     expect(screen.getByTestId("page-action")).toHaveTextContent("0478_release_highlights.sql");
-    unmount();
-    renderWithQuery(<ReleaseReader page={releasePage({ actionRequired: [] })} authed={false} />);
-    expect(screen.getByTestId("page-actions")).toHaveTextContent("Nothing required");
   });
 
   // J10 on 0.4.0-dev.227: each ask printed its migration path twice, in the sentence and under it
@@ -159,40 +279,6 @@ describe("the sections the release page reads (BC-5..8)", () => {
     const sentence = `Back up the database before this release deploys: ${ref} changes its schema.`;
     renderWithQuery(<ReleaseReader page={releasePage({ actionRequired: [{ kind: "migration", sentence, ref, issues: ["ISS-455"] }] })} authed={false} />);
     expect(screen.getByTestId("page-action").textContent?.split(ref)).toHaveLength(2);
-  });
-
-  it("lists each criterion not proven on the build as what it is: short, not judged and where it was judged instead", () => {
-    renderWithQuery(<ReleaseReader page={releasePage()} authed={false} />);
-    const rows = screen.getAllByTestId("page-known-issue");
-    expect(rows.map((r) => r.getAttribute("data-standing"))).toEqual(["short", "not_judged"]);
-    expect(rows[0]).toHaveTextContent("Falls short");
-    expect(rows[1]).toHaveTextContent("Not yet judged");
-  });
-
-  // BC-11: the user view says the criterion's words and its state; QA's reason and the other build
-  // it was judged on are the developer view's, even where the page carries them
-  it("shows QA's reason and the other build in the developer view only", () => {
-    const page = releasePage();
-    const carried = page.knownIssues.map((k) => ({ ...k, reason: k.reason ?? "judged on another commit", elsewhere: k.elsewhere ?? { verdict: "pass" as const, commitSha: "b".repeat(40) } }));
-    const user = renderWithQuery(<ReleaseReader page={{ ...page, view: "user", knownIssues: carried }} authed={false} />);
-    expect(screen.getByTestId("page-known-issues")).not.toHaveTextContent("the list is empty on mobile");
-    expect(screen.getByTestId("page-known-issues")).not.toHaveTextContent("bbbbbbb");
-    user.unmount();
-    renderWithQuery(<ReleaseReader page={{ ...page, view: "developer", knownIssues: carried }} authed={false} />);
-    const rows = screen.getAllByTestId("page-known-issue");
-    expect(rows[0]).toHaveTextContent("the list is empty on mobile");
-    expect(rows[1]).toHaveTextContent("Judged pass on build bbbbbbb instead");
-  });
-
-  it("says a range it could not read, never that nothing is required", () => {
-    renderWithQuery(<ReleaseReader page={releasePage({ actionRequired: [], shipped: { state: "unread", why: "the repository was unreachable" } })} authed={false} />);
-    expect(screen.getByTestId("page-actions-none")).toHaveTextContent("could not be read: the repository was unreachable.");
-    expect(screen.getByTestId("page-actions")).not.toHaveTextContent("Nothing required");
-  });
-
-  it("says no known issues where there are none, never leaving the section silent", () => {
-    renderWithQuery(<ReleaseReader page={releasePage({ knownIssues: [] })} authed={false} />);
-    expect(screen.getByTestId("page-known-issues")).toHaveTextContent("None known");
   });
 });
 
@@ -244,7 +330,12 @@ describe("highlights and their clip (BC-2, BC-3)", () => {
     expect(screen.getByTestId("page-highlight-gap")).toHaveTextContent("No clip: QA recorded no clip for this build");
   });
 
-  it("says a draft is on its way, or failed with the refusals it earned, instead of showing nothing", () => {
+  it("names no criterion code in a highlight's text", () => {
+    renderWithQuery(<ReleaseReader page={releasePage()} slug="forge" authed={false} />);
+    expect(screen.getByTestId("page-highlight")).not.toHaveTextContent("BC-1");
+  });
+
+  it("says a draft is on its way, or failed, with the drafter's refusals behind a fold", () => {
     const { unmount } = renderWithQuery(<ReleaseReader page={releasePage({ highlights: { state: "pending", since: "2026-10-09T10:00:00.000Z" } })} authed={false} />);
     expect(screen.getByTestId("page-highlights-pending")).toHaveTextContent("Drafting highlights");
     unmount();
@@ -254,8 +345,11 @@ describe("highlights and their clip (BC-2, BC-3)", () => {
         authed={false}
       />,
     );
-    expect(screen.getByTestId("page-highlights-failed")).toHaveTextContent("could not be drafted");
-    expect(screen.getByTestId("page-highlights-failed")).toHaveTextContent("RELEASE_HIGHLIGHT_UNCLAIMED");
+    const failed = screen.getByTestId("page-highlights-failed");
+    expect(failed).toHaveTextContent("could not be drafted");
+    expect(failed).not.toHaveTextContent("RELEASE_HIGHLIGHT_UNCLAIMED");
+    fireEvent.click(screen.getByTestId("page-highlights-failed-toggle"));
+    return waitFor(() => expect(failed).toHaveTextContent("RELEASE_HIGHLIGHT_UNCLAIMED"));
   });
 
   it("draws no highlights section on a release that carries no requirement", () => {
@@ -264,17 +358,28 @@ describe("highlights and their clip (BC-2, BC-3)", () => {
   });
 });
 
-describe("the developer view (BC-9)", () => {
-  it("adds the technical notes, migrations, contracts and dependencies the page carries", () => {
+describe("the Technical view (BC-9)", () => {
+  it("adds the build, the range, migrations, contracts, dependencies and settings the page carries", () => {
     renderWithQuery(<ReleaseReader page={releasePage({ view: "developer", technical: TECHNICAL })} slug="forge" authed />);
     const tech = screen.getByTestId("page-technical");
-    expect(within(tech).getByTestId("page-technical-notes")).toHaveTextContent("Reads release-read through sections.ts.");
     expect(within(tech).getByTestId("page-technical-migrations")).toHaveTextContent("0478_release_highlights.sql");
     expect(within(tech).getByTestId("page-technical-contracts")).toHaveTextContent("release-page.ts");
     expect(within(tech).getByTestId("page-technical-dependencies")).toHaveTextContent("no new dependency");
     expect(within(tech).getByTestId("page-technical-settings")).toHaveTextContent("PREVIEW_DOMAIN (optional)");
     // where the lists were read from: the range the release run reported, never a silent "None"
-    expect(within(tech).getByTestId("page-technical-range")).toHaveTextContent("Read from the range bbbbbbb..aaaaaaa that the release run reported.");
+    const range = within(tech).getByTestId("page-technical-range");
+    expect(range).toHaveTextContent("aaaaaaa");
+    expect(range).toHaveTextContent("Read from the range bbbbbbb..aaaaaaa that the release run reported.");
+  });
+
+  it("shows an issue's technical note under its row, read off the page it already holds", () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    renderWithQuery(<ReleaseReader page={releasePage({ view: "developer", technical: TECHNICAL })} slug="forge" authed={false} />);
+    const row = changeRow("Releases read as pages");
+    open(row);
+    expect(within(row).getByTestId("page-row-technical")).toHaveTextContent("Reads release-read through sections.ts.");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("says why the range was not read where the run reported none", () => {
@@ -305,7 +410,7 @@ describe("the developer view (BC-9)", () => {
     expect(tech).not.toHaveTextContent("landing names");
   });
 
-  it("draws nothing technical for the user view", () => {
+  it("draws nothing technical for the Overview", () => {
     renderWithQuery(<ReleaseReader page={releasePage()} authed={false} />);
     expect(screen.queryByTestId("page-technical")).toBeNull();
   });

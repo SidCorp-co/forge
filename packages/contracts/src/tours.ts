@@ -7,7 +7,7 @@
 import { z } from "zod";
 
 export const PRODUCT_TOURS = [
-	{ id: "release-what-changes", revision: 3 },
+	{ id: "release-what-changes", revision: 4 },
 	{ id: "integrations", revision: 1 },
 ] as const satisfies ReadonlyArray<{ id: string; revision: number }>;
 

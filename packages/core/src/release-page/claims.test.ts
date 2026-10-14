@@ -264,4 +264,16 @@ describe('proven is one rule: criterionCountsAsPass (BC-5)', () => {
     ]);
     expect(claimableByRequirement(none).size).toBe(0);
   });
+
+  // catalog-api 0.1.0 on dev: a draft listed its 133 criteria as proven and again as "not yet judged"
+  it('lists a draft criterion the page counts proven, and not short, never also as a known issue', () => {
+    const none = readClaims(rows, null);
+    expect(
+      knownIssuesOf(none).map((k) => [k.bc, k.standing, k.elsewhere?.verdict ?? null]),
+    ).toEqual([
+      ['BC-2', 'not_judged', 'short'],
+      ['BC-3', 'not_judged', 'fail'],
+      ['BC-4', 'not_judged', null],
+    ]);
+  });
 });
