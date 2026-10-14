@@ -3,7 +3,11 @@
  * the column; these are the sets, and the SQL below is built from them.
  */
 import { sql } from 'drizzle-orm';
-import { type AgentSessionKind, agentSessionKinds } from '../db/schema.js';
+import {
+  type AgentSessionKind,
+  agentSessionKinds,
+  type SessionTranscript,
+} from '../db/session-vocabulary.js';
 import {
   MASTER_SESSION_METADATA_TYPE,
   RUN_SESSION_METADATA_TYPE,
@@ -29,6 +33,25 @@ export const NON_CLIENT_SESSION_KINDS = [
   'master',
   'run_session',
 ] as const satisfies readonly AgentSessionKind[];
+
+/**
+ * Which lanes put their transcript in core. `master` and `run_session` are a box's own claude
+ * process: the only carriers into the turn writer are `job` (pipeline, pm) and `chat`, so those two
+ * have no turns and no messages here, whatever they did. A record, so a kind added to the
+ * vocabulary is refused until it is classified.
+ */
+export const SESSION_TRANSCRIPT_BY_KIND: Record<AgentSessionKind, SessionTranscript> = {
+  master: 'not-recorded',
+  run_session: 'not-recorded',
+  pipeline: 'recorded',
+  pm: 'recorded',
+  chat: 'recorded',
+};
+
+/** The kinds whose count is refused rather than read, in the order the vocabulary lists them. */
+export const TRANSCRIPTLESS_SESSION_KINDS = agentSessionKinds.filter(
+  (k) => SESSION_TRANSCRIPT_BY_KIND[k] === 'not-recorded',
+);
 
 export const NEVER_PARKED_SESSION_KINDS = ['master'] as const satisfies readonly AgentSessionKind[];
 

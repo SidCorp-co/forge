@@ -11,6 +11,22 @@
 import { and, desc, eq, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type AgentSessionStatus, agentSessions } from '../db/schema.js';
+import type { SessionTranscript } from '../db/session-vocabulary.js';
+import { kindTuple, TRANSCRIPTLESS_SESSION_KINDS } from '../jobs/session-kinds.js';
+
+/** SQL true for a row whose lane keeps no transcript in core (master, run_session). */
+const lanePutsNoTranscriptInCore = sql`${agentSessions.kind} IN ${kindTuple(TRANSCRIPTLESS_SESSION_KINDS)}`;
+
+/**
+ * The transcript's length for a lane that records one, null for a lane that does not.
+ *
+ * A count nobody writes is not a count (`VISION: state-never-lies`): master and run_session keep
+ * their transcript in the box's own claude process, so a 0 or a ledger-less null for them says
+ * "nothing was said" about sessions that ran for hours. Null here means exactly that, and
+ * `transcript` names it.
+ */
+const transcriptLength = sql<number | null>`CASE WHEN ${lanePutsNoTranscriptInCore} THEN NULL
+  ELSE coalesce(jsonb_array_length(${agentSessions.messages}), 0) END`;
 
 export const agentSessionListColumns = {
   id: agentSessions.id,
@@ -30,11 +46,19 @@ export const agentSessionListColumns = {
   pipelineControl: agentSessions.pipelineControl,
   pipelineTelemetry: agentSessions.pipelineTelemetry,
   pipelineHealth: agentSessions.pipelineHealth,
-  messageCount: sql<number | null>`(
+  /**
+   * How many entries the transcript holds, null only where the lane records none (see
+   * `transcript`). The turn ledger answers without reading the transcript; the transcript's own
+   * length answers only for a session with no ledger rows, which for a recorded lane is one from
+   * before the ledger or one that has said nothing, so a list never detoasts a transcript the
+   * ledger already counts.
+   */
+  messageCount: sql<number | null>`CASE WHEN ${lanePutsNoTranscriptInCore} THEN NULL ELSE coalesce((
     SELECT max(t.turn_index) + 1
     FROM agent_session_turns t
     WHERE t.agent_session_id = "agent_sessions"."id"
-  )`,
+  ), jsonb_array_length(${agentSessions.messages}), 0) END`,
+  transcript: sql<SessionTranscript>`CASE WHEN ${lanePutsNoTranscriptInCore} THEN 'not-recorded' ELSE 'recorded' END`,
   failureReason: agentSessions.failureReason,
   failureDetail: agentSessions.failureDetail,
   runtimeState: agentSessions.runtimeState,
@@ -60,6 +84,7 @@ export const agentSessionMcpListColumns = {
   kind: agentSessionListColumns.kind,
   parentSessionId: agentSessionListColumns.parentSessionId,
   messageCount: agentSessionListColumns.messageCount,
+  transcript: agentSessionListColumns.transcript,
   failureReason: agentSessionListColumns.failureReason,
   dispatchedAt: agentSessionListColumns.dispatchedAt,
   startedAt: agentSessionListColumns.startedAt,
@@ -103,7 +128,8 @@ export async function readAgentSession(sessionId: string) {
   const [row] = await db
     .select({
       ...agentSessionListColumns,
-      totalMessages: sql<number>`coalesce(jsonb_array_length(${agentSessions.messages}), 0)`,
+      messageCount: transcriptLength,
+      totalMessages: transcriptLength,
       messages: sql<unknown[]>`coalesce((
         SELECT jsonb_agg(x.e ORDER BY x.ord)
         FROM (
