@@ -21,7 +21,7 @@ import { db } from '../../src/db/client.js';
 import { returnIssuesForRun } from '../../src/devices/index.js';
 import { transitionIssueStatus } from '../../src/issues/apply-transition.js';
 import { runReconcilerOnce } from '../../src/pipeline/reconciler.js';
-import { closeWorld, startQueue, testEnv } from '../helpers/ecosystem-world.js';
+import { closeWorld, settleOutbox, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import {
   createTestIssue,
   createTestProject,
@@ -50,6 +50,9 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  // A move emits on the outbox, whose delivery can still be running when the next test starts;
+  // truncating under it deadlocks it against the TRUNCATE (40P01), so it is let finish first.
+  await settleOutbox();
   await truncateAll();
   ownerId = (await createTestUser()).id;
   projectId = (await createTestProject(ownerId)).id;
