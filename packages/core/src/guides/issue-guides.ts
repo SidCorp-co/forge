@@ -142,7 +142,7 @@ But \`draft\` is not a notepad either. Apply the test before you create anything
 
 | You have | Do | Why |
 |---|---|---|
-| Finished the work entirely by hand; the pipeline has nothing left to do | \`open\`, claim it, \`in_progress\`, mark merged, \`awaiting_release\`; a release closes it | An issue that ships code closes only through a release (a release batch, or a recorded release), and only with its merge recorded; a design-only one closes once its design revisions are approved |
+| Finished the work entirely by hand; the pipeline has nothing left to do | claim it while \`draft\` (a lease in \`sessionContext.lease\`), then \`open\`, \`in_progress\`, mark merged, \`awaiting_release\`; a release closes it | Claimed before it opens: \`open\` wakes the project's masters (\`ws/master-wake.ts\`), and on a project whose policy dispatches on \`open\` an issue nothing holds is theirs to take and build again. An issue that ships code closes only through a release (a release batch, or a recorded release), and only with its merge recorded; a design-only one closes once its design revisions are approved |
 | Started it yourself and are building it | \`open\`, then \`in_progress\` holding a lease | \`in_progress\` is refused (\`NO_HOLDER\`) while nothing holds the issue, so a master cannot race an agent into the worktree you are in |
 | Not started it; you want the pipeline to do the whole thing | \`open\` | The driver takes it from there |
 | Decided against it; the work will not happen | \`dropped\` with a reason | Terminal, and does NOT stamp \`merged_at\` — this is the discard \`closed\` should not be used for |
