@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { coreFileUrl } from "@/lib/utils/core-url";
-import { INDEX_PATH } from "../corpus";
+import { INDEX_PATH, SITE_CAPTION, SITE_NAME } from "../audience";
 
 /** Chrome for the public documentation. Deliberately not the workspace shell:
  *  these routes are read by people with no Forge account and by agents with no
@@ -11,11 +11,9 @@ export function GuideShell({ children }: { children: React.ReactNode }) {
       <header className="border-b border-line">
         <div className="mx-auto flex max-w-6xl flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-5 sm:px-6">
           <Link href={INDEX_PATH} className="fg-h3 font-semibold text-fg">
-            Forge documentation
+            {SITE_NAME}
           </Link>
-          <span className="fg-caption text-subtle">
-            For people using Forge, people connecting an assistant, and agents.
-          </span>
+          <span className="fg-caption text-subtle">{SITE_CAPTION}</span>
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">{children}</main>

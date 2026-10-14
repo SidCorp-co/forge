@@ -34,6 +34,16 @@ export const DOORS: Record<Audience, Door> = {
   },
 };
 
+/** The one name of the public surface, and what its header says under it. */
+export const SITE_NAME = "Forge documentation";
+export const SITE_CAPTION = "For people using Forge, people connecting an assistant, and agents.";
+
+export const INDEX_PATH = "/guides";
+
+export function doorHref(audience: Audience): string {
+  return `${INDEX_PATH}?for=${audience}`;
+}
+
 export const AGENT_SECTION = "Rules agents are held to";
 
 export const ONE_CORPUS =

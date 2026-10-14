@@ -2,8 +2,6 @@
 import { coreFileUrl } from "@/lib/utils/core-url";
 import { AUDIENCES, DOORS } from "./audience";
 
-export const INDEX_HREF = "/guides";
-
 export function missingGuideHeading(slug: string): string {
   return slug
     ? `Forge publishes no guide called “${slug}”`
@@ -14,7 +12,8 @@ export const MISSING_GUIDE_BODY = `The index lists every guide there is, and eac
   "/api/guides",
 )}/<slug>.md with no credential.`;
 
-export const MISSING_GUIDE_LINK_TEXT = "All Forge guides";
+/** The way back from a refusal that is not one of the three doors themselves. */
+export const ALL_DOORS_LINK_TEXT = "All three ways in";
 
 /** A refusal of an address on the public documentation: what it says, twice. */
 export interface Refusal {

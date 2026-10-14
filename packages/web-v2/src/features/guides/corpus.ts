@@ -5,7 +5,7 @@ import type { HelpDoc } from "@/features/docs/help-content.generated";
 import { groupSections, HELP_SECTION_ORDER, searchDocs } from "@/features/docs/reader";
 import { coreFileUrl } from "@/lib/utils/core-url";
 import type { Guide } from "./api";
-import { AGENT_SECTION, AUDIENCES, type Audience, SEARCH_EXAMPLES } from "./audience";
+import { AGENT_SECTION, AUDIENCES, type Audience, INDEX_PATH, SEARCH_EXAMPLES } from "./audience";
 
 export interface PublicDoc {
   slug: string;
@@ -20,14 +20,8 @@ export interface PublicDoc {
   markdownUrl: string | null;
 }
 
-export const INDEX_PATH = "/guides";
-
 export function helpPageHref(slug: string): string {
   return `${INDEX_PATH}?path=${encodeURIComponent(slug)}`;
-}
-
-export function doorHref(audience: Audience): string {
-  return `${INDEX_PATH}?for=${audience}`;
 }
 
 export function guideMarkdownUrl(slug: string): string {
