@@ -1,1 +1,0 @@
-**A detail page on a phone now says what it is before its properties.** The facts rail folds behind one Facts row under the page's lead and stays whole, and a contract's close versions no longer print over each other.
