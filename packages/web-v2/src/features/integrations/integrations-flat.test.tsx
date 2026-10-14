@@ -10,7 +10,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { boxedInTree } from "@/test-support/flat-rule";
-import { PROVIDER_MODULES } from "./providers/registry";
+import { PROVIDER_MODULES, type ProviderModule } from "./providers/registry";
 
 expect.extend(matchers);
 
@@ -131,16 +131,22 @@ afterEach(cleanup);
 const WITH_SECTION = PROVIDER_MODULES.filter((m) => m.section !== null);
 const WITH_CONNECTION_FORM = PROVIDER_MODULES.filter((m) => m.connectionSection !== null);
 
-function loaderOf(name: string, kind: "section" | "connectionSection") {
-  const load = PROVIDER_MODULES.find((m) => m.provider === name)?.[kind];
-  if (!load) throw new Error(`provider ${name} has no ${kind} to render`);
+function sectionOf(name: string): NonNullable<ProviderModule["section"]> {
+  const load = PROVIDER_MODULES.find((m) => m.provider === name)?.section;
+  if (!load) throw new Error(`provider ${name} has no section to render`);
+  return load;
+}
+
+function connectionFormOf(name: string): NonNullable<ProviderModule["connectionSection"]> {
+  const load = PROVIDER_MODULES.find((m) => m.provider === name)?.connectionSection;
+  if (!load) throw new Error(`provider ${name} has no connection form to render`);
   return load;
 }
 
 describe("each provider's section, over a stubbed connection, draws no box", () => {
   it.each(WITH_SECTION.map((m) => m.provider))("%s", async (name) => {
     provider = name;
-    const { default: Section } = await loaderOf(name, "section")();
+    const { default: Section } = await sectionOf(name)();
     const { container } = render(wrap(<Section projectId={PROJECT} />));
     // The bound integration is what a section draws its form from: read it only once it has been handed over.
     await settled([`/projects/${PROJECT}/integrations`]);
@@ -152,7 +158,7 @@ describe("each provider's section, over a stubbed connection, draws no box", () 
 describe("each provider's connection form, over a stubbed connection, draws no box", () => {
   it.each(WITH_CONNECTION_FORM.map((m) => m.provider))("%s", async (name) => {
     provider = name;
-    const { default: Form } = await loaderOf(name, "connectionSection")();
+    const { default: Form } = await connectionFormOf(name)();
     const { container } = render(
       wrap(<Form connection={{ id: CONNECTION, config: { baseUrl: "https://stub.example.com" } }} canManage />),
     );
