@@ -3,12 +3,22 @@
 
    Layer 1 — SCALES. OKLCH 12-step scales in the Radix Colors manner, one set for light and one for
    dark, each step with a fixed role:
-     1–2 app and subtle background · 3–5 component background, hover, active ·
+     1–2 the two background layers (base and content) · 3–5 component background, hover, active ·
      6–8 borders (subtle, default, strong) · 9–10 solid fill and its hover · 11–12 text (low, high).
    Text on step 9 is white (step 12 on warn, an amber that is a light solid). Steps 11 and 12 read
    at WCAG AA or better on steps 1–3, and white on step 9 too, in both themes; the values were
    solved for that, not picked.
+   The neutrals are a crisp, nearly achromatic grey (hue 264): never a warm tint, which read as
+   cream and washed out the page. Orange is the accent and nothing else.
    Layer 2 — SEMANTIC aliases (bg, surface, line, fg, accent, status-*). Components read these.
+   Two layers, told apart by tone and a hairline, never by a frame or a shadow:
+     --bg-shell  the base: the shell's frame and its sidebar (neutral-2 light, neutral-1 dark);
+     --bg-app    the content every page paints: the main pane, its rail, a docked panel;
+     --bg-surface a bar or control on the content (top bar, input, popover): the same tone, so the
+                 content layer stays flat. Overlays separate by --shadow-overlay.
+   In light the content is white on a grey base; in dark it is the lighter of the two. On the base a
+   hovered row lifts to the content's tone ([data-layer="shell"] below), so it reads on the grey and
+   its text keeps the contrast it has on the content.
    Layer 3 — the old names (paper, ink, flame, cobalt, amber, green, red, slate), each mapped onto
    a scale step so every existing use follows the theme; new code reads layer 2.
    Type, radius, shadow, density and motion are tokens here too; app/globals.css maps them into
@@ -18,9 +28,9 @@
 :root,
 [data-theme="light"] {
   color-scheme: light;
-  --neutral-1: oklch(0.993 0.004 75);  --neutral-2: oklch(0.979 0.005 75);  --neutral-3: oklch(0.956 0.007 75);  --neutral-4: oklch(0.932 0.007 75);
-   --neutral-5: oklch(0.907 0.008 75);  --neutral-6: oklch(0.877 0.008 75);  --neutral-7: oklch(0.832 0.009 75);  --neutral-8: oklch(0.765 0.01 75);
-   --neutral-9: oklch(0.56 0.011 75);  --neutral-10: oklch(0.52 0.011 75);  --neutral-11: oklch(0.525 0.01 75);  --neutral-12: oklch(0.255 0.007 75);
+  --neutral-1: oklch(1 0 0);  --neutral-2: oklch(0.955 0.003 264);  --neutral-3: oklch(0.948 0.003 264);  --neutral-4: oklch(0.925 0.004 264);
+   --neutral-5: oklch(0.902 0.005 264);  --neutral-6: oklch(0.875 0.006 264);  --neutral-7: oklch(0.832 0.007 264);  --neutral-8: oklch(0.765 0.009 264);
+   --neutral-9: oklch(0.56 0.012 264);  --neutral-10: oklch(0.52 0.012 264);  --neutral-11: oklch(0.525 0.012 264);  --neutral-12: oklch(0.255 0.012 264);
   --accent-1: oklch(0.993 0.003 38);  --accent-2: oklch(0.979 0.009 38);  --accent-3: oklch(0.956 0.021 38);  --accent-4: oklch(0.932 0.034 38);
    --accent-5: oklch(0.907 0.049 38);  --accent-6: oklch(0.877 0.066 38);  --accent-7: oklch(0.832 0.086 38);  --accent-8: oklch(0.765 0.114 38);
    --accent-9: oklch(0.58 0.19 38);  --accent-10: oklch(0.54 0.176 38);  --accent-11: oklch(0.54 0.162 38);  --accent-12: oklch(0.255 0.076 38);
@@ -43,16 +53,17 @@
    --ai-5: oklch(0.907 0.041 292);  --ai-6: oklch(0.877 0.052 292);  --ai-7: oklch(0.832 0.068 292);  --ai-8: oklch(0.765 0.09 292);
    --ai-9: oklch(0.575 0.15 292);  --ai-10: oklch(0.535 0.15 292);  --ai-11: oklch(0.535 0.128 292);  --ai-12: oklch(0.255 0.06 292);
 
-  --bg-app:        var(--neutral-2);
+  --bg-shell:      var(--neutral-2);
+  --bg-app:        var(--neutral-1);
   --bg-surface:    var(--neutral-1);
-  --shadow-color:  oklch(0.255 0.007 75 / 0.14);
+  --shadow-color:  oklch(0.255 0.012 264 / 0.14);
 }
 
 [data-theme="dark"] {
   color-scheme: dark;
-  --neutral-1: oklch(0.172 0.004 75);  --neutral-2: oklch(0.198 0.005 75);  --neutral-3: oklch(0.238 0.007 75);  --neutral-4: oklch(0.268 0.007 75);
-   --neutral-5: oklch(0.298 0.008 75);  --neutral-6: oklch(0.338 0.008 75);  --neutral-7: oklch(0.398 0.009 75);  --neutral-8: oklch(0.478 0.01 75);
-   --neutral-9: oklch(0.56 0.011 75);  --neutral-10: oklch(0.52 0.011 75);  --neutral-11: oklch(0.63 0.01 75);  --neutral-12: oklch(0.935 0.007 75);
+  --neutral-1: oklch(0.15 0.003 264);  --neutral-2: oklch(0.21 0.004 264);  --neutral-3: oklch(0.245 0.005 264);  --neutral-4: oklch(0.272 0.005 264);
+   --neutral-5: oklch(0.302 0.006 264);  --neutral-6: oklch(0.34 0.007 264);  --neutral-7: oklch(0.4 0.008 264);  --neutral-8: oklch(0.478 0.009 264);
+   --neutral-9: oklch(0.56 0.011 264);  --neutral-10: oklch(0.52 0.011 264);  --neutral-11: oklch(0.64 0.01 264);  --neutral-12: oklch(0.935 0.006 264);
   --accent-1: oklch(0.172 0.023 38);  --accent-2: oklch(0.198 0.028 38);  --accent-3: oklch(0.238 0.046 38);  --accent-4: oklch(0.268 0.061 38);
    --accent-5: oklch(0.298 0.076 38);  --accent-6: oklch(0.338 0.091 38);  --accent-7: oklch(0.398 0.106 38);  --accent-8: oklch(0.478 0.129 38);
    --accent-9: oklch(0.58 0.19 38);  --accent-10: oklch(0.54 0.176 38);  --accent-11: oklch(0.64 0.133 38);  --accent-12: oklch(0.935 0.033 38);
@@ -75,7 +86,8 @@
    --ai-5: oklch(0.298 0.06 292);  --ai-6: oklch(0.338 0.072 292);  --ai-7: oklch(0.398 0.084 292);  --ai-8: oklch(0.478 0.102 292);
    --ai-9: oklch(0.575 0.15 292);  --ai-10: oklch(0.535 0.142 292);  --ai-11: oklch(0.635 0.105 292);  --ai-12: oklch(0.935 0.032 292);
 
-  --bg-app:        var(--neutral-1);
+  --bg-shell:      var(--neutral-1);
+  --bg-app:        var(--neutral-2);
   --bg-surface:    var(--neutral-2);
   --shadow-color:  oklch(0 0 0 / 0.5);
 }
@@ -136,7 +148,7 @@
   /* Scrims are the page's own darkest ink at an alpha; --scrim-media sinks a photograph. */
   --scrim:         color-mix(in oklch, var(--neutral-12) 25%, transparent);
   --scrim-strong:  color-mix(in oklch, var(--neutral-12) 40%, transparent);
-  --scrim-media:   oklch(0.12 0.005 75 / 0.82);
+  --scrim-media:   oklch(0.12 0.005 264 / 0.82);
 
   /* ===== LAYER 3: the old names, each on a scale step ===== */
   --paper-0:   var(--neutral-1);
@@ -274,6 +286,9 @@
   --dur-base: 160ms;
   --dur-slow: 200ms;
 }
+
+/* The base layer: a hover there lifts to the content's tone rather than sinking below the grey. */
+[data-layer="shell"] { --bg-hover: var(--bg-app); }
 
 @media (pointer: coarse) {
   :root, [data-theme] { --row-h: var(--row-h-touch); }

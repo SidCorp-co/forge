@@ -100,7 +100,7 @@ export {
   FactsRail, FactsGroup, Fact, FactsEmpty, CoverageBar, MarkStrip, StepBar,
   type CoverageSegment, type MarkView, type StepView,
 } from "./patterns/facts-rail";
-export { DetailTabs, DetailLayout, DetailPane, FieldLabel, useUrlTab, ViewHeading } from "./patterns/detail-tabs";
+export { DetailLeadEnd, DetailTabs, DetailLayout, DetailPane, FieldLabel, useUrlTab, ViewHeading } from "./patterns/detail-tabs";
 export { ViewModeSwitcher, useViewMode, type ViewMode } from "./patterns/view-mode-switcher";
 export { ListToolbar, ListLayout, ToolbarSelect } from "./patterns/list-page";
 export { Section, PropertyList, Property } from "./patterns/section";

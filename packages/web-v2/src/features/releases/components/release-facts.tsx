@@ -69,26 +69,6 @@ function ApprovalRecord({ r }: { r: ReleaseDetail }) {
   );
 }
 
-/** On a phone the rail falls below the whole page, so the forecast and the approval ride the top of the main column too; the rail hides its own copies there. */
-export function ReleasePhoneStanding({ r, forecast }: { r: ReleaseDetail; forecast?: ScopeForecast | undefined }) {
-  const t = useCopy();
-  const showForecast = r.state === "draft" && forecast?.forecast;
-  const showApproval = r.approvalRequired || r.approval;
-  if (!showForecast && !showApproval) return null;
-  return (
-    <div className="hidden border-b border-line-subtle bg-surface px-4 py-3 max-sm:block" data-testid="phone-standing">
-      {showForecast && forecast ? (
-        <FactsGroup title={t("releases.forecast")} testId="phone-forecast">
-          <Fact label={t("releases.forecast")} testId="phone-release-forecast">
-            <ScopeForecastLine scope={forecast} />
-          </Fact>
-        </FactsGroup>
-      ) : null}
-      {showApproval ? <ApprovalRecord r={r} /> : null}
-    </div>
-  );
-}
-
 /** Where the release runs: the environment, whether it still serves, what verified it and its address. */
 function ReleaseProduction({ r, besideReader }: { r: ReleaseDetail; besideReader: boolean }) {
   const t = useCopy();
@@ -148,11 +128,7 @@ export function ReleaseProperties({ r, forecast, besideReader = false }: { r: Re
         </FactsGroup>
       )}
 
-      {r.approvalRequired || a ? (
-        <div className="max-sm:hidden">
-          <ApprovalRecord r={r} />
-        </div>
-      ) : null}
+      {r.approvalRequired || a ? <ApprovalRecord r={r} /> : null}
 
       <FactsGroup title={t("releases.run")} testId="facts-run">
         {r.owner && r.ownerAct === "Cut" ? (
@@ -187,11 +163,9 @@ export function ReleaseProperties({ r, forecast, besideReader = false }: { r: Re
           </Fact>
         )}
         {r.state === "draft" && forecast?.forecast ? (
-          <div className="max-sm:hidden">
-            <Fact label={t("releases.forecast")} testId="facts-release-forecast">
-              <ScopeForecastLine scope={forecast} />
-            </Fact>
-          </div>
+          <Fact label={t("releases.forecast")} testId="facts-release-forecast">
+            <ScopeForecastLine scope={forecast} />
+          </Fact>
         ) : null}
         {r.state === "draft" ? <FactsEmpty>{t("releases.notCutYet")}</FactsEmpty> : null}
       </FactsGroup>

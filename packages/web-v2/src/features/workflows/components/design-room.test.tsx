@@ -8,6 +8,7 @@ import { verbatim } from "@forge/contracts/said";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { railBeside } from "@/test/rail-beside";
 import { RULE, say, waitingOn } from "@/test/said";
 import type { DesignRevision, WorkflowDesign, WorkflowRecord } from "../types";
 import { CANVAS_SHARE, detailSqueezes } from "./design-room";
@@ -193,13 +194,15 @@ describe("the decision banner", () => {
 
 describe("the facts rail", () => {
   it("folds from the canvas's edge, giving the canvas the full width, and stays folded on the next visit", () => {
+    railBeside();
     const first = render(page());
     const layout = screen.getByTestId("workflow-design-detail");
     expect(layout).toHaveAttribute("data-rail", "open");
     fireEvent.click(screen.getByTestId("design-rail-toggle"));
     expect(layout).toHaveAttribute("data-rail", "collapsed");
     expect(layout.className).not.toContain("lg:grid-cols-[minmax(0,1fr)_320px]");
-    expect(screen.getByTestId("design-rail").parentElement).toHaveClass("lg:hidden");
+    // folded on a wide screen the rail is not drawn at all; below 1024px it is offered as Facts as always
+    expect(screen.queryByTestId("design-rail")).toBeNull();
     expect(screen.getByTestId("design-rail-toggle")).toHaveAttribute("aria-expanded", "false");
     first.unmount();
 
@@ -207,6 +210,7 @@ describe("the facts rail", () => {
     expect(screen.getByTestId("workflow-design-detail")).toHaveAttribute("data-rail", "collapsed");
     fireEvent.click(screen.getByTestId("design-rail-toggle"));
     expect(screen.getByTestId("workflow-design-detail")).toHaveAttribute("data-rail", "open");
+    expect(screen.getByTestId("design-rail")).toBeVisible();
   });
 
   it("is always shown on a reading tab, which has no canvas to widen", () => {

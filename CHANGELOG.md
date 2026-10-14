@@ -9,6 +9,27 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.235] - 2026-10-14
+
+Ask Agent sizes and requirement flow re-cut, with neutral surfaces and menu trigger fixes
+
+### Fixed
+
+- **A menu's button is now its only control.** Every menu wrapped its button in a second element acting as a button. Screen readers met two controls, and keyboard users met a dead stop.
+- **Pages are no longer a washed-out cream.** Content sits on a clean white surface over a grey sidebar, so the two layers read apart at a glance, in dark mode too. Orange links now pass contrast on both.
+
+## [0.4.0-dev.234] - 2026-10-14
+
+Release pages open on a summary, and detail pages fill to the side rail
+
+### Changed
+
+- **A release page now reads in thirty seconds.** It opens on a short summary and counts by kind, then one short line per change; criteria, keys and technical notes open under each row, behind a Technical view.
+
+### Fixed
+
+- **Detail pages fill the space up to the facts rail.** No blank band between content and rail. A release page lists its contents atop the rail, marking the group you are reading; narrow screens get one menu.
+
 ## [0.4.0-dev.233] - 2026-10-14
 
 A release page opened by its version number loads again

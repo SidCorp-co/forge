@@ -62,7 +62,7 @@ export function ThemeSettings({ config }: { config: EpodsystemReadConfig }) {
           href={storefrontUrl}
           target="_blank"
           rel="noreferrer"
-          className="text-13 font-semibold text-accent hover:underline"
+          className="text-13 font-semibold text-accent-text hover:underline"
         >
           {t("integrations.epod.openStorefront")}
         </a>

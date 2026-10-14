@@ -9,6 +9,7 @@ import {
   RowList,
   CoverageBar,
   DetailLayout,
+  DetailLeadEnd,
   DetailMobileTitle,
   DetailPane,
   DetailTabs,
@@ -211,6 +212,7 @@ export function ModulePage({ d, slug, tab, onTab }: { d: ModuleDetail; slug: str
     >
       <DetailMobileTitle itemKey={d.module.path} title={d.module.name} badge={<AttentionBadge group={s.attentionGroup} />} />
       {s.attentionGroup !== "quiet" ? <ModuleBanner standing={s} slug={slug} className="px-8 py-2.5 max-md:px-4" /> : null}
+      <DetailLeadEnd />
       <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="module-tabs" />
       <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("modules.tab.overview")}>
         {tab === "overview" ? <Overview d={d} /> : null}

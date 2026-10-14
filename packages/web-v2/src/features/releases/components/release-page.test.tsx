@@ -3,6 +3,7 @@
 
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { railBeside } from "@/test/rail-beside";
 import { releasePage, TECHNICAL } from "@/test/release-page";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { ReleasePage } from "./release-page";
@@ -53,7 +54,10 @@ beforeEach(() => {
   window.history.replaceState(null, "", "/projects/forge/releases/0.4.0");
   vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response("", { status: 404 }))));
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe("the release page screen", () => {
   it("opens on the user view: the reader without technical notes, and none of the operator's tabs", async () => {
@@ -75,6 +79,7 @@ describe("the release page screen", () => {
   });
 
   it("lists the page's contents at the top of the rail, above its facts, and keeps the reader's menu for where the rail falls under the page", async () => {
+    railBeside();
     serve();
     renderWithQuery(<ReleasePage projectId="p1" slug="forge" version="0.4.0" />);
     const list = await screen.findByTestId("release-rail-contents");

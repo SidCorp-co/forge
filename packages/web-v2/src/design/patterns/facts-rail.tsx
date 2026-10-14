@@ -4,15 +4,15 @@
 // label-first counter on the right ("Passing 2 of 4"); each row is a label and its value. Each fact
 // appears here once and the main column never repeats it.
 
-import type { ReactNode } from "react";
+import { createContext, type ReactNode, use } from "react";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 import { Tooltip } from "../primitives/tooltip";
 import { LEGEND, type LegendTone } from "../vocabulary";
 
-/** The rail itself: a raised white working surface beside the page-toned main column, one hairline
- *  between them; sticky under the top bar,
- *  scrolling on its own when it is taller than the screen; below 1024px it follows the content. */
+/** The rail itself: beside the main column on the same content tone, one hairline between them;
+ *  sticky under the top bar, scrolling on its own when it is taller than the screen. Below 1024px
+ *  DetailLayout puts it behind the page's Facts disclosure, which draws its hairlines. */
 export function FactsRail({
   children,
   label,
@@ -29,7 +29,7 @@ export function FactsRail({
 }) {
   const t = useCopy();
   return (
-    <aside className={cn("min-w-0 border-line-subtle max-lg:border-t lg:border-l", className)} aria-label={label ?? t("common.facts")} data-testid={testId ?? "facts-rail"}>
+    <aside className={cn("min-w-0 border-line-subtle lg:border-l", className)} aria-label={label ?? t("common.facts")} data-testid={testId ?? "facts-rail"}>
       <div
         className={cn(
           "px-5 py-5 max-md:px-4 lg:sticky lg:overflow-y-auto",
@@ -43,24 +43,32 @@ export function FactsRail({
   );
 }
 
+/** The title of the group a fact stands in, so a fact never says it again. */
+const GroupTitleContext = createContext<string | null>(null);
+
 export function FactsGroup({ title, count, children, testId }: { title: string; count?: ReactNode; children: ReactNode; testId?: string }) {
   return (
     <section className="border-t border-line-subtle py-3.5 first:border-t-0 first:pt-0" data-testid={testId ?? "facts-group"}>
       <h3 className="mb-2 flex items-baseline gap-2 text-14 font-bold text-accent-text">
-        {title}
+        <span data-facts-title>{title}</span>
         {count ? <span className="ml-auto text-12 font-medium text-muted">{count}</span> : null}
       </h3>
-      {children}
+      <GroupTitleContext value={title}>{children}</GroupTitleContext>
     </section>
   );
 }
 
+/** A label and its value. A label that only repeats its group's title is left out ("Forecast" under
+ *  Forecast) and the value takes the row: the heading already names it. */
 export function Fact({ label, children, testId }: { label: string; children: ReactNode; testId?: string }) {
+  const repeats = use(GroupTitleContext) === label;
   return (
-    <div className="grid grid-cols-[88px_minmax(0,1fr)] items-baseline gap-2 py-[5px] text-13" data-testid={testId}>
-      <span className="text-12-5 font-medium text-muted" data-fact-label>
-        {label}
-      </span>
+    <div className={cn("grid items-baseline gap-2 py-[5px] text-13", !repeats && "grid-cols-[88px_minmax(0,1fr)]")} data-testid={testId}>
+      {repeats ? null : (
+        <span className="text-12-5 font-medium text-muted" data-fact-label>
+          {label}
+        </span>
+      )}
       <span className="flex min-w-0 flex-wrap items-center gap-1.5">{children}</span>
     </div>
   );

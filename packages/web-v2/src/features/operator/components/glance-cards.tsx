@@ -92,7 +92,7 @@ export function GlanceCards({ glance }: { glance: AdminOverview["glance"] }) {
           <PageSection key={spec.id} className="flex flex-col gap-2 py-3.5">
             <div className="flex items-baseline gap-2">
               <span className="fg-overline">{spec.id}</span>
-              {spec.northStar && <span className="fg-caption text-accent">{t("operator.glance.northStar")}</span>}
+              {spec.northStar && <span className="fg-caption text-accent-text">{t("operator.glance.northStar")}</span>}
             </div>
             <span className="fg-label">{t(`operator.glance.${spec.key}`)}</span>
             <div className="flex items-end justify-between gap-2">

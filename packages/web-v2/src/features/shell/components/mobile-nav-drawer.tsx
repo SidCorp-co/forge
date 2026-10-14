@@ -51,7 +51,7 @@ function DrawerNavButton({
       {leading}
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {badge != null && badge > 0 && (
-        <span className="fg-caption rounded-pill bg-app px-1.5 text-muted">{badge}</span>
+        <span className="fg-caption rounded-pill bg-sunken px-1.5 text-muted">{badge}</span>
       )}
     </button>
   );

@@ -122,7 +122,7 @@ function EdgeRows({ edges, self, slug, label, testId, edit, expired = false }: {
   const shown = all ? edges : edges.slice(0, EDGES_SHOWN);
   return (
     <section className={expired ? "pt-4 opacity-60" : "pt-4"} data-testid={testId} data-expired={expired || undefined}>
-      <h3 className="mb-1 text-13 font-semibold text-muted">{label}</h3>
+      <h3 className="mb-1 text-13 font-semibold text-muted" data-facts-title>{label}</h3>
       <ul className="divide-y divide-line-subtle">
         {shown.map((e) => {
           const other = otherEnd(e, self);

@@ -5,6 +5,7 @@
 import { Link } from "@/lib/navigation/router";
 import {
   DetailLayout,
+  DetailLeadEnd,
   DetailMobileTitle,
   DetailPane,
   DetailTabs,
@@ -331,6 +332,7 @@ export function FirePage({ projectId, slug, fireId }: { projectId: string; slug:
           >
             <DetailMobileTitle itemKey={`#${shortId(d.fire.id)}`} title={d.fire.scheduleName} badge={<StatusBadge family="scheduleRun" value={d.fire.status} />} />
             <FireBanner f={d.fire} className="px-8 py-2.5 max-md:px-4" />
+            <DetailLeadEnd />
             <DetailTabs tabs={tabs} value={tab} onChange={setTab} testId="fire-tabs" />
             <DetailPane label={tab === "output" ? t("schedules.fire.output") : t("schedules.fire.produced")}>
               {tab === "produced" ? (

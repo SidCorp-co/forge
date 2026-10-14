@@ -169,7 +169,7 @@ function SetupPipeline({ created, onFinish }: { created: CreatedProject; onFinis
           </li>
           <li>
             {t('projects.setup.assign')}{' '}
-            <Link href="/runners" className="text-accent hover:underline">
+            <Link href="/runners" className="text-accent-text hover:underline">
               {t('projects.setup.runners')}
             </Link>
           </li>

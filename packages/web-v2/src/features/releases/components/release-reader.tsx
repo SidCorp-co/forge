@@ -9,7 +9,7 @@
 
 import { RELEASE_CHANGE_GROUPS, type ReleaseGlance, releaseGlanceOf, releaseSummaryOf } from "@forge/contracts/release-digest";
 import type { ReleasePage } from "@forge/contracts/release-page";
-import { type ContentsItem, ContentsMenu, StatCell, StatRow } from "@/design";
+import { type ContentsItem, ContentsMenu, DetailLeadEnd, StatCell, StatRow } from "@/design";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { verifiedSentence } from "../verified";
 import { ANCHOR, type Anchor, GROUP_TITLE, type Reach } from "./release-anchors";
@@ -144,6 +144,8 @@ export function ReleaseReader({ page, slug, authed, railContents = false }: { pa
         <ReleaseStanding page={page} />
       </div>
       <ReleaseCounts glance={glance} />
+      {/* the summary and the counts are this page's lead: below 1024px the rail follows them */}
+      <DetailLeadEnd inset />
       {/* each group's list ends on a hairline; a second one over the next group's title would box it */}
       <div className="grid [&>section]:border-t-0">
         <div id={ANCHOR.highlights} className="scroll-mt-24 pt-5 empty:hidden">

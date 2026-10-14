@@ -39,7 +39,7 @@ function ConnectedState({
             href={`https://github.com/${owner}/${repo}`}
             target="_blank"
             rel="noreferrer"
-            className="text-13 font-semibold text-accent hover:underline"
+            className="text-13 font-semibold text-accent-text hover:underline"
           >
             {owner}/{repo}
           </a>
