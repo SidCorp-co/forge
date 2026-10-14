@@ -6,6 +6,7 @@ import {
   issueStepContextKinds,
   issueStepContexts,
   issues,
+  pipelineRuns,
 } from '../db/schema.js';
 import { actorAgencies, actorTypes } from '../db/schema-activity.js';
 import { refreshModuleKnowledgeForIssue } from '../labels/module-knowledge-refresh.js';
@@ -60,6 +61,28 @@ async function assertIssueInProject(issueId: string, projectId: string): Promise
   if (!row) throw new IssueNotInProject(issueId);
 }
 
+/** A write named a pipeline run that is not one of the project's, or does not exist at all. */
+export class PipelineRunNotFound extends Error {
+  constructor(runId: string) {
+    super(`pipelineRunId ${runId} is not accepted: no such run exists in this project`);
+    this.name = 'PipelineRunNotFound';
+  }
+}
+
+/**
+ * The row's foreign key refuses a run that does not exist, as a bare database error; a run of
+ * another project would pass it, so the run is read inside the project, and a miss reads the same
+ * for both so the answer never says whether a run exists elsewhere.
+ */
+async function assertRunInProject(runId: string, projectId: string): Promise<void> {
+  const [row] = await db
+    .select({ id: pipelineRuns.id })
+    .from(pipelineRuns)
+    .where(and(eq(pipelineRuns.id, runId), eq(pipelineRuns.projectId, projectId)))
+    .limit(1);
+  if (!row) throw new PipelineRunNotFound(runId);
+}
+
 export type IssueContextScope = z.infer<typeof scopeSchema>;
 
 const writeInputBaseSchema = scopeSchema.extend({
@@ -97,6 +120,7 @@ export async function writeIssueContext(
 ): Promise<WriteIssueContextResult> {
   const validated = writeIssueContextInputSchema.parse(input);
   await assertIssueInProject(validated.issueId, validated.projectId);
+  await assertRunInProject(validated.pipelineRunId, validated.projectId);
 
   if (validated.kind === 'handoff') {
     if (!validated.step) {
