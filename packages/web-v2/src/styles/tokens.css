@@ -190,6 +190,13 @@
   --shell-accent-text:  oklch(0.82 0.12 50);
   --shell-chip:         oklch(0.34 0.05 262);
   --shell-chip-fg:      oklch(0.88 0.06 262);
+  /* status text on the base: each hue's step 11, lifted to 4.6:1 or more on its hover and active row */
+  --shell-ok-11:        oklch(0.725 0.098 152);
+  --shell-warn-11:      oklch(0.74 0.112 72);
+  --shell-danger-11:    oklch(0.75 0.133 26);
+  --shell-info-11:      oklch(0.735 0.119 262);
+  --shell-muted-11:     oklch(0.735 0.03 250);
+  --shell-ai-11:        oklch(0.74 0.105 292);
 
   /* ===== LAYER 3: the old names, each on a scale step ===== */
   --paper-0:   var(--neutral-1);
@@ -331,7 +338,8 @@
 /* The base layer: its neutral scale is the base's own graphite steps, so every alias and old name the
    rule above derives from a neutral (fg, borders, hover, ink, paper, fg-disabled) reads on graphite.
    Mapped here only where a scale role does not give the base's tone: a control one step up from the
-   base, the muted text, and the accent tint and chips, which the dark scales draw too dark on it. */
+   base, the muted text, the accent tint and chips, and each status hue's text step, which the dark
+   scales draw too dark on it. Every status alias and old name built from a step 11 follows. */
 [data-layer="shell"] {
   --neutral-1: var(--bg-shell);  --neutral-2: var(--shell-control);  --neutral-3: var(--shell-hover);  --neutral-4: var(--shell-active);
    --neutral-5: var(--shell-fill);  --neutral-6: var(--shell-line-subtle);  --neutral-7: var(--shell-line);  --neutral-8: var(--shell-line-strong);
@@ -347,6 +355,8 @@
   --cobalt-50: var(--shell-chip);
   --cobalt-100: var(--shell-chip);
   --cobalt-700: var(--shell-chip-fg);
+  --ok-11: var(--shell-ok-11);  --warn-11: var(--shell-warn-11);  --danger-11: var(--shell-danger-11);
+   --info-11: var(--shell-info-11);  --muted-11: var(--shell-muted-11);  --ai-11: var(--shell-ai-11);
 }
 
 @media (pointer: coarse) {
