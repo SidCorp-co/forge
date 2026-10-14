@@ -46,6 +46,8 @@ export interface VirtualRows {
   totalSize: number;
   /** The height of rows not drawn after the last drawn one. */
   gapAfter: number;
+  /** The last row the scroll position has reached, overscan included: not the row held for focus, which may sit far behind it. */
+  reached: number;
   /** Ref for each drawn row, which carries `data-index`: it reports the row's measured height. */
   measureRow: (node: Element | null) => void;
   /** Spread on the scroller: it learns which row holds focus. */
@@ -115,6 +117,7 @@ export function useVirtualRows({
     return row;
   });
   const totalSize = enabled ? virtualizer.getTotalSize() : 0;
+  const reachedIndex = enabled && virtualizer.range ? Math.min(count - 1, virtualizer.range.endIndex + overscan) : -1;
 
   const settle = useCallback(() => {
     const wanted = pending.current;
@@ -158,6 +161,7 @@ export function useVirtualRows({
     scrollerRef,
     rows,
     totalSize,
+    reached: reachedIndex,
     gapAfter: rows.length === 0 ? totalSize : Math.max(0, totalSize - reached),
     measureRow: virtualizer.measureElement,
     trackFocus,

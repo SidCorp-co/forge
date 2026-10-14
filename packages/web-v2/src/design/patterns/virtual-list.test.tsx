@@ -233,6 +233,22 @@ describe("loading more", () => {
     expect(screen.getByRole("feed")).toHaveAttribute("aria-busy", "true");
   });
 
+  it("does not mistake the row kept for focus at the end for the end being in view", async () => {
+    const m = more({ loading: true });
+    const view = list(items(100), { more: m });
+    await act(async () => {});
+    await scrollTo(ROW * 100);
+    act(() => (articles().at(-1) as HTMLElement).focus());
+    await scrollTo(0);
+    expect(indexes()).toContain(99);
+    const idle = more();
+    view.rerender(
+      <VirtualList aria-label="Inbox" rows={items(100)} getRowId={(r) => r.id} renderRow={(r) => <p>{r.title}</p>} estimateRowHeight={ROW} more={idle} />,
+    );
+    await act(async () => {});
+    expect(idle.onLoad).not.toHaveBeenCalled();
+  });
+
   it("asks for a short list at once, since its end is already in view", async () => {
     const m = more();
     list(items(4), { more: m });

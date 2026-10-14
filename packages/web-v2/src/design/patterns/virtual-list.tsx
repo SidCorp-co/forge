@@ -60,12 +60,11 @@ export function VirtualList<Row>({
     initialHeight: FIRST_SCREEN_PX,
   });
 
-  const lastDrawn = virtual.rows.length === 0 ? -1 : (virtual.rows[virtual.rows.length - 1] as { index: number }).index;
   const loadable = more !== undefined && !more.loading && !more.failed;
   const onLoad = more?.onLoad;
   useEffect(() => {
-    if (loadable && onLoad && rows.length > 0 && lastDrawn >= rows.length - 1) onLoad();
-  }, [loadable, onLoad, lastDrawn, rows.length]);
+    if (loadable && onLoad && rows.length > 0 && virtual.reached >= rows.length - 1) onLoad();
+  }, [loadable, onLoad, virtual.reached, rows.length]);
 
   if (rows.length === 0) return <>{empty ?? null}</>;
 
