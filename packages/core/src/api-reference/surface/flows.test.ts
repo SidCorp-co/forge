@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { describeOperation, json } from '../declare/describe.js';
 import { buildReference } from '../document/build.js';
-import { checkFlows, FLOWS, type Flow, operationOfStep, toMermaid } from './flows.js';
+import { checkFlows, FLOWS, type Flow, labelLines, operationOfStep, toMermaid } from './flows.js';
 import { renderFlowsPage, renderReferencePage } from './page.js';
 
 async function documentWith(...routes: Array<[string, string]>) {
@@ -73,6 +73,21 @@ describe('the flows an agent drives', () => {
     expect(diagram).toContain('Core-->>Agent: allowed');
   });
 
+  it('break a long note into lines no wider than a gap of the sequence may be, and never inside a word', () => {
+    const lines = labelLines(
+      'The job is held for this session, with its token and prompt, and stays queued.',
+    ).split('<br/>');
+    expect(lines.length).toBeGreaterThan(1);
+    expect(lines.every((line) => line.length <= 34)).toBe(true);
+    expect(lines.join(' ')).toBe(
+      'The job is held for this session, with its token and prompt, and stays queued.',
+    );
+    expect(labelLines('Short.')).toBe('Short.');
+    expect(labelLines('Averyveryveryveryveryveryveryverylongwordthatfitsnowhere ok')).toContain(
+      '<br/>',
+    );
+  });
+
   it('keep a semicolon out of a note, which a diagram reads as the end of a statement', () => {
     expect(
       toMermaid({ ...flow, steps: [{ from: 'Agent', call: 'GET /x', note: 'a; b' }] }),
@@ -138,6 +153,16 @@ describe('the pages', () => {
     expect(html).toContain('scroll it sideways');
     expect(html).toContain('new ResizeObserver(showWhereWider)');
     expect(html).toContain('tabindex="0"');
+  });
+
+  it('hand the viewer a stylesheet that wraps the response codes, which it would otherwise clip', () => {
+    const html = renderReferencePage('/api/openapi.json');
+    const attribute = /data-configuration="([^"]*)"/.exec(html)?.[1] ?? '';
+    const configuration = JSON.parse(
+      new JSDOM(`<p title="${attribute}"></p>`).window.document.querySelector('p')?.title ?? '{}',
+    ) as { customCss?: string; hideClientButton?: boolean };
+    expect(configuration.hideClientButton).toBe(true);
+    expect(configuration.customCss).toContain('.response-card .tab-list { flex-wrap: wrap;');
   });
 
   it('name an icon on both pages, so the browser does not ask the host for /favicon.ico', async () => {

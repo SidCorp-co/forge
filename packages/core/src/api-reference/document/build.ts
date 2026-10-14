@@ -12,23 +12,10 @@ import type { ValidatorDeclaration } from '../declare/validator.js';
 import { type Access, accessOf, accessProse, asksForBearer } from './access.js';
 import { type InputRefusal, probeInputRefusal } from './probe-hook.js';
 import { type RouteEntry, type RouteSource, readRoutes } from './registry.js';
-
-/** The rules the build itself can find a route in breach of. `check.ts` adds the ones it reads source for. */
-export type BuildRule =
-  | 'unread-chain'
-  | 'no-access'
-  | 'unrepresentable'
-  | 'unreadable-hook'
-  | 'undeclared-input'
-  | 'param-not-in-path'
-  | 'no-response'
-  | 'raw-json'
-  | 'more-than-one-descriptor'
-  | 'schema-name-clash'
-  | 'operation-id-clash';
+import type { Rule } from './rules.js';
 
 export type Finding = {
-  readonly rule: BuildRule | string;
+  readonly rule: Rule;
   /** `GET /api/issues/:id`, or the name of the thing the finding is about when it is not one route. */
   readonly route: string;
   readonly detail: string;
@@ -347,7 +334,13 @@ async function responsesOf(entry: RouteEntry, access: Access | null, doc: Docume
   return { responses, answered, libraryDefault };
 }
 
-function accessExtension(access: Access): Record<string, unknown> {
+function accessExtension(access: Access, readsBearer: boolean): Record<string, unknown> {
+  if (access.door === 'token' && !readsBearer) {
+    return {
+      door: 'none',
+      reason: 'its gates read no bearer, so no token grant applies and no permission is checked',
+    };
+  }
   if (access.door === 'token') {
     return { door: 'token', permission: access.permission, reach: access.reach };
   }
@@ -465,7 +458,9 @@ export async function buildReference(
       ...(requestBody ? { requestBody } : {}),
       responses: answers.responses,
       security: asksForBearer(access, entry.takesBearer) ? [{ [BEARER_SCHEME]: [] }] : [],
-      ...(access ? { 'x-forge-access': accessExtension(access) } : {}),
+      ...(access
+        ? { 'x-forge-access': accessExtension(access, asksForBearer(access, entry.takesBearer)) }
+        : {}),
     };
     paths[openApi] = { ...(paths[openApi] ?? {}), [method]: operation };
   }

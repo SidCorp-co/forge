@@ -68,7 +68,7 @@ validator the route runs through, `packages/core/src/api-reference/declare/valid
 error envelope and the codes it can give, and the permission or the named exclusion that reaches it,
 which the page states at the head of the operation and not only in `x-forge-access`. Whether an
 operation asks for a bearer is read from the gates in its own chain (`middleware/declarations.ts:takesBearer`),
-up to its own handler, so a route that reads none, a sign-in or a pairing, is shown with none whatever its door.
+up to its own handler, so a route that reads none, a sign-in or a pairing, is shown with none whatever its door. `x-forge-access` then names `door: none` and no permission, as the page says.
 `api-reference/gates/reference.test.ts` runs in the core unit job over the composed app and names the
 route that has no declared answer, reads an input no schema declares, throws a status or code its
 descriptor omits, carries a schema JSON Schema cannot hold, or is the step of a flow that names no
