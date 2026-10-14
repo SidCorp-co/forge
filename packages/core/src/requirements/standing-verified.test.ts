@@ -37,6 +37,7 @@ const row = (
   verdictAt: new Date(iso),
   identity: { kind: 'commit', sha: commit },
   byBuilder,
+  authored: true,
 });
 const builder = (issueN: number, verdict: 'pass' | 'short' | 'fail', iso: string, commit = F) =>
   row(issueN, verdict, iso, true, commit);
@@ -143,5 +144,85 @@ describe("under independent QA the builder's own pass is not verified", () => {
     ]);
     expect(coverage[0]?.verdict).toBe('not_live');
     expect(coverage[0]?.issues[0]?.notCounted).toContain('does not hold');
+  });
+});
+
+/** `latest` on issue 1, with `earlier` verdicts on the same issue criterion, newest first. */
+const history = (latest: StandingIssueCriterion, ...earlier: StandingIssueCriterion[]) => ({
+  ...latest,
+  earlier,
+});
+
+describe("a verdict that is not the judge's does not take the judge's away", () => {
+  it("a newer builder pass on the same criterion leaves the judge's older pass counted", () => {
+    const { coverage } = read([
+      history(builder(1, 'pass', '2026-10-05T00:00:00Z'), row(1, 'pass', '2026-10-01T00:00:00Z')),
+    ]);
+    expect(coverage[0]).toMatchObject({
+      verdict: 'passing',
+      counts: { displayId: 'ISS-1', verdict: 'pass', at: '2026-10-01T00:00:00.000Z' },
+    });
+  });
+
+  it('a newer builder short leaves it counted too, and an unattributed pass reads past the same way', () => {
+    const anon = { ...row(1, 'pass', '2026-10-06T00:00:00Z'), authored: false };
+    const { coverage } = read([
+      history(
+        anon,
+        builder(1, 'short', '2026-10-05T00:00:00Z'),
+        row(1, 'pass', '2026-10-01T00:00:00Z'),
+      ),
+    ]);
+    expect(coverage[0]).toMatchObject({
+      verdict: 'passing',
+      counts: { at: '2026-10-01T00:00:00.000Z' },
+    });
+  });
+
+  it("a newer builder fail counts: a fail is everyone's", () => {
+    const { coverage } = read([
+      history(builder(1, 'fail', '2026-10-05T00:00:00Z'), row(1, 'pass', '2026-10-01T00:00:00Z')),
+    ]);
+    expect(coverage[0]).toMatchObject({ verdict: 'failing', counts: { verdict: 'fail' } });
+  });
+
+  it("the judge's own newer short stands as its latest word, so the older pass no longer counts", () => {
+    const { coverage } = read([
+      history(row(1, 'short', '2026-10-05T00:00:00Z'), row(1, 'pass', '2026-10-01T00:00:00Z')),
+    ]);
+    expect(coverage[0]?.verdict).toBe('not_judged');
+  });
+
+  it('under self QA the latest is read, whoever recorded it', () => {
+    const { coverage } = read(
+      [
+        history(
+          builder(1, 'short', '2026-10-05T00:00:00Z'),
+          row(1, 'pass', '2026-10-01T00:00:00Z'),
+        ),
+      ],
+      'self',
+    );
+    expect(coverage[0]?.verdict).toBe('not_judged');
+  });
+});
+
+describe('a pass that names no author', () => {
+  const anon = (verdict: 'pass' | 'fail') => ({
+    ...row(1, verdict, '2026-10-05T00:00:00Z'),
+    authored: false,
+  });
+
+  it('is not verified under independent QA, and says why', () => {
+    const { coverage } = read([anon('pass')]);
+    expect(coverage[0]).toMatchObject({ verdict: 'not_judged', counts: null });
+    expect(coverage[0]?.issues[0]?.notCounted).toBe(
+      "passed with no recorded author, so nothing shows it is the independent judge's",
+    );
+  });
+
+  it('counts under self QA, and its fail counts under any', () => {
+    expect(read([anon('pass')], 'self').coverage[0]?.verdict).toBe('passing');
+    expect(read([anon('fail')]).coverage[0]?.verdict).toBe('failing');
   });
 });

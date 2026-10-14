@@ -119,6 +119,7 @@ async function judge(
   await db.execute(
     sql`UPDATE criterion_verdicts SET created_at = ${at}, author_device_id = ${device} WHERE id = ${r.verdictId}`,
   );
+  return String(r.verdictId);
 }
 
 /** A run session on `device` from BUILT, ended at `ended` or still running. */
@@ -295,5 +296,51 @@ describe("under independent QA the builder's own pass is not verified", () => {
     await judge(issue, 1, 'pass', '2026-10-05T10:00:00Z', box);
 
     expect(await bc(req, 'BC-1')).toMatchObject({ verdict: 'passing' });
+  });
+});
+
+// Coverage read only each issue criterion's newest verdict, so a builder pass recorded after the
+// judge's pass hid it and the criterion read not judged; the history is read now
+describe("a newer verdict that is not the judge's does not hide the judge's", () => {
+  it("the builder's pass after the judge's pass on the same criterion leaves the judge's counted", async () => {
+    const req = await agreedRequirement();
+    const issue = await closedIssueTracing(req, 1, ['BC-1']);
+    await checked(issue, await runOn(box));
+    await judge(issue, 1, 'pass', '2026-10-05T08:00:00Z', await createTestDevice(ownerId));
+    await judge(issue, 1, 'pass', '2026-10-05T10:00:00Z', box);
+
+    expect(await bc(req, 'BC-1')).toMatchObject({
+      verdict: 'passing',
+      counts: { displayId: 'ISS-1', verdict: 'pass', at: '2026-10-05T08:00:00.000Z' },
+    });
+  });
+
+  it("the builder's fail after the judge's pass counts: a fail is everyone's", async () => {
+    const req = await agreedRequirement();
+    const issue = await closedIssueTracing(req, 1, ['BC-1']);
+    await checked(issue, await runOn(box));
+    await judge(issue, 1, 'pass', '2026-10-05T08:00:00Z', await createTestDevice(ownerId));
+    await judge(issue, 1, 'fail', '2026-10-05T10:00:00Z', box);
+
+    expect(await bc(req, 'BC-1')).toMatchObject({
+      verdict: 'failing',
+      counts: { verdict: 'fail', at: '2026-10-05T10:00:00.000Z' },
+    });
+  });
+});
+
+describe('a pass that names no author', () => {
+  it('does not count under independent QA, and its line says why', async () => {
+    const req = await agreedRequirement();
+    const issue = await closedIssueTracing(req, 1, ['BC-1']);
+    const id = await judge(issue, 1, 'pass', '2026-10-05T10:00:00Z');
+    await db.execute(sql`UPDATE criterion_verdicts SET author_user_id = NULL WHERE id = ${id}`);
+
+    const one = await bc(req, 'BC-1');
+
+    expect(one).toMatchObject({ verdict: 'not_judged', counts: null });
+    expect(one.issues[0]?.notCounted).toBe(
+      "passed with no recorded author, so nothing shows it is the independent judge's",
+    );
   });
 });

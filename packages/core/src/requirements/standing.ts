@@ -45,7 +45,11 @@ import { proofTurn } from './standing-proof.js';
 import { breakdownTaskOf, checkTaskOf, replanTasksOf, tasksOf } from './standing-tasks.js';
 import { type ParkedWait, workTurn } from './standing-work.js';
 
-export type { LiveBuildHolds, StandingIssueCriterion } from './standing-coverage.js';
+export type {
+  LiveBuildHolds,
+  StandingIssueCriterion,
+  StandingVerdict,
+} from './standing-coverage.js';
 
 /** Untouched this long, an open requirement is listed as stuck. */
 const STUCK_AFTER_DAYS = 21;

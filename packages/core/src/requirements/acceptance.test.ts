@@ -112,6 +112,7 @@ describe('the delivery phase the accept reads', () => {
       verdictAt: v ? at : null,
       identity: v ? ({ kind: 'commit', sha: 'f'.repeat(40) } as const) : null,
       byBuilder,
+      authored: true,
     },
   ];
 
