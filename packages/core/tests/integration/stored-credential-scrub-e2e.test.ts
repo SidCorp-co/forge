@@ -196,6 +196,40 @@ describe('the stored-credential scrub', () => {
     });
   });
 
+  it('waits for a writer holding a question and keeps what it wrote, rather than overwriting it', async () => {
+    await storeCredentials(harness.db, projectId);
+    const here = await anIssue(harness.db, projectId, ownerId);
+    const q = await question(here, [step(LEAK, 'a reset')], null);
+    let locked!: () => void;
+    let release!: () => void;
+    const isLocked = new Promise<void>((resolve) => {
+      locked = resolve;
+    });
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const writer = raw.begin(async (tx) => {
+      await tx`SELECT id FROM agent_questions WHERE id = ${q} FOR UPDATE`;
+      locked();
+      await released;
+      await tx`UPDATE agent_questions SET steps = jsonb_set(steps, '{0,answerText}', '"use the reset link"') WHERE id = ${q}`;
+    });
+    await isLocked;
+    const scrub = runCredentialScrubOnce(raw);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    release();
+    await writer;
+
+    expect((await scrub).ran).toBe(true);
+    const [asked] = (await harness.db.execute(
+      sql`SELECT steps FROM agent_questions WHERE id = ${q}`,
+    )) as unknown as Array<{ steps: Array<Record<string, string>> }>;
+    expect(asked?.steps[0]?.answerText, 'the answer written meanwhile survives').toBe(
+      'use the reset link',
+    );
+    expect(asked?.steps[0]?.prompt).toMatch(/^the \[withheld: /);
+  });
+
   it('aborts naming a row it cannot represent, and rewrites nothing', async () => {
     await storeCredentials(harness.db, projectId);
     const here = await anIssue(harness.db, projectId, ownerId);

@@ -59,6 +59,7 @@ async function activityRewrites(sql: Sql, byProject: Map<string, StoredCredentia
     JOIN issues i ON i.id = a.issue_id
     WHERE i.project_id IN ${sql([...byProject.keys()])}
       AND a.action IN ${sql(Object.keys(ACTIVITY_TEXT))}
+    FOR UPDATE OF a
   `;
   const out: Rewrite[] = [];
   for (const row of rows) {
@@ -108,10 +109,12 @@ async function reasonRewrites(
       ? await sql<{ id: string; reason: string; project_id: string }[]>`
           SELECT k.id, k.reason, i.project_id FROM kernel_transitions k
           JOIN issues i ON i.id = k.entity_id
-          WHERE k.entity = 'issue' AND k.reason IS NOT NULL AND i.project_id IN ${projects}`
+          WHERE k.entity = 'issue' AND k.reason IS NOT NULL AND i.project_id IN ${projects}
+          FOR UPDATE OF k`
       : await sql<{ id: string; reason: string; project_id: string }[]>`
           SELECT id, reason, project_id FROM pipeline_outbox
-          WHERE reason IS NOT NULL AND project_id IN ${projects}`;
+          WHERE reason IS NOT NULL AND project_id IN ${projects}
+          FOR UPDATE`;
   const out: Rewrite[] = [];
   for (const row of rows) {
     const next = withheld(row.reason, byProject.get(row.project_id) ?? []);
@@ -132,6 +135,7 @@ async function questionRewrites(sql: Sql, byProject: Map<string, StoredCredentia
   >`
     SELECT id, project_id, steps, void_reason FROM agent_questions
     WHERE project_id IN ${sql([...byProject.keys()])}
+    FOR UPDATE
   `;
   const out: Rewrite[] = [];
   for (const row of rows) {
@@ -177,25 +181,28 @@ export const CREDENTIAL_SCRUB_KEY = 'stored-credential-scrub';
 /**
  * Rewrites every stored copy of a move's words, a comment's activity snippet and a question's
  * text that holds a project's stored test credential, to what the withhold path writes today.
- * Every row is judged before any is written, so a row it cannot represent aborts the scrub by
- * name with nothing half done; the rewrites and the marker commit together.
+ * One transaction reads with the rows locked, judges every row before writing any, and commits
+ * the rewrites with the marker: a row it cannot represent aborts it by name with nothing half
+ * done, and a server still writing during a rolling deploy waits rather than being overwritten.
  */
 export async function scrubStoredCredentials(sql: Sql): Promise<ScrubReport> {
-  const byProject = await credentialsByProject(sql);
-  const rewrites =
-    byProject.size === 0
-      ? []
-      : [
-          ...(await activityRewrites(sql, byProject)),
-          ...(await reasonRewrites(sql, byProject, 'kernel_transitions')),
-          ...(await reasonRewrites(sql, byProject, 'pipeline_outbox')),
-          ...(await questionRewrites(sql, byProject)),
-        ];
-  await sql.begin(async (tx) => {
-    for (const rewrite of rewrites) await rewrite.apply(tx as unknown as Sql);
+  const rewrites = await sql.begin(async (began) => {
+    const tx = began as unknown as Sql;
+    const byProject = await credentialsByProject(tx);
+    const planned =
+      byProject.size === 0
+        ? []
+        : [
+            ...(await activityRewrites(tx, byProject)),
+            ...(await reasonRewrites(tx, byProject, 'kernel_transitions')),
+            ...(await reasonRewrites(tx, byProject, 'pipeline_outbox')),
+            ...(await questionRewrites(tx, byProject)),
+          ];
+    for (const rewrite of planned) await rewrite.apply(tx);
     await tx`
       INSERT INTO backfill_markers (key) VALUES (${CREDENTIAL_SCRUB_KEY}) ON CONFLICT (key) DO NOTHING
     `;
+    return planned;
   });
   const count = (table: Rewrite['table']): number =>
     rewrites.filter((r) => r.table === table).length;
