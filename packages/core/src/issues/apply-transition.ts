@@ -31,6 +31,7 @@ import {
   parkReasonFault,
   postLeaveComment,
   postTransitionReasonComment,
+  reasonWaived,
   requiresAuthoredReason,
 } from './transition-reason.js';
 
@@ -77,8 +78,8 @@ export interface ApplyStatusTransitionOptions {
   reason?: string | undefined;
   /**
    * Why the pipeline is being stopped, in the actor's own words. REQUIRED
-   * entering `reopen`, `waiting` or `needs_info`; posted as a comment before
-   * the status write.
+   * entering `reopen`, `waiting`, `needs_info` or `on_hold`; posted as a comment before
+   * the status write. A trusted writer's `skip` waives it for all but `on_hold`.
    */
   transitionReason?: string | undefined;
   /**
@@ -428,7 +429,10 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
       if (archiveRefusal)
         throw new TransitionError('ISSUE_ARCHIVED', archiveRefusal, { to: toStatus });
       await options.beforeStatusWrite?.(tx);
-      if (requiresAuthoredReason(fromStatus, requestedStatus) && options.skip !== true) {
+      if (
+        requiresAuthoredReason(fromStatus, requestedStatus) &&
+        !reasonWaived(requestedStatus, options.skip)
+      ) {
         await postTransitionReasonComment(
           {
             issueId: issue.id,

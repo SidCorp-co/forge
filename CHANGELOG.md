@@ -3191,6 +3191,8 @@
 
 - **The biome schemas follow the pinned CLI.** Three `biome.json` files named 2.5.14 against a CLI at 2.5.15; the CLI is now pinned exactly and a test holds the schemas to it. (ISS-1371)
 
+- **End takes a long list to its last row on the first press.** The notification inbox and tables of over 100 rows stopped short and took five presses. Cards and List on Projects now say which is selected. (ISS-1264)
+
 - **Jumping to the end of a long list lands on the last row.** The inbox and tables of over 100 rows stopped hundreds of pixels short when rows ran tall, and only a second scroll reached the end. (ISS-1264)
 
 - **Three small repairs on API Tokens and Agents.** A project name in the Level pill reads on one line, cut to fit, whole on hover, focus or tap; the Agents hint is a sentence; "Self" is "Edit self". (ISS-1264)
@@ -6435,6 +6437,8 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+
+- **Putting an issue on hold now asks why, and the thread says so.** A hold with no reason is refused by name, the bulk menu no longer offers it, and each hold posts its reason on the thread. (ISS-1251)
 
 - **An attribute that holds one value per issue now holds exactly one row.** Two simultaneous writers could leave two; the second now replaces the first, and a batch naming the key twice is refused. (ISS-1132)
 

@@ -36,3 +36,13 @@ it("leaves a count as wide as its digits when no stable width is asked for", () 
   expect(slot("Tab 0")?.className).not.toContain("w-[5ch]");
   expect(slot("Tab 1")).toHaveTextContent("100000");
 });
+
+it("says which option is picked, to a screen reader and not by colour alone, and follows the pick", () => {
+  const { rerender } = render(<SegmentedControl options={options(0, 0)} value="t0" />);
+  expect(screen.getByRole("button", { name: /Tab 0/ })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: /Tab 1/ })).toHaveAttribute("aria-pressed", "false");
+
+  rerender(<SegmentedControl options={options(0, 0)} value="t1" />);
+  expect(screen.getByRole("button", { name: /Tab 0/ })).toHaveAttribute("aria-pressed", "false");
+  expect(screen.getByRole("button", { name: /Tab 1/ })).toHaveAttribute("aria-pressed", "true");
+});

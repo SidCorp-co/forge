@@ -307,7 +307,7 @@ describe("bulkAllowedStatuses (ISS-463)", () => {
 	it("returns [] for an empty selection", () => {
 		expect(bulkAllowedStatuses(EXITS, [])).toEqual([]);
 	});
-	it("matches allowedTransitions when every row shares a status, less the reason-required three", () => {
+	it("matches allowedTransitions when every row shares a status, less the reason-required ones", () => {
 		const rows = [
 			row({ id: "a", status: "approved" }),
 			row({ id: "b", status: "approved" }),
@@ -335,7 +335,8 @@ describe("bulkAllowedStatuses (ISS-463)", () => {
 		expect(result).not.toContain("waiting");
 		expect(result).not.toContain("needs_info");
 		expect(result).not.toContain("reopen");
-		expect(result).toContain("on_hold");
+		expect(result).not.toContain("on_hold");
+		expect(result).toContain("dropped");
 	});
 	it("intersects allowed targets across mixed statuses", () => {
 		const rows = [
@@ -347,7 +348,7 @@ describe("bulkAllowedStatuses (ISS-463)", () => {
 			expect(allowedTransitions(EXITS, "open")).toContain(s);
 			expect(allowedTransitions(EXITS, "approved")).toContain(s);
 		}
-		expect(result).toEqual(["in_progress", "on_hold", "dropped"]);
+		expect(result).toEqual(["in_progress", "dropped"]);
 	});
 	it("keeps the first selected row's declared order, not the enum's", () => {
 		const rows = [

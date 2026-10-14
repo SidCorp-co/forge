@@ -278,6 +278,17 @@ describe("the view the console opens in", () => {
     expect(table()).toBeInTheDocument();
   });
 
+  it("marks the view in use as pressed, whichever way it was chosen, and moves the mark with a pick", async () => {
+    atWidth(true);
+    render(<ProjectsConsole />);
+    await act(async () => {});
+    expect(screen.getByRole("button", { name: "List" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Cards" })).toHaveAttribute("aria-pressed", "false");
+    showCards();
+    expect(screen.getByRole("button", { name: "Cards" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "List" })).toHaveAttribute("aria-pressed", "false");
+  });
+
   it("is the view a person picked, after a reload, on a phone and on a wide screen", async () => {
     atWidth(true);
     const phone = render(<ProjectsConsole />);

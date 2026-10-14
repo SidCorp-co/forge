@@ -126,3 +126,27 @@ describe("TransitionReasonDialog's words for leaving without the answer", () => 
     expect(said).not.toMatch(/\b(park|parked|rung|decision round)\b/i);
   });
 });
+
+// ISS-1251 — a hold is entered with a reason, so the Pause control sends nothing until one is typed.
+describe("TransitionReasonDialog, putting an issue on hold", () => {
+  it("sends the hold only once a reason is typed, and sends that reason trimmed", () => {
+    const onConfirm = vi.fn();
+    render(
+      <TransitionReasonDialog status="on_hold" loading={false} onConfirm={onConfirm} onClose={vi.fn()} />,
+    );
+    const hold = () => screen.getByRole("button", { name: "Put on hold" });
+    expect(hold()).toBeDisabled();
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "   " } });
+    expect(hold()).toBeDisabled();
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "  waiting for the migration window  " } });
+    fireEvent.click(hold());
+    expect(onConfirm).toHaveBeenCalledWith("waiting for the migration window", undefined);
+  });
+
+  it("asks no waiting kind", () => {
+    render(
+      <TransitionReasonDialog status="on_hold" loading={false} onConfirm={vi.fn()} onClose={vi.fn()} />,
+    );
+    expect(screen.queryAllByRole("radio")).toHaveLength(0);
+  });
+});

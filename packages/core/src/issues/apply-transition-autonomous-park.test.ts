@@ -338,6 +338,7 @@ describe('waiting on an autonomous project', () => {
       { id: ISSUE_ID, projectId: PROJECT_ID, status: 'in_progress', reopenCount: 0 },
       'on_hold',
       { type: 'device', id: DEVICE_ID, ownerId: ACTOR_ID },
+      { transitionReason: 'paused until the window opens' },
     );
 
     expect(updateSet.mock.calls[0]?.[0]).toMatchObject({ status: 'on_hold' });

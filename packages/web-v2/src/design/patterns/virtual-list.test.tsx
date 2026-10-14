@@ -155,9 +155,28 @@ describe("the keyboard", () => {
     expect(document.activeElement).toHaveAttribute("data-index", "0");
   });
 
-  it("leaves a plain End to the browser", async () => {
+  it("takes a plain End to the last row as Ctrl+End does, since the browser's own End rests short of rows not yet measured", async () => {
     const first = await opened();
-    expect(fireEvent.keyDown(first, { key: "End" })).toBe(true);
+    await act(async () => void fireEvent.keyDown(first, { key: "End" }));
+    expect(indexes()).toContain(1299);
+    expect(document.activeElement).toHaveAttribute("data-index", "1299");
+  });
+
+  it("leaves Shift+End, Alt+End and Meta+End to the browser, which selects or navigates with them", async () => {
+    const first = await opened();
+    for (const modifier of [{ shiftKey: true }, { altKey: true }, { metaKey: true }]) {
+      expect(fireEvent.keyDown(first, { key: "End", ...modifier })).toBe(true);
+      expect(document.activeElement).toBe(first);
+    }
+  });
+
+  it("leaves End alone inside a text field in a row", async () => {
+    list(items(5), { renderRow: (r) => <input aria-label={`note ${r.id}`} /> });
+    await act(async () => {});
+    const field = screen.getByLabelText("note n0");
+    act(() => field.focus());
+    expect(fireEvent.keyDown(field, { key: "End" })).toBe(true);
+    expect(document.activeElement).toBe(field);
   });
 
   it("leaves PageDown alone inside a text field in a row", async () => {
