@@ -102,7 +102,7 @@ class Inspector {
         this.report(at, 'unresolved', `${label}: a spread hides which argument is the table`);
       return;
     }
-    const ev = this.model.eval(arg, this.f.file);
+    const ev = this.model.evalOwn(arg, this.f.file);
     if (ev.values.has(TABLE)) {
       this.report(at, 'write', label);
       return;
@@ -115,7 +115,9 @@ class Inspector {
         this.mark(param.fn, param.index, strict);
         return;
       }
-      if (strict) {
+      if (this.model.eval(arg, this.f.file).values.has(TABLE)) {
+        this.report(at, 'write', label);
+      } else if (strict) {
         this.report(
           at,
           'unresolved',
@@ -180,7 +182,7 @@ class Inspector {
   }
 
   private tableIfProven(arg: ts.Expression, at: ts.Node, label: string): void {
-    if (this.model.eval(arg, this.f.file).values.has(TABLE)) this.report(at, 'write', label);
+    if (this.model.evalOwn(arg, this.f.file).values.has(TABLE)) this.report(at, 'write', label);
   }
 
   /** What is used as a value rather than called: a write method, or a helper that writes a table. */
@@ -294,7 +296,8 @@ function isDeclaration(node: ts.Node): boolean {
  * `this` member, the result of a call it cannot enter, a helper reached through a method, a callback
  * or a destructured parameter, a helper used as a value, a write method taken as a value. A
  * parameter typed as a primitive cannot be a table, and a call that is not shaped like a drizzle
- * write (`Map.delete`, `hash.update`) is not refused for its argument.
+ * write (`Map.delete`, `hash.update`) is not refused for its argument. What a call hands a function
+ * is followed into its parameters, so a method of an object handed in is read where it is handed.
  */
 export function commentWrites(
   sources: ReadonlyMap<string, string>,

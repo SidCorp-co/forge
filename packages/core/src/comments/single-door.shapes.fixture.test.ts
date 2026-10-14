@@ -415,4 +415,52 @@ describe('a table that arrives some way later than where it is named', () => {
     ].join('\n');
     expect(found(source)).toEqual([]);
   });
+
+  it('finds the table a method of an object returns when the object is handed in by a caller', () => {
+    const source = [
+      "import { comments } from '../db/schema.js';",
+      'async function drop(db: any, registry: { pick(): unknown }) {',
+      '  const t = registry.pick();',
+      '  await db.delete(t);',
+      '}',
+      'drop(null, { pick: () => comments });',
+    ].join('\n');
+    expect(found(source)).toEqual(['pipeline/planted.ts:4 write']);
+  });
+
+  it('follows what a call hands a function through a second function and into a destructured parameter', () => {
+    const source = [
+      "import { comments } from '../db/schema.js';",
+      'async function inner(db: any, { table }: { table: unknown }) {',
+      '  await db.delete(table);',
+      '}',
+      'const outer = (db: any, opts: { table: unknown }) => inner(db, opts);',
+      'outer(null, { table: comments });',
+    ].join('\n');
+    expect(found(source)).toEqual(['pipeline/planted.ts:3 write']);
+  });
+
+  it('leaves a function that is only ever handed another table alone', () => {
+    const source = [
+      "import { issues } from '../db/schema.js';",
+      'async function drop(db: any, registry: { pick(): unknown }) {',
+      '  await db.delete(registry.pick());',
+      '}',
+      'drop(null, { pick: () => issues });',
+    ].join('\n');
+    expect(found(source)).toEqual([]);
+  });
+
+  it('finds the table in an array read by a string index or a numeric key in a pattern', () => {
+    const source = [
+      "import { comments } from '../db/schema.js';",
+      'export const go = async (db: any) => {',
+      '  const tables = [comments];',
+      "  await db.delete(tables['0']);",
+      '  const { 0: first } = tables;',
+      '  await db.delete(first);',
+      '};',
+    ].join('\n');
+    expect(found(source)).toEqual(['pipeline/planted.ts:4 write', 'pipeline/planted.ts:6 write']);
+  });
 });

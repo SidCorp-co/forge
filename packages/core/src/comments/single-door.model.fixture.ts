@@ -54,12 +54,34 @@ export class Model extends Scopes {
 
   /** Reads every file again until none holds anything new: a name can reach a file only after another has settled. */
   private settle(): void {
+    const order = this.dependencyOrder();
     for (let round = 0; ; round++) {
       let changed = false;
-      for (const f of this.facts.values()) changed = this.step(f) || changed;
+      for (const f of order) changed = this.step(f) || changed;
       if (!changed) return;
       if (round > 200) throw new Error('single-door scan: module resolution did not settle');
     }
+  }
+
+  /** Files with what they import first, so most names are known the first time a file is read. */
+  private dependencyOrder(): FileFacts[] {
+    const order: FileFacts[] = [];
+    const seen = new Set<string>();
+    const visit = (f: FileFacts): void => {
+      if (seen.has(f.file)) return;
+      seen.add(f.file);
+      for (const spec of [
+        ...f.imports.map((i) => i.spec),
+        ...f.exports.flatMap((e) => e.spec ?? []),
+      ]) {
+        const target = this.resolve(f.file, spec);
+        const dep = target ? this.facts.get(target) : undefined;
+        if (dep) visit(dep);
+      }
+      order.push(f);
+    };
+    for (const f of this.facts.values()) visit(f);
+    return order;
   }
 
   fnsOf(ev: Ev): FnInfo[] {
@@ -105,8 +127,9 @@ export class Model extends Scopes {
 
   private identifier(node: ts.Identifier): Ev {
     const { param, ev } = this.lookup(node);
+    if (!param) return ev ?? none();
     const out: Ev = ev ? { values: new Set(ev.values), unknown: ev.unknown } : none();
-    if (param) out.unknown ??= `the parameter \`${node.text}\``;
+    out.unknown ??= `the parameter \`${node.text}\``;
     return out;
   }
 
@@ -147,7 +170,7 @@ export class Model extends Scopes {
       } else if (v.kind === 'literal') {
         if (ts.isObjectLiteralExpression(v.node)) {
           mergeInto(out, this.property(v.node, v.file, name));
-        }
+        } else if (/^\d+$/.test(name)) mergeInto(out, this.members(v));
         const added = this.assigned.get(v);
         for (const key of [name, '*']) {
           const held = added?.get(key);
@@ -362,7 +385,10 @@ export class Model extends Scopes {
       }
     }
 
-    for (const call of f.calls) changed = this.mutation(call, f.file) || changed;
+    for (const call of f.calls) {
+      changed = this.mutation(call, f.file) || changed;
+      changed = this.handOver(call, f.file) || changed;
+    }
 
     if (f.defaultExpr) put(exp, 'default', this.eval(f.defaultExpr, f.file));
     for (const [local, as] of f.exportedLocals) {
@@ -385,6 +411,33 @@ export class Model extends Scopes {
       }
     }
     return changed;
+  }
+
+  /** What a call hands each function it enters for its parameters, read where the function is read. */
+  private handOver(call: ts.CallExpression, file: string): boolean {
+    let changed = false;
+    const callee = unwrap(call.expression);
+    if (!isNamedPath(callee)) return false;
+    for (const fn of this.fnsOf(this.eval(callee, file))) {
+      const params = (fn.node as ts.FunctionLikeDeclaration).parameters;
+      for (const [i, p] of params.entries()) {
+        const arg = call.arguments[i];
+        if (!arg || ts.isSpreadElement(arg) || p.dotDotDotToken) continue;
+        changed =
+          this.bind(this.incomingOf(fn.node), p.name, this.eval(arg, file), file) || changed;
+      }
+    }
+    return changed;
+  }
+
+  /** What an expression holds by what is written in the function it is in, leaving out its callers. */
+  evalOwn(expr: ts.Expression, file: string): Ev {
+    this.useIncoming = false;
+    try {
+      return this.eval(expr, file);
+    } finally {
+      this.useIncoming = true;
+    }
   }
 
   /** Records what is written into every object or array `base` can be. */
@@ -445,4 +498,13 @@ export class Model extends Scopes {
     }
     return changed;
   }
+}
+
+/** `f`, `a.b.c`, `a['b']`: a callee read by name, not through another call. */
+function isNamedPath(node: ts.Expression): boolean {
+  let current = node;
+  while (ts.isPropertyAccessExpression(current) || ts.isElementAccessExpression(current)) {
+    current = unwrap(current.expression);
+  }
+  return ts.isIdentifier(current);
 }

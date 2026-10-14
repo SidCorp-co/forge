@@ -17,6 +17,10 @@ import {
 export abstract class Scopes {
   readonly fnByNode = new Map<ts.Node, FnInfo>();
   protected readonly env = new Map<ts.Node, Map<string, Ev>>();
+  /** What the calls the sources make hand each function for its parameters, by function. */
+  protected readonly incoming = new Map<ts.Node, Map<string, Ev>>();
+  /** Whether a parameter holds what its callers hand it, which a write inside the function leaves out. */
+  protected useIncoming = true;
 
   protected envOf(scope: ts.Node): Map<string, Ev> {
     let held = this.env.get(scope);
@@ -27,31 +31,44 @@ export abstract class Scopes {
     return held;
   }
 
+  protected incomingOf(fn: ts.Node): Map<string, Ev> {
+    let held = this.incoming.get(fn);
+    if (!held) {
+      held = new Map();
+      this.incoming.set(fn, held);
+    }
+    return held;
+  }
+
   protected namedFn(node: ts.Node): FnInfo | null {
     const fn = this.fnByNode.get(node);
     return fn?.named ? fn : null;
   }
 
+  private readonly params = new Map<ts.Node, Map<string, ParamRef>>();
+
   protected paramIn(fn: ts.SignatureDeclaration, name: string): ParamRef | null {
-    const params = fn.parameters;
-    for (let i = 0; i < params.length; i++) {
-      const p = params[i] as ts.ParameterDeclaration;
-      if (ts.isIdentifier(p.name)) {
-        if (p.name.text !== name) continue;
-        const type = p.type;
-        const primitive = !!type && isPrimitiveType(type);
-        return {
-          fn: this.namedFn(fn),
-          index: p.dotDotDotToken ? -1 : i,
-          primitive,
-          type,
-        };
+    let held = this.params.get(fn);
+    if (!held) {
+      held = new Map();
+      for (const [i, p] of fn.parameters.entries()) {
+        if (ts.isIdentifier(p.name)) {
+          const type = p.type;
+          held.set(p.name.text, {
+            fn: this.namedFn(fn),
+            index: p.dotDotDotToken ? -1 : i,
+            primitive: !!type && isPrimitiveType(type),
+            type,
+          });
+        } else {
+          for (const n of bindingNames(p.name)) {
+            held.set(n, { fn: null, index: -1, primitive: false, type: undefined });
+          }
+        }
       }
-      if (bindingNames(p.name).includes(name)) {
-        return { fn: null, index: -1, primitive: false, type: undefined };
-      }
+      this.params.set(fn, held);
     }
-    return null;
+    return held.get(name) ?? null;
   }
 
   /** What a name means where it is used: the innermost scope declaring it decides. */
@@ -60,7 +77,14 @@ export abstract class Scopes {
       if (ts.isSourceFile(n)) return { param: null, ev: this.env.get(n)?.get(id.text) ?? null };
       if (!ts.isFunctionLike(n)) continue;
       const param = this.paramIn(n, id.text);
-      const ev = this.env.get(n)?.get(id.text) ?? null;
+      const own = this.env.get(n)?.get(id.text);
+      const given = this.useIncoming ? this.incoming.get(n)?.get(id.text) : undefined;
+      let ev: Ev | null = own ?? given ?? null;
+      if (own && given) {
+        ev = none();
+        mergeInto(ev, own);
+        mergeInto(ev, given);
+      }
       if (param || ev) return { param, ev };
     }
     return { param: null, ev: null };
