@@ -9,7 +9,7 @@ import {
   criterionStandingOf,
   identityPhraseOf,
 } from '@forge/contracts/verdict-identity';
-import { and, asc, eq, inArray, ne } from 'drizzle-orm';
+import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, jobs } from '../db/schema.js';
 import { criterionVerdicts } from '../db/schema-issue-criteria.js';
@@ -20,6 +20,7 @@ import {
   closedAtOf,
   listCriteriaOf,
   reopenedAtOf,
+  verdictByBuilderSql,
 } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
@@ -65,6 +66,10 @@ export interface CarriedVerdict extends ReleaseVerdictReading {
   reason: string | null;
   evidence: readonly string[];
   agency: 'human' | 'agent';
+  /** Recorded by the issue's builder (`issues/built-by.ts`): the verified rule reads it (`requirements:unverifiedWhy`). */
+  byBuilder: boolean;
+  /** Names who recorded it, an account or a box. */
+  authored: boolean;
 }
 
 /**
@@ -86,6 +91,13 @@ export async function carriedVerdictsOf(
       evidence: criterionVerdicts.evidence,
       agency: criterionVerdicts.authorAgency,
       createdAt: criterionVerdicts.createdAt,
+      byBuilder: verdictByBuilderSql({
+        issueId: sql`(SELECT ic.issue_id FROM issue_criteria ic WHERE ic.id = ${criterionVerdicts.criterionId})`,
+        authorUser: sql`${criterionVerdicts.authorUserId}`,
+        authorDevice: sql`${criterionVerdicts.authorDeviceId}`,
+        at: sql`${criterionVerdicts.createdAt}`,
+      }),
+      authored: sql<boolean>`(${criterionVerdicts.authorUserId} IS NOT NULL OR ${criterionVerdicts.authorDeviceId} IS NOT NULL)`,
     })
     .from(criterionVerdicts)
     .where(inArray(criterionVerdicts.criterionId, [...criterionIds]))
@@ -100,6 +112,8 @@ export async function carriedVerdictsOf(
     reason: v.reason,
     evidence: v.evidence ?? [],
     agency: v.agency,
+    byBuilder: v.byBuilder === true,
+    authored: v.authored === true,
   }));
 }
 

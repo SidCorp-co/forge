@@ -263,8 +263,9 @@ export function coverageOf(
 // that names no author, since nothing shows it came from anyone else; under `self`, or with no policy
 // declared, the builder is the judge the project named and its pass counts. A fail counts whoever
 // records it: it is evidence the criterion does not hold, and verification is only owed for a claim
-// that it does. The one rule every reader of the count reads, through `notCounted`.
-function unverifiedWhy(v: StandingVerdict, judge: PolicyQaMode | null): string | null {
+// that it does. The one rule every reader of the count reads: coverage through `notCounted`, and a
+// release page's proven list and totals (REQ-40, `release-page/claims.ts:readClaims`).
+export function unverifiedWhy(v: JudgedVerdict, judge: PolicyQaMode | null): string | null {
   if (v.verdict === 'short') {
     return 'judged short: met short of its wording, and only a pass counts as verified';
   }
@@ -278,9 +279,25 @@ function unverifiedWhy(v: StandingVerdict, judge: PolicyQaMode | null): string |
   return null;
 }
 
+/** What the verified rule reads of a verdict: what it said, and who recorded it. */
+export type JudgedVerdict = Pick<StandingVerdict, 'verdict' | 'byBuilder' | 'authored'>;
+
 /** Whether a verdict is not the independent judge's: anything but a fail, from the builder or from nobody named. */
-const notTheJudges = (v: StandingVerdict) =>
+const notTheJudges = (v: JudgedVerdict) =>
   v.verdict !== null && v.verdict !== 'fail' && (v.byBuilder || !v.authored);
+
+/**
+ * Of verdicts newest first, the one a criterion stands on (`judgesOf`): the newest, unless the project
+ * names an independent judge and the newest is not theirs, then the judge's newest where there is one.
+ */
+export function judgesVerdict<V extends JudgedVerdict>(
+  newestFirst: readonly V[],
+  judge: PolicyQaMode | null,
+): V | undefined {
+  const [latest, ...earlier] = newestFirst;
+  if (!latest || judge !== 'independent' || !notTheJudges(latest)) return latest;
+  return earlier.find((v) => !notTheJudges(v)) ?? latest;
+}
 
 // The verdict an issue criterion stands on. Under independent QA a newer verdict that is not the
 // judge's does not take the judge's older one away: the builder's own pass or short after the
@@ -288,8 +305,7 @@ const notTheJudges = (v: StandingVerdict) =>
 // judge's to read, or under any other judge, it is the latest. A fail is everyone's, so it is never
 // read past, and a skip or short by the judge stands as the judge's latest word.
 function judgesOf(ic: StandingIssueCriterion, judge: PolicyQaMode | null): StandingVerdict {
-  if (judge !== 'independent' || !notTheJudges(ic)) return ic;
-  return (ic.earlier ?? []).find((v) => !notTheJudges(v)) ?? ic;
+  return judgesVerdict<StandingVerdict>([ic, ...(ic.earlier ?? [])], judge) ?? ic;
 }
 
 /** Of the live links' judgements that count, the newest. */

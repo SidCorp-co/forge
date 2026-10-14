@@ -15,6 +15,7 @@ import {
 import type { ReleaseDetail } from '@forge/contracts/releases';
 import { HTTPException } from 'hono/http-exception';
 import { refuser } from '../lib/refusal.js';
+import { readEffectivePolicy } from '../project-config/index.js';
 import {
   readRange,
   readRelease,
@@ -69,12 +70,14 @@ export interface PageFacts {
 /** Everything the page and its highlights read beyond the release record, under the truth rule at the release's build. */
 export async function pageFacts(projectId: string, detail: ReleaseDetail): Promise<PageFacts> {
   const build = buildOf(detail);
-  const [criteria, requirements, files] = await Promise.all([
+  const [criteria, requirements, files, policy] = await Promise.all([
     carriedCriteria(detail),
     carriedRequirements(projectId, detail),
     issueFiles(detail.issues.map((i) => i.id)),
+    readEffectivePolicy(projectId),
   ]);
-  const claims = readClaims(criteria, build);
+  // the judge a requirement's coverage counts by, so the page proves what the requirement does
+  const claims = readClaims(criteria, build, policy?.document.qa ?? null);
   const facts = highlightFacts(detail.version, requirements, claims, mediaOf(claims, files, build));
   return { build, claims, requirements, facts, digest: digestOf(facts) };
 }
@@ -140,7 +143,10 @@ export async function readReleasePage(args: {
   return {
     view,
     projectId,
-    header: headerOf(detail),
+    header: headerOf(detail, {
+      proven: page.claims.filter((c) => c.proven).length,
+      total: page.claims.length,
+    }),
     highlights: linked(shown.highlights),
     requirements: requirementsOf(page.requirements, page.claims),
     untraced: untracedOf(page.requirements, page.claims),

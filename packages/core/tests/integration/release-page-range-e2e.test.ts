@@ -370,7 +370,7 @@ describe('the header, the Proof panel and the list count one set of rows by one 
     await world.judge(c, 1, 'pass', BUILD);
   }
 
-  it('says the same proven and total in the header, the Proof panel and the sum of the list', async () => {
+  it('says the same proven and total in the header and the sum of the list, by the requirement rule', async () => {
     await seeded();
     const p = await page();
     const record = await call('member', 'GET', '/releases/0.1.0');
@@ -381,25 +381,26 @@ describe('the header, the Proof panel and the list count one set of rows by one 
       proven: groups.reduce((n, g) => n + g.proven.length, 0),
       total: groups.reduce((n, g) => n + g.proven.length + g.unproven, 0),
     };
-    // QA 0.4.0-dev.220: "8 of 22" in the header and the panel, 5 proven + 15 not yet proven listed
-    expect({ header: p.header.verified.proven, panel: panel.proven, list: listed.proven }).toEqual({
-      header: 4,
-      panel: 4,
-      list: 4,
-    });
+    // QA 0.4.0-dev.220: "8 of 22" in the header and the panel, 5 proven + 15 not yet proven listed.
+    // The page counts by the rule a requirement does (the owner's ruling of 2026-10-14), so its short
+    // is not proven there; the record's Proof panel counts by the issue gate, which takes a short
+    expect({ header: p.header.verified.proven, list: listed.proven }).toEqual({ header: 3, list: 3 });
+    expect(panel.proven, 'the issue gate counts the short').toBe(4);
     expect({ header: p.header.verified.total, panel: panel.total, list: listed.total }).toEqual({
       header: 6,
       panel: 6,
       list: 6,
     });
-    // a short is listed as proven with its mark; a proven criterion with no trace is still listed
+    // a short is not proven; a proven criterion with no trace is still listed
     const req = p.requirements.find((r) => r.key === 'REQ-1');
-    expect(req?.proven.map((x) => [x.code, x.short])).toEqual([
+    expect(
+      req?.proven.map((x) => [x.code, x.short]),
+      'REQ-35 decision 7b261fca: a short is never verified',
+    ).toEqual([
       ['BC-1', false],
-      ['BC-2', true],
       [null, false],
     ]);
-    expect(req?.unproven).toBe(2);
+    expect(req?.unproven).toBe(3);
     expect(p.untraced).toMatchObject({ proven: [{ code: null, short: false }], unproven: 0 });
     // the pass on an earlier build is not claimed here: it reads not judged on this build
     expect(p.knownIssues.map((k) => [k.bc, k.standing])).toEqual([

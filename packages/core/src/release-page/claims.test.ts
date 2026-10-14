@@ -30,6 +30,8 @@ function verdict(
     at,
     reason: null,
     evidence: [],
+    byBuilder: false,
+    authored: true,
     ...extra,
   };
 }
@@ -57,7 +59,7 @@ describe('the truth rule over the carried criteria', () => {
     verdict('fail', BUILD, '2026-10-09T11:00:00.000Z', { reason: 'broke on reload' }),
   ]);
   const never = criterion(5, null, []);
-  const claims = readClaims([pass, short, mergedOnly, failLater, never], BUILD);
+  const claims = readClaims([pass, short, mergedOnly, failLater, never], BUILD, null);
 
   it('claims only the criterion whose newest verdict on the build is a pass', () => {
     expect(claims.map((c) => c.claim.claimed)).toEqual([true, false, false, false, false]);
@@ -78,10 +80,10 @@ describe('the truth rule over the carried criteria', () => {
   });
 
   it('claims nothing where the release has no build', () => {
-    expect(readClaims([pass], null).every((c) => !c.claim.claimed)).toBe(true);
+    expect(readClaims([pass], null, null).every((c) => !c.claim.claimed)).toBe(true);
   });
 
-  it('proves a requirement criterion by a pass or a short, marks the short, and counts the rest as unproven', () => {
+  it('proves a requirement criterion by a pass only, and counts the rest, a short among them, as unproven', () => {
     const reqs = requirementsOf(
       [
         {
@@ -101,17 +103,11 @@ describe('the truth rule over the carried criteria', () => {
         key: 'REQ-1',
         title: 'Reminders',
         completes: false,
-        proven: [
-          { code: 'BC-1', statement: 'criterion 1', short: false, issueKey: 'ISS-1', n: 1 },
-          { code: 'BC-2', statement: 'criterion 2', short: true, issueKey: 'ISS-1', n: 2 },
-        ],
-        unproven: 2,
+        proven: [{ code: 'BC-1', statement: 'criterion 1', short: false, issueKey: 'ISS-1', n: 1 }],
+        unproven: 3,
         business: {
           total: 2,
-          proven: [
-            { code: 'BC-1', statement: 'A nurse sees the reminder' },
-            { code: 'BC-2', statement: 'A doctor sees the report' },
-          ],
+          proven: [{ code: 'BC-1', statement: 'A nurse sees the reminder' }],
         },
       },
     ]);
@@ -137,7 +133,7 @@ describe('the truth rule over the carried criteria', () => {
     live.set('BC-18', 'A refusal says in plain words what to fix, on that field.');
     const [req34] = requirementsOf(
       [{ key: 'REQ-34', title: 'Refusals', completes: false, criteria: live }],
-      readClaims([...traced, open], BUILD),
+      readClaims([...traced, open], BUILD, null),
     );
     const rows = req34?.proven ?? [];
     expect(rows).toHaveLength(7);
@@ -193,7 +189,7 @@ describe('the media a highlight may show', () => {
   ]);
 
   it('takes what a claimed pass on the build cites, on its own issue, clips first, within the ceiling', () => {
-    const media = mediaOf(readClaims([claimed, held], BUILD), files, BUILD);
+    const media = mediaOf(readClaims([claimed, held], BUILD, null), files, BUILD);
     expect(media.map((m) => [m.attachmentId, m.kind])).toEqual([
       ['f-clip', 'clip'],
       ['f-shot', 'picture'],
@@ -210,20 +206,21 @@ describe('the media a highlight may show', () => {
     const elsewhere = criterion(1, 'BC-1', [
       verdict('pass', MERGED, '2026-10-09T10:00:00.000Z', { evidence: ['clip.webm'] }),
     ]);
-    expect(mediaOf(readClaims([elsewhere], BUILD), files, BUILD)).toEqual([]);
+    expect(mediaOf(readClaims([elsewhere], BUILD, null), files, BUILD)).toEqual([]);
   });
 });
 
-describe('proven is one rule: criterionCountsAsPass (BC-5)', () => {
-  // QA 0.4.0-dev.218: the header read 9 of 26 (a short counts as a pass, as the gate and the release
-  // record count) while the list showed 6; both now read the one rule, and a short is marked
+describe('proven is the rule a requirement counts by: requirements:unverifiedWhy (BC-5)', () => {
+  // QA 0.4.0-dev.218 read the header and the list by one rule; the owner's ruling of 2026-10-14 makes
+  // that rule the requirement's own (REQ-35 decision 7b261fca): a short is met short of its wording
+  // and is never verified, and under an independent judge only the judge's pass is
   const rows = [
     criterion(1, 'BC-1', [verdict('pass', BUILD, '2026-10-09T10:00:00.000Z')]),
     criterion(2, 'BC-2', [verdict('short', BUILD, '2026-10-09T10:00:00.000Z')]),
     criterion(3, 'BC-3', [verdict('fail', BUILD, '2026-10-09T10:00:00.000Z')]),
     criterion(4, 'BC-4', []),
   ];
-  const claims = readClaims(rows, BUILD);
+  const claims = readClaims(rows, BUILD, null);
   const req = {
     key: 'REQ-1',
     title: 'r',
@@ -231,13 +228,14 @@ describe('proven is one rule: criterionCountsAsPass (BC-5)', () => {
     criteria: new Map(rows.map((r) => [r.bc as string, r.statement])),
   };
 
-  it('lists a pass and a short as proven, the short marked, and counts the rest unproven', () => {
+  it('lists a pass as proven and counts a short with the rest as unproven', () => {
     const [listed] = requirementsOf([req], claims);
-    expect(listed?.proven.map((p) => [p.code, p.short])).toEqual([
-      ['BC-1', false],
-      ['BC-2', true],
-    ]);
-    expect(listed?.unproven).toBe(2);
+    expect(
+      listed?.proven.map((p) => [p.code, p.short]),
+      'REQ-35 decision 7b261fca: a short is never verified',
+    ).toEqual([['BC-1', false]]);
+    expect(listed?.unproven).toBe(3);
+    expect(listed?.business?.proven.map((p) => p.code)).toEqual(['BC-1']);
   });
 
   it('keeps highlights and media pass-only: a short is not claimed', () => {
@@ -248,6 +246,7 @@ describe('proven is one rule: criterionCountsAsPass (BC-5)', () => {
     const earlier = readClaims(
       [criterion(1, 'BC-1', [verdict('pass', MERGED, '2026-10-09T12:00:00.000Z')])],
       BUILD,
+      null,
     );
     expect(requirementsOf([req], earlier)[0]).toMatchObject({ proven: [], unproven: 1 });
     expect(knownIssuesOf(earlier)[0]).toMatchObject({
@@ -256,18 +255,17 @@ describe('proven is one rule: criterionCountsAsPass (BC-5)', () => {
     });
   });
 
-  it('reads a release nobody cut by its newest verdicts, as its record counts it, and claims nothing', () => {
-    const none = readClaims(rows, null);
+  it('reads a release nobody cut by its newest verdicts and claims nothing, a short not proven', () => {
+    const none = readClaims(rows, null, null);
     expect(requirementsOf([req], none)[0]?.proven.map((p) => [p.code, p.short])).toEqual([
       ['BC-1', false],
-      ['BC-2', true],
     ]);
     expect(claimableByRequirement(none).size).toBe(0);
   });
 
   // catalog-api 0.1.0 on dev: a draft listed its 133 criteria as proven and again as "not yet judged"
-  it('lists a draft criterion the page counts proven, and not short, never also as a known issue', () => {
-    const none = readClaims(rows, null);
+  it('lists a draft criterion the page counts proven never also as a known issue', () => {
+    const none = readClaims(rows, null, null);
     expect(
       knownIssuesOf(none).map((k) => [k.bc, k.standing, k.elsewhere?.verdict ?? null]),
     ).toEqual([
@@ -275,5 +273,50 @@ describe('proven is one rule: criterionCountsAsPass (BC-5)', () => {
       ['BC-3', 'not_judged', 'fail'],
       ['BC-4', 'not_judged', null],
     ]);
+  });
+});
+
+describe('under an independent judge, only the judge proves a criterion on the page', () => {
+  const builders = criterion(1, 'BC-1', [
+    verdict('pass', BUILD, '2026-10-09T10:00:00.000Z', { byBuilder: true }),
+  ]);
+  const nobodys = criterion(2, 'BC-2', [
+    verdict('pass', BUILD, '2026-10-09T10:00:00.000Z', { authored: false }),
+  ]);
+  const judgeThenBuilder = criterion(3, 'BC-3', [
+    verdict('pass', BUILD, '2026-10-09T09:00:00.000Z'),
+    verdict('short', BUILD, '2026-10-09T11:00:00.000Z', { byBuilder: true }),
+  ]);
+
+  it("counts neither the builder's own pass nor one naming no author, and says why on the known issue", () => {
+    const claims = readClaims([builders, nobodys], BUILD, 'independent');
+    expect(
+      claims.map((c) => c.proven),
+      "REQ-35 decision 7b261fca: under an independent judge only the judge's pass is verified",
+    ).toEqual([false, false]);
+    expect(claims.map((c) => c.claim.claimed)).toEqual([false, false]);
+    expect(knownIssuesOf(claims)).toEqual([
+      expect.objectContaining({
+        bc: 'BC-1',
+        standing: 'not_judged',
+        reason:
+          'passed by the run that built it, and this project counts only a pass from its independent judge',
+      }),
+      expect.objectContaining({
+        bc: 'BC-2',
+        standing: 'not_judged',
+        reason: "passed with no recorded author, so nothing shows it is the independent judge's",
+      }),
+    ]);
+  });
+
+  it("reads the judge's pass past the builder's newer short, as coverage does", () => {
+    const [claim] = readClaims([judgeThenBuilder], BUILD, 'independent');
+    expect(claim).toMatchObject({ proven: true, claim: { claimed: true } });
+  });
+
+  it("counts the builder's pass where the project names no independent judge", () => {
+    expect(readClaims([builders], BUILD, 'self')[0]?.proven).toBe(true);
+    expect(readClaims([builders], BUILD, null)[0]?.proven).toBe(true);
   });
 });
