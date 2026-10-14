@@ -15,12 +15,14 @@
 
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { AgentAccountRow } from "@/features/agent-accounts/types";
 import type { PatToken } from "@/features/settings/types";
 import type { ProjectConsoleItem } from "@/features/projects/types";
 import type { PulseResponse } from "@/features/overview/types";
-import { measureReach, type Reach } from "@/test-support/chrome-layout";
+import { measureReach, type Reach, WARM_HOOK_MS, warmChrome } from "@/test-support/chrome-layout";
+
+beforeAll(() => warmChrome(), WARM_HOOK_MS);
 
 const PHONE_COLUMN = 356;
 const PHONE = 390;

@@ -1,7 +1,7 @@
 // Lays a page out in a real Chrome and reports whether each control in a table's body can be scrolled
 // fully clear of the table's sticky column. jsdom has no layout, so a test of "can a phone user reach
 // this button" can only be run where a layout engine is: a width cap that is wrong reads green there.
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -12,7 +12,11 @@ const WEB_V2 = resolve(__dirname, "../..");
 const CHROMES = ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/bin/chromium-browser"];
 
 function chromeBinary(): string {
-  const found = process.env.CHROME_BIN || CHROMES.find((path) => existsSync(path));
+  const named = process.env.CHROME_BIN;
+  if (named && !existsSync(named)) {
+    throw new Error(`CHROME_BIN names ${named}, which is not a file: a layout test that cannot run is not a pass. Point it at a Chrome or Chromium binary.`);
+  }
+  const found = named || CHROMES.find((path) => existsSync(path));
   if (!found) {
     throw new Error(
       `No Chrome to lay the page out in: looked for ${CHROMES.join(", ")} and CHROME_BIN. Set CHROME_BIN to a Chrome or Chromium binary; a layout test that cannot run is not a pass.`,
@@ -31,6 +35,67 @@ export function appStylesheet(): Promise<string> {
     return result.css;
   })();
   return stylesheet;
+}
+
+/** What a first launch may take, and what the first stylesheet compile may take, each on its own clock. */
+export const WARM_LAUNCH_MS = 60_000;
+export const WARM_STYLESHEET_MS = 60_000;
+/** A `beforeAll` hook's timeout: it holds both steps, so it outlasts them and each names itself first. */
+export const WARM_HOOK_MS = WARM_LAUNCH_MS + WARM_STYLESHEET_MS + 30_000;
+
+export interface WarmOptions {
+  chrome?: string;
+  launchMs?: number;
+  stylesheetMs?: number;
+}
+
+function within<T>(what: string, ms: number, work: Promise<T>): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${what} did not finish within ${ms}ms`)), ms);
+  });
+  return Promise.race([work, late]).finally(() => clearTimeout(timer));
+}
+
+let warmed: Promise<void> | undefined;
+
+/**
+ * Pays what a first Chrome-backed case would otherwise pay inside its own test timeout: the app's
+ * stylesheet compile and the browser's first launch. Each runs under its own clock and fails with
+ * what it was waiting for, so a slow machine reads as a slow launch and never as a test that timed
+ * out. Call it from `beforeAll` with `WARM_HOOK_MS`; every case after it is a warm one.
+ */
+export function warmChrome(options: WarmOptions = {}): Promise<void> {
+  const run = async () => {
+    const { chrome = chromeBinary(), launchMs = WARM_LAUNCH_MS, stylesheetMs = WARM_STYLESHEET_MS } = options;
+    await within(`Compiling the app stylesheet for the layout tests`, stylesheetMs, appStylesheet());
+    const dir = mkdtempSync(join(tmpdir(), "forge-chrome-warm-"));
+    try {
+      await new Promise<void>((done, fail) => {
+        execFile(
+          chrome,
+          ["--headless=new", "--no-sandbox", "--disable-gpu", `--user-data-dir=${join(dir, "profile")}`, "--dump-dom", "about:blank"],
+          { timeout: launchMs, killSignal: "SIGKILL" },
+          (error) => {
+            if (!error) return done();
+            const timedOut = (error as NodeJS.ErrnoException & { killed?: boolean }).killed === true;
+            fail(
+              new Error(
+                timedOut
+                  ? `Chrome at ${chrome} did not finish its first launch within ${launchMs}ms, so the layout tests would carry that launch inside a test's own timeout.`
+                  : `Chrome at ${chrome} could not be launched: ${error.message}. A layout test that cannot run is not a pass.`,
+              ),
+            );
+          },
+        );
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  if (options.chrome !== undefined || options.launchMs !== undefined || options.stylesheetMs !== undefined) return run();
+  warmed ??= run();
+  return warmed;
 }
 
 export interface Measured {
