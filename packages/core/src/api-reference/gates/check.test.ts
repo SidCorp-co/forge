@@ -18,7 +18,11 @@ const hook = (r: { success: boolean }) => {
 const BUILT_IN = [...PAT_DOOR_REFUSALS.map((r) => `'${r.code}'`), "'INTERNAL_ERROR'"].join(' ');
 
 /** What the source files write, the built-in codes and the given file texts. */
-const writing = (...files: string[]) => stringsWrittenOutsideDeclarations([BUILT_IN, ...files]);
+const writing = (...files: string[]) =>
+  stringsWrittenOutsideDeclarations([
+    BUILT_IN,
+    ...files.map((file) => `import { fail } from '../declare/describe.js';\n${file}`),
+  ]);
 
 async function checked(
   app: Hono,
@@ -268,6 +272,15 @@ describe('each rule, planted once, continued', () => {
     );
     expect(written.has('CONFLICT')).toBe(true);
     expect(written.has('CONFLCIT')).toBe(false);
+  });
+
+  it('typo-code: a fail that is not the descriptor one, a template string and a quote are all writing', () => {
+    const written = stringsWrittenOutsideDeclarations([
+      "const fail = (code: string) => code; fail('LOCAL');",
+      'const code = `TEMPLATED`;',
+    ]);
+    expect(written.has('LOCAL')).toBe(true);
+    expect(written.has('TEMPLATED')).toBe(true);
   });
 
   it('typo-code: a call one file leaves open does not reach the next file', () => {
