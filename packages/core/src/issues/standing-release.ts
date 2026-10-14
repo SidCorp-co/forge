@@ -1,4 +1,4 @@
-// Whose turn an issue at the release gate is: the master while a criterion no longer passes or its
+// Whose turn an issue at the release gate is: the master while a criterion is no longer met or its
 // release note is unwritten, then the release itself, approved by a person where the project asks.
 
 import type { IssueWaitingKind } from '@forge/contracts/issue-standing';
@@ -16,15 +16,15 @@ export function releaseTurn(
   input: Pick<IssueStandingInput, 'criteria' | 'releaseApproval' | 'releaseNoted'>,
   running: boolean,
 ): Turn {
-  const { total, passing } = input.criteria;
-  if (passing < total) {
+  const { total, met } = input.criteria;
+  if (met < total) {
     return {
       group: 'stuck',
       waitingOn: wait(
         'master',
         MASTER,
         say('issues.standing.act.judgeAgain'),
-        say('issues.rule.criteriaStale', { n: total - passing, total }),
+        say('issues.rule.criteriaStale', { n: total - met, total }),
       ),
     };
   }

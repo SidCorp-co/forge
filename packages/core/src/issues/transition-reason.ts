@@ -88,31 +88,38 @@ export async function postLeaveComment(
 }
 
 /**
- * Whether this move is the kernel's hand-back of an issue nothing holds, along a recovery edge, to a
- * status that posts no reason of its own (`requiresAuthoredReason`): its reason is otherwise only on
- * the audit row, and the thread reads an issue moved back with no word of why. The reconciler's
- * wedge reset, which posts its own notice, gives no `transitionReason` and is not this.
+ * Whether this move is a hand-back of an issue nothing holds, along a recovery edge, to a status that
+ * posts no reason of its own (`requiresAuthoredReason`): its reason is otherwise only on the audit
+ * row, and the thread reads an issue moved back with no word of why. The kernel's carries its reason;
+ * a person's must (`transition-faults.ts:reasonFault`). The reconciler's wedge reset, which posts its
+ * own notice, gives no `transitionReason` and is not this.
  */
 function announcesRecovery(
   from: IssueStatus,
   to: IssueStatus,
   reason: string | undefined,
-  agency: 'human' | 'agent',
   recovering: boolean,
 ): boolean {
-  if (!recovering || from === to || agency !== 'agent') return false;
+  if (!recovering || from === to) return false;
   return !requiresAuthoredReason(from, to) && Boolean(reason?.trim());
 }
 
-function buildRecoveryBody(from: IssueStatus, to: IssueStatus, reason: string): string {
+function buildRecoveryBody(
+  from: IssueStatus,
+  to: IssueStatus,
+  reason: string,
+  agency: 'human' | 'agent',
+): string {
+  const heading = `↩ **Handed back — moved from \`${from}\` to \`${to}\`**`;
+  if (agency === 'human') return [heading, '', reason.trim()].join('\n');
   return [
-    `↩ **Handed back — moved from \`${from}\` to \`${to}\`**`,
+    heading,
     '',
     `Forge made this move, not a person: ${reason.trim()}. Nothing holds the issue any more, so it is back at the status its run took it from.`,
   ].join('\n');
 }
 
-/** Post why the kernel handed an issue back (`announcesRecovery`), in the transition's own transaction. */
+/** Post why an issue was handed back (`announcesRecovery`), the kernel's or a person's, in the transition's own transaction. */
 export async function postRecoveryNotice(
   args: {
     issue: { id: string };
@@ -126,13 +133,15 @@ export async function postRecoveryNotice(
 ): Promise<void> {
   const reason = args.options.transitionReason ?? '';
   const agency = actorAgency(args.actor);
-  if (!announcesRecovery(args.fromStatus, args.toStatus, reason, agency, args.recovering)) return;
+  if (!announcesRecovery(args.fromStatus, args.toStatus, reason, args.recovering)) return;
   await postIssueNotice(
     {
       issueId: args.issue.id,
       authorId: args.actor.type === 'user' ? args.actor.id : args.actor.ownerId,
-      body: buildRecoveryBody(args.fromStatus, args.toStatus, reason),
+      body: buildRecoveryBody(args.fromStatus, args.toStatus, reason, agency),
       intent: 'note',
+      // a person's reason is their own words, screened as every person's comment is
+      ...(agency === 'human' ? { authorsWords: true, screenedAt: '/reason' } : {}),
     },
     tx,
   );

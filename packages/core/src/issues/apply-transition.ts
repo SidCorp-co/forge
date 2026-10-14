@@ -199,6 +199,7 @@ export async function transitionIssueStatus(
   const reasonMissing = reasonFault({
     from: fromStatus,
     to: toStatus,
+    recovering,
     agency: actorAgency(actor),
     transitionReason: options.transitionReason,
     waitingKind: options.waitingKind,

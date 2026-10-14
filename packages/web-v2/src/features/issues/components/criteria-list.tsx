@@ -43,7 +43,7 @@ function verdictLines(v: CriterionVerdict, t: Copy, language: string, at: (iso: 
 /** Words of a criterion's statement a row shows; the rest is on the open row (REQ-43: a row is at most 12 words). */
 const ROW_WORDS = 8;
 
-type Filter = "all" | "fail" | "unjudged" | "pass" | "skipped";
+type Filter = "all" | "fail" | "unjudged" | "met" | "skipped";
 
 const MARK: Record<CriterionStanding, string> = { pass: "✓", short: "✓", fail: "✕", skipped: "↷", unresolved: "–", unjudged: "–" };
 const MARK_TONE: Record<CriterionStanding, string> = {
@@ -55,10 +55,11 @@ const MARK_TONE: Record<CriterionStanding, string> = {
   unjudged: "text-subtle",
 };
 
-/** The pill a standing is counted under: Short counts as a pass, and an unresolved commit as not judged. */
+/** The pill a standing is counted under: a pass and a short are both met (a short is never proven, so the
+ *  pill never says passing), and an unresolved commit is not judged. */
 const FILTER_OF: Record<CriterionStanding, Exclude<Filter, "all">> = {
-  pass: "pass",
-  short: "pass",
+  pass: "met",
+  short: "met",
   fail: "fail",
   skipped: "skipped",
   unresolved: "unjudged",
@@ -185,7 +186,7 @@ export function CriteriaList({
     { value: "all", label: t("issues.criteria.pill.all", { n: count("all") }) },
     { value: "fail", label: t("issues.criteria.pill.fail", { n: count("fail") }) },
     { value: "unjudged", label: t("issues.criteria.pill.unjudged", { n: count("unjudged") }) },
-    { value: "pass", label: t("issues.criteria.pill.pass", { n: count("pass") }) },
+    { value: "met", label: t("issues.criteria.pill.met", { n: count("met") }) },
     { value: "skipped", label: t("issues.criteria.pill.skipped", { n: count("skipped") }) },
   ];
   const shown = lines.filter((l) => filter === "all" || FILTER_OF[l.standing] === filter);

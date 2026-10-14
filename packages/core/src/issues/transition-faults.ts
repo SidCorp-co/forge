@@ -58,9 +58,27 @@ const hasText = (s: string | undefined) => Boolean(s?.trim());
 
 /** Reasons and kinds: the guards that read only the request. Asked before the write begins. */
 export function reasonFault(
-  ctx: Omit<GuardContext, 'executor' | 'issue' | 'leftStatus' | 'actorUserId' | 'facts'>,
+  ctx: Omit<GuardContext, 'executor' | 'issue' | 'leftStatus' | 'actorUserId' | 'facts'> & {
+    /** The move is the explicit hand-back along a recovery edge (`recovery: true`). */
+    recovering?: boolean;
+  },
 ): GuardFault | null {
   const details = { from: ctx.from, to: ctx.to };
+  // A person handing an issue back to open or approved says why: the kernel's own hand-back posts
+  // its reason (`transition-reason.ts:postRecoveryNotice`), and a person's with none left the next
+  // run reading an issue moved back with no word of why. `reopen` already asks for one below.
+  if (
+    ctx.recovering &&
+    ctx.agency === 'human' &&
+    (ctx.to === 'open' || ctx.to === 'approved') &&
+    !hasText(ctx.transitionReason)
+  ) {
+    return {
+      code: 'TRANSITION_REASON_REQUIRED',
+      detail: `a person's recovery move hands an \`in_progress\` issue back to ${quote(ctx.to)}, and carries why, as \`reason\`: it is posted on the issue, and the next run starts from it`,
+      details: { ...details, recovery: true },
+    };
+  }
   if (ctx.to === 'needs_info') {
     if (!hasText(ctx.transitionReason)) {
       return {

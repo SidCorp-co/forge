@@ -7,6 +7,7 @@
  * routes, against real Postgres.
  */
 
+import type { IssueCriteriaTally } from '@forge/contracts/issue-standing';
 import { criterionStandingOf } from '@forge/contracts/verdict-identity';
 import { verifiedOf } from '@forge/contracts/verified-rule';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -101,8 +102,8 @@ async function counted(issueId: string, req: string) {
   ).standing.coverage;
   return {
     latest: criteria[0]?.latest?.verdict ?? null,
-    tally: (rail.body as { standing: { criteria: { passing: number; skipped: number } } }).standing
-      .criteria,
+    // typed from the contract, so a renamed field breaks the typecheck rather than reading undefined
+    tally: (rail.body as { standing: { criteria: IssueCriteriaTally } }).standing.criteria,
     bc: coverage.find((c) => c.code === 'BC-1')?.verdict,
     // the release fold by the verified rule, as `release-facts.ts:criteriaAt` reads it: this project
     // names no independent judge, and the person judging is not the builder
@@ -130,7 +131,7 @@ describe('a person records "could not judge"', () => {
     });
     expect(await counted(issueId, req)).toEqual({
       latest: 'skipped',
-      tally: expect.objectContaining({ passing: 0, skipped: 1 }),
+      tally: expect.objectContaining({ met: 0, skipped: 1 }),
       bc: 'not_judged',
       release: { proven: 0, failing: 0, open: 1, unproven: 0, total: 1 },
     });
@@ -149,12 +150,12 @@ describe('a person records "could not judge"', () => {
   });
 
   // REQ-35 decision 7b261fca: a short is no verification, so neither the requirement's coverage nor
-  // the release fold counts it proven; the issue's passing tally still reads it met
+  // the release fold counts it proven; the issue's tally reads it met, never passing
   it("a short is met on the issue's tally and proven on neither the requirement's coverage nor the release fold, and could not judge takes it away", async () => {
     const { issueId, req } = await tracedClosedIssue();
     expect((await judge(issueId, 'short', 'Met, short of its wording')).status).toBe(201);
     expect(await counted(issueId, req)).toMatchObject({
-      tally: expect.objectContaining({ passing: 1, skipped: 0 }),
+      tally: expect.objectContaining({ met: 1, skipped: 0 }),
       bc: 'not_judged',
       release: { proven: 0, open: 0, unproven: 1 },
     });
@@ -163,7 +164,7 @@ describe('a person records "could not judge"', () => {
 
     expect(await counted(issueId, req)).toMatchObject({
       latest: 'skipped',
-      tally: expect.objectContaining({ passing: 0, skipped: 1 }),
+      tally: expect.objectContaining({ met: 0, skipped: 1 }),
       bc: 'not_judged',
       release: { proven: 0, open: 1, unproven: 0 },
     });
@@ -177,7 +178,7 @@ describe('a person records "could not judge"', () => {
 
     expect(await counted(issueId, req)).toMatchObject({
       latest: 'pass',
-      tally: expect.objectContaining({ passing: 1, skipped: 0 }),
+      tally: expect.objectContaining({ met: 1, skipped: 0 }),
       bc: 'passing',
       release: { proven: 1, open: 0 },
     });

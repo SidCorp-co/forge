@@ -82,8 +82,9 @@ export interface IssueEdgeRef {
 
 export interface IssueCriteriaTally {
 	total: number;
-	/** Latest verdict `pass` or `short`. */
-	passing: number;
+	/** Latest verdict `pass` or `short`: met, which is not proven. A short meets its criterion short of
+	 * its wording and never counts as proven (contracts `verified-rule.ts`), so this tally never says "passing". */
+	met: number;
 	failing: number;
 	/** Latest verdict `skipped`: judged, never earns. */
 	skipped: number;

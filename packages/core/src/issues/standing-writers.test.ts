@@ -39,7 +39,7 @@ const input = (
   owesAnswer: false,
   blockedBy: [],
   blocks: [],
-  criteria: { total: 0, passing: 0, failing: 0, skipped: 0 },
+  criteria: { total: 0, met: 0, failing: 0, skipped: 0 },
   requirement: null,
   module: null,
   feedback: [],
