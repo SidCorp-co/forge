@@ -1,10 +1,11 @@
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle, Markdown } from "@/design";
+import { Markdown } from "@/design";
 import type { IssueDetail, IssueStatus } from "../types";
+import { FlatSection } from "./flat-section";
 
 /* status-tuple: differs — the statuses where the work is built and not yet released, which is the
-   one reading that lets this card speak of the change in the future tense. It is a heading choice,
+   one reading that lets this section speak of the change in the future tense. It is a heading choice,
    not a lifecycle set, and a status outside it falls to the neutral heading rather than a guess. */
 export const BUILT_NOT_RELEASED: ReadonlySet<IssueStatus> = new Set<IssueStatus>([
   "developed",
@@ -33,17 +34,12 @@ function sentence(status: IssueStatus, userFacing: string, skip: boolean): strin
  * says only what the status establishes: a Reopened issue keeps its earlier note under "Release
  * note" instead of calling work that already shipped a change still to come.
  */
-export function ReleaseNoteCard({ issue }: { issue: Pick<IssueDetail, "status" | "releaseNotes"> }) {
+export function ReleaseNoteSection({ issue }: { issue: Pick<IssueDetail, "status" | "releaseNotes"> }) {
   const note = issue.releaseNotes;
   if (!note || issue.status === "dropped") return null;
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{heading(issue.status)}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <Markdown>{sentence(issue.status, note.userFacing, note.section === "Skip")}</Markdown>
-      </CardContent>
-    </Card>
+    <FlatSection title={heading(issue.status)}>
+      <Markdown>{sentence(issue.status, note.userFacing, note.section === "Skip")}</Markdown>
+    </FlatSection>
   );
 }

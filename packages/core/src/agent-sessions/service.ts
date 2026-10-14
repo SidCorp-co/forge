@@ -17,7 +17,7 @@ import { kindTuple, TRANSCRIPTLESS_SESSION_KINDS } from '../jobs/session-kinds.j
 /** SQL true for a row whose lane keeps no transcript in core (master, run_session). */
 const lanePutsNoTranscriptInCore = sql`${agentSessions.kind} IN ${kindTuple(TRANSCRIPTLESS_SESSION_KINDS)}`;
 
-/** A count nobody writes is not a count: null here only for a lane that records no transcript. */
+/** The one count of a session's entries, read by list and detail alike; null only for a lane that records no transcript. */
 const transcriptLength = sql<number | null>`CASE WHEN ${lanePutsNoTranscriptInCore} THEN NULL
   ELSE coalesce(jsonb_array_length(${agentSessions.messages}), 0) END`;
 
@@ -39,12 +39,7 @@ export const agentSessionListColumns = {
   pipelineControl: agentSessions.pipelineControl,
   pipelineTelemetry: agentSessions.pipelineTelemetry,
   pipelineHealth: agentSessions.pipelineHealth,
-  // The turn ledger answers without reading the transcript; its length answers only where the ledger has no rows.
-  messageCount: sql<number | null>`CASE WHEN ${lanePutsNoTranscriptInCore} THEN NULL ELSE coalesce((
-    SELECT max(t.turn_index) + 1
-    FROM agent_session_turns t
-    WHERE t.agent_session_id = "agent_sessions"."id"
-  ), jsonb_array_length(${agentSessions.messages}), 0) END`,
+  messageCount: transcriptLength,
   transcript: sql<SessionTranscript>`CASE WHEN ${lanePutsNoTranscriptInCore} THEN 'not-recorded' ELSE 'recorded' END`,
   failureReason: agentSessions.failureReason,
   failureDetail: agentSessions.failureDetail,
@@ -115,8 +110,7 @@ export async function readAgentSession(sessionId: string) {
   const [row] = await db
     .select({
       ...agentSessionListColumns,
-      messageCount: transcriptLength,
-      totalMessages: transcriptLength,
+      totalMessages: agentSessionListColumns.messageCount,
       messages: sql<unknown[]>`coalesce((
         SELECT jsonb_agg(x.e ORDER BY x.ord)
         FROM (

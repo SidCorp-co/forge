@@ -274,14 +274,27 @@ describe('a key that resolves to nothing is refused by name (ISS-1179)', () => {
 
 describe('the task actions are gone (ISS-1132)', () => {
   for (const action of ['createTask', 'listTasks', 'updateTask', 'deleteTask']) {
-    it(`${action} is refused by the tool's own unknown-action refusal`, async () => {
+    it(`${action} is refused by name, as removed by ISS-1132, with the actions still served`, async () => {
       const w = await seed();
       const res = await call(w.pat, { action, projectId: w.projectId });
       expect(res.isError).toBe(true);
-      expect(res.text).toContain('action');
-      expect(res.text).not.toContain('Task');
+      expect(res.text).toContain(`action \`${action}\` was removed`);
+      expect(res.text).toContain('subtasks were removed (ISS-1132)');
+      for (const served of ['list', 'get', 'create', 'update', 'transition', 'setAttributes']) {
+        expect(res.text).toContain(served);
+      }
+      expect(res.text).not.toContain('invalid_value');
+      expect(res.text.trimStart().startsWith('[')).toBe(false);
     });
   }
+
+  it('an action that never existed is refused as not a forge_issues action, not as removed', async () => {
+    const w = await seed();
+    const res = await call(w.pat, { action: 'vibes', projectId: w.projectId });
+    expect(res.isError).toBe(true);
+    expect(res.text).toContain('action `vibes` is not a forge_issues action');
+    expect(res.text).not.toContain('was removed');
+  });
 });
 
 /**

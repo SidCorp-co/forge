@@ -127,6 +127,10 @@
 
 ### Added
 
+- **The issue page's Description and release note are flat, like the sections below them.** Each was a bordered, rounded panel above the flat sections; each is now a hairline and a label heading, at desktop and phone width. (ISS-1132)
+
+- **The time-series tool's description names every metric it serves.** It listed six of eight and left out `queue_depth` and `runner_uptime`; the list now comes from the served metrics. (ISS-1132)
+
 - **Long lists draw only the rows in view.** A table of more than 100 rows scrolls in a frame of its own with its header kept in view, and tells a screen reader how many rows it holds. (ISS-1264)
 
 - **The API publishes its own reference.** `/api/openapi.json` describes every route's input, answers, errors and permission, `/api/reference` renders it and `/api/reference/flows` draws four flows; none needs a login. (ISS-1371)
@@ -2543,7 +2547,7 @@
   (ISS-1313)
 
 ### Removed
-- **Subtasks are gone.** `/api/tasks` and `/api/issues/:id/tasks` answer 404, `forge_issues` refuses `createTask`, `listTasks`, `updateTask` and `deleteTask`, and the Tasks tabs are removed. All 359 subtasks are deleted, and the priority 354 of them carried is withdrawn. (ISS-1132)
+- **Subtasks are gone.** `/api/tasks` and `/api/issues/:id/tasks` answer 404, `forge_issues` refuses `createTask`, `listTasks`, `updateTask` and `deleteTask` by name, and the Tasks tabs are removed. All 359 subtasks are deleted, and the priority 354 of them carried is withdrawn. (ISS-1132)
 - **`pass_rate` and `approve_rate` are gone from the metrics.** Asking for either is refused by name as retired, with the metrics still served listed. (ISS-1132)
 - **The attribute keys `blocking` and `supersedes` are gone.** Writing either is refused as unregistered; a blocking relation is a dependency edge. (ISS-1132)
 - **A refused `verdict` or `review` fence no longer names the step-context route,** which holds no typed verdict. It says no store holds one whole. (ISS-1132)
@@ -3175,7 +3179,7 @@
 ### Fixed
 
 - **A path the API does not serve is answered 404 naming it, whoever asks.** A request to one used to be told 401 with no token, or that its token was the wrong kind, or that it was not an admin, because a guard over the prefix spoke before routing could say nothing is there. A route that exists and is kept from a token still refuses it by name. (ISS-1305)
-- **A session's message count no longer reads 0 for work it never recorded.** Master and run sessions keep no transcript here, so they show no count and `transcript: not-recorded`; older sessions show their real length. (ISS-1241)
+- **A session's message count no longer reads 0 for work it never recorded.** Master and run sessions keep no transcript here, so they show no count; every other session shows its real length, the same in list and detail. (ISS-1241)
 
 - **The API reference page shows each operation's permission or door.** Sign-in, pairing and invitation routes are shown with no bearer, and a route no longer lists refusals from a gate registered after it. Flow steps read as sentences. (ISS-1371)
 
