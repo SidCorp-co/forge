@@ -95,8 +95,7 @@ const timeseriesInputSchema = z
 
 export const forgeMetricsProjectTimeseriesTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_metrics.project_timeseries',
-  description:
-    `Project time-series trend for the v2 dashboard charts (ISS-380). Returns a dense (gap-filled) bucketed series for one \`metric\` of ${METRICS.join(' | ')}, derived entirely from existing tables. Requires project membership. Params: \`projectId\`, \`metric\`, \`days\` (1..90, default 30), \`bucket\` (day|hour, default day), and \`groupBy=step\` (cost only). Returns \`{ metric, bucket, days, groupBy, series }\`.`,
+  description: `Project time-series trend for the v2 dashboard charts (ISS-380). Returns a dense (gap-filled) bucketed series for one \`metric\` of ${METRICS.join(' | ')}, derived entirely from existing tables. Requires project membership. Params: \`projectId\`, \`metric\`, \`days\` (1..90, default 30), \`bucket\` (day|hour, default day), and \`groupBy=step\` (cost only). Returns \`{ metric, bucket, days, groupBy, series }\`.`,
   inputSchema: zodToMcpSchema(timeseriesInputSchema),
   handler: async (args) => {
     const input = timeseriesInputSchema.parse(args);

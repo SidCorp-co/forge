@@ -24,7 +24,8 @@ const tool = forgeMetricsProjectTimeseriesTool({ principal: { userId: 'u1' } } a
 /** The names the description offers for `metric`, read from the sentence a caller reads. */
 function listedMetrics(description: string): string[] {
   const m = /one `metric` of ([^,]+), derived/.exec(description);
-  if (!m?.[1]) throw new Error('the description no longer states the metric list in its usual place');
+  if (!m?.[1])
+    throw new Error('the description no longer states the metric list in its usual place');
   return m[1].split(' | ');
 }
 
@@ -34,9 +35,8 @@ describe('forge_metrics.project_timeseries description', () => {
   });
 
   it('names every metric the input schema accepts, so none is served unannounced', () => {
-    const accepted = (
-      tool.inputSchema as { properties: { metric: { enum: string[] } } }
-    ).properties.metric.enum;
+    const accepted = (tool.inputSchema as { properties: { metric: { enum: string[] } } }).properties
+      .metric.enum;
     expect(accepted.length).toBeGreaterThan(0);
     for (const name of accepted) expect(tool.description).toContain(name);
   });

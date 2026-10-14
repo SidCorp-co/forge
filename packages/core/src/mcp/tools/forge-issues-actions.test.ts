@@ -18,7 +18,9 @@ describe('refuseUnservedIssueAction', () => {
   );
 
   it('refuses a name that was never an action as not one, not as removed', () => {
-    expect(() => refuseUnservedIssueAction('vibes')).toThrow(/`vibes` is not a forge_issues action/);
+    expect(() => refuseUnservedIssueAction('vibes')).toThrow(
+      /`vibes` is not a forge_issues action/,
+    );
   });
 
   it('does not match a removed name through the prototype chain', () => {
