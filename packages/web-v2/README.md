@@ -63,6 +63,9 @@ An entry (`witness/*.witness.tsx`) stubs core's reads, mounts the component and 
 used rather than only looked at declares `stages` in place of the probe: each acts on the same load
 in order and is shot as `<case>-<stage>.png` (`witness/chat-dock.witness.tsx` clicks and drags the
 Ask Agent panel). The page is a `file://` page in `<dir>`, so a file the component shows is put there
-before the run (`witness/feedback-evidence.witness.tsx` names the two it reads). Chrome is `WITNESS_CHROME`,
+before the run (`witness/feedback-evidence.witness.tsx` names the two it reads). `witness/build-page.mjs`
+bundles the entry: this package declares every module but its stylesheets free of side effects, so
+the entry alone is marked as having them, and a bundle that comes out empty is refused by name, as is
+an entry that never says it is ready, with what the page threw. Chrome is `WITNESS_CHROME`,
 else `google-chrome`. No CI job runs it: a screen change that can break at a width runs it and
 attaches what it printed.

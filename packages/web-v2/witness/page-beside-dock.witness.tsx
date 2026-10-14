@@ -14,7 +14,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Component, type ReactElement, type ReactNode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { type ChatDockApi, DOCK_OPEN_ON_KEY, useChatDockState } from "@/features/chat-dock/dock";
+import { useNavigate } from "@tanstack/react-router";
+import { type ChatDockApi, DOCK_OPEN_ON_KEY, DOCK_PINNED_KEY, useChatDockState } from "@/features/chat-dock/dock";
 import { DOCK_SIZE_KEY, PAGE_MIN_WIDTH } from "@/features/chat-dock/dock-size";
 import { ChatDock } from "@/features/conversations/components/chat-dock";
 import { ShellTopBar } from "@/features/shell/components/shell-top-bar";
@@ -28,6 +29,8 @@ import { InRouter } from "./router";
 
 const SIDEBAR = 280;
 const PANEL_FLOOR = 360;
+/** The pages' addresses, in the order PAGES below draws them. */
+const PAGE_PATHS = ["/projects/hop/issues/ISS-1", "/projects/hop/requirements/REQ-1", "/projects/hop/issues", "/projects/hop/agents/runs/run-5"] as const;
 
 // the fixtures' own pages set the query string with replaceState, which a file:// page refuses for a path
 const replace = window.history.replaceState.bind(window.history);
@@ -40,8 +43,10 @@ window.history.replaceState = (data, unused, url) => {
 };
 
 window.localStorage.clear();
-// the shell reads no route (it sits outside the router contexts below), so the panel is left open on ""
-window.localStorage.setItem(DOCK_OPEN_ON_KEY, JSON.stringify(""));
+// the shell reads the route, as the workspace layout's does, and each page is reached by navigating to
+// it: the panel is opened on the first page and pinned, so it stays open as the pages change
+window.localStorage.setItem(DOCK_OPEN_ON_KEY, JSON.stringify(PAGE_PATHS[0]));
+window.localStorage.setItem(DOCK_PINNED_KEY, JSON.stringify(true));
 // a read no fixture seeded stays in flight, as in the vi walking test; the panel's project list is empty
 window.fetch = (input: RequestInfo | URL) =>
   /\/projects(\?|$)/.test(String(input))
@@ -55,41 +60,44 @@ const named = (screens: ChromeScreen[], prefix: string): ChromeScreen => {
 };
 
 const PAGES = [
-  { name: "issue", path: "/projects/hop/issues/ISS-1", screen: named(ISSUE_SCREENS, "Issue detail") },
-  { name: "requirement", path: "/projects/hop/requirements/REQ-1", screen: named(REQUIREMENT_SCREENS, "Requirement detail · Overview") },
-  { name: "board", path: "/projects/hop/issues", screen: named(ISSUE_SCREENS, "Issues board · attention") },
-  { name: "run", path: "/projects/hop/agents/runs/run-5", screen: named(AGENT_SCREENS, "Run page · attempts") },
+  { name: "issue", path: PAGE_PATHS[0], screen: named(ISSUE_SCREENS, "Issue detail") },
+  { name: "requirement", path: PAGE_PATHS[1], screen: named(REQUIREMENT_SCREENS, "Requirement detail · Overview") },
+  { name: "board", path: PAGE_PATHS[2], screen: named(ISSUE_SCREENS, "Issues board · attention") },
+  { name: "run", path: PAGE_PATHS[3], screen: named(AGENT_SCREENS, "Run page · attempts") },
 ] as const;
 
 
-const at: { page: number; dock: ChatDockApi | null; show: (i: number) => void } = { page: 0, dock: null, show: () => {} };
+const at: { page: number; dock: ChatDockApi | null; show: (i: number) => Promise<void> } = { page: 0, dock: null, show: async () => {} };
 
+/** The workspace shell as the app draws it inside its router: a page is reached by navigating to it. */
 function Shell() {
   const [page, setPage] = useState(0);
   const dock = useChatDockState(null);
+  const navigate = useNavigate();
   const column = useRef<HTMLDivElement>(null);
   useEffect(() => {
     at.dock = dock;
     at.page = page;
-    at.show = setPage;
+    at.show = async (i) => {
+      setPage(i);
+      await navigate({ href: PAGES[i]?.path ?? PAGES[0].path });
+    };
   });
   const p = PAGES[page] ?? PAGES[0];
   return (
-    <InRouter key={p.path} at={p.path} pattern="/projects/$slug/$">
-      <TopBarSlotProvider>
-        {/* as app/(workspace)/layout.tsx draws it: data-shell and data-page are what globals.css reads */}
-        <div className="flex h-dvh overflow-hidden bg-app" data-shell>
-          <div className="hidden h-full flex-none border-r border-line bg-surface md:block" style={{ width: SIDEBAR }} data-witness="sidebar" />
-          <div ref={column} className="flex min-w-0 flex-1 flex-col" data-witness="page" data-witness-page={p.name} data-page>
-            <ShellTopBar chatOpen={dock.open} onToggleChat={dock.toggle} />
-            <main className="min-h-0 flex-1 overflow-y-auto pb-[calc(56px+env(safe-area-inset-bottom))] window-md:pb-0" data-witness="main">
-              <Page key={p.name} screen={p.screen} />
-            </main>
-          </div>
-          <ChatDock dock={dock} page={column} />
+    <TopBarSlotProvider>
+      {/* as src/routes/_workspace/route.tsx draws it: data-shell and data-page are what globals.css reads */}
+      <div className="flex h-dvh overflow-hidden bg-app" data-shell>
+        <div className="hidden h-full flex-none border-r border-line bg-surface md:block" style={{ width: SIDEBAR }} data-witness="sidebar" />
+        <div ref={column} className="flex min-w-0 flex-1 flex-col" data-witness="page" data-witness-page={p.name} data-page>
+          <ShellTopBar chatOpen={dock.open} onToggleChat={dock.toggle} />
+          <main className="min-h-0 flex-1 overflow-y-auto pb-[calc(56px+env(safe-area-inset-bottom))] window-md:pb-0" data-witness="main">
+            <Page key={p.name} screen={p.screen} />
+          </main>
         </div>
-      </TopBarSlotProvider>
-    </InRouter>
+        <ChatDock dock={dock} page={column} />
+      </div>
+    </TopBarSlotProvider>
   );
 }
 
@@ -233,8 +241,7 @@ function laidOut(): string[] {
 }
 
 async function settle(page: number, size: "large" | "half") {
-  at.show(page);
-  await pause(50);
+  await at.show(page);
   at.dock?.setSize(size);
   // the screens draw their seeded reads on the next frames; a run page's tab and a board's columns settle last
   await pause(400);
@@ -279,6 +286,8 @@ if (!root) throw new Error("the witness page has no #root to mount into");
 const queries = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 createRoot(root).render(
   <QueryClientProvider client={queries}>
-    <Shell />
+    <InRouter at={PAGE_PATHS[0]} pattern="/projects/$slug/$">
+      <Shell />
+    </InRouter>
   </QueryClientProvider>,
 );
