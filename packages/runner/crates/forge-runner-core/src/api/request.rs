@@ -63,13 +63,14 @@ fn failure_json(outcome: &Outcome, status: Option<u16>, message: &str) -> String
 }
 
 /// Whether a body is text to print with a newline, or bytes to write as they came: a content type
-/// that names text, JSON or XML, or none at all, and bytes that are UTF-8 either way.
+/// that names text, JSON or XML, and bytes that are UTF-8. A response that names no type is bytes,
+/// since a newline added to a download that happens to be UTF-8 is a different file.
 fn reads_as_text(content_type: Option<&str>, bytes: &[u8]) -> bool {
     if std::str::from_utf8(bytes).is_err() {
         return false;
     }
     let Some(kind) = content_type else {
-        return true;
+        return false;
     };
     let kind = kind.split(';').next().unwrap_or("").trim().to_lowercase();
     kind.starts_with("text/")
@@ -409,6 +410,32 @@ mod tests {
         let r = run(&c, &req("attachments/x/download")).await;
         assert_eq!(r.stdout, sent);
         assert!(!r.stdout_is_text);
+    }
+
+    #[tokio::test]
+    async fn a_body_that_names_no_type_is_bytes_even_when_it_is_utf8() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 8192];
+            let _ = sock.read(&mut buf).await;
+            let body = b"GIF89a plain ascii";
+            let head = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            let _ = sock.write_all(head.as_bytes()).await;
+            let _ = sock.write_all(body).await;
+            let _ = sock.shutdown().await;
+        });
+        let c = CoreClient::new(format!("http://{addr}"), "tok".to_string());
+        let r = run(&c, &req("attachments/x/download")).await;
+        assert_eq!(r.stdout, b"GIF89a plain ascii");
+        assert!(
+            !r.stdout_is_text,
+            "no newline may be added to a body with no declared type"
+        );
     }
 
     #[tokio::test]
