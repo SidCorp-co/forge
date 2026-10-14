@@ -8,11 +8,13 @@
  * held on one transport and not the other. Both read this now.
  */
 
-import { and, desc, eq, type SQL, sql } from 'drizzle-orm';
+import { and, desc, eq, or, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type AgentSessionStatus, agentSessions } from '../db/schema.js';
 import type { SessionTranscript } from '../db/session-vocabulary.js';
 import { kindTuple, TRANSCRIPTLESS_SESSION_KINDS } from '../jobs/session-kinds.js';
+import { buildListEnvelope } from '../mcp/tools/list-envelope.js';
+import { encodeSessionCursor, type SessionCursor } from './cursor.js';
 
 /** SQL true for a row whose lane keeps no transcript in core (master, run_session). */
 const lanePutsNoTranscriptInCore = sql`${agentSessions.kind} IN ${kindTuple(TRANSCRIPTLESS_SESSION_KINDS)}`;
@@ -80,20 +82,67 @@ export type AgentSessionQuery = {
   status?: AgentSessionStatus | undefined;
   issueId?: string | undefined;
   limit: number;
+  /** Resume strictly after this row of the `(updated_at, id)` order. */
+  after?: SessionCursor | undefined;
 };
 
-/** The lean rows an agent lists sessions with, newest first. */
+/**
+ * `updated_at` as the database's own microsecond text, which is what a cursor carries: a JS Date
+ * holds milliseconds, so a key round-tripped through one would skip or repeat rows that differ
+ * only below the millisecond.
+ */
+const updatedAtKey = sql<string>`to_char(${agentSessions.updatedAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
+
+/**
+ * The lean rows an agent lists sessions with, newest first, `limit` of them from `after`. Each row
+ * carries its `cursorKey`; {@link sessionListEnvelope} turns the rows into the page and mints the
+ * token that resumes it.
+ */
 export async function listAgentSessionsForMcp(q: AgentSessionQuery) {
   const conds: SQL[] = [eq(agentSessions.projectId, q.projectId)];
   if (q.status) conds.push(eq(agentSessions.status, q.status));
   if (q.issueId) conds.push(sql`${agentSessions.metadata}->>'issueId' = ${q.issueId}`);
+  if (q.after) {
+    const at = sql`${q.after.updatedAtKey}::timestamptz`;
+    conds.push(
+      or(
+        sql`${agentSessions.updatedAt} < ${at}`,
+        and(sql`${agentSessions.updatedAt} = ${at}`, sql`${agentSessions.id} < ${q.after.id}::uuid`),
+      ) as SQL,
+    );
+  }
 
   return db
-    .select(agentSessionMcpListColumns)
+    .select({ ...agentSessionMcpListColumns, cursorKey: updatedAtKey })
     .from(agentSessions)
     .where(and(...conds))
-    .orderBy(desc(agentSessions.updatedAt))
+    .orderBy(desc(agentSessions.updatedAt), desc(agentSessions.id))
     .limit(q.limit);
+}
+
+/**
+ * The page both surfaces answer with. `rows` is what {@link listAgentSessionsForMcp} read with
+ * `limit + 1`; `nextCursor` is set exactly when the read stopped short of the project's rows,
+ * whether the limit or the response-size cap stopped it, and `hasMore` is that same fact.
+ */
+export function sessionListEnvelope(
+  rows: Awaited<ReturnType<typeof listAgentSessionsForMcp>>,
+  limit: number,
+  hint: string,
+) {
+  const keyById = new Map(rows.map((r) => [r.id, r.cursorKey]));
+  const items = rows.map(({ cursorKey: _key, ...row }) => row);
+  return buildListEnvelope({
+    key: 'sessions',
+    items,
+    limit,
+    hint,
+    cursor: {
+      more: rows.length > limit,
+      of: (item) =>
+        encodeSessionCursor({ updatedAtKey: keyById.get(item.id) as string, id: item.id }),
+    },
+  });
 }
 
 /** How many messages a detail read returns. Both the REST route and the MCP tool take this tail. */

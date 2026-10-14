@@ -11,6 +11,7 @@ export const listQuerySchema = z.object({
   issueId: z.uuid().optional(),
   status: z.enum(agentSessionStatuses).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
+  cursor: z.string().min(1).optional(),
 });
 
 /** The lean row of the session list: no transcript, usage, diff or pipeline blobs. */
@@ -43,6 +44,7 @@ export const projectSessionsSchema = z.object({
   returned: z.number(),
   limit: z.number(),
   hasMore: z.boolean(),
+  nextCursor: z.string().nullable(),
   truncated: z.literal(true).optional(),
   truncatedBy: z.enum(['limit', 'response-size', 'limit+response-size']).optional(),
   notice: z.string().optional(),
@@ -52,8 +54,11 @@ const notMember = fail('FORBIDDEN', 'the caller is not a member of the project')
 
 export const listProjectSessions = describeOperation({
   summary: "List a project's agent sessions without transcripts, newest first",
+  description:
+    'Ordered by `updatedAt`, newest first. A response cut short by `limit` or by the response-size cap carries `nextCursor`; pass it back as `cursor` and repeat until it is `null`, which is also when `hasMore` is false. A session whose `updatedAt` moves while you read, as every heartbeat moves it, jumps to the head of the order, so a session you had not yet read can be missed by a walk that is still running.',
   responses: {
     200: json(projectSessionsSchema),
+    400: fail('BAD_REQUEST', 'a query value is not valid, among them a `cursor` this list did not mint'),
     403: notMember,
     404: fail('NOT_FOUND', 'no such project'),
   },
