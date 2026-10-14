@@ -133,17 +133,22 @@ describe('one call adds a connection and binds its projects (FB-128 BC-1, BC-3)'
     expect((await bindingsOf(second.id))[0]?.connection_id).toBe(id);
   });
 
-  it('writes the switched-off binding holding a project’s slot again rather than refusing the slot', async () => {
+  it('writes the switched-off binding holding a project’s slot again rather than refusing the slot, and says it did', async () => {
     const created = await api(session, 'POST', '/api/integration-connections', {
       provider: 'agent',
       bindings: [item(first.id)],
     });
     const [binding] = await bindingsOf(first.id);
-    const written = (created.body.bindings as Array<{ revision: number }>)[0];
+    type Bound = { revision: number; rewroteSwitchedOff: unknown };
+    const written = (created.body.bindings as Bound[])[0];
+    expect(written?.rewroteSwitchedOff, 'a fresh slot rewrites nothing').toBeNull();
     const off = await api(session, 'DELETE', `/api/projects/${first.id}/bindings/${binding?.id}`, {
       baseRevision: written?.revision,
     });
     expect(off.status, JSON.stringify(off.body)).toBe(200);
+    const [switchedOff] = await rows<{ revision: number }>(
+      sql`SELECT revision FROM integration_bindings WHERE id = ${binding?.id}`,
+    );
 
     const again = await api(session, 'POST', '/api/integration-connections', {
       provider: 'agent',
@@ -155,6 +160,10 @@ describe('one call adds a connection and binds its projects (FB-128 BC-1, BC-3)'
     expect(after.length).toBe(1);
     expect(after[0]?.id).toBe(binding?.id);
     expect(after[0]?.active).toBe(true);
+    expect(
+      (again.body.bindings as Bound[])[0]?.rewroteSwitchedOff,
+      'the response names the switched-off binding it wrote over: an unreported normalization is a guess',
+    ).toEqual({ revision: switchedOff?.revision, connection: binding?.connection_id });
   });
 
   it('leaves the binding document door writing one binding through the same checks', async () => {

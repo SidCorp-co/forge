@@ -20,6 +20,7 @@ import { actorFor, can, projectResource } from '../permissions/index.js';
 import {
   type ApiRefusal,
   type BindingsItem,
+  type SwitchedOffSlot,
   slotFor,
   writeBindings,
 } from '../project-config/index.js';
@@ -42,6 +43,8 @@ type BoundOutcome =
         bindingId: string;
         revision: number;
         created: boolean;
+        /** The switched-off binding this write took over in the project's slot, or null: said, never silent. */
+        rewroteSwitchedOff: SwitchedOffSlot | null;
         effects: Record<string, unknown>;
       }>;
     }
@@ -84,29 +87,35 @@ export async function bindConnectionInto(args: {
   }
   if (refused.length > 0) return { ok: false, refusals: refused };
 
-  const documents: BindingsItem[] = await Promise.all(
-    items.map(async (item) => {
-      const provider = String(item.target.provider ?? connection.provider);
-      const label = typeof item.target.label === 'string' ? item.target.label : '';
-      const slot = await slotFor(item.projectId, provider, label, item.role);
-      return {
-        projectId: item.projectId,
-        bindingId: slot.bindingId,
-        baseRevision: slot.baseRevision,
-        raw: {
-          $schema: `${SCHEMA_BASE}/binding-v1.json`,
-          version: 1,
-          id: slot.bindingId,
-          role: item.role,
-          connection: connection.id,
-          ...(item.agentAccess ? { agentAccess: item.agentAccess } : {}),
-          active: true,
-          ...(item.instructions ? { instructions: item.instructions } : {}),
-          target: item.target,
-        },
-      };
-    }),
+  const slots = await Promise.all(
+    items.map((item) =>
+      slotFor(
+        item.projectId,
+        String(item.target.provider ?? connection.provider),
+        typeof item.target.label === 'string' ? item.target.label : '',
+        item.role,
+      ),
+    ),
   );
+  const documents: BindingsItem[] = items.map((item, index) => {
+    const slot = slots[index] as (typeof slots)[number];
+    return {
+      projectId: item.projectId,
+      bindingId: slot.bindingId,
+      baseRevision: slot.baseRevision,
+      raw: {
+        $schema: `${SCHEMA_BASE}/binding-v1.json`,
+        version: 1,
+        id: slot.bindingId,
+        role: item.role,
+        connection: connection.id,
+        ...(item.agentAccess ? { agentAccess: item.agentAccess } : {}),
+        active: true,
+        ...(item.instructions ? { instructions: item.instructions } : {}),
+        target: item.target,
+      },
+    };
+  });
 
   const outcome = await writeBindings({
     userId,
@@ -137,6 +146,7 @@ export async function bindConnectionInto(args: {
       bindingId: (documents[i] as BindingsItem).bindingId,
       revision: h.revision,
       created: h.created,
+      rewroteSwitchedOff: (slots[i] as (typeof slots)[number]).rewrites,
       effects: h.effects,
     })),
   };

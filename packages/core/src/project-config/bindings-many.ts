@@ -96,19 +96,30 @@ export async function writeBindings(input: {
 /**
  * The binding a new document for (project, provider, label) writes: the switched-off service
  * binding already holding that slot, at its revision, or a new id. A switched-off row keeps its
- * slot (`integration_bindings_service_uq` has no `active` predicate), so binding again writes it.
+ * slot (`integration_bindings_service_uq` has no `active` predicate), so binding again writes it,
+ * and `rewrites` names the row it wrote over so the caller can say so: a normalization nobody
+ * reports is a guess.
  */
 export async function slotFor(
   projectId: string,
   provider: string,
   label: string,
   role: string,
-): Promise<{ bindingId: string; baseRevision: number | null }> {
+): Promise<{ bindingId: string; baseRevision: number | null; rewrites: SwitchedOffSlot | null }> {
   if (role === 'service') {
     const held = (await store.listProjectBindings(projectId)).find(
       (b) => b.role === 'service' && b.provider === provider && b.label === label && !b.active,
     );
-    if (held) return { bindingId: held.id, baseRevision: held.revision };
+    if (held) {
+      return {
+        bindingId: held.id,
+        baseRevision: held.revision,
+        rewrites: { revision: held.revision, connection: held.connectionId },
+      };
+    }
   }
-  return { bindingId: randomUUID(), baseRevision: null };
+  return { bindingId: randomUUID(), baseRevision: null, rewrites: null };
 }
+
+/** The switched-off binding a bind wrote over: the revision it was read at, and the connection it named. */
+export type SwitchedOffSlot = { revision: number; connection: string };
