@@ -204,8 +204,9 @@ installed. The steps below install it.
     **Check:** if you did, the file starts with `{`, the next line is
     `"mcpServers": {`, and the word `forge` appears on the line after that.
 
-32. If the window holds any other text, follow **If the file already has text in
-    it** at the end of this page. You go on to step 33 when you have finished it.
+32. If the window held any other text when you opened the file in step 29, follow
+    **If the file already has text in it** at the end of this page. You go on to step 33 when you have finished
+    it.
 
     **Check:** the file has `"forge": {` in it.
 

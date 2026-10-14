@@ -132,8 +132,9 @@ settings Forge writes for you, and paste them into Cursor.
     **Check:** if you did, the file holds `"forge"` inside `"mcpServers"`, with
     your token in it.
 
-23. If the file already lists other servers under `"mcpServers"`, follow
-    **If the file already lists other servers** at the end of this page. You go
+23. If the file already listed other servers under `"mcpServers"` when Cursor
+    opened it, follow **If the file already lists other servers** at the end of
+    this page. You go
     on to step 24 when you have finished it.
 
     **Check:** the file holds `"forge"` inside `"mcpServers"`, with your token in
