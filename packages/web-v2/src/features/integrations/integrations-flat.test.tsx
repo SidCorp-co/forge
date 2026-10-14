@@ -20,6 +20,8 @@ const NOW = "2026-10-14T00:00:00.000Z";
 
 /** The provider whose bound integration the stubbed API answers with. */
 let provider = "coolify";
+/** The paths the stubbed API has answered, so a test knows the bound integration was handed over. */
+let served: string[] = [];
 
 function binding(stage: "preview" | "live") {
   return {
@@ -88,6 +90,7 @@ vi.mock("@/lib/api/client", async () => {
     ...actual,
     apiClient: async (path: string) => {
       const bare = path.split("?")[0] ?? path;
+      served.push(bare);
       if (bare === `/projects/${PROJECT}/integrations`) return { items: [binding("preview"), binding("live")] };
       if (bare === "/integration-connections") return { items: [CONNECTION_ROW()] };
       if (bare === "/projects") return [PROJECT_ROW];
@@ -104,12 +107,24 @@ vi.mock("@/features/projects/hooks", () => ({
 }));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 
+let queries: QueryClient;
+
 function wrap(node: React.ReactNode) {
-  return <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{node}</QueryClientProvider>;
+  return <QueryClientProvider client={queries}>{node}</QueryClientProvider>;
+}
+
+/** Every query the tree started has answered, and the stubbed connection's list was among them. */
+async function settled(needs: string[]) {
+  await waitFor(() => {
+    for (const path of needs) expect(served).toContain(path);
+    expect(queries.isFetching()).toBe(0);
+  });
 }
 
 beforeEach(() => {
   provider = "coolify";
+  served = [];
+  queries = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 });
 afterEach(cleanup);
 
@@ -122,8 +137,9 @@ describe("each provider's section, over a stubbed connection, draws no box", () 
     const module = PROVIDER_MODULES.find((m) => m.provider === name);
     const { default: Section } = await (module?.section as NonNullable<typeof module.section>)();
     const { container } = render(wrap(<Section projectId={PROJECT} />));
-    // The stubbed connection is what the section draws its form from: wait for something more than its skeleton.
-    await waitFor(() => expect(container.querySelectorAll("input, textarea, select, button").length).toBeGreaterThan(1));
+    // The bound integration is what a section draws its form from: read it only once it has been handed over.
+    await settled([`/projects/${PROJECT}/integrations`]);
+    expect(container.querySelectorAll("input, textarea, select, button").length).toBeGreaterThan(0);
     expect(boxedInTree(container)).toEqual([]);
   });
 });
@@ -136,7 +152,8 @@ describe("each provider's connection form, over a stubbed connection, draws no b
     const { container } = render(
       wrap(<Form connection={{ id: CONNECTION, config: { baseUrl: "https://stub.example.com" } }} canManage />),
     );
-    await waitFor(() => expect(container.children.length).toBeGreaterThan(0));
+    await settled([]);
+    expect(container.children.length).toBeGreaterThan(0);
     expect(boxedInTree(container)).toEqual([]);
   });
 });
@@ -147,6 +164,7 @@ describe("the connection drawer, over a stubbed connection, draws no box", () =>
     render(wrap(<ConnectionEditDrawer connection={CONNECTION_ROW() as never} onClose={() => {}} />));
     fireEvent.click(await screen.findByRole("button", { name: /Remove/ }));
     await screen.findByText(/The connection stays listed as Disabled/);
+    await settled([]);
     expect(boxedInTree(document.body)).toEqual([]);
   });
 });

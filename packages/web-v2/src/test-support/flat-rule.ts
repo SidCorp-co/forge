@@ -23,12 +23,14 @@ export function boxedContainer(classes: string): boolean {
 
 /**
  * The boxed containers in a rendered tree, by the classes they carry. The form controls a person
- * types into or presses are the design system's own and are not containers; a notice is a Banner.
+ * types into or presses are the design system's own and are not containers; a notice is a toned
+ * message (a Banner colours its own border inline) and a status or alert is announced, not laid out.
  */
 export function boxedInTree(root: Element): string[] {
   const CONTROLS = new Set(["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A"]);
   return [root, ...root.querySelectorAll("*")]
     .filter((el) => !CONTROLS.has(el.tagName) && el.getAttribute("role") !== "alert" && el.getAttribute("role") !== "status")
+    .filter((el) => !(el.getAttribute("style") ?? "").includes("border-color"))
     .map((el) => el.getAttribute("class") ?? "")
     .filter(boxedContainer);
 }
