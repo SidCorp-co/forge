@@ -162,10 +162,12 @@ describe("the keyboard", () => {
     expect(document.activeElement).toHaveAttribute("data-index", "1299");
   });
 
-  it("leaves Shift+End to the browser, which selects with it", async () => {
+  it("leaves Shift+End, Alt+End and Meta+End to the browser, which selects or navigates with them", async () => {
     const first = await opened();
-    expect(fireEvent.keyDown(first, { key: "End", shiftKey: true })).toBe(true);
-    expect(document.activeElement).toBe(first);
+    for (const modifier of [{ shiftKey: true }, { altKey: true }, { metaKey: true }]) {
+      expect(fireEvent.keyDown(first, { key: "End", ...modifier })).toBe(true);
+      expect(document.activeElement).toBe(first);
+    }
   });
 
   it("leaves End alone inside a text field in a row", async () => {

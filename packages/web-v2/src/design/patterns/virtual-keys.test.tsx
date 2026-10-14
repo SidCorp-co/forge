@@ -40,6 +40,7 @@ describe("the first press of End lands on the last row", () => {
               const landing = await tab.evaluate<Landing>("window.landing()");
               expect(landing.lastDrawn, `the last row was not in the document after one press: ${JSON.stringify(landing)}`).toBe(true);
               expect(Math.abs(landing.shortBy ?? Number.NaN), `one press rested ${landing.shortBy}px from the last row: ${JSON.stringify(landing)}`).toBeLessThanOrEqual(1);
+              expect(landing.focused, JSON.stringify(landing)).toBe(kind === "table" ? "0" : "1299");
             }), 30_000);
         }
       }
