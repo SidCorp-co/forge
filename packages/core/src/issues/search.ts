@@ -1,4 +1,3 @@
-import { zValidator } from '@hono/zod-validator';
 import {
   and,
   count,
@@ -14,6 +13,8 @@ import {
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import {
   type IssueStatus,
@@ -45,6 +46,7 @@ import { listModulesForIssues, resolveModuleIdsTolerant } from './label-service.
 import { issueListPageQuery, serializeRestListRow } from './list-projection.js';
 import { pipelineHealthUnderived, safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import { buildIssueSearchCondition, matchedSearchFieldsSql } from './search-predicate.js';
+import { issueSearchSchema, type SearchItem, searchIssues } from './search-reference.js';
 import { IssueSearchKeyRefused, type IssueSearchTerm, readIssueSearchTerm } from './search-term.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
 import {
@@ -251,6 +253,7 @@ searchRoutes.use('*', requireAuth(), assertEmailVerified());
 
 searchRoutes.get(
   '/:id/issues/search',
+  searchIssues,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -328,9 +331,12 @@ searchRoutes.get(
         // is told so rather than left with no counts at all.
         const empty = listResponse(c, [], 0, { limit: q.limit, offset: q.offset });
         return c.json(
-          q.withBuckets
-            ? { ...empty, buckets: { byStatus: {}, byWorkState: emptyWorkStateCounts() } }
-            : empty,
+          answer(
+            issueSearchSchema,
+            q.withBuckets
+              ? { ...empty, buckets: { byStatus: {}, byWorkState: emptyWorkStateCounts() } }
+              : empty,
+          ),
         );
       }
       both(
@@ -364,7 +370,7 @@ searchRoutes.get(
     const total = Number(n);
 
     const searchPrefix = await activeIssuePrefix(projectId);
-    let serialized: Record<string, unknown>[] = rows.map((r) => ({
+    let serialized: SearchItem[] = rows.map((r) => ({
       ...serializeRestListRow(r, searchPrefix),
     }));
 
@@ -428,36 +434,30 @@ searchRoutes.get(
       }));
     }
 
-    const withBuckets = <T>(env: T) => (buckets ? { ...env, buckets } : env);
+    const reply = (items: SearchItem[]) => {
+      const page = listResponse(c, items, total, q);
+      return c.json(answer(issueSearchSchema, buckets ? { ...page, buckets } : page));
+    };
 
-    if (!q.withAgentSessions || serialized.length === 0) {
-      return c.json(withBuckets(listResponse(c, serialized, total, q)));
-    }
+    if (!q.withAgentSessions || serialized.length === 0) return reply(serialized);
 
     const ids = serialized.map((r) => r.id as string);
     const [map, heldMap] = await Promise.all([
       hydrateAgentSessionsForIssues(projectId, ids),
       hydrateHeldForIssues(ids),
     ]);
-    return c.json(
-      withBuckets(
-        listResponse(
-          c,
-          serialized.map((r) => {
-            const bucket = map.get(r.id as string);
-            const hold = heldMap.get(r.id as string);
-            return {
-              ...r,
-              agentSessions: bucket?.agentSessions ?? [],
-              agentStatus: bucket?.agentStatus ?? null,
-              held: hold?.held,
-              lastCheckInAt: hold?.lastCheckInAt,
-            };
-          }),
-          total,
-          q,
-        ),
-      ),
+    return reply(
+      serialized.map((r) => {
+        const bucket = map.get(r.id as string);
+        const hold = heldMap.get(r.id as string);
+        return {
+          ...r,
+          agentSessions: bucket?.agentSessions ?? [],
+          agentStatus: bucket?.agentStatus ?? null,
+          held: hold?.held,
+          lastCheckInAt: hold?.lastCheckInAt,
+        };
+      }),
     );
   },
 );

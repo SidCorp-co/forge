@@ -1,8 +1,9 @@
-import { zValidator } from '@hono/zod-validator';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { RULES } from '../config/rate-limits.js';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
@@ -10,6 +11,7 @@ import { rateLimit } from '../middleware/rate-limit.js';
 import { assertNotAgent } from './agent-account.js';
 import { setAuthCookie, setRefreshCookie } from './cookie.js';
 import { signUserToken } from './jwt.js';
+import { login, loginAnswerSchema } from './login-reference.js';
 import { getDummyPasswordHash, verifyPassword } from './password.js';
 import { issueRefreshToken } from './refresh.js';
 
@@ -26,6 +28,7 @@ loginRoutes.use('/local', rateLimit(RULES.authLocal, { name: 'authLocal' }));
 
 loginRoutes.post(
   '/local',
+  login,
   zValidator('json', loginSchema, (result) => {
     if (!result.success) {
       throw new HTTPException(400, {
@@ -70,14 +73,16 @@ loginRoutes.post(
     setAuthCookie(c, token);
     setRefreshCookie(c, refreshToken);
 
-    return c.json({
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        emailVerified: user.emailVerifiedAt !== null,
-      },
-      emailVerificationRequired: user.emailVerifiedAt === null,
-    });
+    return c.json(
+      answer(loginAnswerSchema, {
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          emailVerified: user.emailVerifiedAt !== null,
+        },
+        emailVerificationRequired: user.emailVerifiedAt === null,
+      }),
+    );
   },
 );

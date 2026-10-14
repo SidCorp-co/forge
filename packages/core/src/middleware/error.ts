@@ -14,7 +14,7 @@ type ErrorBody = { code: string; message: string; details?: unknown };
 
 const isProd = process.env.NODE_ENV === 'production';
 
-function statusToCode(status: number): string {
+export function statusToCode(status: number): string {
   switch (status) {
     case 400:
       return 'BAD_REQUEST';

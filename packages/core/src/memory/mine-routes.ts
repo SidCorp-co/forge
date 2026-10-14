@@ -2,12 +2,15 @@
  * ISS-1034 — `GET /api/memory/mine`, `DELETE /api/memory/mine/:id`: what the
  * assistant remembered on the caller's behalf, and the way to take it back.
  */
-import { zValidator } from '@hono/zod-validator';
+
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { deleteMyNote, listMyNotes, mineSchema } from './mine-routes-reference.js';
 import { deleteMine, findMine, listMine } from './mine-service.js';
 
 const listQuerySchema = z.object({ projectId: z.uuid().optional() });
@@ -21,6 +24,7 @@ memoryMineRoutes.use('*', requireAuth(), assertEmailVerified());
 
 memoryMineRoutes.get(
   '/mine',
+  listMyNotes,
   zValidator('query', listQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -38,12 +42,13 @@ memoryMineRoutes.get(
       }
       if (ok) items.push(row);
     }
-    return c.json({ items });
+    return c.json(answer(mineSchema, { items }));
   },
 );
 
 memoryMineRoutes.delete(
   '/mine/:id',
+  deleteMyNote,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),

@@ -13,16 +13,18 @@
  * uses.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import { agentSessionEvents } from '../db/schema-agent-session-events.js';
 import { maybeDeriveIncrementalFor } from '../jobs/session-transcript.js';
 import type { AuthVars } from '../middleware/auth.js';
+import * as ref from './events-routes-reference.js';
 import {
   assertDeviceOwnsSession,
   badRequest,
@@ -31,25 +33,7 @@ import {
   loadSessionOr404,
 } from './session-access.js';
 
-/** How many lines one POST may carry, matching the runner's own chunking. */
-const MAX_BATCH = 100;
-
-const eventInputSchema = z
-  .object({
-    seq: z.number().int().min(1),
-    kind: z.literal('stdout'),
-    data: z.record(z.string(), z.unknown()),
-    ts: z.iso.datetime().optional(),
-  })
-  .strict();
-
-const eventBatchSchema = z
-  .object({
-    events: z.array(eventInputSchema).min(1).max(MAX_BATCH),
-  })
-  .strict();
-
-type LineEvent = z.infer<typeof eventInputSchema>;
+type LineEvent = z.infer<typeof ref.eventInputSchema>;
 
 const conflict = (message: string, code: string) =>
   new HTTPException(409, { message, cause: { code } });
@@ -101,10 +85,11 @@ export const agentSessionEventsRoutes = new Hono<{ Variables: AuthVars }>();
 
 agentSessionEventsRoutes.post(
   '/:id/events',
+  ref.postSessionEvents,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
-  zValidator('json', eventBatchSchema, (r) => {
+  zValidator('json', ref.eventBatchSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
@@ -169,12 +154,12 @@ agentSessionEventsRoutes.post(
     void maybeDeriveIncrementalFor({ kind: 'chat' }, sessionId, events.length);
 
     return c.json(
-      {
+      answer(ref.linesAcceptedSchema, {
         accepted: inserted.length,
         duplicates: events.length - inserted.length,
         firstSeq: events[0]?.seq ?? null,
         lastSeq: events[events.length - 1]?.seq ?? null,
-      },
+      }),
       200,
     );
   },

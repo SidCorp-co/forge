@@ -9,6 +9,7 @@ import { db } from '../db/client.js';
 import { type IssueCreationChannel, users } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { readBearerToken } from './bearer.js';
+import { refuses } from './declarations.js';
 import { beginPatRequest } from './pat-rest-surface.js';
 
 export type AuthVars = {
@@ -123,7 +124,7 @@ async function admitPat(
 }
 
 export function requireAuth(): MiddlewareHandler<{ Variables: AuthVars }> {
-  return async (c, next) => {
+  const gate: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next) => {
     const token = readBearerToken(c);
 
     if (isPatLike(token)) return admitPat(c, token, next);
@@ -142,10 +143,18 @@ export function requireAuth(): MiddlewareHandler<{ Variables: AuthVars }> {
 
     await next();
   };
+  return refuses(gate, [
+    { status: 401, code: 'UNAUTHENTICATED', when: 'no bearer token and no session cookie' },
+    {
+      status: 401,
+      code: 'INVALID_TOKEN',
+      when: 'the session token or personal access token does not verify',
+    },
+  ]);
 }
 
 export function requireUserOrDevice(): MiddlewareHandler<{ Variables: AuthVars }> {
-  return async (c, next) => {
+  const gate: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next) => {
     const token = readBearerToken(c);
 
     if (!isPatLike(token)) {
@@ -171,6 +180,14 @@ export function requireUserOrDevice(): MiddlewareHandler<{ Variables: AuthVars }
     c.set('agency', 'agent');
     await next();
   };
+  return refuses(gate, [
+    { status: 401, code: 'UNAUTHENTICATED', when: 'no bearer token and no session cookie' },
+    {
+      status: 401,
+      code: 'INVALID_TOKEN',
+      when: 'the session token or personal access token does not verify',
+    },
+  ]);
 }
 
 /** The columns of the caller's `users` row that an auth gate decides on. */
@@ -206,7 +223,7 @@ export async function authUserRow(c: Context, userId: string): Promise<AuthUserR
 }
 
 export function assertEmailVerified(): MiddlewareHandler<{ Variables: AuthVars }> {
-  return async (c, next) => {
+  const gate: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next) => {
     if (c.get('principal') === 'device') {
       await next();
       return;
@@ -222,4 +239,11 @@ export function assertEmailVerified(): MiddlewareHandler<{ Variables: AuthVars }
 
     await next();
   };
+  return refuses(gate, [
+    {
+      status: 403,
+      code: 'EMAIL_NOT_VERIFIED',
+      when: 'the account has not verified its email address',
+    },
+  ]);
 }

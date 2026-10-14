@@ -103,16 +103,16 @@ describe("pipelineSchema", () => {
 		expect(issues(base())).toEqual([]);
 	});
 
-	it("names an incomplete plugin row at the row", () => {
+	it("names an incomplete plugin row at the field", () => {
 		const d = base();
 		d.plugins = [{ marketplace: "", name: "forge" }];
-		expect(issues(d)).toEqual(["plugins.0: Marketplace is required."]);
+		expect(issues(d)).toEqual(["plugins.0.marketplace: Marketplace is required."]);
 	});
 
 	it("names a plugin whose pinned ref is not a sha", () => {
 		const d = base();
 		d.plugins = [{ marketplace: "a/b", name: "forge", pinnedRef: "main" }];
-		expect(issues(d)).toEqual(["plugins.0: Pinned SHA must be 7–40 hex characters."]);
+		expect(issues(d)).toEqual(["plugins.0.pinnedRef: Pinned SHA must be 7–40 hex characters."]);
 	});
 
 	it("names a weekly reading that is on and incomplete, and not one that is off", () => {

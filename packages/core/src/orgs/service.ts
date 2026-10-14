@@ -90,7 +90,7 @@ export type OrgMember = {
   /** The address this member is reached at in this org, or null for a person. */
   handle: string | null;
   role: string;
-  lenses: unknown;
+  lenses: string[];
   createdAt: Date;
 };
 

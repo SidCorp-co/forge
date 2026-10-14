@@ -1,8 +1,9 @@
-import { zValidator } from '@hono/zod-validator';
 import { count, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { issueLabels, labelKinds, labels } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
@@ -19,6 +20,18 @@ import {
   deriveModuleSlug,
   ModuleHierarchyError,
 } from './module-service.js';
+import {
+  createLabel,
+  deleteLabel,
+  labelListSchema,
+  labelSchema,
+  listLabels,
+  moduleDriftSchema,
+  moduleRollupSchema,
+  patchLabel,
+  readModuleDrift,
+  readModuleRollup,
+} from './routes-reference.js';
 import { labelUniqueConflict } from './unique-conflicts.js';
 
 const colorRegex = /^#[0-9a-f]{6}$/i;
@@ -94,6 +107,7 @@ labelProjectRoutes.use('*', requireAuth(), assertEmailVerified());
 
 labelProjectRoutes.post(
   '/:id/labels',
+  createLabel,
   zValidator('param', projectIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -137,7 +151,7 @@ labelProjectRoutes.post(
         })
         .returning(labelColumns);
       if (!inserted) throw new Error('labels: insert returned no row');
-      return c.json(inserted, 201);
+      return c.json(answer(labelSchema, inserted), 201);
     } catch (err) {
       throw uniqueConflict(err) ?? err;
     }
@@ -146,6 +160,7 @@ labelProjectRoutes.post(
 
 labelProjectRoutes.get(
   '/:id/labels',
+  listLabels,
   zValidator('param', projectIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -158,12 +173,13 @@ labelProjectRoutes.get(
 
     const rows = await db.select(labelColumns).from(labels).where(eq(labels.projectId, projectId));
 
-    return c.json(rows);
+    return c.json(answer(labelListSchema, rows));
   },
 );
 
 labelProjectRoutes.get(
   '/:id/modules/rollup',
+  readModuleRollup,
   zValidator('param', projectIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -178,7 +194,12 @@ labelProjectRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     assertProjectRole(access, 'viewer', 'not a project member');
 
-    return c.json(await moduleRollup(projectId, activeWithinDays ?? DEFAULT_ACTIVE_WITHIN_DAYS));
+    return c.json(
+      answer(
+        moduleRollupSchema,
+        await moduleRollup(projectId, activeWithinDays ?? DEFAULT_ACTIVE_WITHIN_DAYS),
+      ),
+    );
   },
 );
 
@@ -188,6 +209,7 @@ const driftQuerySchema = z
 
 labelProjectRoutes.get(
   '/:id/modules/drift',
+  readModuleDrift,
   zValidator('param', projectIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -202,7 +224,7 @@ labelProjectRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     assertProjectRole(access, 'viewer', 'not a project member');
 
-    return c.json(await moduleDrift(projectId, { minCoOccurrence }));
+    return c.json(answer(moduleDriftSchema, await moduleDrift(projectId, { minCoOccurrence })));
   },
 );
 
@@ -227,6 +249,7 @@ async function loadLabel(labelId: string) {
 
 labelRoutes.patch(
   '/:id',
+  patchLabel,
   zValidator('param', labelIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -279,7 +302,7 @@ labelRoutes.patch(
         .where(eq(labels.id, id))
         .returning(labelColumns);
       if (!updated) throw notFound('label not found');
-      return c.json(updated);
+      return c.json(answer(labelSchema, updated));
     } catch (err) {
       throw uniqueConflict(err) ?? err;
     }
@@ -288,6 +311,7 @@ labelRoutes.patch(
 
 labelRoutes.delete(
   '/:id',
+  deleteLabel,
   zValidator('param', labelIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),

@@ -5,14 +5,12 @@ import {
   type BadgeProps,
   Banner,
   Button,
-  Card,
-  CardContent,
-  CardHeader,
   CardTitle,
   Field,
   Input,
   SegmentedControl,
   Toggle,
+  SettingsSection,
 } from "@/design";
 import {
   isFeatureOff,
@@ -76,33 +74,31 @@ export function CoolifySection({ projectId }: { projectId: string }) {
   const existing = useMemo(() => rows.find((i) => i.stages.includes(stage)), [rows, stage]);
 
   return (
-    <Card>
-      <CardHeader>
+    <SettingsSection>
+      <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center justify-between gap-2">
           <CardTitle>Coolify deploy</CardTitle>
           <Badge tone={badgeFor(existing).tone}>
             {badgeFor(existing).label}
           </Badge>
         </div>
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-col gap-4">
-          <SegmentedControl<DeployStage>
-            value={stage}
-            onChange={setStage}
-            options={STAGE_OPTIONS}
-          />
-          {/* Remount the panel per stage so its form state re-seeds. */}
-          <StagePanel
-            key={stage}
-            projectId={projectId}
-            stage={stage}
-            existing={existing}
-            onRefetch={() => list.refetch()}
-          />
-        </div>
-      </CardContent>
-    </Card>
+      </div>
+      <div className="flex flex-col gap-4">
+        <SegmentedControl<DeployStage>
+          value={stage}
+          onChange={setStage}
+          options={STAGE_OPTIONS}
+        />
+        {/* Remount the panel per stage so its form state re-seeds. */}
+        <StagePanel
+          key={stage}
+          projectId={projectId}
+          stage={stage}
+          existing={existing}
+          onRefetch={() => list.refetch()}
+        />
+      </div>
+    </SettingsSection>
   );
 }
 

@@ -268,20 +268,50 @@ export async function persistDecodedCommentAttachments(
 export async function listCommentAttachmentsForIssue(
   issueId: string,
 ): Promise<Map<string, CommentAttachmentLite[]>> {
-  const rows = await db
-    .select({
-      id: commentAttachments.id,
-      commentId: commentAttachments.commentId,
-      name: commentAttachments.name,
-      mime: commentAttachments.mime,
-      size: commentAttachments.size,
-      createdAt: commentAttachments.createdAt,
-    })
-    .from(commentAttachments)
-    .innerJoin(comments, eq(comments.id, commentAttachments.commentId))
-    .where(eq(comments.issueId, issueId))
-    .orderBy(asc(commentAttachments.createdAt));
+  return groupByComment(
+    await db
+      .select(attachmentColumns)
+      .from(commentAttachments)
+      .innerJoin(comments, eq(comments.id, commentAttachments.commentId))
+      .where(eq(comments.issueId, issueId))
+      .orderBy(asc(commentAttachments.createdAt)),
+  );
+}
 
+/** The same grouping for the comments of one page, so a page reads only its own files. */
+export async function listCommentAttachmentsForComments(
+  commentIds: readonly string[],
+): Promise<Map<string, CommentAttachmentLite[]>> {
+  // `inArray` over an empty list builds a malformed predicate, so there is no read to make.
+  if (commentIds.length === 0) return new Map();
+  return groupByComment(
+    await db
+      .select(attachmentColumns)
+      .from(commentAttachments)
+      .where(inArray(commentAttachments.commentId, [...commentIds]))
+      .orderBy(asc(commentAttachments.createdAt)),
+  );
+}
+
+const attachmentColumns = {
+  id: commentAttachments.id,
+  commentId: commentAttachments.commentId,
+  name: commentAttachments.name,
+  mime: commentAttachments.mime,
+  size: commentAttachments.size,
+  createdAt: commentAttachments.createdAt,
+} as const;
+
+function groupByComment(
+  rows: Array<{
+    id: string;
+    commentId: string;
+    name: string;
+    mime: string;
+    size: number;
+    createdAt: Date;
+  }>,
+): Map<string, CommentAttachmentLite[]> {
   const byCommentId = new Map<string, CommentAttachmentLite[]>();
   for (const a of rows) {
     const list = byCommentId.get(a.commentId) ?? [];

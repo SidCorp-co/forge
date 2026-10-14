@@ -9,14 +9,13 @@ import { useEffect, useState } from "react";
 import {
   Badge,
   Button,
-  Card,
-  CardContent,
   EmptyState,
   ErrorState,
   Pagination,
   SectionTitle,
   Skeleton,
   Toggle,
+  SettingsSection,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import {
@@ -100,9 +99,9 @@ export function NotificationsTab() {
       )}
 
       {!notificationsQ.isLoading && !notificationsQ.isError && rows.length > 0 && (
-        <div className="space-y-2.5">
+        <div className="divide-y divide-line">
           {rows.map((n) => (
-            <NotificationCard key={n.id} row={n} />
+            <NotificationItem key={n.id} row={n} />
           ))}
         </div>
       )}
@@ -124,45 +123,43 @@ function DeliveryPreferences() {
   const update = useUpdatePreferences();
 
   return (
-    <Card>
-      <CardContent>
-        <SectionTitle className="fg-h3 mb-1">Delivery preferences</SectionTitle>
-        <p className="fg-caption mb-4">Choose which notifications Forge sends you.</p>
+    <SettingsSection>
+      <SectionTitle className="fg-h3 mb-1">Delivery preferences</SectionTitle>
+      <p className="fg-caption mb-4">Choose which notifications Forge sends you.</p>
 
-        {prefsQ.isLoading && <Skeleton className="h-11 w-full rounded-md" />}
+      {prefsQ.isLoading && <Skeleton className="h-11 w-full rounded-md" />}
 
-        {prefsQ.isError && (
-          <ErrorState
-            title="Couldn't load preferences"
-            message={formatApiError(prefsQ.error)}
-            onRetry={() => prefsQ.refetch()}
-          />
-        )}
+      {prefsQ.isError && (
+        <ErrorState
+          title="Couldn't load preferences"
+          message={formatApiError(prefsQ.error)}
+          onRetry={() => prefsQ.refetch()}
+        />
+      )}
 
-        {prefsQ.data && (
-          <div className="flex items-center justify-between gap-3 py-1">
-            <div className="min-w-0">
-              <p className="fg-label text-fg">Mentions</p>
-              <p className="fg-caption text-muted">
-                Notify me when someone @mentions me in a comment.
-              </p>
-            </div>
-            <Toggle
-              checked={prefsQ.data.notifyOnMention}
-              disabled={update.isPending}
-              onChange={(checked) => update.mutate({ notifyOnMention: checked })}
-              aria-label="Notify me when I'm mentioned"
-            />
+      {prefsQ.data && (
+        <div className="flex items-center justify-between gap-3 py-1">
+          <div className="min-w-0">
+            <p className="fg-label text-fg">Mentions</p>
+            <p className="fg-caption text-muted">
+              Notify me when someone @mentions me in a comment.
+            </p>
           </div>
-        )}
+          <Toggle
+            checked={prefsQ.data.notifyOnMention}
+            disabled={update.isPending}
+            onChange={(checked) => update.mutate({ notifyOnMention: checked })}
+            aria-label="Notify me when I'm mentioned"
+          />
+        </div>
+      )}
 
-        <div className="my-3 border-t border-line" />
-        <DesktopNotificationsToggle />
+      <div className="my-3 border-t border-line" />
+      <DesktopNotificationsToggle />
 
-        <div className="my-3 border-t border-line" />
-        <SoundNotificationsToggle />
-      </CardContent>
-    </Card>
+      <div className="my-3 border-t border-line" />
+      <SoundNotificationsToggle />
+    </SettingsSection>
   );
 }
 
@@ -278,28 +275,26 @@ function SoundNotificationsToggle() {
   );
 }
 
-function NotificationCard({ row }: { row: NotificationRow }) {
+function NotificationItem({ row }: { row: NotificationRow }) {
   return (
-    <Card>
-      <CardContent>
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              {row.readAt === null && <Badge tone="accent">new</Badge>}
-              <p className="fg-body-sm font-medium text-fg">{row.title}</p>
-            </div>
-            {row.body && <p className="fg-caption mt-1">{row.body}</p>}
-            {row.members > 1 && (
-              <p className="fg-caption mt-1 text-muted">
-                {`${row.openMembers} of ${row.members} still open`}
-              </p>
-            )}
+    <div className="py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            {row.readAt === null && <Badge tone="accent">new</Badge>}
+            <p className="fg-body-sm font-medium text-fg">{row.title}</p>
           </div>
-          <span className="fg-caption flex-none whitespace-nowrap font-mono">
-            {fmtTime(row.createdAt)}
-          </span>
+          {row.body && <p className="fg-caption mt-1">{row.body}</p>}
+          {row.members > 1 && (
+            <p className="fg-caption mt-1 text-muted">
+              {`${row.openMembers} of ${row.members} still open`}
+            </p>
+          )}
         </div>
-      </CardContent>
-    </Card>
+        <span className="fg-caption flex-none whitespace-nowrap font-mono">
+          {fmtTime(row.createdAt)}
+        </span>
+      </div>
+    </div>
   );
 }

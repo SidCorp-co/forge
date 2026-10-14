@@ -5,6 +5,7 @@ import type { Server as HttpServer } from 'node:http';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { z } from 'zod';
 import { adminAggregateRoutes } from './admin/aggregate-routes.js';
 import { adminAlertRoutes } from './admin/alert-routes.js';
 import { adminMcpAuditRoutes } from './admin/mcp-audit-routes.js';
@@ -17,6 +18,11 @@ import { agentSessionProjectReadRoutes } from './agent-sessions/project-read-rou
 import { agentSessionRoutes } from './agent-sessions/routes.js';
 import { registerAgentCronTicker, unregisterAgentCronTicker } from './agents/cron.js';
 import { agentRoutes } from './agents/routes.js';
+import { describeOperation, redirect } from './api-reference/declare/describe.js';
+import { declaresInput } from './api-reference/declare/validator.js';
+import { responseConformance } from './api-reference/gates/conformance.js';
+import { describedInstallRoutes } from './api-reference/surface/install-reference.js';
+import { referenceOf, referenceRoutes } from './api-reference/surface/routes.js';
 import { memoryModelRoutes } from './app-config/memory-model-routes.js';
 import { appConfigRoutes } from './app-config/routes.js';
 import { registerWebConversationAdapter } from './assistant/conversation-drain.js';
@@ -60,7 +66,6 @@ import { guideRoutes } from './guides/routes.js';
 import { opsHealthMeRoutes, opsHealthProjectRoutes, publicHealthRoutes } from './health/routes.js';
 import { improvementMessageRoutes } from './improvement-messages/routes.js';
 import { registerRunnerReleaseRefetch } from './install/fetch-release.js';
-import { installRoutes } from './install/routes.js';
 import { githubCallbackRoutes, githubConnectRoutes } from './integrations/github/connect-routes.js';
 import { runnerReleaseRoutes } from './integrations/github/runner-release-routes.js';
 import { registerIntegrationsHealthSweep } from './integrations/health-sweep.js';
@@ -99,11 +104,10 @@ import { labelProjectRoutes, labelRoutes } from './labels/routes.js';
 import { isEnabled } from './lib/feature-flags.js';
 import { logger } from './logger.js';
 import { registerMaintenanceJobs } from './maintenance-jobs.js';
-import { mcpHandler } from './mcp/handler.js';
+import { mcpRoutes } from './mcp/handler.js';
 import { mcpRequestClass } from './mcp/request-class.js';
 import { meAttentionRoutes } from './me/attention-routes.js';
 import { mePulseRoutes } from './me/pulse-routes.js';
-import { meRecentChangesRoutes } from './me/recent-changes-routes.js';
 import { memoryListRoutes } from './memory/list-routes.js';
 import { memoryMineRoutes } from './memory/mine-routes.js';
 import { memorySearchRoutes } from './memory/search-routes.js';
@@ -212,6 +216,9 @@ const corsMiddleware = cors({
 app.use('/api/*', corsMiddleware);
 app.use('/mcp', corsMiddleware);
 
+const apiReference = referenceOf(() => app);
+app.use('/api/*', responseConformance(apiReference));
+
 for (const at of ['/', '/api']) app.route(at, publicHealthRoutes);
 
 app.notFound(notFoundHandler);
@@ -261,19 +268,30 @@ export async function runShutdown(
 registerEagerSubscribers(hooks);
 
 app.use('/mcp', mcpRequestClass(), requirePat());
-app.on(['POST', 'GET', 'DELETE'], '/mcp', mcpHandler);
+app.route('/mcp', mcpRoutes);
 
-app.route('/', installRoutes);
-app.route('/api', installRoutes);
+app.route('/', describedInstallRoutes());
+app.route('/api', describedInstallRoutes());
 
 app.route('/', guideRoutes);
 app.route('/api', guideRoutes);
 
-app.get('/pair', (c) => {
-  const code = c.req.query('code');
-  const base = env.APP_BASE_URL.replace(/\/+$/, '');
-  return c.redirect(code ? `${base}/pair?code=${encodeURIComponent(code)}` : `${base}/pair`, 302);
-});
+app.route('/api', referenceRoutes(apiReference));
+
+const pairQuerySchema = z.object({ code: z.string().optional() });
+app.get(
+  '/pair',
+  describeOperation({
+    summary: 'Send the caller to the web UI pairing page, with the device code if one is sent',
+    responses: { 302: redirect('The pairing page, with `code` when it was sent and not empty') },
+  }),
+  declaresInput('query', pairQuerySchema),
+  (c) => {
+    const { code } = pairQuerySchema.parse(c.req.query());
+    const base = env.APP_BASE_URL.replace(/\/+$/, '');
+    return c.redirect(code ? `${base}/pair?code=${encodeURIComponent(code)}` : `${base}/pair`, 302);
+  },
+);
 
 app.route('/api/auth', authRoutes);
 app.route('/api/auth', loginRoutes);
@@ -358,7 +376,6 @@ app.route('/api/me', mePulseRoutes);
 app.route('/api/questions', questionRoutes);
 app.route('/api', speakerLinkProjectRoutes);
 app.route('/api', speakerLinkMeRoutes);
-app.route('/api/me', meRecentChangesRoutes);
 app.route('/api/agents', agentRoutes);
 app.route('/api/conversations', conversationRoutes);
 app.route('/api/agent-sessions', agentSessionAttachmentRoutes);

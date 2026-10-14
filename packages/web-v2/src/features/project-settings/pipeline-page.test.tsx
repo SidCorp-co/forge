@@ -40,6 +40,10 @@ vi.mock("@/lib/api/client", async () => {
 			if (path.endsWith("/pipeline-config") && init?.method === "PATCH") {
 				const write = JSON.parse(init.body ?? "null") as { base: Doc; patch: Doc };
 				configWrites.push(write);
+				// Core's own refusal (pipeline-config-service.ts, OPEN_LOCKED_ON): the Open stage is never disabled.
+				if ((write.patch.states as Doc | undefined)?.open && ((write.patch.states as Doc).open as Doc).enabled === false) {
+					throw new ApiError(409, "The Open stage can't be disabled", "OPEN_LOCKED_ON");
+				}
 				const conflicts = comparePatchBase(stored, write.base, write.patch);
 				if (conflicts.length > 0) {
 					throw new ApiError(
@@ -229,6 +233,56 @@ describe("what one Save writes", () => {
 	});
 });
 
+describe("Start queued issues automatically", () => {
+	const SWITCH = "Start queued issues automatically";
+
+	it("is switched off by holding the entry gate, which is a mode and never a disabled Open stage", async () => {
+		mountPage();
+		await ready();
+		toggle(SWITCH);
+		expect(screen.getByRole("switch", { name: SWITCH })).toHaveAttribute("aria-checked", "false");
+		press();
+
+		await waitFor(() => expect(configWrites).toHaveLength(1));
+		expect(configWrites[0]?.patch).toEqual({ states: { open: { mode: "manual" } } });
+		await waitFor(() => expect((stored.states as Doc).open).toMatchObject({ enabled: true, mode: "manual" }));
+		expect(toast).not.toHaveBeenCalledWith(expect.objectContaining({ tone: "error" }));
+	});
+
+	it("is switched back on by releasing the gate", async () => {
+		stored = applyDocumentPatch(stored, { states: { open: { mode: "manual" } } });
+		mountPage();
+		await ready();
+		expect(screen.getByRole("switch", { name: SWITCH })).toHaveAttribute("aria-checked", "false");
+		toggle(SWITCH);
+		press();
+
+		await waitFor(() => expect(configWrites).toHaveLength(1));
+		expect(configWrites[0]?.patch).toEqual({ states: { open: { mode: "auto" } } });
+	});
+
+	it("never writes a disabled Open stage, whichever way the person flips it", async () => {
+		mountPage();
+		await ready();
+		toggle(SWITCH);
+		toggle(SWITCH);
+		toggle(SWITCH);
+		press();
+		await waitFor(() => expect(configWrites).toHaveLength(1));
+		expect(JSON.stringify(configWrites)).not.toContain('"enabled":false');
+	});
+
+	it("turns a legacy disabled Open stage back on, which the server accepts", async () => {
+		stored = applyDocumentPatch(stored, { states: { open: { enabled: false } } });
+		mountPage();
+		await ready();
+		toggle(SWITCH);
+		press();
+		await waitFor(() => expect(configWrites).toHaveLength(1));
+		expect(configWrites[0]?.patch).toEqual({ states: { open: { enabled: true } } });
+	});
+});
+
 describe("a Save that lands in part", () => {
 	async function editBoth() {
 		mountPage();
@@ -285,6 +339,26 @@ describe("a value the page cannot accept", () => {
 		expect(pluginWrites).toEqual([]);
 	});
 
+	it("renders a plugin row's error as the field's own error, red, on the field it is about", async () => {
+		mountPage();
+		await ready();
+		fireEvent.click(screen.getByRole("button", { name: "Add a plugin" }));
+		const message = await screen.findByText("Marketplace is required.");
+		expect(message).toHaveAttribute("role", "alert");
+		expect(message.getAttribute("style")).toContain("var(--red-600)");
+		const marketplace = screen.getAllByPlaceholderText("SidCorp-co/forge-plugin")[1] as HTMLElement;
+		expect(marketplace).toHaveAttribute("aria-invalid", "true");
+		expect(marketplace.getAttribute("aria-describedby")).toBe(message.id);
+
+		fireEvent.change(marketplace, { target: { value: "SidCorp-co/forge-plugin" } });
+		const names = screen.getAllByPlaceholderText("forge");
+		fireEvent.change(names[1] as HTMLElement, { target: { value: "Not Kebab" } });
+		const name = await screen.findByText("Name must be kebab-case.");
+		expect(names[1]).toHaveAttribute("aria-invalid", "true");
+		expect(name.getAttribute("style")).toContain("var(--red-600)");
+		expect(screen.queryByText("Marketplace is required.")).toBeNull();
+	});
+
 	it("names an incomplete weekly reading, and clears the note once it is complete", async () => {
 		mountPage();
 		await ready();
@@ -304,9 +378,28 @@ describe("a value the page cannot accept", () => {
 		await ready();
 		toggle("Require human approval for new issues");
 		toggle("Show a backlog to this project's master agents");
+		fireEvent.click(screen.getByRole("checkbox", { name: "Draft" }));
 		await screen.findByText(/Draft can’t also be admitted here/);
 		expect(saveButton()).toBeDisabled();
 		expect(configWrites).toEqual([]);
+	});
+
+	it("admits no Draft when the backlog is switched on under the intake gate, so nothing is named before the person acts", async () => {
+		stored = applyDocumentPatch(stored, { intakeGate: { enabled: true } });
+		mountPage();
+		await ready();
+		toggle("Show a backlog to this project's master agents");
+		expect(screen.queryByText(/Draft can’t also be admitted here/)).toBeNull();
+		expect(screen.getByRole("checkbox", { name: "Draft" })).not.toBeChecked();
+		expect(screen.getByRole("checkbox", { name: "Confirmed" })).toBeChecked();
+		expect(saveButton()).toBeEnabled();
+	});
+
+	it("admits Draft first when there is no intake gate", async () => {
+		mountPage();
+		await ready();
+		toggle("Show a backlog to this project's master agents");
+		expect(screen.getByRole("checkbox", { name: "Draft" })).toBeChecked();
 	});
 
 	it("names a backlog limit outside its bounds, and stops naming it once the backlog is switched off", async () => {

@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, isNull, type SQL, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { memories, memorySources } from '../db/schema.js';
+import { type MemorySource, memories, memorySources } from '../db/schema.js';
 import { memoryOfLiveIssue } from '../issues/archive.js';
 
 /**
@@ -36,7 +36,7 @@ export type GetMemoryInput = z.infer<typeof getMemoryInputSchema>;
 export interface MemoryRow {
   id: string;
   projectId: string;
-  source: string;
+  source: MemorySource;
   sourceRef: string;
   textContent: string;
   metadata: unknown;

@@ -3,6 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { verifyDeviceCredential } from '../auth/device-credential.js';
 import type { Device } from '../db/schema.js';
 import { parseBearerHeader } from './bearer.js';
+import { refuses } from './declarations.js';
 
 export type AuthedDevice = Device;
 
@@ -18,7 +19,7 @@ export const NOT_A_DEVICE_CREDENTIAL =
   'unified its credentials no longer verify anywhere and must be replaced the same way.';
 
 export const requireDevice = (): MiddlewareHandler<{ Variables: DeviceVars }> => {
-  return async (c, next) => {
+  const gate: MiddlewareHandler<{ Variables: DeviceVars }> = async (c, next) => {
     const parsed = parseBearerHeader(c);
     if (parsed.kind === 'absent') throw unauth('authentication required');
     if (parsed.kind === 'malformed') throw unauth('invalid authorization header');
@@ -29,4 +30,11 @@ export const requireDevice = (): MiddlewareHandler<{ Variables: DeviceVars }> =>
     c.set('device', device);
     await next();
   };
+  return refuses(gate, [
+    {
+      status: 401,
+      code: 'UNAUTHENTICATED',
+      when: "no bearer token, a malformed Authorization header, or a token that is not a paired box's device credential",
+    },
+  ]);
 };

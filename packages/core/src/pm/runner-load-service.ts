@@ -5,8 +5,8 @@ import { countInFlightByRunner } from '../jobs/in-flight.js';
 
 export type RunnerLoad = {
   id: string;
-  type: string;
-  status: string;
+  type: (typeof runners.$inferSelect)['type'];
+  status: (typeof runners.$inferSelect)['status'];
   lastSeenAt: Date | null;
   inFlight: number;
 };

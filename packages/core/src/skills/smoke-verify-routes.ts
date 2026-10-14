@@ -1,7 +1,8 @@
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { issueStatuses } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -10,6 +11,12 @@ import {
   dispatchSmokeCanaries,
   NoRunnerOnlineError,
 } from './smoke-verify.js';
+import {
+  readSmokeVerify,
+  runSmokeVerify,
+  smokeReportSchema,
+  smokeRunSchema,
+} from './smoke-verify-routes-reference.js';
 
 const projectParamSchema = z.object({ projectId: z.uuid() });
 
@@ -31,6 +38,7 @@ skillSmokeVerifyRoutes.use('/:projectId/skills/smoke-verify', requireAuth(), ass
 
 skillSmokeVerifyRoutes.get(
   '/:projectId/skills/smoke-verify',
+  readSmokeVerify,
   zValidator('param', projectParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -41,12 +49,13 @@ skillSmokeVerifyRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     if (!access.role) throw forbidden('not a project member');
 
-    return c.json(await buildSmokeVerifyReport(projectId));
+    return c.json(answer(smokeReportSchema, await buildSmokeVerifyReport(projectId)));
   },
 );
 
 skillSmokeVerifyRoutes.post(
   '/:projectId/skills/smoke-verify',
+  runSmokeVerify,
   zValidator('param', projectParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -73,7 +82,7 @@ skillSmokeVerifyRoutes.post(
         if (err instanceof NoRunnerOnlineError) {
           throw new HTTPException(409, {
             message: err.message,
-            cause: { code: err.code },
+            cause: { code: 'NO_RUNNER_ONLINE' },
           });
         }
         throw err;
@@ -82,6 +91,6 @@ skillSmokeVerifyRoutes.post(
 
     // Freshly dispatched canaries surface as PENDING tier-2 entries.
     const report = await buildSmokeVerifyReport(projectId);
-    return c.json({ report, canary });
+    return c.json(answer(smokeRunSchema, { report, canary }));
   },
 );

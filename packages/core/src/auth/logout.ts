@@ -4,12 +4,13 @@ import { db } from '../db/client.js';
 import { refreshTokens } from '../db/schema.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { clearAuthCookie, clearRefreshCookie } from './cookie.js';
+import { logout } from './logout-reference.js';
 
 export const logoutRoutes = new Hono<{ Variables: AuthVars }>();
 
 logoutRoutes.use('/logout', requireAuth());
 
-logoutRoutes.post('/logout', async (c) => {
+logoutRoutes.post('/logout', logout, async (c) => {
   const userId = c.get('userId');
   await db
     .update(refreshTokens)

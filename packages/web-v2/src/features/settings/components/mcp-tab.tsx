@@ -12,8 +12,6 @@ import {
   Badge,
   Banner,
   Button,
-  Card,
-  CardContent,
   EmptyState,
   ErrorState,
   Field,
@@ -25,6 +23,7 @@ import {
   Tabs,
   type SelectOption,
   type TabItem,
+  SettingsSection,
 } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
 import { useCurrentProject } from "@/features/shell";
@@ -133,78 +132,74 @@ export function McpTab() {
         tab, then paste it into the snippet below in place of the placeholder.
       </Banner>
 
-      <Card>
-        <CardContent>
-          <SectionTitle className="fg-h3 mb-4">Connect a client</SectionTitle>
-          <div className="space-y-4">
-            <div>
-              <p className="fg-label mb-1.5">Endpoint</p>
-              <MonoTag>{endpoint}</MonoTag>
-            </div>
-            <Field label="Project" hint="Sets the X-Forge-Project-Slug header — the project this client's tool calls are scoped to.">
-              <Select
-                options={projectOptions}
-                value={selectedProject?.id ?? ""}
-                onChange={(v) => setProjectId(v)}
-                placeholder="Choose a project…"
-              />
-            </Field>
+      <SettingsSection>
+        <SectionTitle className="fg-h3 mb-4">Connect a client</SectionTitle>
+        <div className="space-y-4">
+          <div>
+            <p className="fg-label mb-1.5">Endpoint</p>
+            <MonoTag>{endpoint}</MonoTag>
           </div>
-        </CardContent>
-      </Card>
+          <Field label="Project" hint="Sets the X-Forge-Project-Slug header — the project this client's tool calls are scoped to.">
+            <Select
+              options={projectOptions}
+              value={selectedProject?.id ?? ""}
+              onChange={(v) => setProjectId(v)}
+              placeholder="Choose a project…"
+            />
+          </Field>
+        </div>
+      </SettingsSection>
 
       {selectedProject ? (
         <>
-          <Card>
-            <CardContent>
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <SectionTitle className="fg-h3">Config snippet</SectionTitle>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={copySnippet}
-                  className="min-h-11"
-                  aria-live="polite"
-                >
-                  {copied ? "Copied ✓" : "Copy"}
-                </Button>
-              </div>
-              <p className="fg-body-sm mb-4 text-fg" data-testid="mcp-snippet-target">
-                This snippet configures <strong>{selectedProject.name}</strong>{" "}
-                <MonoTag>{selectedProject.slug}</MonoTag>
-                {currentProject && currentProject.id !== selectedProject.id ? (
-                  <> — not {currentProject.name}, the project you are working in.</>
-                ) : currentProject ? (
-                  <>, the project you are working in.</>
-                ) : (
-                  "."
-                )}
-              </p>
+          <SettingsSection>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <SectionTitle className="fg-h3">Config snippet</SectionTitle>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={copySnippet}
+                className="min-h-11"
+                aria-live="polite"
+              >
+                {copied ? "Copied ✓" : "Copy"}
+              </Button>
+            </div>
+            <p className="fg-body-sm mb-4 text-fg" data-testid="mcp-snippet-target">
+              This snippet configures <strong>{selectedProject.name}</strong>{" "}
+              <MonoTag>{selectedProject.slug}</MonoTag>
+              {currentProject && currentProject.id !== selectedProject.id ? (
+                <> — not {currentProject.name}, the project you are working in.</>
+              ) : currentProject ? (
+                <>, the project you are working in.</>
+              ) : (
+                "."
+              )}
+            </p>
 
-              <div className="mb-3 overflow-x-auto">
-                <Tabs tabs={CLIENT_TABS} value={client} onChange={(v) => setClient(v as ClientKind)} />
-              </div>
+            <div className="mb-3 overflow-x-auto">
+              <Tabs tabs={CLIENT_TABS} value={client} onChange={(v) => setClient(v as ClientKind)} />
+            </div>
 
-              <p className="fg-caption mb-2" data-testid="mcp-snippet-how">
-                {snippet.howTo === "command" ? (
-                  <>
-                    Replace <MonoTag hue="flame">{TOKEN_PLACEHOLDER}</MonoTag> with your token, then
-                    run this line once in a terminal.
-                  </>
-                ) : (
-                  <>
-                    Add to <MonoTag>{snippet.filePath}</MonoTag> and replace{" "}
-                    <MonoTag hue="flame">{TOKEN_PLACEHOLDER}</MonoTag> with your token.
-                  </>
-                )}
-              </p>
-              <pre className="overflow-x-auto rounded-md border border-line bg-sunken p-3 text-12-5 leading-relaxed text-fg">
-                <code>
-                  <SnippetCode content={snippet.content} />
-                </code>
-              </pre>
-            </CardContent>
-          </Card>
+            <p className="fg-caption mb-2" data-testid="mcp-snippet-how">
+              {snippet.howTo === "command" ? (
+                <>
+                  Replace <MonoTag hue="flame">{TOKEN_PLACEHOLDER}</MonoTag> with your token, then
+                  run this line once in a terminal.
+                </>
+              ) : (
+                <>
+                  Add to <MonoTag>{snippet.filePath}</MonoTag> and replace{" "}
+                  <MonoTag hue="flame">{TOKEN_PLACEHOLDER}</MonoTag> with your token.
+                </>
+              )}
+            </p>
+            <pre className="overflow-x-auto rounded-md border border-line bg-sunken p-3 text-12-5 leading-relaxed text-fg">
+              <code>
+                <SnippetCode content={snippet.content} />
+              </code>
+            </pre>
+          </SettingsSection>
 
           <TestConnectionPanel mcpUrl={endpoint} projectSlug={projectSlug} />
         </>
@@ -302,64 +297,62 @@ function TestConnectionPanel({ mcpUrl, projectSlug }: { mcpUrl: string; projectS
   }
 
   return (
-    <Card>
-      <CardContent>
-        <SectionTitle className="fg-h3 mb-1">Test connection</SectionTitle>
-        <p className="fg-caption mb-4">
-          Paste a token to verify it can reach this project over MCP. The token isn&apos;t saved.
-        </p>
-        <form
-          className="flex flex-col gap-3 sm:flex-row sm:items-end"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void run();
-          }}
+    <SettingsSection>
+      <SectionTitle className="fg-h3 mb-1">Test connection</SectionTitle>
+      <p className="fg-caption mb-4">
+        Paste a token to verify it can reach this project over MCP. The token isn&apos;t saved.
+      </p>
+      <form
+        className="flex flex-col gap-3 sm:flex-row sm:items-end"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void run();
+        }}
+      >
+        <div className="flex-1">
+          <Field label="Personal access token">
+            <Input
+              type="password"
+              autoComplete="off"
+              placeholder="forge_pat_…"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+            />
+          </Field>
+        </div>
+        <Button
+          type="submit"
+          variant="primary"
+          disabled={!token.trim() || status === "testing"}
+          loading={status === "testing"}
+          className="min-h-11"
         >
-          <div className="flex-1">
-            <Field label="Personal access token">
-              <Input
-                type="password"
-                autoComplete="off"
-                placeholder="forge_pat_…"
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-              />
-            </Field>
-          </div>
-          <Button
-            type="submit"
-            variant="primary"
-            disabled={!token.trim() || status === "testing"}
-            loading={status === "testing"}
-            className="min-h-11"
-          >
-            Test
-          </Button>
-        </form>
+          Test
+        </Button>
+      </form>
 
-        {status === "ok" && result && (
-          <div className="mt-4" role="status">
-            <Badge tone="accent">Connected · {result.toolsCount} tools</Badge>
-            {result.sampleNames.length > 0 && (
-              <div className="fg-caption mt-2 flex flex-wrap items-center gap-1.5">
-                <span>e.g.</span>
-                {result.sampleNames.map((n) => (
-                  <MonoTag key={n}>{n}</MonoTag>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+      {status === "ok" && result && (
+        <div className="mt-4" role="status">
+          <Badge tone="accent">Connected · {result.toolsCount} tools</Badge>
+          {result.sampleNames.length > 0 && (
+            <div className="fg-caption mt-2 flex flex-wrap items-center gap-1.5">
+              <span>e.g.</span>
+              {result.sampleNames.map((n) => (
+                <MonoTag key={n}>{n}</MonoTag>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
-        {status === "error" && error && (
-          <div className="mt-4">
-            <Banner tone="danger">
-              <span className="font-mono text-12-5">{error}</span>
-              {hint && <p className="mt-1">{hint}</p>}
-            </Banner>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      {status === "error" && error && (
+        <div className="mt-4">
+          <Banner tone="danger">
+            <span className="font-mono text-12-5">{error}</span>
+            {hint && <p className="mt-1">{hint}</p>}
+          </Banner>
+        </div>
+      )}
+    </SettingsSection>
   );
 }

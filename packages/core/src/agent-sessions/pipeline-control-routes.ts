@@ -1,12 +1,14 @@
-import { zValidator } from '@hono/zod-validator';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { broadcastSession } from './broadcast.js';
+import * as ref from './pipeline-control-routes-reference.js';
 import {
   buildPipelineControl,
   buildPipelineHealth,
@@ -15,7 +17,9 @@ import {
   type PipelineControl,
   type PipelineHealth,
   pipelineControlInputSchema,
+  pipelineControlSchema,
   pipelineHealthInputSchema,
+  pipelineHealthSchema,
 } from './pipeline-control-types.js';
 import {
   badRequest,
@@ -26,18 +30,13 @@ import {
 } from './session-access.js';
 import { extractIssueId } from './session-activity.js';
 
-const pipelineTelemetrySchema = z
-  .object({
-    telemetry: z.unknown(),
-  })
-  .strict();
-
 // NOTE: no auth middleware here — the aggregator (`routes.ts`) applies it
 // once for the whole `/api/agent-sessions` surface before mounting this.
 export const agentSessionPipelineControlRoutes = new Hono<{ Variables: AuthVars }>();
 
 agentSessionPipelineControlRoutes.get(
   '/:id/pipeline-control',
+  ref.readPipelineControl,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -47,12 +46,15 @@ agentSessionPipelineControlRoutes.get(
 
     const { session: row } = await ensureSessionMember(id, userId);
 
-    return c.json(normalisePipelineControl(row.pipelineControl));
+    return c.json(
+      answer(pipelineControlSchema.nullable(), normalisePipelineControl(row.pipelineControl)),
+    );
   },
 );
 
 agentSessionPipelineControlRoutes.post(
   '/:id/pipeline-control',
+  ref.setPipelineControl,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -106,12 +108,13 @@ agentSessionPipelineControlRoutes.post(
       });
     }
 
-    return c.json(merged);
+    return c.json(answer(pipelineControlSchema, merged));
   },
 );
 
 agentSessionPipelineControlRoutes.get(
   '/:id/pipeline-health',
+  ref.readPipelineHealth,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -121,7 +124,12 @@ agentSessionPipelineControlRoutes.get(
 
     const { session: row } = await ensureSessionMember(id, userId);
 
-    return c.json((row.pipelineHealth as PipelineHealth | null) ?? DEFAULT_PIPELINE_HEALTH);
+    return c.json(
+      answer(
+        pipelineHealthSchema,
+        (row.pipelineHealth as PipelineHealth | null) ?? DEFAULT_PIPELINE_HEALTH,
+      ),
+    );
   },
 );
 
@@ -130,6 +138,7 @@ agentSessionPipelineControlRoutes.get(
 // project member may write — sufficient because health is informational.
 agentSessionPipelineControlRoutes.post(
   '/:id/pipeline-health',
+  ref.setPipelineHealth,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -153,12 +162,13 @@ agentSessionPipelineControlRoutes.post(
     if (!updated) throw notFound('agent session not found');
 
     broadcastSession(updated, 'agent-session.pipeline-health', { health: merged });
-    return c.json(merged);
+    return c.json(answer(pipelineHealthSchema, merged));
   },
 );
 
 agentSessionPipelineControlRoutes.get(
   '/:id/pipeline-telemetry',
+  ref.readPipelineTelemetry,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -168,16 +178,17 @@ agentSessionPipelineControlRoutes.get(
 
     const { session: row } = await ensureSessionMember(id, userId);
 
-    return c.json(row.pipelineTelemetry ?? null);
+    return c.json(answer(ref.telemetrySchema, row.pipelineTelemetry ?? null));
   },
 );
 
 agentSessionPipelineControlRoutes.post(
   '/:id/pipeline-telemetry',
+  ref.setPipelineTelemetry,
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
-  zValidator('json', pipelineTelemetrySchema, (r) => {
+  zValidator('json', ref.pipelineTelemetrySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
@@ -195,6 +206,6 @@ agentSessionPipelineControlRoutes.post(
     if (!updated) throw notFound('agent session not found');
 
     broadcastSession(updated, 'agent-session.pipeline-telemetry', { telemetry });
-    return c.json(telemetry);
+    return c.json(answer(ref.telemetrySchema, telemetry));
   },
 );

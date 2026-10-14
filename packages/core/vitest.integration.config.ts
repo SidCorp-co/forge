@@ -5,6 +5,8 @@ export default defineConfig({
   test: {
     include: ['tests/integration/**/*.test.ts'],
     environment: 'node',
+    // Every JSON answer is checked against the schema its route declares (api-reference/gates/conformance.ts).
+    env: { RESPONSE_CONFORMANCE: '1' },
     globalSetup: ['./tests/helpers/global-setup.ts'],
     // The guard fails a test that lists the repository root without declaring it (ISS-1314).
     setupFiles: ['../../scripts/lib/whole-tree-guard.mjs'],

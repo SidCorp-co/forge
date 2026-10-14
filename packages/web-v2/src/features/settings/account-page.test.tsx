@@ -121,6 +121,15 @@ describe("standing instructions that are only whitespace", () => {
 	});
 });
 
+describe("a flat page", () => {
+	it("stacks no card: its sections are flush with the page and told apart by a hairline", async () => {
+		mount();
+		await screen.findByLabelText("Standing instructions");
+		expect(document.querySelectorAll("div.rounded-lg.border.bg-surface.shadow-sm")).toHaveLength(0);
+		expect(screen.getAllByRole("heading", { name: /^(Profile|Preferences|Assistant)/ }).length).toBeGreaterThanOrEqual(2);
+	});
+});
+
 describe("what one Save writes", () => {
 	it("writes the assistant route alone when only its fields moved", async () => {
 		mount();

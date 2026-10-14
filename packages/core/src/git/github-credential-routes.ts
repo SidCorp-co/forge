@@ -8,13 +8,18 @@
  * device's runners and the project's binding every time it is asked for.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { logger } from '../logger.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { GitCredentialError, mintGitCredentialForDevice } from './github-app-credential.js';
+import {
+  askGitCredential,
+  gitCredentialGrantSchema,
+} from './github-credential-routes-reference.js';
 
 export const deviceGitCredentialRoutes = new Hono<{ Variables: DeviceVars }>();
 
@@ -28,6 +33,7 @@ const askBody = z
 
 deviceGitCredentialRoutes.post(
   '/me/git-credential',
+  askGitCredential,
   requireDevice(),
   zValidator('json', askBody, (result) => {
     if (!result.success) throw new HTTPException(400, { message: 'host and path are required' });
@@ -55,11 +61,13 @@ deviceGitCredentialRoutes.post(
         },
         'git-credential: minted an installation token',
       );
-      return c.json({
-        username: grant.username,
-        password: grant.password,
-        expiresAt: grant.expiresAt,
-      });
+      return c.json(
+        answer(gitCredentialGrantSchema, {
+          username: grant.username,
+          password: grant.password,
+          expiresAt: grant.expiresAt,
+        }),
+      );
     } catch (err) {
       if (err instanceof GitCredentialError) {
         throw new HTTPException(err.status as 400, { message: err.message });

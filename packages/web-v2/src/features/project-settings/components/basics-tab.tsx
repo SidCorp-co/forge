@@ -4,8 +4,6 @@
 // /api/projects/:id as one form with one save bar.
 import { z } from "zod";
 import {
-  Card,
-  CardContent,
   Field,
   Input,
   MonoTag,
@@ -13,6 +11,7 @@ import {
   SettingsFormBar,
   Textarea,
   useSettingsForm,
+  SettingsSection,
 } from "@/design";
 import type { ProjectDetail } from "@/features/projects/types";
 import { useUpdateProject } from "../hooks";
@@ -56,33 +55,31 @@ export function BasicsTab({ project, canEdit }: { project: ProjectDetail; canEdi
 
   return (
     <>
-      <Card>
-        <CardContent>
-          <SectionTitle className="fg-h3 mb-4">Basics</SectionTitle>
-          <div className="space-y-4">
-            <Field label="Slug" hint="The project's URL identifier (read-only).">
-              <MonoTag>{project.slug}</MonoTag>
-            </Field>
-            <Field label="Name" error={form.errorAt("name")}>
-              <Input
-                value={name}
-                onChange={(e) => form.setDraft((d) => ({ ...d, name: e.target.value }))}
-                disabled={!canEdit}
-                maxLength={200}
-              />
-            </Field>
-            <Field label="Description" hint="Optional. Shown on the project console.">
-              <Textarea
-                value={description}
-                onChange={(e) => form.setDraft((d) => ({ ...d, description: e.target.value }))}
-                disabled={!canEdit}
-                maxLength={2000}
-                rows={3}
-              />
-            </Field>
-          </div>
-        </CardContent>
-      </Card>
+      <SettingsSection>
+        <SectionTitle className="fg-h3 mb-4">Basics</SectionTitle>
+        <div className="space-y-4">
+          <Field label="Slug" hint="The project's URL identifier (read-only).">
+            <MonoTag>{project.slug}</MonoTag>
+          </Field>
+          <Field label="Name" error={form.errorAt("name")}>
+            <Input
+              value={name}
+              onChange={(e) => form.setDraft((d) => ({ ...d, name: e.target.value }))}
+              disabled={!canEdit}
+              maxLength={200}
+            />
+          </Field>
+          <Field label="Description" hint="Optional. Shown on the project console.">
+            <Textarea
+              value={description}
+              onChange={(e) => form.setDraft((d) => ({ ...d, description: e.target.value }))}
+              disabled={!canEdit}
+              maxLength={2000}
+              rows={3}
+            />
+          </Field>
+        </div>
+      </SettingsSection>
       {canEdit && (
         <SettingsFormBar
           dirty={form.dirty}

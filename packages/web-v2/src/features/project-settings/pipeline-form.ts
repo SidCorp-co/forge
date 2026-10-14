@@ -47,6 +47,31 @@ export interface PipelineDraft {
   plugins: PluginDesignation[];
 }
 
+/** Whether new work starts by itself: the entry stage holds nothing back, neither its mode nor a stored switch-off. */
+export function entryGateOpen(draft: PipelineDraft): boolean {
+  const entry = draft.states[ENTRY_STATUS];
+  return entry?.enabled !== false && entry?.mode !== "manual";
+}
+
+/** The draft with the entry gate opened or held. Holding it is the entry stage's `mode`: the server never accepts
+ *  the Open stage disabled, so no flip of the switch may write that. A stored switch-off is lifted on opening. */
+export function withEntryGate(draft: PipelineDraft, open: boolean): PipelineDraft {
+  const entry = draft.states[ENTRY_STATUS];
+  if (!entry) return draft;
+  const next: StageDraft = open
+    ? { ...entry, mode: "auto", ...(entry.enabled === false ? { enabled: true } : {}) }
+    : { ...entry, mode: "manual" };
+  return { ...draft, states: { ...draft.states, [ENTRY_STATUS]: next } };
+}
+
+/** The statuses a backlog starts with when it is switched on: Draft, unless the intake gate is on, which Draft cannot be
+ *  admitted under, so that the first thing the person sees is not a refusal of what they have not yet chosen. */
+export function startingBacklog(draft: PipelineDraft): string[] {
+  return draft.intakeGate.enabled ? [BACKLOG_STARTS_WITH_GATED] : ["draft"];
+}
+
+const BACKLOG_STARTS_WITH_GATED = "confirmed";
+
 const sortedIds = (ids: readonly unknown[] | undefined): string[] =>
   (ids ?? []).filter((d): d is string => typeof d === "string").sort();
 
@@ -169,13 +194,20 @@ export function pipelineComparable(draft: PipelineDraft): unknown {
 const NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
 const SHA_RE = /^[0-9a-f]{7,40}$/;
 
-/** What is wrong with one plugin row, in the words the row shows, or null. */
-export function pluginRowError(p: PluginDesignation): string | null {
-  if (!p.marketplace.trim()) return "Marketplace is required.";
-  if (!NAME_RE.test(p.name.trim())) return "Name must be kebab-case.";
+export interface PluginRowErrors {
+  marketplace?: string;
+  name?: string;
+  pinnedRef?: string;
+}
+
+/** What is wrong with one plugin row, by the field it is about, in the words that field shows. */
+export function pluginRowErrors(p: PluginDesignation): PluginRowErrors {
+  const out: PluginRowErrors = {};
+  if (!p.marketplace.trim()) out.marketplace = "Marketplace is required.";
+  if (!NAME_RE.test(p.name.trim())) out.name = "Name must be kebab-case.";
   const ref = p.pinnedRef?.trim();
-  if (ref && !SHA_RE.test(ref)) return "Pinned SHA must be 7–40 hex characters.";
-  return null;
+  if (ref && !SHA_RE.test(ref)) out.pinnedRef = "Pinned SHA must be 7–40 hex characters.";
+  return out;
 }
 
 const pluginRow = z
@@ -186,8 +218,9 @@ const pluginRow = z
     autoUpdate: z.boolean().optional(),
   })
   .superRefine((row, ctx) => {
-    const message = pluginRowError(row);
-    if (message) ctx.addIssue({ code: "custom", message });
+    for (const [field, message] of Object.entries(pluginRowErrors(row))) {
+      ctx.addIssue({ code: "custom", path: [field], message });
+    }
   });
 
 const stage = z.object({

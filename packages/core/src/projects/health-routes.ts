@@ -1,5 +1,6 @@
 import { inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
+import { answer } from '../api-reference/declare/describe.js';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import {
@@ -17,6 +18,7 @@ import { loadVisibleProjectIds } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type BlockerRow, readHealthAggregates } from './health-aggregates.js';
+import { projectHealthListSchema, readProjectHealth } from './health-routes-reference.js';
 
 interface ProjectHealthRow {
   /** Project UUID — needed by web-v2 to join the `GET /api/projects` list rows
@@ -89,12 +91,12 @@ function groupBlockers(rows: BlockerRow[]): Map<string, ProjectHealthRow['blocke
   return byProject;
 }
 
-projectHealthRoutes.get('/health', async (c) => {
+projectHealthRoutes.get('/health', readProjectHealth, async (c) => {
   const userId = c.get('userId');
 
   // Caller sees their visible projects (explicit member OR org owner/admin).
   const visibleIds = await loadVisibleProjectIds(userId);
-  if (visibleIds.length === 0) return c.json([]);
+  if (visibleIds.length === 0) return c.json(answer(projectHealthListSchema, []));
 
   const visibleProjects = await db
     .select({
@@ -107,7 +109,7 @@ projectHealthRoutes.get('/health', async (c) => {
     .from(projects)
     .where(inArray(projects.id, visibleIds));
 
-  if (visibleProjects.length === 0) return c.json([]);
+  if (visibleProjects.length === 0) return c.json(answer(projectHealthListSchema, []));
 
   const projectIds = visibleProjects.map((p) => p.id);
   const agg = await readHealthAggregates(projectIds);
@@ -188,5 +190,5 @@ projectHealthRoutes.get('/health', async (c) => {
     };
   });
 
-  return c.json(result);
+  return c.json(answer(projectHealthListSchema, result));
 });

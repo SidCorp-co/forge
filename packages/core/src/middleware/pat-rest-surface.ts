@@ -14,6 +14,7 @@ import {
 } from '../auth/pat-permissions.js';
 import type { PatScope } from '../auth/pat-scope.js';
 import { patEffectiveProjectIds } from '../mcp/tools/project-scope.js';
+import type { Refusal } from './declarations.js';
 import { authenticatePat, type PatPrincipal } from './require-pat.js';
 
 export const PAT_ALLOWED_PREFIXES: readonly string[] = patPermissionPrefixes();
@@ -23,6 +24,45 @@ export const PAT_ACCEPTED_PERMISSIONS_HEADER = 'X-Accepted-Forge-Permissions';
 export function patSurfaceCovers(path: string): boolean {
   return PAT_ALLOWED_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`));
 }
+
+/**
+ * What a route a token can reach may refuse with before its own handler runs, one row for each
+ * answer `beginPatRequest` and `authenticatePat` throw. The API reference states these on every
+ * such route from this table, and `api-reference/gates.test.ts` holds it to the throws.
+ */
+export const PAT_DOOR_REFUSALS: readonly Refusal[] = Object.freeze([
+  { status: 401, code: 'INVALID_TOKEN', when: 'the personal or agent token does not verify' },
+  {
+    status: 403,
+    code: 'PAT_NOT_PERMITTED',
+    when: 'the path is kept out of the token grant, or no permission on the menu covers it',
+  },
+  {
+    status: 403,
+    code: 'INSUFFICIENT_SCOPE',
+    when: "the token lacks the method's read or write scope",
+  },
+  {
+    status: 403,
+    code: 'PAT_ACCOUNT_ROUTE',
+    when: 'an account route, and the token is fenced to projects',
+  },
+  {
+    status: 403,
+    code: 'PAT_GRANT_PREDATES_ROUTE',
+    when: 'the route joined the menu after this token was minted',
+  },
+  {
+    status: 403,
+    code: 'PAT_PERMISSION_REQUIRED',
+    when: 'the token was not granted the permission this route needs',
+  },
+  {
+    status: 429,
+    code: 'RATE_LIMITED',
+    when: 'the token has spent its read or write allowance for the window; Retry-After says when it renews',
+  },
+]);
 
 const PAT_REQUEST_VAR = 'patRequestResolution';
 

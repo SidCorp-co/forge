@@ -7,9 +7,9 @@
 // this": how many credentials, how many want attention, how many are off.
 
 import {
-  Card,
   Icon,
   SectionTitle,
+  SettingsSection,
 } from "@/design";
 import type { ConnectionDirectoryItem } from "@forge/contracts";
 import { type ConnectionGroup, groupSummary } from "../connection-groups";
@@ -33,7 +33,7 @@ export function ConnectionGroupSection({
 }) {
   const rowsId = `connections-${group.provider}`;
   return (
-    <Card>
+    <SettingsSection>
       <SectionTitle className="fg-h3">
         <button
           type="button"
@@ -74,6 +74,6 @@ export function ConnectionGroupSection({
             />
           ))}
       </div>
-    </Card>
+    </SettingsSection>
   );
 }

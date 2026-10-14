@@ -49,6 +49,20 @@ describe("SettingsFormBar", () => {
     expect(screen.getByText("Nothing was saved.")).toBeInTheDocument();
   });
 
+  it("never lets its notices take more than part of the screen: they scroll inside the bar", () => {
+    bar({ dirty: true, children: <p>Nothing was saved.</p> });
+    const notices = screen.getByText("Nothing was saved.").parentElement as HTMLElement;
+    expect(notices.className).toContain("max-h-[40dvh]");
+    expect(notices.className).toContain("overflow-y-auto");
+  });
+
+  it("is the page's own colour, so it reads as the foot of the page and not as a card laid on it", () => {
+    bar();
+    const root = screen.getByText("No unsaved changes.").closest("div[class*='sticky']") as HTMLElement;
+    expect(root.className).toContain("bg-app");
+    expect(root.className).not.toContain("bg-surface");
+  });
+
   it("holds Discard while a save is in flight", () => {
     bar({ dirty: true, saving: true });
     expect(screen.getByRole("button", { name: "Discard" })).toBeDisabled();

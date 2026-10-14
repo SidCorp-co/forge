@@ -7,9 +7,10 @@
  * charge and one authorization answer for the whole `/:id/backlog/*` surface.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import type { Hono } from 'hono';
 import { z } from 'zod';
+import { answer } from '../../api-reference/declare/describe.js';
+import { zValidator } from '../../api-reference/declare/validator.js';
 import { assertProjectAccess } from '../../lib/authz.js';
 import { queryBadRequest } from '../../lib/query-strict.js';
 import type { AuthVars } from '../../middleware/auth.js';
@@ -19,6 +20,12 @@ import {
   NEIGHBOURS_LIMIT_MAX,
   readNeighbours,
 } from './alike-read.js';
+import {
+  neighboursSchema,
+  rankingSchema,
+  readNeighboursRoute,
+  readRankingRoute,
+} from './index-routes-reference.js';
 import { RANKING_LIMIT_DEFAULT, RANKING_LIMIT_MAX, readRanking } from './rank-read.js';
 
 /** What a read spends catching up the pending set before it answers, unless the caller says otherwise. */
@@ -81,6 +88,7 @@ const neighboursQuerySchema = z
 export function registerBacklogIndexRoutes(router: Hono<{ Variables: AuthVars }>): void {
   router.get(
     '/:id/backlog/ranking',
+    readRankingRoute,
     zValidator('param', idParamSchema, (r) => {
       if (!r.success) throw queryBadRequest(idParamSchema, r.error);
     }),
@@ -92,18 +100,22 @@ export function registerBacklogIndexRoutes(router: Hono<{ Variables: AuthVars }>
       const q = c.req.valid('query');
       await assertProjectAccess(id, c.get('userId'), 'viewer');
       return c.json(
-        await readRanking({
-          projectId: id,
-          limit: q.limit,
-          eligibleOnly: q.eligible,
-          catchUpMs: q.catchUpMs,
-        }),
+        answer(
+          rankingSchema,
+          await readRanking({
+            projectId: id,
+            limit: q.limit,
+            eligibleOnly: q.eligible,
+            catchUpMs: q.catchUpMs,
+          }),
+        ),
       );
     },
   );
 
   router.get(
     '/:id/backlog/neighbours',
+    readNeighboursRoute,
     zValidator('param', idParamSchema, (r) => {
       if (!r.success) throw queryBadRequest(idParamSchema, r.error);
     }),
@@ -115,13 +127,16 @@ export function registerBacklogIndexRoutes(router: Hono<{ Variables: AuthVars }>
       const q = c.req.valid('query');
       await assertProjectAccess(id, c.get('userId'), 'viewer');
       return c.json(
-        await readNeighbours({
-          projectId: id,
-          topK: q.topK,
-          limit: q.limit,
-          after: q.after,
-          catchUpMs: q.catchUpMs,
-        }),
+        answer(
+          neighboursSchema,
+          await readNeighbours({
+            projectId: id,
+            topK: q.topK,
+            limit: q.limit,
+            after: q.after,
+            catchUpMs: q.catchUpMs,
+          }),
+        ),
       );
     },
   );

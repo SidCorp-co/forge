@@ -17,7 +17,7 @@ import {
 } from "@/design";
 import { statusLabel } from "@/features/issues/derive";
 import type { IssueStatus } from "@/features/issues/types";
-import type { PipelineDraft } from "../pipeline-form";
+import { type PipelineDraft, startingBacklog } from "../pipeline-form";
 
 const ADMISSIBLE = [...REGISTRY_BACKLOG_ADMISSIBLE_STATUSES] as IssueStatus[];
 
@@ -56,7 +56,7 @@ export function PoolBacklogSection({
 				<div className="flex items-center gap-3">
 					<Toggle
 						checked={enabled}
-						onChange={(on) => set({ statuses: on ? ["draft"] : [] })}
+						onChange={(on) => set({ statuses: on ? startingBacklog(form.draft) : [] })}
 						disabled={!canEdit}
 						aria-label="Show a backlog to this project's master agents"
 					/>

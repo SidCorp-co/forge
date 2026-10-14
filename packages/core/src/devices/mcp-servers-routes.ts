@@ -1,10 +1,16 @@
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { resolveSessionMcpServers } from '../jobs/resolve-job-mcp-servers.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { assertDeviceBoundToProject } from './device-project.js';
+import {
+  mcpServersSchema,
+  projectQuerySchema,
+  readMcpServers,
+} from './mcp-servers-routes-reference.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -12,13 +18,12 @@ const badRequest = (details: unknown) =>
 const unauth = () =>
   new HTTPException(401, { message: 'unauthenticated', cause: { code: 'UNAUTHENTICATED' } });
 
-const projectQuerySchema = z.object({ projectId: z.uuid() });
-
 export const deviceMcpServerRoutes = new Hono<{ Variables: DeviceVars }>();
 
 deviceMcpServerRoutes.get(
   '/me/mcp-servers',
   requireDevice(),
+  readMcpServers,
   zValidator('query', projectQuerySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -29,6 +34,8 @@ deviceMcpServerRoutes.get(
     await assertDeviceBoundToProject(device.id, projectId);
 
     const { mcpServers, resolvedNames, droppedNames } = await resolveSessionMcpServers(projectId);
-    return c.json({ mcpServers: mcpServers ?? {}, resolvedNames, droppedNames });
+    return c.json(
+      answer(mcpServersSchema, { mcpServers: mcpServers ?? {}, resolvedNames, droppedNames }),
+    );
   },
 );

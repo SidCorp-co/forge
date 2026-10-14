@@ -104,7 +104,7 @@ const DECLARED = {
     built: [...BUILT, ...BUILD_READ],
     probed: BUILD_PROBED,
     git: true,
-    blind: ['biome'],
+    blind: ['biome', 'forks.js'],
   },
   'conformance audit': {
     roots: ['.'],

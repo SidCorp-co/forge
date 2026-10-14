@@ -1,8 +1,17 @@
 import type { Context } from 'hono';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { answer } from '../api-reference/declare/describe.js';
+import { declaresInput } from '../api-reference/declare/validator.js';
 import { env } from '../config/env.js';
 import { consumeVerificationToken } from './verification-token.js';
+import {
+  verifiedSchema,
+  verifyBodySchema,
+  verifyFromEmail,
+  verifyProgrammatically,
+  verifyQuerySchema,
+} from './verify-reference.js';
 
 export const verifyRoutes = new Hono();
 
@@ -23,37 +32,47 @@ function loginRedirect(c: Context, query: string): Response {
 
 // GET is the path users hit from the email — it MUST be a redirect, not JSON,
 // because a browser-rendered `{"verified":true}` is bad UX even on success.
-verifyRoutes.get('/verify', async (c) => {
-  const outcome = await runVerify(c.req.query('token'));
-  if (outcome === 'ok') return loginRedirect(c, '?verified=1');
-  return loginRedirect(c, `?verify_error=${outcome}`);
-});
+verifyRoutes.get(
+  '/verify',
+  verifyFromEmail,
+  declaresInput('query', verifyQuerySchema),
+  async (c) => {
+    const outcome = await runVerify(verifyQuerySchema.parse(c.req.query()).token);
+    if (outcome === 'ok') return loginRedirect(c, '?verified=1');
+    return loginRedirect(c, `?verify_error=${outcome}`);
+  },
+);
 
 // POST stays JSON for programmatic callers (CLI, future desktop in-app flow,
 // tests). HTTPException → existing core error envelope.
-verifyRoutes.post('/verify', async (c) => {
-  const queryToken = c.req.query('token');
-  let token: string | undefined = queryToken;
-  if (!token) {
-    try {
-      const body = (await c.req.json()) as { token?: unknown };
-      if (typeof body?.token === 'string') token = body.token;
-    } catch {
-      // no body — fall through to invalid
+verifyRoutes.post(
+  '/verify',
+  verifyProgrammatically,
+  declaresInput('query', verifyQuerySchema),
+  declaresInput('json', verifyBodySchema),
+  async (c) => {
+    let token: string | undefined = verifyQuerySchema.parse(c.req.query()).token;
+    if (!token) {
+      try {
+        const body = verifyBodySchema.safeParse(await c.req.json());
+        if (body.success) token = body.data.token;
+      } catch {
+        // no body — fall through to invalid
+      }
     }
-  }
-  const outcome = await runVerify(token);
-  if (outcome === 'invalid') {
-    throw new HTTPException(400, {
-      message: 'invalid verification token',
-      cause: { code: 'INVALID_TOKEN' },
-    });
-  }
-  if (outcome === 'expired') {
-    throw new HTTPException(400, {
-      message: 'verification token expired',
-      cause: { code: 'TOKEN_EXPIRED' },
-    });
-  }
-  return c.json({ verified: true });
-});
+    const outcome = await runVerify(token);
+    if (outcome === 'invalid') {
+      throw new HTTPException(400, {
+        message: 'invalid verification token',
+        cause: { code: 'INVALID_TOKEN' },
+      });
+    }
+    if (outcome === 'expired') {
+      throw new HTTPException(400, {
+        message: 'verification token expired',
+        cause: { code: 'TOKEN_EXPIRED' },
+      });
+    }
+    return c.json(answer(verifiedSchema, { verified: true }));
+  },
+);
