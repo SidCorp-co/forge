@@ -1,6 +1,7 @@
 import { LIVE_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
 import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
+import { readWorkState, setWorkStep } from './work-state.js';
 
 const LIVE = sql.join(
   LIVE_PIPELINE_RUN_STATUSES.map((s) => sql`${s}`),
@@ -125,28 +126,38 @@ export async function releaseRunClaims(
 
 /**
  * Clear the claims of release runs that ended, so their issues can join another batch. A roster
- * whose run recorded a production deploy and is still held at its release step stays claimed: a person
- * settles it, and its claims are the only index a `return-to-gate` abort reads it back by.
+ * whose run recorded a production deploy, recorded no ship, and is still held at its release step
+ * stays claimed: a person settles it, and its claims are the only index a `return-to-gate` abort
+ * reads it back by. A run that shipped holds nothing (`heldByEndedRelease` reads the same stamp).
+ * The release step goes with the claim that held it.
  */
 export async function releaseEndedRunClaims(): Promise<number> {
-  const released = await db.execute<{ id: string }>(sql`
-    UPDATE issues
-    SET release_batch_run_id = NULL, updated_at = now()
-    WHERE release_batch_run_id IS NOT NULL
-      AND EXISTS (
-        SELECT 1 FROM pipeline_runs r
-        WHERE r.id = issues.release_batch_run_id
-          AND r.status NOT IN (${LIVE})
-      )
-      AND NOT (
-        issues.status = 'awaiting_release'
-        AND EXISTS (SELECT 1 FROM issue_work_state w WHERE w.issue_id = issues.id AND w.step = 'release')
+  return db.transaction(async (tx) => {
+    const released = await tx.execute<{ id: string }>(sql`
+      UPDATE issues
+      SET release_batch_run_id = NULL, updated_at = now()
+      WHERE release_batch_run_id IS NOT NULL
         AND EXISTS (
-          SELECT 1 FROM release_attempts a
-          WHERE a.run_id = issues.release_batch_run_id AND a.stage = 'deploy'
+          SELECT 1 FROM pipeline_runs r
+          WHERE r.id = issues.release_batch_run_id
+            AND r.status NOT IN (${LIVE})
         )
-      )
-    RETURNING id
-  `);
-  return (released as unknown as unknown[]).length;
+        AND NOT (
+          issues.status = 'awaiting_release'
+          AND EXISTS (SELECT 1 FROM issue_work_state w WHERE w.issue_id = issues.id AND w.step = 'release')
+          AND EXISTS (
+            SELECT 1 FROM release_attempts a
+            WHERE a.run_id = issues.release_batch_run_id AND a.stage = 'deploy'
+          )
+          AND ${heldByEndedRelease(sql`issues.release_batch_run_id`)}
+        )
+      RETURNING id
+    `);
+    const ids = [...released].map((r) => r.id);
+    for (const id of ids) {
+      const work = await readWorkState(tx, id);
+      if (work?.step === 'release') await setWorkStep(tx, id, null);
+    }
+    return ids.length;
+  });
 }

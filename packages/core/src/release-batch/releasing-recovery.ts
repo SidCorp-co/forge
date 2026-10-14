@@ -1,7 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { postIssueNotice } from '../comments/index.js';
 import { db, type Tx } from '../db/client.js';
-import { type IssueStatus, issues, projects } from '../db/schema.js';
+import { type IssueStatus, issues, pipelineRuns, projects } from '../db/schema.js';
 import { releaseAttempts } from '../db/schema-release-ledger.js';
 import type { TransitionActor } from '../issues/index.js';
 import {
@@ -27,7 +27,8 @@ export interface RecoverStrandedReleasingResult {
   /** Where the recovered issues went, or `null` when nothing moved. */
   destination: IssueStatus | null;
   /** True when the run recorded a promotion. On its own it does not say the roster stayed put:
-   *  `settlePromotedRoster` settles one anyway, and `destination` is what moved. */
+   *  `settlePromotedRoster` settles one anyway, a shipped run holds nothing, and `destination` is
+   *  what moved. */
   promoted: boolean;
 }
 
@@ -46,6 +47,20 @@ export async function runRecordedPromotion(runId: string): Promise<boolean> {
     .where(and(eq(releaseAttempts.runId, runId), eq(releaseAttempts.stage, 'deploy')))
     .limit(1);
   return row !== undefined;
+}
+
+/**
+ * Did this run record its ship? A finish stamps it once production is verified serving the release
+ * (`stampReleaseShipped`), so what is on production is known, and nothing is left for a person to
+ * settle by holding the roster.
+ */
+async function runRecordedShip(runId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ at: pipelineRuns.releaseReleasedAt })
+    .from(pipelineRuns)
+    .where(eq(pipelineRuns.id, runId))
+    .limit(1);
+  return row?.at != null;
 }
 
 /** The issues still claimed by `runId` that are `closed`: what its finish closed and nothing moved. */
@@ -93,18 +108,21 @@ async function recoverOne(
     runId: string;
     options: RecoverStrandedReleasingOptions;
     promoted: boolean;
+    shipped: boolean;
     destination: IssueStatus;
   },
 ): Promise<boolean> {
-  const { runId, options, promoted, destination } = ctx;
+  const { runId, options, promoted, shipped, destination } = ctx;
   if (options.comment && options.actorUserId) {
     try {
       await postIssueNotice({
         issueId: issue.id,
         authorId: options.actorUserId,
-        body: promoted
-          ? `${options.reason}. ${settledNote(issue.projectId, destination)}`
-          : `${options.reason}. The issue is at \`${destination}\` — a person decides whether it goes back to work or into another batch.`,
+        body: shipped
+          ? `${options.reason}. ${shippedNote(issue.projectId, runId, destination)}`
+          : promoted
+            ? `${options.reason}. ${settledNote(issue.projectId, destination)}`
+            : `${options.reason}. The issue is at \`${destination}\` — a person decides whether it goes back to work or into another batch.`,
       });
     } catch (err) {
       logger.warn({ err, issueId: issue.id, runId }, 'release-batch: recovery comment failed');
@@ -150,6 +168,11 @@ async function recoverOne(
 /**
  * Release every claim on `runId` and rescue whatever it left mid-release.
  *
+ * A run that promoted holds its roster at the release step for a person, unless it also recorded
+ * its ship: then what production serves is known, and an issue the finish could not close goes
+ * back to the gate unclaimed, so the next release can carry it. A closed issue of a shipped run
+ * keeps its claim, the record of the release that carried it, until the sweep lets it go.
+ *
  * Ordered recover-then-clear: the claim column is the only index onto the
  * batch's issues, so clearing first leaves nothing to read them back by.
  */
@@ -174,7 +197,8 @@ export async function recoverStrandedReleasing(
 
   const alreadyClosed = claimed.filter((r) => r.status === 'closed').map((r) => r.id);
   const promoted = await runRecordedPromotion(runId);
-  if (promoted && options.settlePromotedRoster !== true) {
+  const shipped = promoted && (await runRecordedShip(runId));
+  if (promoted && !shipped && options.settlePromotedRoster !== true) {
     logger.warn(
       { runId, claimed: claimed.length, reason: options.reason },
       'release-batch: this run promoted, so its roster stays held at its release step for a person to settle',
@@ -196,20 +220,23 @@ export async function recoverStrandedReleasing(
 
   for (const issue of claimed) {
     if (!heldMidRelease(issue)) continue;
-    if (await recoverOne(issue, { runId, options, promoted, destination }))
+    if (await recoverOne(issue, { runId, options, promoted, shipped, destination }))
       recovered.push(issue.id);
   }
 
   const { fence } = options;
+  const open = shipped ? claimed.filter((r) => r.status !== 'closed').map((r) => r.id) : undefined;
   const released = await db.transaction(async (tx) => {
     if (fence) await fence(tx);
-    return releaseClaims(tx, runId);
+    return releaseClaims(tx, runId, open);
   });
 
   if (recovered.length > 0) {
     logger.warn(
-      { runId, recovered: recovered.length, reason: options.reason },
-      'release-batch: issues rescued from their release step by a batch that wrote no outcome',
+      { runId, recovered: recovered.length, shipped, reason: options.reason },
+      shipped
+        ? 'release-batch: issues a shipped release could not close, let go of their release step'
+        : 'release-batch: issues rescued from their release step by a batch that wrote no outcome',
     );
   }
 
@@ -263,6 +290,15 @@ function settledNote(projectId: string, destination: IssueStatus): string {
     `\`${destination}\`. If the release did land, record it with ` +
     `POST /api/projects/${projectId}/release-records, naming the commit production is serving and ` +
     `how it was released; that closes it against evidence instead of by hand.`
+  );
+}
+
+/** What an issue a shipped release could not close is told: it is free, and where the reason is. */
+function shippedNote(projectId: string, runId: string, destination: IssueStatus): string {
+  return (
+    `The release shipped, so nothing holds this issue: it is at \`${destination}\` with its claim ` +
+    `released, and the next release can carry it. Why it did not close is on the release's finish: ` +
+    `GET /api/projects/${projectId}/release-batches/${runId}/state.`
   );
 }
 

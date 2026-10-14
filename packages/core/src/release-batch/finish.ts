@@ -290,16 +290,12 @@ export async function finishReleaseBatch(
   }
 
   await options.onRosterClosed?.({ closed, failed });
-  await recoverStrandedReleasing(runId, {
-    reason: 'the release finished but this issue could not be closed',
-    actorUserId: actor.type === 'user' ? actor.id : undefined,
-    comment: true,
-    fence,
-  });
 
   // The ship, stamped on the release row itself. It is not read back off the run's status because
   // `cancelConcludedRun` flips a `completed` run to `cancelled`, and a release that shipped and was
-  // aborted afterwards is still the one whose bytes are live.
+  // aborted afterwards is still the one whose bytes are live. Stamped before the recovery below,
+  // which reads it: a shipped run holds nothing, so an issue that did not close leaves the release
+  // step unclaimed, where the next release can carry it.
   if (fence) {
     await db.transaction(async (tx) => {
       await fence(tx);
@@ -308,6 +304,13 @@ export async function finishReleaseBatch(
   } else {
     await stampReleaseShipped(runId);
   }
+
+  await recoverStrandedReleasing(runId, {
+    reason: 'the release finished but this issue could not be closed',
+    actorUserId: actor.type === 'user' ? actor.id : undefined,
+    comment: true,
+    fence,
+  });
 
   const result = { closed, failed };
   await options.onClosed?.(result);
