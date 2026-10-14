@@ -4,7 +4,7 @@
 // aborted to a finish from that write on.
 
 import { randomUUID } from 'node:crypto';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
@@ -48,12 +48,13 @@ export const RUN_NOT_ABORTED = sql`(${pipelineRuns.status} <> 'cancelled' AND ${
 /**
  * Stamp the abort before anything else it does. A later abort rewrites the stamp, because the
  * last abort is the one that decided where the roster went — keeping the closed issues an earlier
- * one recorded, whose claims it released.
+ * one recorded, whose claims it released. With `when`, the stamp is written only where that holds
+ * on the row at the write itself, and `null` says it did not.
  */
 export async function stampAbort(
   runId: string,
-  stamp: { reason: string; by: string; holdPromotedRoster: boolean },
-): Promise<string> {
+  stamp: { reason: string; by: string; holdPromotedRoster: boolean; when?: SQL },
+): Promise<string | null> {
   const held = stamp.holdPromotedRoster && (await runRecordedPromotion(runId));
   const record: AbortStamp = {
     id: randomUUID(),
@@ -63,15 +64,16 @@ export async function stampAbort(
     roster: held ? 'held' : 'returning',
     closed: null,
   };
-  await db.execute(sql`
+  const stamped = await db.execute(sql`
     UPDATE pipeline_runs
     SET metadata = coalesce(metadata, '{}'::jsonb) || jsonb_build_object('abort',
           ${JSON.stringify(record)}::jsonb
           || jsonb_build_object('closed', coalesce(metadata -> 'abort' -> 'closed', 'null'::jsonb))),
         updated_at = now()
-    WHERE id = ${runId}
+    WHERE id = ${runId} ${stamp.when ? sql`AND ${stamp.when}` : sql``}
+    RETURNING id
   `);
-  return record.id;
+  return stamp.when && stamped.length === 0 ? null : record.id;
 }
 
 /**

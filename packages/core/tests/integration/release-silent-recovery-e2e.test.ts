@@ -209,6 +209,73 @@ describe('a batch whose box took the job and then went silent', () => {
   });
 });
 
+describe('a pass that died after stamping', () => {
+  it('is resumed by the next pass on the reason it stamped, whatever the ledger says now', async () => {
+    const { a, runId, jobId } = await batch();
+    await take(jobId, recent());
+    const { stampAbort } = await import('../../src/release-batch/abort-stamp.js');
+    await stampAbort(runId, {
+      reason: 'a pass began this and died',
+      by: '',
+      holdPromotedRoster: true,
+    });
+    expect(await runStatus(runId)).toBe('running');
+    expect(await refusedBy([await insertIssue()])).toContain('BATCH_IN_FLIGHT');
+
+    expect(await mods.recoverSilentReleaseBatches()).toEqual({ recovered: 1, held: 0 });
+
+    expect(await runStatus(runId)).toBe('cancelled');
+    expect((await stored(a)).status).toBe('awaiting_release');
+    expect((await abortStamp(runId))?.reason).toBe('a pass began this and died');
+  });
+
+  it("does not resume a person's abort that has not finished", async () => {
+    const { a, runId, jobId } = await batch();
+    await take(jobId, silent() * 2);
+    const { stampAbort } = await import('../../src/release-batch/abort-stamp.js');
+    await stampAbort(runId, {
+      reason: 'stopped by a person',
+      by: ownerId,
+      holdPromotedRoster: true,
+    });
+
+    expect(await mods.recoverSilentReleaseBatches()).toEqual({ recovered: 0, held: 0 });
+
+    expect(await runStatus(runId)).toBe('running');
+    expect((await stored(a)).status).toBe('releasing');
+  });
+});
+
+describe('the stamp the pass writes', () => {
+  it.each([
+    ['paused', sql`UPDATE pipeline_runs SET status = 'paused' WHERE id = `],
+    [
+      'given a finish record',
+      sql`UPDATE pipeline_runs SET metadata = metadata || '{"finish": {"state": "closing"}}'::jsonb WHERE id = `,
+    ],
+  ])(
+    'refuses a run that was %s after the pass read it, and writes nothing',
+    async (_name, change) => {
+      const { SWEEP_MAY_ABORT } = await import('../../src/release-batch/silent-recovery.js');
+      const { abortReleaseBatch } = await import('../../src/release-batch/service.js');
+      const { ReleaseBatchNotAbortableError } = await import('../../src/release-batch/errors.js');
+      const { a, runId, jobId } = await batch();
+      await take(jobId, silent() * 2);
+      await harness.db.execute(sql`${change}${runId}`);
+
+      await expect(
+        abortReleaseBatch(runId, 'silent', null, { onlyWhen: SWEEP_MAY_ABORT }),
+      ).rejects.toBeInstanceOf(ReleaseBatchNotAbortableError);
+
+      expect(await abortStamp(runId)).toBeNull();
+      const after = await stored(a);
+      expect(after.status).toBe('releasing');
+      expect(after.claim).toBe(runId);
+      expect(await runStatus(runId)).not.toBe('cancelled');
+    },
+  );
+});
+
 describe('the state a person reads', () => {
   it('calls a silent taken batch holding on the stall bound, as the pass does, and a live one not', async () => {
     const { readReleaseRunState } = await import('../../src/release-batch/state.js');

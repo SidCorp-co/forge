@@ -1,8 +1,10 @@
-import { sql } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { logger } from '../logger.js';
 import { emitPipelineWedge } from '../pipeline/wedge.js';
+import { readAbortStamp } from './abort-stamp.js';
 import { BOUND_DEFAULTS, readBounds } from './bounds.js';
+import { ReleaseBatchNotAbortableError } from './errors.js';
 import { RELEASE_JOB_TYPE } from './job-start.js';
 import { listAttempts } from './ledger.js';
 import { abortReleaseBatch } from './service.js';
@@ -21,6 +23,15 @@ interface TakenRow extends Record<string, unknown> {
   taken_at: Date;
   created_by: string | null;
 }
+
+/**
+ * An abort stamp this sweep wrote and never finished: no person on it, the roster still `returning`.
+ * A pass that died after stamping leaves one, and the next pass resumes it instead of excluding it.
+ */
+const INTERRUPTED_SWEEP = sql`(metadata -> 'abort' ->> 'by' = '' AND metadata -> 'abort' ->> 'roster' = 'returning')`;
+
+/** What the sweep may stamp, checked on the row at the write: still running, no finish, no other abort. */
+export const SWEEP_MAY_ABORT: SQL = sql`(status = 'running' AND metadata -> 'finish' IS NULL AND (metadata -> 'abort' IS NULL OR ${INTERRUPTED_SWEEP}))`;
 
 /**
  * Every running release batch whose job a box took and that nothing else is already settling: no
@@ -42,35 +53,42 @@ async function takenBatches(): Promise<TakenRow[]> {
       AND r.status = 'running'
       AND (r.metadata->>'source') = 'release-batch'
       AND r.metadata -> 'finish' IS NULL
-      AND r.metadata -> 'abort' IS NULL
+      AND (r.metadata -> 'abort' IS NULL OR ${INTERRUPTED_SWEEP})
       AND j.dispatched_at IS NOT NULL
       AND j.status IN ('dispatched', 'running', 'done', 'failed')
   `)) as unknown as TakenRow[];
 }
 
-type Verdict = { act: false } | { act: true; silentMs: number; promoted: boolean };
+type Verdict = { act: false } | { act: true; reason: string; promoted: boolean };
 
 /**
- * Read the batch again, right before acting on it: what the candidate list saw can be a minute old,
- * and a finish or an abort that began since is not this pass's to undo. The one threshold is the
- * ledger's own `stall` bound; `total` and `regression` describe a live batch a person should look
- * at, which is not what a silent one is.
+ * Read the batch again, right before acting on it: what the candidate list saw can be a minute old.
+ * One this sweep began to abort and never finished is resumed on the reason it stamped. Otherwise
+ * the one threshold is the ledger's own `stall` bound; `total` and `regression` describe a live
+ * batch a person should look at, which is not what a silent one is. The stamp itself is written
+ * under `SWEEP_MAY_ABORT`, so a pause or a finish landing after this read still stops it.
  */
 async function judge(row: TakenRow, now: number): Promise<Verdict> {
   const [fresh] = (await db.execute<{ metadata: Record<string, unknown> | null; status: string }>(
     sql`SELECT status, metadata FROM pipeline_runs WHERE id = ${row.run_id}`,
   )) as unknown as Array<{ metadata: Record<string, unknown> | null; status: string }>;
-  if (fresh?.status !== 'running') return { act: false };
-  if (fresh.metadata?.finish != null || fresh.metadata?.abort != null) return { act: false };
+  if (fresh?.status !== 'running' || fresh.metadata?.finish != null) return { act: false };
 
   const attempts = await listAttempts(row.run_id);
+  const promotes = attempts.filter((a) => a.stage === 'promote');
+  const stamp = readAbortStamp(fresh.metadata);
+  if (stamp !== null) {
+    const ours = stamp.by === '' && stamp.roster === 'returning';
+    return ours
+      ? { act: true, reason: stamp.reason, promoted: promotes.length > 0 }
+      : { act: false };
+  }
+
   const reading = readBounds(attempts, { now, takenAt: new Date(row.taken_at) });
   const stall = reading.bounds.find((b) => b.name === 'stall');
   if (!reading.crossedNames.includes('stall') || stall?.measuredMs == null) return { act: false };
-
-  const promotes = attempts.filter((a) => a.stage === 'promote');
   if (promotes.some((a) => a.settledAt !== null)) return { act: false };
-  return { act: true, silentMs: stall.measuredMs, promoted: promotes.length > 0 };
+  return { act: true, reason: reasonFor(stall.measuredMs), promoted: promotes.length > 0 };
 }
 
 function reasonFor(silentMs: number): string {
@@ -93,10 +111,14 @@ export async function recoverSilentReleaseBatches(
   for (const row of await takenBatches()) {
     const verdict = await judge(row, now.getTime());
     if (!verdict.act) continue;
-    const reason = reasonFor(verdict.silentMs);
-    const result = await abortReleaseBatch(row.run_id, reason, null, {
+    const result = await abortReleaseBatch(row.run_id, verdict.reason, null, {
+      onlyWhen: SWEEP_MAY_ABORT,
       ...(row.created_by ? { commentAs: row.created_by } : {}),
+    }).catch((err: unknown) => {
+      if (err instanceof ReleaseBatchNotAbortableError) return null;
+      throw err;
     });
+    if (result === null) continue;
     await emitWedge(row, verdict.promoted);
     recovered++;
     if (result.promoted) held++;

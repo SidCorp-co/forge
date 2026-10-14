@@ -12,7 +12,8 @@ const boss = vi.hoisted(() => ({
   schedule: vi.fn(async () => undefined),
 }));
 vi.mock('../queue/boss.js', () => ({ boss }));
-vi.mock('../db/client.js', () => ({ db: { execute: vi.fn(async () => []) } }));
+const execute = vi.hoisted(() => vi.fn(async () => []));
+vi.mock('../db/client.js', () => ({ db: { execute } }));
 vi.mock('../pipeline/wedge.js', () => ({ emitPipelineWedge: vi.fn() }));
 
 const { registerReleaseSilentRecovery, resetReleaseSilentRecoveryForTest } = await import(
@@ -40,10 +41,13 @@ describe('registerReleaseSilentRecovery', () => {
     expect(boss.schedule).toHaveBeenCalledTimes(1);
   });
 
-  it('works the queue with a pass that finds no batch to recover when none is taken', async () => {
+  it('works the queue with the pass, which reads the taken batches', async () => {
     await registerReleaseSilentRecovery();
     const worker = (boss.work.mock.calls[0] as unknown as [string, () => Promise<void>])[1];
+    execute.mockClear();
 
-    await expect(worker()).resolves.toBeUndefined();
+    await worker();
+
+    expect(execute).toHaveBeenCalledTimes(1);
   });
 });

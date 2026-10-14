@@ -144,6 +144,9 @@ stalled too; `GET .../state` gives the same reading in `bounds`. Only the `stall
 `regression` describe a live batch a person should look at). A stalled batch goes through
 `packages/core/src/release-batch/service.ts:abortReleaseBatch` with no person: the abort stamp carries the reason
 and its `by` is empty, the roster goes back to the release gate, the run is cancelled and a pipeline wedge says so.
+The stamp is written only while the run is still running with no finish record, in the one statement that writes it
+(`packages/core/src/release-batch/abort-stamp.ts:stampAbort`), so a pause or a finish landing after the read stops it; a pass
+that died after stamping is resumed by the next on the reason it stamped, and a person's unfinished abort is never resumed.
 A batch with a `promote` attempt that never settled is cancelled with its roster held at `releasing`, and one
 whose promotion settled is left whole for a person. The in-flight guard itself reads status alone, so a new batch
 is refused until the pass has run, at most a minute after the bound is crossed.
