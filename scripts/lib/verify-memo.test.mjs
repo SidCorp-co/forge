@@ -595,7 +595,8 @@ describe('what verify declares', () => {
       'packages/web-v2/.next/dev/types/routes.d.ts',
       'packages/web-v2/.next/dev/types/validator.ts',
     ];
-    for (const rel of [...written, 'packages/web-v2/AGENTS.md', 'packages/web-v2/CLAUDE.md']) put(rel, 'x');
+    for (const rel of [...written, 'packages/web-v2/AGENTS.md', 'packages/web-v2/CLAUDE.md'])
+      put(rel, 'x');
     put('packages/web-v2/.next/dev/cache/turbopack/blob', 'x');
     const lines = [
       ...written.map((rel) => `R ${join(root, rel)}`),
@@ -607,7 +608,8 @@ describe('what verify declares', () => {
       expect(faults, label).toEqual([]);
     }
     const check = { label: 'archmap', cmd: ['node', 'check.mjs'] };
-    const keyed = () => keyFor({ check, decl: INPUTS.archmap, tree: new Tree(root), git: null, env: {} }).key;
+    const keyed = () =>
+      keyFor({ check, decl: INPUTS.archmap, tree: new Tree(root), git: null, env: {} }).key;
     const before = keyed();
     put('packages/web-v2/.next/dev/cache/turbopack/blob', 'a build nobody reads');
     expect(keyed()).toBe(before);

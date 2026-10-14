@@ -30,14 +30,9 @@ const BIOME = [
   'packages/biome.jsonc',
 ];
 const BUILT = ['packages/contracts/dist', 'packages/observability/dist'];
-/**
- * What Next writes under `.next` that TypeScript reads: the route types web-v2's tsconfig includes,
- * from `next build` (`types/`) and `next dev` (`dev/types/`), and the manifest above each. The rest
- * of `.next` is output no check reads, and hundreds of megabytes of it.
- */
+/** Of `.next`, what TypeScript reads: `next build`'s and `next dev`'s route types and manifests. */
 const NEXT_READ = { path: 'packages/web-v2/.next', only: /(^|\/)(types\/.+|package\.json)$/ };
-/** Ignored build output that archmap reads, or only stats: a tsbuildinfo, cargo's `target/`, and
- *  the agent files `next dev` writes beside the package. */
+/** Ignored build output that archmap reads, or only stats: a tsbuildinfo, cargo's `target/`, `next dev`'s agent files. */
 const BUILD_READ = ['packages/web-v2/next-env.d.ts', NEXT_READ];
 const BUILD_PROBED = [
   'packages/web-v2/tsconfig.tsbuildinfo',

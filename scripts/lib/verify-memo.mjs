@@ -366,7 +366,11 @@ function stats(root, rel) {
 export function audit({ root, decl, tree, lines, git }) {
   const reachable = new Set([...coveredFiles(tree, decl.roots), ...builtFiles(root, decl.built)]);
   const derived = new Set(decl.derived ?? []);
-  const rootDirs = [...decl.roots.map(rootPath), ...(decl.built ?? []).map(rootPath), ...(decl.listed ?? [])];
+  const rootDirs = [
+    ...decl.roots.map(rootPath),
+    ...(decl.built ?? []).map(rootPath),
+    ...(decl.listed ?? []),
+  ];
   const under = (rel) => rootDirs.some((r) => covers(r, rel));
   const above = (rel) => rel === '.' || rootDirs.some((r) => r.startsWith(`${rel}/`));
   const probed = (rel) => (decl.probed ?? []).some((p) => covers(p, rel));

@@ -37,8 +37,6 @@ export const DOORS: Record<Audience, Door> = {
 /** The one name of the public surface, and what its header says under it. */
 export const SITE_NAME = "Forge documentation";
 
-/** The tab's title for what a page shows, said once for the server's metadata and the client's
- *  navigations alike; the landing names only the site. */
 export function documentTitle(subject: string | null): string {
   return subject ? `${subject} — ${SITE_NAME}` : SITE_NAME;
 }
