@@ -23,7 +23,7 @@ interface Anchor {
   sy: number;
 }
 
-interface Decoration {
+export interface Decoration {
   selected: string | null;
   selectedEdge: string | null;
   relNodes: Set<string> | null;
@@ -37,7 +37,8 @@ interface Decoration {
   health: CanvasHealth | null;
 }
 
-function stepData(c: Canvas, n: View["nodes"][number], d: Decoration): StepNodeData | BandNodeData {
+/** A view node's data as its card reads it: a folded band counts what its steps carry, so a mark on a step it hides still shows. */
+export function stepData(c: Canvas, n: View["nodes"][number], d: Decoration): StepNodeData | BandNodeData {
   if (n.kind === "band") {
     const band = c.bands.find((b) => b.id === n.band);
     const steps = band?.steps ?? [];
@@ -45,6 +46,7 @@ function stepData(c: Canvas, n: View["nodes"][number], d: Decoration): StepNodeD
       label: band?.label ?? n.band,
       summary: band ? bandSummary(c, band) : { count: 0, types: [], owners: 0, deadlines: 0 },
       hits: steps.filter((id) => d.hits.has(id)).length,
+      changed: steps.filter((id) => d.diff?.steps.has(id)).length,
       rel: !d.relNodes || steps.some((id) => d.relNodes?.has(id)),
     };
   }

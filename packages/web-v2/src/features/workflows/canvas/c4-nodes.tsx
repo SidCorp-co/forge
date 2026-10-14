@@ -21,6 +21,8 @@ export interface C4BoxData extends Record<string, unknown> {
   rel: boolean;
   hit: boolean;
   mark: StepMark | null;
+  /** The steps it folds that the diff marks, while Changes is on: a proposal's changes show before it opens. */
+  changed: number;
   /** The marker kinds on the steps this box draws, while the Health overlay is on. */
   health: HealthMarkerKind[];
   /** A folded boundary opens in place on a click; absent, a click pins its card instead. */
@@ -128,6 +130,11 @@ function C4Box({ data }: NodeProps & { data: C4BoxData }) {
             {l}
           </span>
         ))}
+        {data.changed > 0 ? (
+          <span className="wfc-c4-changed" style={{ fontSize: FONT.chip }} data-testid="c4-changed">
+            {t("workflows.node.changed", { n: data.changed })}
+          </span>
+        ) : null}
         {data.health.length ? (
           <span className="wfc-health" data-testid="node-health">
             {data.health.map((k) => (

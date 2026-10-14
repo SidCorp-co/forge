@@ -68,6 +68,12 @@ export const useSystemGraph = (ref: SystemGraphRef | null) =>
   useQuery({
     ...readOf(["system-graph", ref?.projectId, ref?.workflowId, ref?.revision ?? 0, ref?.against ?? 0], () => workflowsApi.systemGraph(ref as SystemGraphRef), 5 * 60_000),
     enabled: ref !== null,
+    // the same revision compared against another one (Changes turned on or off) stays drawn until the
+    // new comparison arrives, so the canvas keeps the reader's view; another design or revision does not
+    placeholderData: (prev, prevQuery) => {
+      const [, projectId, workflowId, revision] = prevQuery?.queryKey ?? [];
+      return projectId === ref?.projectId && workflowId === ref?.workflowId && revision === (ref?.revision ?? 0) ? prev : undefined;
+    },
   });
 
 /** FB-86: drafts a requirement from a design no requirement roots; the design and the list read again. */
