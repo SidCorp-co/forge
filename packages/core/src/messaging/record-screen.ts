@@ -29,32 +29,12 @@ export const RECORD_RULE_IDS: readonly string[] = [
 /** The guide that holds the whole table, named by every record-in-comment message. */
 export const RECORD_GUIDE_SLUG = 'records-and-comments';
 
-/**
- * Where a record goes when it is not a comment, by the kind that names it — and ONLY where a store
- * holds the whole of that kind. `issue_step_contexts` types a verdict on `(issue, step, attempt)`;
- * nothing holds a baseline or a decision, so those go to the guide rather than to a route that
- * would refuse them UNREGISTERED_KEY. A `Map` because the kind is caller-supplied: `constructor`
- * on an object literal answers off the prototype instead of taking the unsupported-kind path.
- */
-export const RECORD_DESTINATIONS: ReadonlyMap<string, string> = new Map([
-  ['verdict', 'POST /api/issue-step-contexts'],
-  ['review', 'POST /api/issue-step-contexts'],
-]);
-
 export const ISSUE_ASSERTION_ROUTE = 'POST /api/issues/:id/attributes';
-
-export function destinationFor(kind: string | null): string | null {
-  return kind ? (RECORD_DESTINATIONS.get(kind) ?? null) : null;
-}
 
 /** One sentence, built once, served both as the refusal and as the warning, so the two cannot drift. */
 export function recordInCommentMessage(record: ForgeRecord): string {
-  const route = destinationFor(record.kind);
   const named = record.kind ? `a \`${record.kind}\` record` : 'a record';
-  const where = route
-    ? `${named} goes to \`${route}\`, and the comment keeps your summary line`
-    : `no store here holds ${named} whole — put the assertions it makes about the issue at \`${ISSUE_ASSERTION_ROUTE}\` under a registered key, and keep the sentence in the comment`;
-  return `a \`forge-record\` fence is not comment content — ${where}. The store each kind belongs in: guide \`${RECORD_GUIDE_SLUG}\``;
+  return `a \`forge-record\` fence is not comment content — no store here holds ${named} whole — put the assertions it makes about the issue at \`${ISSUE_ASSERTION_ROUTE}\` under a registered key, and keep the sentence in the comment. The store each kind belongs in: guide \`${RECORD_GUIDE_SLUG}\``;
 }
 
 const RECORD_IN_COMMENT_SHAPE =
@@ -67,7 +47,7 @@ export function recordInCommentRefusal(record: ForgeRecord | null): MessageRefus
     why: recordInCommentMessage(record),
     quote: '```forge-record',
     shape: RECORD_IN_COMMENT_SHAPE,
-    example: destinationFor(record.kind) ?? `guide \`${RECORD_GUIDE_SLUG}\``,
+    example: `guide \`${RECORD_GUIDE_SLUG}\``,
   };
 }
 

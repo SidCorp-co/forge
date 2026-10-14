@@ -30,7 +30,6 @@ vi.mock("@/features/shell", () => ({ buildShareLink: (p: string) => p, useRecent
 vi.mock("./activity-feed", () => ({ ActivityTab: () => null }));
 vi.mock("../hooks", () => ({
   useRun: () => ({ data: run, isLoading: false, isError: false, error: null }),
-  useIssueTasks: () => ({ data: [], isLoading: false, isError: false }),
   usePauseRun: () => idle,
   useResumeRun: () => idle,
   useCancelRun: () => idle,
@@ -303,5 +302,14 @@ describe("the Ops drawer, which opens a run with no issue row (ISS-1297)", () =>
     expect(within(opsHeader()).getByText("Queued")).toBeInTheDocument();
     expect(fetched).not.toHaveBeenCalled();
     fetched.mockRestore();
+  });
+});
+
+describe("the run drawer's tabs", () => {
+  it("offers Activity, Timeline and Cost, with no Tasks tab", () => {
+    run = summary("running");
+    render(<RunDetail open onClose={vi.fn()} issue={issueRow()} runId="r1" slug="forge-dev" />);
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Activity", "Timeline", "Cost"]);
+    expect(screen.queryByRole("tab", { name: /tasks/i })).toBeNull();
   });
 });

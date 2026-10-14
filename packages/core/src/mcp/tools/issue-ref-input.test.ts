@@ -15,7 +15,6 @@ import {
   issueRefSchema,
   isUuid,
   refsFor,
-  TASK_REF_INPUTS,
 } from './issue-ref-input.js';
 
 const A_UUID = '00000000-0000-4000-8000-0000000000aa';
@@ -28,9 +27,7 @@ function refs(action: string) {
   return refsFor({ action }, NO_SCOPE, NO_SCOPE.principal);
 }
 
-/** Every `field on actionA/actionB` the clause states, as a flat set of `field action` pairs.
- *  `documentId` appears twice — once for the issues, once for the tasks — so the whole string is
- *  scanned rather than its first hit. */
+/** Every `field on actionA/actionB` the clause states, as a flat set of `field action` pairs. */
 function pairsInClause(): Set<string> {
   const pairs = new Set<string>();
   for (const [, field, actions] of ISSUE_REF_CLAUSE.matchAll(/([\w.]+) on ([\w/]+)/g)) {
@@ -40,7 +37,7 @@ function pairsInClause(): Set<string> {
 }
 
 function pairsInRegistry(): Set<string> {
-  return new Set([...ISSUE_REF_INPUTS, ...TASK_REF_INPUTS].map((i) => `${i.field} ${i.action}`));
+  return new Set(ISSUE_REF_INPUTS.map((i) => `${i.field} ${i.action}`));
 }
 
 describe('the clause and the registry are one string (ISS-1179)', () => {
@@ -75,30 +72,8 @@ describe('a pair the registry does not hold is refused by name (ISS-1179)', () =
     );
   });
 
-  it('refuses a task reference on an action that takes none', () => {
-    expect(() => refs('get').task('documentId', A_UUID)).toThrow(
-      /BAD_REQUEST: documentId on action 'get' is not one of this tool's task references/,
-    );
-  });
-
   it('carries the clause into that refusal, so the caller is told what IS valid', async () => {
     await expect(refs('create').issue('data.issueId', 'ISS-42')).rejects.toThrow(ISSUE_REF_CLAUSE);
-  });
-});
-
-describe('a task reference takes the task uuid alone (ISS-1179)', () => {
-  it.each(TASK_REF_INPUTS)('$action passes a uuid through untouched', ({ action, field }) => {
-    expect(refs(action).task(field, A_UUID)).toBe(A_UUID);
-  });
-
-  it.each(TASK_REF_INPUTS)('$action refuses a display key, quoting it', ({ action, field }) => {
-    expect(() => refs(action).task(field, 'ISS-42')).toThrow(/`ISS-42` is not a uuid/);
-  });
-
-  it('says where the task uuid comes from, rather than only that this one is wrong', () => {
-    expect(() => refs('updateTask').task('documentId', 'ISS-42')).toThrow(
-      /A task carries no display key.*action 'listTasks' and filters\.issue/s,
-    );
   });
 });
 

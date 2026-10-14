@@ -45,14 +45,6 @@ export function useActivity(id: string | undefined, projectId?: string) {
   });
 }
 
-export function useTasks(id: string | undefined, projectId?: string) {
-  return useQuery({
-    queryKey: ["tasks", id],
-    queryFn: () => issueDetailApi.listTasks(id as string, projectId),
-    enabled: !!id,
-  });
-}
-
 export function useAttachments(id: string | undefined, projectId?: string) {
   return useQuery({
     queryKey: ["issue", id, "attachments"],

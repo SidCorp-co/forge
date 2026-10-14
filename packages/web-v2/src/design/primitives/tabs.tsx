@@ -15,7 +15,7 @@ export interface TabsProps {
   onChange?: (value: string) => void;
 }
 
-/** Underline tabs (e.g. issue detail: Activity / Tasks / Comments). */
+/** Underline tabs (e.g. issue detail: Comments / Activity). */
 export function Tabs({ tabs, value, onChange }: TabsProps) {
   const onKeyDown = (e: React.KeyboardEvent) => {
     const i = tabs.findIndex((t) => t.value === value);

@@ -170,25 +170,6 @@ export interface HookPayloads {
     newVersion: number;
     contentHash: string;
   };
-  taskCreated: {
-    taskId: string;
-    issueId: string;
-    projectId: string;
-    actor: Actor;
-  };
-  taskUpdated: {
-    taskId: string;
-    issueId: string;
-    projectId: string;
-    actor: Actor;
-    fields: string[];
-  };
-  taskDeleted: {
-    taskId: string;
-    issueId: string;
-    projectId: string;
-    actor: Actor;
-  };
   scheduleRun: {
     scheduleId: string;
     projectId: string;

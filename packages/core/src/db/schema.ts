@@ -30,7 +30,7 @@ import {
   issueDependencyKinds,
   issuePriorities,
   issueStatuses,
-  taskStatuses,
+  singleRowAttributeKeys,
   waitingKinds,
 } from './issue-vocabulary.js';
 import { jobEventKinds } from './job-event-vocabulary.js';
@@ -1600,46 +1600,6 @@ export const knowledgeEntriesRelations = relations(knowledgeEntries, ({ one }) =
   project: one(projects, { fields: [knowledgeEntries.projectId], references: [projects.id] }),
 }));
 
-export const taskAgentStatuses = ['idle', 'running', 'completed', 'failed'] as const;
-export type TaskAgentStatus = (typeof taskAgentStatuses)[number];
-
-export const tasks = pgTable(
-  'tasks',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    issueId: uuid('issue_id')
-      .notNull()
-      .references(() => issues.id, { onDelete: 'cascade' }),
-    projectId: uuid('project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
-    title: text('title').notNull(),
-    description: text('description'),
-    status: text('status', { enum: taskStatuses }).notNull().default('backlog'),
-    priority: text('priority', { enum: issuePriorities }).notNull().default('none'),
-    assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
-    isAgentTask: boolean('is_agent_task').notNull().default(false),
-    agentStatus: text('agent_status', { enum: taskAgentStatuses }),
-    agentLog: jsonb('agent_log'),
-    acceptanceCriteria: jsonb('acceptance_criteria'),
-    sortOrder: integer('sort_order').notNull().default(0),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    issueIdx: index('tasks_issue_id_idx').on(t.issueId),
-    projectStatusIdx: index('tasks_project_status_idx').on(t.projectId, t.status),
-    assigneeIdx: index('tasks_assignee_idx').on(t.assigneeId),
-    issueSortIdx: index('tasks_issue_sort_idx').on(t.issueId, t.sortOrder),
-  }),
-);
-
-export const tasksRelations = relations(tasks, ({ one }) => ({
-  issue: one(issues, { fields: [tasks.issueId], references: [issues.id] }),
-  project: one(projects, { fields: [tasks.projectId], references: [projects.id] }),
-  assignee: one(users, { fields: [tasks.assigneeId], references: [users.id] }),
-}));
-
 export const scheduleStatuses = ['success', 'failed', 'running', 'skipped'] as const;
 export type ScheduleStatus = (typeof scheduleStatuses)[number];
 
@@ -2589,8 +2549,6 @@ export const issueStepContextKinds = ['handoff'] as const;
 export type IssueStepContextKind = (typeof issueStepContextKinds)[number];
 
 export const testResults = ['pass', 'fail', 'blocked_fixture', 'verified_by_test'] as const;
-export const stepVerdicts = [...testResults, 'needs_fix', 'no_change', 'abstain'] as const;
-export type StepVerdict = (typeof stepVerdicts)[number];
 
 export const issueStepContexts = pgTable(
   'issue_step_contexts',
@@ -2609,9 +2567,6 @@ export const issueStepContexts = pgTable(
     step: text('step'),
     attempt: integer('attempt').notNull().default(1),
     payload: jsonb('payload').notNull(),
-    // ISS-381 (2.1) — nullable; set only for review/test handoffs. Powers the
-    // pass_rate / approve_rate timeseries reads (migration 0094).
-    verdict: text('verdict', { enum: stepVerdicts }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -2621,9 +2576,6 @@ export const issueStepContexts = pgTable(
       .where(sql`${t.kind} = 'handoff'`),
     issueKindIdx: index('issue_step_contexts_issue_kind_idx').on(t.issueId, t.kind),
     runIdx: index('issue_step_contexts_run_idx').on(t.pipelineRunId),
-    verdictIdx: index('issue_step_contexts_verdict_idx')
-      .on(t.projectId, t.step, t.createdAt)
-      .where(sql`${t.verdict} IS NOT NULL`),
   }),
 );
 
@@ -2912,18 +2864,9 @@ export type AttributeValueType = (typeof attributeValueTypes)[number];
 export const attributeWriters = ['agent', 'human'] as const;
 export type AttributeWriter = (typeof attributeWriters)[number];
 
-export const attributeCardinalities = ['one', 'many'] as const;
-
-export const issueAttributeDefs = pgTable('issue_attribute_defs', {
-  key: text('key').primaryKey(),
-  label: text('label').notNull(),
-  valueType: text('value_type').notNull(),
-  cardinality: text('cardinality').notNull().default('one'),
-  writtenBy: text('written_by').notNull(),
-  surfaces: jsonb('surfaces').notNull().default([]),
-  required: boolean('required').notNull().default(false),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+/** The predicate of the partial unique index over single-row keys; an upsert names the same one to land on it. */
+export const singleRowKeys = (key: AnyPgColumn): SQL =>
+  sql`${key} IN (${sql.raw(singleRowAttributeKeys.map((k) => `'${k}'`).join(', '))})`;
 
 export const issueAttributes = pgTable(
   'issue_attributes',
@@ -2932,9 +2875,7 @@ export const issueAttributes = pgTable(
     issueId: uuid('issue_id')
       .notNull()
       .references(() => issues.id, { onDelete: 'cascade' }),
-    key: text('key')
-      .notNull()
-      .references(() => issueAttributeDefs.key, { onDelete: 'cascade' }),
+    key: text('key').notNull(),
     valueText: text('value_text'),
     valueNum: doublePrecision('value_num'),
     valueBool: boolean('value_bool'),
@@ -2951,13 +2892,12 @@ export const issueAttributes = pgTable(
   (t) => ({
     issueKeyIdx: index('issue_attributes_issue_key_idx').on(t.issueId, t.key),
     refIdx: index('issue_attributes_ref_idx').on(t.valueRef),
+    singleRowUq: uniqueIndex('issue_attributes_single_row_uq')
+      .on(t.issueId, t.key)
+      .where(singleRowKeys(t.key)),
   }),
 );
 
 export const issueAttributesRelations = relations(issueAttributes, ({ one }) => ({
   issue: one(issues, { fields: [issueAttributes.issueId], references: [issues.id] }),
-  def: one(issueAttributeDefs, {
-    fields: [issueAttributes.key],
-    references: [issueAttributeDefs.key],
-  }),
 }));

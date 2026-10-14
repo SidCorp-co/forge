@@ -28,7 +28,7 @@ page in the set that touches the module. Nothing here is fixed.
 | Claimed in pass 1 | Actually |
 |---|---|
 | No `attempt` column anywhere on the work path | `jobs.attempts` (migration 0007) plus a `retryOf` chain, and `issue_step_contexts.attempt`. Pass-1 grep was truncated by `head` and I reported the truncation as the result |
-| `approve_rate` / `pass_rate` measure n=0 because attempts are not modelled | The column exists and `pipeline/issue-context-store.ts:writeIssueContext` extracts the verdict from a review or test handoff. The series is empty because the **handoff itself is deliberately best-effort** — never a status gate. A measurement plane fed by an artifact the system on purpose does not require will read zero forever, and no schema change fixes that |
+| `approve_rate` / `pass_rate` measure n=0 because attempts are not modelled | The series was empty because the **handoff itself is deliberately best-effort** — never a status gate. A measurement plane fed by an artifact the system on purpose does not require reads zero forever, and no schema change fixes that; the column and both metrics were removed rather than displayed as zero |
 | Core never refuses by name | It does, for runner admission, with the doctrine stated in the source |
 | Admission writes nothing, so there is nowhere to stamp `policy_version` | There is an audited-transition plane with database-level bypass detection. It does not reach admission, which is a narrower and different gap |
 | The box pulls work | The box pulls *candidates*; taking one is a core write |
@@ -78,8 +78,8 @@ provenance of its own.
   `valid_until` (forge-plugin ISS-347), so core releases and the master does not.
 - ~~**Does `closed` mean shipped?**~~ Answered 2026-09-20 and built in ISS-1108: it does, with no
   second column to consult, and work that is not work leaves by `dropped`.
-- **Is the review/test handoff to become mandatory?** If it stays best-effort, `approve_rate` and
-  `pass_rate` should be deleted rather than displayed as zero.
+- ~~**Is the review/test handoff to become mandatory?**~~ It stays best-effort, so `approve_rate` and
+  `pass_rate` were deleted rather than displayed as zero (ISS-1132).
 
 ## Read so far
 

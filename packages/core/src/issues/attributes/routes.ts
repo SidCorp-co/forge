@@ -46,19 +46,15 @@ const badRequest = (details: unknown) =>
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-/**
- * The status each refusal is rendered at. A drifted registry is the server's
- * own two lists disagreeing, which is a conflict and not the caller's input;
- * every other refusal names something the caller sent.
- */
-const REFUSAL_STATUS: Record<AttributeRefusalCode, 400 | 409> = {
+/** The status each refusal is rendered at: every one names something the caller sent. */
+const REFUSAL_STATUS: Record<AttributeRefusalCode, 400> = {
   UNREGISTERED_KEY: 400,
   WRONG_TYPE: 400,
   OBLIGATION_UNOWNED: 400,
   EMPTY_TEXT: 400,
   SOURCE_COMMENT_NOT_FOUND: 400,
   SOURCE_COMMENT_OFF_ISSUE: 400,
-  ATTRIBUTE_DEF_MISSING: 409,
+  DUPLICATE_SINGLE_KEY: 400,
 };
 
 /** The HTTP an attribute refusal becomes, carrying its own code by name. */

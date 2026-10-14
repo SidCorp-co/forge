@@ -23,14 +23,6 @@ export const ISSUE_REF_INPUTS: readonly RefInput[] = [
   { action: 'setAttributes', field: 'documentId' },
   { action: 'mark_merged', field: 'data.issueId' },
   { action: 'unmark', field: 'data.issueId' },
-  { action: 'createTask', field: 'data.issueId' },
-  { action: 'listTasks', field: 'filters.issue' },
-];
-
-/** The inputs naming a TASK. Nothing renders a display key for one, so the uuid is all there is. */
-export const TASK_REF_INPUTS: readonly RefInput[] = [
-  { action: 'updateTask', field: 'documentId' },
-  { action: 'deleteTask', field: 'documentId' },
 ];
 
 function byField(inputs: readonly RefInput[]): string {
@@ -48,7 +40,7 @@ export const ISSUE_REF_CLAUSE =
   `this tool answers with under issueId (ISS-42 under the shared prefix, whatever prefix the ` +
   `project holds otherwise, or that key's bare sequence number); a key resolves inside the ` +
   `project the call is scoped to, and one that resolves to nothing is refused by name rather ` +
-  `than read as absent. ${byField(TASK_REF_INPUTS)} names a TASK and takes its uuid alone.`;
+  `than read as absent.`;
 
 /** Shape refusals are the resolver's: only it knows the project a key was looked for in. */
 export const issueRefSchema = z.string().trim().min(1).describe(ISSUE_REF_CLAUSE);
@@ -66,7 +58,6 @@ function registered(inputs: readonly RefInput[], action: string, field: string):
 /** One call's references, bound to its action and scope. */
 export interface CallRefs {
   issue(field: string, ref: string): Promise<string>;
-  task(field: string, ref: string): string;
 }
 
 /** Scope is deferred and memoised, so a uuid costs no lookup and two keys cost one. Membership is
@@ -110,18 +101,6 @@ export function refsFor(
         );
       }
       return row.id;
-    },
-
-    task(field, ref) {
-      if (!registered(TASK_REF_INPUTS, input.action, field)) {
-        throw new Error(
-          `BAD_REQUEST: ${field} on action '${input.action}' is not one of this tool's task references — ${ISSUE_REF_CLAUSE}`,
-        );
-      }
-      if (isUuid(ref)) return ref;
-      throw new Error(
-        `BAD_REQUEST: ${field} on action '${input.action}' is the TASK uuid, and \`${ref}\` is not a uuid. A task carries no display key — a display key names the issue, never one of its tasks. List them with action 'listTasks' and filters.issue, and take the uuid off the row you mean.`,
-      );
     },
   };
 }

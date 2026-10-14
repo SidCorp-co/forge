@@ -2543,6 +2543,11 @@
   (ISS-1313)
 
 ### Removed
+- **Subtasks are gone.** `GET` and `POST /api/issues/:id/tasks` and every `/api/tasks` path now answer 404, `forge_issues` refuses `createTask`, `listTasks`, `updateTask` and `deleteTask` as unknown actions, `tasks:read` and `tasks:write` are no longer on a token's permission menu, and the Tasks tab is gone from the issue page and the run drawer. Nothing in a run wrote them: the last one was written on 2026-08-22, and a session's own todo list is already shown on its transcript. 359 subtasks over 156 issues are deleted with the table. A subtask's priority was set on 354 of them and had no other home, so that is withdrawn with them; none had an assignee or an order, and the upgrade stops naming the row if any did. The issue page is rearranged around Comments and Activity, flat with hairline dividers. (ISS-1132)
+- **`pass_rate` and `approve_rate` are gone from `forge_metrics` and the metrics route.** Asking for either is refused by name as retired, with the metrics still served listed, instead of answering an empty series. No step has recorded a verdict since 2026-08-31, so the typed verdict on a step handoff is dropped (3236 values); each handoff keeps its own verdict in its payload, and the step-handoff reads no longer return a `verdict` field. (ISS-1132)
+- **The attribute keys `blocking` and `supersedes` are gone.** They let an agent assert a blocking relation that gated nothing; a blocking relation is a dependency edge. Writing either is refused as an unregistered key, and the upgrade stops naming the row if any exist (none do). (ISS-1132)
+- **A `verdict` or `review` fence in a comment is no longer pointed at the step-context route.** That route no longer holds a typed verdict, so the refusal now says no store holds one whole, as it does for a baseline or a decision. The comment fence is the only place a verdict is recorded. (ISS-1132)
+
 - **`GET /api/me/recent-changes` is gone.** Nothing called it, and it still listed issues of archived projects. (ISS-1371)
 - **The Runs / Spend / Lead time switch on Top workspaces is gone.** Press the Runs, Spend or Median lead header instead; the ranking is still the server's, largest first. (ISS-1263)
 - **Forge no longer writes your release steps.** A project that declares its own procedure gets it;
@@ -6411,6 +6416,8 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+
+- **An attribute that holds one value per issue now holds exactly one row, kept by the database.** Two writers setting `human_required`, `delivered` or any other single-row key at the same moment could leave an issue with two rows for a key that promised one; the second write now replaces the first. A batch that names a single-row key twice is refused as `DUPLICATE_SINGLE_KEY` rather than keeping both. The seeded copy of the registry, and its `ATTRIBUTE_DEF_MISSING` refusal, are gone. (ISS-1132)
 
 - **Projects opens as a list on a phone, and the Overview is flat.** The cards stay from 640px up, and a view you pick wins. Overview sections are type over a hairline, with no cards. (ISS-1264)
 
