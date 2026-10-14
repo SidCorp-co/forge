@@ -76,13 +76,13 @@ export function NotificationsMenu({
   const hasItems = items.length > 0;
   return (
     <div className="forge-drop w-[340px] overflow-hidden rounded-lg border border-line bg-surface shadow-lg">
-      <div className="flex items-center justify-between border-b border-line-subtle px-4 py-3">
+      <div className="flex items-center justify-between border-b border-line-subtle px-4">
         <span className="fg-label">Notifications</span>
         <button
           type="button"
           onClick={onMarkAllRead}
           disabled={!onMarkAllRead || !hasItems}
-          className="fg-caption text-link hover:underline disabled:cursor-default disabled:text-muted disabled:no-underline"
+          className="fg-caption inline-flex min-h-11 items-center text-link hover:underline disabled:cursor-default disabled:text-muted disabled:no-underline"
         >
           Mark all read
         </button>
@@ -151,7 +151,7 @@ export function NotificationsMenu({
                           onToggleGroup?.(n.id);
                         }}
                         disabled={!onToggleGroup}
-                        className="fg-caption text-link hover:underline disabled:cursor-default disabled:text-muted disabled:no-underline"
+                        className="fg-caption inline-flex min-h-11 items-center text-link hover:underline disabled:cursor-default disabled:text-muted disabled:no-underline"
                       >
                         {`${n.group.open} of ${n.group.total} still open`}
                         {expandedId === n.id ? " — hide" : " — show"}
@@ -168,14 +168,14 @@ export function NotificationsMenu({
                                     e.stopPropagation();
                                     onSelectMember?.(m.id);
                                   }}
-                                  className="block w-full py-1 text-left hover:underline"
+                                  className="flex min-h-11 w-full items-center py-1 text-left hover:underline"
                                 >
                                   <span
-                                    className={`fg-caption ${m.open ? "text-fg" : "text-muted line-through"}`}
+                                    className={`fg-caption min-w-0 ${m.open ? "text-fg" : "text-muted line-through"}`}
                                   >
                                     {m.text}
                                   </span>
-                                  <span className="fg-caption ml-2 text-muted">{m.time}</span>
+                                  <span className="fg-caption ml-2 flex-none whitespace-nowrap text-muted">{m.time}</span>
                                 </button>
                               </li>
                             ))}

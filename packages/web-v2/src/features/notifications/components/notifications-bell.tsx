@@ -18,7 +18,7 @@ import {
   useDeclineInvitation,
 } from "../hooks";
 import { toNotificationItem, toInvitationItem } from "../map";
-import { secondaryHref, subjectHref } from "../subject";
+import { memberTexts, secondaryHref, subjectHref } from "../subject";
 import type { PendingInvitation } from "../types";
 import { type DeliveryNotification, useNotificationDelivery } from "../use-notification-delivery";
 import { useOpenIndicator } from "../use-open-indicator";
@@ -152,16 +152,16 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
   // a member click deep-links the same way a plain row does.
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const membersQuery = useNotificationMembers(expandedId);
-  const expandedMembers = useMemo(
-    () =>
-      (membersQuery.data ?? []).map((m) => ({
+  const expandedMembers = useMemo(() => {
+    const members = membersQuery.data ?? [];
+    const texts = memberTexts(members);
+    return members.map((m, i) => ({
         id: m.id,
-        text: m.title,
+        text: texts[i] ?? m.title,
         time: formatRelativeTime(m.createdAt),
         open: m.open,
-      })),
-    [membersQuery.data],
-  );
+    }));
+  }, [membersQuery.data]);
   const onToggleGroup = useCallback(
     (id: string) => setExpandedId((prev) => (prev === id ? null : id)),
     [],
@@ -171,22 +171,24 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
       const member = membersQuery.data?.find((m) => m.id === memberId);
       const href = member ? subjectHref(member) : null;
       if (!href) return;
+      if (expandedId) markRead.mutate(expandedId);
       onClose();
       router.push(href);
     },
-    [membersQuery.data, router, onClose],
+    [membersQuery.data, expandedId, markRead, router, onClose],
   );
-  // A row opens its subject. A grouped row has none of its own, since its records are the subjects,
-  // so selecting it reads it and opens the group instead.
+  // A row opens its subject and following it reads it. A grouped row has none of its own, since its
+  // records are the subjects, so selecting it opens the group and reads nothing: a member followed
+  // is what reads it, the same rule as the inbox.
   const onSelectNotification = useCallback(
     (id: string) => {
       const row = notificationRows.find((n) => n.id === id);
-      if (row && row.readAt === null) markRead.mutate(id);
       if (!row) return;
       if (row.members > 1) {
         onToggleGroup(id);
         return;
       }
+      if (row.readAt === null) markRead.mutate(id);
       onClose();
       const href = subjectHref(row);
       if (href) router.push(href);
