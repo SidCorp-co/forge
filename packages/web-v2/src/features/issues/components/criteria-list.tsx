@@ -10,8 +10,8 @@
 // A short is met short of its wording and never proven, so its mark is the pass's ✓ drawn hollow in
 // the warn tone, with its word beside it from md up; it never reads as a pass (forge-core-eb, 2026-10-14).
 
-import { type ReactNode, useId, useState } from "react";
-import { EmptyPanelLine, StatusBadge, statusReading, VerdictEvidence, ViewHeading } from "@/design";
+import { type ReactNode, useState } from "react";
+import { EmptyPanelLine, HollowCheck, StatusBadge, statusReading, VerdictEvidence, ViewHeading } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
@@ -46,22 +46,6 @@ function verdictLines(v: CriterionVerdict, t: Copy, language: string, at: (iso: 
 const ROW_WORDS = 8;
 
 type Filter = "all" | "fail" | "unjudged" | "met" | "skipped";
-
-/** The ✓'s path; a short draws it hollow, a wide stroke with a narrow one cut out of it. */
-const CHECK_PATH = "M3 8.6 6.6 12.2 13 4.6";
-
-function HollowCheck() {
-  const maskId = `hollow-${useId().replace(/[^\w-]/g, "")}`;
-  return (
-    <svg viewBox="0 0 16 16" className="inline-block size-4 align-middle" aria-hidden="true" data-mark="hollow">
-      <mask id={maskId}>
-        <path d={CHECK_PATH} fill="none" stroke="white" strokeWidth={4.6} strokeLinecap="round" strokeLinejoin="round" />
-        <path d={CHECK_PATH} fill="none" stroke="black" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
-      </mask>
-      <rect width="16" height="16" fill="currentColor" mask={`url(#${maskId})`} />
-    </svg>
-  );
-}
 
 const MARK: Record<CriterionStanding, ReactNode> = { pass: "✓", short: <HollowCheck />, fail: "✕", skipped: "↷", unresolved: "–", unjudged: "–" };
 const MARK_TONE: Record<CriterionStanding, string> = {

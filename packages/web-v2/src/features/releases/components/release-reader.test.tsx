@@ -187,7 +187,7 @@ describe("each change as one short row (BC-6)", () => {
     open(row);
     expect(within(row).getAllByRole("button")[0]).toHaveAttribute("aria-expanded", "true");
     const detail = within(row).getByTestId("page-row-detail");
-    expect(detail).toHaveTextContent("Checks: 3 passed, 0 open");
+    expect(detail).toHaveTextContent("Checks: 3 met, 0 open");
     expect(detail).toHaveTextContent("The page shows the version and date.");
     expect(within(detail).getByRole("link", { name: "Issue ISS-1" })).toHaveAttribute("href", "/projects/forge/issues/ISS-1");
     expect(within(detail).getByRole("link", { name: "Requirement REQ-40" })).toHaveAttribute("href", "/projects/forge/requirements/REQ-40");
@@ -243,7 +243,7 @@ describe("requirements, still open and other changes (BC-5, BC-8)", () => {
     const r = screen.getByTestId("page-requirement");
     expect(r).toHaveTextContent("Completes");
     expect(r).toHaveTextContent("Release page");
-    expect(r).toHaveTextContent("Checks passed: 3");
+    expect(r).toHaveTextContent("Checks met: 3");
     expect(within(r).queryByTestId("page-requirement-count")).toBeNull();
     open(r);
     const count = within(r).getByTestId("page-requirement-count");

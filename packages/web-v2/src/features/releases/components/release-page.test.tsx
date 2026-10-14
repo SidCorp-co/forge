@@ -163,7 +163,7 @@ describe("the header, the Proof panel and the list say one count (BC-5)", () => 
     expect(screen.queryByTestId("facts-proof")).toBeNull();
     expect(screen.queryByTestId("release-verified-by")).toBeNull();
     // the requirement's 3 proven rows, the untraced one, and the 2 still open sum to the header's 6
-    expect(screen.getByTestId("page-requirement")).toHaveTextContent("Checks passed: 3");
+    expect(screen.getByTestId("page-requirement")).toHaveTextContent("Checks met: 3");
     const open = screen.getAllByTestId("page-known-issue").map((r) => Number(within(r).getByText(/^\d+ open$/).textContent?.split(" ")[0]));
     expect(3 + (page.untraced?.proven.length ?? 0) + open.reduce((a, b) => a + b, 0)).toBe(6);
     // a row opened in a user's view marks each criterion and names no issue number or code (REQ-43 BC-7, BC-10)
@@ -175,7 +175,16 @@ describe("the header, the Proof panel and the list say one count (BC-5)", () => 
     const iss1 = screen.getAllByTestId("page-change").find((r) => r.getAttribute("data-row-key") === "ISS-1");
     if (!iss1) throw new Error("no ISS-1 row");
     fireEvent.click(within(iss1).getAllByRole("button")[0]);
-    expect([...within(iss1).getByTestId("page-row-detail").querySelectorAll("li")].map((l) => l.textContent)).toEqual(["✓A nurse sees the reminder", "≈A nurse sees it on a phone"]);
+    const proof = within(iss1).getByTestId("page-row-detail");
+    // a short is drawn as the Criteria tab draws it: the hollow ✓ in the warn tone, named Short, never ≈ and never a pass
+    const rule = "a short on the release proof list is the Criteria tab's hollow warn ✓, never ≈ or a pass's ✓";
+    const short = within(proof).queryByTestId("proof-short-mark");
+    if (!short) throw new Error(`${rule}: the short drew no short mark`);
+    expect(short.querySelector("svg[data-mark=hollow]"), rule).not.toBeNull();
+    expect(short.className, rule).toMatch(/\btext-warn-11\b/);
+    expect(short.textContent, rule).not.toMatch(/[≈✓]/);
+    expect(short).toHaveAccessibleName("Short");
+    expect([...proof.querySelectorAll("li")].map((l) => l.textContent)).toEqual(["✓A nurse sees the reminder", "A nurse sees it on a phone"]);
   });
 });
 
