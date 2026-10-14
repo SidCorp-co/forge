@@ -216,6 +216,20 @@ describe('what core writes in place of a stored credential', () => {
     expect(findCredential(readAsText(whole.text), wording)).toBeNull();
   });
 
+  it('numbers the bare marker where a stored value matches the bare marker too', () => {
+    const clash = credentialsFrom({
+      testCredentials: [
+        { label: 'login', username: 'withheld', password: 'environments.testCredentials' },
+      ],
+    });
+    const once = withholdCredentials('environments&#46;testCredentials', clash);
+    expect(findCredential(once.text, clash)).toBeNull();
+    expect(findCredential(readAsText(once.text), clash)).toBeNull();
+    const literal = withholdCredentials('pw environments.testCredentials end', clash);
+    expect(findCredential(literal.text, clash)).toBeNull();
+    expect(literal.text.startsWith('pw [withheld ')).toBe(true);
+  });
+
   it('names no credential where its label and its position both hold a stored value', () => {
     const named = credentialsFrom({
       testCredentials: [{ label: 'credential #1', username: 'u', password: 'credential #1' }],

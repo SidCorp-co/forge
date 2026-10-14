@@ -238,12 +238,28 @@ export function withheldMarker(id: string): string {
   return id === '' ? '[withheld]' : `[withheld: test credential "${id}", read at ${READ_AT}]`;
 }
 
-/** The marker for `id`, or the bare one when the marker, as written or as read, would carry a credential. */
+/** Whether a stored value is in `text`, as it stands or as a reader sees it. */
+function holdsCredential(text: string, credentials: readonly StoredCredential[]): boolean {
+  return (
+    spansOf(text, credentials).length > 0 || findCredential(readAsText(text), credentials) !== null
+  );
+}
+
+/**
+ * The marker for `id`, or a bare one where the named marker would carry a stored value. A bare
+ * marker can match too (a stored username `withheld`), so the next is numbered: no stored value
+ * matches two of them, so one of as many as there are credentials, plus one, is clear.
+ */
 function safeMarker(id: string, credentials: readonly StoredCredential[]): string {
-  const marker = withheldMarker(id);
-  const carries =
-    spansOf(marker, credentials).length > 0 || findCredential(readAsText(marker), credentials);
-  return carries ? withheldMarker('') : marker;
+  const named = withheldMarker(id);
+  if (!holdsCredential(named, credentials)) return named;
+  for (let n = 0; n <= credentials.length; n += 1) {
+    const bare = n === 0 ? withheldMarker('') : `[withheld ${n}]`;
+    if (!holdsCredential(bare, credentials)) return bare;
+  }
+  throw new Error(
+    'no withheld marker is clear of the stored credentials: a value matches them all',
+  );
 }
 
 /** The text core writes, with its stored credentials replaced in place and everything else kept. */
