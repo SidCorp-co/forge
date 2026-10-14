@@ -1,1 +1,0 @@
-**A short is never proven, anywhere.** The release record, its approval and the criteria hold count proof as requirements do; a design approval's stamp alone no longer enters awaiting_release; a kernel hand-back says why on the issue.
