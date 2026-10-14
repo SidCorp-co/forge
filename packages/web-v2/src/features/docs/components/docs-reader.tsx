@@ -7,7 +7,7 @@ import Link from "next/link";
 import { type ReactNode, useEffect, useRef } from "react";
 import { Card, CardContent, Icon, Input, Markdown } from "@/design";
 import { cn } from "@/lib/utils/cn";
-import { slugify } from "../reader";
+import { type MatchExcerpt, type MatchSpan, slugify, splitAtMatch } from "../reader";
 import type { TocEntry } from "../types";
 
 /** One entry in the sidebar: a button where the reader selects in place, a link where each
@@ -20,6 +20,8 @@ export interface DocsNavItem {
   onSelect?: () => void;
   /** A short label beside the title, e.g. which door a search result sits behind. */
   tag?: string;
+  /** On a search result: what the reader typed, marked in the title, and where in the page it was found. */
+  found?: { query: string; excerpt: MatchExcerpt | null };
 }
 
 export interface DocsNavSection {
@@ -33,17 +35,39 @@ function itemClass(active: boolean) {
     : "flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-13 text-muted hover:bg-hover hover:text-fg";
 }
 
+function Marked({ span }: { span: MatchSpan }) {
+  return (
+    <>
+      {span.before}
+      <mark className="bg-transparent font-semibold text-fg">{span.match}</mark>
+      {span.after}
+    </>
+  );
+}
+
+function Title({ item }: { item: DocsNavItem }) {
+  const span = item.found ? splitAtMatch(item.title, item.found.query) : null;
+  return <span className="truncate">{span ? <Marked span={span} /> : item.title}</span>;
+}
+
 function ItemBody({ item }: { item: DocsNavItem }) {
+  const excerpt = item.found?.excerpt ?? null;
   return (
     <>
       <Icon name="book" size={13} className="flex-none self-start pt-0.5 text-subtle" />
-      {item.tag ? (
+      {item.tag || excerpt ? (
         <span className="flex min-w-0 flex-col">
-          <span className="truncate">{item.title}</span>
-          <span className="fg-caption text-subtle">{item.tag}</span>
+          <Title item={item} />
+          {excerpt ? (
+            <span className="fg-caption line-clamp-2 font-normal text-muted">
+              {excerpt.heading ? <span className="text-fg">{excerpt.heading} · </span> : null}
+              <Marked span={excerpt} />
+            </span>
+          ) : null}
+          {item.tag ? <span className="fg-caption text-subtle">{item.tag}</span> : null}
         </span>
       ) : (
-        <span className="truncate">{item.title}</span>
+        <Title item={item} />
       )}
     </>
   );
@@ -93,7 +117,7 @@ export function DocsSearchField({
 
 export function DocsSearchResults({ results }: { results: DocsNavItem[] }) {
   return (
-    <ul className="flex flex-col gap-0.5 pt-1" aria-label="Search results">
+    <ul className="flex flex-col gap-1 pt-1" aria-label="Search results">
       {results.length === 0 ? (
         <li className="fg-body-sm px-2 py-1 text-subtle">No matches</li>
       ) : (

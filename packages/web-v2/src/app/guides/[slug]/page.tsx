@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { HELP_DOCS } from "@/features/docs/help-content.generated";
 import { fetchGuide, fetchGuideCorpus, fetchGuideScope } from "@/features/guides/api";
-import { DOORS } from "@/features/guides/audience";
+import { DOORS, documentTitle } from "@/features/guides/audience";
 import { buildCorpus, fromGuide } from "@/features/guides/corpus";
 import { GuideShell } from "@/features/guides/components/guide-shell";
 import { PublicReader } from "@/features/guides/components/public-docs";
@@ -13,7 +13,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug } = await params;
   const guide = await fetchGuide(slug);
   if (!guide) return {};
-  return { title: `${guide.title} — Forge documentation`, description: `${DOORS.agent.notice} ${guide.summary}` };
+  return { title: documentTitle(guide.title), description: `${DOORS.agent.notice} ${guide.summary}` };
 }
 
 export default async function GuidePage({ params }: Params) {

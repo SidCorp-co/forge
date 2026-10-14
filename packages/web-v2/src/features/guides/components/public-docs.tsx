@@ -3,7 +3,7 @@
 // The public documentation at `/guides`: a landing with the three doors and a search over every
 // page, and a reader built from the same furniture as the in-app `/docs` screen.
 import Link from "next/link";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { EmptyState, PageTitle } from "@/design";
 import { LINK_CLASS } from "@/design/patterns/body-tags";
 import {
@@ -14,10 +14,10 @@ import {
   DocsSearchResults,
   DocsSidebar,
 } from "@/features/docs/components/docs-reader";
-import { deriveToc, searchDocs } from "@/features/docs/reader";
+import { deriveToc, matchExcerpt, searchDocs } from "@/features/docs/reader";
 import { coreFileUrl } from "@/lib/utils/core-url";
 import type { GuideScope } from "../api";
-import { AUDIENCES, type Audience, DOORS, doorHref, INDEX_PATH, ONE_CORPUS } from "../audience";
+import { AUDIENCES, type Audience, DOORS, doorHref, documentTitle, INDEX_PATH, ONE_CORPUS } from "../audience";
 import { type PublicDoc, docsBehind, doorSections } from "../corpus";
 import { ALL_DOORS_LINK_TEXT, type Refusal, SEARCH_UNAVAILABLE } from "../missing";
 
@@ -27,14 +27,31 @@ export type ReaderView =
   | { kind: "page"; href: string }
   | { kind: "refused"; refusal: Refusal };
 
-function resultItem(doc: PublicDoc, activeHref: string | null): DocsNavItem {
+function resultItem(doc: PublicDoc, activeHref: string | null, query: string): DocsNavItem {
   return {
     key: doc.href,
     title: doc.title,
     active: doc.href === activeHref,
     href: doc.href,
     tag: DOORS[doc.audience].label,
+    found: { query, excerpt: matchExcerpt(doc, query) },
   };
+}
+
+/** The tab's title, set on every render: a client-side navigation between `/guides` addresses that
+ *  differ only in their query keeps the head of the first one — docs/modules/guides/public-pages.md. */
+function useDocumentTitle(subject: string | null) {
+  const title = documentTitle(subject);
+  useEffect(() => {
+    document.title = title;
+  }, [title]);
+}
+
+/** What the tab names for a reader's view: the door, the page, or the refusal it shows. */
+function viewSubject(view: ReaderView, doc: PublicDoc | null): string {
+  if (view.kind === "door") return DOORS[view.audience].label;
+  if (view.kind === "refused") return view.refusal.heading;
+  return doc?.title ?? view.href;
 }
 
 /** Core's own words, with each backticked span set as code; nothing here restates what core says. */
@@ -70,6 +87,7 @@ export function PublicLanding({
   scope: GuideScope;
 }) {
   const { query, setQuery, results } = useSearch(corpus);
+  useDocumentTitle(null);
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -83,7 +101,7 @@ export function PublicLanding({
           placeholder={placeholder}
           label="Search every page"
         />
-        {results ? <DocsSearchResults results={results.map((d) => resultItem(d, null))} /> : null}
+        {results ? <DocsSearchResults results={results.map((d) => resultItem(d, null, query))} /> : null}
       </div>
       <nav aria-label="Ways in" className="grid grid-cols-1 gap-3 md:grid-cols-3">
         {AUDIENCES.map((audience) => {
@@ -223,6 +241,7 @@ export function PublicReader({
 }) {
   const { query, setQuery, results } = useSearch(corpus);
   const doc = view.kind === "page" ? (corpus.find((d) => d.href === view.href) ?? null) : null;
+  useDocumentTitle(viewSubject(view, doc));
   // A refusal names no door, so its sidebar is the search and every door as the way on.
   const audience: Audience | null =
     view.kind === "door" ? view.audience : doc ? doc.audience : null;
@@ -244,7 +263,7 @@ export function PublicReader({
       placeholder={SIDEBAR_PLACEHOLDER}
       searchLabel="Search every page"
       searchId={SEARCH_FIELD_ID}
-      results={results ? results.map((d) => resultItem(d, activeHref)) : null}
+      results={results ? results.map((d) => resultItem(d, activeHref, query)) : null}
       sections={sections}
       navLabel={audience ? DOORS[audience].label : "Documentation"}
       footer={
@@ -315,6 +334,7 @@ function RefusalCopy({ refusal }: { refusal: Refusal }) {
  *  door as the way on, and the reason there is no search said rather than left out. With the index
  *  in hand a refusal is a `PublicReader` view, which offers the search. */
 export function PublicRefusal({ refusal }: { refusal: Refusal }) {
+  useDocumentTitle(refusal.heading);
   return (
     <div className="mx-auto flex max-w-[72ch] flex-col gap-4 py-8">
       <PageTitle className="fg-h2 text-fg">{refusal.heading}</PageTitle>

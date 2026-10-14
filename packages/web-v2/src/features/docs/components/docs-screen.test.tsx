@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 expect.extend(matchers);
@@ -79,5 +79,16 @@ describe("the Connect an assistant section (ISS-1175)", () => {
       "What you can ask",
       "When it does not work",
     ]);
+  });
+});
+
+describe("the in-app search, which shares the public docs' results", () => {
+  it("lists the page named for the words first, and says where each other page holds them", () => {
+    open("");
+    fireEvent.change(screen.getByRole("textbox", { name: "Search docs" }), { target: { value: "status" } });
+    const results = within(screen.getByRole("list", { name: "Search results" })).getAllByRole("button");
+    expect(results[0]).toHaveTextContent(/^Read an issue's status/);
+    const mentionOnly = results.find((r) => !r.querySelector("span.flex-col > span")?.textContent?.includes("status"));
+    expect(mentionOnly?.querySelector("span.flex-col > span + span mark")?.textContent?.toLowerCase()).toBe("status");
   });
 });

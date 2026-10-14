@@ -75,17 +75,90 @@ export function groupSections<T extends Groupable>(
     });
 }
 
-/** The pages whose title or body holds the query, case-insensitively; `null` for an empty query. */
+/** The pages whose title, summary or body holds the query, case-insensitively, those whose title
+ *  holds it first and each group in the order given; `null` for an empty query. */
 export function searchDocs<T extends { title: string; body: string; summary?: string | null }>(
   docs: readonly T[],
   query: string,
 ): T[] | null {
   const q = query.trim().toLowerCase();
   if (!q) return null;
-  return docs.filter(
-    (d) =>
-      d.title.toLowerCase().includes(q) ||
-      d.body.toLowerCase().includes(q) ||
-      (d.summary ?? "").toLowerCase().includes(q),
-  );
+  const inTitle: T[] = [];
+  const elsewhere: T[] = [];
+  for (const d of docs) {
+    if (d.title.toLowerCase().includes(q)) inTitle.push(d);
+    else if (d.body.toLowerCase().includes(q) || (d.summary ?? "").toLowerCase().includes(q)) elsewhere.push(d);
+  }
+  return [...inTitle, ...elsewhere];
+}
+
+/** `text` cut around the first place it holds `query`, case-insensitively; `null` where it holds none. */
+export interface MatchSpan {
+  before: string;
+  match: string;
+  after: string;
+}
+
+export function splitAtMatch(text: string, query: string): MatchSpan | null {
+  const q = query.trim().toLowerCase();
+  if (!q) return null;
+  const at = text.toLowerCase().indexOf(q);
+  if (at === -1) return null;
+  return { before: text.slice(0, at), match: text.slice(at, at + q.length), after: text.slice(at + q.length) };
+}
+
+/** Where in a page the query was found: the section heading it sits under, and the words around it. */
+export interface MatchExcerpt extends MatchSpan {
+  heading: string | null;
+}
+
+const BEFORE = 40;
+const AFTER = 120;
+
+/** A markdown line as a reader sees it: no heading, quote or list marker, link target or emphasis. */
+function plainLine(line: string): string {
+  return line
+    .replace(/^\s*(#{1,6}\s+|>\s?|[-*+]\s+|\d+\.\s+)/, "")
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/<[^>]+>/g, "")
+    .replace(/`|\*\*/g, "")
+    .replace(/\|/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function trimmed(span: MatchSpan): MatchSpan {
+  const head = span.before.length > BEFORE ? `…${span.before.slice(-BEFORE).replace(/^\S*\s/, "")}` : span.before;
+  const tail = span.after.length > AFTER ? `${span.after.slice(0, AFTER).replace(/\s\S*$/, "")}…` : span.after;
+  return { before: head, match: span.match, after: tail };
+}
+
+/** The first line of the page's body that holds the query, with the heading above it; else its
+ *  summary; `null` where only the title holds it. A heading repeating the page's title is neither a
+ *  match nor a place, the title already being shown; a line whose words hold the query only inside
+ *  markup (a link's address) is shown as written. */
+export function matchExcerpt(
+  doc: { title: string; body: string; summary?: string | null },
+  query: string,
+): MatchExcerpt | null {
+  const title = doc.title.trim().toLowerCase();
+  let heading: string | null = null;
+  let inFence = false;
+  for (const line of doc.body.split("\n")) {
+    if (/^\s*```/.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    const h = inFence ? null : /^(#{1,3})\s+(.+?)\s*#*$/.exec(line);
+    const text = h ? plainLine(h[2]) : plainLine(line);
+    if (h && text.toLowerCase() === title) {
+      heading = null;
+      continue;
+    }
+    const span = splitAtMatch(text, query) ?? splitAtMatch(line.trim(), query);
+    if (span) return { heading: h ? null : heading, ...trimmed(span) };
+    if (h) heading = text;
+  }
+  const inSummary = splitAtMatch(doc.summary ?? "", query);
+  return inSummary ? { heading: null, ...trimmed(inSummary) } : null;
 }

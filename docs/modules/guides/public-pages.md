@@ -62,6 +62,18 @@ nothing else. Three shapes were tried and all three behaved the same: a client
 raised from `generateMetadata`. A middleware `rewrite` carrying `{ status: 404 }`
 was also tried; the status is ignored and the response is 200.
 
+## The search, and the tab's title
+
+`searchDocs` in `packages/web-v2/src/features/docs/reader.ts` is a substring match over title,
+summary and body, listing the pages whose title holds the words ahead of the rest, and each result
+shows `matchExcerpt` of that page: the heading the first matching line sits under and the words around
+it. The in-app `/docs` screen reads the same two functions.
+
+The tab's title is set by the reader as well as by `generateMetadata`, both through
+`documentTitle` in `packages/web-v2/src/features/guides/audience.ts`. A client-side navigation between
+`/guides` addresses kept the title of an earlier one: measured on forge-beta, going from an agent
+page to `/guides?for=user` and on to a help page left every tab reading the agent door's title.
+
 ## What answers an unknown slug, page or door
 
 `packages/web-v2/src/middleware.ts`, because it is the only layer that can set a status and a
