@@ -34,6 +34,7 @@ export function Truncated({ text, className }: TruncatedProps) {
 
   return (
     <>
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: a span that fits is never focused, so these fire only once it is cut and focusable, and a blur must clear the hold whatever its width. */}
       <span
         ref={line}
         title={text}
