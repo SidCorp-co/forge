@@ -24,6 +24,12 @@ export interface Refusal {
   body: string;
 }
 
+/** Said in place of a door, a page or the landing when the guide index they are built from is down. */
+export const GUIDES_UNAVAILABLE: Refusal = {
+  heading: "The guides could not be loaded",
+  body: "This page is built from Forge's guide index, which did not answer. Try again in a moment, or start from one of the ways in below.",
+};
+
 const PICK_FROM_INDEX = "The index lists every page behind each of its three doors.";
 
 export function missingPage(slug: string): Refusal {

@@ -15,7 +15,7 @@ export interface Guide {
 
 export type GuideSummary = Omit<Guide, "body">;
 
-class GuideFetchError extends Error {
+export class GuideFetchError extends Error {
   constructor(what: string, url: string, detail: string) {
     super(`${what} (${url}): ${detail}`);
     this.name = "GuideFetchError";

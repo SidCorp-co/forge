@@ -16,7 +16,7 @@ import {
   PageTitle,
 } from "@/design";
 import { HELP_DOCS } from "../help-content.generated";
-import { deriveToc, groupSections, HELP_SECTION_ORDER, searchDocs } from "../reader";
+import { deriveToc, groupSections, HELP_SECTION_ORDER, matchExcerpt, searchDocs } from "../reader";
 import { DocsArticle, DocsLayout, type DocsNavItem, DocsSidebar } from "./docs-reader";
 
 export function DocsScreen() {
@@ -72,7 +72,11 @@ export function DocsScreen() {
               onQuery={setQuery}
               placeholder="Search docs"
               searchLabel="Search docs"
-              results={results ? results.map(item) : null}
+              results={
+                results
+                  ? results.map((d) => ({ ...item(d), found: { query, excerpt: matchExcerpt(d, query) } }))
+                  : null
+              }
               sections={sections.map((s) => ({ name: s.name, items: s.docs.map(item) }))}
               navLabel="Docs"
             />

@@ -30,9 +30,16 @@ const BIOME = [
   'packages/biome.jsonc',
 ];
 const BUILT = ['packages/contracts/dist', 'packages/observability/dist'];
-/** Ignored build output that archmap reads, or only stats: a tsbuildinfo, cargo's `target/`. */
-const BUILD_READ = ['packages/web-v2/next-env.d.ts', 'packages/web-v2/.next/types'];
-const BUILD_PROBED = ['packages/web-v2/tsconfig.tsbuildinfo', 'packages/runner/target'];
+/** Of `.next`, what TypeScript reads: `next build`'s and `next dev`'s route types and manifests. */
+const NEXT_READ = { path: 'packages/web-v2/.next', only: /(^|\/)(types\/.+|package\.json)$/ };
+/** Ignored build output that archmap reads, or only stats: a tsbuildinfo, cargo's `target/`, `next dev`'s agent files. */
+const BUILD_READ = ['packages/web-v2/next-env.d.ts', NEXT_READ];
+const BUILD_PROBED = [
+  'packages/web-v2/tsconfig.tsbuildinfo',
+  'packages/runner/target',
+  'packages/web-v2/AGENTS.md',
+  'packages/web-v2/CLAUDE.md',
+];
 
 const DECLARED = {
   'source-language': { roots: [CODE, CONFORMANCE, 'packages/core', 'packages/web-v2'] },

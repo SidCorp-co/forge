@@ -7,7 +7,14 @@ import {
   SITE_NAME,
 } from "./audience";
 import { assetPath } from "@/lib/asset";
-import { ALL_DOORS_LINK_TEXT, MISSING_GUIDE_BODY, missingGuideHeading, type Refusal } from "./missing";
+import {
+  ALL_DOORS_LINK_TEXT,
+  GUIDES_UNAVAILABLE,
+  MISSING_GUIDE_BODY,
+  missingGuideHeading,
+  type Refusal,
+  SEARCH_UNAVAILABLE,
+} from "./missing";
 
 const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
 
@@ -64,7 +71,7 @@ nav{display:flex;flex-direction:column;gap:.25rem}
  *  neither render React nor name the app's hashed stylesheet. It shows what `GuideShell` and
  *  the refusal in `PublicReader` show a client-side navigation, less the search a page without
  *  JavaScript could not run. */
-export function refusalDocument({ heading, body }: Refusal): string {
+export function refusalDocument({ heading, body }: Refusal, notes: readonly string[] = []): string {
   const h = escapeHtml(heading);
   const doors = AUDIENCES.map(
     (a) => `<a href="${doorHref(a)}">${escapeHtml(DOORS[a].label)}</a>`,
@@ -85,6 +92,7 @@ export function refusalDocument({ heading, body }: Refusal): string {
     '<div class="refusal">',
     `<h1>${h}</h1>`,
     `<p>${escapeHtml(body)}</p>`,
+    ...notes.map((note) => `<p>${escapeHtml(note)}</p>`),
     `<nav aria-label="Ways in">${doors}<a href="${INDEX_PATH}">${escapeHtml(ALL_DOORS_LINK_TEXT)}</a></nav>`,
     "</div>",
     "</main>",
@@ -96,4 +104,12 @@ export function refusalDocument({ heading, body }: Refusal): string {
 /** The 404 for `/guides/<unknown>`. */
 export function missingGuideDocument(slug: string): string {
   return refusalDocument({ heading: missingGuideHeading(slug), body: MISSING_GUIDE_BODY });
+}
+
+/** How long a reader or a crawler is asked to wait before trying a page core could not answer for. */
+export const RETRY_AFTER_SECONDS = 30;
+
+/** The 503 for a door, page, landing or guide whose guide index core did not answer for. */
+export function unavailableDocument(): string {
+  return refusalDocument(GUIDES_UNAVAILABLE, [SEARCH_UNAVAILABLE]);
 }

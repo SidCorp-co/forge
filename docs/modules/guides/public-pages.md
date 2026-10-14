@@ -62,6 +62,18 @@ nothing else. Three shapes were tried and all three behaved the same: a client
 raised from `generateMetadata`. A middleware `rewrite` carrying `{ status: 404 }`
 was also tried; the status is ignored and the response is 200.
 
+## The search, and the tab's title
+
+`searchDocs` in `packages/web-v2/src/features/docs/reader.ts` is a substring match over title,
+summary and body, listing the pages whose title holds the words ahead of the rest, and each result
+shows `matchExcerpt` of that page: the heading the first matching line sits under and the words around
+it. The in-app `/docs` screen reads the same two functions.
+
+The tab's title is set by the reader as well as by `generateMetadata`, both through
+`documentTitle` in `packages/web-v2/src/features/guides/audience.ts`. A client-side navigation between
+`/guides` addresses kept the title of an earlier one: measured on forge-beta, going from an agent
+page to `/guides?for=user` and on to a help page left every tab reading the agent door's title.
+
 ## What answers an unknown slug, page or door
 
 `packages/web-v2/src/middleware.ts`, because it is the only layer that can set a status and a
@@ -86,14 +98,24 @@ of that shape is one extra core request per guide view on the happy path, paid s
 that a reader without JavaScript gets the refusal instead of a blank document. It
 ends when Next server-renders a `notFound()` body.
 
+The same request decides the outage. A plain request for a real door, help page, the landing or a
+guide asks core first (`coreStatus` in the middleware: the index for `/guides`; for `/guides/<slug>`
+the guide, then the index its page is also built from), and where core cannot be reached or answers anything but success (or, for a
+guide, 404) the middleware answers **503** with `Retry-After` and `unavailableDocument`, the same
+header and ways in as the 404s. Core unreachable is never a 404: that would tell a reader a guide
+does not exist on no evidence. The price is one core request per plain `/guides` view, and a second per guide view.
+
 A client-side navigation is left alone: the router fetches the same URL for flight data and would
 choke on an HTML document, and it has JavaScript by definition, so the page serves it inside the docs
 shell: a door or page as a `refused` view of `PublicReader`, which offers the docs' search and every
 door in the sidebar a door page has, and
 `packages/web-v2/src/app/guides/[slug]/not-found.tsx` for a guide. The search needs the guide
 index, so with core unreachable `PublicRefusal` keeps the refusal and the doors and says there is no
-search (`SEARCH_UNAVAILABLE`), where an address naming a real door fails loudly. Every renderer reads
-one set of strings from `packages/web-v2/src/features/guides/missing.ts`.
+search (`SEARCH_UNAVAILABLE`). A door, a help page, the landing and a guide are built from that index, so
+on a client-side navigation with it unreadable (`GuideFetchError`, caught by `orUnreadable` in
+`packages/web-v2/src/features/guides/unreadable.ts`) both pages render `PublicRefusal` with
+`GUIDES_UNAVAILABLE` in the docs' shell instead, and log why; any other error is still thrown. Every renderer reads one set of strings
+from `packages/web-v2/src/features/guides/missing.ts`.
 
 The middleware cannot tell the two apart by the `RSC` header: Next 16's middleware adapter
 (`next/dist/server/web/adapter.js`, `FLIGHT_HEADERS`) deletes it, and `_rsc`, before middleware

@@ -36,6 +36,10 @@ export const DOORS: Record<Audience, Door> = {
 
 /** The one name of the public surface, and what its header says under it. */
 export const SITE_NAME = "Forge documentation";
+
+export function documentTitle(subject: string | null): string {
+  return subject ? `${subject} — ${SITE_NAME}` : SITE_NAME;
+}
 export const SITE_CAPTION = "For people using Forge, people connecting an assistant, and agents.";
 
 export const INDEX_PATH = "/guides";

@@ -312,10 +312,60 @@ describe("a search result in the reader's sidebar", () => {
     const result = within(screen.getByRole("list", { name: "Search results" }))
       .getAllByRole("link")
       .find((l) => l.textContent?.startsWith("Connect Claude Code"));
-    const [title, door] = [...(result?.querySelectorAll("span > span") ?? [])];
-    expect(title?.textContent).toBe("Connect Claude Code");
-    expect(door?.textContent).toBe("I'm connecting an AI assistant");
-    expect(title?.parentElement?.className).toContain("flex-col");
+    const column = result?.querySelector("span.flex-col");
+    const rows = [...(column?.children ?? [])];
+    expect(rows[0]?.textContent).toBe("Connect Claude Code");
+    expect(rows.at(-1)?.textContent).toBe("I'm connecting an AI assistant");
+  });
+
+  it("says under which heading the body holds the words typed, with the words marked", () => {
+    reader({ kind: "door", audience: "agent" });
+    fireEvent.change(screen.getByRole("textbox", { name: "Search every page" }), {
+      target: { value: "four of them" },
+    });
+    const [result] = within(screen.getByRole("list", { name: "Search results" })).getAllByRole("link");
+    const rows = [...(result.querySelector("span.flex-col")?.children ?? [])].map((r) => r.textContent);
+    expect(rows).toEqual(["What is an issue?", "Admission gates", "Four of them.", "I'm an agent or a script"]);
+    expect(result.querySelector("span.line-clamp-2")?.textContent).toBe("Four of them.");
+    expect([...result.querySelectorAll("mark")].map((m) => m.textContent)).toEqual(["Four of them"]);
+  });
+
+  it("lists the pages whose title holds the words first, each with the words marked in it", () => {
+    reader({ kind: "door", audience: "agent" });
+    fireEvent.change(screen.getByRole("textbox", { name: "Search every page" }), {
+      target: { value: "issue" },
+    });
+    const results = within(screen.getByRole("list", { name: "Search results" })).getAllByRole("link");
+    const titled = results.map((r) => r.querySelector("span.flex-col > span")?.textContent ?? "");
+    const firstWithout = titled.findIndex((t) => !t.toLowerCase().includes("issue"));
+    expect(firstWithout).toBeGreaterThan(1);
+    expect(titled.slice(firstWithout).some((t) => t.toLowerCase().includes("issue"))).toBe(false);
+    expect(results[0].querySelector("span.flex-col > span mark")?.textContent?.toLowerCase()).toBe("issue");
+  });
+});
+
+describe("the tab's title", () => {
+  it("follows the reader to every door, page and refusal it is navigated to, without a reload", () => {
+    const { rerender } = reader({ kind: "page", href: helpPageHref("pair-a-runner") });
+    expect(document.title).toBe("Pair a runner — Forge documentation");
+    const to = (view: Parameters<typeof PublicReader>[0]["view"]) =>
+      rerender(<PublicReader corpus={corpus} view={view} scope={SCOPE} />);
+    to({ kind: "door", audience: "agent" });
+    expect(document.title).toBe("I'm an agent or a script — Forge documentation");
+    to({ kind: "page", href: "/guides/issue-dependencies" });
+    expect(document.title).toBe("Issue dependencies — Forge documentation");
+    const refusal = missingDoor("users");
+    to({ kind: "refused", refusal });
+    expect(document.title).toBe(`${refusal.heading} — Forge documentation`);
+  });
+
+  it("names only the site on the landing, and the refusal where the index cannot be reached", () => {
+    landing();
+    expect(document.title).toBe("Forge documentation");
+    cleanup();
+    const refusal = missingDoor("users");
+    render(<PublicRefusal refusal={refusal} />);
+    expect(document.title).toBe(`${refusal.heading} — Forge documentation`);
   });
 });
 
