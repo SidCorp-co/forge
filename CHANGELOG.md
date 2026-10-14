@@ -3182,6 +3182,8 @@
 
 ### Fixed
 
+- **Each numbered step on the four connect-an-assistant setup pages asks for one action, with a Check of its own.** The scopes step says read is already ticked and asks for write, as the form shows it. (ISS-1289)
+
 - **A notification names its subject and opens it.** A runner, session, step, schedule or project in the title; a sweep is one row expanding to its issues. A resolved row is no longer unread; filter by type and unread. (ISS-1168)
 
 - **A path the API does not serve is answered 404, whoever asks.** It used to read 401, a wrong credential or not an admin, from a guard. A real route kept from a token still refuses it. (ISS-1305)
