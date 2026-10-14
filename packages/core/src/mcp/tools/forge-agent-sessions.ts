@@ -1,8 +1,5 @@
 import { z } from 'zod';
-import {
-  decodeSessionCursor,
-  SessionCursorInvalidError,
-} from '../../agent-sessions/cursor.js';
+import { decodeSessionCursor, SessionCursorInvalidError } from '../../agent-sessions/cursor.js';
 import {
   listAgentSessionsForMcp,
   readAgentSession,

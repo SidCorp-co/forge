@@ -17,10 +17,22 @@ describe('the agent-session cursor', () => {
     ['no separator', token('nothing'), 'not an agent-session cursor'],
     ['a non-uuid id', token(`${key}|not-a-uuid`), 'no session id'],
     ['an unparseable timestamp', token(`yesterday|${id}`), 'no timestamp'],
-    ['a date the calendar does not have', token(`2026-02-30T00:00:00.000000Z|${id}`), 'no timestamp'],
-    ['year zero, which Postgres refuses', token(`0000-01-01T00:00:00.000000Z|${id}`), 'no timestamp'],
+    [
+      'a date the calendar does not have',
+      token(`2026-02-30T00:00:00.000000Z|${id}`),
+      'no timestamp',
+    ],
+    [
+      'year zero, which Postgres refuses',
+      token(`0000-01-01T00:00:00.000000Z|${id}`),
+      'no timestamp',
+    ],
     ['an hour the clock does not have', token(`2026-10-14T25:00:00.000000Z|${id}`), 'no timestamp'],
-    ['a timestamp that is not the minted shape', token(`2026-10-14T09:15:39Z|${id}`), 'no timestamp'],
+    [
+      'a timestamp that is not the minted shape',
+      token(`2026-10-14T09:15:39Z|${id}`),
+      'no timestamp',
+    ],
     ['an empty token', '', 'not an agent-session cursor'],
   ])('refuses %s by name', (_why, bad, message) => {
     expect(() => decodeSessionCursor(bad)).toThrow(SessionCursorInvalidError);

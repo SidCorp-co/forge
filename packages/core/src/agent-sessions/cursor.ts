@@ -1,6 +1,5 @@
 const SEPARATOR = '|';
 
-/** The one shape this list mints: UTC, microsecond digits, so a token that is not this was not minted here. */
 const KEY_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -37,11 +36,7 @@ export function decodeSessionCursor(token: string): SessionCursor {
   return { updatedAtKey, id };
 }
 
-/**
- * An instant Postgres will accept as `timestamptz`. JS normalises February 30 and takes year 0000,
- * and Postgres refuses both, so the round-trip below and the year check stand between a forged
- * token and a database error that would answer 500 where the caller is owed a named 400.
- */
+/** An instant Postgres accepts: JS normalises February 30 and takes year 0000, which would reach the database as a 500. */
 function isRealInstant(key: string): boolean {
   if (key.startsWith('0000-')) return false;
   const parsed = new Date(`${key.slice(0, 23)}Z`);

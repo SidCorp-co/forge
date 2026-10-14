@@ -63,7 +63,6 @@ beforeEach(async () => {
   await truncateAll(harness.db);
 });
 
-
 type Page = {
   sessions: Array<{ id: string }>;
   returned: number;
@@ -135,7 +134,10 @@ async function restPage(w: World, limit: number, cursor: string | null): Promise
   return (await res.json()) as Page;
 }
 
-async function mcpPages(w: World, limit: number): Promise<(cursor: string | null) => Promise<Page>> {
+async function mcpPages(
+  w: World,
+  limit: number,
+): Promise<(cursor: string | null) => Promise<Page>> {
   const ctx = await connectClientAsPat(w.pat);
   closers.push(() => ctx.close());
   return async (cursor) => {
@@ -287,17 +289,20 @@ describe('a cursor this list did not mint is refused by name', () => {
     ['not a cursor at all', 'not-a-cursor', 'cursor is not an agent-session cursor'],
     ['a day the calendar does not have', impossibleDay, 'cursor carries no timestamp'],
     ['year zero', yearZero, 'cursor carries no timestamp'],
-  ])('the MCP tool refuses naming the cursor and what is wrong with it: %s', async (_why, bad, message) => {
-    const w = await seedWorld();
-    await seedSessions(w, 2, AT);
-    const ctx = await connectClientAsPat(w.pat);
-    closers.push(() => ctx.close());
+  ])(
+    'the MCP tool refuses naming the cursor and what is wrong with it: %s',
+    async (_why, bad, message) => {
+      const w = await seedWorld();
+      await seedSessions(w, 2, AT);
+      const ctx = await connectClientAsPat(w.pat);
+      closers.push(() => ctx.close());
 
-    const res = (await ctx.client.callTool({
-      name: 'forge_agent_sessions.list',
-      arguments: { projectId: w.projectId, cursor: bad },
-    })) as { isError?: boolean; content: Array<{ text: string }> };
-    expect(res.isError).toBe(true);
-    expect(res.content[0]?.text).toContain(`cursor: ${message}`);
-  });
+      const res = (await ctx.client.callTool({
+        name: 'forge_agent_sessions.list',
+        arguments: { projectId: w.projectId, cursor: bad },
+      })) as { isError?: boolean; content: Array<{ text: string }> };
+      expect(res.isError).toBe(true);
+      expect(res.content[0]?.text).toContain(`cursor: ${message}`);
+    },
+  );
 });

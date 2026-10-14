@@ -3181,7 +3181,7 @@
 - **A path the API does not serve is answered 404, whoever asks.** It used to read 401, a wrong credential or not an admin, from a guard. A real route kept from a token still refuses it. (ISS-1305)
 - **A session's message count no longer reads 0 for work it never recorded.** Master and run sessions keep no transcript here, so they show no count; every other session shows its real length, the same in list and detail. (ISS-1241)
 
-- **A project's session list can be read past its first page.** It stopped at its limit saying more existed, with nothing to ask for the rest; it now hands back a cursor, on the web API and the agent tool alike. (ISS-1241)
+- **A project's session list can be read past its first page.** It stopped at its limit saying more existed, with no way to ask for it; it now hands back a cursor, on the web API and agent tool. (ISS-1241)
 
 - **The API reference JSON and page agree, and read on a phone.** A route reading no bearer names no permission in `x-forge-access`; response codes wrap at 390px; flow diagrams run no lifeline through a label. (ISS-1371)
 

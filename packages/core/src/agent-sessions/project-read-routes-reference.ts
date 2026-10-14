@@ -58,7 +58,10 @@ export const listProjectSessions = describeOperation({
     'Ordered by `updatedAt`, newest first. A response cut short by `limit` or by the response-size cap carries `nextCursor`; pass it back as `cursor` and repeat until it is `null`, which is also when `hasMore` is false. A session whose `updatedAt` moves while you read, as every heartbeat moves it, jumps to the head of the order, so a session you had not yet read can be missed by a walk that is still running.',
   responses: {
     200: json(projectSessionsSchema),
-    400: fail('BAD_REQUEST', 'a query value is not valid, among them a `cursor` this list did not mint'),
+    400: fail(
+      'BAD_REQUEST',
+      'a query value is not valid, among them a `cursor` this list did not mint',
+    ),
     403: notMember,
     404: fail('NOT_FOUND', 'no such project'),
   },

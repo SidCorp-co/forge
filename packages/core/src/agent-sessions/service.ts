@@ -86,18 +86,10 @@ export type AgentSessionQuery = {
   after?: SessionCursor | undefined;
 };
 
-/**
- * `updated_at` as the database's own microsecond text, which is what a cursor carries: a JS Date
- * holds milliseconds, so a key round-tripped through one would skip or repeat rows that differ
- * only below the millisecond.
- */
+/** `updated_at` as the database's microsecond text: a JS Date holds milliseconds and would skip or repeat rows below one. */
 const updatedAtKey = sql<string>`to_char(${agentSessions.updatedAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
 
-/**
- * The lean rows an agent lists sessions with, newest first, `limit` of them from `after`. Each row
- * carries its `cursorKey`; {@link sessionListEnvelope} turns the rows into the page and mints the
- * token that resumes it.
- */
+/** The lean rows an agent lists sessions with, newest first; each carries the `cursorKey` that {@link sessionListEnvelope} mints a token from. */
 export async function listAgentSessionsForMcp(q: AgentSessionQuery) {
   const conds: SQL[] = [eq(agentSessions.projectId, q.projectId)];
   if (q.status) conds.push(eq(agentSessions.status, q.status));
@@ -107,7 +99,10 @@ export async function listAgentSessionsForMcp(q: AgentSessionQuery) {
     conds.push(
       or(
         sql`${agentSessions.updatedAt} < ${at}`,
-        and(sql`${agentSessions.updatedAt} = ${at}`, sql`${agentSessions.id} < ${q.after.id}::uuid`),
+        and(
+          sql`${agentSessions.updatedAt} = ${at}`,
+          sql`${agentSessions.id} < ${q.after.id}::uuid`,
+        ),
       ) as SQL,
     );
   }
@@ -120,11 +115,7 @@ export async function listAgentSessionsForMcp(q: AgentSessionQuery) {
     .limit(q.limit);
 }
 
-/**
- * The page both surfaces answer with. `rows` is what {@link listAgentSessionsForMcp} read with
- * `limit + 1`; `nextCursor` is set exactly when the read stopped short of the project's rows,
- * whether the limit or the response-size cap stopped it, and `hasMore` is that same fact.
- */
+/** The page both surfaces answer with: `nextCursor` is set when the limit or the size cap stopped the read short, and `hasMore` is that same fact. */
 export function sessionListEnvelope(
   rows: Awaited<ReturnType<typeof listAgentSessionsForMcp>>,
   limit: number,
