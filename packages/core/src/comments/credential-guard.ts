@@ -78,14 +78,18 @@ function foldedWithOffsets(
   return { folded, starts, ends };
 }
 
-function isWholeText(text: string, value: string): boolean {
-  return READINGS.some((reading) => {
-    const seen = reading(text).text;
-    const held = reading(value).text;
-    if (held.trim() !== '' && fold(seen.trim()) === fold(held.trim())) return true;
-    const core = fold(bare(held));
-    return core.length > 0 && fold(bare(seen)) === core;
-  });
+/**
+ * Whether `value`, read the same way as `seen`, is matched in it anywhere (`true`) or only as the
+ * whole of it (`false`), by its length in that reading: a value of twelve characters as stored
+ * that the agent's read shortens to `admin` is as short there as `admin` is.
+ */
+const anywhere = (held: string): boolean => held.length >= SECRET_LENGTH;
+
+/** Whether `seen` is `held` and nothing else, quotes and stray punctuation at the edges aside. */
+function isWhole(seen: string, held: string): boolean {
+  if (held.trim() !== '' && fold(seen.trim()) === fold(held.trim())) return true;
+  const core = fold(bare(held));
+  return core.length > 0 && fold(bare(seen)) === core;
 }
 
 /** The half-open spans of `text` a stored credential covers, in either reading, overlaps merged, in order. */
@@ -93,17 +97,18 @@ function spansOf(text: string, credentials: readonly StoredCredential[]): Array<
   const found: Array<[number, number]> = [];
   for (const reading of READINGS) {
     const { folded, starts, ends } = foldedWithOffsets(text, reading);
+    const seen = reading(text).text;
     for (const { value } of credentials) {
-      if (value.length < SECRET_LENGTH) continue;
-      const needle = fold(reading(value).text);
-      if (needle === '') continue;
+      const held = reading(value).text;
+      if (!anywhere(held)) {
+        if (isWhole(seen, held)) found.push([0, text.length]);
+        continue;
+      }
+      const needle = fold(held);
       for (let at = folded.indexOf(needle); at >= 0; at = folded.indexOf(needle, at + 1)) {
         found.push([starts[at] as number, ends[at + needle.length - 1] as number]);
       }
     }
-  }
-  for (const { value } of credentials) {
-    if (value.length < SECRET_LENGTH && isWholeText(text, value)) found.push([0, text.length]);
   }
   found.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   const merged: Array<[number, number]> = [];
@@ -118,12 +123,11 @@ function spansOf(text: string, credentials: readonly StoredCredential[]): Array<
 /** Each distinct credential that matches `text`, in the order the project stores them. */
 function matching(text: string, credentials: readonly StoredCredential[]): StoredCredential[] {
   return credentials.filter((one) =>
-    one.value.length >= SECRET_LENGTH
-      ? READINGS.some((reading) => {
-          const needle = fold(reading(one.value).text);
-          return needle !== '' && fold(reading(text).text).includes(needle);
-        })
-      : isWholeText(text, one.value),
+    READINGS.some((reading) => {
+      const seen = reading(text).text;
+      const held = reading(one.value).text;
+      return anywhere(held) ? fold(seen).includes(fold(held)) : isWhole(seen, held);
+    }),
   );
 }
 

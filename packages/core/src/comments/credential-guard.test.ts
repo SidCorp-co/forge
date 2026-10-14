@@ -407,6 +407,18 @@ describe('a value split by what an agent is not handed', () => {
     expect(ids).toEqual(['staging admin']);
   });
 
+  it('takes a value the read shortens below twelve characters as a short one, so no marker is refused', () => {
+    const odd = credentialsFrom({
+      testCredentials: [{ label: 'odd', password: 'withheld\u200B\u200B\u200B\u200B' }],
+    });
+    const sentence = 'password: withheld';
+    expect(withholdCredentials(sentence, odd)).toEqual({ text: sentence, ids: [] });
+    const alone = withholdCredentials('withheld', odd);
+    expect(alone.ids).toEqual(['odd']);
+    expect(findCredential(alone.text, odd)).toBeNull();
+    expect(withholdCredentials(alone.text, odd)).toEqual({ text: alone.text, ids: [] });
+  });
+
   it('leaves a short value with such a character beside it in a sentence alone', () => {
     const text = 'the viewer1\u200B account';
     expect(withholdCredentials(text, stored)).toEqual({ text, ids: [] });
