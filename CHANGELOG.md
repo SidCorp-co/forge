@@ -3192,6 +3192,7 @@
 - **A refused or unknown public docs address looks like Forge documentation.** A plain request for one still answers 404 naming what was asked for, now under the documentation's header and name with the three doors to go back to. (ISS-1293)
 
 - **Each numbered step on the four connect-an-assistant setup pages asks for one action, with a Check of its own.** The scopes step says read is already ticked and asks for write, as the form shows it. (ISS-1289)
+- **Following a connect-an-assistant setup page now gets you a token.** Each page names the Permissions choice the token form requires and where the form sits, and gives every remaining multi-act step one act each. (ISS-1289)
 
 - **A notification names its subject and opens it.** A runner, session, step, schedule or project in the title; a sweep is one row expanding to its issues. A resolved row is no longer unread; filter by type and unread. (ISS-1168)
 - **An orphan-assertion notice resolves when its cause ends.** Putting the issue on hold, or a run owning it again, closes it; it kept firing. Opening a group in the bell no longer reads it. (ISS-1168)
