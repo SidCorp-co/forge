@@ -24,7 +24,8 @@ export interface NsValue {
 export interface LiteralValue {
   kind: 'literal';
   file: string;
-  node: ts.ObjectLiteralExpression | ts.ArrayLiteralExpression;
+  /** The literal, or the call of a built-in that rearranges what it is given into one. */
+  node: ts.Node;
 }
 
 export const TABLE = { kind: 'table' } as const;
@@ -68,6 +69,7 @@ export interface FileFacts {
   assignments: ts.BinaryExpression[];
   fns: FnInfo[];
   paramDefaults: ts.ParameterDeclaration[];
+  classes: ts.ClassDeclaration[];
   calls: ts.CallExpression[];
   refs: ts.Node[];
   strings: ts.LiteralLikeNode[];
@@ -189,6 +191,7 @@ function parseFresh(file: string, text: string): FileFacts {
     assignments: [],
     fns: [],
     paramDefaults: [],
+    classes: [],
     calls: [],
     refs: [],
     strings: [],
@@ -270,11 +273,13 @@ function parseFresh(file: string, text: string): FileFacts {
       ts.isFunctionDeclaration(node) ||
       ts.isFunctionExpression(node) ||
       ts.isArrowFunction(node) ||
-      ts.isMethodDeclaration(node)
+      ts.isMethodDeclaration(node) ||
+      (ts.isGetAccessorDeclaration(node) && ts.isObjectLiteralExpression(node.parent))
     ) {
       addFunctionLike(node);
     } else if (ts.isClassDeclaration(node) && node.name) {
       facts.ownNames.add(node.name.text);
+      facts.classes.push(node);
     } else if (ts.isParameter(node) && node.initializer) {
       facts.paramDefaults.push(node);
     } else if (ts.isVariableDeclaration(node)) {
