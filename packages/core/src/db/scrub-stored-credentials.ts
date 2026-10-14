@@ -122,7 +122,10 @@ async function reasonRewrites(
     out.push({
       table,
       id: row.id,
-      apply: (tx) => tx`UPDATE ${tx(table)} SET reason = ${next.text} WHERE id = ${row.id}`,
+      apply: (tx) =>
+        table === 'kernel_transitions'
+          ? tx`UPDATE kernel_transitions SET reason = ${next.text} WHERE id = ${row.id}`
+          : tx`UPDATE pipeline_outbox SET reason = ${next.text} WHERE id = ${row.id}`,
     });
   }
   return out;
