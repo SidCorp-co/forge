@@ -150,7 +150,7 @@ describe("ModulePicker · states", () => {
       screen.getByText("No modules defined — add modules in project settings."),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Open project settings" }));
-    expect(push).toHaveBeenCalledWith("/projects/forge-dev/settings?tab=modules");
+    expect(push).toHaveBeenCalledWith("/projects/forge-dev/settings?tab=taxonomy");
   });
 
   it("offers no Save when there is nothing to attribute to", () => {

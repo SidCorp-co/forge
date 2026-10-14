@@ -103,7 +103,7 @@ describe('withRepository', () => {
         kind: 'refused',
         cause:
           'the git host gitlab.qa-iss1398.invalid could not be resolved, so the deploy key was never offered',
-        clears: `check that the SSH clone URL ${nowhere}, set under the project's Settings → Runners → Git access, names the right host and that its name resolves`,
+        clears: `check that the SSH clone URL ${nowhere}, set under the project's Settings → Shape & release → Repository, names the right host and that its name resolves`,
         unbound: false,
         route: 'deploy_key',
       },

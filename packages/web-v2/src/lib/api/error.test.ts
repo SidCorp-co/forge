@@ -275,35 +275,39 @@ describe('describeSettings', () => {
 });
 
 describe('a server error that carries only its HTTP status text', () => {
-  it('is said as a failed request, not echoed', () => {
+  it('is said as a failed request in words, with no status code', () => {
     expect(formatApiError(new ApiError(500, 'Internal Server Error'))).toBe(
-      'The server could not complete the request (500).',
+      'The server ran into a problem and could not finish the request.',
     );
     expect(formatApiError(new ApiError(503, 'Service Unavailable'))).toBe(
-      'The server could not complete the request (503).',
+      'The server is unavailable right now. Try again in a moment.',
+    );
+    expect(formatApiError(new ApiError(504, 'Gateway Timeout'))).toBe(
+      'The server did not answer in time. Try again in a moment.',
     );
   });
 
   it('covers every standard 5xx status text, whole-message only', () => {
-    expect(formatApiError(new ApiError(501, 'Not Implemented'))).toBe('The server could not complete the request (501).');
+    expect(formatApiError(new ApiError(501, 'Not Implemented'))).toBe(
+      'The server ran into a problem and could not finish the request.',
+    );
     expect(formatApiError(new ApiError(505, 'HTTP Version Not Supported'))).toBe(
-      'The server could not complete the request (505).',
+      'The server ran into a problem and could not finish the request.',
     );
     expect(formatApiError(new ApiError(501, 'Not Implemented for this provider'))).toBe(
       'Not Implemented for this provider',
     );
   });
 
-  it("keeps a server error's own words, and a client error's status text", () => {
-    expect(formatApiError(new ApiError(500, 'the plugins store is down'))).toBe('the plugins store is down');
-    expect(formatApiError(new ApiError(400, 'Internal Server Error'))).toBe('Internal Server Error');
+  it('opens a reason as a sentence of its own, and ends it', () => {
+    expect(formatApiReason(new ApiError(503, 'the plugins store is down'))).toBe('The plugins store is down.');
+    expect(formatApiReason(new ApiError(500, 'Internal Server Error'))).toBe(
+      'The server ran into a problem and could not finish the request.',
+    );
   });
 
-  it('ends a reason with a stop so the next sentence starts after one', () => {
-    expect(formatApiReason(new ApiError(500, 'the plugins store is down'))).toBe('the plugins store is down.');
-    expect(formatApiReason(new ApiError(404, 'Not found.'))).toBe('Not found.');
-    expect(formatApiReason(new ApiError(500, 'Internal Server Error'))).toBe(
-      'The server could not complete the request (500).',
-    );
+  it('never prints a bare number, for a failure that carries no message at all', () => {
+    expect(formatApiError(new ApiError(500, ''))).not.toMatch(/\d{3}/);
+    expect(formatApiError(new ApiError(422, ''))).not.toMatch(/\d{3}/);
   });
 });

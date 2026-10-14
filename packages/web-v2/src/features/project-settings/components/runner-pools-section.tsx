@@ -12,11 +12,13 @@
 //
 // The pools are the `deviceIds` of each stage in the page's draft, saved with the rest of it.
 
+import Link from "next/link";
 import { useMemo } from "react";
 import {
   Banner,
   Button,
   CardTitle,
+  Checkbox,
   HealthDot,
   Icon,
   type SettingsForm,
@@ -58,10 +60,13 @@ export function RunnerPoolsSection({
   projectId,
   form,
   canEdit,
+  slug,
 }: {
   projectId: string;
   form: SettingsForm<PipelineDraft>;
   canEdit: boolean;
+  /** Where the Runners tab is, for the prerequisite this matrix names when no runner is paired. */
+  slug?: string;
 }) {
   const runnersQuery = useProjectRunners(projectId);
   const runners = useMemo(
@@ -106,24 +111,41 @@ export function RunnerPoolsSection({
       {runnersQuery.isPending ? (
         <Skeleton className="h-32 w-full" />
       ) : runners.length === 0 ? (
-        <div>
-          <p className="fg-body-sm text-muted">
-            No device runner is bound to this project, so there is nothing to pool. Pair a device on
-            the Runners tab first.
+        <div data-testid="runner-pools-unavailable">
+          <p className="fg-body-sm text-fg">
+            Pair a runner with this project first: a pool is chosen from its runners, and it has none.{" "}
+            {slug && (
+              <Link href={`/projects/${slug}/settings?tab=runners`} className="text-accent-text hover:underline">
+                Go to Runners
+              </Link>
+            )}
           </p>
-          {PIPELINE_STATUS_ROWS.filter((stage) => pools(stage.status).length > 0).map((stage) => (
-            <div key={stage.status} className="mt-2 flex items-center justify-between gap-3 border-line border-t pt-2">
-              <p className="fg-label text-fg">
-                {stage.label}
-                <span className="fg-caption ml-2 text-muted">pinned to a device no runner answers for</span>
-              </p>
-              {canEdit && (
-                <Button variant="ghost" size="sm" onClick={() => clearStage(stage.status)}>
-                  Clear
-                </Button>
-              )}
-            </div>
-          ))}
+          <ul className="mt-2 divide-y divide-line border-y border-line">
+            {PIPELINE_STATUS_ROWS.map((stage) => {
+              const stale = pools(stage.status).length > 0;
+              return (
+                <li key={stage.status} className="flex items-center justify-between gap-3 py-2">
+                  <p className="fg-label text-fg">
+                    {stage.label}
+                    {stale && (
+                      <span className="fg-caption ml-2 text-muted">pinned to a device no runner answers for</span>
+                    )}
+                  </p>
+                  {stale && canEdit ? (
+                    <Button variant="ghost" size="sm" onClick={() => clearStage(stage.status)}>
+                      Clear
+                    </Button>
+                  ) : (
+                    <Checkbox
+                      checked={false}
+                      disabled
+                      ariaLabel={`${stage.label}: pin to a runner (pair a runner first)`}
+                    />
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         </div>
       ) : (
         <div className="overflow-x-auto border-y border-line">

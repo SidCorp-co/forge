@@ -80,6 +80,7 @@ export const projectDetailSchema = projectRow
     orgId: true,
     createdBy: true,
     description: true,
+    kind: true,
     repoPath: true,
     repoUrl: true,
     workspaceSetup: true,
@@ -208,7 +209,7 @@ export const rotateProjectApiKey = describeOperation({
 export const patchProject = describeOperation({
   summary: "Change a project's settings",
   description:
-    'Needs an org owner or admin, not only a project admin. Moving the project with `orgId` also needs owner or admin of the target org. `agentConfig`, `environments`, `stateContext` and the retired release names are refused by name, each pointing at the route that now owns it. `baseBranch` and `releaseChain` must agree on where work merges.',
+    'Needs an org owner or admin, not only a project admin. Moving the project with `orgId` also needs owner or admin of the target org. `agentConfig`, `environments`, `stateContext` and the retired release names are refused by name, each pointing at the route that now owns it. `baseBranch` and `releaseChain` must agree on where work merges. A write that would strand work already under way — emptying the release chain while issues wait for a release, or a kind change that un-counts a merge mark — is refused by name.',
   responses: {
     200: json(patchedProjectSchema, 'The project after the change'),
     400: fail({
@@ -219,7 +220,13 @@ export const patchProject = describeOperation({
     }),
     403: NEEDS_ORG_ADMIN,
     404: fail('NOT_FOUND', 'the project, or the org named by `orgId`, does not exist'),
-    409: fail('ISSUE_PREFIX_TAKEN', 'another project holds the issue prefix, for good'),
+    409: fail({
+      ISSUE_PREFIX_TAKEN: 'another project holds the issue prefix, for good',
+      RELEASE_CHAIN_STRANDS_WORK:
+        'the write empties the release chain while issues wait at `awaiting_release`; `details.issues` names them',
+      PROJECT_KIND_STRANDS_WORK:
+        "the kind change would make an unclosed issue's merge mark stop counting as a landing; `details.issues` names them",
+    }),
   },
 });
 

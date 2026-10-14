@@ -297,7 +297,7 @@ describe('a project that declares a release it cannot land', () => {
     expect(String(err)).toContain(PROJECT_ID);
     expect(String(err)).toContain("no active deploy binding carrying the 'live' stage");
     expect(String(err)).toContain(
-      'press "This project ships nothing" on its Repository settings tab',
+      'choose "Repository, no release" under Shape & release in its settings',
     );
     expect((err as Error).message.match(/RELEASE_TARGET_UNDECLARED/g)).toHaveLength(1);
   });

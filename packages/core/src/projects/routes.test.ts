@@ -104,6 +104,13 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
+// The stranding rule reads the project's issues; its reads are proved against Postgres in
+// tests/integration/release-chain-strands-work-e2e.test.ts, and here it answers what a case plants.
+const strandedWorkFor = vi.fn(async (..._args: unknown[]): Promise<unknown> => null);
+vi.mock('./stranded-work.js', () => ({
+  strandedWorkFor: (...args: unknown[]) => strandedWorkFor(...args),
+}));
+
 const projectAccess = vi.fn();
 const personalOrg = vi.fn();
 vi.mock('../lib/authz.js', async (importOriginal) => ({
@@ -158,6 +165,8 @@ beforeEach(() => {
   insertReturning.mockReset();
   projectAccess.mockReset();
   personalOrg.mockReset();
+  strandedWorkFor.mockReset();
+  strandedWorkFor.mockResolvedValue(null);
   personalOrg.mockResolvedValue(ORG_ID);
   let callIdx = 0;
   txInsert.mockImplementation(() => {
@@ -612,6 +621,34 @@ describe('PATCH /api/projects/:id', () => {
     });
     expect(res.status).toBe(200);
     expect(updateSet).toHaveBeenCalledWith({ kind: 'website' });
+  });
+
+  it('409 names the stranding refusal by its own code and carries its keys, writing nothing', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
+    // releaseChainGapFor's read of the stored pair: an empty chain matches any base.
+    selectLimit.mockResolvedValueOnce([{ baseBranch: 'main', releaseChain: [{ branch: 'main' }] }]);
+    strandedWorkFor.mockResolvedValueOnce({
+      code: 'RELEASE_CHAIN_STRANDS_WORK',
+      message: 'RELEASE_CHAIN_STRANDS_WORK: planted',
+      details: { issues: ['ISS-3'], total: 1, status: 'awaiting_release' },
+    });
+
+    const res = await req('/11111111-1111-4111-8111-111111111111', {
+      method: 'PATCH',
+      body: JSON.stringify({ releaseChain: [] }),
+      token,
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code: string; details: unknown };
+    expect(body.code).toBe('RELEASE_CHAIN_STRANDS_WORK');
+    expect(body.details).toEqual({ issues: ['ISS-3'], total: 1, status: 'awaiting_release' });
+    expect(strandedWorkFor).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
+      expect.objectContaining({ releaseChain: [] }),
+    );
+    expect(updateSet).not.toHaveBeenCalled();
   });
 
   it('400 BAD_REQUEST on an unknown kind, so a typo never turns the git preflight off', async () => {

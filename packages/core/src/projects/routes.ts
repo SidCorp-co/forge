@@ -87,6 +87,7 @@ import {
 import { projectRunnerRoutes } from './runners-routes.js';
 import { createProject, generateApiKey, ProjectSlugTakenError } from './service.js';
 import { projectSettingsWriteRoutes } from './settings-write-routes.js';
+import { strandedWorkFor } from './stranded-work.js';
 
 export const createProjectSchema = z.object({
   slug: z
@@ -401,6 +402,25 @@ projectRoutes.patch(
     if (patch.releaseChain !== undefined) updates.releaseChain = patch.releaseChain;
     const gap = await releaseChainGapFor(id, patch);
     if (gap) throw new HTTPException(400, { message: gap.message, cause: { code: gap.code } });
+    const stranded = await strandedWorkFor(id, patch);
+    // Each code written out, so the API reference reads which this route answers with.
+    if (stranded) {
+      switch (stranded.code) {
+        case 'RELEASE_CHAIN_STRANDS_WORK':
+          throw new HTTPException(409, {
+            message: stranded.message,
+            cause: { code: 'RELEASE_CHAIN_STRANDS_WORK', details: stranded.details },
+          });
+        case 'PROJECT_KIND_STRANDS_WORK':
+          throw new HTTPException(409, {
+            message: stranded.message,
+            cause: { code: 'PROJECT_KIND_STRANDS_WORK', details: stranded.details },
+          });
+        default:
+          // A third refusal code fails to compile here rather than letting the write through.
+          stranded.code satisfies never;
+      }
+    }
     if (patch.defaultDeviceId !== undefined) updates.defaultDeviceId = patch.defaultDeviceId;
 
     const agentConfigPatch: AgentConfigKeyPatch = {};

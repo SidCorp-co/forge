@@ -322,7 +322,7 @@ describe('NO_RELEASE_GATE — what it means for the issues named', () => {
   });
 
   it('names the screens where releasing through Forge is set up, both halves of it', () => {
-    expect(sentence).toMatch(/release chain under Settings → Repository/);
+    expect(sentence).toMatch(/release chain under Settings → Shape & release/);
     expect(sentence).toMatch(/live deploy binding under Settings → Integrations/);
   });
 });

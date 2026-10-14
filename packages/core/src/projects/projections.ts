@@ -29,6 +29,7 @@ export const PROJECT_DETAIL = {
   orgId: projects.orgId,
   createdBy: projects.createdBy,
   description: projects.description,
+  kind: projects.kind,
   repoPath: projects.repoPath,
   repoUrl: projects.repoUrl,
   workspaceSetup: projects.workspaceSetup,

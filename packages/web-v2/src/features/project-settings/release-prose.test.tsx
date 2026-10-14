@@ -35,7 +35,17 @@ vi.mock("@/features/runners/hooks", async (importActual) => {
 	return { ...actual, useProjectRunners: () => projectRunners() };
 });
 
-const { ReleaseSection } = await import("./components/release-section");
+const { ReleaseAnswer, ReleaseDetails } = await import("./components/release-section");
+
+/** The two halves as Shape & release draws them: the answer at the top, the details at the foot. */
+function ReleaseSection({ projectId }: { projectId: string }) {
+	return (
+		<>
+			<ReleaseAnswer projectId={projectId} slug="desk" />
+			<ReleaseDetails projectId={projectId} />
+		</>
+	);
+}
 const { RunnerPoolsSection } = await import("./components/runner-pools-section");
 
 function draw(node: ReactElement) {
@@ -128,6 +138,50 @@ describe("the Release section's prose", () => {
 			"awaiting_release",
 			"testing",
 		]);
+	});
+
+	it("lists what stops a release apart from what is only undeclared, and names a missing target once", () => {
+		readiness.mockReturnValue({
+			isLoading: false,
+			error: null,
+			data: ready({
+				providers: [],
+				blockers: [
+					{ code: "RELEASE_TARGET_UNDECLARED", evaluated: true, message: "Nothing serves Live." },
+				],
+				gaps: ["release-target", "rollback"],
+			}),
+		});
+
+		draw(<ReleaseSection projectId={PROJECT_ID} />);
+
+		const stops = screen.getByRole("list", { name: "What stops a release" });
+		const undeclared = screen.getByRole("list", { name: "What is not declared" });
+		expect(stops.textContent).toContain("RELEASE_TARGET_UNDECLARED");
+		expect(undeclared.querySelectorAll("li")).toHaveLength(1);
+		expect(undeclared.textContent).toContain("No rollback declared");
+		expect(undeclared.textContent).not.toContain("no live deploy binding");
+		expect(screen.getByText(/none of these stops a release/)).toBeInTheDocument();
+	});
+
+	it("lists two release runners as stopping a release, never as only undeclared", () => {
+		readiness.mockReturnValue({
+			isLoading: false,
+			error: null,
+			data: ready({
+				blockers: [{ code: "RELEASE_RUNNER_AMBIGUOUS", evaluated: true, message: "Two labels." }],
+				gaps: ["release-runner-ambiguous", "rollback"],
+			}),
+		});
+
+		draw(<ReleaseSection projectId={PROJECT_ID} />);
+
+		expect(screen.getByRole("list", { name: "What stops a release" }).textContent).toContain(
+			"RELEASE_RUNNER_AMBIGUOUS",
+		);
+		expect(screen.getByRole("list", { name: "What is not declared" }).textContent).not.toContain(
+			"Two live bindings name different release runners",
+		);
 	});
 
 	it("renders a warning's code spans the same way, not only a blocker's", () => {
@@ -266,6 +320,18 @@ describe("the Release section's prose", () => {
 });
 
 describe("the Runner pools matrix", () => {
+	// ISS-1171: a control whose prerequisite is missing is shown disabled with that prerequisite named.
+	it("shows each stage's pool control disabled, naming the runner it needs, where none is paired", () => {
+		projectRunners.mockReturnValue({ data: [], isLoading: false, isPending: false });
+
+		draw(<Pools canEdit />);
+
+		expect(screen.getByTestId("runner-pools-unavailable")).toHaveTextContent(/Pair a runner with this project first/);
+		const pins = screen.getAllByRole("checkbox");
+		expect(pins.length).toBeGreaterThan(0);
+		for (const pin of pins) expect(pin).toBeDisabled();
+	});
+
 	it("calls a draining box out of the pool, not offline, because it is up", () => {
 		projectRunners.mockReturnValue({
 			data: [runner({ runnerStatus: "draining" })],
