@@ -32,7 +32,7 @@ interface InstallationRepo {
 
 /** `GET /integration-connections/:id/targets`: binding-v1 targets a `bindings[].target` takes as they stand. */
 export interface ConnectionTargetsResponse {
-  targets: Array<{ provider: "github"; installationId: number; owner: string; repo: string }>;
+  targets: Array<Record<string, unknown> & { provider: string }>;
   truncated: boolean;
 }
 

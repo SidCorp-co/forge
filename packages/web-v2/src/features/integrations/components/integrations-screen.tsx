@@ -132,7 +132,7 @@ export function IntegrationsScreen() {
     .filter((p) => p.archivedAt === null && (!activeOrg || p.orgId === activeOrg.id))
     .sort((a, b) => a.name.localeCompare(b.name));
   const apps = useOpenApps(`${query}\u0000${provider}`, query.trim() !== "" || provider !== "");
-  // GitHub's return lands here: `?github=<cause>` when it could not finish, `?bind=<id>` when it did
+  // GitHub's return lands here: `?connect=<cause>` when it could not finish, `?bind=<id>` when it did
   const params = useSearchParams();
   const router = useRouter();
   const bindId = params.get("bind");

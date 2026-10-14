@@ -68,15 +68,20 @@ export type CasWrite = BindingWrite & {
   integrationSecret: () => Promise<string>;
 };
 
-/** The write a transaction was rolled back for. */
-class NotTaken extends Error {
-  constructor(
-    readonly index: number,
-    readonly result: Exclude<BindingCasResult, { ok: true }>,
-  ) {
-    super(`binding write ${index} was not taken: ${result.reason}`);
-  }
+/** The write a transaction is rolled back for, carried out of it on the error that rolls it back. */
+type NotTaken = { index: number; result: Exclude<BindingCasResult, { ok: true }> };
+const NOT_TAKEN = Symbol('binding write not taken');
+
+function notTaken(index: number, result: NotTaken['result']): Error {
+  return Object.assign(new Error(`binding write ${index} was not taken: ${result.reason}`), {
+    [NOT_TAKEN]: { index, result } satisfies NotTaken,
+  });
 }
+
+const notTakenOf = (err: unknown): NotTaken | null =>
+  err instanceof Error && NOT_TAKEN in err
+    ? (err as Error & { [NOT_TAKEN]: NotTaken })[NOT_TAKEN]
+    : null;
 
 /** One compare-and-set, inside the transaction it is given. */
 async function casIn(
@@ -210,14 +215,15 @@ export const drizzleBindingStore = {
             if (!isUniqueViolation(err)) throw err;
             result = { ok: false, reason: 'service-clash' };
           }
-          if (!result.ok) throw new NotTaken(index, result);
+          if (!result.ok) throw notTaken(index, result);
           taken.push(result);
         }
         return taken;
       });
       return { ok: true, results };
     } catch (err) {
-      if (err instanceof NotTaken) return { ok: false, index: err.index, result: err.result };
+      const rolledBack = notTakenOf(err);
+      if (rolledBack) return { ok: false, ...rolledBack };
       throw err;
     }
   },

@@ -1,4 +1,4 @@
-// FB-128 — what GitHub's return could not finish, read from `?github=<cause>`. By then GitHub has
+// FB-128 — what GitHub's return could not finish, read from `?connect=<cause>`. By then GitHub has
 // made the App, so the banner says so: the App by name and its own settings page where core could
 // learn them, else where to find it. Nothing here is trusted as more than words: the cause selects
 // a sentence, and the only link is built on github.com.
@@ -11,7 +11,7 @@ const NAME = /^[A-Za-z0-9][A-Za-z0-9-]{0,99}$/;
 
 /** The cause a query names, or null where it names none this build knows. */
 export function strandOf(params: URLSearchParams): GitHubConnectStrand | null {
-  const cause = params.get("github");
+  const cause = params.get("connect");
   return (GITHUB_CONNECT_STRANDS as readonly string[]).includes(cause ?? "") ? (cause as GitHubConnectStrand) : null;
 }
 

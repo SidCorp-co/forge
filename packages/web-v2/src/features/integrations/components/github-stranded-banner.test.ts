@@ -8,8 +8,8 @@ const q = (s: string) => new URLSearchParams(s);
 
 describe("the stranded-App banner's reading of its query", () => {
   it("takes only a cause core sends", () => {
-    expect(strandOf(q("github=not_admin"))).toBe("not_admin");
-    expect(strandOf(q("github=<script>"))).toBeNull();
+    expect(strandOf(q("connect=not_admin"))).toBe("not_admin");
+    expect(strandOf(q("connect=<script>"))).toBeNull();
     expect(strandOf(q(""))).toBeNull();
   });
 

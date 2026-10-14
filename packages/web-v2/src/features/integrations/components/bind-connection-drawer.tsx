@@ -1,12 +1,14 @@
-// FB-128 — where a GitHub App made from `/integrations` lands after its install step
-// (`?bind=<connectionId>`): each project it serves, with the repository that project builds from,
-// bound in one save. Core writes every binding or none, and a refusal names the project and target.
+// FB-128 — where a connection made from `/integrations` by its provider's own create step lands after
+// it (`?bind=<connectionId>`): each project it serves, with the target core lists for it (a GitHub
+// App's repositories), bound in one save. Core writes every binding or none, and a refusal names the
+// project and target.
 
 import { useState } from "react";
 import { Banner, Button, Checkbox, NativeSelect, SlideOver, Spinner } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useBindConnectionInto, useConnectionTargets, useConnections } from "../hooks";
 import { bindingRefusalText } from "../bind-actions";
+import { connectionTargetFor } from "../providers/registry";
 import type { ConnectionBindingItem } from "../types";
 import { formatApiError } from "@/lib/api/error";
 
@@ -29,7 +31,7 @@ export function BindConnectionDrawer({
   const [picked, setPicked] = useState<Record<string, string>>({});
   const connection = connections.data?.items.find((c) => c.id === connectionId);
   const repos = targets.data?.targets ?? [];
-  const fullName = (r: { owner: string; repo: string }) => `${r.owner}/${r.repo}`;
+  const fullName = (r: (typeof repos)[number]) => connectionTargetFor(r.provider, r) ?? JSON.stringify(r);
 
   const items: ConnectionBindingItem[] = Object.entries(picked).flatMap(([projectId, name]) => {
     const target = repos.find((r) => fullName(r) === name);
@@ -38,11 +40,13 @@ export function BindConnectionDrawer({
   const complete = items.length > 0 && items.length === Object.keys(picked).length;
 
   return (
-    <SlideOver open onClose={onClose} title={t("integrations.bindFlow.title")} width={560}>
+    <SlideOver
+      open
+      onClose={onClose}
+      title={t("integrations.bindFlow.title", { connection: connection?.displayName ?? t("integrations.github.existingApp") })}
+      width={560}
+    >
       <div className="flex flex-col gap-4" data-testid="bind-connection-flow">
-        <p className="fg-body-sm text-muted">
-          {t("integrations.bindFlow.intro", { connection: connection?.displayName ?? t("integrations.github.existingApp") })}
-        </p>
         {targets.isLoading ? (
           <Spinner />
         ) : targets.isError ? (

@@ -320,7 +320,7 @@ describe('GitHub’s return lands on Integrations, never on a JSON page (FB-128)
       const where = landing(await callback(session, forged));
 
       expect(where.pathname).toBe('/integrations');
-      expect(where.searchParams.get('github')).toBe('state_invalid');
+      expect(where.searchParams.get('connect')).toBe('state_invalid');
       expect(where.searchParams.get('app')).toBeNull();
       expect(conversions).toEqual([]);
       expect(await connections()).toEqual([]);
@@ -333,7 +333,7 @@ describe('GitHub’s return lands on Integrations, never on a JSON page (FB-128)
 
       const where = landing(await callback(session, theirs));
 
-      expect(where.searchParams.get('github')).toBe('state_other_user');
+      expect(where.searchParams.get('connect')).toBe('state_other_user');
       expect(conversions).toEqual([]);
     });
 
@@ -344,7 +344,7 @@ describe('GitHub’s return lands on Integrations, never on a JSON page (FB-128)
       const where = landing(await callback(null, state));
 
       expect(where.pathname).toBe('/integrations');
-      expect(where.searchParams.get('github')).toBe('no_session');
+      expect(where.searchParams.get('connect')).toBe('no_session');
       expect(conversions).toEqual([]);
     });
   });
@@ -360,7 +360,7 @@ describe('GitHub’s return lands on Integrations, never on a JSON page (FB-128)
 
       const where = landing(await callback(session, state));
 
-      expect(where.searchParams.get('github')).toBe('state_expired');
+      expect(where.searchParams.get('connect')).toBe('state_expired');
       expect(where.searchParams.get('app')).toBe('forge-test-app');
       expect(where.searchParams.get('appOwner')).toBe('SidCorp-co');
       expect(where.searchParams.get('appOrg')).toBe('1');
@@ -376,7 +376,7 @@ describe('GitHub’s return lands on Integrations, never on a JSON page (FB-128)
 
       const where = landing(await callback(session, state));
 
-      expect(where.searchParams.get('github')).toBe('not_admin');
+      expect(where.searchParams.get('connect')).toBe('not_admin');
       expect(where.searchParams.get('app')).toBe('forge-test-app');
       expect(conversions.length).toBe(1);
       expect(await connections()).toEqual([]);
@@ -389,7 +389,7 @@ describe('GitHub’s return lands on Integrations, never on a JSON page (FB-128)
 
     const where = landing(await callback(session, state));
 
-    expect(where.searchParams.get('github')).toBe('conversion_failed');
+    expect(where.searchParams.get('connect')).toBe('conversion_failed');
     expect(await connections()).toEqual([]);
   });
 });

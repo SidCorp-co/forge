@@ -71,10 +71,10 @@ describe("IntegrationsScreen", () => {
 
   it("names why GitHub's return could not finish, and the App it left on GitHub, from the query core lands it with", async () => {
     serve();
-    window.history.pushState(null, "", "/integrations?github=state_expired&app=forge-test-app&appOwner=SidCorp-co&appOrg=1");
+    window.history.pushState(null, "", "/integrations?connect=state_expired&app=forge-test-app&appOwner=SidCorp-co&appOrg=1");
     renderWithQuery(<IntegrationsScreen />);
     const banner = await screen.findByTestId("github-stranded");
-    expect(banner.textContent).toContain("more than an hour old");
+    expect(banner.textContent).toContain("over an hour old");
     expect(banner.textContent).toContain("forge-test-app");
     expect(within(banner).getByRole("link").getAttribute("href")).toBe(
       "https://github.com/organizations/SidCorp-co/settings/apps/forge-test-app",
@@ -84,7 +84,7 @@ describe("IntegrationsScreen", () => {
 
   it("points at GitHub's list of Apps when the return could not be shown to be the person's own", async () => {
     serve();
-    window.history.pushState(null, "", "/integrations?github=state_invalid");
+    window.history.pushState(null, "", "/integrations?connect=state_invalid");
     renderWithQuery(<IntegrationsScreen />);
     const banner = await screen.findByTestId("github-stranded");
     expect(banner.textContent).toContain("Forge did not start");

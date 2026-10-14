@@ -40,6 +40,12 @@ export interface ProviderModule {
   section: (() => Promise<{ default: ProjectSection }>) | null;
   /** The connection-tier config form, or null where this provider has nothing to edit there. */
   connectionSection: (() => Promise<{ default: ConnectionSection }>) | null;
+  /**
+   * The step that makes a connection whose credential the provider mints itself, opened from the
+   * workspace Integrations page for the first project ticked. Null where the credential is pasted
+   * into the provider's own project form, which then binds every ticked project in one save.
+   */
+  createStep: (() => Promise<{ default: ComponentType<{ projectId: string }> }>) | null;
 }
 
 /** Every provider this build knows, in the order a list renders them. */

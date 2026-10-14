@@ -12,4 +12,5 @@ export const autoflow: ProviderModule = {
   target: (config) => text(config, "shop") ?? text(config, "storeSlug") ?? text(config, "storeName"),
   section: () => import("./section").then((m) => ({ default: m.AutoflowSettings })),
   connectionSection: null,
+  createStep: null,
 };

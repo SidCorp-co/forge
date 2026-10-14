@@ -2,20 +2,24 @@
 // app, fill the app's own connect form, and one save binds every chosen project. The form is the
 // provider's project section, rendered for the first chosen project with the rest handed to it
 // through `AlsoBindProvider`, so there is one connect form per provider, not a second copy here.
-// GitHub mints its credential itself: the App is named after the first project, and the install
-// step lands back here, where `BindConnectionDrawer` binds it.
+// A provider that mints its credential itself names its own `createStep` in the registry, run for the
+// first project ticked; its return lands back here, where `BindConnectionDrawer` binds it.
 
-import { useState } from "react";
-import { Checkbox, Field, NativeSelect, SlideOver } from "@/design";
+import { createElement, lazy, Suspense, useState } from "react";
+import { Checkbox, Field, NativeSelect, Skeleton, SlideOver } from "@/design";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { AlsoBindProvider } from "../also-bind";
-import { CreateApp } from "../providers/github/create-app";
 import { PROVIDER_MODULES, providerLabel } from "../providers/registry";
 import { ProviderDetails } from "./connection-detail-drawer";
 
 type SpaceProject = { id: string; slug: string; name: string };
 
-const CONNECTABLE = PROVIDER_MODULES.filter((m) => m.section !== null).map((m) => m.provider);
+const CONNECTABLE = PROVIDER_MODULES.filter((m) => m.section !== null || m.createStep !== null).map((m) => m.provider);
+
+// Each provider's own create step, made lazy once here at module scope.
+const CREATE_STEPS = new Map(
+  PROVIDER_MODULES.flatMap((m) => (m.createStep ? [[m.provider, lazy(m.createStep)] as const] : [])),
+);
 
 export function AddConnectionDrawer({
   open,
@@ -64,11 +68,10 @@ export function AddConnectionDrawer({
 
         {!first || !provider ? (
           <p className="fg-body-sm text-muted">{t("integrations.addFlow.pickFirst")}</p>
-        ) : provider === "github" ? (
-          <div className="flex flex-col gap-3">
-            <p className="fg-body-sm text-muted">{t("integrations.addFlow.githubNamed", { project: first.name })}</p>
-            <CreateApp projectId={first.id} onBack={null} returnTo="integrations" />
-          </div>
+        ) : CREATE_STEPS.has(provider) ? (
+          <Suspense fallback={<Skeleton className="h-40 w-full" />}>
+            {createElement(CREATE_STEPS.get(provider) as NonNullable<ReturnType<typeof CREATE_STEPS.get>>, { projectId: first.id })}
+          </Suspense>
         ) : (
           <div className="flex flex-col gap-3">
             {rest.length > 0 && (

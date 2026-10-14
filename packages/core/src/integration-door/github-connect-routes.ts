@@ -7,7 +7,7 @@
  *
  * The two GETs are browser redirects from GitHub, so they carry the operator's
  * own session cookie and admit whom requireAuth admits. Everything they cannot
- * finish lands on the web Integrations page naming why (`?github=<cause>`),
+ * finish lands on the web Integrations page naming why (`?connect=<cause>`),
  * never as JSON on the API's origin: by the first callback GitHub has already
  * made the App, and a refusal nobody reads leaves it stranded there (FB-128).
  */
@@ -94,10 +94,10 @@ type StrandedApp = Pick<ConvertedApp, 'slug' | 'owner'>;
 
 /**
  * The web Integrations page, naming why GitHub's return could not finish and, where it is known,
- * the App GitHub made: `?github=<cause>&app=<slug>&appOwner=<login>&appOrg=1`.
+ * the App GitHub made: `?connect=<cause>&app=<slug>&appOwner=<login>&appOrg=1`.
  */
 function strandedAt(c: Context, cause: GitHubConnectStrand, app?: StrandedApp | null): Response {
-  const q = new URLSearchParams({ github: cause });
+  const q = new URLSearchParams({ connect: cause });
   if (app?.slug) q.set('app', app.slug);
   if (app?.owner) {
     q.set('appOwner', app.owner.login);

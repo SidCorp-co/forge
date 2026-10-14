@@ -17,7 +17,7 @@ stubCore();
 const root = document.getElementById("root");
 if (!root) throw new Error("the page has no #root");
 createRoot(root).render(
-  <InRouter at="/integrations?github=state_expired&app=forge-sidcorp&appOwner=SidCorp-co&appOrg=1" pattern="/integrations">
+  <InRouter at="/integrations?connect=state_expired&app=forge-sidcorp&appOwner=SidCorp-co&appOrg=1" pattern="/integrations">
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <IntegrationsScreen />
     </QueryClientProvider>
@@ -31,7 +31,7 @@ function stranded(): string[] {
   const b = banner();
   if (!b) return ["no stranded-App banner is drawn"];
   const wrong = sideways();
-  if (!b.textContent?.includes("more than an hour old")) wrong.push("the banner does not name why");
+  if (!b.textContent?.includes("over an hour old")) wrong.push("the banner does not name why");
   const link = b.querySelector("a")?.getAttribute("href");
   if (link !== "https://github.com/organizations/SidCorp-co/settings/apps/forge-sidcorp") wrong.push(`the banner links ${link}`);
   return wrong;
@@ -50,7 +50,7 @@ async function githubStep(): Promise<string[]> {
   pick(app, "github");
   await settle(400);
   const wrong: string[] = [];
-  if (!f.textContent?.includes("named after Autoflow")) wrong.push("GitHub's step does not say whose name the App takes");
+  if (!f.textContent?.includes("takes Autoflow's name")) wrong.push("GitHub's step does not say whose name the App takes");
   if (!f.textContent?.includes("Create GitHub App")) wrong.push("GitHub's create step is not drawn");
   return wrong;
 }

@@ -400,7 +400,7 @@ export type IntegrationRefusalCode = (typeof INTEGRATION_REFUSAL_CODES)[number];
 
 /**
  * Why a browser GitHub sent back could not finish connecting, carried to the web Integrations page
- * as `?github=<cause>` instead of a JSON refusal on the API's origin (FB-128). The first group
+ * as `?connect=<cause>` instead of a JSON refusal on the API's origin (FB-128). The first group
  * spends no code: the return is not provably the person's own, so the App is not named. The rest
  * are the person's own return, and name the App wherever its code could be spent to learn it.
  */
