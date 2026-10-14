@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { BOUND_DEFAULTS, readBounds } from './bounds.js';
+import { BOUND_DEFAULTS, readBounds, stallOrigin } from './bounds.js';
 import type { ReleaseAttemptRow } from './ledger.js';
 
 const NOW = 1_800_000_000_000;
@@ -160,6 +160,56 @@ describe('the stall bound, from the time a box took the job', () => {
     expect(
       readBounds(rows, { now: NOW, takenAt: null }).bounds.find((b) => b.name === 'stall')?.crossed,
     ).toBe(false);
+  });
+
+  it('says what it said before a job time existed, where none is given', () => {
+    const rows = [
+      attempt({ stage: 'promote', startedAt: at(BOUND_DEFAULTS.stall * 2) }),
+      attempt({ stage: 'verify', startedAt: at(60_000) }),
+    ];
+
+    for (const opts of [{ now: NOW }, { now: NOW, takenAt: null }]) {
+      expect(readBounds(rows, opts).bounds.find((b) => b.name === 'stall')).toEqual({
+        name: 'stall',
+        crossed: false,
+        measuredMs: 60_000,
+        thresholdMs: BOUND_DEFAULTS.stall,
+        why: LEDGER_WHY,
+      });
+    }
+  });
+});
+
+const LEDGER_WHY = 'time since the newest write to this run’s ledger';
+const TAKEN_WHY = 'time since a box took this run’s job, with nothing written to its ledger since';
+
+describe('the moment the stall bound says it measured from', () => {
+  const why = (rows: ReleaseAttemptRow[], takenAgoMs: number) =>
+    readBounds(rows, { now: NOW, takenAt: at(takenAgoMs) }).bounds.find((b) => b.name === 'stall')
+      ?.why;
+  const verify = (agoMs: number) => attempt({ stage: 'verify', startedAt: at(agoMs) });
+
+  it('names the job where a box took it after every ledger write, or wrote nothing', () => {
+    expect(why([], 60_000)).toBe(TAKEN_WHY);
+    expect(why([verify(120_000)], 60_000)).toBe(TAKEN_WHY);
+  });
+
+  it('names the newest ledger write where it is newer than the job', () => {
+    expect(why([verify(60_000)], 120_000)).toBe(LEDGER_WHY);
+  });
+
+  it('names the ledger write where it landed at the same instant as the job', () => {
+    expect(why([verify(60_000)], 60_000)).toBe(LEDGER_WHY);
+  });
+
+  it('agrees with the reading it explains', () => {
+    expect(stallOrigin([verify(60_000)], at(120_000))).toEqual({
+      at: NOW - 60_000,
+      from: 'ledger',
+    });
+    expect(stallOrigin([verify(120_000)], at(60_000))).toEqual({ at: NOW - 60_000, from: 'taken' });
+    expect(stallOrigin([verify(60_000)], at(60_000))).toEqual({ at: NOW - 60_000, from: 'ledger' });
+    expect(stallOrigin([], null)).toBeNull();
   });
 });
 
