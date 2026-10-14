@@ -6,7 +6,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { patUngrantableFor } from '../../auth/pat-permissions.js';
 import { buildReference, openApiPath, type Reference } from '../document/build.js';
 import { checkFlows, FLOWS } from '../surface/flows.js';
-import { checkReference, describeFinding, FILE_BREAK } from './check.js';
+import { checkReference, describeFinding } from './check.js';
+import { stringsWrittenOutsideDeclarations } from './written-codes.fixture.js';
 
 /**
  * The reference against the composed app: every route the app serves is an operation that states
@@ -18,20 +19,19 @@ import { checkReference, describeFinding, FILE_BREAK } from './check.js';
  */
 const SRC = fileURLToPath(new URL('../..', import.meta.url));
 
-function sourceText(): string {
+function sourceTexts(): string[] {
   return readdirSync(SRC, { recursive: true, encoding: 'utf8' })
     .filter((file) => file.endsWith('.ts') && !file.endsWith('.test.ts') && !file.endsWith('.d.ts'))
-    .map((file) => readFileSync(join(SRC, file), 'utf8'))
-    .join(FILE_BREAK);
+    .map((file) => readFileSync(join(SRC, file), 'utf8'));
 }
 
 let reference: Reference;
-let source: string;
+let written: Set<string>;
 
 beforeAll(async () => {
   const { app } = (await import('../../index.js')) as unknown as { app: Hono };
   reference = await buildReference(app, { version: 'test' });
-  source = sourceText();
+  written = stringsWrittenOutsideDeclarations(sourceTexts());
 }, 120_000);
 
 describe('the API reference of the composed app', () => {
@@ -41,7 +41,7 @@ describe('the API reference of the composed app', () => {
 
   it('is complete and consistent with the routes: no finding names a route', () => {
     const only = process.env.REFERENCE_ONLY ? new RegExp(process.env.REFERENCE_ONLY) : null;
-    const findings = checkReference({ reference, source }).filter(
+    const findings = checkReference({ reference, written }).filter(
       (f) => !only || only.test(f.route),
     );
     if (process.env.REFERENCE_DUMP)

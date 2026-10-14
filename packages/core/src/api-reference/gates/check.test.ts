@@ -6,14 +6,8 @@ import { PAT_DOOR_REFUSALS } from '../../middleware/pat-rest-surface.js';
 import { describeOperation, fail, json } from '../declare/describe.js';
 import { zValidator } from '../declare/validator.js';
 import { buildReference, type Reference } from '../document/build.js';
-import {
-  checkReference,
-  describeFinding,
-  FILE_BREAK,
-  inputsRead,
-  thrownInline,
-  withoutDeclarations,
-} from './check.js';
+import { checkReference, describeFinding, inputsRead, thrownInline } from './check.js';
+import { stringsWrittenOutsideDeclarations } from './written-codes.fixture.js';
 
 const ok = describeOperation({ summary: 'ok', responses: { 200: json(z.object({})) } });
 const hook = (r: { success: boolean }) => {
@@ -23,12 +17,15 @@ const hook = (r: { success: boolean }) => {
 /** Every code the build adds on its own, written as a source file would write it. */
 const BUILT_IN = [...PAT_DOOR_REFUSALS.map((r) => `'${r.code}'`), "'INTERNAL_ERROR'"].join(' ');
 
+/** What the source files write, the built-in codes and the given file texts. */
+const writing = (...files: string[]) => stringsWrittenOutsideDeclarations([BUILT_IN, ...files]);
+
 async function checked(
   app: Hono,
-  source = `'NOT_FOUND' 'BAD_REQUEST' 'CONFLICT' 'STALE' ${BUILT_IN}`,
+  written = writing(`'NOT_FOUND' 'BAD_REQUEST' 'CONFLICT' 'STALE'`),
 ) {
   const reference = await buildReference(app, { version: 't' });
-  return { reference, findings: checkReference({ reference, source }) };
+  return { reference, findings: checkReference({ reference, written }) };
 }
 
 const rules = (findings: ReadonlyArray<{ rule: string; route: string }>) =>
@@ -79,7 +76,7 @@ describe('each rule, planted once', () => {
         throw new HTTPException(410, { message: 'gone', cause: { code: 'GONE_FOR_GOOD' } });
       },
     );
-    const { findings, reference } = await checked(app, `'GONE_FOR_GOOD' ${BUILT_IN}`);
+    const { findings, reference } = await checked(app, writing("'GONE_FOR_GOOD'"));
     expect(rules(findings)).toEqual([]);
     expect(reference.document.paths['/api/issues']?.get?.deprecated).toBe(true);
   });
@@ -252,48 +249,33 @@ describe('each rule, planted once, continued', () => {
       (c) => c.json({}),
     );
     const reference = await buildReference(app, { version: 't' });
-    const declaring = `${BUILT_IN}\nexport const x = describeOperation({ responses: { 409: fail('CONFLCIT', 'two writers'), 410: fail({ GONEE: 'was here' }) } });`;
-    const findings = checkReference({ reference, source: declaring });
+    const declaring = `export const x = describeOperation({ responses: { 409: fail('CONFLCIT', 'two writers'), 410: fail({ GONEE: 'was here' }) } });`;
+    const findings = checkReference({ reference, written: writing(declaring) });
     expect(rules(findings)).toEqual(['typo-code document', 'typo-code document']);
     expect(findings.map((f) => f.detail).join(' ')).toContain('CONFLCIT');
   });
 
-  it('typo-code: a comment inside the declaration does not end it early', async () => {
-    const app = new Hono();
-    app.get(
-      '/api/issues',
-      describeOperation({
-        summary: 's',
-        responses: { 200: json(z.object({})), 409: fail('CONFLCIT', 'two writers') },
-      }),
-      (c) => c.json({}),
-    );
-    const reference = await buildReference(app, { version: 't' });
-    const source = `${BUILT_IN}\nfail(/* ) */ 'CONFLCIT', 'two writers'); fail(\n // )\n 'CONFLCIT')`;
-    const findings = checkReference({ reference, source });
-    expect(rules(findings)).toEqual(['typo-code document']);
-  });
-
-  it('typo-code: a string or a comment that says fail( is not a declaration, and what follows it is kept', () => {
-    const source = [
-      'const note = "fail(";',
-      '// fail( is how a descriptor starts',
-      "throw new HTTPException(409, { cause: { code: 'CONFLICT' } });",
-      "fail('CONFLCIT', 'two writers');",
-    ].join('\n');
-    const kept = withoutDeclarations(source);
-    expect(kept).toContain("code: 'CONFLICT'");
-    expect(kept).not.toContain('CONFLCIT');
-  });
-
-  it('typo-code: a call one file leaves open does not swallow the next file', () => {
-    const kept = withoutDeclarations(
+  it('typo-code: a comment, a regular expression or a string before the declaration changes nothing', () => {
+    const written = writing(
       [
-        "fail('A', 'never closed'",
+        'const note = "fail(";',
+        '// fail( is how a descriptor starts',
+        "const apostrophe = /'/;",
+        "const slashes = '//';",
+        "fail(/* ) */ 'CONFLCIT', 'two writers');",
         "throw new HTTPException(409, { cause: { code: 'CONFLICT' } });",
-      ].join(FILE_BREAK),
+      ].join('\n'),
     );
-    expect(kept).toContain("code: 'CONFLICT'");
+    expect(written.has('CONFLICT')).toBe(true);
+    expect(written.has('CONFLCIT')).toBe(false);
+  });
+
+  it('typo-code: a call one file leaves open does not reach the next file', () => {
+    const written = writing(
+      "fail('A', 'never closed'",
+      "throw new HTTPException(409, { cause: { code: 'CONFLICT' } });",
+    );
+    expect(written.has('CONFLICT')).toBe(true);
   });
 
   it('typo-code: a code a handler throws is written, so it is not named', async () => {
@@ -309,8 +291,10 @@ describe('each rule, planted once, continued', () => {
       },
     );
     const reference = await buildReference(app, { version: 't' });
-    const source = `${BUILT_IN}\nfail('CONFLICT', 'two writers'); throw new HTTPException(409, { cause: { code: 'CONFLICT' } });`;
-    expect(checkReference({ reference, source })).toEqual([]);
+    const written = writing(
+      "fail('CONFLICT', 'two writers'); throw new HTTPException(409, { cause: { code: 'CONFLICT' } });",
+    );
+    expect(checkReference({ reference, written })).toEqual([]);
   });
 
   it('omitted: a route the document does not carry is named', async () => {
@@ -318,7 +302,7 @@ describe('each rule, planted once, continued', () => {
     app.get('/api/issues', ok, (c) => c.json({}));
     const reference = await buildReference(app, { version: 't' });
     const trimmed: Reference = { ...reference, document: { ...reference.document, paths: {} } };
-    expect(rules(checkReference({ reference: trimmed, source: BUILT_IN }))).toEqual([
+    expect(rules(checkReference({ reference: trimmed, written: writing() }))).toEqual([
       'omitted GET /api/issues',
     ]);
   });
@@ -344,7 +328,7 @@ describe('each rule, planted once, continued', () => {
       op.responses = {
         200: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Gone' } } } },
       };
-    expect(rules(checkReference({ reference, source: BUILT_IN }))).toContain(
+    expect(rules(checkReference({ reference, written: writing() }))).toContain(
       'dangling-ref document',
     );
   });

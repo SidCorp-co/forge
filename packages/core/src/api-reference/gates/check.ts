@@ -9,8 +9,8 @@ import type { RouteEntry } from '../document/registry.js';
  */
 export type CheckInput = {
   readonly reference: Reference;
-  /** The text of every non-test source file, joined with `FILE_BREAK`: where a declared error code must be written, outside the `fail(...)` that declares it. */
-  readonly source: string;
+  /** Every quoted string the non-test source writes outside a `fail(...)` declaration (`written-codes.fixture.ts`): where a declared error code must be written. */
+  readonly written: ReadonlySet<string>;
 };
 
 type Read = 'json' | 'query' | 'form' | 'raw' | 'param';
@@ -94,51 +94,6 @@ export function thrownInline(handlerSource: string): Thrown[] {
   return out;
 }
 
-/** Where a string literal that opens at `from` ends, or the end of the text. */
-function stringEnd(text: string, from: number): number {
-  const quote = text[from];
-  for (let i = from + 1; i < text.length; i++) {
-    if (text[i] === '\\') i++;
-    else if (text[i] === quote) return i;
-  }
-  return text.length;
-}
-
-/** Between two files of the joined source, so that a string one file leaves open cannot swallow the next. */
-export const FILE_BREAK = '\u0000';
-
-/** The source with every `fail(...)` call taken out, since a code a descriptor declares is not a place any handler writes it. A string or a comment that says `fail(` is kept as it is. */
-export function withoutDeclarations(joined: string): string {
-  return joined.split(FILE_BREAK).map(withoutDeclarationsIn).join('\n');
-}
-
-function withoutDeclarationsIn(source: string): string {
-  let out = '';
-  let kept = 0;
-  let i = 0;
-  while (i < source.length) {
-    const ch = source[i];
-    const next = source[i + 1];
-    if (ch === '/' && next === '/') {
-      const end = source.indexOf('\n', i);
-      i = end === -1 ? source.length : end;
-    } else if (ch === '/' && next === '*') {
-      const end = source.indexOf('*/', i + 2);
-      i = end === -1 ? source.length : end + 2;
-    } else if (ch === "'" || ch === '"' || ch === '`') {
-      i = stringEnd(source, i) + 1;
-    } else if (source.startsWith('fail(', i) && !/[\w$.]/.test(source[i - 1] ?? '')) {
-      const open = i + 'fail'.length;
-      out += source.slice(kept, i);
-      i = open + balanced(source, open).length;
-      kept = i;
-    } else {
-      i++;
-    }
-  }
-  return out + source.slice(kept);
-}
-
 function walkRefs(node: unknown, visit: (ref: string) => void): void {
   if (Array.isArray(node)) {
     for (const child of node) walkRefs(child, visit);
@@ -151,7 +106,7 @@ function walkRefs(node: unknown, visit: (ref: string) => void): void {
   }
 }
 
-export function checkReference({ reference, source }: CheckInput): Finding[] {
+export function checkReference({ reference, written }: CheckInput): Finding[] {
   const findings: Finding[] = [...reference.findings];
   const { document, routes } = reference;
 
@@ -199,13 +154,12 @@ export function checkReference({ reference, source }: CheckInput): Finding[] {
     }
   }
 
-  const written = withoutDeclarations(source);
   const named = new Set<string>();
   for (const byStatus of reference.errors.values()) {
     for (const codes of byStatus.values()) for (const code of codes) named.add(code);
   }
   for (const code of [...named].sort()) {
-    if (!written.includes(`'${code}'`) && !written.includes(`"${code}"`)) {
+    if (!written.has(code)) {
       findings.push({
         rule: 'typo-code',
         route: 'document',
