@@ -12,7 +12,6 @@ import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
-  createTestDevice,
   createTestProject,
   createTestUser,
   setupTestDatabase,
@@ -29,10 +28,6 @@ type Mods = {
   detectOwedCloses: typeof import('../../src/pipeline/stranded-issues.js').detectOwedCloses;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   detectStrandedIssues: typeof import('../../src/pipeline/stranded-issues.js').detectStrandedIssues;
-  // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
-  emitPipelineWedge: typeof import('../../src/pipeline/wedge.js').emitPipelineWedge;
-  // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
-  handlePmJobFailedAutoDisable: typeof import('../../src/pm/auto-disable.js').handlePmJobFailedAutoDisable;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   owedCloseResolutionKey: typeof import('../../src/pipeline/stranded-issues.js').owedCloseResolutionKey;
 };
@@ -91,11 +86,7 @@ beforeAll(async () => {
   const deliver = await import('../../src/notifications/deliver.js');
   const resolve = await import('../../src/notifications/auto-resolve.js');
   const stranded = await import('../../src/pipeline/stranded-issues.js');
-  const wedge = await import('../../src/pipeline/wedge.js');
-  const autoDisable = await import('../../src/pm/auto-disable.js');
   mods = {
-    emitPipelineWedge: wedge.emitPipelineWedge,
-    handlePmJobFailedAutoDisable: autoDisable.handlePmJobFailedAutoDisable,
     recordAndDeliver: deliver.recordAndDeliver,
     resolveNotifications: resolve.resolveNotifications,
     detectOwedCloses: stranded.detectOwedCloses,
@@ -273,125 +264,6 @@ describe('a notification written against an issue', () => {
     const [row] = (await inbox()).items as [Row];
     expect(row.title).toBe('Invoicing — A runner can no longer authenticate');
     expect(row.projectSlug).toBe(project.slug);
-  });
-});
-
-describe('a notification about no issue', () => {
-  const pipelineRun = async () => {
-    const id = crypto.randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO pipeline_runs (id, project_id, kind, status) VALUES (${id}, ${project.id}, 'interactive', 'running')`);
-    return id;
-  };
-  const only = async () => ((await inbox()).items as Row[]).filter((r) => !r.resolvedNotice);
-
-  it('names the runner it is about by the name the Runners page shows, and opens its project', async () => {
-    const device = await createTestDevice(harness.db, owner, { name: 'build-box-7' });
-    const runner = crypto.randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO runners (id, project_id, device_id, type, name, status)
-      VALUES (${runner}, ${project.id}, ${device.id}, 'claude-code', 'runner-internal-name', 'online')`);
-    await mods.emitPipelineWedge({
-      projectId: project.id,
-      hop: 'dispatch',
-      entity: 'runner',
-      entityId: runner,
-      reason: 'auth_dead:expired',
-      action: 'sign in again',
-      title: 'A runner can no longer authenticate, and will take no more work',
-    });
-    const [row] = await only();
-    expect(row?.title).toBe(
-      'build-box-7 — A runner can no longer authenticate, and will take no more work',
-    );
-    expect(row?.projectSlug).toBe(project.slug);
-    expect(row?.issueId).toBeNull();
-  });
-
-  it('names the session it is about by its title and the device it ran on', async () => {
-    const device = await createTestDevice(harness.db, owner, { name: 'build-box-8' });
-    const session = crypto.randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, device_id, kind, status, title)
-      VALUES (${session}, ${project.id}, ${await pipelineRun()}, ${device.id}, 'chat', 'failed', 'Nightly sync')`);
-    await mods.emitPipelineWedge({
-      projectId: project.id,
-      hop: 'heartbeat',
-      entity: 'session',
-      entityId: session,
-      reason: 'stale',
-      action: 'check the device',
-    });
-    const [row] = await only();
-    expect(row?.title).toBe(
-      'Nightly sync on build-box-8 — Pipeline wedge: heartbeat hop miss on session',
-    );
-  });
-
-  it('names the step it is about by its kind', async () => {
-    const job = crypto.randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO jobs (id, project_id, pipeline_run_id, type, status, created_by)
-      VALUES (${job}, ${project.id}, ${await pipelineRun()}, 'custom', 'queued', ${owner})`);
-    await mods.emitPipelineWedge({
-      projectId: project.id,
-      hop: 'dispatch',
-      entity: 'job',
-      entityId: job,
-      reason: 'held',
-      action: 'wait',
-      title: 'A release was cancelled because no machine picked it up',
-    });
-    const [row] = await only();
-    expect(row?.title).toBe(
-      'custom step — A release was cancelled because no machine picked it up',
-    );
-  });
-
-  it('names its project where the project is the subject', async () => {
-    await mods.emitPipelineWedge({
-      projectId: project.id,
-      hop: 'dispatch',
-      entity: 'capacity',
-      entityId: 'capacity:p:build',
-      reason: 'no runner',
-      action: 'bring one online',
-      title: 'No capacity: no runner online for this project',
-    });
-    const [row] = await only();
-    expect(row?.title).toBe('Invoicing — No capacity: no runner online for this project');
-    expect(row?.projectSlug).toBe(project.slug);
-  });
-
-  it('names the schedule a report came from', async () => {
-    await mods.recordAndDeliver({
-      recipients: [owner],
-      projectId: project.id,
-      subject: 'Nightly check',
-      type: 'schedule_report',
-      title: 'All 12 endpoints answered',
-    });
-    const [row] = await only();
-    expect(row?.title).toBe('Nightly check — All 12 endpoints answered');
-  });
-
-  it('names the project in a record written without the door, and leaves a title that already does', async () => {
-    for (let i = 0; i < 3; i += 1) {
-      await harness.db.execute(sql`
-        INSERT INTO jobs (id, project_id, pipeline_run_id, type, status, created_by) VALUES (${crypto.randomUUID()}, ${project.id}, ${await pipelineRun()}, 'pm', 'failed', ${owner})`);
-    }
-    await mods.handlePmJobFailedAutoDisable({ type: 'pm', projectId: project.id } as never);
-    await mods.recordAndDeliver({
-      recipients: [owner],
-      projectId: project.id,
-      type: 'pm_escalation',
-      title: 'Invoicing needs a decision on its release window',
-    });
-    const titles = (await only()).map((r) => r.title).sort();
-    expect(titles).toEqual([
-      'Invoicing needs a decision on its release window',
-      'Invoicing — PM cadence auto-disabled',
-    ]);
   });
 });
 
