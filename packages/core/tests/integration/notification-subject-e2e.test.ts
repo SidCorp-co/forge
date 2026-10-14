@@ -5,7 +5,7 @@
 
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createTestDevice,
   createTestProject,
@@ -14,6 +14,15 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+
+vi.mock('../../src/schedules/script/executor.js', () => ({
+  SCRIPT_TIMEOUT_MS: 30_000,
+  runScheduleScript: async () => ({
+    status: 'success',
+    output: '',
+    notifications: [{ title: 'All 12 endpoints answered' }],
+  }),
+}));
 
 type Mods = {
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
@@ -191,14 +200,26 @@ describe('a notification about no issue', () => {
     expect(row?.projectSlug).toBe(project.slug);
   });
 
-  it('names the schedule a report came from', async () => {
-    await mods.recordAndDeliver({
-      recipients: [owner],
-      projectId: project.id,
-      subject: 'Nightly check',
-      type: 'schedule_report',
-      title: 'All 12 endpoints answered',
+  it('names the schedule a script report came from, by the schedule the run was dispatched for', async () => {
+    const { dispatchScheduleRun } = await import('../../src/schedules/dispatch.js');
+    const schedule = crypto.randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO schedules (id, project_id, name, cron, kind, script)
+      VALUES (${schedule}, ${project.id}, 'Nightly check', '0 3 * * *', 'script',
+              ${"ctx.notify({ title: 'All 12 endpoints answered' });"})`);
+    const result = await dispatchScheduleRun({
+      schedule: {
+        id: schedule,
+        name: 'Nightly check',
+        projectId: project.id,
+        prompt: null,
+        targetProjectSlug: null,
+        kind: 'script',
+        script: "ctx.notify({ title: 'All 12 endpoints answered' });",
+      },
+      actorUserId: owner,
     });
+    expect(result.ok).toBe(true);
     const [row] = await only();
     expect(row?.title).toBe('Nightly check — All 12 endpoints answered');
   });
