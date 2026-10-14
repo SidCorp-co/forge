@@ -164,6 +164,26 @@ describe("the Release section's prose", () => {
 		expect(screen.getByText(/none of these stops a release/)).toBeInTheDocument();
 	});
 
+	it("lists two release runners as stopping a release, never as only undeclared", () => {
+		readiness.mockReturnValue({
+			isLoading: false,
+			error: null,
+			data: ready({
+				blockers: [{ code: "RELEASE_RUNNER_AMBIGUOUS", evaluated: true, message: "Two labels." }],
+				gaps: ["release-runner-ambiguous", "rollback"],
+			}),
+		});
+
+		draw(<ReleaseSection projectId={PROJECT_ID} />);
+
+		expect(screen.getByRole("list", { name: "What stops a release" }).textContent).toContain(
+			"RELEASE_RUNNER_AMBIGUOUS",
+		);
+		expect(screen.getByRole("list", { name: "What is not declared" }).textContent).not.toContain(
+			"Two live bindings name different release runners",
+		);
+	});
+
 	it("renders a warning's code spans the same way, not only a blocker's", () => {
 		readiness.mockReturnValue({
 			isLoading: false,

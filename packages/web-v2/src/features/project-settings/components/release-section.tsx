@@ -56,6 +56,12 @@ const BLOCKER_TAB: Record<string, { tab: string; label: string }> = {
   NO_RUNNER_ONLINE: { tab: "runners", label: "See the runners" },
 };
 
+/** The gap that restates a blocker, where a readiness answer carries both. */
+const BLOCKER_GAP: Record<string, ReleaseReadiness["gaps"][number]> = {
+  RELEASE_TARGET_UNDECLARED: "release-target",
+  RELEASE_RUNNER_AMBIGUOUS: "release-runner-ambiguous",
+};
+
 /** One reading is taken per live target that declares a probe, so with several targets the answer is per target. */
 function verifiedBy(r: ReleaseReadiness): string {
   if (r.providers.length > 1) {
@@ -105,10 +111,9 @@ export function ReleaseAnswer({ projectId, slug }: { projectId: string; slug?: s
   if (!r) return null;
   const a = releaseAnswer(r);
   const listed = a.kind === "blocked" || a.kind === "undeclared" || a.kind === "unread";
-  // The blocker already says a release has nowhere to land; the same gap under it says it twice.
-  const gaps = r.blockers.some((b) => b.code === "RELEASE_TARGET_UNDECLARED")
-    ? r.gaps.filter((g) => g !== "release-target")
-    : r.gaps;
+  // A gap its own blocker already lists would be said twice, once as not stopping a release.
+  const blocked = new Set(r.blockers.map((b) => BLOCKER_GAP[b.code]).filter(Boolean));
+  const gaps = r.gaps.filter((g) => !blocked.has(g));
 
   return (
     <div data-testid="release-answer" data-answer={a.kind}>

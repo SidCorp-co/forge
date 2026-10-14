@@ -239,6 +239,24 @@ describe("before the document is in hand", () => {
 		expect(screen.queryByLabelText(/environment limits/i)).toBeNull();
 		expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
 	});
+
+	it("keeps the page and every unsaved edit when a later read fails, and reads again on request", async () => {
+		await mount();
+		fireEvent.change(screen.getByLabelText("Repository URL"), { target: { value: "git@example.com:o/desk.git" } });
+		fails = true;
+		await act(async () => {
+			await client.refetchQueries({ queryKey: ["project", "p1", "environments"] });
+		});
+
+		expect(await screen.findByTestId("environments-reread-failed")).toBeInTheDocument();
+		expect(screen.getByLabelText("Repository URL")).toHaveValue("git@example.com:o/desk.git");
+		expect(screen.getByDisplayValue("https://preview.example")).toBeInTheDocument();
+
+		fails = false;
+		fireEvent.click(screen.getByRole("button", { name: "Read again" }));
+		await waitFor(() => expect(screen.queryByTestId("environments-reread-failed")).toBeNull());
+		expect(screen.getByLabelText("Repository URL")).toHaveValue("git@example.com:o/desk.git");
+	});
 });
 
 describe("a limits edit", () => {

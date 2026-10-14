@@ -4,8 +4,9 @@ import { join } from 'node:path';
 import { type Refused, saying } from '../projects/repository-reader.js';
 import type { PinnedSshHost } from './ssh-host-guard.js';
 
-/** Where in Forge a project's deploy key is attached, for a sentence telling an operator to fix it. */
+/** Where a project's deploy key is attached, and its SSH clone URL set, for an operator's fix. */
 export const GIT_ACCESS = "the project's Settings → Runners → Git access";
+export const REPO_URL_AT = "the project's Settings → Shape & release → Repository";
 
 /**
  * What every sentence asks the git host to give the key attached under Git access, and why. Write,
@@ -128,12 +129,12 @@ export function hostRefusal(err: GitFailure, remote: string): Refused {
     case 'no_access':
       return {
         cause: `the git host took the deploy key attached to this project but will not let it read ${remote} (${said})`,
-        clears: `on the git host, give the deploy key attached under ${GIT_ACCESS} ${KEY_ACCESS} to that repository, ${WHY_KEY_ACCESS}; if no repository lives at that URL, correct the SSH clone URL set there`,
+        clears: `on the git host, give the deploy key attached under ${GIT_ACCESS} ${KEY_ACCESS} to that repository, ${WHY_KEY_ACCESS}; if no repository lives at that URL, correct the SSH clone URL set under ${REPO_URL_AT}`,
       };
     case 'unreachable':
       return {
         cause: `the git host ${hostOf(remote)} could not be reached (${said}), so the deploy key was never offered`,
-        clears: `check that the SSH clone URL ${remote}, set under ${GIT_ACCESS}, names the right host and that the host is up`,
+        clears: `check that the SSH clone URL ${remote}, set under ${REPO_URL_AT}, names the right host and that the host is up`,
       };
     default:
       return {
@@ -146,7 +147,7 @@ export function hostRefusal(err: GitFailure, remote: string): Refused {
 export function unresolvedHostRefusal(remote: string): Refused {
   return {
     cause: `the git host ${hostOf(remote)} could not be resolved, so the deploy key was never offered`,
-    clears: `check that the SSH clone URL ${remote}, set under ${GIT_ACCESS}, names the right host and that its name resolves`,
+    clears: `check that the SSH clone URL ${remote}, set under ${REPO_URL_AT}, names the right host and that its name resolves`,
   };
 }
 

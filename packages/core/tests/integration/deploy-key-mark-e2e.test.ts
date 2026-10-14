@@ -147,6 +147,7 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
   }, 60_000);
 
   const GIT_ACCESS = "the project's Settings → Runners → Git access";
+  const REPO_URL_AT = "the project's Settings → Shape & release → Repository";
   const HOST_ANSWERS: Array<[HostAnswer, string[]]> = [
     [
       GITLAB_NO_ACCESS,
@@ -161,7 +162,7 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
         `the git host took the deploy key attached to this project but will not let it read ${GITLAB_URL}`,
       ],
     ],
-    [NO_REPOSITORY, ['correct the SSH clone URL set there']],
+    [NO_REPOSITORY, [`correct the SSH clone URL set under ${REPO_URL_AT}`]],
     [
       keyUnknown('gitlab.com'),
       [
@@ -174,7 +175,7 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
       [
         'the git host gitlab.com could not be reached',
         'ssh: connect to host gitlab.com',
-        `check that the SSH clone URL ${GITLAB_URL}, set under ${GIT_ACCESS}`,
+        `check that the SSH clone URL ${GITLAB_URL}, set under ${REPO_URL_AT}`,
       ],
     ],
   ];

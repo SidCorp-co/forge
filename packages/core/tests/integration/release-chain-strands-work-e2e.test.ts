@@ -29,6 +29,8 @@ let ownerId: string;
 let jwt: string;
 let pat: string;
 let seq = 0;
+/** Each planted issue's id, by the key a refusal names it with. */
+const idOf = new Map<string, string>();
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -73,6 +75,7 @@ async function issue(
     VALUES (${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, ${status}, ${ownerId},
             ${mark ? sql`now()` : null}, ${mark?.landing ?? null}, ${mark?.commit ?? null},
             ${declared})`);
+  idOf.set(`ISS-${seq}`, id);
   return `ISS-${seq}`;
 }
 
@@ -161,16 +164,33 @@ describe.each(Object.entries(doors))('%s', (_door, write) => {
       expect((await stored()).kind).toBe('standard');
     });
 
-    it('takes the kind change once the issue declares its own landing shape', async () => {
-      await issue('developed', {});
-      await harness.db.execute(
-        sql`UPDATE issues SET declared_landing_shape = 'git' WHERE project_id = ${projectId}`,
+    it('takes the kind change once each issue has taken the way out the refusal names, through the issue doors', async () => {
+      const key = await issue('developed', {});
+      const id = idOf.get(key) as string;
+      const issueDoor = (method: string, path: string, body?: unknown) =>
+        callRest(server.baseUrl, jwt, method, path, body);
+
+      // A landing shape is not taken over a standing mark, so declaring it first is refused.
+      expect((await issueDoor('PATCH', `/api/issues/${id}`, { landingShape: 'git' })).status).toBe(
+        409,
       );
+
+      expect((await issueDoor('DELETE', `/api/issues/${id}/merge`, {})).status).toBe(200);
+      expect((await issueDoor('PATCH', `/api/issues/${id}`, { landingShape: 'git' })).status).toBe(
+        200,
+      );
+      const remark = await issueDoor('POST', `/api/issues/${id}/merge`, { target: 'main' });
+      expect(remark.refused).toBeUndefined();
 
       const out = await write({ kind: 'website' });
 
       expect(out.refused).toBeUndefined();
       expect((await stored()).kind).toBe('website');
+      const rows = (await harness.db.execute(
+        sql`SELECT merged_at, declared_landing_shape FROM issues WHERE id = ${id}`,
+      )) as unknown as Array<{ merged_at: unknown; declared_landing_shape: string }>;
+      expect(rows[0]?.merged_at).not.toBeNull();
+      expect(rows[0]?.declared_landing_shape).toBe('git');
     });
 
     it('refuses the reverse move for a landing that only counts outside git', async () => {

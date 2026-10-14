@@ -72,6 +72,9 @@ describe('kindStrandsWork', () => {
       marked,
     });
     expect(fromGit.message).toContain('`landingShape: git`');
+    expect(fromGit.message).toMatch(
+      /withdraw its mark .*`unmark`.*declare `landingShape: git`.*mark it merged again/,
+    );
     const fromOutside = kindStrandsWork({
       from: 'website',
       to: 'standard',

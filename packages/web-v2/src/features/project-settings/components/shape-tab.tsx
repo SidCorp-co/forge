@@ -8,6 +8,7 @@ import { ISSUE_STATUS_LABELS } from "@forge/contracts/issue-vocabulary";
 import { useMemo, useState } from "react";
 import {
   Banner,
+  Button,
   ErrorState,
   SectionTitle,
   SettingsFormBar,
@@ -70,7 +71,9 @@ export function ShapeTab({ project, canEdit }: { project: ProjectDetail; canEdit
       </SettingsSection>
     );
   }
-  if (envQ.isError) {
+  // Only a first read that failed has nothing to show. A later one that fails keeps the page, and
+  // every unsaved edit on it, over the reading already in hand.
+  if (envQ.isError && envQ.data === undefined) {
     return (
       <SettingsSection>
         <ErrorState message={formatApiError(envQ.error)} onRetry={() => envQ.refetch()} />
@@ -78,12 +81,29 @@ export function ShapeTab({ project, canEdit }: { project: ProjectDetail; canEdit
     );
   }
   return (
-    <ShapePage
-      project={project}
-      canEdit={canEdit}
-      environments={envQ.data?.environments}
-      readRevision={envQ.dataUpdatedAt}
-    />
+    <>
+      {envQ.isError && (
+        <div className="mb-4" data-testid="environments-reread-failed">
+          <Banner
+            tone="attention"
+            action={
+              <Button variant="ghost" size="sm" onClick={() => envQ.refetch()}>
+                Read again
+              </Button>
+            }
+          >
+            The environments could not be read again ({formatApiError(envQ.error)}), so what is
+            shown is the last reading. Your edits are kept.
+          </Banner>
+        </div>
+      )}
+      <ShapePage
+        project={project}
+        canEdit={canEdit}
+        environments={envQ.data?.environments}
+        readRevision={envQ.dataUpdatedAt}
+      />
+    </>
   );
 }
 

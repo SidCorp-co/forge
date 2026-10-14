@@ -65,8 +65,9 @@ export function kindStrandsWork(args: {
       `and ${n} unclosed issue${n === 1 ? '' : 's'} declaring no landing shape of ${n === 1 ? 'its' : 'their'} own ` +
       `carr${n === 1 ? 'ies' : 'y'} a merge mark that counts as a landing today and would not after it: ${named(keys)}. ` +
       `Today ${whereItLands(args.was)}; after this write ${n === 1 ? 'that mark stops' : 'those marks stop'} counting, with nothing said (${examples}). ` +
-      `Declare each one's own landing shape first — \`landingShape: ${args.was.shape}\` on \`PATCH /api/issues/:id\`, or \`forge_issues\` \`update\` — ` +
-      'so it stays judged on the lane its mark was written for, and then change the kind.',
+      'For each one, in this order: withdraw its mark (`DELETE /api/issues/:id/merge`, or `forge_issues` `unmark`), ' +
+      `declare \`landingShape: ${args.was.shape}\` (\`PATCH /api/issues/:id\`, or \`forge_issues\` \`update\`), and mark it merged again; ` +
+      'a landing shape is not taken while a mark stands. Each one is then judged on the lane its mark was written for, and the kind can change.',
     details: { issues: keys, total: n },
   };
 }

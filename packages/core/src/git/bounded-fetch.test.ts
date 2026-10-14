@@ -12,6 +12,7 @@ import {
 
 const REMOTE = 'git@gitlab.com:sid/desk.git';
 const GIT_ACCESS = "the project's Settings → Runners → Git access";
+const REPO_URL_AT = "the project's Settings → Shape & release → Repository";
 /** What every sentence asks the key be given: Test connection's too (`ssh-keys.test.ts`). */
 const ASK =
   "write access to that repository, since Forge reads the repository with it and the project's runner pushes with it";
@@ -69,7 +70,7 @@ describe('fetchRefusal, in the words each host sends', () => {
         `the git host took the deploy key attached to this project but will not let it read ${REMOTE}`,
       );
       expect(why).toContain(`give the deploy key attached under ${GIT_ACCESS} ${ASK}`);
-      expect(why).toContain('correct the SSH clone URL set there');
+      expect(why).toContain(`correct the SSH clone URL set under ${REPO_URL_AT}`);
     },
   );
 
@@ -90,7 +91,7 @@ describe('fetchRefusal, in the words each host sends', () => {
     expect(why).toContain(answer.said);
     expect(why).not.toContain(`${REMOTE} names`);
     expect(why).toContain('the deploy key was never offered');
-    expect(why).toContain(`check that the SSH clone URL ${REMOTE}, set under ${GIT_ACCESS}`);
+    expect(why).toContain(`check that the SSH clone URL ${REMOTE}, set under ${REPO_URL_AT}`);
     expect(why).not.toMatch(/(read|write) access/);
   });
 

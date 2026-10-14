@@ -806,8 +806,9 @@ function AssignDevice({
 				{!hasRepoUrl && (
 					<Banner tone="info">
 						This project has no repo URL, so a device assigned now gets an empty
-						workspace instead of a checkout. Set Git access above first, or point
-						Repo path at a checkout that already exists on the device.
+						workspace instead of a checkout. Set the repository URL under Shape &amp;
+						release first, or point Repo path at a checkout that already exists on
+						the device.
 					</Banner>
 				)}
 				{picked && picked.status !== "online" && (
@@ -923,7 +924,7 @@ export function ProjectRunnersScreen({
 					<HelpButton
 						summary="Assign paired devices to this project. Each gets its own checkout; with a repo URL + deploy key, a freshly-assigned device auto-clones, syncs skills, and writes its MCP config."
 						actions={[
-							"Set Git access (repo URL + deploy key) for hands-off provisioning",
+							"Set the repo URL under Shape & release and a deploy key under Git access, for hands-off provisioning",
 							"Assign a device — watch it clone → sync skills → ready",
 							"Manage devices account-wide on the Runners page",
 						]}
