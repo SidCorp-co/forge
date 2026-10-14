@@ -3182,6 +3182,8 @@
 
 ### Fixed
 
+- **A release batch whose box went silent no longer blocks the project.** After 25 minutes with nothing written to its ledger it is cancelled and its issues return to the release gate, so a new release can start. (ISS-1319)
+- **Writing a step handoff for a run that does not exist is refused by name.** It answered a server error; it now answers 404 naming `pipelineRunId`, over REST and through the tool. (ISS-1319)
 - **Each numbered step on the four connect-an-assistant setup pages asks for one action, with a Check of its own.** The scopes step says read is already ticked and asks for write, as the form shows it. (ISS-1289)
 
 - **A notification names its subject and opens it.** A runner, session, step, schedule or project in the title; a sweep is one row expanding to its issues. A resolved row is no longer unread; filter by type and unread. (ISS-1168)

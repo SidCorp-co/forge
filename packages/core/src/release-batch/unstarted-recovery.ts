@@ -114,9 +114,11 @@ let registered = false;
  */
 export async function registerReleaseUnstartedRecovery(): Promise<void> {
   if (registered) return;
-  // The release batch's background work registers as one: the finish job and its sweep with it.
+  // The release batch's background work registers as one: the finish job, and the sweep of a box gone quiet.
   const { registerReleaseBatchFinish } = await import('./finish-job.js');
   await registerReleaseBatchFinish();
+  const { registerReleaseSilentRecovery } = await import('./silent-recovery.js');
+  await registerReleaseSilentRecovery();
   const { boss } = await import('../queue/boss.js');
   // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
   await (boss as any).createQueue(RECOVERY_QUEUE);
