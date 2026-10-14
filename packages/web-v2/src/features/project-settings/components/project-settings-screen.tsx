@@ -1,7 +1,7 @@
 
 // Per-project settings (ISS-316), grouped by what a person comes to change rather than by the
-// document each value is stored in: General, People, Work, Delivery, Connections, and Advanced for
-// the raw documents. The section lives in `?tab=`; a link written against the old flat tabs is
+// document each value is stored in: General, People, Work, Delivery (with the environments), Preview,
+// Testing (the accounts a run tests with), Connections, and Advanced for the raw documents. The section lives in `?tab=`; a link written against the old flat tabs is
 // moved to the section that now holds its content (`sections.ts:LEGACY_TABS`).
 import { useEffect } from "react";
 import { EmptyState, ErrorState, PageContainer, PageTitle, ProjectLoader, ScreenTabs, type TabItem } from "@/design";
@@ -23,6 +23,7 @@ import { MembersTab } from "./members-tab";
 import { ModulesTab } from "./modules-tab";
 import { PreviewSettings } from "./preview-section";
 import { ShareSettings } from "./shares-section";
+import { TestingSettings } from "./testing-tab";
 
 const LABEL: Record<SettingsSection, ProductCopyKey> = {
 	general: "settings.project.section.general",
@@ -30,6 +31,7 @@ const LABEL: Record<SettingsSection, ProductCopyKey> = {
 	work: "settings.project.section.work",
 	delivery: "settings.project.section.delivery",
 	preview: "previews.settings.section",
+	testing: "settings.project.section.testing",
 	connections: "settings.project.section.connections",
 	advanced: "settings.project.section.advanced",
 };
@@ -116,6 +118,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 					)}
 					{tab === "delivery" && <DeliverySettings project={project} canEdit={canEdit} />}
 					{tab === "preview" && <PreviewSettings projectId={project.id} slug={project.slug} canEdit={canEdit} />}
+					{tab === "testing" && <TestingSettings projectId={project.id} canEdit={canEdit} />}
 					{tab === "connections" && (
 						<>
 							<div id="integrations" className="scroll-mt-24">

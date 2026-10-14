@@ -223,6 +223,8 @@ async function main(): Promise<number> {
       JWT_SECRET: secret(),
       DEVICE_TOKEN_PEPPER: secret(),
       PAT_PEPPER: secret(),
+      // a throwaway vault key, so a demo can store a test account's secret the way a project does
+      INTEGRATION_MASTER_KEY: randomBytes(32).toString('hex'),
       PORT: String(port),
       WEB_DIST_DIR: webDir,
       APP_BASE_URL: `http://127.0.0.1:${port}`,

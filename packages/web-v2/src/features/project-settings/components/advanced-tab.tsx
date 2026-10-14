@@ -1,37 +1,43 @@
 
-// Project settings → Advanced: whether the assistant may compute over the project's data, then the technical view. The documents every other section's fields are
-// stored in, edited raw (who each document is stays fixed), what a run reads of them, the plugins a
-// device installs, and the two acts on the project itself: moving it to another organization and
-// archiving it (ISS-353), both org-admin only and both confirmed first.
+// Project settings → Advanced: whether the assistant may compute over the project's data, the plugins a
+// device installs, then the raw documents every other tab reads its fields from, each folded and
+// never the first thing shown (test accounts live under Testing, environments under Delivery), and
+// the two acts on the project itself: moving it to another organization and archiving it (ISS-353),
+// both org-admin only and both confirmed first.
 import { useState } from "react";
-import { Button, PageSection, PageSectionBody, Field, Input, SectionTitle, Select } from "@/design";
+import { Button, Disclosure, PageSection, PageSectionBody, Field, Input, SectionTitle, Select, SettingsGroup } from "@/design";
 import { useOrgs } from "@/features/orgs";
 import type { ProjectDetail } from "@/features/projects";
 import { isOrgAdmin } from "@/features/projects";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useArchiveProject, useUnarchiveProject, useUpdateProject } from "../hooks";
 import { ComputeSettings } from "./compute-section";
-import { BindingDocuments, PolicyDocumentEditor, ProjectDocumentEditor, TestingProfiles } from "./config-documents";
-import { EffectiveConfig, EnvironmentStates } from "./config-readings";
+import { BindingDocuments, PolicyDocumentEditor, ProjectDocumentEditor } from "./config-documents";
+import { EffectiveConfig } from "./config-readings";
 import { PluginSettings } from "./plugins-section";
-import { SecretSettings } from "./secrets-section";
 
 export function AdvancedSettings({ project, canEdit }: { project: ProjectDetail; canEdit: boolean }) {
   const t = useCopy();
   return (
     <div className="space-y-6">
       <ComputeSettings projectId={project.id} slug={project.slug} canEdit={canEdit} />
-      <section id="documents" aria-label={t("settings.project.advanced.technical")} className="scroll-mt-24">
-        <h3 className="fg-h3 text-accent-text!">{t("settings.project.advanced.technical")}</h3>
-        <ProjectDocumentEditor project={project} canEdit={canEdit} />
-        <PolicyDocumentEditor projectId={project.id} canEdit={canEdit} />
-        <TestingProfiles projectId={project.id} canEdit={canEdit} />
-        <SecretSettings projectId={project.id} canEdit={canEdit} />
-        <BindingDocuments projectId={project.id} canEdit={canEdit} />
-        <EnvironmentStates projectId={project.id} />
-        <EffectiveConfig projectId={project.id} />
-        <PluginSettings projectId={project.id} canEdit={canEdit} />
-      </section>
+      <PluginSettings projectId={project.id} canEdit={canEdit} />
+      <SettingsGroup id="documents" title={t("settings.project.raw.documents")} summary={t("settings.project.raw.documentsSummary")}>
+        <div>
+          <Disclosure title={t("settings.project.raw.projectDocument")} testId="raw-project">
+            <ProjectDocumentEditor project={project} canEdit={canEdit} />
+          </Disclosure>
+          <Disclosure title={t("settings.project.raw.policy")} testId="raw-policy">
+            <PolicyDocumentEditor projectId={project.id} canEdit={canEdit} />
+          </Disclosure>
+          <Disclosure title={t("settings.project.raw.bindings")} testId="raw-bindings">
+            <BindingDocuments projectId={project.id} canEdit={canEdit} />
+          </Disclosure>
+          <Disclosure title={t("settings.project.raw.effective")} testId="raw-effective">
+            <EffectiveConfig projectId={project.id} />
+          </Disclosure>
+        </div>
+      </SettingsGroup>
       <div className="border-t border-line pt-2">
         {canEdit && <MoveToOrg project={project} />}
         <ArchiveProject project={project} canEdit={canEdit} />
