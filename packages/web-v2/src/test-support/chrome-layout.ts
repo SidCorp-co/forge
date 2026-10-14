@@ -83,7 +83,7 @@ export interface Measured {
   scrolling: string[];
   /** How many lines each pill in a table body takes, by its text. */
   pillLines: Record<string, number>;
-  /** Each pill in a table body: whether it sits inside the table's frame with nothing scrolled sideways, and whether the whole of its text is in a title. */
+  /** Each pill in a table body: whether the table's frame holds it unscrolled, and whether a title carries its whole text. */
   pills: { table: string; text: string; framed: boolean; titled: boolean }[];
   /** Tables with a frame of their own whose header does not stay at the top of it when the rows scroll under it. */
   headerLost: string[];

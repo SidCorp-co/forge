@@ -1,13 +1,10 @@
 // @vitest-environment node
 // @gate-input whole-tree
 //
-// ISS-1264 round 3. A jump to the end of a virtualised list is aimed at rows that have only been
-// estimated, and the rows it lands among are taller or shorter than the estimate, so the end moved
-// while the jump was in flight: it came to rest hundreds of px short (970px, measured on the inbox at
-// 390px) and only a second scroll reached the last row. jsdom has no layout, so the lists run here
-// as the app draws them, 1,300 rows of unequal height in a real Chrome at 390px and 1280px, and each
-// jump is read where it comes to rest: the last row is in the document, with its bottom edge on the
-// frame's.
+// ISS-1264 round 3. A jump to the end of a virtualised list is aimed at estimated row heights, and
+// came to rest hundreds of px short (970px on the inbox at 390px); only a second scroll reached the
+// last row. The lists run here as the app draws them, in a real Chrome at 390px and 1280px, and
+// each jump is read where it comes to rest: the last row in the document, its bottom on the frame's.
 
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -28,16 +25,12 @@ interface Landing {
   focused: string | null;
 }
 
-// How a jump is made: Ctrl+End on a focused list row, and the scroll position set to the very end,
-// which is what a scrollbar drag, End on the scroller and a script all come down to.
 const JUMPS = [
   { name: "Ctrl+End on a row of the notification feed", scenario: "list-key" },
   { name: "a scroll to the end of the notification feed", scenario: "list-scroll" },
   { name: "a scroll to the end of a DataTable of more than 100 rows", scenario: "table-scroll" },
 ];
-// 390px is the phone, where rows wrap and are tallest; 1280px is the desktop column.
 const SCREENS = [390, 1280];
-// The longest row, in words: unequal rows the estimate is wrong for, and a set of much taller ones.
 const LONGEST = [40, 120];
 
 describe("a jump to the end lands on the last row the first time", () => {

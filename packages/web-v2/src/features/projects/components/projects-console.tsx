@@ -72,9 +72,8 @@ export function ProjectsConsole() {
   const [createOpen, setCreateOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<ProjectSortState>(DEFAULT_PROJECT_SORT);
-  // Flat rows, no card mosaic: a phone opens as the list, a view the person picks wins, and the pick
-  // is kept in this browser so a reload opens the view they chose. Where storage cannot be read or
-  // written the pick lasts as long as the page and the breakpoint decides the next one.
+  // Flat rows, no card mosaic: a phone opens as the list, and a view the person picks wins, kept in
+  // this browser. Where storage is blocked the pick lasts as long as the page.
   const [stored, setView] = usePersistedState<unknown>(PROJECTS_VIEW_KEY, null);
   const pickedView = pickOf(stored);
   const phone = useMediaQuery(PHONE_WIDTH);

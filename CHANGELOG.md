@@ -3176,9 +3176,9 @@
 
 - **A session's message count no longer reads 0 for work it never recorded.** Master and run sessions keep no transcript here, so they show no count and `transcript: not-recorded`; older sessions show their real length. (ISS-1241)
 
-- **Jumping to the end of a long list lands on the last row.** The notification inbox and tables of more than 100 rows came to rest hundreds of pixels short when the rows were taller than expected, and only a second scroll reached the end. (ISS-1264)
+- **Jumping to the end of a long list lands on the last row.** The inbox and tables of over 100 rows stopped hundreds of pixels short when rows ran tall, and only a second scroll reached the end. (ISS-1264)
 
-- **Three small repairs on API Tokens and Agents.** A project name in the Level pill reads on one line and is cut to fit beside the name, with the whole of it on hover, the Agents project hint is a sentence, and each row's "Self" button is "Edit self". (ISS-1264)
+- **Three small repairs on API Tokens and Agents.** A project name in the Level pill reads on one line, cut to fit, full name on hover; the Agents hint is a sentence; each "Self" button is "Edit self". (ISS-1264)
 
 - **Settings pages are flat, and notices read cleanly.** Pipeline, Runners and Integrations use hairline rows; an empty weekly-reading field is marked; a half-saved page ends its reason with a stop; a phone toast no longer shifts the page. (ISS-1262)
 - **"Start queued issues automatically" can be switched off, and settings pages are flat.** It holds the entry gate instead of sending a refused value; cards give way to hairline sections. A backlog starts valid under the intake gate. (ISS-1262)
@@ -6423,9 +6423,9 @@
 
 - **An attribute that holds one value per issue now holds exactly one row.** Two simultaneous writers could leave two; the second now replaces the first, and a batch naming the key twice is refused. (ISS-1132)
 
-- **Projects opens as a list on a phone, and the Overview is flat.** The cards stay from 640px up, and a view you pick wins and is still there after a reload. Overview sections are type over a hairline, with no cards. (ISS-1264)
+- **Projects opens as a list on a phone, and the Overview is flat.** Cards stay from 640px up, and the view you pick wins and survives a reload. Overview sections are type over a hairline, with no cards. (ISS-1264)
 
-- **The notification inbox is one scrolling list.** Settings → Notifications loads the next 25 as you reach the end, with no pages, and PageDown and PageUp move between rows. A failed load of the next 25 is asked once, then waits for Retry. (ISS-1264)
+- **The notification inbox is one scrolling list.** Settings → Notifications loads the next 25 as you reach the end, with no pages, and PageDown and PageUp move between rows. A failed load waits for Retry. (ISS-1264)
 
 - **Marking every notification read refuses a body that names a project.** `POST /api/notifications/mark-all-read` used to accept a `projectId`, ignore it and mark every project's notifications read; it now answers 400 naming the field. Send no body. (ISS-1371)
 

@@ -146,17 +146,12 @@ export function useVirtualRows({
     [virtualizer, settle, getKey],
   );
 
-  // A jump to the end is aimed at the end of rows that have only been estimated, and the rows that
-  // then come into view are taller or shorter than the estimate: the end is somewhere else. Aiming at
-  // the last row again, from wherever the scroll came to rest at the bottom, lets the library settle
-  // on it as the rows measure, so the jump lands the first time and not on the second. A scroll event
-  // that reports the position already aimed from says nothing new, so it is not answered: the aim
-  // itself writes the scroll position, and an answer to that would be an aim at the same place.
+  // A jump to the end is aimed at estimated rows and rests short: aim at the last row again from the
+  // bottom and the library settles on it as the rows measure. The aim's own events are not answered.
   const aimedFrom = useRef<{ top: number; height: number } | null>(null);
   const reachedEnd = (event: UIEvent<HTMLElement>) => {
     const scroller = event.currentTarget;
     const { scrollTop, clientHeight, scrollHeight } = scroller;
-    // A scroller with no laid-out height has no end to have reached.
     if (!enabled || count === 0 || scrollHeight === 0 || scrollTop + clientHeight < scrollHeight - 1) {
       aimedFrom.current = null;
       return;

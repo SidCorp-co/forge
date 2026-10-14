@@ -1,8 +1,6 @@
-// Runs the app's own components, bundled, in the Chrome `warmChrome` left running. jsdom has no
-// layout, so what a scroll does to a virtualised list (where it lands once the rows it passed have
-// been measured) can only be read where a layout engine is. A scenario is a page that renders a
-// component, drives it, and reports what it measured; this file builds the page and brings the
-// report back, and says by name what stopped it when no report came.
+// Runs the app's own components, bundled, in the Chrome `warmChrome` left running: jsdom has no
+// layout, so where a scroll comes to rest once rows are measured is only readable in a browser. A
+// scenario is a page that renders a component, drives it and reports what it measured.
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -13,7 +11,6 @@ const WEB_V2 = resolve(__dirname, "../..");
 
 const bundles = new Map<string, Promise<string>>();
 
-/** The entry file bundled for a browser, once per file: React and the design layer are most of its cost. */
 function bundled(entry: string): Promise<string> {
   let made = bundles.get(entry);
   if (!made) {
