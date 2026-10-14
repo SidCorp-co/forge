@@ -59,6 +59,20 @@ describe("Truncated, when its text is cut", () => {
     expect(screen.queryByRole("tooltip")).toBeNull();
   });
 
+  it("does not show again at a narrower width after focus left while it fitted", () => {
+    let content = 300;
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(() => content);
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(144);
+    const { rerender } = render(<Truncated text={TEXT} />);
+    fireEvent.focus(screen.getByRole("group", { name: TEXT }));
+    content = 100;
+    rerender(<Truncated text={TEXT} className="fits" />);
+    fireEvent.blur(screen.getByText(TEXT));
+    content = 300;
+    rerender(<Truncated text={TEXT} />);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+
   it("is not focusable at the width where it fits exactly", () => {
     cutAt(144, 144);
     render(<Truncated text={TEXT} />);

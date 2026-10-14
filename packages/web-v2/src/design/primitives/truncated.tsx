@@ -38,15 +38,9 @@ export function Truncated({ text, className }: TruncatedProps) {
         ref={line}
         title={text}
         className={cn("block min-w-0 truncate", className)}
-        {...(cut
-          ? {
-              tabIndex: 0,
-              role: "group",
-              "aria-label": text,
-              onFocus: () => setFocused(true),
-              onBlur: () => setFocused(false),
-            }
-          : {})}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        {...(cut ? { tabIndex: 0, role: "group", "aria-label": text } : {})}
       >
         {text}
       </span>
