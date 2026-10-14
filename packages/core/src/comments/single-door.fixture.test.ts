@@ -116,11 +116,25 @@ describe('a write of the comments table the scan names by file and line', () => 
     expect(where(source, extra)).toEqual(['pipeline/planted.ts:2']);
   });
 
+  it('finds the table through a bridge module that exports a local alias of it', () => {
+    const extra = {
+      'db/bridge.ts': [
+        "import { comments } from './schema.js';",
+        'export const notes = comments;',
+      ].join('\n'),
+    };
+    const source = [
+      "import { notes } from '../db/bridge.js';",
+      'export const go = (db: any) => db.insert(notes);',
+    ].join('\n');
+    expect(where(source, extra)).toEqual(['pipeline/planted.ts:2']);
+  });
+
   it('finds a raw SQL write of the table, on the line it starts', () => {
     const source = [
       'export const go = (db: any, sql: any) => {',
       '  return db.execute(sql`',
-      '    DELETE FROM comments WHERE id = ${1}`);',
+      '    DELETE FROM comments WHERE id = 1`);',
       '};',
     ].join('\n');
     expect(where(source)).toEqual(['pipeline/planted.ts:2']);

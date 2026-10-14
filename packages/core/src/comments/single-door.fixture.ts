@@ -28,6 +28,7 @@ interface Parsed {
   declarations: ts.VariableDeclaration[];
   exportsFrom: Array<{ spec: string; pairs: Array<[string, string]> | 'all' }>;
   localExports: Array<[string, string]>;
+  exportedVariables: string[];
   calls: ts.CallExpression[];
   strings: ts.LiteralLikeNode[];
   declaredTable: string[];
@@ -85,6 +86,7 @@ function parse(file: string, text: string): Parsed {
     declarations: [],
     exportsFrom: [],
     localExports: [],
+    exportedVariables: [],
     calls: [],
     strings: [],
     declaredTable: [],
@@ -110,9 +112,9 @@ function parse(file: string, text: string): Parsed {
       }
     } else if (ts.isVariableStatement(statement) && isExported(statement)) {
       for (const decl of statement.declarationList.declarations) {
-        if (ts.isIdentifier(decl.name) && declaresCommentsTable(decl.initializer)) {
-          parsed.declaredTable.push(decl.name.text);
-        }
+        if (!ts.isIdentifier(decl.name)) continue;
+        if (declaresCommentsTable(decl.initializer)) parsed.declaredTable.push(decl.name.text);
+        else parsed.exportedVariables.push(decl.name.text);
       }
     }
   }
@@ -251,9 +253,10 @@ function exportedNames(parsed: ReadonlyMap<string, Parsed>): Map<string, Set<str
         if (from.pairs === 'all') for (const name of theirs) add(name);
         else for (const [imported, as] of from.pairs) if (theirs.has(imported)) add(as);
       }
-      if (p.localExports.length > 0) {
+      if (p.localExports.length > 0 || p.exportedVariables.length > 0) {
         const b = bindingsOf(file, p, parsed, exportedAs);
         for (const [local, as] of p.localExports) if (b.tables.has(local)) add(as);
+        for (const name of p.exportedVariables) if (b.tables.has(name)) add(name);
       }
     }
   }
