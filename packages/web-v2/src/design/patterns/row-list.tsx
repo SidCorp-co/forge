@@ -37,6 +37,10 @@ export interface RowItemProps {
   rowKey?: string;
   /** Whatever opens under the row in place (an editor, a confirm step). */
   children?: ReactNode;
+  /** The title wraps instead of being cut: a row whose title is a sentence the reader must read whole. */
+  wrap?: boolean;
+  /** With `onClick`, whether what the button opens under the row is open (`aria-expanded`). */
+  expanded?: boolean;
 }
 
 function Facts({ facts }: { facts: ReactNode[] }) {
@@ -52,12 +56,12 @@ function Facts({ facts }: { facts: ReactNode[] }) {
   );
 }
 
-export function RowItem({ title, lead, facts, note, trailing, href, onClick, selected, dim, testId, rowKey, children }: RowItemProps) {
+export function RowItem({ title, lead, facts, note, trailing, href, onClick, selected, dim, testId, rowKey, children, wrap, expanded }: RowItemProps) {
   const body = (
     <>
       {lead ? <span className="flex flex-none items-center font-mono text-11-5 font-semibold text-link">{lead}</span> : null}
       <span className={cn("flex min-w-0 flex-1 flex-col", dim && "opacity-65")}>
-        <span className="min-w-0 truncate text-13-5 font-medium text-fg">{title}</span>
+        <span className={cn("min-w-0 text-13-5 font-medium text-fg", wrap ? "break-words" : "truncate")}>{title}</span>
         {facts?.length ? <Facts facts={facts} /> : null}
         {note ? <span className="mt-0.5 block text-12 text-muted">{note}</span> : null}
       </span>
@@ -76,7 +80,7 @@ export function RowItem({ title, lead, facts, note, trailing, href, onClick, sel
           {body}
         </Link>
       ) : onClick ? (
-        <button type="button" onClick={onClick} className={row}>
+        <button type="button" onClick={onClick} className={row} aria-expanded={expanded}>
           {body}
         </button>
       ) : (

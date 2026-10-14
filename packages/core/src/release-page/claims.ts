@@ -85,10 +85,15 @@ export function readClaims(
   });
 }
 
-/** Every carried criterion the page does not claim, with its standing on the build and where it was judged instead. */
+/**
+ * Every carried criterion the page does not claim, with its standing on the build and where it was
+ * judged instead. One the page lists as proven (`proven`, the standing the header counts by) and not
+ * short is never also a known issue: on a draft, which has no build to claim on, a criterion whose
+ * newest verdict is a pass reads as proven once, not as proven and "not yet judged" both.
+ */
 export function knownIssuesOf(claims: readonly ClaimReading[]): ReleaseKnownIssue[] {
-  return claims.flatMap(({ criterion, claim, onBuild }) =>
-    claim.claimed
+  return claims.flatMap(({ criterion, claim, onBuild, proven, short }) =>
+    claim.claimed || (proven && !short)
       ? []
       : [
           {

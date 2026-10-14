@@ -1,12 +1,36 @@
 
 import type { ReleaseHighlights } from "@forge/contracts/release-page";
+import { useState } from "react";
 import { Link } from "@/lib/navigation/router";
 import { ViewHeading } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { requirementHref } from "@/lib/routes/requirements";
+import { DisclosureToggle } from "./release-bits";
 import { ReleaseMedia } from "./release-media";
 
-/** The one to three highlights a release opens on, or what stands in their place and why. */
+/** Why no highlight was drafted: one line, and the drafter's refusals (agent text) behind a fold. */
+function HighlightsFailed({ refusals }: { refusals: Extract<ReleaseHighlights, { state: "failed" }>["refusals"] }) {
+  const t = useCopy();
+  const [open, setOpen] = useState(false);
+  return (
+    <div data-testid="page-highlights-failed">
+      <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="text-13" testId="page-highlights-failed-toggle">
+        {t("releases.page.highlights.failed")}
+      </DisclosureToggle>
+      {open ? (
+        <ul className="mt-1 grid gap-0.5 text-12 text-subtle">
+          {refusals.map((r) => (
+            <li key={`${r.code}:${r.path}`}>
+              <span className="font-mono">{r.code}</span> {r.detail}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+/** The one to three highlights a release opens on, or what stands in their place and why; the criterion codes a highlight claims are its title, not its text. */
 export function ReleaseHighlightList({ highlights, slug, authed }: { highlights: ReleaseHighlights; slug?: string | undefined; authed: boolean }) {
   const t = useCopy();
   if (highlights.state === "none") return null;
@@ -18,18 +42,7 @@ export function ReleaseHighlightList({ highlights, slug, authed }: { highlights:
           {t("releases.page.highlights.pending")}
         </p>
       ) : null}
-      {highlights.state === "failed" ? (
-        <div data-testid="page-highlights-failed">
-          <p className="text-13 text-muted">{t("releases.page.highlights.failed")}</p>
-          <ul className="mt-1 grid gap-0.5 text-12 text-subtle">
-            {highlights.refusals.map((r) => (
-              <li key={`${r.code}:${r.path}`}>
-                <span className="font-mono">{r.code}</span> {r.detail}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+      {highlights.state === "failed" ? <HighlightsFailed refusals={highlights.refusals} /> : null}
       {highlights.state === "drafted" ? (
         <ol className="divide-y divide-line-subtle border-y border-line-subtle">
           {highlights.highlights.map((h) => (
@@ -37,15 +50,14 @@ export function ReleaseHighlightList({ highlights, slug, authed }: { highlights:
               <div className="grid gap-1">
                 <h3 className="text-16 font-semibold leading-snug">{h.title}</h3>
                 <p className="text-14">{h.body}</p>
-                <p className="text-13 text-muted">
+                <p className="text-12 text-subtle" title={t("releases.page.highlights.proves", { codes: h.claims.join(", ") })}>
                   {slug ? (
-                    <Link className="font-mono text-12 text-link hover:underline" href={requirementHref(slug, h.requirement.key)}>
+                    <Link className="font-mono text-link hover:underline" href={requirementHref(slug, h.requirement.key)}>
                       {h.requirement.key}
                     </Link>
                   ) : (
-                    <span className="font-mono text-12">{h.requirement.key}</span>
-                  )}{" "}
-                  {t("releases.page.highlights.proves", { codes: h.claims.join(", ") })}
+                    <span className="font-mono">{h.requirement.key}</span>
+                  )}
                 </p>
               </div>
               {h.media ? (
