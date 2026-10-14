@@ -1,5 +1,6 @@
 import { and, asc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { BodyFormat } from '../body/formats.js';
+import { decodeEntities } from '../body/parse.js';
 import { type PreparedBody, prepareBody } from '../body/prepare.js';
 import { db, type Tx } from '../db/client.js';
 import { comments, issues, users } from '../db/schema.js';
@@ -288,10 +289,22 @@ async function guardCredentials(
   const credentials = await loadStoredCredentials(projectId, tx);
   if (credentials.length === 0) return { body, warnings: [] };
   if (mode === 'refuse') {
-    // HTML is stored serialised, so `&` reaches the row as `&amp;`: the text as sent, as stored and as read are all held to it.
-    for (const text of [sent.raw, sent.prepared.text, body]) {
+    // HTML is stored serialised, so `&` reaches the row as `&amp;`, and an attribute keeps its decoded text: each form is held to it.
+    const readings: Array<[string, 'sent' | 'rendered']> = [[sent.raw, 'sent']];
+    if (sent.prepared.format === 'html') {
+      readings.push(
+        [sent.prepared.text, 'rendered'],
+        [body, 'rendered'],
+        [decodeEntities(body), 'rendered'],
+      );
+    }
+    for (const [text, where] of readings) {
       const hit = findCredential(text, credentials);
-      if (hit) throw new MessageRefusedError('comment-write', [credentialRefusal(hit)]);
+      if (hit) {
+        throw new MessageRefusedError('comment-write', [
+          credentialRefusal(hit, credentials, where),
+        ]);
+      }
     }
     return { body, warnings: [] };
   }

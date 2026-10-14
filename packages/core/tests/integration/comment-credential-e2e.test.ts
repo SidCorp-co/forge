@@ -184,6 +184,30 @@ describe('the run-ended comment, where a master closed a run with a reason', () 
     expect(text).not.toContain('[withheld');
   });
 
+  it('is still written once where a stored credential sits in its own dedupe marker', async () => {
+    const { device, project, issueIds, session } = await runOver(
+      harness.db,
+      mods.openRunSession,
+      [9],
+      null,
+    );
+    await harness.db.execute(
+      sql`UPDATE projects SET environments = ${JSON.stringify({
+        testCredentials: [{ label: 'odd', username: 'u', password: 'run-evidence:' }],
+      })}::jsonb WHERE id = ${project.id}`,
+    );
+    const write = () =>
+      mods.writeRunEvidence({
+        deviceId: device.id,
+        sessionId: session.sessionId,
+        checkpoint: A_CHECKPOINT,
+      });
+
+    expect(await write()).toEqual({ issues: 1, written: 1 });
+    expect(await write()).toEqual({ issues: 1, written: 0 });
+    expect(await bodies(issueIds[0] as string)).toHaveLength(1);
+  });
+
   it('writes a project that stores no credentials exactly as before', async () => {
     const { device, issueIds, session } = await runOver(harness.db, mods.openRunSession, [9], null);
 
@@ -300,6 +324,7 @@ describe('a comment written as HTML', () => {
   it.each([
     ['entity-encoded', '<p>Tom&amp;Jerry-Secret-12</p>'],
     ['literal', '<p>Tom&Jerry-Secret-12</p>'],
+    ['attribute', '<p><img src="/a.png" alt="Tom&amp;Jerry-Secret-12"></p>'],
   ])('is refused when the %s password is in it, and stores nothing', async (_how, html) => {
     await storeHtmlPassword();
     const here = await issue();

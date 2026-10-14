@@ -185,19 +185,28 @@ export function findCredential(
 }
 
 /** The refusal a caller's write meets: what was found, where, and where the value is read instead. */
-export function credentialRefusal(hit: CredentialHit): MessageRefusal {
-  return {
+export function credentialRefusal(
+  hit: CredentialHit,
+  credentials: readonly StoredCredential[] = [],
+  where: 'sent' | 'rendered' = 'sent',
+): MessageRefusal {
+  const place = where === 'sent' ? 'the body as sent' : 'the HTML as it is stored and read';
+  const refusal = (locator: string): MessageRefusal => ({
     rule: STORED_CREDENTIAL_RULE,
     why:
-      `this comment carries this project's test credential "${hit.id}", at line ${hit.line}, ` +
-      `column ${hit.column}, where it reads "${hit.near}". A test credential is read at the ` +
-      `authentication step and echoed nowhere after it (guide \`${GUIDE_SLUG}\`, rule 2), and ` +
-      `there is no delete for what the tracker has taken. Take the value out and say where it is ` +
-      `read instead: ${READ_AT}`,
+      `this comment carries this project's test credential "${hit.id}", in ${place} at line ` +
+      `${hit.line}, column ${hit.column}, where it reads "${hit.near}". A test credential is read ` +
+      `at the authentication step and echoed nowhere after it (guide \`${GUIDE_SLUG}\`, rule 2), ` +
+      `and there is no delete for what the tracker has taken. Take the value out and say where it ` +
+      `is read instead: ${locator}`,
     quote: hit.near,
     shape: 'a comment says where a test credential is read, and never carries the credential',
-    example: `log in with the test account read from ${READ_AT}`,
-  };
+    example: `log in with the test account read from ${locator}`,
+  });
+  const named = refusal(READ_AT);
+  return spansOf(JSON.stringify(named), credentials).length === 0
+    ? named
+    : refusal("the project's stored test credentials");
 }
 
 /** What stands in the text where a value was: names the credential and where it is read. */

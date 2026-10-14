@@ -122,6 +122,20 @@ describe('the refusal a caller meets', () => {
   });
 });
 
+describe('a refusal that must not hold a stored value either', () => {
+  it('words the locator without the value where the value is part of the locator', () => {
+    const wording = credentialsFrom({
+      testCredentials: [{ label: 'login', username: 'u', password: 'forge_projects.get' }],
+    });
+    const hit = findCredential('pw forge_projects.get', wording);
+    if (!hit) throw new Error('the credential was not found');
+    const refusal = credentialRefusal(hit, wording);
+    expect(JSON.stringify(refusal)).not.toContain('forge_projects.get');
+    expect(refusal.rule).toBe(STORED_CREDENTIAL_RULE);
+    expect(refusal.why).toContain('line 1, column 4');
+  });
+});
+
 describe('what core writes in place of a stored credential', () => {
   it('replaces each value and keeps every other character of the text', () => {
     const { text, ids } = withholdCredentials(
