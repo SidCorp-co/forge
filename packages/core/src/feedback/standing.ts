@@ -262,9 +262,7 @@ function waitingOf(
           facts.carrierVersion
             ? say('standing.act.verifyFixIn', { v: facts.carrierVersion })
             : say('standing.act.verifyFix'),
-          say(
-            facts.recordCanSay ? 'feedback.rule.verifyByRecord' : 'feedback.rule.verifyByPerson',
-          ),
+          say(facts.recordCanSay ? 'feedback.rule.verifyByRecord' : 'feedback.rule.verifyByPerson'),
           { ref: facts.carrierVersion ?? null, dueAt: facts.recordCheckAt ?? null },
         ),
         // owner, 2026-10-07: nobody is owed this act, so it is on no one's Needs you; any member may take it

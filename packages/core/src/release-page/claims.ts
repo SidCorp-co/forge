@@ -83,14 +83,24 @@ export function readClaims(
     const stands = judgesVerdict(readAt(criterion.verdicts, build), judge) ?? null;
     const why = stands ? unverifiedWhy(stands, judge) : null;
     const proven =
-      stands !== null && stands.identityKind !== 'commit_unresolved' && stands.verdict === 'pass' && why === null;
+      stands !== null &&
+      stands.identityKind !== 'commit_unresolved' &&
+      stands.verdict === 'pass' &&
+      why === null;
     const onBuild = build === null ? null : stands;
     let claim: ReleaseClaim;
     if (build === null || onBuild === null) claim = releaseClaimOf(criterion.verdicts, build);
     else if (proven) claim = { claimed: true, at: onBuild.at };
-    else if (onBuild.verdict === 'pass') claim = { claimed: false, standing: 'not_judged', elsewhere: null };
+    else if (onBuild.verdict === 'pass')
+      claim = { claimed: false, standing: 'not_judged', elsewhere: null };
     else claim = { claimed: false, standing: onBuild.verdict, elsewhere: null };
-    return { criterion, claim, proven, unverified: stands?.verdict === 'pass' ? why : null, onBuild };
+    return {
+      criterion,
+      claim,
+      proven,
+      unverified: stands?.verdict === 'pass' ? why : null,
+      onBuild,
+    };
   });
 }
 
@@ -112,8 +122,7 @@ export function knownIssuesOf(claims: readonly ClaimReading[]): ReleaseKnownIssu
             bc: criterion.bc,
             statement: criterion.statement,
             standing: claim.standing,
-            reason:
-              claim.standing === 'not_judged' ? unverified : (onBuild?.reason ?? null),
+            reason: claim.standing === 'not_judged' ? unverified : (onBuild?.reason ?? null),
             elsewhere: claim.elsewhere,
           },
         ],

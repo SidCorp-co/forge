@@ -1,6 +1,5 @@
 import { and, eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { personGateOf } from '../project-config/index.js';
 import {
   type RequirementStatus,
   type RevisionState,
@@ -8,6 +7,7 @@ import {
   requirementRevisions,
   requirements,
 } from '../db/schema-requirements.js';
+import { personGateOf } from '../project-config/index.js';
 import { signoffReasonRefusal } from './acceptance-rules.js';
 import { latestBaselineIn, linkedContracts, writePinsIn } from './baselines.js';
 import { linkedDesigns, type RequirementActor, rowIn, signerRefusal } from './read.js';

@@ -62,7 +62,10 @@ describe('a revision that leaves its spec out', () => {
     const r = await on('POST', `/requirements/${key}/revisions`, {
       baseRevision: 1,
       reason: 'a second criterion',
-      criteria: [{ code: 'BC-1', body: 'A nurse sees the reminder' }, { body: 'A patient opts out' }],
+      criteria: [
+        { code: 'BC-1', body: 'A nurse sees the reminder' },
+        { body: 'A patient opts out' },
+      ],
     });
     expect(r.status, JSON.stringify(r.body.error ?? null)).toBe(200);
     expect(await specAt(key, 2), "an omitted spec carries the head's, never {}").toEqual(SPEC);

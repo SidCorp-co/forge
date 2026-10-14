@@ -384,7 +384,10 @@ describe('the header, the Proof panel and the list count one set of rows by one 
     // QA 0.4.0-dev.220: "8 of 22" in the header and the panel, 5 proven + 15 not yet proven listed.
     // The page counts by the rule a requirement does (the owner's ruling of 2026-10-14), so its short
     // is not proven there; the record's Proof panel counts by the issue gate, which takes a short
-    expect({ header: p.header.verified.proven, list: listed.proven }).toEqual({ header: 3, list: 3 });
+    expect({ header: p.header.verified.proven, list: listed.proven }).toEqual({
+      header: 3,
+      list: 3,
+    });
     expect(panel.proven, 'the issue gate counts the short').toBe(4);
     expect({ header: p.header.verified.total, panel: panel.total, list: listed.total }).toEqual({
       header: 6,

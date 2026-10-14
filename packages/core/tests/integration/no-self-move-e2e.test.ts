@@ -78,8 +78,7 @@ async function rewrite(flow: string, edit: (d: Doc) => void): Promise<void> {
   ok(await as('PUT', `/workflows/${id}`, { baseRevision: current.revision, document: doc }));
 }
 
-const designOf = async (flow: string) =>
-  ok(await as('GET', `/workflows/${ids.get(flow)}/design`));
+const designOf = async (flow: string) => ok(await as('GET', `/workflows/${ids.get(flow)}/design`));
 
 /** A requirement agreed at r1 against `workflowId`, its BC-1 tracing `step`. */
 async function agreedTracing(workflowId: string, step: string): Promise<string> {
@@ -125,7 +124,9 @@ beforeAll(async () => {
   await rewrite('access', (d) => {
     d.steps[0].node.label = 'Hospital HIS (renamed, untraced)';
   });
-  ok(await as('POST', `/workflows/${access}/design/decision`, { revision: 2, decision: 'approve' }));
+  ok(
+    await as('POST', `/workflows/${access}/design/decision`, { revision: 2, decision: 'approve' }),
+  );
   await rewrite('ux', (d) => {
     d.basedOn = [{ workflow: 'access', revision: 2 }];
   });

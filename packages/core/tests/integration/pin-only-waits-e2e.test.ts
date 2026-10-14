@@ -189,7 +189,7 @@ describe('BC-23: a decision names who made it', () => {
 const RULE = 'REQ-41 BC-23: nothing approves itself, a pin-only revision included';
 
 describe('BC-23: a revision whose only change is its pins waits on its approver', () => {
-  it('leaves a proposal that only moves its pin proposed, read as pin-only, inside its base\'s act', async () => {
+  it("leaves a proposal that only moves its pin proposed, read as pin-only, inside its base's act", async () => {
     const key = await agreedTracing(ids.get('ux') as string, 'case');
     const r2 = await moveAccess('Hospital HIS (revised)');
     await settleOutbox();
@@ -204,13 +204,16 @@ describe('BC-23: a revision whose only change is its pins waits on its approver'
     expect(d.approvedRevision).toBe(1);
     expect(d.revisions[0]).toMatchObject({ revision: 2, decision: null, decidedKind: null });
     expect(d.pinOnly).toMatchObject({ pins: [{ workflow: 'access', from: 1, to: r2 }] });
-    expect(await ledger(ids.get('ux') as string), 'no kernel approval is on the ledger').toHaveLength(1);
+    expect(
+      await ledger(ids.get('ux') as string),
+      'no kernel approval is on the ledger',
+    ).toHaveLength(1);
     expect(await readyFlows()).toContain('ux');
     // the requirement tracing ux moves with no approval: nothing re-pins it by itself (BC-10)
     expect((await baselineActs(key)).map((b) => b.act)).toEqual(['agree']);
   });
 
-  it('approves it through its base\'s one act as the person who took it, and still re-pins no requirement', async () => {
+  it("approves it through its base's one act as the person who took it, and still re-pins no requirement", async () => {
     const plan = ok(await as('GET', `/workflows/${ids.get('access')}/design/repins`));
     const ux = (plan.ready as Doc[]).find((r) => r.flow === 'ux') as Doc;
     const done = ok(

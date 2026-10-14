@@ -131,7 +131,10 @@ describe('Forge verifies no item nobody confirmed: past its window it writes wha
     expect(first.dated).toBeGreaterThanOrEqual(1);
     const dated = await read(fb);
     expect(dated.status).toBe('triaged');
-    expect(dated.recordCheck, 'its triage named no criterion: no record date is promised').toBeNull();
+    expect(
+      dated.recordCheck,
+      'its triage named no criterion: no record date is promised',
+    ).toBeNull();
 
     await seen(fb, 8);
     const before = (await bell('ann')).length;
@@ -216,7 +219,10 @@ describe('an item triaged before a criterion could be named (FB-19, 31, 36, 48, 
        WHERE project_id = ${w.projectId} AND fb_seq = ${seq(fb)}
     `);
     const past = await sweepResolvedFeedback();
-    expect(past.noted, 'the sweep wrote what the record reads on the item it held').toBeGreaterThanOrEqual(1);
+    expect(
+      past.noted,
+      'the sweep wrote what the record reads on the item it held',
+    ).toBeGreaterThanOrEqual(1);
     const held = await get();
     expect(held.status).toBe('triaged');
     expect(held.verifyHeld).toMatchObject({

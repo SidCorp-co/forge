@@ -8,12 +8,9 @@
  */
 
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
-import { db, type Tx } from '../db/client.js';
+import type { db, Tx } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
-import {
-  requirementCriteria,
-  requirementCriterionSteps,
-} from '../db/schema-requirements.js';
+import { requirementCriteria, requirementCriterionSteps } from '../db/schema-requirements.js';
 import { projectWorkflowDesigns, projectWorkflows } from '../db/schema-workflows.js';
 import type { TracedChange } from './standing-follow.js';
 

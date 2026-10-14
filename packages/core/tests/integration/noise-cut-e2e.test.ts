@@ -164,7 +164,7 @@ describe('BC-10: a requirement follows an approved design when its mover re-pins
     const [kind] = await rows<{ agreed_kind: string; agreed_by: string | null }>(sql`
       SELECT b.agreed_kind, b.agreed_by FROM requirement_baselines b JOIN requirements r ON r.id = b.requirement_id
        WHERE r.project_id = ${projectId} AND r.req_seq = ${Number(key.slice(4))} AND b.act = 'repin'`);
-    expect(kind, 'the re-pin is the signer\'s own act').toEqual({
+    expect(kind, "the re-pin is the signer's own act").toEqual({
       agreed_kind: 'person',
       agreed_by: ownerId,
     });

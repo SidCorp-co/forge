@@ -1,5 +1,4 @@
 export { dropAsDuplicateIn } from './acceptance.js';
-export { nodesOfDesign } from './follow-reads.js';
 export { latestBaselineIn } from './baselines.js';
 export { requirementKeysAndTitles, requirementStatusesBySeq } from './cited-requirements.js';
 export {
@@ -21,6 +20,7 @@ export {
 export { draftPictureRefusals, type Landing, landingIn, NEW_REQUIREMENT } from './draft-picture.js';
 export { embedRequirementHead, similarRequirements } from './embeddings.js';
 export { feedbackLinksOf } from './feedback-links.js';
+export { nodesOfDesign } from './follow-reads.js';
 export { plannedRevisionFor, requirementOfIssue } from './issue-links.js';
 export { drawKeptPreview, type KeptPreviewAbout, liveCriteriaOf } from './kept-preview.js';
 export type { ProposeDuplicate } from './near-duplicate.js';

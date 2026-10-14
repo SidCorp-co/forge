@@ -10,8 +10,7 @@ describe('loop close read from the record', () => {
   it('reads it gone where the violated criterion passes on the running build and nothing was filed since', () => {
     expect(goneByRecord({ criterion: passing, filedSince: [], resolvedSince })).toEqual({
       gone: true,
-      why:
-        'the record reads it gone: REQ-3 BC-2 passes on the running build, and nothing was filed against it since 2026-10-01.',
+      why: 'the record reads it gone: REQ-3 BC-2 passes on the running build, and nothing was filed against it since 2026-10-01.',
     });
   });
 

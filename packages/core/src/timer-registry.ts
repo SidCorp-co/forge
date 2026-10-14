@@ -32,10 +32,7 @@ import { sweepPreviews } from './previews/index.js';
 import { sweepQuestionSuggestions } from './questions/index.js';
 import { recoverUnstartedReleaseBatches, resumeStrandedFinishes } from './release-batch/index.js';
 import { sweepExpiredExecutions, sweepExpiredReportRuns } from './reports/index.js';
-import {
-  sweepDeliveredRequirements,
-  sweepStaleDrafts,
-} from './requirements/index.js';
+import { sweepDeliveredRequirements, sweepStaleDrafts } from './requirements/index.js';
 import { reapGhostRunners, runRunnerStaleSweep } from './runners/index.js';
 import type { Timer } from './schedules/index.js';
 import { sweepSuggestions } from './suggestions/index.js';
@@ -142,7 +139,8 @@ export function coreTimers(): Timer[] {
       run: logged(
         'feedback-loop-check: sweep complete',
         sweepResolvedFeedback,
-        (r) => (r as { verified: number; noted: number }).verified + (r as { noted: number }).noted > 0,
+        (r) =>
+          (r as { verified: number; noted: number }).verified + (r as { noted: number }).noted > 0,
       ),
     },
     {
