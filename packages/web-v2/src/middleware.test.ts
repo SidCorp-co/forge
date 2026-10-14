@@ -103,8 +103,54 @@ describe("a plain request for a refused /guides address", () => {
   });
 
   it("passes a request for a real door through to the page", async () => {
+    fetchGuide.mockResolvedValueOnce({ status: 200 });
     const res = await ask("/guides?for=user", DOCUMENT);
 
     expect(res.headers.get("x-middleware-next")).toBe("1");
+  });
+});
+
+const REAL = ["/guides?for=user", "/guides?for=agent", "/guides?path=getting-started", "/guides", "/guides/issue-dependencies"];
+
+describe("a plain request for a real /guides address while core cannot answer for the guides", () => {
+  const down = () => fetchGuide.mockRejectedValueOnce(new TypeError("fetch failed"));
+
+  it.each(REAL)("answers %s with a 503 and a Retry-After, in the docs' own header and with every way in", async (path) => {
+    down();
+    const res = await ask(path, DOCUMENT);
+
+    expect(res.status).toBe(503);
+    expect(res.headers.get("retry-after")).toBe("30");
+    expect(res.headers.get("content-type")).toMatch(/text\/html/);
+    const html = await res.text();
+    expect(html).toContain("<h1>The guides could not be loaded</h1>");
+    expect(html).toContain('<a class="brand" href="/guides">Forge documentation</a>');
+    for (const door of ["user", "assistant-setup", "agent"]) expect(html).toContain(`href="/guides?for=${door}"`);
+    expect(html).toContain("All three ways in");
+    expect(html).toContain('<meta name="robots" content="noindex">');
+  });
+
+  it.each([
+    ["/guides?for=user", 502],
+    ["/guides?for=user", 404],
+    ["/guides/issue-dependencies", 500],
+  ])("answers %s with a 503 when core says %i rather than the guides", async (path, status) => {
+    fetchGuide.mockResolvedValueOnce({ status });
+    expect((await ask(path, DOCUMENT)).status).toBe(503);
+  });
+
+  it.each(REAL)("passes %s through when core answers, asking it once", async (path) => {
+    fetchGuide.mockResolvedValueOnce({ status: 200 });
+    const res = await ask(path, DOCUMENT);
+
+    expect(res.headers.get("x-middleware-next")).toBe("1");
+    expect(fetchGuide).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a client-side navigation to the page, which renders the same shell, without asking core", async () => {
+    const res = await ask("/guides?for=user", FLIGHT);
+
+    expect(res.headers.get("x-middleware-next")).toBe("1");
+    expect(fetchGuide).not.toHaveBeenCalled();
   });
 });

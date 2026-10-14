@@ -98,15 +98,23 @@ of that shape is one extra core request per guide view on the happy path, paid s
 that a reader without JavaScript gets the refusal instead of a blank document. It
 ends when Next server-renders a `notFound()` body.
 
+The same request decides the outage. A plain request for a real door, help page, the landing or a
+guide asks core first (`coreStatus` in the middleware: the index for `/guides`, the guide for
+`/guides/<slug>`), and where core cannot be reached or answers anything but success (or, for a
+guide, 404) the middleware answers **503** with `Retry-After` and `unavailableDocument`, the same
+header and ways in as the 404s. Core unreachable is never a 404: that would tell a reader a guide
+does not exist on no evidence. The price is one core request per plain `/guides` view too.
+
 A client-side navigation is left alone: the router fetches the same URL for flight data and would
 choke on an HTML document, and it has JavaScript by definition, so the page serves it inside the docs
 shell: a door or page as a `refused` view of `PublicReader`, which offers the docs' search and every
 door in the sidebar a door page has, and
 `packages/web-v2/src/app/guides/[slug]/not-found.tsx` for a guide. The search needs the guide
 index, so with core unreachable `PublicRefusal` keeps the refusal and the doors and says there is no
-search (`SEARCH_UNAVAILABLE`). A door, a help page or the landing is built from that index, so with it
-unreadable (`GuideFetchError`) `/guides` renders `PublicRefusal` with `GUIDES_UNAVAILABLE` in the docs'
-shell instead, and logs why; any other error is still thrown. Every renderer reads one set of strings
+search (`SEARCH_UNAVAILABLE`). A door, a help page, the landing and a guide are built from that index, so
+on a client-side navigation with it unreadable (`GuideFetchError`, caught by `orUnreadable` in
+`packages/web-v2/src/features/guides/unreadable.ts`) both pages render `PublicRefusal` with
+`GUIDES_UNAVAILABLE` in the docs' shell instead, and log why; any other error is still thrown. Every renderer reads one set of strings
 from `packages/web-v2/src/features/guides/missing.ts`.
 
 The middleware cannot tell the two apart by the `RSC` header: Next 16's middleware adapter
