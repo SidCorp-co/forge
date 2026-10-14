@@ -84,7 +84,7 @@ describe('GET /api/reference/flows', () => {
     const res = await app.request('/api/reference/flows');
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html.match(/<pre class="mermaid">/g)).toHaveLength(4);
+    expect(html.match(/<pre class="mermaid"/g)).toHaveLength(4);
     for (const id of [
       'pair-a-runner',
       'claim-and-finish-a-job',

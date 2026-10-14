@@ -3,7 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { PAT_DOOR_REFUSALS } from '../../middleware/pat-rest-surface.js';
-import { describeOperation, fail, json } from '../declare/describe.js';
+import { describeOperation, fail, json, raw } from '../declare/describe.js';
 import { zValidator } from '../declare/validator.js';
 import { buildReference, type Reference } from '../document/build.js';
 import { checkReference, describeFinding, inputsRead, thrownInline } from './check.js';
@@ -83,6 +83,29 @@ describe('each rule, planted once', () => {
     const { findings, reference } = await checked(app, writing("'GONE_FOR_GOOD'"));
     expect(rules(findings)).toEqual([]);
     expect(reference.document.paths['/api/issues']?.get?.deprecated).toBe(true);
+  });
+
+  it('raw-json: a JSON body declared as a raw string is named', async () => {
+    const app = new Hono();
+    app.post(
+      '/mcp',
+      describeOperation({ summary: 's', responses: { 200: raw('application/json', 'a message') } }),
+      (c) => c.json({}),
+    );
+    const { findings } = await checked(app);
+    expect(rules(findings)).toEqual(['raw-json POST /mcp']);
+    expect(findings[0]?.detail).toContain('json(schema)');
+  });
+
+  it('raw-json: a raw answer that is not JSON is left alone', async () => {
+    const app = new Hono();
+    app.get(
+      '/health',
+      describeOperation({ summary: 's', responses: { 200: raw('text/event-stream', 'events') } }),
+      (c) => c.body(''),
+    );
+    const { findings } = await checked(app);
+    expect(rules(findings)).toEqual([]);
   });
 
   it('no-response: a route that declares only errors is named too', async () => {
