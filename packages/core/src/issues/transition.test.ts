@@ -182,6 +182,7 @@ describe('POST /api/issues/:id/transition', () => {
     ['reopen', 'closed'],
     ['waiting', 'in_progress'],
     ['needs_info', 'open'],
+    ['on_hold', 'in_progress'],
   ])('422 TRANSITION_REASON_REQUIRED entering %s with no reason', async (to, from) => {
     const token = await signUserToken(USER_ID);
     queueAuthAndIssue({ status: from, reopenCount: 0 });

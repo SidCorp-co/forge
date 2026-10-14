@@ -107,7 +107,7 @@ Within a pipeline step: do your real work, post your findings/decision comment, 
 `needs_info` (requirements missing/unclear), `waiting` (blocked on a human decision), `reopen` (regression or failed check), `on_hold` (deliberate pause) are not restricted to the happy-path ladder — set one the moment the condition is true rather than forcing a step that can't succeed. `on_hold` specifically means "active work, paused on purpose" — don't use it to park work that never started (leave that at `draft`) and don't use it to survive a mechanical crash (the system already reverts and retries those automatically).
 
 ### Leaving a park is symmetric with entering one
-Entering `waiting`/`on_hold` is free from anywhere, and so is leaving. Set the next status through the UI, REST or MCP and the next step dispatches — no actor check, no `unblock` flag, no admin. If you set a forward status and no job appears, that is a real fault (a stuck runner, a held job, a blocking dependency), not a rule — read `pipelineHealth.waitingOn`.
+Entering `waiting`/`on_hold` is open from anywhere (each costs the written reason above), and leaving one costs nothing. Set the next status through the UI, REST or MCP and the next step dispatches — no actor check, no `unblock` flag, no admin. If you set a forward status and no job appears, that is a real fault (a stuck runner, a held job, a blocking dependency), not a rule — read `pipelineHealth.waitingOn`.
 
 An earlier version of this pipeline refused every non-human exit from a park. It cost four refused resume attempts on one issue (ISS-163) and produced no work; RFC 0002 removed it.
 
@@ -141,7 +141,7 @@ Write it as the ask, not as the reason again. *"Choose: (a) accept the landed pa
 **The mint is gated on agency, not on the field.** A park by a person mints nothing — they stopped their own work and own their own resume. Only an agent-held credential (an agent account or a paired device) mints, so a `needs` sent by a human-owned token reaches no reader.
 
 ### Stopping the pipeline costs you a written reason
-`reopen`, `waiting` and `needs_info` are the three statuses that stop the pipeline, and all three are **rejected without a `reason`** (422). Pass it on the `forge_issues` call (`note` also counts); it is posted as a comment before the status flips, so it cannot go missing afterwards. `waiting` additionally requires `waitingKind`, and `waitingKind` is REFUSED on every other target (422 `WAITING_KIND_NOT_APPLICABLE`) — no other target takes it, so put the ask in `reason`.
+`reopen`, `waiting` and `needs_info` stop the pipeline for a person and `on_hold` pauses it on purpose, and all four are **rejected without a `reason`** (422), by every writer of them: REST, `forge_issues`, and core's own. Pass it on the `forge_issues` call (`note` also counts); it is posted as a comment in the same transaction as the status write, so it cannot go missing afterwards, and its first line ends `— moved from` and the status the issue left. A hold's first line is `⏸ **On hold**`, so a reader tells it from a `waiting` park by that line. `waiting` additionally requires `waitingKind`, and `waitingKind` is REFUSED on every other target (422 `WAITING_KIND_NOT_APPLICABLE`) — no other target takes it, so put the ask in `reason`.
 
 Entering a park costs a sentence; leaving one costs nothing. That asymmetry is deliberate and it is the opposite of the old rule, which let anyone stop the pipeline silently and then argued about who was allowed to restart it.
 

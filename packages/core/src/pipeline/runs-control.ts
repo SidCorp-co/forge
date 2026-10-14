@@ -32,6 +32,10 @@ const CANCEL_PARK_SKIP_STATUSES = new Set<IssueStatus>([
   'releasing',
 ]);
 
+/** What the thread reads beside a hold the cancel put the issue in: an entry into `on_hold` always says why. */
+const CANCEL_HOLD_REASON =
+  'The pipeline run on this issue was cancelled, so it is on hold rather than picked up by a new run. Move it on when it should run again.';
+
 export type PipelineRunRow = typeof pipelineRuns.$inferSelect;
 
 export type CancelPipelineRunResult = {
@@ -145,7 +149,7 @@ async function parkIssueOnCancel(run: PipelineRunRow, actorUserId?: string): Pro
       { id: row.id, projectId: row.projectId, status: row.status, reopenCount: row.reopenCount },
       'on_hold',
       actor,
-      { skip: true },
+      { skip: true, transitionReason: CANCEL_HOLD_REASON },
     );
     return true;
   } catch (err) {

@@ -1,7 +1,7 @@
-// RFC 0002 INV-8 — the three statuses that STOP the pipeline carry the reason
-// they stopped it. The server rejects the write without one (422
-// TRANSITION_REASON_REQUIRED, plus WAITING_KIND_REQUIRED for `waiting`), so
-// every surface that offers these three routes through here rather than firing
+// RFC 0002 INV-8 — the statuses that STOP the pipeline carry the reason they
+// stopped it, and so does a hold (ISS-1251). The server rejects the write without
+// one (422 TRANSITION_REASON_REQUIRED, plus WAITING_KIND_REQUIRED for `waiting`), so
+// every surface that offers one of them routes through here rather than firing
 // the mutation and surfacing a 422 toast.
 
 "use client";
@@ -12,7 +12,7 @@ import { SlideOver } from "@/design/patterns/slide-over";
 import { statusLabel } from "../derive";
 import type { IssueStatus, WaitingCause } from "../types";
 
-export type ReasonStatus = "reopen" | "waiting" | "needs_info";
+export type ReasonStatus = "reopen" | "waiting" | "needs_info" | "on_hold";
 /**
  * ISS-1257 — a close or drop the server refused because questions on the issue are still open.
  * ISS-1310 — the two ways out of a park that leave its question unanswered, each asking why.
@@ -47,6 +47,13 @@ const COPY: Record<DialogMode, CopySpec> = {
     blurb:
       "The question is posted as a comment before the status flips. Ask it in full here — this is the only place the reporter will see it.",
     placeholder: "e.g. which environment did you see this on, and was the user an org admin?",
+  },
+  on_hold: {
+    title: "Put this issue on hold",
+    confirm: "Put on hold",
+    blurb:
+      "A hold pauses the issue on purpose. The reason is posted on the thread when it moves, where whoever lifts the hold reads why it was put there.",
+    placeholder: "e.g. waiting for the migration window to close before this goes on",
   },
   move_anyway: {
     title: "Move this issue anyway",
