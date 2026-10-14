@@ -74,7 +74,7 @@ it("says the search did not answer when it fails for any other reason, beside Se
   const { result } = mount("ISS-1280", "p1");
 
   await waitFor(() => expect(result.current.notice).toMatch(/^The issues search did not answer/));
-  expect(result.current.notice).toContain("Service unavailable");
+  expect(result.current.notice).toContain("The server could not complete the request (503).");
   expect(result.current.commands.map((c) => c.label)).toEqual(["Search issues for “ISS-1280”"]);
 });
 
