@@ -2,7 +2,8 @@
 // the decision on question 20c74d56): with Changes on, the Boundaries view's folded box for the
 // payment providers wears the changed border and says "2 changed" on a chip at its foot, the chip
 // covering neither the box's title nor its member count, nor any other box; with Changes off, no box
-// carries either. jsdom lays nothing out, so where the chip lands is read here.
+// carries either, and the reader's view survives the switch: the detail they picked, the boundary they
+// opened and where they dragged the canvas. jsdom lays nothing out, so all of it is read here.
 //
 //   pnpm --filter web-v2 witness witness/c4-changes.witness.tsx --out <dir>
 
@@ -11,7 +12,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { WorkflowCanvas } from "@/features/workflows/canvas/workflow-canvas";
-import { clinicGraph, graphDiff, PAYMENTS } from "@/test/system-graph";
+import { clinicGraph, graphDiff, MESSAGING, PAYMENTS } from "@/test/system-graph";
 import "./entry";
 import { InRouter } from "./router";
 
@@ -26,10 +27,20 @@ const doc = {
   edges: [],
 };
 
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+/** How long core takes to answer a graph read after the first: long enough to look at the canvas while it waits. */
+const REREAD_MS = 1500;
+let reads = 0;
+let answered = 0;
 window.fetch = async (input: RequestInfo | URL) => {
   const path = new URL(String(input), "http://forge.test").pathname;
-  if (path.endsWith(`/projects/${P}/workflows/w-1/system-graph`)) return json(clinicGraph);
+  if (path.endsWith(`/projects/${P}/workflows/w-1/system-graph`)) {
+    reads += 1;
+    if (reads > 1) await pause(REREAD_MS);
+    answered += 1;
+    return json(clinicGraph);
+  }
   return new Promise<Response>(() => {});
 };
 
@@ -49,7 +60,6 @@ function Canvas() {
 }
 
 const q = <T extends Element = HTMLElement>(sel: string, from: ParentNode = document) => from.querySelector<T>(sel);
-const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const payments = () => q(`[data-testid=c4-box][data-id="${PAYMENTS}"]`);
 
 async function until(what: () => boolean, ms = 5000): Promise<boolean> {
@@ -80,9 +90,9 @@ function sideways(): string[] {
 const button = (named: string) => [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.trim() === named || b.getAttribute("aria-label") === named);
 const changesSwitch = () => q<HTMLButtonElement>(`[role=switch][aria-label="${CHANGES}"]`);
 
-/** The Boundaries view, fitted to the window: a remount (the switch re-reads the graph) opens on whichever detail fits. */
+/** The Boundaries view, fitted to the window, with the payment providers in it. */
 async function onBoundaries(): Promise<boolean> {
-  // the fresh view measures which detail fits once it has drawn; a choice made before that is overwritten
+  // the view measures which detail fits once it has first drawn; a choice made before that is overwritten
   for (let i = 0; i < 20 && !payments(); i++) {
     await until(() => document.querySelectorAll("[data-testid=c4-box]").length > 0);
     button("Boundaries")?.click();
@@ -94,6 +104,19 @@ async function onBoundaries(): Promise<boolean> {
   await pause(600);
   await bringIntoView();
   return true;
+}
+
+/** Drags the canvas by (dx, dy), as a reader's mouse does. */
+async function drag(dx: number, dy: number): Promise<void> {
+  const pane = q(".react-flow__pane");
+  if (!pane) return;
+  const view = pane.getBoundingClientRect();
+  const at = { x: view.left + view.width / 2, y: view.top + view.height / 2 };
+  const mouse = (type: string, x: number, y: number) => new MouseEvent(type, { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y, button: 0, buttons: type === "mouseup" ? 0 : 1 });
+  pane.dispatchEvent(mouse("mousedown", at.x, at.y));
+  for (let i = 1; i <= 10; i++) window.dispatchEvent(mouse("mousemove", at.x + (dx * i) / 10, at.y + (dy * i) / 10));
+  window.dispatchEvent(mouse("mouseup", at.x + dx, at.y + dy));
+  await pause(400);
 }
 
 /**
@@ -108,16 +131,16 @@ async function bringIntoView(): Promise<void> {
   const view = pane.getBoundingClientRect();
   // the chip hangs below the box's foot; a box drawn whole with room for it is left where the fit put it
   if (r.left >= view.left && r.right <= view.right && r.top >= view.top && r.bottom + 16 <= view.bottom) return;
-  const dx = view.left + view.width / 2 - (r.left + r.width / 2);
-  const dy = view.top + view.height / 2 - (r.top + r.height / 2);
-  if (Math.abs(dx) < 2 && Math.abs(dy) < 2) return;
-  const at = { x: view.left + view.width / 2, y: view.top + view.height / 2 };
-  const mouse = (type: string, x: number, y: number) => new MouseEvent(type, { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y, button: 0, buttons: type === "mouseup" ? 0 : 1 });
-  pane.dispatchEvent(mouse("mousedown", at.x, at.y));
-  for (let i = 1; i <= 10; i++) window.dispatchEvent(mouse("mousemove", at.x + (dx * i) / 10, at.y + (dy * i) / 10));
-  window.dispatchEvent(mouse("mouseup", at.x + dx, at.y + dy));
-  await pause(400);
+  await drag(view.left + view.width / 2 - (r.left + r.width / 2), view.top + view.height / 2 - (r.top + r.height / 2));
 }
+
+/** Where the reader is looking: the canvas's pan and zoom. */
+const viewport = () => q(".react-flow__viewport")?.style.transform ?? "missing";
+const pressed = (named: string) => {
+  const b = button(named);
+  return b?.getAttribute("aria-pressed") === "true" || b?.hasAttribute("data-pressed") === true;
+};
+const messagingOpen = () => [...document.querySelectorAll("[data-testid=c4-frame]")].some((f) => f.textContent?.includes("Messaging"));
 
 /** An unmarked box's border width, which a marked one has to exceed. */
 const plainBorder = () => {
@@ -158,13 +181,32 @@ async function changesOn(): Promise<string[]> {
 }
 
 async function changesOff(): Promise<string[]> {
+  // the reader's view before the switch: Boundaries picked, the messaging boundary opened, the canvas dragged
+  const messaging = q(`[data-testid=c4-box][data-id="${MESSAGING}"]`);
+  if (!messaging) return ["the Boundaries view draws no folded box for the messaging services"];
+  messaging.click();
+  if (!(await until(messagingOpen))) return ["opening the messaging boundary drew no frame for it"];
+  await pause(600);
+  await bringIntoView();
+  await drag(-36, 28);
+  const looking = viewport();
+
   const toggle = changesSwitch();
   if (!toggle) return ["the canvas has no Changes switch"];
   toggle.click();
   await until(() => changesSwitch()?.getAttribute("aria-checked") === "false");
+  // while core answers the new comparison, the canvas still shows the reader what they were reading
+  await pause(REREAD_MS / 3);
   const wrong: string[] = [];
+  if (!pressed("Boundaries")) wrong.push("while the comparison reloads, the toolbar picks no detail");
+  if (!payments() || !messagingOpen()) wrong.push("while the comparison reloads, the canvas drops the boundaries the reader was reading");
+  if (!(await until(() => reads > 1 && answered === reads, REREAD_MS * 3))) wrong.push("turning Changes off read no new comparison from core");
+  await pause(800);
+
   if (changesSwitch()?.getAttribute("aria-checked") !== "false") wrong.push("the Changes switch did not turn off");
-  if (!(await onBoundaries())) return [...wrong, "the Boundaries view draws no folded box for the payment providers with Changes off"];
+  if (!pressed("Boundaries")) wrong.push(`turning Changes off lost the reader's detail: ${pressed("Every system") ? "Every system" : "nothing"} is picked, not Boundaries`);
+  if (!messagingOpen()) wrong.push("turning Changes off folded the messaging boundary the reader had opened");
+  if (viewport() !== looking) wrong.push(`turning Changes off moved the canvas from "${looking}" to "${viewport()}": the reader's pan and zoom were lost`);
   const box = payments();
   if (!box) return [...wrong, "the folded box for the payment providers is gone with Changes off"];
   if (box.hasAttribute("data-mark")) wrong.push(`with Changes off the folded box is still marked "${box.getAttribute("data-mark")}"`);

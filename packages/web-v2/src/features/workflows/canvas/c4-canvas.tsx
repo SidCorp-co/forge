@@ -37,11 +37,15 @@ const nodeStroke = (n: Node) => (n.type === "c4box" && (n.data as C4BoxData).on 
  * `GET …/system-graph`) → view (`viewOf`, by level and detail) → layout (`layoutView`, ELK) → nodes and
  * edges here. It opens on Every system when that reads at 12px in the view, else on Boundaries.
  */
-/** A level or a graph of its own starts over: a new choice of detail, nothing opened, and a fresh fit. */
+/**
+ * A level or a graph of its own starts over: a new choice of detail, nothing opened, and a fresh fit.
+ * The revision a graph is compared against is not one: Changes turned on or off redraws the same
+ * design, so the reader's detail, the boundaries they opened and where they looked all stay.
+ */
 export function C4Canvas(props: WorkflowCanvasProps) {
   const [param] = useQueryParam("level");
   const g = props.graph;
-  return <C4View key={`${levelOf(param, props.compact)}|${g?.workflowId ?? ""}|${g?.revision ?? ""}|${g?.against ?? ""}`} {...props} />;
+  return <C4View key={`${levelOf(param, props.compact)}|${g?.workflowId ?? ""}|${g?.revision ?? ""}`} {...props} />;
 }
 
 const levelOf = (param: string | null, compact = false): Level => (!compact && param === "containers" ? "containers" : "context");
