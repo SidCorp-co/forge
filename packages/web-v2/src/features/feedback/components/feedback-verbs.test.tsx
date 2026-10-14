@@ -256,7 +256,7 @@ describe("the confirmation of the fix", () => {
 
   it("dates the record check of a resolved item that names a criterion, and says a triager answers from it", () => {
     renderWithQuery(<LinkedFeedback f={view({ phase: "resolved", recordCheck: { at: "2026-10-14T01:00:00.000Z", windowDays: 7 } })} slug="hop" />);
-    expect(screen.getByTestId("facts-record-check")).toHaveTextContent("the record is read for a triager to answer from (7-day window)");
+    expect(screen.getByTestId("facts-record-check")).toHaveTextContent("the record is read for a triager (7-day window)");
   });
 
   it("says what the record reads of an item past its window, and that it waits on a triager", () => {
