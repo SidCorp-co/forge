@@ -29,7 +29,7 @@ import {
   useNotificationMembers,
 } from "@/features/notifications/hooks";
 import { TYPE_FILTER_OPTIONS, TYPE_NAMES } from "@/features/notifications/map";
-import { secondaryHref, subjectHref } from "@/features/notifications/subject";
+import { memberTexts, secondaryHref, subjectHref } from "@/features/notifications/subject";
 import type { NotificationRow, NotificationType } from "@/features/notifications/types";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
@@ -192,8 +192,8 @@ function InboxFilterBar({
             onClick={() => onChange({ ...filter, unreadOnly })}
             className={
               filter.unreadOnly === unreadOnly
-                ? "fg-body-sm min-h-11 border-b-2 border-fg px-3 font-medium text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-                : "fg-body-sm min-h-11 border-b-2 border-transparent px-3 text-muted hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+                ? "fg-body-sm min-h-11 min-w-11 border-b-2 border-fg px-3 font-medium text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+                : "fg-body-sm min-h-11 min-w-11 border-b-2 border-transparent px-3 text-muted hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
             }
           >
             {unreadOnly ? "Unread" : "All"}
@@ -481,12 +481,16 @@ function MemberList({ deliveryId, onOpened }: { deliveryId: string; onOpened: ()
       </p>
     );
   }
+  const members = membersQ.data ?? [];
+  const texts = memberTexts(members);
   return (
     <ul className="mt-1 divide-y divide-line-subtle border-t border-line-subtle">
-      {(membersQ.data ?? []).map((m) => {
+      {members.map((m, i) => {
         const href = subjectHref(m);
         const text = (
-          <span className={m.open ? "text-fg" : "text-muted line-through"}>{m.title}</span>
+          <span className={m.open ? "text-fg" : "text-muted line-through"}>
+            {texts[i] ?? m.title}
+          </span>
         );
         return (
           <li key={m.id} className="flex items-center justify-between gap-3">

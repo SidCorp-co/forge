@@ -5,6 +5,7 @@ import { issueWorkInFlightSql } from '../issues/issue-lease.js';
 import { ASSERTS_WORK_IN_PROGRESS } from '../issues/status-sets.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
+import { resolveNotifications } from '../notifications/auto-resolve.js';
 import { emitNotification } from '../notifications/emit.js';
 import { sweepGroup } from '../notifications/explanations.js';
 import { projectAdminUserIds } from '../notifications/project-admins.js';
@@ -30,6 +31,8 @@ export interface IssueRunInvariantResult {
   detected: number;
   /** Episodes named this tick (0 when every one was already named). */
   reported: number;
+  /** Named episodes whose cause had ended, now resolved. */
+  resolved: number;
 }
 
 /**
@@ -37,6 +40,39 @@ export interface IssueRunInvariantResult {
  */
 export function orphanedAssertionResolutionKey(issueId: string): string {
   return `issue:${issueId}:run-assertion-orphaned`;
+}
+
+const ORPHAN_KEY_SUFFIX = ':run-assertion-orphaned';
+
+/**
+ * Resolve every named orphan whose cause has ended: the issue left the asserting statuses, or a
+ * job, run or lease is behind it again. The detector's predicate without its grace, so a write
+ * that only moves the issue's clock ends nothing.
+ */
+export async function resolveEndedOrphanAssertions(): Promise<number> {
+  const ended = (await db.execute(sql`
+    SELECT DISTINCT n.resolution_key AS "key"
+      FROM notifications n
+      JOIN issues i ON i.id = n.issue_id
+      JOIN projects p ON p.id = i.project_id
+     WHERE n.type = 'issue_stranded'
+       AND n.resolved_at IS NULL
+       AND n.resolution_key LIKE ${`issue:%${ORPHAN_KEY_SUFFIX}`}
+       AND (
+         i.status NOT IN (${sql.join(
+           ASSERTS_WORK_IN_PROGRESS.map((s) => sql`${s}`),
+           sql`, `,
+         )})
+         OR ${issueWorkInFlightSql({
+           issueId: sql`i.id`,
+           projectId: sql`i.project_id`,
+           issueKey: sql`'ISS-' || i.iss_seq`, // ISS-992:canonical
+         })}
+       )
+  `)) as unknown as { key: string }[];
+  let resolved = 0;
+  for (const { key } of ended) resolved += await resolveNotifications(key);
+  return resolved;
 }
 
 interface OrphanRow {
@@ -149,11 +185,12 @@ async function emit(
 export async function detectOrphanedRunAssertions(
   now: Date = new Date(),
 ): Promise<IssueRunInvariantResult> {
+  const resolved = await resolveEndedOrphanAssertions();
   const rows = await orphanedAssertions(now);
   let reported = 0;
   for (const row of rows) {
     const ref = formatIssueRef(row.issuePrefix, row.issSeq);
     if (await nameOnce({ now, row, ref })) reported += 1;
   }
-  return { detected: rows.length, reported };
+  return { detected: rows.length, reported, resolved };
 }

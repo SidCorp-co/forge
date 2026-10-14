@@ -3185,6 +3185,7 @@
 - **Each numbered step on the four connect-an-assistant setup pages asks for one action, with a Check of its own.** The scopes step says read is already ticked and asks for write, as the form shows it. (ISS-1289)
 
 - **A notification names its subject and opens it.** A runner, session, step, schedule or project in the title; a sweep is one row expanding to its issues. A resolved row is no longer unread; filter by type and unread. (ISS-1168)
+- **An orphan-assertion notice resolves when its cause ends.** Putting the issue on hold, or a run owning it again, closes it; it kept firing. Opening a group in the bell no longer reads it. (ISS-1168)
 
 - **A path the API does not serve is answered 404, whoever asks.** It used to read 401, a wrong credential or not an admin, from a guard. A real route kept from a token still refuses it. (ISS-1305)
 - **A session's message count no longer reads 0 for work it never recorded.** Master and run sessions keep no transcript here, so they show no count; every other session shows its real length, the same in list and detail. (ISS-1241)

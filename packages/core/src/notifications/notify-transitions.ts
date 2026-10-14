@@ -4,9 +4,11 @@ import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { issues, notifications } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
+import { ASSERTS_WORK_IN_PROGRESS } from '../issues/status-sets.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import type { HooksBus } from '../pipeline/hooks.js';
+import { orphanedAssertionResolutionKey } from '../pipeline/issue-run-invariant.js';
 import { isTerminalPlacement } from '../pipeline/status-assertions.js';
 import { owedCloseResolutionKey, strandedResolutionKey } from '../pipeline/stranded-issues.js';
 import { resolveNotifications } from './auto-resolve.js';
@@ -95,6 +97,10 @@ export function registerTransitionNotifications(bus: HooksBus): void {
   bus.on('transition', async (p) => {
     if (p.to !== 'waiting') {
       await resolveNotifications(strandedResolutionKey(p.issueId));
+    }
+
+    if (!ASSERTS_WORK_IN_PROGRESS.includes(p.to)) {
+      await resolveNotifications(orphanedAssertionResolutionKey(p.issueId));
     }
 
     if (isTerminalPlacement(p.to)) {

@@ -485,6 +485,29 @@ describe("a sweep's row", () => {
     await waitFor(() => expect(marked).toEqual(["n1"]));
   });
 
+  it("reads each member of a group that spans two projects as its own, the project named on every one", async () => {
+    server.ask = async () => ({ items: [group({ projectSlug: null, projectName: null })], totalCount: 1 });
+    server.members = async () => [
+      member(1, { title: "ISS-1 shipped but never closed", projectId: "p1", projectName: "Invoicing" }),
+      member(3, { title: "ISS-3 shipped but never closed", projectId: "p1", projectName: "Invoicing" }),
+      member(2, {
+        title: "ISS-1 shipped but never closed",
+        projectId: "p2",
+        projectSlug: "payroll",
+        projectName: "Payroll",
+      }),
+    ];
+    open();
+    await loaded();
+    fireEvent.click(screen.getByRole("button", { name: "2 of 3 still open — show" }));
+    await screen.findByRole("link", { name: "Payroll · ISS-1 shipped but never closed" });
+    expect(screen.getAllByRole("link").map((a) => a.textContent)).toEqual([
+      "Invoicing · ISS-1 shipped but never closed",
+      "Invoicing · ISS-3 shipped but never closed",
+      "Payroll · ISS-1 shipped but never closed",
+    ]);
+  });
+
   it("names a failed load of its members, with a way to try again", async () => {
     server.ask = async () => ({ items: [group()], totalCount: 1 });
     server.members = () => Promise.reject(new Error("down"));
@@ -560,6 +583,9 @@ describe("the filters", () => {
     await loaded();
     for (const name of ["All", "Unread", "Mark all read"]) {
       expect(screen.getByRole("button", { name }).className).toContain("min-h-11");
+    }
+    for (const name of ["All", "Unread"]) {
+      expect(screen.getByRole("button", { name }).className).toContain("min-w-11");
     }
     expect(screen.getByRole("combobox", { name: "Type" }).className).toContain("min-h-11");
   });
