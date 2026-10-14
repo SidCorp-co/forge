@@ -17,12 +17,15 @@ const SEEDED_BY_MIGRATIONS = ['outbox_event_types'];
  * The outbox's seq restarts with it, and a delivery's job id is built from that seq
  * (`outbox/queues.ts:deliveryJobId`), so the outbox jobs an earlier test left go too: kept, they hold
  * the ids the next test's deliveries are given, and those are dropped as duplicates without a word.
+ *
+ * A file that starts the outbox worker has deliveries running after its test returns: a commit wakes
+ * them in-process (`outbox/worker.ts:wakeConsumers`), and a delivery writes inside its own
+ * transaction. A TRUNCATE taken across one deadlocks against it (40P01), so the outbox is drained
+ * first: deliveries not yet started are dropped, and the ones running are waited out.
  */
 export async function truncateAll(): Promise<void> {
-  const tables = await rows<{ name: string }>(sql`
-    SELECT format('%I.%I', schemaname, tablename) AS name FROM pg_tables
-     WHERE schemaname = 'public' AND tablename NOT IN ${SEEDED_BY_MIGRATIONS}
-  `);
+  await drainOutbox();
+  const tables = await truncatedTables();
   if (tables.length > 0) {
     await db.execute(
       sql.raw(`TRUNCATE ${tables.map((t) => t.name).join(', ')} RESTART IDENTITY CASCADE`),
@@ -33,6 +36,45 @@ export async function truncateAll(): Promise<void> {
   );
   if (jobs?.present)
     await db.execute(sql.raw(`DELETE FROM ${BOSS_SCHEMA}.job WHERE name LIKE 'outbox.%'`));
+}
+
+/** The tables `truncateAll` empties, in the order it names them, which is the order TRUNCATE locks them. */
+export async function truncatedTables(): Promise<{ name: string }[]> {
+  return rows<{ name: string }>(sql`
+    SELECT format('%I.%I', schemaname, tablename) AS name FROM pg_tables
+     WHERE schemaname = 'public' AND tablename NOT IN ${SEEDED_BY_MIGRATIONS}
+     ORDER BY tablename
+  `);
+}
+
+/** How long a running delivery may keep `truncateAll` waiting before it fails, naming the delivery. */
+const DRAIN_MS = 30_000;
+
+/** No outbox delivery starts, and none is still running, when this returns. */
+async function drainOutbox(): Promise<void> {
+  const [jobs] = await rows<{ present: boolean }>(
+    sql`SELECT to_regclass(${`${BOSS_SCHEMA}.job`}) IS NOT NULL AS present`,
+  );
+  if (!jobs?.present) return;
+  const until = Date.now() + DRAIN_MS;
+  for (;;) {
+    // inside the loop: a delivery that is running may emit, and wake, deliveries of its own
+    await db.execute(
+      sql.raw(`DELETE FROM ${BOSS_SCHEMA}.job WHERE name LIKE 'outbox.%' AND state <> 'active'`),
+    );
+    const running = await rows<{ name: string; id: string }>(
+      sql.raw(
+        `SELECT name, id::text FROM ${BOSS_SCHEMA}.job WHERE name LIKE 'outbox.%' AND state = 'active'`,
+      ),
+    );
+    if (running.length === 0) return;
+    if (Date.now() > until) {
+      throw new Error(
+        `truncateAll: ${running.length} outbox delivery(ies) still running after ${DRAIN_MS}ms, so the tables were not emptied under them: ${running.map((r) => `${r.name} ${r.id}`).join(', ')}`,
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
 }
 
 export interface TestUser {
