@@ -7,8 +7,10 @@
 // who may write, the act that records a verdict. The criteria a reword or a re-tie retired are
 // Activity's, each marked Retired with every verdict it earned, so an earlier judge's finding stays
 // readable (ISS-489).
+// A short is met short of its wording and never proven, so its mark is the pass's ✓ drawn hollow in
+// the warn tone, with its word beside it from md up; it never reads as a pass (forge-core-eb, 2026-10-14).
 
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useId, useState } from "react";
 import { EmptyPanelLine, StatusBadge, statusReading, VerdictEvidence, ViewHeading } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
@@ -45,10 +47,26 @@ const ROW_WORDS = 8;
 
 type Filter = "all" | "fail" | "unjudged" | "met" | "skipped";
 
-const MARK: Record<CriterionStanding, string> = { pass: "✓", short: "✓", fail: "✕", skipped: "↷", unresolved: "–", unjudged: "–" };
+/** The ✓'s path; a short draws it hollow, a wide stroke with a narrow one cut out of it. */
+const CHECK_PATH = "M3 8.6 6.6 12.2 13 4.6";
+
+function HollowCheck() {
+  const maskId = `hollow-${useId().replace(/[^\w-]/g, "")}`;
+  return (
+    <svg viewBox="0 0 16 16" className="inline-block size-4 align-middle" aria-hidden="true" data-mark="hollow">
+      <mask id={maskId}>
+        <path d={CHECK_PATH} fill="none" stroke="white" strokeWidth={4.6} strokeLinecap="round" strokeLinejoin="round" />
+        <path d={CHECK_PATH} fill="none" stroke="black" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+      </mask>
+      <rect width="16" height="16" fill="currentColor" mask={`url(#${maskId})`} />
+    </svg>
+  );
+}
+
+const MARK: Record<CriterionStanding, ReactNode> = { pass: "✓", short: <HollowCheck />, fail: "✕", skipped: "↷", unresolved: "–", unjudged: "–" };
 const MARK_TONE: Record<CriterionStanding, string> = {
   pass: "text-ok-11",
-  short: "text-ok-11",
+  short: "text-warn-11",
   fail: "text-danger",
   skipped: "text-subtle",
   unresolved: "text-subtle",
@@ -121,6 +139,11 @@ function CriterionItem({
       >
         <span className="w-8 flex-none tabular-nums text-subtle">{line.n}</span>
         <span className="min-w-0 flex-1 truncate">{clipWords(statement, ROW_WORDS)}</span>
+        {line.standing === "short" ? (
+          <span className="hidden flex-none text-13 text-warn-11 md:inline" aria-hidden="true" data-testid={`criterion-${line.n}-word`}>
+            {reading}
+          </span>
+        ) : null}
         <span className={cn("w-6 flex-none text-center font-semibold", MARK_TONE[line.standing])} role="img" aria-label={reading} title={reading} data-testid={`criterion-${line.n}-verdict`}>
           {MARK[line.standing]}
         </span>
