@@ -104,8 +104,10 @@ shell: a door or page as a `refused` view of `PublicReader`, which offers the do
 door in the sidebar a door page has, and
 `packages/web-v2/src/app/guides/[slug]/not-found.tsx` for a guide. The search needs the guide
 index, so with core unreachable `PublicRefusal` keeps the refusal and the doors and says there is no
-search (`SEARCH_UNAVAILABLE`), where an address naming a real door fails loudly. Every renderer reads
-one set of strings from `packages/web-v2/src/features/guides/missing.ts`.
+search (`SEARCH_UNAVAILABLE`). A door, a help page or the landing is built from that index, so with it
+unreadable (`GuideFetchError`) `/guides` renders `PublicRefusal` with `GUIDES_UNAVAILABLE` in the docs'
+shell instead, and logs why; any other error is still thrown. Every renderer reads one set of strings
+from `packages/web-v2/src/features/guides/missing.ts`.
 
 The middleware cannot tell the two apart by the `RSC` header: Next 16's middleware adapter
 (`next/dist/server/web/adapter.js`, `FLIGHT_HEADERS`) deletes it, and `_rsc`, before middleware

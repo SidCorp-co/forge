@@ -7,15 +7,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 expect.extend(matchers);
 afterEach(cleanup);
 
+class GuideFetchError extends Error {}
 const fetchGuideCorpus = vi.fn(async (): Promise<unknown[]> => {
-  throw new Error("core is down");
+  throw new GuideFetchError("core is down");
 });
 const fetchGuideScope = vi.fn(async (): Promise<unknown> => {
-  throw new Error("core is down");
+  throw new GuideFetchError("core is down");
 });
-vi.mock("@/features/guides/api", () => ({ fetchGuideCorpus, fetchGuideScope }));
+vi.mock("@/features/guides/api", () => ({ fetchGuideCorpus, fetchGuideScope, GuideFetchError }));
+vi.spyOn(console, "error").mockImplementation(() => {});
 
-const { SEARCH_UNAVAILABLE } = await import("@/features/guides/missing");
+const { GUIDES_UNAVAILABLE, SEARCH_UNAVAILABLE } = await import("@/features/guides/missing");
 const { default: GuidesPage } = await import("./page");
 
 async function open(params: Record<string, string>) {
@@ -63,7 +65,23 @@ describe("/guides refusing an address, with the guide index down", () => {
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 
-  it("still asks core, and fails loudly, for an address naming a real door", async () => {
-    await expect(GuidesPage({ searchParams: Promise.resolve({ for: "user" }) })).rejects.toThrow("core is down");
+});
+
+describe("/guides naming a real door, page or the landing, with the guide index down", () => {
+  it.each([[{ for: "user" }], [{ for: "agent" }], [{ path: "getting-started" }], [{}]])(
+    "renders in the docs' shell for %o: the site, that the guides could not be loaded, and every way in",
+    async (params) => {
+      await open(params);
+      expect(screen.getByRole("link", { name: "Forge documentation" })).toHaveAttribute("href", "/guides");
+      expect(screen.getByRole("heading", { name: GUIDES_UNAVAILABLE.heading })).toBeInTheDocument();
+      expect(screen.getByText(GUIDES_UNAVAILABLE.body)).toBeInTheDocument();
+      expect(screen.getByText(SEARCH_UNAVAILABLE)).toBeInTheDocument();
+      expect(within(screen.getByRole("navigation", { name: "Ways in" })).getAllByRole("link")).toHaveLength(4);
+    },
+  );
+
+  it("throws an error that is not an unreadable index, rather than calling it one", async () => {
+    fetchGuideCorpus.mockRejectedValueOnce(new TypeError("a defect"));
+    await expect(GuidesPage({ searchParams: Promise.resolve({ for: "user" }) })).rejects.toThrow("a defect");
   });
 });

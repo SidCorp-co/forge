@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
+import { cache } from "react";
 import { HELP_DOCS } from "@/features/docs/help-content.generated";
 import { HELP_SLUGS } from "@/features/docs/help-slugs.generated";
-import { fetchGuideCorpus, fetchGuideScope } from "@/features/guides/api";
+import { fetchGuideCorpus, fetchGuideScope, GuideFetchError } from "@/features/guides/api";
 import { DOORS, documentTitle } from "@/features/guides/audience";
 import { buildCorpus, helpPageHref, searchPlaceholder } from "@/features/guides/corpus";
 import { GuideShell } from "@/features/guides/components/guide-shell";
 import { PublicLanding, PublicReader, PublicRefusal } from "@/features/guides/components/public-docs";
+import { GUIDES_UNAVAILABLE } from "@/features/guides/missing";
 import { readPublicRequest, toSearchParams } from "@/features/guides/requested-page";
 
 /** Per request, never prerendered: a prerender bakes the index into the image
@@ -17,8 +19,27 @@ type Props = { searchParams: Promise<Record<string, string | string[] | undefine
 const DESCRIPTION =
   "Forge's documentation — for people using Forge, people connecting an AI assistant, and agents.";
 
+/** The index every view is built from, or `null` where core's answer could not be read, logged once
+ *  per request: the page then says so in the docs' own shell rather than failing as a bare 500. Any
+ *  other error is a defect and is thrown. */
+const readIndex = cache(async () => {
+  let fetched: [Awaited<ReturnType<typeof fetchGuideCorpus>>, Awaited<ReturnType<typeof fetchGuideScope>>];
+  try {
+    fetched = await Promise.all([fetchGuideCorpus(), fetchGuideScope()]);
+  } catch (cause) {
+    if (!(cause instanceof GuideFetchError)) throw cause;
+    console.error(`public docs: ${cause.message}`);
+    return null;
+  }
+  const [guides, scope] = fetched;
+  return { corpus: buildCorpus(HELP_DOCS, guides), scope };
+});
+
 export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
   const asked = readPublicRequest(toSearchParams(await searchParams), HELP_SLUGS);
+  if (asked.kind !== "refused" && !(await readIndex())) {
+    return { title: documentTitle(GUIDES_UNAVAILABLE.heading), robots: { index: false } };
+  }
   if (asked.kind === "door") return { title: documentTitle(DOORS[asked.audience].label), description: DESCRIPTION };
   if (asked.kind === "page") {
     const doc = HELP_DOCS.find((d) => d.slug === asked.slug);
@@ -30,25 +51,16 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
 
 export default async function GuidesPage({ searchParams }: Props) {
   const asked = readPublicRequest(toSearchParams(await searchParams), HELP_SLUGS);
-  if (asked.kind === "refused") {
-    // The refusal offers the docs' search, which needs the index; with core down it says so and
-    // keeps the doors, rather than failing a page that names nothing of core's.
-    const reached = await Promise.all([fetchGuideCorpus(), fetchGuideScope()]).then(
-      ([guides, scope]) => ({ corpus: buildCorpus(HELP_DOCS, guides), scope }),
-      () => null,
-    );
+  const reached = await readIndex();
+  if (!reached) {
+    // The refusal and the doors need no index; the search does, and the page says it is missing.
     return (
       <GuideShell>
-        {reached ? (
-          <PublicReader scope={reached.scope} corpus={reached.corpus} view={asked} />
-        ) : (
-          <PublicRefusal refusal={asked.refusal} />
-        )}
+        <PublicRefusal refusal={asked.kind === "refused" ? asked.refusal : GUIDES_UNAVAILABLE} />
       </GuideShell>
     );
   }
-  const [guides, scope] = await Promise.all([fetchGuideCorpus(), fetchGuideScope()]);
-  const corpus = buildCorpus(HELP_DOCS, guides);
+  const { corpus, scope } = reached;
   return (
     <GuideShell>
       {asked.kind === "landing" ? (
