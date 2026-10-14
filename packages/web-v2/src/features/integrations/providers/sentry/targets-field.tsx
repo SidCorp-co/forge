@@ -87,6 +87,7 @@ export function SentryTargetsField({
   host,
   authToken,
   loading,
+  credentialUnsaved,
   listRequested,
   onRequestList,
   rows,
@@ -98,6 +99,8 @@ export function SentryTargetsField({
   authToken: string;
   /** The project's integrations are still being read, so whether one exists is not yet known. */
   loading: boolean;
+  /** The host or token above was edited and not saved: the list is still read with the saved ones. */
+  credentialUnsaved: boolean;
   /** Before an integration exists the list is read only once the person asks for it. */
   listRequested: boolean;
   onRequestList: () => void;
@@ -148,6 +151,9 @@ export function SentryTargetsField({
       return `Could not list Sentry projects: ${formatApiError(listing.error)} Type the organization and project slugs by hand.`;
     }
     if (loading) return null;
+    if (integrationId && credentialUnsaved) {
+      return "This list is read with the host and token already saved. Save your changes to the host or token to read it with the new ones.";
+    }
     if (!integrationId && !auth) {
       return "Add the host and token above, then load the project list — or type the slugs by hand.";
     }
@@ -240,8 +246,16 @@ export function SentryTargetsField({
                 <div>
                   <Button
                     variant="ghost"
-                    onClick={() => update(i, { manual: false })}
-                    disabled={picked !== "/" && !known.has(picked)}
+                    onClick={() =>
+                      // A slug pair the list does not hold cannot be shown as a pick, so it is cleared
+                      // here, by the person asking to pick instead; label, environment and notes stay.
+                      update(i, {
+                        manual: false,
+                        ...(picked !== "/" && !known.has(picked)
+                          ? { organizationSlug: "", projectSlug: "" }
+                          : {}),
+                      })
+                    }
                   >
                     Pick from the list instead
                   </Button>

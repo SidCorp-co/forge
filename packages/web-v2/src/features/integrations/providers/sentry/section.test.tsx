@@ -226,6 +226,36 @@ describe("when the list cannot be read", () => {
     expect(screen.queryByLabelText(/Sentry project for target/)).toBeNull();
   });
 
+  it("lets a typed slug the list does not hold be replaced by a pick, keeping the row's other fields", async () => {
+    boundTargets = [
+      {
+        label: "legacy",
+        organizationSlug: "canawan",
+        projectSlug: "not-listed",
+        environment: "prod",
+        notes: "old shop",
+      },
+    ];
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Pick from the list instead" }));
+
+    fireEvent.change(await screen.findByLabelText("Sentry project for target 1"), {
+      target: { value: "canawan/forge-web" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(saved()).toHaveLength(1));
+    expect(theSave().config.targets).toEqual([
+      {
+        label: "legacy",
+        organizationSlug: "canawan",
+        projectSlug: "forge-web",
+        environment: "prod",
+        notes: "old shop",
+      },
+    ]);
+  });
+
   it("says when Sentry held more than the list carries", async () => {
     listing = { ...LISTED, truncated: true };
     mount();
@@ -258,6 +288,34 @@ describe("before an integration exists", () => {
       host: "logs.canawan.com",
       authToken: "sntryu_a_token_value",
     });
+  });
+});
+
+describe("editing the saved host or token", () => {
+  it("says the list is still read with the saved ones, and stops saying so once it is saved", async () => {
+    mount();
+    await screen.findByLabelText("Sentry project for target 1");
+    expect(screen.queryByRole("status")).toBeNull();
+
+    fireEvent.change(screen.getByPlaceholderText("logs.canawan.com"), {
+      target: { value: "sentry.example.com" },
+    });
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "read with the host and token already saved",
+    );
+  });
+
+  it("reads the list again after a save", async () => {
+    mount();
+    await screen.findByLabelText("Sentry project for target 1");
+    const before = calls.filter((c) => c.path.endsWith("/sentry/projects")).length;
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(calls.filter((c) => c.path.endsWith("/sentry/projects")).length).toBeGreaterThan(before),
+    );
   });
 });
 

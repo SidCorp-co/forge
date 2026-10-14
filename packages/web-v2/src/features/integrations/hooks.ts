@@ -39,6 +39,8 @@ function useInvalidateIntegrations(projectId: string | undefined) {
     qc.invalidateQueries({
       queryKey: ["integrations", "mcp-preview", projectId],
     });
+    // The Sentry pick list is read through the saved credential, so a save may have changed it.
+    qc.invalidateQueries({ queryKey: ["integrations", "sentry-projects", projectId] });
   };
 }
 

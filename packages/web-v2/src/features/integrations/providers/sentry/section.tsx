@@ -229,6 +229,11 @@ export function SentrySection({ projectId }: { projectId: string }) {
           host={form.host}
           authToken={form.authToken}
           loading={list.isPending}
+          credentialUnsaved={
+            Boolean(existing) &&
+            !orgLocked &&
+            (form.host.trim() !== storedHost || form.authToken.trim() !== "")
+          }
           listRequested={listRequested}
           onRequestList={() => setListRequested(true)}
           rows={form.targets}
