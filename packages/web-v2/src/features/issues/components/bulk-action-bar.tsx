@@ -7,9 +7,7 @@
 //
 // Set-status offers only `bulkAllowedStatuses()` — the intersection, across the
 // whole selection, of the exits core declares for each row's rung — so a bulk
-// pick can't mass-409 (mirrors the per-row ISS-308 E1 guard). A status that
-// needs a reason is offered only where one reason can serve the selection: On
-// hold asks it once, in the reason dialog, and sends it with every issue (ISS-1251). The control is
+// pick can't mass-409 (mirrors the per-row ISS-308 E1 guard). The control is
 // disabled, with the reason rendered beside it, both when that intersection is
 // empty and while the exits themselves are unread. Priority has no
 // state-machine constraint, so all five values are offered — except while a
@@ -109,6 +107,7 @@ export function BulkActionBar({
   const statusNames = transitionLabels(statusTargets);
   const statusItems: MenuItem[] = statusTargets.map((s, i) => ({
     label: statusNames[i],
+    // On hold needs a reason: asked once for the selection, sent with every issue.
     onSelect: () =>
       BULK_SHARES_ONE_REASON.has(s) ? setHoldOpen(true) : run({ kind: "status", toStatus: s }),
   }));
