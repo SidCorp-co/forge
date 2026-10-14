@@ -282,6 +282,8 @@ export interface ConnectionBindingWritten {
   revision: number;
   /** False where the project's switched-off binding for the same slot was written again. */
   created: boolean;
+  /** That switched-off binding, as it stood before this write took it over; null when the slot was free. */
+  rewroteSwitchedOff: { revision: number; connection: string } | null;
   effects: Record<string, unknown>;
 }
 

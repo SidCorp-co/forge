@@ -1,0 +1,1 @@
+**A bind that takes over a switched-off binding says so.** The one-call bind response names the switched-off binding it wrote over (its revision and connection) in `rewroteSwitchedOff`, instead of only answering `created: false`.
