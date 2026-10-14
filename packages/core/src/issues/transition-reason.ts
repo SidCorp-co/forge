@@ -1,6 +1,6 @@
-import { type Db, db } from '../db/client.js';
+import { postSystemComment } from '../comments/system-write.js';
+import { db, type Tx } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
-import { comments } from '../db/schema.js';
 import { actorAgency, type TransitionActor } from './actor-agency.js';
 import { AWAITING_INPUT_STATUSES, ISSUE_STATUS_LABELS } from './status-sets.js';
 
@@ -77,16 +77,19 @@ export async function postLeaveComment(
     actor: TransitionActor;
     options: { transitionReason?: string | undefined };
   },
-  executor: Pick<Db, 'insert'>,
+  executor: Tx,
 ): Promise<void> {
   const reason = args.options.transitionReason ?? '';
   if (!announcesLeave(args.fromStatus, args.toStatus, reason, actorAgency(args.actor))) return;
-  await executor.insert(comments).values({
-    issueId: args.issue.id,
-    authorId: args.actor.type === 'user' ? args.actor.id : args.actor.ownerId,
-    body: buildLeaveBody(args.fromStatus, args.toStatus, reason),
-    parentId: null,
-  });
+  await postSystemComment(
+    {
+      issueId: args.issue.id,
+      authorId: args.actor.type === 'user' ? args.actor.id : args.actor.ownerId,
+      body: buildLeaveBody(args.fromStatus, args.toStatus, reason),
+      parentId: null,
+    },
+    executor,
+  );
 }
 
 /**
@@ -103,20 +106,23 @@ export async function postTransitionReasonComment(
     waitingKind?: WaitingKind | null;
     /** True when a device actor wrote it — an agent's rationale is still an agent's. */
   },
-  executor: Pick<Db, 'insert'> = db,
+  executor: Tx = db,
 ): Promise<void> {
   if (!args.authorId) return;
-  await executor.insert(comments).values({
-    issueId: args.issueId,
-    authorId: args.authorId,
-    body: buildTransitionReasonBody(
-      args.toStatus,
-      args.fromStatus,
-      args.reason,
-      args.waitingKind ?? null,
-    ),
-    parentId: null,
-  });
+  await postSystemComment(
+    {
+      issueId: args.issueId,
+      authorId: args.authorId,
+      body: buildTransitionReasonBody(
+        args.toStatus,
+        args.fromStatus,
+        args.reason,
+        args.waitingKind ?? null,
+      ),
+      parentId: null,
+    },
+    executor,
+  );
 }
 
 /**

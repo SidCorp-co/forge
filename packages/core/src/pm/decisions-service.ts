@@ -9,6 +9,7 @@
 
 import { redactedMessage } from '@forge/observability';
 import { eq } from 'drizzle-orm';
+import { insertSystemComment, type SystemCommentRow } from '../comments/system-write.js';
 import { db } from '../db/client.js';
 import { type ModelTier, pmDecisions, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
@@ -135,4 +136,18 @@ export async function writePmDecision(input: PmDecisionInput) {
   }
 
   return { decisionId, indexed: 'queued' as const };
+}
+
+/** The operator's reply as a comment on an issue the decision names; the writer's text may carry a stored credential, so it goes through the system door. */
+export function postOperatorReply(args: {
+  issueId: string;
+  userId: string;
+  body: string;
+}): Promise<SystemCommentRow | undefined> {
+  return insertSystemComment({
+    issueId: args.issueId,
+    authorId: args.userId,
+    body: args.body,
+    parentId: null,
+  });
 }

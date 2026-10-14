@@ -1,7 +1,8 @@
 import { eq, sql } from 'drizzle-orm';
+import { postSystemComment } from '../comments/system-write.js';
 import { db } from '../db/client.js';
 import type { JobType } from '../db/schema.js';
-import { comments, issues, type jobs, projects } from '../db/schema.js';
+import { issues, type jobs, projects } from '../db/schema.js';
 import { utcDateTrunc } from '../lib/time-buckets.js';
 import { logger } from '../logger.js';
 import { extractStageStatus, resolveStageOverrides } from './stage-overrides.js';
@@ -133,7 +134,7 @@ export async function postBudgetExhaustedComment(
   ].join('\n');
 
   try {
-    await db.insert(comments).values({
+    await postSystemComment({
       issueId: input.issueId,
       authorId: row.createdBy,
       body,

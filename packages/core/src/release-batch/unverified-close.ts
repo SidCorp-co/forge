@@ -2,6 +2,7 @@
 // closed 42 issues on a release that was not running (ISS-1042, ISS-1321).
 
 import { and, eq, like, sql } from 'drizzle-orm';
+import { postSystemComment } from '../comments/system-write.js';
 import { db } from '../db/client.js';
 import { comments, issues, pipelineRuns } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
@@ -77,7 +78,7 @@ export async function noteUnverifiedCloses(args: {
         .where(and(eq(comments.issueId, issueId), like(comments.body, `%${marker}%`)))
         .limit(1);
       if (already) return false;
-      await tx.insert(comments).values({ issueId, ...author, body });
+      await postSystemComment({ issueId, ...author, body }, tx);
       return true;
     });
     if (wrote) written += 1;

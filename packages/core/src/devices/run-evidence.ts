@@ -19,6 +19,7 @@
 
 import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
+import { postSystemComment, withholdForIssue } from '../comments/system-write.js';
 import { db } from '../db/client.js';
 import { agentSessions, comments, devices, issues, pipelineRuns } from '../db/schema.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
@@ -310,20 +311,22 @@ async function insertCommentOnce(args: {
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(hashtextextended(${`run-evidence:${args.issueId}:${args.marker}`}, 0))`,
     );
+    const marker = await withholdForIssue(args.issueId, args.marker, tx);
     const existing = await tx
       .select({ id: comments.id })
       .from(comments)
-      .where(
-        and(eq(comments.issueId, args.issueId), sql`${comments.body} LIKE ${`%${args.marker}%`}`),
-      )
+      .where(and(eq(comments.issueId, args.issueId), sql`${comments.body} LIKE ${`%${marker}%`}`))
       .limit(1);
     if (existing.length > 0) return false;
-    await tx.insert(comments).values({
-      issueId: args.issueId,
-      authorId: args.authorId,
-      authorDeviceId: args.deviceId,
-      body: args.body,
-    });
+    await postSystemComment(
+      {
+        issueId: args.issueId,
+        authorId: args.authorId,
+        authorDeviceId: args.deviceId,
+        body: args.body,
+      },
+      tx,
+    );
     return true;
   });
 }
@@ -351,8 +354,11 @@ async function insertHeldReportOnChange(args: {
     // Whole markers only, each closed by its backtick and matched literally: a
     // bare family is a prefix of every longer head's, and a LIKE over it would
     // let another commit's report stand in for this one's latest.
-    const whole = [args.family, `${args.family}:refused`, `${args.family}:not-refused`].map(
-      (m) => sql`strpos(${comments.body}, ${`\`${m}\``}) > 0`,
+    const whole = await Promise.all(
+      [args.family, `${args.family}:refused`, `${args.family}:not-refused`].map(async (m) => {
+        const stored = await withholdForIssue(args.issueId, m, tx);
+        return sql`strpos(${comments.body}, ${`\`${stored}\``}) > 0`;
+      }),
     );
     const [latest] = await tx
       .select({ body: comments.body })
@@ -360,13 +366,17 @@ async function insertHeldReportOnChange(args: {
       .where(and(eq(comments.issueId, args.issueId), or(...whole)))
       .orderBy(desc(comments.createdAt), desc(comments.id))
       .limit(1);
-    if (latest?.body.includes(`\`${args.marker}\``)) return false;
-    await tx.insert(comments).values({
-      issueId: args.issueId,
-      authorId: args.authorId,
-      authorDeviceId: args.deviceId,
-      body: args.body,
-    });
+    const marker = await withholdForIssue(args.issueId, args.marker, tx);
+    if (latest?.body.includes(`\`${marker}\``)) return false;
+    await postSystemComment(
+      {
+        issueId: args.issueId,
+        authorId: args.authorId,
+        authorDeviceId: args.deviceId,
+        body: args.body,
+      },
+      tx,
+    );
     return true;
   });
 }

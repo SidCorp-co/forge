@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
+import { postSystemComments } from '../comments/system-write.js';
 import { db } from '../db/client.js';
-import { comments, issues } from '../db/schema.js';
+import { issues } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import type { TransitionActor } from './actor-agency.js';
@@ -23,7 +24,7 @@ export async function recordDropUnblock(
       ? formatIssueRef(await activeIssuePrefix(issue.projectId), blocker.issSeq)
       : issue.id;
     const authorId = actor.type === 'user' ? actor.id : actor.ownerId;
-    await db.insert(comments).values(
+    await postSystemComments(
       dependents.map((dependent) => ({
         issueId: dependent.issueId,
         authorId,

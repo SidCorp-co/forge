@@ -153,6 +153,7 @@ export async function noteReviewOnIssue(args: {
         }),
         format: 'markdown',
         parentId: null,
+        credentials: 'withhold',
       },
       tx,
     );

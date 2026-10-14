@@ -9,6 +9,7 @@
 
 import { createHash } from 'node:crypto';
 import { and, eq, inArray, like, sql } from 'drizzle-orm';
+import { postSystemComment } from '../comments/system-write.js';
 import { db } from '../db/client.js';
 import { comments, issues } from '../db/schema.js';
 import type { IssueCriteriaReport } from '../issues/criteria-verdicts.js';
@@ -413,7 +414,7 @@ export async function commentOnce(
       RETURNING i.id
     `)) as unknown as Array<{ id: string }>;
     if (updated.length > 0 && !posted) {
-      await tx.insert(comments).values({ issueId: row.id, authorId, body });
+      await postSystemComment({ issueId: row.id, authorId, body }, tx);
     }
   });
 }
@@ -516,7 +517,7 @@ export async function writeReleaseHolds(args: {
       if (updated.length === 0) return false;
       if (comment && args.authorId) {
         const body = releaseHoldComment(hold, shared, covers);
-        await tx.insert(comments).values({ issueId: row.id, authorId: args.authorId, body });
+        await postSystemComment({ issueId: row.id, authorId: args.authorId, body }, tx);
       }
       return true;
     });

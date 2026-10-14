@@ -95,13 +95,15 @@ export async function steerIssue(
     authorDeviceId: null,
     body,
     parentId: null,
+    credentials: 'withhold',
   });
 
   const { row, published, duplicate } = await requestSessionSend({
     agentSessionId: session.agentSessionId,
     kind: 'inject',
     intentId: comment.id,
-    body,
+    // The thread's own text, so a stored test credential withheld from the comment never rides into the session.
+    body: comment.body,
     actor: { userId: opts.actorUserId, reason: opts.reason, source: opts.source },
   });
 
