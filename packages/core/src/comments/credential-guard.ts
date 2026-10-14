@@ -238,6 +238,14 @@ export function withheldMarker(id: string): string {
   return id === '' ? '[withheld]' : `[withheld: test credential "${id}", read at ${READ_AT}]`;
 }
 
+/** The marker for `id`, or the bare one when the marker, as written or as read, would carry a credential. */
+function safeMarker(id: string, credentials: readonly StoredCredential[]): string {
+  const marker = withheldMarker(id);
+  const carries =
+    spansOf(marker, credentials).length > 0 || findCredential(readAsText(marker), credentials);
+  return carries ? withheldMarker('') : marker;
+}
+
 /** The text core writes, with its stored credentials replaced in place and everything else kept. */
 export interface Withheld {
   readonly text: string;
@@ -264,9 +272,7 @@ function withholdLiteral(text: string, credentials: readonly StoredCredential[])
     const named = covered.length > 0 ? covered : matching(text, credentials);
     const label = [...new Set(named.map((one) => one.id))].join('", "');
     for (const one of named) if (!ids.includes(one.id)) ids.push(one.id);
-    const marker = withheldMarker(label);
-    const safe = spansOf(marker, credentials).length === 0 ? marker : withheldMarker('');
-    out += `${text.slice(from, start)}${safe}`;
+    out += `${text.slice(from, start)}${safeMarker(label, credentials)}`;
     from = end;
   }
   return { text: out + text.slice(from), ids };
@@ -287,7 +293,7 @@ function withholdWhatReadsAsOne(
   const ids = [...seen];
   const mark = (id: string): string => {
     if (!ids.includes(id)) ids.push(id);
-    return withheldMarker(id);
+    return safeMarker(id, credentials);
   };
   const lines = text.split('\n').map((line) => {
     const found = findCredential(readAsText(line), credentials);

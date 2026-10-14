@@ -201,6 +201,21 @@ describe('what core writes in place of a stored credential', () => {
     expect(withholdCredentials(once.text, wording).text).toBe(once.text);
   });
 
+  it('falls back to a bare marker where the value is written encoded and the marker holds it', () => {
+    const wording = credentialsFrom({
+      testCredentials: [
+        { label: 'login', username: 'u', password: 'environments.testCredentials' },
+      ],
+    });
+    const once = withholdCredentials('pw environments&#46;testCredentials end\nsecond', wording);
+    expect(once.text).toBe('[withheld]\nsecond');
+    expect(findCredential(once.text, wording)).toBeNull();
+    expect(findCredential(readAsText(once.text), wording)).toBeNull();
+    expect(withholdCredentials(once.text, wording).text).toBe(once.text);
+    const whole = withholdCredentials('environments&#46;test&#67;redentials', wording);
+    expect(findCredential(readAsText(whole.text), wording)).toBeNull();
+  });
+
   it('names no credential where its label and its position both hold a stored value', () => {
     const named = credentialsFrom({
       testCredentials: [{ label: 'credential #1', username: 'u', password: 'credential #1' }],

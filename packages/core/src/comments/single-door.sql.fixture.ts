@@ -56,13 +56,14 @@ class TextReader {
     return this.read(expr);
   }
 
-  /** The text of a name the file declares once, as a constant. */
+  /** The text of a name the file declares once with `const`: a `let` or `var` can hold another text by the time it is used. */
   private constant(id: ts.Identifier): string {
     const declared = this.f.declarations.filter(
       (d) => ts.isIdentifier(d.name) && d.name.text === id.text,
     );
     const [only] = declared;
     if (declared.length !== 1 || !only?.initializer || this.depth > 6) return UNREAD;
+    if (!(only.parent.flags & ts.NodeFlags.Const)) return UNREAD;
     this.depth += 1;
     try {
       return this.read(only.initializer);

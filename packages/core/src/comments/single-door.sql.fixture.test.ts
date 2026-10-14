@@ -93,6 +93,20 @@ describe('raw SQL that names the comments table without writing its name', () =>
     expect(found(source)).toEqual([]);
   });
 
+  it('does not trust a `let` or `var` for the table it holds, which can change before it is used', () => {
+    const source = [
+      IMPORT,
+      'export const go = (db: any) => {',
+      "  let table = 'issues';",
+      "  table = 'comments';",
+      "  db.execute(sql.raw('delete from ' + table));",
+      "  var other = 'issues';",
+      "  db.execute(sql.raw('delete from ' + other));",
+      '};',
+    ].join('\n');
+    expect(found(source)).toEqual(['5 unresolved', '7 unresolved']);
+  });
+
   it('does not take a sentence that says "update" for a write', () => {
     const source = [
       IMPORT,
