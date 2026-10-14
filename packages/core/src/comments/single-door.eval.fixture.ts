@@ -180,22 +180,15 @@ export abstract class Evaluator extends Scopes {
     for (const item of node.properties) {
       if (ts.isSpreadAssignment(item)) {
         mergeInto(out, this.prop(this.eval(item.expression, file), name));
-      } else if (ts.isShorthandPropertyAssignment(item)) {
-        if (item.name.text === name) mergeInto(out, this.eval(item.name, file));
-      } else if (ts.isMethodDeclaration(item)) {
-        if (item.name.getText() === name) mergeInto(out, this.method(item));
-      } else if (ts.isGetAccessorDeclaration(item)) {
-        if (item.name.getText() === name) mergeInto(out, this.getter(item));
-      } else if (ts.isPropertyAssignment(item)) {
-        if (ts.isComputedPropertyName(item.name)) {
-          mergeInto(out, unknownBecause('an object with a computed key'));
-        } else if (
-          item.name.getText() === name ||
-          (ts.isStringLiteralLike(item.name) && item.name.text === name)
-        ) {
-          mergeInto(out, this.eval(item.initializer, file));
-        }
+        continue;
       }
+      const key = ts.isShorthandPropertyAssignment(item) ? item.name.text : keyOf(item.name);
+      if (key === null) mergeInto(out, unknownBecause('an object with a computed key'));
+      else if (key !== name) continue;
+      else if (ts.isShorthandPropertyAssignment(item)) mergeInto(out, this.eval(item.name, file));
+      else if (ts.isMethodDeclaration(item)) mergeInto(out, this.method(item));
+      else if (ts.isGetAccessorDeclaration(item)) mergeInto(out, this.getter(item));
+      else if (ts.isPropertyAssignment(item)) mergeInto(out, this.eval(item.initializer, file));
     }
     this.reading.delete(node);
     return out;
@@ -329,4 +322,12 @@ function isContainerBuiltin(callee: ts.Expression): boolean {
     return ['values', 'entries', 'fromEntries', 'freeze', 'seal', 'create'].includes(method);
   }
   return owner === 'Array' && ['from', 'of'].includes(method);
+}
+
+/** The name a member of an object literal is declared under, null where it is computed. */
+function keyOf(name: ts.PropertyName | undefined): string | null {
+  if (!name || ts.isComputedPropertyName(name)) return null;
+  return ts.isIdentifier(name) || ts.isStringLiteralLike(name) || ts.isNumericLiteral(name)
+    ? name.text
+    : name.getText();
 }

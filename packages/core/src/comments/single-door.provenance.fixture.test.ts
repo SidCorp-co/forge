@@ -237,4 +237,22 @@ describe('a table that reaches a write through what a call or a container hands 
       'pipeline/planted.ts:6 unresolved',
     ]);
   });
+
+  it('finds the table under a member declared with a quoted name, and refuses one with a computed name', () => {
+    const source = [
+      "import { comments } from '../db/schema.js';",
+      "const registry = { get 'table'() { return comments; }, 'pick'() { return comments; } };",
+      "const keyed = { ['t' + 1]: comments };",
+      'export const go = async (db: any) => {',
+      '  await db.delete(registry.table);',
+      '  await db.delete(registry.pick());',
+      '  await db.delete(keyed.t1).where();',
+      '};',
+    ].join('\n');
+    expect(found(source)).toEqual([
+      'pipeline/planted.ts:5 write',
+      'pipeline/planted.ts:6 write',
+      'pipeline/planted.ts:7 unresolved',
+    ]);
+  });
 });
