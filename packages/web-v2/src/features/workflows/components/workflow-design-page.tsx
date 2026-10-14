@@ -219,7 +219,9 @@ function designTabs(t: Copy, shown: WorkflowBody, d: WorkflowDesign, decisionCou
 export function WorkflowDesignPage({ projectId, slug, d, record, template, decisionCount, tab, onTab, decision, walkDecision, repins }: DesignPageProps) {
   const t = useCopy();
   const [view] = useRecordView();
-  const [changes, setChanges] = useState(false);
+  // a proposal this reader decides opens on its changes against the approved revision, so nobody
+  // approves a change they have not seen; any other design opens as it stands (REQ-35 BC-7)
+  const [changes, setChanges] = useState(d.status === "proposed" && d.canDecide);
   const [focusOn, setFocus] = useCanvasFocus();
   const focus = focusOn && tab === "design";
   const [railCollapsed, setRailCollapsed] = useRailCollapsed();

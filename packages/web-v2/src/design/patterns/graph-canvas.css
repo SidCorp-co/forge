@@ -47,6 +47,7 @@
 .wfc-badge { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px 1px 6px; border: 1px solid var(--border-subtle); border-radius: var(--r-pill); background: var(--bg-app); font-size: var(--text-11-5); color: var(--fg-muted); }
 .wfc-badge[data-tone="sla"] { color: var(--cobalt-600); background: var(--cobalt-50); border-color: transparent; }
 .wfc-badge[data-tone="hits"] { color: var(--amberw-700); background: var(--amberw-50); border-color: transparent; }
+.wfc-badge[data-tone="mark"] { color: var(--amber-600); background: transparent; border-color: var(--amber-500); }
 .wfc-mono { font-family: var(--font-mono); font-size: var(--text-10); color: var(--fg-subtle); line-height: 1.4; }
 .wfc-mono[data-rule="true"] { border-top: 1px dashed var(--border-default); padding-top: 5px; }
 
