@@ -1,10 +1,6 @@
 import { readAsHanded } from './sanitize.js';
 
-/**
- * Every single character an agent's read of an untrusted text takes out, read off that read itself
- * by handing it every code point once, so a test planting them carries no list that could drift
- * from the one the read applies.
- */
+/** Every character an agent's read takes out, found by handing it every code point once, so no list here can drift from the read's. */
 export function charactersTakenOut(): string[] {
   const all: string[] = [];
   for (let cp = 0; cp <= 0x10ffff; cp += 1) {

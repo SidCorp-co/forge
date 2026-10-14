@@ -72,10 +72,8 @@ export function sanitizeUntrusted(text: string): string {
 }
 
 /**
- * The text an agent is handed inside an untrusted frame, with where each of its code units sat in
- * the text it was read from. A check on what an agent reads takes this reading rather than a list
- * of its own: a value split by a character this takes out is whole for the agent, so it is whole
- * for the check too.
+ * What an agent is handed inside an untrusted frame. A check on what an agent reads takes this
+ * reading, never a list of its own, so a value it rejoins is whole for the check too.
  */
 export function readAsHanded(text: string): ReadWithOrigin {
   return applySteps(text, [...SANITIZE, ...FRAME_TOKENS]);

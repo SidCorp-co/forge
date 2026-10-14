@@ -43,7 +43,6 @@ function bare(text: string): string {
 /** Lower-case one code point at a time, so the same text folds the same way whole or in part. */
 const fold = (text: string): string => text.replace(/[\s\S]/gu, (one) => one.toLowerCase());
 
-/** A way of reading a text: as written, or as an agent is handed it. */
 type Reading = (text: string) => { text: string; origin: readonly number[] | null };
 
 /**
@@ -78,11 +77,7 @@ function foldedWithOffsets(
   return { folded, starts, ends };
 }
 
-/**
- * Whether `value`, read the same way as `seen`, is matched in it anywhere (`true`) or only as the
- * whole of it (`false`), by its length in that reading: a value of twelve characters as stored
- * that the agent's read shortens to `admin` is as short there as `admin` is.
- */
+/** Whether a value is matched anywhere or only as the whole text, by its length in the reading at hand. */
 const anywhere = (held: string): boolean => held.length >= SECRET_LENGTH;
 
 /** Whether `seen` is `held` and nothing else, quotes and stray punctuation at the edges aside. */
@@ -269,18 +264,13 @@ export function withheldMarker(id: string): string {
   return id === '' ? '[withheld]' : `[withheld: test credential "${id}", read at ${READ_AT}]`;
 }
 
-/**
- * The texts a comment reads as once markdown is drawn: as the page draws what is stored, and as an
- * agent would draw what it is handed, which has had the characters `readAsHanded` takes out removed
- * first and so can close a tag or an emphasis the stored text leaves open.
- */
+/** The texts a comment reads as once markdown is drawn: from what is stored, and from what an agent is handed. */
 export function readsAs(text: string): string[] {
   const drawn = readAsText(text);
   const handedDrawn = readAsText(readAsHanded(text).text);
   return handedDrawn === drawn ? [drawn] : [drawn, handedDrawn];
 }
 
-/** The first stored value any drawn reading of `text` carries, in that reading, or `null`. */
 function findWhenDrawn(
   text: string,
   credentials: readonly StoredCredential[],

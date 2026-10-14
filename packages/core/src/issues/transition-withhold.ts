@@ -12,9 +12,8 @@ type Told = { [K in (typeof TOLD)[number]]?: string | undefined };
 
 /**
  * A move's own words with the project's stored test credentials replaced in place, once, before any
- * of them is written. The reason is posted as a comment, and is also kept as the activity row's
- * `reason`, the kernel transition's reason, the live event and a park question's prompt: each holds
- * what the comment holds because each is written from this, never from what was sent.
+ * is written: the comment, the activity row, the kernel transition, the live event and a park
+ * question each hold what the comment holds because each is written from this.
  */
 export async function withholdTransitionText<T extends Told>(
   issueId: string,

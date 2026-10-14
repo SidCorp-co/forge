@@ -78,7 +78,6 @@ class TextReader {
     return UNREAD;
   }
 
-  /** A part of a text: the comments table as drizzle writes it, a text it can read, or nothing it can. */
   private part(expr: ts.Expression): string {
     if (this.model.evalOwn(expr, this.f.file).values.has(TABLE)) return '"comments"';
     return this.read(expr);
