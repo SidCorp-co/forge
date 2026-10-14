@@ -7,6 +7,8 @@
 // missing Chrome fails naming the path tried and is never a test that timed out.
 
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:net";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -33,7 +35,7 @@ afterEach(async () => {
   else process.env.CHROME_BIN = named;
 });
 
-const launchesOf = (_launcher: string) => (existsSync(LAUNCHES) ? readFileSync(LAUNCHES, "utf8").split("\n").filter(Boolean).length : 0);
+const launchesOf = () => (existsSync(LAUNCHES) ? readFileSync(LAUNCHES, "utf8").split("\n").filter(Boolean).length : 0);
 
 const markup =
   '<table aria-label="T"><tbody><tr><td class="sticky">row</td><td><button type="button" aria-label="go">go</button></td></tr></tbody></table>';
@@ -55,8 +57,27 @@ describe("a Chrome that cannot be used is refused by name", () => {
     await expect(launchChrome({ chrome: SLOW, launchMs: 300 })).rejects.toThrow(`Chrome at ${SLOW} first launch did not finish within 300ms`);
   });
 
-  it("holds the socket's opening inside the same launch clock, so a stall there is the launch's too", async () => {
-    await expect(launchChrome({ chrome: SLOW, launchMs: 100 })).rejects.toThrow("first launch did not finish within 100ms");
+  it("spends one launch clock on finding the endpoint and opening its socket, so a stall in the socket is the launch's too", async () => {
+    const stalled = createServer();
+    await new Promise<void>((up) => stalled.listen(0, "127.0.0.1", up));
+    const { port } = stalled.address() as AddressInfo;
+    const ANNOUNCES_AFTER_MS = 1_000;
+    const LAUNCH_MS = 1_500;
+    const announcing = join(dir, "announcing-chrome");
+    writeFileSync(
+      announcing,
+      `#!/bin/sh\nsleep ${ANNOUNCES_AFTER_MS / 1000}\necho "DevTools listening on ws://127.0.0.1:${port}/devtools/browser/x" >&2\nexec sleep 30\n`,
+    );
+    chmodSync(announcing, 0o755);
+    const start = Date.now();
+    try {
+      await expect(launchChrome({ chrome: announcing, launchMs: LAUNCH_MS })).rejects.toThrow(
+        `Chrome at ${announcing} first launch did not finish within ${LAUNCH_MS}ms`,
+      );
+      expect(Date.now() - start).toBeLessThan(ANNOUNCES_AFTER_MS + LAUNCH_MS);
+    } finally {
+      stalled.close();
+    }
   });
 
   it("fails the same way through warmChrome, so a beforeAll names it", async () => {
@@ -93,8 +114,8 @@ describe("the browser is launched once and reused", () => {
     const warmStart = Date.now();
     await warmChrome();
     expect(Date.now() - warmStart).toBeGreaterThanOrEqual(DELAY_MS);
-    expect(launchesOf(DELAYED)).toBe(1);
+    expect(launchesOf()).toBe(1);
     for (const width of [390, 1280, 390]) await measureReach(markup, width === 390 ? 356 : 894, width);
-    expect(launchesOf(DELAYED)).toBe(1);
+    expect(launchesOf()).toBe(1);
   }, WARM_HOOK_MS);
 });
