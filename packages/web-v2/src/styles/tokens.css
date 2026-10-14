@@ -19,8 +19,9 @@
                  content layer stays flat. Overlays separate by --shadow-overlay.
    The base is dark in both themes, so the content stands on it as the page; on a grey base the
    sidebar's text read washed out beside the content's. The --shell-* tokens are the base's own
-   palette, and [data-layer="shell"] below points the semantic aliases at them, so everything drawn
-   on the sidebar (its rows, controls, chips and counts) reads light on graphite at AA.
+   palette. [data-layer="shell"] is a scope like [data-theme]: it takes the dark scales, its neutrals
+   become the base's steps, and the aliases and old names re-resolve on it, so everything drawn on
+   the sidebar (its rows, controls, chips and counts) reads light on graphite at AA.
    Layer 3 — the old names (paper, ink, flame, cobalt, amber, green, red, slate), each mapped onto
    a scale step so every existing use follows the theme; new code reads layer 2.
    Type, radius, shadow, density and motion are tokens here too; app/globals.css maps them into
@@ -64,12 +65,18 @@
   --shell-control:      oklch(0.29 0.01 264);
   --shell-hover:        oklch(0.32 0.012 264);
   --shell-active:       oklch(0.35 0.012 264);
+  --shell-fill:         oklch(0.38 0.011 264);
+  --shell-solid:        oklch(0.62 0.012 264);
+  --shell-solid-hover:  oklch(0.58 0.012 264);
   --shell-line-subtle:  oklch(0.34 0.01 264);
   --shell-line:         oklch(0.36 0.01 264);
   --shell-line-strong:  oklch(0.44 0.01 264);
 }
 
-[data-theme="dark"] {
+/* The dark scales: the dark theme's, and the shell layer's in either theme, since the base is dark in
+   both. The layer's neutrals are then its own graphite steps (the [data-layer="shell"] rule below). */
+[data-theme="dark"],
+[data-layer="shell"] {
   color-scheme: dark;
   --neutral-1: oklch(0.15 0.003 264);  --neutral-2: oklch(0.21 0.004 264);  --neutral-3: oklch(0.245 0.005 264);  --neutral-4: oklch(0.272 0.005 264);
    --neutral-5: oklch(0.302 0.006 264);  --neutral-6: oklch(0.34 0.007 264);  --neutral-7: oklch(0.4 0.008 264);  --neutral-8: oklch(0.478 0.009 264);
@@ -95,7 +102,9 @@
   --ai-1: oklch(0.172 0.018 292);  --ai-2: oklch(0.198 0.022 292);  --ai-3: oklch(0.238 0.036 292);  --ai-4: oklch(0.268 0.048 292);
    --ai-5: oklch(0.298 0.06 292);  --ai-6: oklch(0.338 0.072 292);  --ai-7: oklch(0.398 0.084 292);  --ai-8: oklch(0.478 0.102 292);
    --ai-9: oklch(0.575 0.15 292);  --ai-10: oklch(0.535 0.142 292);  --ai-11: oklch(0.635 0.105 292);  --ai-12: oklch(0.935 0.032 292);
+}
 
+[data-theme="dark"] {
   --bg-app:        var(--neutral-2);
   --bg-surface:    var(--neutral-2);
   --shadow-color:  oklch(0 0 0 / 0.5);
@@ -105,14 +114,19 @@
   --shell-control:      oklch(0.17 0.006 264);
   --shell-hover:        oklch(0.2 0.008 264);
   --shell-active:       oklch(0.23 0.008 264);
+  --shell-fill:         oklch(0.26 0.008 264);
+  --shell-solid:        oklch(0.56 0.011 264);
+  --shell-solid-hover:  oklch(0.52 0.011 264);
   --shell-line-subtle:  oklch(0.25 0.008 264);
   --shell-line:         oklch(0.27 0.008 264);
   --shell-line-strong:  oklch(0.34 0.008 264);
 }
 
-/* also on every [data-theme] element, so a nested theme scope (/dev/design) re-resolves the aliases */
+/* also on every [data-theme] element, so a nested theme scope (/dev/design) re-resolves the aliases,
+   and on the shell layer, so every alias and old name built from a scale step reads the base's scales */
 :root,
-[data-theme] {
+[data-theme],
+[data-layer="shell"] {
   /* ===== TYPE ===== */
   --font-sans: "Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -314,20 +328,17 @@
   --dur-slow: 200ms;
 }
 
-/* The base layer: everything drawn on it reads the base's palette. Declared on the layer's element,
-   after the aliases above, so these win over the theme's for the sidebar and nothing else. */
+/* The base layer: its neutral scale is the base's own graphite steps, so every alias and old name the
+   rule above derives from a neutral (fg, borders, hover, ink, paper, fg-disabled) reads on graphite.
+   Mapped here only where a scale role does not give the base's tone: a control one step up from the
+   base, the muted text, and the accent tint and chips, which the dark scales draw too dark on it. */
 [data-layer="shell"] {
-  color-scheme: dark;
+  --neutral-1: var(--bg-shell);  --neutral-2: var(--shell-control);  --neutral-3: var(--shell-hover);  --neutral-4: var(--shell-active);
+   --neutral-5: var(--shell-fill);  --neutral-6: var(--shell-line-subtle);  --neutral-7: var(--shell-line);  --neutral-8: var(--shell-line-strong);
+   --neutral-9: var(--shell-solid);  --neutral-10: var(--shell-solid-hover);  --neutral-11: var(--shell-fg-subtle);  --neutral-12: var(--shell-fg);
   --bg-surface: var(--shell-control);
   --bg-sunken: var(--shell-control);
-  --bg-hover: var(--shell-hover);
-  --bg-active: var(--shell-active);
-  --border-subtle: var(--shell-line-subtle);
-  --border-default: var(--shell-line);
-  --border-strong: var(--shell-line-strong);
-  --fg-default: var(--shell-fg);
   --fg-muted: var(--shell-fg-muted);
-  --fg-subtle: var(--shell-fg-subtle);
   --accent-tint: var(--shell-accent-tint);
   --accent-text: var(--shell-accent-text);
   --link: var(--shell-chip-fg);
