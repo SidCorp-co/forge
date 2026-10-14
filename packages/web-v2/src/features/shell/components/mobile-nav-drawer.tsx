@@ -165,7 +165,8 @@ export function MobileNavDrawer({
 
   return (
     <SlideOver open={open} onClose={onClose} side="left" width={272} hideHeader fitBody title={t("shell.drawer.label")}>
-      <div className="flex min-h-0 flex-1 flex-col gap-1 px-3 pt-safe pb-safe md:hidden">
+      {/* the drawer is the sidebar on a phone, so it stands on the same base layer */}
+      <div data-layer="shell" className="flex min-h-0 flex-1 flex-col gap-1 bg-shell px-3 text-fg pt-safe pb-safe md:hidden">
         {/* Org context + switcher (ISS-469) — the rail is hidden below md,
             so the drawer carries the current-org control on mobile. */}
         <div className="flex items-center gap-1.5 px-1.5 pb-3">

@@ -1,7 +1,10 @@
-// The UI stands on two layers told apart by tone (tokens.css): a neutral base under the shell and its
+// The UI stands on two layers told apart by tone (tokens.css): a graphite base under the shell and its
 // sidebar, and the content every page paints over it. The owner could not tell the two apart when they
-// were 0.014 of lightness apart, both tinted warm enough to read as cream; these hold the gap open, the
-// neutrals grey, and the text on either layer at WCAG AA.
+// were 0.014 of lightness apart and tinted cream, then read the light grey base's text as washed out
+// beside the content's; these hold the base dark in both themes, every neutral grey, and the text on
+// either layer at WCAG AA. tokens.css is read as the cascade reads it: a theme's element takes every
+// rule its selectors match in source order, and the shell layer's element takes its own rules over the
+// values it inherits, so a token the layer does not re-declare keeps the theme's computed colour.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -11,26 +14,52 @@ const read = (p: string) => readFileSync(join(import.meta.dirname, p), "utf8");
 const tokens = read("tokens.css");
 const shellRoute = read("../routes/_workspace/route.tsx");
 const navRail = read("../design/patterns/nav-rail.tsx");
+const drawer = read("../features/shell/components/mobile-nav-drawer.tsx");
 
 type Oklch = [number, number, number];
+const LAYER = '[data-layer="shell"]';
 
-/** The declarations of the first rule whose selector list ends with `selector`. */
-function block(selector: string): Map<string, string> {
-  const start = tokens.indexOf(`${selector} {`);
-  expect(start, `tokens.css declares ${selector}`).toBeGreaterThan(-1);
-  const body = tokens.slice(start, tokens.indexOf("}", start));
-  return new Map([...body.matchAll(/(--[\w-]+):\s*([^;]+);/g)].map((m) => [m[1] ?? "", (m[2] ?? "").trim()]));
+/** Every rule of tokens.css, in source order: its selector list and its custom-property declarations. */
+const RULES = [...tokens.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({
+  selectors: (m[1] ?? "").split(",").map((s) => s.trim()),
+  decls: [...(m[2] ?? "").matchAll(/(--[\w-]+):\s*([^;]+);/g)].map((d) => [d[1] ?? "", (d[2] ?? "").trim()] as const),
+}));
+
+/** An element's own declarations (later rules win) over what it inherits from its parent. */
+interface Scope { own: Map<string, string>; parent?: Scope }
+function scopeOf(matches: (selector: string) => boolean, parent?: Scope): Scope {
+  const own = new Map<string, string>();
+  for (const rule of RULES) if (rule.selectors.some(matches)) for (const [name, value] of rule.decls) own.set(name, value);
+  return { own, parent };
 }
 
-const THEMES = { light: block('[data-theme="light"]'), dark: block('[data-theme="dark"]') };
-
-function resolve(theme: Map<string, string>, name: string): Oklch {
-  let value = theme.get(name);
-  for (let hops = 0; value?.startsWith("var(") && hops < 4; hops++) value = theme.get(value.slice(4, -1));
-  const m = /^oklch\(([\d.]+) ([\d.]+) ([\d.]+)\)$/.exec(value ?? "");
-  if (!m) throw new Error(`${name} does not resolve to an oklch() colour in its theme block: ${value}`);
-  return [Number(m[1]), Number(m[2]), Number(m[3])];
+function value(scope: Scope, name: string): Oklch {
+  const raw = scope.own.get(name);
+  if (raw === undefined) {
+    if (!scope.parent) throw new Error(`${name} is not declared for this element or any it inherits from`);
+    return value(scope.parent, name);
+  }
+  return parse(scope, raw, name);
 }
+
+/** An oklch() literal, a var() read on the same element, or color-mix(in oklch, A p%, B). */
+function parse(scope: Scope, raw: string, name: string): Oklch {
+  const lit = /^oklch\(([\d.]+) ([\d.]+) ([\d.]+)\)$/.exec(raw);
+  if (lit) return [Number(lit[1]), Number(lit[2]), Number(lit[3])];
+  const ref = /^var\((--[\w-]+)\)$/.exec(raw);
+  if (ref) return value(scope, ref[1] ?? "");
+  const mix = /^color-mix\(in oklch, (.+) ([\d.]+)%, (.+)\)$/.exec(raw);
+  if (mix) {
+    const a = parse(scope, mix[1] ?? "", name), b = parse(scope, mix[3] ?? "", name), p = Number(mix[2]) / 100;
+    return [a[0] * p + b[0] * (1 - p), a[1] * p + b[1] * (1 - p), a[2] * p + b[2] * (1 - p)];
+  }
+  throw new Error(`${name} does not resolve to an oklch() colour: ${raw}`);
+}
+
+const themeOf = (theme: "light" | "dark") =>
+  scopeOf((s) => s === ":root" || s === "[data-theme]" || s === `[data-theme="${theme}"]`);
+const THEMES = { light: themeOf("light"), dark: themeOf("dark") };
+const shellIn = (theme: Scope) => scopeOf((s) => s === LAYER, theme);
 
 /** WCAG relative luminance of an OKLCH colour, through linear sRGB. */
 function luminance([L, C, h]: Oklch): number {
@@ -44,31 +73,66 @@ function luminance([L, C, h]: Oklch): number {
 }
 const contrast = (x: Oklch, y: Oklch) => {
   const [hi, lo] = [luminance(x), luminance(y)].sort((p, q) => q - p);
-  return ((hi ?? 0) + 0.05) / ((lo ?? 0) + 0.05);
+  return Number((((hi ?? 0) + 0.05) / ((lo ?? 0) + 0.05)).toFixed(2));
 };
+const grey = (name: string, [, C, h]: Oklch) => ({ name, warm: C > 0.003 && h >= 20 && h <= 120, faint: C <= 0.015 });
 
 describe.each(Object.entries(THEMES))("the %s theme's background layers", (_, theme) => {
+  const shell = shellIn(theme);
+
   it("keeps every neutral step grey: achromatic, or too faint and too cool to read as cream", () => {
     for (let step = 1; step <= 12; step++) {
-      const [, C, h] = resolve(theme, `--neutral-${step}`);
-      const warm = C > 0.003 && h >= 20 && h <= 120;
-      expect({ step, C, h, warm }).toEqual({ step, C, h, warm: false });
-      expect(C, `neutral-${step} chroma`).toBeLessThanOrEqual(0.015);
+      const name = `--neutral-${step}`;
+      expect(grey(name, value(theme, name))).toEqual({ name, warm: false, faint: true });
     }
   });
 
   it("parts the shell's base from the content by tone, and keeps the content one flat tone", () => {
-    const shell = resolve(theme, "--bg-shell"), app = resolve(theme, "--bg-app"), surface = resolve(theme, "--bg-surface");
-    expect(Math.abs(shell[0] - app[0]), "lightness between --bg-shell and --bg-app").toBeGreaterThanOrEqual(0.04);
-    expect(surface, "--bg-surface is the content's own tone").toEqual(app);
+    const base = value(theme, "--bg-shell"), app = value(theme, "--bg-app");
+    expect(app[0] - base[0], "the base sits below the content: lightness of --bg-app over --bg-shell").toBeGreaterThanOrEqual(0.08);
+    expect(value(theme, "--bg-surface"), "--bg-surface is the content's own tone").toEqual(app);
   });
 
-  it("reads text at AA on the base, the content, and a hovered or sunken row on either", () => {
-    for (const bg of ["--bg-shell", "--bg-app", "--neutral-3"]) {
+  it("keeps the base's own neutral steps grey, like the theme's", () => {
+    for (let step = 1; step <= 12; step++) {
+      const name = `--neutral-${step}`;
+      expect(grey(name, value(shell, name))).toEqual({ name, warm: false, faint: true });
+    }
+  });
+
+  it("reads text at AA on the content, and on a hovered or sunken row there", () => {
+    for (const bg of ["--bg-app", "--neutral-3"]) {
       for (const fg of ["--neutral-11", "--neutral-12", "--accent-11", "--ok-11", "--warn-11", "--danger-11", "--info-11", "--muted-11", "--ai-11"]) {
-        const ratio = Number(contrast(resolve(theme, fg), resolve(theme, bg)).toFixed(2));
+        const ratio = contrast(value(theme, fg), value(theme, bg));
         expect({ fg, bg, aa: ratio >= 4.5 }).toEqual({ fg, bg, aa: true });
       }
+    }
+  });
+
+  it("reads the sidebar's text at AA on the base, its controls, a hovered or active row and the active tint", () => {
+    for (const bg of ["--bg-shell", "--bg-surface", "--bg-sunken", "--bg-hover", "--bg-active", "--accent-tint"]) {
+      for (const fg of ["--fg-default", "--fg-muted", "--fg-subtle", "--accent-text", "--link"]) {
+        if (bg === "--accent-tint" && (fg === "--fg-subtle" || fg === "--link")) continue; // an active row's text is fg or accent-text
+        const ratio = contrast(value(shell, fg), value(shell, bg));
+        expect({ fg, bg, aa: ratio >= 4.5 }).toEqual({ fg, bg, aa: true });
+      }
+    }
+    for (const chip of ["--cobalt-50", "--cobalt-100"]) {
+      const ratio = contrast(value(shell, "--cobalt-700"), value(shell, chip));
+      expect({ chip, aa: ratio >= 4.5 }).toEqual({ chip, aa: true });
+    }
+  });
+
+  it("re-resolves the old names and aliases built from a scale step on the layer, so they read on the base", () => {
+    for (const fg of ["--ink-900", "--ink-700", "--ink-600", "--ink-550"]) {
+      const ratio = contrast(value(shell, fg), value(shell, "--bg-shell"));
+      expect({ fg, aa: ratio >= 4.5 }).toEqual({ fg, aa: true });
+    }
+    expect(value(shell, "--paper-0"), "--paper-0 is the base itself").toEqual(value(theme, "--bg-shell"));
+    expect(value(shell, "--fg-disabled"), "--fg-disabled is the base's strong line").toEqual(value(theme, "--shell-line-strong"));
+    // a status read on the layer takes the dark scales, as a [data-theme="dark"] scope would
+    for (const tone of ["ok", "warn", "danger", "info", "muted"]) {
+      expect({ tone, fg: value(shell, `--status-${tone}-fg`) }).toEqual({ tone, fg: value(THEMES.dark, `--${tone}-11`) });
     }
   });
 });
@@ -80,7 +144,27 @@ describe("the shell", () => {
     expect(navRail).toMatch(/data-layer="shell"\s+className=\{cn\(\s+"flex h-full flex-none flex-col border-r border-line bg-shell"/);
   });
 
-  it("lifts a hover on the base to the content's tone, so a hovered row reads on the grey", () => {
-    expect(tokens).toMatch(/\[data-layer="shell"\]\s*\{\s*--bg-hover:\s*var\(--bg-app\);\s*\}/);
+  it("stands the phone's nav drawer on the same base layer as the sidebar", () => {
+    expect(drawer).toMatch(/data-layer="shell" className="[^"]*\bbg-shell\b[^"]*\btext-fg\b/);
+  });
+
+  it("scopes the layer as a theme is scoped: the dark scales, the aliases, and one rule of its own", () => {
+    const carries = (...selectors: string[]) => RULES.filter((r) => selectors.every((s) => r.selectors.includes(s))).length;
+    expect(carries('[data-theme="dark"]', LAYER), "the dark scales also scope the layer").toBe(1);
+    expect(carries("[data-theme]", LAYER), "the alias block re-resolves on the layer").toBe(1);
+    expect(RULES.filter((r) => r.selectors.length === 1 && r.selectors[0] === LAYER).length, "one rule of the layer's own").toBe(1);
+  });
+
+  it("draws the sidebar in the base's palette, in both themes", () => {
+    const wanted: Record<string, string> = {
+      "--bg-shell": "--bg-shell", "--bg-surface": "--shell-control", "--bg-sunken": "--shell-control", "--bg-hover": "--shell-hover", "--bg-active": "--shell-active",
+      "--border-subtle": "--shell-line-subtle", "--border-default": "--shell-line", "--border-strong": "--shell-line-strong",
+      "--fg-default": "--shell-fg", "--fg-muted": "--shell-fg-muted", "--fg-subtle": "--shell-fg-subtle",
+      "--accent-tint": "--shell-accent-tint", "--accent-text": "--shell-accent-text",
+    };
+    for (const theme of Object.values(THEMES)) {
+      const shell = shellIn(theme);
+      for (const [alias, token] of Object.entries(wanted)) expect({ alias, is: value(shell, alias) }).toEqual({ alias, is: value(theme, token) });
+    }
   });
 });
