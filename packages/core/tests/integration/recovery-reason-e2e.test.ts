@@ -170,7 +170,9 @@ describe("a person's recovery move says why on the issue", () => {
     await transitionIssueStatus(issue, 'open', person(), { recovery: true, transitionReason: why });
 
     const said = (await thread(issue.id)).map((c) => c.body);
-    expect(said, "a person's hand-back with no word on the thread is a silent move").toHaveLength(1);
+    expect(said, "a person's hand-back with no word on the thread is a silent move").toHaveLength(
+      1,
+    );
     expect(said[0]).toContain('Handed back — moved from `in_progress` to `open`');
     expect(said[0]).toContain(why);
     expect(said[0], 'a person made this move, not Forge').not.toContain('Forge made this move');

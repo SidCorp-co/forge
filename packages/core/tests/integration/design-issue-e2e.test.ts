@@ -1,152 +1,28 @@
-import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import {
-  closeWorld,
-  type Doc,
-  ok,
-  type Reply,
-  requester,
-  startQueue,
-  testEnv,
-} from '../helpers/ecosystem-world.js';
-import { addProjectMember, createTestProject, createTestUser, rows } from '../helpers/factories.js';
-import { seedProjectDocument } from '../helpers/release-world.js';
+  codesOf,
+  decide,
+  designIssueWorld,
+  designLandingOf,
+  designOf,
+  gitProject,
+  markOf,
+  mergeNotRecorded,
+  outsideProject,
+  plantIssue,
+  proposedDesign,
+  writeChanged,
+} from '../helpers/design-issue-world.js';
+import { ok } from '../helpers/ecosystem-world.js';
+import { rows } from '../helpers/factories.js';
 
-// The issue a design revision is drawn under (ISS-261), what its approval records on that issue
-// (ISS-262), and how long a decision's reason may be (ISS-263).
+// The issue a design revision is drawn under (ISS-261), and what its approval records on that issue
+// (ISS-262). An approval on an issue that shipped or is linked as a build, and how long a decision's
+// reason may be (ISS-263): `design-approval-after-e2e`.
 
-let ownerId: string;
-let gitProject: string;
-let outsideProject: string;
-let say: (who: 'owner' | 'master', method: string, path: string, body?: unknown) => Promise<Reply>;
-let designLandingOf: typeof import('../../src/issues/design-landing.js').designLandingOf;
-let mergeNotRecorded: typeof import('../../src/issues/merged-at.js').mergeNotRecorded;
-
-const design = (): Doc =>
-  JSON.parse(
-    readFileSync(
-      new URL('../fixtures/workflows/post-discharge.design.json', import.meta.url),
-      'utf8',
-    ),
-  );
-
-beforeAll(async () => {
-  testEnv();
-  const { app } = await import('../../src/index.js');
-  await startQueue();
-  const { signUserToken } = await import('../../src/credentials/jwt.js');
-  const { mintPat } = await import('../../src/credentials/pat.js');
-  ({ designLandingOf } = await import('../../src/issues/design-landing.js'));
-  ({ mergeNotRecorded } = await import('../../src/issues/merged-at.js'));
-  ownerId = (await createTestUser({ verified: true })).id;
-  gitProject = (await createTestProject(ownerId)).id;
-  outsideProject = (await createTestProject(ownerId)).id;
-  await seedProjectDocument(gitProject, ownerId, { environments: {} });
-  await seedProjectDocument(outsideProject, ownerId, {
-    environments: {},
-    source: { type: 'none' },
-  });
-  const agent = (await createTestUser({ kind: 'agent' })).id;
-  await addProjectMember(gitProject, agent, 'member');
-  await addProjectMember(outsideProject, agent, 'member');
-  say = requester(app, {
-    owner: await signUserToken(ownerId),
-    master: (
-      await mintPat({
-        permissions: ['*'],
-        userId: agent,
-        name: 'master',
-        projectIds: [gitProject, outsideProject],
-      })
-    ).plaintext,
-  });
-}, 120_000);
-
-afterAll(async () => {
-  await closeWorld();
-});
-
-const at = (project: string, path: string) => `/api/projects/${project}${path}`;
-const codesOf = (r: Reply) => (r.json.error?.refusals ?? []).map((x: Doc) => x.code);
-
-interface Mark {
-  mergedAt?: Date | null;
-  sha?: string | null;
-  landing?: string | null;
-}
-
-let seq = 500;
-/** An issue planted at a status and mark under the kernel's flag: the subject is what a design write or decision does to it. */
-async function plantIssue(project: string, status: string, mark: Mark = {}) {
-  const id = randomUUID();
-  seq += 1;
-  const { withKernelMarker } = await import('../../src/db/kernel-marker.js');
-  await withKernelMarker(db, (tx) =>
-    tx.execute(sql`
-      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id,
-                          merged_at, merged_commit_sha, merged_landing)
-      VALUES (${id}, ${project}, ${seq}, ${`planted ${status}`}, ${status}, ${ownerId},
-              ${mark.mergedAt?.toISOString() ?? null}::timestamptz, ${mark.sha ?? null},
-              ${mark.landing ?? null})
-    `),
-  );
-  return { id, key: `ISS-${seq}` };
-}
-
-async function markOf(issueId: string) {
-  const [row] = await rows<{
-    status: string;
-    merged_at: string | null;
-    merged_commit_sha: string | null;
-    merged_landing: string | null;
-    merged_artifacts: unknown;
-  }>(
-    sql`SELECT status, merged_at, merged_commit_sha, merged_landing, merged_artifacts FROM issues WHERE id = ${issueId}`,
-  );
-  return row && { ...row, merged_at: row.merged_at === null ? null : new Date(row.merged_at) };
-}
-
-async function proposedDesign(project: string, flow: string, issue?: string): Promise<string> {
-  const d = design();
-  d.project = project;
-  d.flow = flow;
-  const made = ok(
-    await say('master', 'POST', at(project, '/workflows'), { baseRevision: null, document: d }),
-    201,
-  );
-  const id = made.document.id as string;
-  ok(
-    await say('master', 'POST', at(project, `/workflows/${id}/design/propose`), {
-      revision: 1,
-      ...(issue ? { issue } : {}),
-    }),
-  );
-  return id;
-}
-
-/** A PUT that changes the design, so it proposes a new revision; `issue` names the drawing issue. */
-async function writeChanged(project: string, id: string, issue?: string): Promise<Reply> {
-  const read = ok(await say('master', 'GET', at(project, `/workflows/${id}`)));
-  const document = { ...read.document, summary: `${read.document.summary} (rev ${read.revision})` };
-  return say('master', 'PUT', at(project, `/workflows/${id}`), {
-    baseRevision: read.revision,
-    document,
-    ...(issue ? { issue } : {}),
-  });
-}
-
-const decide = (project: string, id: string, revision: number, decision: string, reason?: string) =>
-  say('owner', 'POST', at(project, `/workflows/${id}/design/decision`), {
-    revision,
-    decision,
-    ...(reason === undefined ? {} : { reason }),
-  });
-
-const designOf = async (project: string, id: string) =>
-  ok(await say('master', 'GET', at(project, `/workflows/${id}/design`)));
+designIssueWorld();
 
 describe('a write proposing a revision names the issue drawing it (ISS-261)', () => {
   for (const status of ['closed', 'dropped'] as const) {
@@ -290,10 +166,12 @@ describe('an approval records the approved revision on the issue that drew it (I
     ]);
     // the landing is the design's, so it closes through design_delivered and never waits at
     // awaiting_release for a release no roster gives it: refused there by name, outside git too
-    expect(await mergeNotRecorded(db, { issueId: issue.id, to: 'awaiting_release' })).toMatchObject({
-      code: 'MERGE_DESIGN_ONLY',
-      details: { mark: 'design_only', designs: ['marked-flow@rev1'], useInstead: 'closed' },
-    });
+    expect(await mergeNotRecorded(db, { issueId: issue.id, to: 'awaiting_release' })).toMatchObject(
+      {
+        code: 'MERGE_DESIGN_ONLY',
+        details: { mark: 'design_only', designs: ['marked-flow@rev1'], useInstead: 'closed' },
+      },
+    );
     expect(await mergeNotRecorded(db, { issueId: issue.id, to: 'closed' })).toBeNull();
   });
 
@@ -400,125 +278,5 @@ describe('an approval records the approved revision on the issue that drew it (I
     const row = await markOf(dropped.id);
     expect(row?.status).toBe('dropped');
     expect(row?.merged_at).toBeNull();
-  });
-});
-
-describe('an approval leaves the mark of a design issue that already shipped (ISS-262)', () => {
-  it('writes no mark on a closed design issue, and its notice says the approval came after the close', async () => {
-    const shippedAt = new Date('2026-10-01T10:00:00Z');
-    const shippedLanding = 'workflow closed-flow rev 1, proposed';
-    const issue = await plantIssue(outsideProject, 'closed', {
-      mergedAt: shippedAt,
-      landing: shippedLanding,
-    });
-    const id = await proposedDesign(outsideProject, 'closed-flow', issue.id);
-
-    const approved = ok(await decide(outsideProject, id, 1, 'approve'));
-    expect(approved.designIssue).toMatchObject({
-      issueId: issue.id,
-      action: 'none',
-      status: 'closed',
-      mark: 'landed',
-    });
-    expect(approved.designIssue.why).toContain('closed');
-    const row = await markOf(issue.id);
-    expect(row?.status).toBe('closed');
-    expect(row?.merged_at?.getTime()).toBe(shippedAt.getTime());
-    expect(row?.merged_commit_sha).toBeNull();
-    expect(row?.merged_landing).toBe(shippedLanding);
-    const posted = await rows<{ body: string }>(
-      sql`SELECT body FROM comments WHERE issue_id = ${issue.id}`,
-    );
-    const notice = posted.map((c) => c.body).find((b) => b.includes('was approved'));
-    expect(notice).toContain('after this issue was closed');
-    expect(notice).not.toContain('takes its next move');
-    expect(notice).toContain('To change this design again, name the issue drawing the change');
-  });
-});
-
-describe('an approval is evidence, never the landing, on an issue linked as a build', () => {
-  /** An issue linked as the build of `built`, a workflow other than the one drawn under it. */
-  async function buildIssue(project: string, built: string, mark: Mark = {}) {
-    const issue = await plantIssue(project, 'open', mark);
-    const builtId = await proposedDesign(project, built);
-    ok(
-      await say('master', 'POST', at(project, `/workflows/${builtId}/builds`), {
-        issue: issue.key,
-      }),
-    );
-    return issue;
-  }
-
-  const noticesOn = async (issueId: string) =>
-    (await rows<{ body: string }>(sql`SELECT body FROM comments WHERE issue_id = ${issueId}`)).map(
-      (c) => c.body,
-    );
-
-  for (const shape of ['outside_git', 'git'] as const) {
-    it(`writes no mark on a ${shape} build issue and records the approved revision on it as evidence`, async () => {
-      const project = shape === 'git' ? gitProject : outsideProject;
-      const flow = shape.replace('_', '-');
-      const issue = await buildIssue(project, `${flow}-tour-flow`);
-      const id = await proposedDesign(project, `${flow}-queue-ux-flow`, issue.id);
-
-      const approved = ok(await decide(project, id, 1, 'approve'));
-      expect(approved.designIssue).toMatchObject({
-        issueId: issue.id,
-        action: 'evidence',
-        mark: 'unmarked',
-        status: 'open',
-      });
-      expect(approved.designIssue.why).toContain(`builds workflow ${flow}-tour-flow`);
-      const row = await markOf(issue.id);
-      expect(row).toMatchObject({
-        status: 'open',
-        merged_at: null,
-        merged_landing: null,
-        merged_artifacts: null,
-      });
-      expect(
-        await mergeNotRecorded(db, { issueId: issue.id, to: 'awaiting_release' }),
-      ).not.toBeNull();
-      const notice = (await noticesOn(issue.id)).find((b) => b.includes('was approved'));
-      expect(notice).toContain(`Design \`${flow}-queue-ux-flow\` revision 1 was approved`);
-      expect(notice).toContain(`builds workflow \`${flow}-tour-flow\``);
-      expect(notice).toContain('evidence for it, not its landing');
-      expect(notice).not.toContain('merged mark now records it');
-    });
-  }
-
-  it("leaves a build issue's own landing as it stands, and says so", async () => {
-    const landing = 'hop Autoflow draft: the tour pages, built';
-    const at0 = new Date('2026-10-01T10:00:00Z');
-    const issue = await buildIssue(outsideProject, 'own-landing-tour-flow', {
-      mergedAt: at0,
-      landing,
-    });
-    const id = await proposedDesign(outsideProject, 'own-landing-ux-flow', issue.id);
-
-    const approved = ok(await decide(outsideProject, id, 1, 'approve'));
-    expect(approved.designIssue).toMatchObject({ action: 'evidence', mark: 'landed' });
-    const row = await markOf(issue.id);
-    expect(row?.merged_landing).toBe(landing);
-    expect(row?.merged_at?.getTime()).toBe(at0.getTime());
-    const notice = (await noticesOn(issue.id)).find((b) => b.includes('was approved'));
-    expect(notice).toContain('Its merged mark is left as it stood.');
-  });
-});
-
-describe("a decision's reason holds what a decision comment holds (ISS-263)", () => {
-  it('takes a 4000-character return reason whole', async () => {
-    const id = await proposedDesign(gitProject, 'long-reason-flow');
-    const reason = 'r'.repeat(4000);
-    ok(await decide(gitProject, id, 1, 'return', reason));
-    expect((await designOf(gitProject, id)).revisions[0].reason).toBe(reason);
-  });
-
-  it('refuses a 4001-character reason by its shape, and decides nothing', async () => {
-    const id = await proposedDesign(gitProject, 'too-long-reason-flow');
-    const res = await decide(gitProject, id, 1, 'return', 'r'.repeat(4001));
-    expect(res.status, JSON.stringify(res.json).slice(0, 400)).toBe(400);
-    expect(JSON.stringify(res.json)).toContain('a return carries its reason');
-    expect((await designOf(gitProject, id)).status).toBe('proposed');
   });
 });

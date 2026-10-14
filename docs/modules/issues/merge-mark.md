@@ -196,9 +196,10 @@ propose names a revision that was not yet approved, and the approval is better e
 word (ISS-262). Like every mark it moves no status.
 
 Whatever the shape, an issue whose mark is the design's alone is design-only: it closes through
-`design_delivered` and `awaiting_release` refuses it `MERGE_DESIGN_ONLY` (`merged-at.ts:mergeNotRecorded`),
-since no release roster carries it (`release-batch/create.ts:withoutDesignOnly`). Outside git it once
-entered `awaiting_release` on its design landing and stood there with no release ever taking it.
+`design_delivered`, and `awaiting_release` refuses it `MERGE_DESIGN_ONLY`
+(`packages/core/src/issues/merged-at.ts:mergeNotRecorded`), since no release roster carries it
+(`packages/core/src/release-batch/create.ts:withoutDesignOnly`). Outside git it once entered
+`awaiting_release` on its design landing and stood there with no release ever taking it.
 
 The forecast (`packages/core/src/forecast/`) does not read an issue landed by `merged_at` alone: it reads
 landed by status — `awaiting_release` or `closed` — so an open issue carrying a mark is forecast as work,
