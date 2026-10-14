@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.236] - 2026-10-14
+
+Detail pages lead with content on phones; contract timeline marks merge close versions
+
+### Fixed
+
+- **A detail page on a phone now says what it is before its properties.** The facts rail folds behind one Facts row under the page's lead and stays whole, and a contract's close versions no longer print over each other.
+
 ## [0.4.0-dev.235] - 2026-10-14
 
 Ask Agent sizes and requirement flow re-cut, with neutral surfaces and menu trigger fixes
