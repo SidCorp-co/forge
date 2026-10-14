@@ -1,6 +1,7 @@
 
 import { RELEASE_PAGE_VIEWS, type ReleasePageViewKind } from "@forge/contracts/release-page";
 import {
+  ContentsList,
   DetailLayout,
   DetailMobileTitle,
   DetailPane,
@@ -21,7 +22,7 @@ import { ReleaseBanner } from "./release-bits";
 import { ChecksPane } from "./release-checks";
 import { ReleaseProperties, ReleasePhoneStanding } from "./release-facts";
 import { ReleasePageActions } from "./release-page-actions";
-import { ReleaseReader } from "./release-reader";
+import { ReleaseReader, useReleaseContents } from "./release-reader";
 import { CriteriaPane, IssuesPane, NotesPane, OverviewPane, RELEASE_TABS, type ReleaseTab } from "./release-panes";
 
 const LABEL: Record<ReleaseTab, ProductCopyKey> = {
@@ -39,7 +40,7 @@ function ReaderPane({ projectId, slug, version, view }: { projectId: string; slu
   return (
     <DetailPane label={t("releases.page.loading")} testId="release-page-reader">
       <QueryBoundary query={q} loadingLabel={t("releases.page.loading")}>
-        {(page) => <ReleaseReader page={page} slug={slug} authed />}
+        {(page) => <ReleaseReader page={page} slug={slug} authed railContents />}
       </QueryBoundary>
     </DetailPane>
   );
@@ -54,6 +55,7 @@ export function ReleasePage({ projectId, slug, version }: { projectId: string; s
   const list = useReleases(projectId);
   // the same read the reader pane holds: the share and export acts sit beside the view switch
   const pageQ = useReleasePage(projectId, version, view);
+  const contents = useReleaseContents(pageQ.data);
   return (
     <QueryBoundary query={q} loadingLabel={t("releases.loadingOne")}>
       {(data) => {
@@ -82,6 +84,10 @@ export function ReleasePage({ projectId, slug, version }: { projectId: string; s
             dataKey={r.key}
             rail={
               <FactsRail>
+                {/* the page's contents head the rail on a wide screen; where the rail falls under the page, the reader's menu stands in */}
+                <div className="max-lg:hidden">
+                  <ContentsList items={contents} label={t("releases.page.contents")} testId="release-rail-contents" />
+                </div>
                 <ReleaseProperties r={r} forecast={forecastQ.data} besideReader />
               </FactsRail>
             }

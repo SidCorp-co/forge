@@ -53,7 +53,8 @@ completes or moves forward, its highlights, what is still open; refused by name 
 `RELEASE_SUMMARY_UNDERIVABLE` where the release carries no change and no requirement), one facts line
 (live and where, approval, what it proved, whether an admin owes a step), the changes counted by
 group (New features, Improvements, Fixes, Security, Other, Still open), each count a link to its
-group, and a sticky contents line. Every change is one row of at most fifteen words
+group. The page's contents head the facts rail (`ContentsList`, the group in view marked) and are one
+menu at the content's top where the rail has fallen under it (`ContentsMenu`). Every change is one row of at most fifteen words
 (`releaseRowHeadline`) with its issue key small at the right; the full note, the issue and
 requirement links, its criteria proven and open, and its technical note open under the row. Nothing
 code-level shows until a row is opened; the Technical view (the developer view) adds the build, the

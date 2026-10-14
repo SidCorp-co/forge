@@ -1,9 +1,10 @@
 // The release page a reader sees (REQ-40), read in thirty seconds: a summary and where it stands
-// first, the changes counted by group with each count a link, a contents line, then one short row per
+// first, the changes counted by group with each count a link, its contents as one menu, then one short row per
 // change whose detail (the full note, the keys, the criteria, the technical note) opens under it. The
 // clip plays from the bytes the session may fetch; the technical note is never on a share.
 
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { releasePage, TECHNICAL } from "@/test/release-page";
 import { fakeCore, renderWithQuery } from "@/test/render";
@@ -97,7 +98,7 @@ describe("where the release stands, in one line (BC-1, BC-12)", () => {
   });
 });
 
-describe("the changes at a glance, and the contents line", () => {
+describe("the changes at a glance, and the contents", () => {
   it("counts each group and links a count to its group, leaving an empty group counted and unlinked", () => {
     renderWithQuery(<ReleaseReader page={releasePage()} authed={false} />);
     const cell = (k: string) => screen.getByTestId(`page-glance-${k}`);
@@ -106,6 +107,8 @@ describe("the changes at a glance, and the contents line", () => {
     expect(cell("new")).toHaveAttribute("href", "#release-new");
     expect(cell("open")).toHaveAttribute("href", "#release-open");
     expect(cell("improved")).not.toHaveAttribute("href");
+    // the row knows its six cells, so it wraps into even lines (six, three a line, two a line) and never five over one
+    expect(screen.getByTestId("page-glance-row").style.getPropertyValue("--stat-track")).toContain("(660px - 100%)");
     // every link lands on a group that is on the page
     for (const k of ["new", "fixed", "other", "open"]) {
       const target = cell(k).getAttribute("href")?.slice(1) ?? "";
@@ -124,11 +127,40 @@ describe("the changes at a glance, and the contents line", () => {
     expect(screen.getByTestId("page-group-fixed")).not.toHaveTextContent("Reset links");
   });
 
-  it("names exactly the groups the page draws, in reading order", () => {
+  it("names exactly the groups the page draws, in reading order, as one menu control and never a row of links", async () => {
+    const user = userEvent.setup();
     renderWithQuery(<ReleaseReader page={releasePage()} authed={false} />);
-    const links = within(screen.getByTestId("page-contents")).getAllByRole("link");
-    expect(links.map((a) => a.textContent)).toEqual(["Highlights", "New features", "Fixes", "Requirements", "Still open", "Other changes", "Admin steps"]);
-    expect(links.map((a) => a.getAttribute("href"))).toEqual(["#release-highlights", "#release-new", "#release-fixed", "#release-requirements", "#release-open", "#release-other", "#release-admin"]);
+    const contents = screen.getByTestId("page-contents");
+    expect(within(contents).queryAllByRole("link")).toHaveLength(0);
+    expect(contents.querySelectorAll("button")).toHaveLength(1);
+    await user.click(screen.getByTestId("page-contents-trigger"));
+    const items = await screen.findAllByRole("menuitemcheckbox");
+    expect(items.map((i) => i.textContent)).toEqual(["Highlights", "New features", "Fixes", "Requirements", "Still open", "Other changes", "Admin steps"]);
+  });
+
+  it("takes the reader to the group picked from the menu", async () => {
+    const user = userEvent.setup();
+    const went: string[] = [];
+    // jsdom draws no layout and has no scrollIntoView: the double records which group was asked for
+    Object.defineProperty(Element.prototype, "scrollIntoView", {
+      configurable: true,
+      value(this: Element) {
+        went.push(this.id);
+      },
+    });
+    renderWithQuery(<ReleaseReader page={releasePage()} authed={false} />);
+    await user.click(screen.getByTestId("page-contents-trigger"));
+    await user.click(await screen.findByRole("menuitemcheckbox", { name: "Still open" }));
+    expect(went).toEqual(["release-open"]);
+    Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+  });
+
+  it("hides its menu on a wide screen where a rail beside the page lists the contents, and keeps it where none does", () => {
+    const { unmount } = renderWithQuery(<ReleaseReader page={releasePage()} authed railContents />);
+    expect(screen.getByTestId("page-contents").className).toMatch(/(^|\s)lg:hidden(\s|$)/);
+    unmount();
+    renderWithQuery(<ReleaseReader page={releasePage()} authed={false} />);
+    expect(screen.getByTestId("page-contents").className).not.toMatch(/lg:hidden/);
   });
 });
 

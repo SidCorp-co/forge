@@ -1,6 +1,7 @@
 // The release as its reader reads it (REQ-40), shaped to be read in thirty seconds: where it stands
-// and a plain summary first, then its changes counted at a glance, a contents line, and each change
-// as one short row in its group. Everything code-level (the full note, the issue and requirement
+// and a plain summary first, then its changes counted at a glance, and each change
+// as one short row in its group. Its contents sit in the facts rail beside it on a wide screen and are
+// one menu at its top where there is no rail. Everything code-level (the full note, the issue and requirement
 // keys, the criteria, the technical note) sits behind the row's own disclosure; the build, the range
 // and the lists an engineer reads are the Technical view's. The same component draws a page in the
 // app (a member, with links into the project) and a frozen page a share link opens (no links, no
@@ -8,7 +9,7 @@
 
 import { RELEASE_CHANGE_GROUPS, type ReleaseGlance, releaseGlanceOf, releaseSummaryOf } from "@forge/contracts/release-digest";
 import type { ReleasePage } from "@forge/contracts/release-page";
-import { StatCell, StatRow } from "@/design";
+import { type ContentsItem, ContentsMenu, StatCell, StatRow } from "@/design";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { verifiedSentence } from "../verified";
 import { ANCHOR, type Anchor, GROUP_TITLE, type Reach } from "./release-anchors";
@@ -84,7 +85,7 @@ function ReleaseCounts({ glance }: { glance: ReleaseGlance }) {
   ];
   return (
     <nav aria-label={t("releases.page.glance.label")} data-testid="page-glance">
-      <StatRow testId="page-glance-row" cellMin={110}>
+      <StatRow testId="page-glance-row" cellMin={110} cells={cells.length}>
         {cells.map((c) => (
           <StatCell
             key={c.key}
@@ -100,27 +101,7 @@ function ReleaseCounts({ glance }: { glance: ReleaseGlance }) {
   );
 }
 
-/** The groups this page shows, as one line of links that stays in view while the reader scrolls. */
-function ReleaseContents({ shown }: { shown: Anchor[] }) {
-  const t = useCopy();
-  if (shown.length < 2) return null;
-  return (
-    <nav
-      aria-label={t("releases.page.contents")}
-      className="sticky top-0 z-10 -mx-1 flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-line-subtle bg-app px-1 py-2 text-13"
-      data-testid="page-contents"
-    >
-      <span className="text-12 font-medium text-subtle">{t("releases.page.contents")}</span>
-      {shown.map((a) => (
-        <a key={a} href={`#${ANCHOR[a]}`} className="font-medium text-link no-underline hover:underline" data-testid={`page-contents-${a}`}>
-          {a === "highlights" ? t("releases.page.highlights.title") : t(GROUP_TITLE[a])}
-        </a>
-      ))}
-    </nav>
-  );
-}
-
-/** The groups the page draws, in reading order, so the contents line names exactly what is on it. */
+/** The groups the page draws, in reading order, so its contents name exactly what is on it. */
 function shownGroups(page: ReleasePage, glance: ReleaseGlance): Anchor[] {
   return [
     ...(page.highlights.state === "none" ? [] : (["highlights"] as const)),
@@ -133,24 +114,38 @@ function shownGroups(page: ReleasePage, glance: ReleaseGlance): Anchor[] {
   ];
 }
 
+/** The page's contents: one item per group it draws, each naming the anchor the group starts at. */
+export function useReleaseContents(page: ReleasePage | undefined): ContentsItem[] {
+  const t = useCopy();
+  if (!page) return [];
+  return shownGroups(page, releaseGlanceOf(page)).map((a) => ({
+    id: ANCHOR[a],
+    label: a === "highlights" ? t("releases.page.highlights.title") : t(GROUP_TITLE[a]),
+  }));
+}
+
 /**
  * `slug` is set where the reader is a member in the app (keys link into the project); `authed` says
  * the media are issue attachments behind the session rather than tickets a share link minted, and
- * that a row may read its technical note.
+ * that a row may read its technical note. `railContents` says a facts rail beside the page lists the
+ * contents on a wide screen, so the menu here shows only where that rail has collapsed.
  */
-export function ReleaseReader({ page, slug, authed }: { page: ReleasePage; slug?: string | undefined; authed: boolean }) {
+export function ReleaseReader({ page, slug, authed, railContents = false }: { page: ReleasePage; slug?: string | undefined; authed: boolean; railContents?: boolean }) {
+  const t = useCopy();
+  const contents = useReleaseContents(page);
   const glance = releaseGlanceOf(page);
   const checks = checksByIssue(page);
   const reach: Reach = { slug, authed };
   return (
     <div className="grid gap-6" data-testid="release-reader" data-view={page.view} data-tour="rel-users">
+      <ContentsMenu items={contents} label={t("releases.page.contents")} testId="page-contents" className={railContents ? "-mb-4 lg:hidden" : "-mb-4"} />
       <div className="grid gap-3">
         <ReleaseSummaryLines page={page} />
         <ReleaseStanding page={page} />
       </div>
       <ReleaseCounts glance={glance} />
-      <div className="grid">
-        <ReleaseContents shown={shownGroups(page, glance)} />
+      {/* each group's list ends on a hairline; a second one over the next group's title would box it */}
+      <div className="grid [&>section]:border-t-0">
         <div id={ANCHOR.highlights} className="scroll-mt-24 pt-5 empty:hidden">
           <ReleaseHighlightList highlights={page.highlights} slug={slug} authed={authed} />
         </div>
