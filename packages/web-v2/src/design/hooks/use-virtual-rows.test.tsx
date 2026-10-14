@@ -4,10 +4,10 @@
 // the row holding focus is among them, and the library is declared at the exact version the issue
 // pinned and imported nowhere else but under src/design.
 
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { stubLayout } from "@/test-support/layout";
 import { useVirtualRows } from "./use-virtual-rows";
 
@@ -142,5 +142,25 @@ describe("useVirtualRows", () => {
     });
     expect(scroller.scrollTop).toBe(ROW * 400);
     expect(drawn()).not.toContain(999);
+  });
+
+  it("aims a scroll at the last row on End, without moving focus, and leaves Shift+End and a text field's End to the browser", async () => {
+    render(
+      <>
+        <Rows count={1000} />
+        <input aria-label="elsewhere" />
+      </>,
+    );
+    await act(async () => {});
+    const first = document.querySelector<HTMLElement>('[data-index="0"]') as HTMLElement;
+    act(() => first.focus());
+    const aimed = vi.spyOn(Element.prototype, "scrollTo");
+    expect(fireEvent.keyDown(first, { key: "End", shiftKey: true })).toBe(true);
+    expect(fireEvent.keyDown(screen.getByLabelText("elsewhere"), { key: "End" })).toBe(true);
+    expect(aimed).not.toHaveBeenCalled();
+    expect(fireEvent.keyDown(first, { key: "End" })).toBe(false);
+    expect(aimed).toHaveBeenCalled();
+    expect(document.activeElement).toBe(first);
+    aimed.mockRestore();
   });
 });

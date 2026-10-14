@@ -3187,6 +3187,8 @@
 
 - **The biome schemas follow the pinned CLI.** Three `biome.json` files named 2.5.14 against a CLI at 2.5.15; the CLI is now pinned exactly and a test holds the schemas to it. (ISS-1371)
 
+- **End takes a long list to its last row on the first press.** The notification inbox and tables of over 100 rows stopped short and took five presses. Cards and List on Projects now say which is selected. (ISS-1264)
+
 - **Jumping to the end of a long list lands on the last row.** The inbox and tables of over 100 rows stopped hundreds of pixels short when rows ran tall, and only a second scroll reached the end. (ISS-1264)
 
 - **Three small repairs on API Tokens and Agents.** A project name in the Level pill reads on one line, cut to fit, whole on hover, focus or tap; the Agents hint is a sentence; "Self" is "Edit self". (ISS-1264)
