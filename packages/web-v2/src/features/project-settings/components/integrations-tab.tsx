@@ -77,7 +77,7 @@ function ShareExisting({ projectId, canEdit }: { projectId: string; canEdit: boo
   return (
     <PageSection data-tour="int-share">
       <PageSectionBody style={{ paddingTop: 0 }}>
-        <PageSectionTitle className="mb-1">{t("integrations.share.title")}</PageSectionTitle>
+        <PageSectionTitle className="mb-1 text-accent-text!">{t("integrations.share.title")}</PageSectionTitle>
         {!canEdit ? (
           <Banner tone="info">{t("integrations.share.ownerOnly")}</Banner>
         ) : !connectionsQ.isLoading && eligible.length === 0 ? (

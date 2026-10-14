@@ -254,4 +254,13 @@ describe("each tab's rail lists its own groups", () => {
     await waitFor(() => expect(links()).toEqual(["Integrations", "Runners"]));
     expect(screen.queryByRole("heading", { name: "Runners" }), "Runners stacked over Add a device").toBeNull();
   });
+
+  it("heads Connections' groups as every other tab heads its groups", async () => {
+    await railOn("connections");
+    const pane = screen.getByTestId("settings-pane");
+    const heads = [...pane.querySelectorAll("h2, h3")].filter((h) => h.classList.contains("fg-h3"));
+    expect(heads.length, "no group heading found on Connections").toBeGreaterThan(0);
+    for (const h of heads) expect(h, `${h.textContent} is headed unlike the other tabs' groups`).toHaveClass("text-accent-text!");
+  });
 });
+

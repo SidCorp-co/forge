@@ -299,7 +299,7 @@ export function ProjectIntegrations({
       <PageSection>
         <PageSectionHeader className="border-b-0 pt-0">
           <span className="flex items-baseline gap-3">
-            <PageSectionTitle>{t("integrations.title")}</PageSectionTitle>
+            <PageSectionTitle className="text-accent-text!">{t("integrations.title")}</PageSectionTitle>
             {status.data && (
               <span className="fg-body-sm text-subtle">
                 {t("integrations.panel.connectedOf", { n: connectedCount, total: rows.length })}
