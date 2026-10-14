@@ -1,0 +1,1 @@
+**Pages are no longer a washed-out cream.** Content sits on a clean white surface over a grey sidebar, so the two layers read apart at a glance, in dark mode too. Orange links now pass contrast on both.
