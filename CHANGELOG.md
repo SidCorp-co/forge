@@ -2543,7 +2543,7 @@
   (ISS-1313)
 
 ### Removed
-- **Subtasks are gone.** `/api/tasks` and `/api/issues/:id/tasks` answer 404, `forge_issues` refuses `createTask`, `listTasks`, `updateTask` and `deleteTask`, the Tasks tabs are removed, and all 359 subtasks are deleted. (ISS-1132)
+- **Subtasks are gone.** `/api/tasks` and `/api/issues/:id/tasks` answer 404, `forge_issues` refuses `createTask`, `listTasks`, `updateTask` and `deleteTask`, and the Tasks tabs are removed. All 359 subtasks are deleted, and the priority 354 of them carried is withdrawn. (ISS-1132)
 - **`pass_rate` and `approve_rate` are gone from the metrics.** Asking for either is refused by name as retired, with the metrics still served listed. (ISS-1132)
 - **The attribute keys `blocking` and `supersedes` are gone.** Writing either is refused as unregistered; a blocking relation is a dependency edge. (ISS-1132)
 - **A refused `verdict` or `review` fence no longer names the step-context route,** which holds no typed verdict. It says no store holds one whole. (ISS-1132)
