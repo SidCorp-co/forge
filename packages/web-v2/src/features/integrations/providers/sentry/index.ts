@@ -15,5 +15,5 @@ export const sentry: ProviderModule = {
   section: () => import("./section").then((m) => ({ default: m.SentrySection })),
   connectionSection: null,
   connectionNote:
-    "Sentry's host and the org/project targets an agent may name are edited per project, under project settings → Integrations.",
+    "A Sentry connection holds the host and token its projects share; each project picks the Sentry projects its agents may name under project settings → Integrations, so none can name another's.",
 };

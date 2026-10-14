@@ -10,6 +10,7 @@
 
 ### Security
 
+- **One project's agents can no longer read another's Sentry issues through a shared connection.** Each project keeps its own Sentry projects; others are refused. Where projects still share a connection's targets, deploy stops until each declares its own.
 - **A stored test credential no longer reaches an issue comment.** A comment written on the web or by an agent tool that carries one is refused, naming where; text Forge writes itself gets a marker saying where it is read.
 - **A viewer can no longer deploy, cancel or roll back a Coolify binding.** The web API let any project member through; it now asks for the member role, as the agent tool always did, and says which role was held.
 - **Another person's comment cannot be rewritten by an agent, and a reply cannot hang under another issue.** Agents could edit any comment and name any parent; editing now needs the author or a project admin, as in the web.
@@ -127,6 +128,7 @@
 
 ### Added
 
+- **Sentry settings list the organization's Sentry projects to pick from.** Choosing one fills in its organization and project; if the list cannot be read the form says why and still takes the slugs typed by hand.
 - **Long lists draw only the rows in view.** A table of more than 100 rows scrolls in a frame of its own with its header kept in view, and tells a screen reader how many rows it holds. (ISS-1264)
 
 - **The API publishes its own reference.** `/api/openapi.json` describes every route's input, answers, errors and permission, `/api/reference` renders it and `/api/reference/flows` draws four flows; none needs a login. (ISS-1371)

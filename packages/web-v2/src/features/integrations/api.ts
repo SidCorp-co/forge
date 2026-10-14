@@ -20,6 +20,7 @@ import type {
   GitHubRepositoriesResponse,
   McpPreviewResponse,
   RocketchatRoom,
+  SentryProjectsResponse,
   UpdateIntegrationInput,
 } from "./types";
 
@@ -114,6 +115,19 @@ export const integrationsApi = {
   ) =>
     apiClient<{ applications: CoolifyApplication[] }>(
       `/projects/${projectId}/integrations/coolify/applications`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+
+  /** `POST .../integrations/sentry/projects` — the Sentry projects a token can read, through the
+   *  stored credential of a bound integration or one typed on the create form (ISS-1380). */
+  sentryProjects: (
+    projectId: string,
+    body:
+      | { integrationId: string; organizationSlug?: string }
+      | { host: string; authToken: string; organizationSlug?: string },
+  ) =>
+    apiClient<SentryProjectsResponse>(
+      `/projects/${projectId}/integrations/sentry/projects`,
       { method: "POST", body: JSON.stringify(body) },
     ),
 

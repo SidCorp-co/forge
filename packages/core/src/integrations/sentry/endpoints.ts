@@ -24,3 +24,17 @@ export function sentryOrgIssuesUrl(
   if (params.cursor) search.set('cursor', params.cursor);
   return `${sentryRestBase(host)}/api/0/organizations/${encodeURIComponent(organizationSlug)}/issues/?${search.toString()}`;
 }
+
+export function sentryOrganizationsUrl(host: string, cursor?: string): string {
+  const search = cursor ? `?${new URLSearchParams({ cursor }).toString()}` : '';
+  return `${sentryRestBase(host)}/api/0/organizations/${search}`;
+}
+
+export function sentryOrgProjectsUrl(
+  host: string,
+  organizationSlug: string,
+  cursor?: string,
+): string {
+  const search = cursor ? `?${new URLSearchParams({ cursor }).toString()}` : '';
+  return `${sentryRestBase(host)}/api/0/organizations/${encodeURIComponent(organizationSlug)}/projects/${search}`;
+}

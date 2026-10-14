@@ -77,6 +77,7 @@ import {
   testIntegration,
   updateIntegration,
 } from './routes-reference.js';
+import { registerSentryRoutes } from './sentry/routes.js';
 import { buildIntegrationsStatusCards } from './status-service.js';
 import {
   buildContextFromBinding,
@@ -98,6 +99,7 @@ export const integrationsRoutes = new Hono<{ Variables: AuthVars }>();
 integrationsRoutes.use('*', requireAuth(), assertEmailVerified());
 
 registerCoolifyDeployRoutes(integrationsRoutes);
+registerSentryRoutes(integrationsRoutes);
 
 integrationsRoutes.get('/:projectId/integrations', ...listIntegrations, async (c) => {
   const projectId = c.req.param('projectId');

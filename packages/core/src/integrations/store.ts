@@ -9,6 +9,7 @@ import {
   type ObservedEndpoint,
 } from '../db/schema.js';
 import { AGENT_ACCESS_CLOSED, type AgentAccess } from './agent-access.js';
+import { getIntegration, isRegistered } from './registry.js';
 import type { AdapterContext, IntegrationProvider } from './types.js';
 import { decryptJson, encryptJson } from './vault.js';
 
@@ -216,13 +217,20 @@ export function decryptConnectionSecrets<
 
 /**
  * Effective config for a dispatch = connection.config overlaid with
- * binding.config (binding wins on key collisions).
+ * binding.config (binding wins on key collisions). A key the provider declares
+ * `bindingOnlyConfigKeys` is taken from the binding alone: a copy sitting on the
+ * shared connection is not read.
  */
 export function effectiveConfig<TConfig extends Record<string, unknown> = Record<string, unknown>>(
   pair: BindingWithConnection,
 ): TConfig {
+  const connectionConfig = { ...((pair.connection.config ?? {}) as Record<string, unknown>) };
+  const bindingOnly = isRegistered(pair.binding.provider)
+    ? getIntegration(pair.binding.provider)?.schemas.bindingOnlyConfigKeys
+    : undefined;
+  for (const key of bindingOnly ?? []) delete connectionConfig[key];
   return {
-    ...((pair.connection.config ?? {}) as object),
+    ...connectionConfig,
     ...((pair.binding.config ?? {}) as object),
   } as TConfig;
 }

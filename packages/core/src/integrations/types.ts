@@ -234,6 +234,15 @@ export interface IntegrationSchemas {
   independentSecretFields: readonly string[];
   /** Config keys that live on the BINDING rather than the shared connection. */
   bindingConfigKeys: readonly string[];
+  /**
+   * Binding-tier keys the connection tier must NEVER supply. `effectiveConfig` lays the connection's
+   * config under the binding's, so a key listed in `bindingConfigKeys` but held on the connection
+   * still reaches every project bound to it. A key named here is dropped from the connection side of
+   * that overlay: Sentry's `targets` is what confines an agent to one project's Sentry projects, and
+   * a copy an older release wrote to the shared connection must not widen another project's reach.
+   * Absent for a provider that lets a binding inherit the key (Coolify's `targets`).
+   */
+  bindingOnlyConfigKeys?: readonly string[];
 }
 
 /**

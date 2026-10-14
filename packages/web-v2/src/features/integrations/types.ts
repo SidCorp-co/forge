@@ -63,15 +63,25 @@ export interface SentryTarget {
   notes?: string;
 }
 
-/** Non-secret Sentry config stored in the connection `config`. `targets[]` is
- *  the labelled list (ISS-526); the top-level slugs are legacy back-compat. */
+/** Sentry config as the form reads it: `host` lives on the connection, `targets` on this project's
+ *  integration (ISS-1380), so a project edits its own list whatever the shared connection holds. */
 export interface SentryConfig {
   host: string;
   targets?: SentryTarget[];
-  /** @deprecated ISS-526 — superseded by `targets[]`; read-only back-compat. */
-  organizationSlug?: string;
-  projectSlug?: string;
-  environment?: string;
+}
+
+/** One Sentry project a token can read, as the target picker lists it. */
+export interface SentryProject {
+  organizationSlug: string;
+  slug: string;
+  name: string | null;
+  platform: string | null;
+}
+
+export interface SentryProjectsResponse {
+  projects: SentryProject[];
+  /** True where Sentry held more projects than the list carries. */
+  truncated: boolean;
 }
 
 export type { BindingSummary as IntegrationSummary } from "@forge/contracts";
