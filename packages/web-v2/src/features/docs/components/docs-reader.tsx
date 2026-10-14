@@ -58,9 +58,9 @@ function ItemBody({ item }: { item: DocsNavItem }) {
       {item.tag || excerpt ? (
         <span className="flex min-w-0 flex-col">
           <Title item={item} />
+          {excerpt?.heading ? <span className="truncate text-12 font-medium leading-snug text-muted">{excerpt.heading}</span> : null}
           {excerpt ? (
-            <span className="fg-caption line-clamp-2 font-normal text-muted">
-              {excerpt.heading ? <span className="text-fg">{excerpt.heading} · </span> : null}
+            <span className="line-clamp-2 text-12 font-normal leading-snug text-muted">
               <Marked span={excerpt} />
             </span>
           ) : null}

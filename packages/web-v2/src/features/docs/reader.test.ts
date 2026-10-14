@@ -102,6 +102,11 @@ describe("where a page matched", () => {
     expect(matchExcerpt(page("T", body), "foreground")?.heading).toBe("Install");
   });
 
+  it("shows a fence's opening line where only its language marker holds the words", () => {
+    const body = "## Install\n\n```sh\nforge-runner pair\n```";
+    expect(matchExcerpt(page("T", body), "sh")).toEqual({ heading: "Install", before: "```", match: "sh", after: "" });
+  });
+
   it("falls back to the summary, and says nothing where only the title holds the words", () => {
     expect(matchExcerpt(page("T", "body", "Blocks edges gate dispatch."), "edges")).toEqual({
       heading: null,

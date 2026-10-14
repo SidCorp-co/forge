@@ -89,6 +89,6 @@ describe("the in-app search, which shares the public docs' results", () => {
     const results = within(screen.getByRole("list", { name: "Search results" })).getAllByRole("button");
     expect(results[0]).toHaveTextContent(/^Read an issue's status/);
     const mentionOnly = results.find((r) => !r.querySelector("span.flex-col > span")?.textContent?.includes("status"));
-    expect(mentionOnly?.querySelector("span.flex-col > span + span mark")?.textContent?.toLowerCase()).toBe("status");
+    expect(mentionOnly?.querySelector("span.line-clamp-2 mark")?.textContent?.toLowerCase()).toBe("status");
   });
 });

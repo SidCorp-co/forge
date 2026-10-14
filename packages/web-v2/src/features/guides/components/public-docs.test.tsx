@@ -324,7 +324,9 @@ describe("a search result in the reader's sidebar", () => {
       target: { value: "four of them" },
     });
     const [result] = within(screen.getByRole("list", { name: "Search results" })).getAllByRole("link");
-    expect(result).toHaveTextContent("What is an issue?Admission gates · Four of them.I'm an agent or a script");
+    const rows = [...(result.querySelector("span.flex-col")?.children ?? [])].map((r) => r.textContent);
+    expect(rows).toEqual(["What is an issue?", "Admission gates", "Four of them.", "I'm an agent or a script"]);
+    expect(result.querySelector("span.line-clamp-2")?.textContent).toBe("Four of them.");
     expect([...result.querySelectorAll("mark")].map((m) => m.textContent)).toEqual(["Four of them"]);
   });
 

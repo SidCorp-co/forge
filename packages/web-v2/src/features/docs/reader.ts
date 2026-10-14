@@ -146,6 +146,8 @@ export function matchExcerpt(
   let inFence = false;
   for (const line of doc.body.split("\n")) {
     if (/^\s*```/.test(line)) {
+      const marker = splitAtMatch(line.trim(), query);
+      if (marker) return { heading, ...trimmed(marker) };
       inFence = !inFence;
       continue;
     }
