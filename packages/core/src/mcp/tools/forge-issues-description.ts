@@ -60,7 +60,9 @@ export function forgeIssuesDescription(refClause: string): string {
     'relations.blocks (this blocks them) and relations.blockedBy (they block this), each ' +
     'reporting its holdsUntil and flagged expired when its validUntil has passed and it no ' +
     'longer gates dispatch.\n' +
-    'TRANSITION. on_hold is a deliberate pause, waiting parks the issue for human review, and ' +
+    'TRANSITION. on_hold is a deliberate pause, and like waiting, needs_info and reopen it is ' +
+    'refused without a reason (data.reason or data.note), which is posted on the thread as the ' +
+    "entry's announcement. waiting parks the issue for human review, and " +
     'closed means the work shipped: a close on an issue with no merged_at is refused ' +
     '(CLOSE_REQUIRES_SHIPPED), and work that turned out not to be work leaves by dropped. On a ' +
     'project whose release chain names a tag, a close is also refused (CLOSE_REQUIRES_RELEASE_TAG, ' +

@@ -6432,6 +6432,8 @@
 
 ### Changed
 
+- **Putting an issue on hold now asks why, and the thread says so.** A hold with no reason is refused by name, the bulk menu no longer offers it, and each hold posts its reason on the thread. (ISS-1251)
+
 - **An attribute that holds one value per issue now holds exactly one row.** Two simultaneous writers could leave two; the second now replaces the first, and a batch naming the key twice is refused. (ISS-1132)
 
 - **Projects opens as a list on a phone, and the Overview is flat.** Cards stay from 640px up, and the view you pick wins and survives a reload. Overview sections are type over a hairline, with no cards. (ISS-1264)

@@ -110,7 +110,8 @@ describe('ISS-959 C — declared entry criteria, checked for every client', () =
     return app.request(`/api/issues/${id}/transition`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-      body: JSON.stringify({ toStatus }),
+      // A hold is entered with a reason (ISS-1251); the subject here is the entry criteria, so one is always sent.
+      body: JSON.stringify({ toStatus, reason: 'held while the entry criteria are read' }),
     });
   }
 

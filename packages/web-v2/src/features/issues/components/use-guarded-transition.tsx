@@ -22,6 +22,7 @@ const REASON_TOAST: Record<ReasonStatus, string> = {
   reopen: "Issue reopened",
   waiting: "Issue parked for a human",
   needs_info: "Information requested",
+  on_hold: "Issue put on hold",
 };
 
 interface RequestOptions {
@@ -43,7 +44,7 @@ export interface GuardedTransition {
 }
 
 /**
- * Routes the three reason-required statuses through {@link TransitionReasonDialog}
+ * Routes the reason-required statuses through {@link TransitionReasonDialog}
  * and fires every other status straight at the endpoint — both paths confirm
  * with a toast on success.
  */
