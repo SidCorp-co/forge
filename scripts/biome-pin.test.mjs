@@ -6,11 +6,7 @@ import { describe, expect, it } from 'vitest';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (path) => JSON.parse(readFileSync(join(ROOT, path), 'utf8'));
 
-const SCHEMA_FILES = [
-  'packages/core/biome.json',
-  'packages/web-v2/biome.json',
-  'scripts/biome.json',
-];
+const SCHEMA_FILES = ['packages/core/biome.json', 'packages/web-v2/biome.json', 'biome.json'];
 
 /** The version a biome.json's `$schema` names, or null when it names none. */
 export function schemaVersion(config) {

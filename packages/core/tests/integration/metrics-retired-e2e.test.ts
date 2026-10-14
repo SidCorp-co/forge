@@ -116,6 +116,26 @@ describe.each(['pass_rate', 'approve_rate'])('the retired metric %s', (metric) =
     expect(res.text).toContain(`${metric}\` is retired`);
     for (const served of METRICS) expect(res.text).toContain(served);
   });
+
+  it("is refused at the MCP tool as one sentence, not as the validation library's issue array", async () => {
+    const { projectId, pat } = await seed();
+    const res = await callMcp(pat, projectId, metric);
+    expect(res.isError).toBe(true);
+    expect(res.text.startsWith('Error: invalid arguments — `metric`: ')).toBe(true);
+    expect(res.text).not.toMatch(/"code"|"path"|invalid_value|^Error: \[/);
+    expect(() => JSON.parse(res.text.replace(/^Error: /, ''))).toThrow();
+  });
+});
+
+describe('a name that was never a metric, through the MCP tool', () => {
+  it('is refused as not served, in the same one-sentence shape', async () => {
+    const { projectId, pat } = await seed();
+    const res = await callMcp(pat, projectId, 'vibes');
+    expect(res.isError).toBe(true);
+    expect(res.text).toContain('`metric`: metric `vibes` is not a metric this project serves');
+    expect(res.text).not.toContain('is retired');
+    expect(res.text).not.toMatch(/"code"|invalid_value/);
+  });
 });
 
 describe('a name that was never a metric', () => {
@@ -137,5 +157,24 @@ describe('a metric that is still served', () => {
     const res = await timeseries(projectId, jwt, 'queue_depth');
     expect(res.status).toBe(200);
     expect(((await res.json()) as { metric: string }).metric).toBe('queue_depth');
+  });
+});
+
+describe('any other enum-validated MCP input is refused in the same shape', () => {
+  it('names `breakdown` and what it accepts, not an issue array', async () => {
+    const { projectId, pat } = await seed();
+    const ctx = await connectClientAsPat(pat);
+    try {
+      const res = (await ctx.client.callTool({
+        name: 'forge_metrics.project_step_durations',
+        arguments: { projectId, breakdown: 'vibes' },
+      })) as { isError?: boolean; content: Array<{ text: string }> };
+      expect(res.isError).toBe(true);
+      const text = res.content[0]?.text ?? '';
+      expect(text.startsWith('Error: invalid arguments — `breakdown`: ')).toBe(true);
+      expect(text).not.toMatch(/"code"|invalid_value/);
+    } finally {
+      await ctx.close();
+    }
   });
 });

@@ -58,6 +58,10 @@
       "suspicious": {
         "noExplicitAny": "warn"
       }
+    },
+    "domains": {
+      "react": "recommended",
+      "next": "recommended"
     }
   },
   "overrides": [
