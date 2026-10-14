@@ -8,7 +8,7 @@ import { ReleaseProperties } from "./release-facts";
 
 const release = (verifiedBy: ReleaseDetail["verifiedBy"]) =>
   ({
-    criteria: { proven: 0, failing: 0, open: 0, total: 0 },
+    criteria: { proven: 0, failing: 0, open: 0, unproven: 0, total: 0 },
     approval: null,
     approvalRequired: false,
     approvers: [],

@@ -8,6 +8,7 @@
  */
 
 import { criterionStandingOf } from '@forge/contracts/verdict-identity';
+import { verifiedOf } from '@forge/contracts/verified-rule';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { totalsOf } from '../../src/release-batch/release-view.js';
 import { api, userToken } from '../helpers/api.js';
@@ -103,7 +104,17 @@ async function counted(issueId: string, req: string) {
     tally: (rail.body as { standing: { criteria: { passing: number; skipped: number } } }).standing
       .criteria,
     bc: coverage.find((c) => c.code === 'BC-1')?.verdict,
-    release: totalsOf(criteria.map((c) => criterionStandingOf(c.latest as never))),
+    // the release fold by the verified rule, as `release-facts.ts:criteriaAt` reads it: this project
+    // names no independent judge, and the person judging is not the builder
+    release: totalsOf(
+      criteria.map((c) => ({
+        standing: criterionStandingOf(c.latest as never),
+        proven: verifiedOf(
+          c.latest ? [{ verdict: c.latest.verdict, byBuilder: false, authored: true }] : [],
+          null,
+        ).proven,
+      })),
+    ),
   };
 }
 
@@ -121,7 +132,7 @@ describe('a person records "could not judge"', () => {
       latest: 'skipped',
       tally: expect.objectContaining({ passing: 0, skipped: 1 }),
       bc: 'not_judged',
-      release: { proven: 0, failing: 0, open: 1, total: 1 },
+      release: { proven: 0, failing: 0, open: 1, unproven: 0, total: 1 },
     });
   });
 
@@ -137,14 +148,15 @@ describe('a person records "could not judge"', () => {
     expect((await counted(issueId, req)).latest).toBeNull();
   });
 
-  // REQ-35 decision 7b261fca: a short is no verification, so the requirement's coverage never counts it
-  it("a short counts as a pass on the issue and the release fold, not on the requirement's coverage, and could not judge takes the pass away", async () => {
+  // REQ-35 decision 7b261fca: a short is no verification, so neither the requirement's coverage nor
+  // the release fold counts it proven; the issue's passing tally still reads it met
+  it("a short is met on the issue's tally and proven on neither the requirement's coverage nor the release fold, and could not judge takes it away", async () => {
     const { issueId, req } = await tracedClosedIssue();
     expect((await judge(issueId, 'short', 'Met, short of its wording')).status).toBe(201);
     expect(await counted(issueId, req)).toMatchObject({
       tally: expect.objectContaining({ passing: 1, skipped: 0 }),
       bc: 'not_judged',
-      release: { proven: 1, open: 0 },
+      release: { proven: 0, open: 0, unproven: 1 },
     });
 
     expect((await judge(issueId, 'skipped', 'It was never on a screen to judge')).status).toBe(201);
@@ -153,7 +165,7 @@ describe('a person records "could not judge"', () => {
       latest: 'skipped',
       tally: expect.objectContaining({ passing: 0, skipped: 1 }),
       bc: 'not_judged',
-      release: { proven: 0, open: 1 },
+      release: { proven: 0, open: 1, unproven: 0 },
     });
   });
 

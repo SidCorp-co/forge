@@ -6,8 +6,9 @@
  *   contracts, dependencies and settings, come from the range the release run reports from the box
  *   that cut it, read by the one reader (`shippedBetween`), never from a call to a source host.
  * - BC-5: the header, the Proof panel (the release record's totals) and the list under each
- *   requirement count the same carried criteria by the one rule (`criterionCountsAsPass` of the
- *   verdict on the build), a short counted and marked, a pass on an earlier build not counted.
+ *   requirement count the same carried criteria by the one rule (contracts
+ *   `verified-rule.ts:verifiedOf` of the verdicts on the build), a short never proven, a pass on an
+ *   earlier build not counted.
  */
 
 import { sql } from 'drizzle-orm';
@@ -321,7 +322,7 @@ describe('the header, the Proof panel and the list count one set of rows by one 
    * One requirement's four criteria over two issues, plus a criterion of the second issue that
    * traces no requirement criterion, plus an issue that traces no requirement at all:
    *   a#1 pass on the build      -> proven
-   *   a#2 short on the build     -> proven, marked short, and a known issue (BC-8)
+   *   a#2 short on the build     -> not proven: a known issue (BC-8)
    *   b#1 pass on an EARLIER build only -> not proven on this build
    *   b#2 fail on the build      -> not proven
    *   b#3 (no trace) pass on the build -> proven, listed without a code
@@ -382,13 +383,13 @@ describe('the header, the Proof panel and the list count one set of rows by one 
       total: groups.reduce((n, g) => n + g.proven.length + g.unproven, 0),
     };
     // QA 0.4.0-dev.220: "8 of 22" in the header and the panel, 5 proven + 15 not yet proven listed.
-    // The page counts by the rule a requirement does (the owner's ruling of 2026-10-14), so its short
-    // is not proven there; the record's Proof panel counts by the issue gate, which takes a short
-    expect({ header: p.header.verified.proven, list: listed.proven }).toEqual({
-      header: 3,
-      list: 3,
-    });
-    expect(panel.proven, 'the issue gate counts the short').toBe(4);
+    // The page and the record's Proof panel count by the one rule a requirement does (the owner's
+    // ruling of 2026-10-14, REQ-35 decision 7b261fca): the short is proven on neither
+    expect({
+      header: p.header.verified.proven,
+      panel: panel.proven,
+      list: listed.proven,
+    }).toEqual({ header: 3, panel: 3, list: 3 });
     expect({ header: p.header.verified.total, panel: panel.total, list: listed.total }).toEqual({
       header: 6,
       panel: 6,

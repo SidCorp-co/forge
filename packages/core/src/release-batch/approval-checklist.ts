@@ -2,8 +2,9 @@
  * What a release answers to the release approval checklist
  * (`@forge/contracts/checklist-registry:RELEASE_APPROVAL_CHECKLIST`, Requirement lifecycle r15
  * release_check) when its approver approves it: the requirements it carries, each at its revision,
- * and each carried criterion's latest verdict on the commit it ships, read from the same facts the
- * release page counts by (`release-facts.ts`). A project whose document says
+ * and each carried criterion as proven or not on the commit it ships, by the verified rule every count
+ * of proof reads (`release-facts.ts:criteriaAt`, contracts `verified-rule.ts:verifiedOf`): a short, or under an
+ * independent judge the builder's own pass, is not proven, and the gap says why. A project whose document says
  * `delivery.verdictsRequired: false` judges on the running build after release, so its verdicts are
  * not asked here.
  *
@@ -21,10 +22,7 @@ import {
   type RecordAnswers,
 } from '@forge/contracts/checklists';
 import { verdictsRequiredOf } from '@forge/contracts/delivery-policy';
-import {
-  CRITERION_STANDING_LABELS,
-  criterionCountsAsPass,
-} from '@forge/contracts/issue-vocabulary';
+import { CRITERION_STANDING_LABELS } from '@forge/contracts/issue-vocabulary';
 import { requirementKey } from '@forge/contracts/requirements';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -36,8 +34,8 @@ import { criteriaAt, loadReleaseFacts } from './release-facts.js';
 export interface ApprovalFacts {
   /** Each carried issue by its key, the requirement it serves at that requirement's revision. */
   carried: { issue: string; requirement: { key: string; revision: number | null } | null }[];
-  /** Every carried criterion that does not count as a pass, with its standing's words. */
-  unpassed: { issue: string; n: number; standing: string }[];
+  /** Every carried criterion not proven, with its standing's words, or why its pass or short does not count. */
+  unproven: { issue: string; n: number; standing: string }[];
   verdictsRequired: boolean;
 }
 
@@ -74,15 +72,15 @@ export function approvalAnswersOf(f: ApprovalFacts): RecordAnswers {
         })();
   const verdicts: RecordAnswer = !f.verdictsRequired
     ? { value: 'Not asked: this project judges criteria on the running build after release.' }
-    : f.unpassed.length > 0
+    : f.unproven.length > 0
       ? {
-          gap: `Not a pass: ${f.unpassed.map((u) => `${u.issue} criterion ${u.n} (${u.standing})`).join('; ')}.`.slice(
+          gap: `Not proven: ${f.unproven.map((u) => `${u.issue} criterion ${u.n} (${u.standing})`).join('; ')}.`.slice(
             0,
             2000,
           ),
-          fix: 'Have each one judged on the commit it ships; a fail is filed as feedback.',
+          fix: "Have each judged a pass on the commit it ships, by the project's judge; a fail is filed as feedback.",
         }
-      : { value: 'Every carried criterion passes.' };
+      : { value: 'Every carried criterion is proven.' };
   return { carried, verdicts };
 }
 
@@ -123,13 +121,13 @@ export async function approvalFactsOf(
       issue: i.key,
       requirement: i.requirementId ? (reqOf.get(i.requirementId) ?? null) : null,
     })),
-    unpassed: ordered.flatMap((i) =>
-      criteriaAt(i, build)
-        .filter((c) => !criterionCountsAsPass(c.standing))
+    unproven: ordered.flatMap((i) =>
+      criteriaAt(i, build, facts.judge)
+        .filter((c) => !c.proven)
         .map((c) => ({
           issue: i.key,
           n: c.n,
-          standing: CRITERION_STANDING_LABELS[c.standing].toLowerCase(),
+          standing: c.unverified ?? CRITERION_STANDING_LABELS[c.standing].toLowerCase(),
         })),
     ),
     verdictsRequired: verdictsRequiredOf(doc?.document.delivery),

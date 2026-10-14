@@ -102,8 +102,12 @@ async function acceptReasonsOf(
 
 type Facts = Parameters<typeof holds>[0];
 
-/** What the viewer may do to the item now, read off their permissions and its phase. */
-function canOf(i: {
+/**
+ * What the viewer may do to the item now, read off their permissions and its phase. Triage and the
+ * loop close's acts never hold together: triage while it is new, reopened or triaged, verify, reopen
+ * and ask-to-verify only once it reads resolved (feedback-lifecycle), so a page shows one or the other.
+ */
+export function canOf(i: {
   facts: Facts;
   row: Row;
   phase: FeedbackPhase;

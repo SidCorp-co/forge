@@ -165,6 +165,32 @@ describe('what the host answers decides a runtime verdict, not what the issue st
   });
 });
 
+// REQ-35 decision 7b261fca, the owner's ruling of 2026-10-14: "Ship only proven work" holds what the
+// release record counts unproven, by the one rule every count of proof reads (contracts
+// `verified-rule.ts:verifiedOf`). A short is met short of its wording and is never proven.
+describe('the criteria hold reads proof by the verified rule', () => {
+  it('holds a row whose criterion is judged short, saying a short is not verified', async () => {
+    const id = await heldRow('short');
+
+    const result = await sweep();
+
+    expect(result.issuesCut, 'a short is never proven, so it never ships unattended').toBe(0);
+    const hold = await holdOf(id);
+    expect(hold?.code).toBe('RELEASE_CRITERIA_UNEARNED');
+    expect(hold?.reason).toContain('judged short: met short of its wording');
+  });
+
+  it('cuts the same row once the short is judged again a pass on what is served', async () => {
+    const id = await heldRow('short');
+    await fx.postVerdict(id, verdictComment([verdictBlock(1, 'pass')]));
+
+    const result = await sweep();
+
+    expect(result.issuesCut).toBe(1);
+    expect(await holdOf(id)).toBeNull();
+  });
+});
+
 /** ISS-1346 criterion 25: what is served is said once on the hold, however the criteria spell it. */
 describe('a criteria hold names each served commit once', () => {
   const JUDGED_A = '72b94aff846279e6bfb4f6d347586ee67a3cd5f1';

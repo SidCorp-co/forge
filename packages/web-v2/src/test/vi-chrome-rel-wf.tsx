@@ -49,7 +49,7 @@ const summary = (over: Record<string, unknown>) => ({
   headline: "",
   issueCount: 2,
   requirements: [],
-  criteria: { total: 2, proven: 1, failing: 0, open: 1 },
+  criteria: { total: 2, proven: 1, failing: 0, open: 1, unproven: 0 },
   verified: { level: "some_criteria", proven: 1, total: 2, check: null, provider: null },
   contents,
   owner: null,
@@ -74,7 +74,7 @@ const draft = summary({
     effect: say("releases.effect.split", { limit: 50, left: say("releases.effect.splitRest", { n: 13 }) }),
   }),
 });
-const shipped = summary({ key: "0.0.9", version: "0.0.9", state: "shipped", current: true, attentionGroup: "done", waitingOn: nobody, requirements: ["REQ-1"], criteria: { total: 0, proven: 0, failing: 0, open: 0 }, owner: lan, ownerAct: "Cut", openedAt: AT, releasedAt: AT, cutCount: 3 });
+const shipped = summary({ key: "0.0.9", version: "0.0.9", state: "shipped", current: true, attentionGroup: "done", waitingOn: nobody, requirements: ["REQ-1"], criteria: { total: 0, proven: 0, failing: 0, open: 0, unproven: 0 }, owner: lan, ownerAct: "Cut", openedAt: AT, releasedAt: AT, cutCount: 3 });
 
 const cut = (n: number, version: string, over: Record<string, unknown>) => ({ n, runId: `r${n}`, version, cutAt: AT, cutBy: lan, outcome: "aborted", endedAt: AT, refusal: null, abortReason: null, decidedBy: lan, rule: { decided: "reused", from: null, carriers: [], line: null, taken: false }, carried: [], ...over });
 
@@ -87,11 +87,11 @@ const detail = {
   ],
   feedbackToldCounts: { on_ship: 1, told: 0, not_told: 1, before_notices: 1 },
   issues: [
-    { id: "i1", key: "ISS-1", title: "Muc", status: "awaiting_release", section: null, requirement: "REQ-1", proof: "proven", criteria: { total: 1, proven: 1, failing: 0, open: 0 }, waitingOn: you(CUT), surfaces: ["ui"], landing: { kind: "named", artifacts: [], unmappedPaths: [], unread: null, source: "box" }, unclassified: false },
-    { id: "i2", key: "ISS-2", title: "Muc", status: "awaiting_release", section: null, requirement: null, proof: "unrecorded", criteria: { total: 0, proven: 0, failing: 0, open: 0 }, waitingOn: you(CUT), surfaces: [], landing: { kind: "unclassified", why: "ly do", paths: [], source: null }, unclassified: true },
+    { id: "i1", key: "ISS-1", title: "Muc", status: "awaiting_release", section: null, requirement: "REQ-1", proof: "proven", criteria: { total: 1, proven: 1, failing: 0, open: 0, unproven: 0 }, waitingOn: you(CUT), surfaces: ["ui"], landing: { kind: "named", artifacts: [], unmappedPaths: [], unread: null, source: "box" }, unclassified: false },
+    { id: "i2", key: "ISS-2", title: "Muc", status: "awaiting_release", section: null, requirement: null, proof: "unrecorded", criteria: { total: 0, proven: 0, failing: 0, open: 0, unproven: 0 }, waitingOn: you(CUT), surfaces: [], landing: { kind: "unclassified", why: "ly do", paths: [], source: null }, unclassified: true },
   ],
   requirementsCompleted: [{ key: "REQ-1", title: "Muc", state: "in_delivery", completes: false, advances: [{ code: "BC-1", verdict: "passing" }], remaining: { issues: ["ISS-2"], criteria: ["BC-2"] }, coverage: { criteria: 2, passing: 1, judged: 1 } }],
-  issueCriteria: [{ key: "ISS-1", title: "Muc", criteria: [{ n: 1, statement: "Dieu kien", standing: "pass", bc: "BC-1", identity: null, reason: null, judgedAt: AT, judgedBy: "agent" }] }],
+  issueCriteria: [{ key: "ISS-1", title: "Muc", criteria: [{ n: 1, statement: "Dieu kien", standing: "pass", bc: "BC-1", identity: null, reason: null, judgedAt: AT, judgedBy: "agent", proven: true, unverified: null }] }],
   changes: {
     surfaces: [
       { surface: "ui", count: 2, shipsNothing: false, issues: ["ISS-1"], artifacts: [{ ref: "screen:/a", change: "added", issues: ["ISS-1"], carriedBy: null }] },

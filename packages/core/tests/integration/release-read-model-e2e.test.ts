@@ -273,7 +273,7 @@ describe('the requirements a release completes and the criteria of its issues', 
     });
     const second = draft.issueCriteria.find((i) => i.criteria.length === 2);
     expect(second?.criteria.map((c) => c.standing)).toEqual(['pass', 'unjudged']);
-    expect(draft.criteria).toEqual({ proven: 2, failing: 0, open: 1, total: 3 });
+    expect(draft.criteria).toEqual({ proven: 2, failing: 0, open: 1, unproven: 0, total: 3 });
     expect(draft.contents).toHaveLength(1);
     expect(draft.contents[0]?.requirement?.key).toBe('REQ-1');
     expect(draft.contents[0]?.issues.map((i) => i.proof).sort()).toEqual(['open', 'proven']);

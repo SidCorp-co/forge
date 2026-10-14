@@ -212,6 +212,7 @@ export function provideWorkPorts(): void {
     answeredSinceSql,
     postIssueNotice,
     readProjectDocument,
+    readJudge: async (projectId) => (await readEffectivePolicy(projectId))?.document.qa ?? null,
     changedTracedOf,
     readLandingBranches,
     issueRefPattern,

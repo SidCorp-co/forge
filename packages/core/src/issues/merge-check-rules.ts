@@ -102,8 +102,6 @@ export interface MergeCriterion {
   } | null;
 }
 
-/** The verdicts a criterion stands on (`short` counts as a pass, contracts `criterionCountsAsPass`). */
-
 /**
  * Why core does not hold the report's reading that criterion `n` stands on `verdict`, or null where
  * it does: the criterion is live, the verdict is its latest, a pass or short, on a commit, and not on

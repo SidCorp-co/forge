@@ -168,8 +168,8 @@ function headOf(p: Part): string | null {
 }
 
 /** Each issue's criteria as this release counts them: on its build (`criteriaAt`). */
-function criteriaOf(p: Part, issue: IssueFact) {
-  return criteriaAt(issue, releaseBuildOf(p.state, headOf(p)));
+function criteriaOf(p: Part, s: Shared, issue: IssueFact) {
+  return criteriaAt(issue, releaseBuildOf(p.state, headOf(p)), s.facts.judge);
 }
 
 function contentsOf(p: Part, s: Shared): ReleaseContentGroup[] {
@@ -187,7 +187,7 @@ function contentsOf(p: Part, s: Shared): ReleaseContentGroup[] {
       key: issue.key,
       title: issue.title,
       status: issue.status,
-      proof: proofOf(totalsOf(criteriaOf(p, issue).map((c) => c.standing))),
+      proof: proofOf(totalsOf(criteriaOf(p, s, issue))),
     });
     groups.set(at, group);
   }
@@ -225,7 +225,7 @@ export function summaryOf(p: Part, s: Shared): ReleaseSummary {
   const facts = p.issueIds.flatMap((id) => s.facts.issues.get(id) ?? []);
   const { owner, act } = ownerOf(p, s);
   const split = splitOf(p, s);
-  const criteria = sumTotals(facts.map((i) => totalsOf(criteriaOf(p, i).map((c) => c.standing))));
+  const criteria = sumTotals(facts.map((i) => totalsOf(criteriaOf(p, s, i))));
   const reqs = [
     ...new Set(
       facts.flatMap((i) => {
@@ -357,7 +357,7 @@ function issueViews(
   return p.issueIds.flatMap((id) => {
     const i = s.facts.issues.get(id);
     if (!i) return [];
-    const criteria = totalsOf(criteriaOf(p, i).map((c) => c.standing));
+    const criteria = totalsOf(criteriaOf(p, s, i));
     const landing = landings.get(id) ?? UNREAD;
     return [
       {
@@ -416,7 +416,11 @@ export function detailOf(
           Number(b.completes) - Number(a.completes) ||
           a.key.localeCompare(b.key, 'en', { numeric: true }),
       ),
-    issueCriteria: facts.map((i) => ({ key: i.key, title: i.title, criteria: criteriaOf(p, i) })),
+    issueCriteria: facts.map((i) => ({
+      key: i.key,
+      title: i.title,
+      criteria: criteriaOf(p, s, i),
+    })),
     notes: noteSections(p, s, landings),
     gates: p.gates,
     approval: latest ? strip(latest) : null,

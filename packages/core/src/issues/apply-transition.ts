@@ -28,6 +28,7 @@ import { edgeFault, reasonFault } from './transition-faults.js';
 import { type GuardCode, issueGuards, readIssueMoveFacts } from './transition-guards.js';
 import {
   postLeaveComment,
+  postRecoveryNotice,
   postTransitionReasonComment,
   requiresAuthoredReason,
 } from './transition-reason.js';
@@ -333,6 +334,7 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
           );
         }
         await postLeaveComment({ issue, fromStatus, toStatus, actor, options }, tx);
+        await postRecoveryNotice({ issue, fromStatus, toStatus, actor, recovering, options }, tx);
         await mintParkQuestion({ issue, toStatus, actor, options }, tx);
         const asked = await settleOpenQuestions(tx, {
           ...options,

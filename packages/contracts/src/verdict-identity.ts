@@ -49,8 +49,10 @@ export const VERDICT_VALUES = ["pass", "short", "fail", "skipped"] as const;
 type VerdictValueName = (typeof VERDICT_VALUES)[number];
 
 /**
- * The one definition of passing: the verdicts that earn a criterion, a `pass` or a `short` (met,
- * short of its wording, judged not to block). Every gate, read model and query reads it here.
+ * The verdicts that met a criterion, a `pass` or a `short` (met, short of its wording): what an
+ * issue's merge check, its probes and its passing count read. Proof is a different, narrower word:
+ * every count of what is proven reads `verified-rule.ts:verifiedOf`, where a short never counts
+ * (REQ-35 decision 7b261fca).
  */
 export const EARNING_VERDICTS = [
 	"pass",
@@ -98,7 +100,7 @@ interface VerdictReading extends StorefrontDraftVerdictView {
 	contractVersion: string | null;
 }
 
-// a backfilled abbreviated commit that never resolved reads Unresolved whatever it said; `short` reads Short on every screen and counts as a pass at an issue's gates (`criterionCountsAsPass`), never on a requirement's coverage
+// a backfilled abbreviated commit that never resolved reads Unresolved whatever it said; `short` reads Short on every screen and is never proven (`verified-rule.ts:verifiedOf`)
 export function criterionStandingOf(
 	latest: Pick<VerdictReading, "verdict" | "identityKind"> | null,
 ): CriterionStanding {

@@ -1,8 +1,8 @@
-import { type CriterionStanding, criterionCountsAsPass } from '@forge/contracts/issue-vocabulary';
 import type {
   ReleaseAttemptStage,
   ReleaseAttentionGroup,
   ReleaseCriteriaTotals,
+  ReleaseCriterionView,
   ReleaseGateOwner,
   ReleasePerson,
   ReleaseProof,
@@ -194,10 +194,27 @@ export function turnOf(f: TurnFacts): Turn {
   }
 }
 
-export function totalsOf(standings: readonly CriterionStanding[]): ReleaseCriteriaTotals {
-  const proven = standings.filter(criterionCountsAsPass).length;
-  const failing = standings.filter((s) => s === 'fail').length;
-  return { proven, failing, open: standings.length - proven - failing, total: standings.length };
+/** One criterion as the release counts it (`release-facts.ts:criteriaAt`). */
+export type CountedCriterion = Pick<ReleaseCriterionView, 'standing' | 'proven'>;
+
+/**
+ * A release's, or one issue's, criteria counted by the verified rule (contracts `verified-rule.ts:verifiedOf`):
+ * proven only where `criteriaAt` read it proven; a fail failing; a pass or short it did not count
+ * judged and unproven; anything else (no verdict, skipped, unresolved) open.
+ */
+export function totalsOf(criteria: readonly CountedCriterion[]): ReleaseCriteriaTotals {
+  const proven = criteria.filter((c) => c.proven).length;
+  const failing = criteria.filter((c) => !c.proven && c.standing === 'fail').length;
+  const unproven = criteria.filter(
+    (c) => !c.proven && (c.standing === 'pass' || c.standing === 'short'),
+  ).length;
+  return {
+    proven,
+    failing,
+    open: criteria.length - proven - failing - unproven,
+    unproven,
+    total: criteria.length,
+  };
 }
 
 export function sumTotals(list: readonly ReleaseCriteriaTotals[]): ReleaseCriteriaTotals {
@@ -206,16 +223,18 @@ export function sumTotals(list: readonly ReleaseCriteriaTotals[]): ReleaseCriter
       proven: a.proven + t.proven,
       failing: a.failing + t.failing,
       open: a.open + t.open,
+      unproven: a.unproven + t.unproven,
       total: a.total + t.total,
     }),
-    { proven: 0, failing: 0, open: 0, total: 0 },
+    { proven: 0, failing: 0, open: 0, unproven: 0, total: 0 },
   );
 }
 
 export function proofOf(t: ReleaseCriteriaTotals): ReleaseProof {
   if (t.total === 0) return 'unrecorded';
   if (t.failing > 0) return 'failing';
-  return t.open > 0 ? 'open' : 'proven';
+  if (t.open > 0) return 'open';
+  return t.unproven > 0 ? 'unproven' : 'proven';
 }
 
 const SECTION_ORDER = ['Added', 'Changed', 'Fixed', 'Removed', 'Security'];

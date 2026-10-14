@@ -10,7 +10,7 @@ import type { FastLaneRefusalCode } from '@forge/contracts/fast-lane';
 import type { MergeCheckReport } from '@forge/contracts/merge-check';
 import type { OutboxActor } from '@forge/contracts/outbox-events';
 import type { Approvals } from '@forge/contracts/person-gates';
-import type { PolicyRefusalCode } from '@forge/contracts/project-config';
+import type { PolicyQaMode, PolicyRefusalCode } from '@forge/contracts/project-config';
 import type { AnswerHold, AnswerResume } from '@forge/contracts/questions';
 import type { JudgedBuild } from '@forge/contracts/verdict-identity';
 import type { SQL, SQLWrapper } from 'drizzle-orm';
@@ -182,6 +182,8 @@ interface IssuePorts {
   ) => Promise<{ id: string; body: string; parentId: string | null }>;
 
   readProjectDocument: (projectId: string) => Promise<{ document: IssueProjectDocument } | null>;
+  /** The project's judge (`qa` in its policy), which the verified rule reads; null where it declares none. */
+  readJudge: (projectId: string) => Promise<PolicyQaMode | null>;
   changedTracedOf: (
     executor: Pick<Tx, 'execute'>,
     issueIds: readonly string[],
@@ -357,6 +359,7 @@ export const answeredSinceSql = port('answeredSinceSql');
 export const postIssueNotice = port('postIssueNotice');
 
 export const readProjectDocument = port('readProjectDocument');
+export const readJudge = port('readJudge');
 export const changedTracedOf = port('changedTracedOf');
 export const readLandingBranches = port('readLandingBranches');
 export const issueRefPattern = port('issueRefPattern');

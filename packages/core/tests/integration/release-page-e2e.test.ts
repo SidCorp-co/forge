@@ -206,7 +206,8 @@ describe('the page reads off the release record', () => {
     expect(before.header.environment).not.toBeNull();
     const path = `/release-batches/${w.runId}/approvals/${w.approvalId}/decision`;
     // the release approval checklist (Requirement lifecycle r15 release_check) refuses an approval
-    // while a carried criterion's latest verdict on the build is not a pass, naming each
+    // while a carried criterion is not proven on the build, naming each: a short is not proven
+    // (REQ-35 decision 7b261fca), so it is refused beside the fail and says why
     const held = await call('owner', 'POST', path, {
       decision: 'approve',
       reason: 'beta serves the release cleanly',
@@ -219,7 +220,11 @@ describe('the page reads off the release record', () => {
       ['CHECKLIST_INCOMPLETE', '/answers/verdicts'],
     ]);
     expect(refusals[0]?.detail).toContain('criterion 2 (fail)');
+    expect(refusals[0]?.detail).toContain(
+      'criterion 2 (judged short: met short of its wording, and only a pass counts as verified)',
+    );
     expect((await page('member')).header.approval.state).toBe('pending');
+    await judge(w.a, 2, 'pass', BUILD);
     await judge(w.b, 1, 'pass', BUILD);
     await judge(w.b, 2, 'pass', BUILD, { reason: 'the filter holds after a reload' });
     const decided = await call('owner', 'POST', path, {

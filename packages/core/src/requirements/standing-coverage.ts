@@ -13,6 +13,7 @@ import type {
   RequirementCoverage,
 } from '@forge/contracts/requirements';
 import { verdictExercised } from '@forge/contracts/verdict-identity';
+import { judgesVerdict, unverifiedWhy } from '@forge/contracts/verified-rule';
 import { liveAt } from './rules.js';
 
 /**
@@ -198,7 +199,7 @@ function resolve(identity: CoverageIdentity | null, live: LiveBuildHolds | null)
 // latest verdicts that count, the one recorded last — a pass → passing, a fail → failing — so a link
 // nobody judged, or judged could-not-judge, masks nothing and an old fail stands only while it is the
 // newest. A judgement counts only where its identity resolves to something checked (`resolve`) and
-// it is a verification (`unverifiedWhy`): one that is not is named on its line and never counts.
+// it is a verification (contracts `verified-rule.ts:unverifiedWhy`, REQ-35 decision 7b261fca): one that is not is named on its line and never counts.
 // None counts → not live where a judgement sits on a build the live one does not hold, else not
 // judged. No live link but an earlier one → stale; no link at all → gap, carrying the reason an
 // accepted breakdown gave for leaving it uncovered. A dropped issue proves nothing and is left out.
@@ -254,49 +255,6 @@ export function coverageOf(
       uncoveredReason: uncovered,
     };
   });
-}
-
-// What counts as verified (REQ-35, decision 7b261fca): only a pass from someone other than the
-// builder. A short is met short of its wording, not verified, so it never counts on a requirement
-// whatever an issue's own gates read it as (contracts `criterionCountsAsPass`). Where the project
-// declares an independent judge, a pass the builder recorded is not that judge's, and neither is one
-// that names no author, since nothing shows it came from anyone else; under `self`, or with no policy
-// declared, the builder is the judge the project named and its pass counts. A fail counts whoever
-// records it: it is evidence the criterion does not hold, and verification is only owed for a claim
-// that it does. The one rule every reader of the count reads: coverage through `notCounted`, and a
-// release page's proven list and totals (REQ-40, `release-page/claims.ts:readClaims`).
-export function unverifiedWhy(v: JudgedVerdict, judge: PolicyQaMode | null): string | null {
-  if (v.verdict === 'short') {
-    return 'judged short: met short of its wording, and only a pass counts as verified';
-  }
-  if (v.verdict !== 'pass' || judge !== 'independent') return null;
-  if (!v.authored) {
-    return "passed with no recorded author, so nothing shows it is the independent judge's";
-  }
-  if (v.byBuilder) {
-    return 'passed by the run that built it, and this project counts only a pass from its independent judge';
-  }
-  return null;
-}
-
-/** What the verified rule reads of a verdict: what it said, and who recorded it. */
-export type JudgedVerdict = Pick<StandingVerdict, 'verdict' | 'byBuilder' | 'authored'>;
-
-/** Whether a verdict is not the independent judge's: anything but a fail, from the builder or from nobody named. */
-const notTheJudges = (v: JudgedVerdict) =>
-  v.verdict !== null && v.verdict !== 'fail' && (v.byBuilder || !v.authored);
-
-/**
- * Of verdicts newest first, the one a criterion stands on (`judgesOf`): the newest, unless the project
- * names an independent judge and the newest is not theirs, then the judge's newest where there is one.
- */
-export function judgesVerdict<V extends JudgedVerdict>(
-  newestFirst: readonly V[],
-  judge: PolicyQaMode | null,
-): V | undefined {
-  const [latest, ...earlier] = newestFirst;
-  if (!latest || judge !== 'independent' || !notTheJudges(latest)) return latest;
-  return earlier.find((v) => !notTheJudges(v)) ?? latest;
 }
 
 // The verdict an issue criterion stands on. Under independent QA a newer verdict that is not the

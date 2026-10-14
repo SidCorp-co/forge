@@ -1,19 +1,29 @@
-// ISS-1117 / ISS-55 — the release hold's reading of every criterion's latest verdict, off
+// ISS-1117 / ISS-55 — the release hold's reading of the verdict every criterion stands on, off
 // `issue_criteria` and `criterion_verdicts` (`criteria/store.ts`), read against the issue's move
-// history (`release-evidence.ts`). Verdicts are judged here, on the release (REQ-45 BC-2).
+// history (`release-evidence.ts`). Verdicts are judged here, on the release (REQ-45 BC-2). What
+// proves a criterion is the verified rule every count of proof reads (contracts
+// `verified-rule.ts:verifiedOf`, REQ-35 decision 7b261fca): "Ship only proven work" holds a short,
+// and under an independent judge the builder's own pass, as the release record counts them unproven.
 
 import { verdictsRequiredOf } from '@forge/contracts/delivery-policy';
 import type { ServingReading } from '@forge/contracts/releases';
 import { verdictEarns } from '@forge/contracts/verdict-identity';
+import { verifiedOf } from '@forge/contracts/verified-rule';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { commentAttachments, comments, issueAttachments, issues } from '../db/schema.js';
 import { longestSpelling, recognisableIdentity } from '../messaging/verdict-identity.js';
-import { type CriterionWithVerdict, type LatestVerdict, listCriteria } from './criteria/store.js';
+import {
+  type CriterionWithVerdict,
+  type LatestVerdict,
+  listCriteria,
+  liveVerdictsOf,
+} from './criteria/store.js';
 import { withCurrentDrafts } from './criteria/storefront-draft.js';
 import { currentContracts, designRevisions, pinnedAnchorsOf } from './criteria-anchors.js';
 import { type CitationReport, citationSentence, unresolvedCitations } from './evidence-standing.js';
-import { readProjectDocument } from './ports.js';
+import { readJudge, readProjectDocument } from './ports.js';
+import { reopenedAtOf } from './release-evidence.js';
 import {
   type OwedRuntimes,
   owedRuntimes,
@@ -37,6 +47,8 @@ export interface CriterionVerdict {
   readonly at: VerdictIdentity | null;
   /** What this verdict cites as what it was taken from, in the order written. */
   readonly cited: readonly string[];
+  /** Where it is a pass or short the verified rule does not count as proven, why; else null. */
+  readonly unverified: string | null;
 }
 /**
  * The identity a stored verdict is weighed on. A backfilled `commit_unresolved` abbreviation is
@@ -76,8 +88,11 @@ function identityOfRow(row: LatestVerdict): VerdictIdentity | null {
   }
 }
 
-/** Each live criterion's latest verdict, keyed by the criterion's number. */
-function latestByNumber(criteria: readonly CriterionWithVerdict[]): Map<number, CriterionVerdict> {
+/** Each live criterion's verdict it stands on, keyed by the criterion's number. */
+function latestByNumber(
+  criteria: readonly CriterionWithVerdict[],
+  unverified: ReadonlyMap<number, string | null>,
+): Map<number, CriterionVerdict> {
   const latest = new Map<number, CriterionVerdict>();
   for (const { n, latest: row } of criteria) {
     if (!row) continue;
@@ -86,9 +101,39 @@ function latestByNumber(criteria: readonly CriterionWithVerdict[]): Map<number, 
       verdict: row.verdict,
       at: identityOfRow(row),
       cited: row.evidence,
+      unverified: unverified.get(n) ?? null,
     });
   }
   return latest;
+}
+
+/**
+ * The verdict each live criterion stands on, by the verified rule: of its verdicts since the issue's
+ * last reopen (its newest always read), the judge's (`judgesVerdict`), with why it does not prove the
+ * criterion where it is a pass or short the rule does not count.
+ */
+async function standingOn(
+  issueId: string,
+  criteria: readonly CriterionWithVerdict[],
+  judge: Awaited<ReturnType<typeof readJudge>>,
+): Promise<{ criteria: CriterionWithVerdict[]; unverified: Map<number, string | null> }> {
+  const [history, reopened] = await Promise.all([
+    liveVerdictsOf(db, issueId),
+    reopenedAtOf(db, [issueId]),
+  ]);
+  const since = reopened.get(issueId)?.getTime() ?? Number.NEGATIVE_INFINITY;
+  const unverified = new Map<number, string | null>();
+  const read = criteria.map((c) => {
+    const [newest, ...earlier] = history.get(c.n) ?? [];
+    if (!newest) return c;
+    const verified = verifiedOf(
+      [newest, ...earlier.filter((v) => new Date(v.createdAt).getTime() > since)],
+      judge,
+    );
+    unverified.set(c.n, verified.proven ? null : verified.why);
+    return { ...c, latest: verified.stands ?? c.latest };
+  });
+  return { criteria: read, unverified };
 }
 
 /** One criterion an issue does not carry an earned, standing verdict on. */
@@ -149,7 +194,9 @@ function reasonsAgainst(
 ): string[] {
   const out: string[] = [];
   const { standing, serving, runtime, beside } = weighed;
-  if (!verdictEarns(pair.verdict)) {
+  if (pair.unverified) {
+    out.push(pair.unverified);
+  } else if (!verdictEarns(pair.verdict)) {
     out.push(`its verdict is \`${pair.verdict}\`, which is not earned`);
   } else if (!EARNED_STANDINGS.has(standing) || unconfirmedDraft(pair, standing)) {
     const said = standingSentence(standing, pair.at, serving, identities, runtime);
@@ -261,16 +308,18 @@ async function reportFor(
   serving: ServingReading,
   weighing: Weighing,
   anchors: Pick<IssueIdentities, 'designs' | 'contracts' | 'pinnedBy'>,
+  judge: Awaited<ReturnType<typeof readJudge>>,
 ): Promise<IssueCriteriaReport> {
   const { runtimes } = weighing;
   // No parseable criteria is a different, already-owned gap, not this check's to refuse.
   const identities = { ...issueIdentities(row), ...anchors };
-  const criteria = await withCurrentDrafts(row.projectId, await listCriteria(db, row.id));
+  const stands = await standingOn(row.id, await listCriteria(db, row.id), judge);
+  const criteria = await withCurrentDrafts(row.projectId, stands.criteria);
   const numbers = criteria.map((c) => c.n);
   if (numbers.length === 0) {
     return { issueId: row.id, unearned: [], broken: [], serving, runtimes, uncorroborated: [] };
   }
-  const latest = latestByNumber(criteria);
+  const latest = latestByNumber(criteria, stands.unverified);
   const held = await heldAttachmentNames(row.id);
   const owed = owedRuntimes(row.id, weighing);
   const found = findingsFor(numbers, latest, { serving, owed, weighing }, identities, held);
@@ -321,8 +370,10 @@ export async function unearnedCriteriaReports(
     pinnedAnchorsOf(rows.map((row) => row.id)),
   ]);
   const required = new Map<string, boolean>();
+  const judges = new Map<string, Awaited<ReturnType<typeof readJudge>>>();
   for (const id of projectIds) {
     required.set(id, verdictsRequiredOf((await readProjectDocument(id))?.document.delivery));
+    judges.set(id, await readJudge(id));
   }
   const out: IssueCriteriaReport[] = [];
   for (const row of [...rows].sort(byMerge)) {
@@ -349,6 +400,7 @@ export async function unearnedCriteriaReports(
               designs: designs.get(row.projectId) ?? new Map(),
               contracts: contracts.get(row.projectId) ?? new Map(),
             },
+        judges.get(row.projectId) ?? null,
       ),
     );
   }
@@ -357,7 +409,7 @@ export async function unearnedCriteriaReports(
 
 /** What `release-batch/runtime-weighing.ts` weighs for these issues — the project's unclaimed
  *  `awaiting_release` rows where none are named: each one's landing commit, oldest merge first,
- *  and every commit any of their latest verdicts was judged at (ISS-1368). */
+ *  and every commit a verdict their criteria stand on was judged at (ISS-1368). */
 export async function verdictWeighingInputs(
   projectId: string,
   issueIds?: readonly string[],
@@ -376,8 +428,11 @@ export async function verdictWeighingInputs(
     .where(and(eq(issues.projectId, projectId), scope))
     .orderBy(sql`${issues.mergedAt} ASC NULLS LAST`, issues.id);
   const judged = new Set<string>();
+  const judge = rows.length === 0 ? null : await readJudge(projectId);
   for (const row of rows) {
-    for (const verdict of latestByNumber(await listCriteria(db, row.id)).values()) {
+    // the verdict each criterion stands on, which the hold weighs (`standingOn`)
+    const stands = await standingOn(row.id, await listCriteria(db, row.id), judge);
+    for (const verdict of latestByNumber(stands.criteria, stands.unverified).values()) {
       if (verdict.at && recognisableIdentity(verdict.at.value)) judged.add(verdict.at.value.trim());
     }
   }
