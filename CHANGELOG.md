@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.238] - 2026-10-14
+
+Project settings read as properties, with a Testing tab and folded raw documents
+
+### Changed
+
+- **Project settings read before they edit.** A rail lists each tab's sections. Test accounts get a Testing tab with masked values and write-only replace. Environments read as properties. Raw documents fold under Advanced.
+
+### Fixed
+
+- **Settings fit beside their rail at every width.** A runner row keeps its device's name on a phone, the integrations table folds its columns by its own width, and Computation's switch no longer repeats its heading.
+
 ## [0.4.0-dev.237] - 2026-10-14
 
 Releases stop re-cutting issues they shipped but could not close

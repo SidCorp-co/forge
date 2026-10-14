@@ -1,1 +1,0 @@
-**Project settings read before they edit.** A rail lists each tab's sections. Test accounts get a Testing tab with masked values and write-only replace. Environments read as properties. Raw documents fold under Advanced.
