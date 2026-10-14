@@ -140,7 +140,7 @@ function GitConfigCard({
 			</div>
 			<div className="flex flex-col gap-5">
 				<p className="fg-body-sm text-subtle">
-					The repository URL a device clones from, and the setup steps it runs, are set under{" "}
+					The repository URL a device clones from, and the setup instructions agents follow, are set under{" "}
 					{slug ? (
 						<Link href={`/projects/${slug}/settings?tab=shape`} className="text-accent-text hover:underline">
 							Shape &amp; release

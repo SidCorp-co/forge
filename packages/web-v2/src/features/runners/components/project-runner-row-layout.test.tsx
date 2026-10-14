@@ -85,3 +85,15 @@ describe("the project Runners screen's device row at a narrow width", () => {
 		expect(buttons?.contains(screen.getByRole("button", { name: /Set primary/ }))).toBe(true);
 	});
 });
+
+describe("the project Runners screen's Git access card", () => {
+	it("sends the clone URL and workspace setup to Shape & release, as instructions rather than steps a device runs", () => {
+		render(<ProjectRunnersScreen projectId="p-1" canEdit embedded />);
+
+		const sentence = screen.getByText(/The repository URL a device clones from/);
+		expect(sentence.textContent).toContain("the setup instructions agents follow");
+		expect(sentence.textContent).toContain("Shape & release");
+		expect(sentence.textContent).not.toMatch(/steps it runs/);
+		expect(screen.queryByLabelText("Repository URL")).toBeNull();
+	});
+});
