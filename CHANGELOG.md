@@ -127,6 +127,10 @@
 
 ### Added
 
+- **An agent tool refuses a bad argument in one sentence.** It used to answer with the validation library's raw issue list; it now names each field and what is wrong with it, so a retired metric reads as retired. (ISS-1132)
+
+- **`pnpm verify` gives the same answer from any checkout path.** Under a directory named `.cache` it went red on lint-budget and scripts lint, because biome found neither the scripts config nor the React domains there. (ISS-1132)
+
 - **The issue page's Description and release note are flat, like the sections below them.** Each was a bordered, rounded panel above the flat sections; each is now a hairline and a label heading, at desktop and phone width. (ISS-1132)
 
 - **The time-series tool's description names every metric it serves.** It listed six of eight and left out `queue_depth` and `runner_uptime`; the list now comes from the served metrics. (ISS-1132)

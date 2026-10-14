@@ -88,9 +88,11 @@ import { forgeStorefrontTargetTool } from './tools/forge-storefront-target.js';
 import { forgeUploadsTool } from './tools/forge-uploads.js';
 import type { McpContext, McpTool } from './tools/lib.js';
 import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './tools/project-scope.js';
+import { zodRefusalMessage } from './zod-refusal.js';
 
 export function classifyError(err: unknown): { code: AuditResultCode; message: string } {
-  const message = redactedMessage(err);
+  const refused = zodRefusalMessage(err);
+  const message = refused === null ? redactedMessage(err) : redactedMessage(new Error(refused));
   if (message.startsWith('NOT_FOUND')) return { code: 'not_found', message };
   if (message.startsWith('FORBIDDEN')) return { code: 'forbidden', message };
   return { code: 'error', message };
