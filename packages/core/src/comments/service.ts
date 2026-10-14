@@ -7,6 +7,7 @@ import { comments, issues, users } from '../db/schema.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 import { MessageRefusedError } from '../messaging/contract.js';
 import {
+  type CredentialPlace,
   credentialRefusal,
   findCredential,
   loadStoredCredentials,
@@ -290,12 +291,12 @@ async function guardCredentials(
   if (credentials.length === 0) return { body, warnings: [] };
   if (mode === 'refuse') {
     // HTML is stored serialised, so `&` reaches the row as `&amp;`, and an attribute keeps its decoded text: each form is held to it.
-    const readings: Array<[string, 'sent' | 'rendered']> = [[sent.raw, 'sent']];
+    const readings: Array<[string, CredentialPlace]> = [[sent.raw, 'sent']];
     if (sent.prepared.format === 'html') {
       readings.push(
-        [sent.prepared.text, 'rendered'],
-        [body, 'rendered'],
-        [decodeEntities(body), 'rendered'],
+        [sent.prepared.text, 'prose'],
+        [body, 'stored'],
+        [decodeEntities(body), 'decoded'],
       );
     }
     for (const [text, where] of readings) {

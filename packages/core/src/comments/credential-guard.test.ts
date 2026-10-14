@@ -3,7 +3,7 @@
  * is taken to be, where in a text it is found, and what stands in its place.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   credentialRefusal,
   credentialsFrom,
@@ -87,6 +87,15 @@ describe('where a stored credential is found', () => {
     expect(findCredential('viewer1', stored)).not.toBeNull();
     expect(findCredential('"viewer1".', stored)).not.toBeNull();
     expect(findCredential('VIEWER1', stored)).not.toBeNull();
+  });
+
+  it('matches a password made only of punctuation where it is the whole text', () => {
+    const symbols = credentialsFrom({
+      testCredentials: [{ label: 'sym', username: 'u', password: '!@#$%^&*' }],
+    });
+    expect(findCredential('!@#$%^&*', symbols)).not.toBeNull();
+    expect(withholdCredentials('  !@#$%^&*  ', symbols).ids).toEqual(['sym']);
+    expect(findCredential('wow !@#$%^&* ok', symbols)).toBeNull();
   });
 
   it('leaves a short value inside a longer word or sentence as written', () => {
@@ -216,5 +225,31 @@ describe('what core writes in place of a stored credential', () => {
     expect(text.endsWith(' tail')).toBe(true);
     expect(text.startsWith(`${DOTTED_I.repeat(3)} `)).toBe(true);
     expect(text).not.toContain('Secret');
+  });
+});
+
+describe("the readers of a project's stored credentials", () => {
+  const environmentsRow = {
+    environments: { testCredentials: [{ label: 'a', username: 'u', password: 'p-0123456789ab' }] },
+  };
+
+  it('read the credentials the project holds, never an empty answer, whatever the unit setup stubs', async () => {
+    const real =
+      await vi.importActual<typeof import('./credential-guard.js')>('./credential-guard.js');
+    const executor = {
+      select: () => ({
+        from: () => ({
+          where: () => ({ limit: async () => [environmentsRow] }),
+          innerJoin: () => ({
+            where: async () => [{ issueId: 'issue-1', ...environmentsRow }],
+          }),
+        }),
+      }),
+    } as never;
+
+    const byProject = await real.loadStoredCredentials('project-1', executor);
+    expect(byProject.map((one) => one.value)).toEqual(['u', 'p-0123456789ab']);
+    const byIssue = await real.loadCredentialsByIssue(['issue-1'], executor);
+    expect(byIssue.get('issue-1')?.map((one) => one.value)).toEqual(['u', 'p-0123456789ab']);
   });
 });

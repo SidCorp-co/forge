@@ -49,6 +49,7 @@ const fold = (text: string): string =>
   });
 
 function isWholeText(text: string, value: string): boolean {
+  if (fold(text.trim()) === fold(value.trim()) && value.trim() !== '') return true;
   const held = fold(bare(value));
   return held.length > 0 && fold(bare(text)) === held;
 }
@@ -184,13 +185,23 @@ export function findCredential(
   return { id: hit?.id ?? 'test credential', ...positionOf(text, first[0]), near };
 }
 
+/** Which form of a comment a position is counted in. */
+export type CredentialPlace = 'sent' | 'prose' | 'stored' | 'decoded';
+
+const WHERE: Record<CredentialPlace, string> = {
+  sent: 'the body as sent',
+  prose: 'the text the HTML reads as, markup removed',
+  stored: 'the HTML as it is stored',
+  decoded: 'the stored HTML with its entities decoded',
+};
+
 /** The refusal a caller's write meets: what was found, where, and where the value is read instead. */
 export function credentialRefusal(
   hit: CredentialHit,
   credentials: readonly StoredCredential[] = [],
-  where: 'sent' | 'rendered' = 'sent',
+  where: CredentialPlace = 'sent',
 ): MessageRefusal {
-  const place = where === 'sent' ? 'the body as sent' : 'the HTML as it is stored and read';
+  const place = WHERE[where];
   const refusal = (locator: string): MessageRefusal => ({
     rule: STORED_CREDENTIAL_RULE,
     why:
