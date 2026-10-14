@@ -10,14 +10,13 @@ import {
   Badge,
   Banner,
   Button,
-  Card,
-  CardContent,
   ErrorState,
   Field,
   Input,
   ProgressBar,
   SectionTitle,
   Skeleton,
+  SettingsSection,
 } from "@/design";
 import type { ProjectDetail } from "@/features/projects/types";
 import { formatApiError } from "@/lib/api/error";
@@ -53,12 +52,10 @@ export function MemoryTab({ project, canEdit }: { project: ProjectDetail; canEdi
 
 	if (statusQ.isLoading) {
 		return (
-			<Card>
-				<CardContent>
-					<Skeleton className="h-6 w-1/3 rounded-md" />
-					<Skeleton className="mt-3 h-20 w-full rounded-md" />
-				</CardContent>
-			</Card>
+			<SettingsSection>
+				<Skeleton className="h-6 w-1/3 rounded-md" />
+				<Skeleton className="mt-3 h-20 w-full rounded-md" />
+			</SettingsSection>
 		);
 	}
 	if (statusQ.isError || !status) {
@@ -72,43 +69,41 @@ export function MemoryTab({ project, canEdit }: { project: ProjectDetail; canEdi
 
 	return (
 		<div className="space-y-6">
-			<Card>
-				<CardContent>
-					<SectionTitle className="fg-h3 mb-1">Memory model</SectionTitle>
-					<p className="fg-caption mb-4 text-muted">
-						How this project's memory is stored for search. <b>Flat</b> embeds each memory as
-						one document. <b>Chunked</b> also stores ~1,200-character passages, so a fact
-						buried in a long issue or note is found by the passage that holds it.
-					</p>
-					{liveConflict && (
-						<div className="mb-4">
-							<Banner tone="attention" onDismiss={() => setLiveConflict(false)}>
-								A reindex is already running.
-							</Banner>
-						</div>
-					)}
-					{flat ? (
-						<FlatState
-							estimate={estimateQ.data}
-							estimateLoading={estimateQ.isLoading}
-							canEdit={canEdit}
-							pending={setModel.isPending}
-							onConfirm={() => flip("chunked")}
-						/>
-					) : (
-						<ChunkedState
-							status={status}
-							projectName={project.name}
-							canEdit={canEdit}
-							pending={setModel.isPending}
-							cancelPending={cancel.isPending}
-							onRepost={() => flip("chunked")}
-							onCancel={() => cancel.mutate()}
-							onRevert={() => flip("flat")}
-						/>
-					)}
-				</CardContent>
-			</Card>
+			<SettingsSection>
+				<SectionTitle className="fg-h3 mb-1">Memory model</SectionTitle>
+				<p className="fg-caption mb-4 text-muted">
+					How this project's memory is stored for search. <b>Flat</b> embeds each memory as
+					one document. <b>Chunked</b> also stores ~1,200-character passages, so a fact
+					buried in a long issue or note is found by the passage that holds it.
+				</p>
+				{liveConflict && (
+					<div className="mb-4">
+						<Banner tone="attention" onDismiss={() => setLiveConflict(false)}>
+							A reindex is already running.
+						</Banner>
+					</div>
+				)}
+				{flat ? (
+					<FlatState
+						estimate={estimateQ.data}
+						estimateLoading={estimateQ.isLoading}
+						canEdit={canEdit}
+						pending={setModel.isPending}
+						onConfirm={() => flip("chunked")}
+					/>
+				) : (
+					<ChunkedState
+						status={status}
+						projectName={project.name}
+						canEdit={canEdit}
+						pending={setModel.isPending}
+						cancelPending={cancel.isPending}
+						onRepost={() => flip("chunked")}
+						onCancel={() => cancel.mutate()}
+						onRevert={() => flip("flat")}
+					/>
+				)}
+			</SettingsSection>
 		</div>
 	);
 }

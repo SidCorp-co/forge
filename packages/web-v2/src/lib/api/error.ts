@@ -1,3 +1,4 @@
+import { parsePath } from '@forge/contracts/document-patch';
 import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
 import { claimConflictSentence } from './claim-conflict';
 import { ApiError } from './client';
@@ -235,9 +236,71 @@ function listOf(names: string[]): string {
   return `${unique.slice(0, -1).join(', ')} and ${unique[unique.length - 1]}`;
 }
 
-/** Dotted document paths as one phrase in the screen's own names, for a sentence about them. */
+/** The fields of a stage that share one section name ("Stage permissions"), so edits to two of them are told apart. */
+const STAGE_FIELD_LABELS: Record<string, string> = {
+  disallowedTools: 'Denied tools',
+  allowedTools: 'Allowed tools',
+  mcpServers: 'MCP servers',
+};
+
+function stageFieldLabel(path: string): string | undefined {
+  const parts = parsePath(path);
+  if (parts[0] !== 'states' || parts.length < 3) return undefined;
+  if (parts[2] === 'mcpServers' && parts.length >= 4) return `MCP server ${parts[3]}`;
+  return STAGE_FIELD_LABELS[parts[2] as string];
+}
+
+/** The fields of a section that a sentence about a change has to be able to tell apart. */
+const FIELD_LABELS: Record<string, string> = {
+  'intakeGate.enabled': 'Require approval',
+  'intakeGate.notify': 'Notify the owner',
+  'poolBacklog.statuses': 'Statuses',
+  'poolBacklog.limit': 'Rows a master may read',
+  'knowledgePromotion.enabled': 'Enabled',
+  'knowledgePromotion.candidatesPerRun': 'Proposals per night',
+  'knowledgePromotion.minRetrievals': 'Minimum retrievals',
+  'assistantWeekly.enabled': 'Enabled',
+  'assistantWeekly.pinnedIssue': 'Pinned issue',
+  'assistantWeekly.judgeProviderId': 'Judge provider',
+  'assistantWeekly.judgeModel': 'Judge model',
+  'live.url': 'URL',
+  'live.commitUrl': 'Commit URL',
+  'live.commitPath': 'Commit path',
+  'preview.url': 'URL',
+  'preview.apiUrl': 'API URL',
+  'preview.urls': 'Testing URLs',
+};
+
+/** Dotted document paths in the screen's own names, and how many settings that names. A section
+ *  whose fields the screen tells apart is named with them, so "Knowledge promotion (Minimum
+ *  retrievals)" says what moved and what did not. */
+export function describeSettings(paths: string[]): { text: string; count: number } {
+  const groups = new Map<string, Set<string>>();
+  const order = Object.keys(FIELD_LABELS);
+  const known = (path: string) => (order.includes(path) ? order.indexOf(path) : order.length);
+  for (const path of [...paths].sort((a, b) => known(a) - known(b))) {
+    const section = settingLabel(path);
+    const fields = groups.get(section) ?? new Set<string>();
+    const field = FIELD_LABELS[path] ?? stageFieldLabel(path);
+    if (field) fields.add(field);
+    groups.set(section, fields);
+  }
+  let count = 0;
+  const named = [...groups].map(([section, fields]) => {
+    count += Math.max(fields.size, 1);
+    return fields.size > 0 ? `${section} (${listOf([...fields])})` : section;
+  });
+  return { text: listOf(named), count };
+}
+
+/** The same phrase without the count. */
 export function settingsThatMoved(paths: string[]): string {
-  return listOf(paths.map(settingLabel));
+  return describeSettings(paths).text;
+}
+
+/** "was" for one setting, "were" for several. */
+export function wasOrWere(count: number): 'was' | 'were' {
+  return count === 1 ? 'was' : 'were';
 }
 
 /**
@@ -248,7 +311,6 @@ export function settingsThatMoved(paths: string[]): string {
 export function formatSettingsWriteError(err: unknown): string {
   const conflicts = writeConflicts(err);
   if (conflicts.length === 0) return formatApiError(err);
-  const names = settingsThatMoved(conflicts.map((c) => c.path));
-  const changed = conflicts.length === 1 ? 'was changed' : 'were changed';
-  return `${names} ${changed} by someone else while this page was open. Nothing was saved — your edits are still here.`;
+  const { text, count } = describeSettings(conflicts.map((c) => c.path));
+  return `${text} ${wasOrWere(count)} changed by someone else while this page was open. Nothing was saved — your edits are still here.`;
 }

@@ -47,7 +47,7 @@ export function BottomTabBar({ items, activeKey, onSelect }: BottomTabBarProps) 
             aria-current={active ? "page" : undefined}
             aria-label={face ? `${it.label}, ${face.phrase}` : it.label}
             className={cn(
-              "relative flex min-h-[52px] flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-11 font-semibold transition-colors focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]",
+              "relative flex min-h-[55px] flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-11 font-semibold transition-colors focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]",
               active ? "text-accent-text" : "text-muted hover:text-fg",
             )}
           >

@@ -18,6 +18,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LeaveGuardProvider } from "@/design";
+import { MCP_CATALOG } from "./types";
 import { ApiError } from "@/lib/api/client";
 import { PipelineTab } from "./components/pipeline-tab";
 
@@ -30,6 +31,7 @@ let stored: Doc;
 /** Every body the page put on the wire, in order. */
 let sent: unknown[];
 /** How many times the page has read the document back. */
+let failNextWriteWith: ApiError | null = null;
 let reads: number;
 
 vi.mock("@/lib/api/client", async () => {
@@ -42,6 +44,11 @@ vi.mock("@/lib/api/client", async () => {
 				sent.push(write);
 				if (!write || typeof write !== "object" || !("base" in write) || !("patch" in write)) {
 					throw new ApiError(400, "a pipeline config write is `{ base, patch }`", "CONFIG_PATCH_SHAPE");
+				}
+				if (failNextWriteWith) {
+					const refusal = failNextWriteWith;
+					failNextWriteWith = null;
+					throw refusal;
 				}
 				const conflicts = comparePatchBase(stored, write.base, write.patch);
 				if (conflicts.length > 0) {
@@ -109,6 +116,7 @@ const expandOpenStage = () =>
 
 beforeEach(() => {
 	sent = [];
+	failNextWriteWith = null;
 	reads = 0;
 	toast.mockClear();
 });
@@ -239,6 +247,45 @@ describe("the way out of a refused save", () => {
 		expect(after.textContent).toContain("Stage permissions (Open)");
 	});
 
+	it("says in grammar what was replaced and what was kept when one section is only partly replaced", async () => {
+		mountPage();
+		await ready();
+		fireEvent.change(retrievalsField(), { target: { value: "7" } });
+		fireEvent.change(screen.getByLabelText("Proposals per night"), { target: { value: "5" } });
+
+		stored = applyDocumentPatch(stored, { knowledgePromotion: { minRetrievals: 9 } });
+		press();
+		const refused = await screen.findByText(/changed by someone else/i);
+		expect(refused.textContent).toMatch(/^Knowledge promotion \(Minimum retrievals\) was changed by someone else/);
+
+		fireEvent.click(screen.getByRole("button", { name: /use the current values/i }));
+		const after = await screen.findByText(/loaded what is stored now/i);
+		expect(after.textContent).toContain(
+			"Your changes to Knowledge promotion (Minimum retrievals) were replaced by the stored values; your changes to Knowledge promotion (Proposals per night) were kept.",
+		);
+		expect((screen.getByLabelText("Proposals per night") as HTMLInputElement).value).toBe("5");
+		expect(retrievalsField().value).toBe("9");
+	});
+
+	it("names every field of a section that moved when two of them did, and says were", async () => {
+		mountPage();
+		await ready();
+		fireEvent.change(retrievalsField(), { target: { value: "7" } });
+		fireEvent.change(screen.getByLabelText("Proposals per night"), { target: { value: "5" } });
+
+		stored = applyDocumentPatch(stored, { knowledgePromotion: { minRetrievals: 9, candidatesPerRun: 8 } });
+		press();
+		const refused = await screen.findByText(/changed by someone else/i);
+		expect(refused.textContent).toMatch(
+			/^Knowledge promotion \(Proposals per night and Minimum retrievals\) were changed by someone else/,
+		);
+		fireEvent.click(screen.getByRole("button", { name: /use the current values/i }));
+		const after = await screen.findByText(/loaded what is stored now/i);
+		expect(after.textContent).toContain(
+			"Your changes to Knowledge promotion (Proposals per night and Minimum retrievals) were replaced by the stored values. Every other edit",
+		);
+	});
+
 	it("lets the person keep their own change and save over the other writer's", async () => {
 		mountPage();
 		await ready();
@@ -301,5 +348,90 @@ describe("the way out of a refused save", () => {
 		const banner = screen.getByText(/changed by someone else/i).closest("div") as HTMLElement;
 		expect(banner.textContent).toMatch(/your edits everywhere else on this page are kept/i);
 		expect(banner.textContent).toMatch(/nothing was saved/i);
+	});
+
+	it("tells the Denied tools edit from the Allowed tools edit of one stage when only one is replaced", async () => {
+		mountPage();
+		await ready();
+		expandOpenStage();
+		await typeADeniedTool("qa_probe_typed_X");
+		const allowed = await screen.findByLabelText("Add a tool id to Allowed tools (allowlist)");
+		fireEvent.change(allowed, { target: { value: "qa_probe_allowed_Y" } });
+		fireEvent.keyDown(allowed, { key: "Enter" });
+
+		moveDeniedTools();
+		press();
+		const refused = await screen.findByText(/changed by someone else/i);
+		expect(refused.textContent).toMatch(/^Stage permissions \(Open\) \(Denied tools\) was changed/);
+
+		fireEvent.click(screen.getByRole("button", { name: /use the current values/i }));
+		const after = await screen.findByText(/loaded what is stored now/i);
+		expect(after.textContent).toContain("Your changes to Stage permissions (Open) (Denied tools) were replaced");
+		expect(after.textContent).toContain("your changes to Stage permissions (Open) (Allowed tools) were kept");
+		await waitFor(() => expect(deniedChips()).toContain("WebFetch"));
+		expect(deniedChips()).not.toContain("qa_probe_typed_X");
+		const editor = screen.getByText("Allowed tools (allowlist)").parentElement as HTMLElement;
+		expect(within(editor).getAllByRole("button").map((el) => el.getAttribute("title"))).toContain("qa_probe_allowed_Y");
+	});
+
+	it("tells one MCP server's edit from another's in one stage when only one is replaced", async () => {
+		mountPage();
+		await ready();
+		expandOpenStage();
+		const names = Object.keys(MCP_CATALOG);
+		const [first, second] = names as [string, string];
+		const box = (name: string) => screen.getByRole("checkbox", { name: new RegExp(`^${MCP_CATALOG[name]?.label}`) });
+		fireEvent.click(box(first));
+		fireEvent.click(box(second));
+
+		stored = applyDocumentPatch(stored, { states: { open: { mcpServers: { [first]: { type: "stdio", command: "theirs" } } } } });
+		press();
+		const refused = await screen.findByText(/changed by someone else/i);
+		expect(refused.textContent).toContain(`Stage permissions (Open) (MCP server ${first}) was changed`);
+
+		fireEvent.click(screen.getByRole("button", { name: /use the current values/i }));
+		const after = await screen.findByText(/loaded what is stored now/i);
+		expect(after.textContent).toContain(`Your changes to Stage permissions (Open) (MCP server ${first}) were replaced`);
+		expect(after.textContent).toContain(`your changes to Stage permissions (Open) (MCP server ${second}) were kept`);
+		await waitFor(() => expect(box(first)).not.toBeChecked());
+		expect(box(second)).toBeChecked();
+	});
+
+	it("shows a refusal that is not a conflict whole on a phone, since nothing else offers to expand it", async () => {
+		mountPage();
+		await ready();
+		fireEvent.click(screen.getByRole("switch", { name: "Pipeline enabled" }));
+		failNextWriteWith = new ApiError(
+			409,
+			"enabled auto-stage toggles require a registered skill for the corresponding stage",
+			"MISSING_SKILL_FOR_ENABLED_STAGE",
+			{ stagesMissingSkill: ["open"] },
+		);
+		press();
+		const message = await screen.findByText(/needs a registered skill/i);
+		expect(message.className).not.toContain("line-clamp");
+	});
+
+	it("keeps the refusal compact on a phone: the message is two lines and the choice is folded behind a toggle", async () => {
+		mountPage();
+		await ready();
+		expandOpenStage();
+		await typeADeniedTool("qa_probe_typed_X");
+		moveDeniedTools();
+		press();
+		const message = await screen.findByText(/changed by someone else/i);
+		expect(message.className).toContain("line-clamp-2");
+		expect(message.className).toContain("md:line-clamp-none");
+
+		const choice = screen.getByRole("button", { name: /use the current values/i }).parentElement?.parentElement as HTMLElement;
+		expect(choice.className).toContain("hidden");
+		expect(choice.className).toContain("md:block");
+
+		const toggle = screen.getByRole("button", { name: "Choose what to do" });
+		expect(toggle).toHaveAttribute("aria-expanded", "false");
+		fireEvent.click(toggle);
+		expect(screen.getByRole("button", { name: "Hide" })).toHaveAttribute("aria-expanded", "true");
+		expect(choice.className).not.toContain("hidden");
+		expect(message.className).not.toContain("line-clamp-2");
 	});
 });

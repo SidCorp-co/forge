@@ -5,14 +5,12 @@ import {
   type BadgeProps,
   Banner,
   Button,
-  Card,
-  CardContent,
-  CardHeader,
   CardTitle,
   Field,
   Input,
   Select,
   type SelectOption,
+  SettingsSection,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { providerCanDeploy } from "@forge/contracts/deploy-capability";
@@ -101,65 +99,63 @@ export function EpodsystemSection({ projectId }: { projectId: string }) {
   const [showAddForm, setShowAddForm] = useState(false);
 
   return (
-    <Card>
-      <CardHeader>
+    <SettingsSection>
+      <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center justify-between gap-2">
           <CardTitle>Epodsystem storefronts</CardTitle>
           {epodsystemBindings.length > 0 && (
             <Badge tone="green">{epodsystemBindings.length} connected</Badge>
           )}
         </div>
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-col gap-4">
-          <p className="fg-body-sm text-muted">
-            Connect one or more Epodsystem storefronts to this project. Each
-            storefront needs its own{" "}
-            <span className="font-mono">crmk_</span> API key. The first
-            (unlabeled) connection is the default. Extra connections require a
-            unique kebab-case label (e.g.{" "}
-            <span className="font-mono">partner-a</span>).
+      </div>
+      <div className="flex flex-col gap-4">
+        <p className="fg-body-sm text-muted">
+          Connect one or more Epodsystem storefronts to this project. Each
+          storefront needs its own{" "}
+          <span className="font-mono">crmk_</span> API key. The first
+          (unlabeled) connection is the default. Extra connections require a
+          unique kebab-case label (e.g.{" "}
+          <span className="font-mono">partner-a</span>).
+        </p>
+
+        {list.isLoading && (
+          <p className="fg-body-sm text-muted">Loading…</p>
+        )}
+
+        {!list.isLoading && epodsystemBindings.length === 0 && (
+          <p className="fg-body-sm text-muted italic">
+            No Epodsystem storefronts configured.
           </p>
+        )}
 
-          {list.isLoading && (
-            <p className="fg-body-sm text-muted">Loading…</p>
-          )}
+        {epodsystemBindings.map((binding, idx) => (
+          <EpodsystemBindingRow
+            key={binding.id}
+            projectId={projectId}
+            binding={binding}
+            isDefault={idx === 0}
+          />
+        ))}
 
-          {!list.isLoading && epodsystemBindings.length === 0 && (
-            <p className="fg-body-sm text-muted italic">
-              No Epodsystem storefronts configured.
-            </p>
-          )}
-
-          {epodsystemBindings.map((binding, idx) => (
-            <EpodsystemBindingRow
-              key={binding.id}
-              projectId={projectId}
-              binding={binding}
-              isDefault={idx === 0}
-            />
-          ))}
-
-          {showAddForm ? (
-            <AddEpodsystemForm
-              projectId={projectId}
-              hasDefault={epodsystemBindings.length > 0}
-              onCancel={() => setShowAddForm(false)}
-              onCreated={() => setShowAddForm(false)}
-            />
-          ) : (
-            <div>
-              <Button
-                variant="secondary"
-                onClick={() => setShowAddForm(true)}
-              >
-                Add storefront
-              </Button>
-            </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+        {showAddForm ? (
+          <AddEpodsystemForm
+            projectId={projectId}
+            hasDefault={epodsystemBindings.length > 0}
+            onCancel={() => setShowAddForm(false)}
+            onCreated={() => setShowAddForm(false)}
+          />
+        ) : (
+          <div>
+            <Button
+              variant="secondary"
+              onClick={() => setShowAddForm(true)}
+            >
+              Add storefront
+            </Button>
+          </div>
+        )}
+      </div>
+    </SettingsSection>
   );
 }
 

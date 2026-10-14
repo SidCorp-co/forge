@@ -4,13 +4,11 @@ import {
   Badge,
   Banner,
   Button,
-  Card,
-  CardContent,
-  CardHeader,
   CardTitle,
   Field,
   Input,
   SegmentedControl,
+  SettingsSection,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useMemo, useState } from "react";
@@ -166,8 +164,8 @@ export function PostmanSection({ projectId }: { projectId: string }) {
   const testUser = testResult?.diagnostics?.user;
 
   return (
-    <Card>
-      <CardHeader>
+    <SettingsSection>
+      <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center justify-between gap-2">
           <CardTitle>Postman</CardTitle>
           {existing && (
@@ -176,172 +174,170 @@ export function PostmanSection({ projectId }: { projectId: string }) {
             </Badge>
           )}
         </div>
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-col gap-4">
+      </div>
+      <div className="flex flex-col gap-4">
+        <p className="fg-body-sm text-muted">
+          Store a Postman API key + write-target. Being connected is not the same as being
+          usable: the official Postman MCP tools reach this project&apos;s agents only once the
+          grant below is on.
+        </p>
+
+        <Field
+          label="API key"
+          hint={
+            existing
+              ? "A key is stored. Leave blank to keep it; enter a new one to rotate."
+              : "Postman API key (PMAK-…). Stored encrypted; never shown again."
+          }
+          required={keyRequired}
+        >
+          <Input
+            type="password"
+            autoComplete="off"
+            placeholder={existing ? "•••••••• (unchanged)" : "PMAK-…"}
+            value={form.apiKey}
+            onChange={(e) => set("apiKey", e.target.value)}
+            disabled={orgLocked}
+          />
+        </Field>
+
+        {orgLocked && (
           <p className="fg-body-sm text-muted">
-            Store a Postman API key + write-target. Being connected is not the same as being
-            usable: the official Postman MCP tools reach this project&apos;s agents only once the
-            grant below is on.
+            Org-shared credential — only an org owner/admin can change it.
           </p>
+        )}
 
-          <Field
-            label="API key"
-            hint={
-              existing
-                ? "A key is stored. Leave blank to keep it; enter a new one to rotate."
-                : "Postman API key (PMAK-…). Stored encrypted; never shown again."
-            }
-            required={keyRequired}
-          >
+        {!existing && (
+          <ConnectionOwnerField
+            projectId={projectId}
+            value={ownerOrgId}
+            onChange={setOwnerOrgId}
+          />
+        )}
+        <Field
+          label="Workspace name"
+          hint="The Postman workspace this project writes into."
+        >
+          <Input
+            value={form.workspaceName}
+            onChange={(e) => set("workspaceName", e.target.value)}
+            placeholder={DEFAULT_WORKSPACE}
+          />
+        </Field>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Workspace ID" hint="Optional — the workspace UUID.">
             <Input
-              type="password"
-              autoComplete="off"
-              placeholder={existing ? "•••••••• (unchanged)" : "PMAK-…"}
-              value={form.apiKey}
-              onChange={(e) => set("apiKey", e.target.value)}
-              disabled={orgLocked}
+              value={form.workspaceId}
+              onChange={(e) => set("workspaceId", e.target.value)}
+              placeholder="(optional)"
             />
           </Field>
-
-          {orgLocked && (
-            <p className="fg-body-sm text-muted">
-              Org-shared credential — only an org owner/admin can change it.
-            </p>
-          )}
-
-          {!existing && (
-            <ConnectionOwnerField
-              projectId={projectId}
-              value={ownerOrgId}
-              onChange={setOwnerOrgId}
-            />
-          )}
           <Field
-            label="Workspace name"
-            hint="The Postman workspace this project writes into."
+            label="Collection ID"
+            hint="Optional — the collection to write."
           >
             <Input
-              value={form.workspaceName}
-              onChange={(e) => set("workspaceName", e.target.value)}
-              placeholder={DEFAULT_WORKSPACE}
+              value={form.collectionId}
+              onChange={(e) => set("collectionId", e.target.value)}
+              placeholder="(optional)"
             />
           </Field>
+        </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Workspace ID" hint="Optional — the workspace UUID.">
-              <Input
-                value={form.workspaceId}
-                onChange={(e) => set("workspaceId", e.target.value)}
-                placeholder="(optional)"
-              />
-            </Field>
-            <Field
-              label="Collection ID"
-              hint="Optional — the collection to write."
-            >
-              <Input
-                value={form.collectionId}
-                onChange={(e) => set("collectionId", e.target.value)}
-                placeholder="(optional)"
-              />
-            </Field>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-6">
-            <div className="flex flex-col gap-1.5">
-              <span className="fg-label">Region</span>
-              <SegmentedControl<PostmanRegion>
-                value={form.region}
-                onChange={(v) => set("region", v)}
-                options={[
-                  { value: "us", label: "US" },
-                  { value: "eu", label: "EU" },
-                ]}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <span className="fg-label">Mode</span>
-              <SegmentedControl<PostmanMode>
-                value={form.mode}
-                onChange={(v) => set("mode", v)}
-                options={[
-                  { value: "minimal", label: "Minimal" },
-                  { value: "full", label: "Full" },
-                ]}
-              />
-            </div>
-          </div>
-
-          {testError && <Banner tone="danger">{testError}</Banner>}
-          {testResult &&
-            (testResult.status === "ok" ? (
-              <Banner tone="success">
-                Connected{testUser?.username ? ` as ${testUser.username}` : ""}
-                {testUser?.email ? ` (${testUser.email})` : ""}.
-              </Banner>
-            ) : (
-              <Banner tone="danger">
-                {testResult.message ?? "Connection failed"}
-              </Banner>
-            ))}
-
-          {existing ? (
-            <AgentAccessControl
-              projectId={projectId}
-              binding={existing}
-              canEdit={true}
-              disabledReason={agentAccessDeniedReason("direct-mcp")}
+        <div className="flex flex-wrap items-center gap-6">
+          <div className="flex flex-col gap-1.5">
+            <span className="fg-label">Region</span>
+            <SegmentedControl<PostmanRegion>
+              value={form.region}
+              onChange={(v) => set("region", v)}
+              options={[
+                { value: "us", label: "US" },
+                { value: "eu", label: "EU" },
+              ]}
             />
-          ) : (
-            <AgentAccessChoice
-              value={agentAccess}
-              onChange={setAgentAccess}
-              pathKind={postman.agentPathKind}
-              canEdit={mayWriteAgentAccess(postman.agentPathKind, { canEditProject: true, isOrgAdmin })}
-              disabledReason={agentAccessDeniedReason("direct-mcp")}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className="fg-label">Mode</span>
+            <SegmentedControl<PostmanMode>
+              value={form.mode}
+              onChange={(v) => set("mode", v)}
+              options={[
+                { value: "minimal", label: "Minimal" },
+                { value: "full", label: "Full" },
+              ]}
             />
-          )}
-
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-            <div className="flex items-center gap-3">
-              <Button
-                variant="primary"
-                onClick={handleSave}
-                loading={create.isPending || update.isPending}
-                disabled={!canSave}
-              >
-                {existing ? "Save" : "Create integration"}
-              </Button>
-              {existing && (
-                <Button
-                  variant="secondary"
-                  onClick={handleTest}
-                  loading={test.isPending}
-                >
-                  Test connection
-                </Button>
-              )}
-            </div>
-            {existing && (
-              <div className="flex items-center gap-4">
-                <IntegrationEnabledControl
-                  projectId={projectId}
-                  binding={existing}
-                />
-                <Button
-                  variant="danger"
-                  icon="trash"
-                  loading={remove.isPending}
-                  onClick={() => remove.mutate(existing.id)}
-                >
-                  Remove
-                </Button>
-              </div>
-            )}
           </div>
         </div>
-      </CardContent>
-    </Card>
+
+        {testError && <Banner tone="danger">{testError}</Banner>}
+        {testResult &&
+          (testResult.status === "ok" ? (
+            <Banner tone="success">
+              Connected{testUser?.username ? ` as ${testUser.username}` : ""}
+              {testUser?.email ? ` (${testUser.email})` : ""}.
+            </Banner>
+          ) : (
+            <Banner tone="danger">
+              {testResult.message ?? "Connection failed"}
+            </Banner>
+          ))}
+
+        {existing ? (
+          <AgentAccessControl
+            projectId={projectId}
+            binding={existing}
+            canEdit={true}
+            disabledReason={agentAccessDeniedReason("direct-mcp")}
+          />
+        ) : (
+          <AgentAccessChoice
+            value={agentAccess}
+            onChange={setAgentAccess}
+            pathKind={postman.agentPathKind}
+            canEdit={mayWriteAgentAccess(postman.agentPathKind, { canEditProject: true, isOrgAdmin })}
+            disabledReason={agentAccessDeniedReason("direct-mcp")}
+          />
+        )}
+
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="primary"
+              onClick={handleSave}
+              loading={create.isPending || update.isPending}
+              disabled={!canSave}
+            >
+              {existing ? "Save" : "Create integration"}
+            </Button>
+            {existing && (
+              <Button
+                variant="secondary"
+                onClick={handleTest}
+                loading={test.isPending}
+              >
+                Test connection
+              </Button>
+            )}
+          </div>
+          {existing && (
+            <div className="flex items-center gap-4">
+              <IntegrationEnabledControl
+                projectId={projectId}
+                binding={existing}
+              />
+              <Button
+                variant="danger"
+                icon="trash"
+                loading={remove.isPending}
+                onClick={() => remove.mutate(existing.id)}
+              >
+                Remove
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    </SettingsSection>
   );
 }

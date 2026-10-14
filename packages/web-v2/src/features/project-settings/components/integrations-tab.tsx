@@ -9,12 +9,11 @@ import { useMemo, useState } from "react";
 import {
   Banner,
   Button,
-  Card,
-  CardContent,
   Field,
   SectionTitle,
   Select,
   type SelectOption,
+  SettingsSection,
 } from "@/design";
 import {
   AGENT_ACCESS_CLOSED,
@@ -131,94 +130,92 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
   }
 
   return (
-    <Card>
-      <CardContent>
-        <SectionTitle className="fg-h3 mb-1">Share an existing connection</SectionTitle>
-        <p className="fg-body-sm mb-4 text-muted">
-          Bind one of your connections to this project without re-entering the credential. The
-          connection&apos;s owner keeps it; this project gets a webhook secret of its own.
-        </p>
+    <SettingsSection>
+      <SectionTitle className="fg-h3 mb-1">Share an existing connection</SectionTitle>
+      <p className="fg-body-sm mb-4 text-muted">
+        Bind one of your connections to this project without re-entering the credential. The
+        connection&apos;s owner keeps it; this project gets a webhook secret of its own.
+      </p>
 
-        {!canEdit ? (
-          <Banner tone="info">
-            Only the project owner can share a connection with this project.
-          </Banner>
-        ) : isEmpty ? (
-          <Banner tone="info">
-            You don&apos;t have any connections yet. Create one on the Integrations hub first.
-          </Banner>
-        ) : (
-          <div className="flex flex-col gap-4">
-            <Field label="Connection" required>
-              <Select
-                options={connectionOptions}
-                value={connectionId}
-                onChange={(v) => {
-                  setConnectionId(v);
-                  setFormError(null);
-                }}
-                placeholder={connectionsQ.isLoading ? "Loading…" : "Select a connection…"}
-                disabled={connectionsQ.isLoading || bind.isPending}
-              />
-            </Field>
-            <Field label="What is it for" required>
-              <Select
-                options={ROLE_SELECT_OPTIONS}
-                value={role}
-                onChange={(v) => chooseRole(v as BindingRole)}
-                disabled={!connectionId || bind.isPending}
-              />
-            </Field>
-            {role === "deploy" && !canDeploy && (
-              <Banner tone="attention">
-                Forge cannot deploy to {providerName} — it has no deploy adapter. Share it as a
-                service instead.
-              </Banner>
-            )}
-            {role === "deploy" && canDeploy && (
-              <Field label="Which stages" required>
-                <div className="flex flex-col gap-2">
-                  {STAGE_CHOICES.map((choice) => (
-                    <label key={choice.value} className="flex items-start gap-2">
-                      <input
-                        type="checkbox"
-                        className="mt-1"
-                        checked={stages.includes(choice.value)}
-                        onChange={() => toggleStage(choice.value)}
-                        disabled={bind.isPending}
-                      />
-                      <span className="fg-body-sm">
-                        {choice.label}
-                        <span className="text-muted"> — {choice.hint}</span>
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </Field>
-            )}
-            <AgentAccessChoice
-              value={agentAccess}
-              onChange={setAgentAccess}
-              pathKind={agentPathKind}
-              canEdit={mayWriteAgentAccess(agentPathKind, { canEditProject: canEdit, isOrgAdmin }) && !bind.isPending}
-              disabledReason={agentAccessDeniedReason(agentPathKind)}
+      {!canEdit ? (
+        <Banner tone="info">
+          Only the project owner can share a connection with this project.
+        </Banner>
+      ) : isEmpty ? (
+        <Banner tone="info">
+          You don&apos;t have any connections yet. Create one on the Integrations hub first.
+        </Banner>
+      ) : (
+        <div className="flex flex-col gap-4">
+          <Field label="Connection" required>
+            <Select
+              options={connectionOptions}
+              value={connectionId}
+              onChange={(v) => {
+                setConnectionId(v);
+                setFormError(null);
+              }}
+              placeholder={connectionsQ.isLoading ? "Loading…" : "Select a connection…"}
+              disabled={connectionsQ.isLoading || bind.isPending}
             />
-            {formError && <Banner tone="attention">{formError}</Banner>}
-            {bind.isError && <Banner tone="danger">{formatApiError(bind.error)}</Banner>}
-            <div>
-              <Button
-                variant="primary"
-                onClick={submit}
-                loading={bind.isPending}
-                disabled={!connectionId || bind.isPending}
-              >
-                Share with this project
-              </Button>
-            </div>
+          </Field>
+          <Field label="What is it for" required>
+            <Select
+              options={ROLE_SELECT_OPTIONS}
+              value={role}
+              onChange={(v) => chooseRole(v as BindingRole)}
+              disabled={!connectionId || bind.isPending}
+            />
+          </Field>
+          {role === "deploy" && !canDeploy && (
+            <Banner tone="attention">
+              Forge cannot deploy to {providerName} — it has no deploy adapter. Share it as a
+              service instead.
+            </Banner>
+          )}
+          {role === "deploy" && canDeploy && (
+            <Field label="Which stages" required>
+              <div className="flex flex-col gap-2">
+                {STAGE_CHOICES.map((choice) => (
+                  <label key={choice.value} className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={stages.includes(choice.value)}
+                      onChange={() => toggleStage(choice.value)}
+                      disabled={bind.isPending}
+                    />
+                    <span className="fg-body-sm">
+                      {choice.label}
+                      <span className="text-muted"> — {choice.hint}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </Field>
+          )}
+          <AgentAccessChoice
+            value={agentAccess}
+            onChange={setAgentAccess}
+            pathKind={agentPathKind}
+            canEdit={mayWriteAgentAccess(agentPathKind, { canEditProject: canEdit, isOrgAdmin }) && !bind.isPending}
+            disabledReason={agentAccessDeniedReason(agentPathKind)}
+          />
+          {formError && <Banner tone="attention">{formError}</Banner>}
+          {bind.isError && <Banner tone="danger">{formatApiError(bind.error)}</Banner>}
+          <div>
+            <Button
+              variant="primary"
+              onClick={submit}
+              loading={bind.isPending}
+              disabled={!connectionId || bind.isPending}
+            >
+              Share with this project
+            </Button>
           </div>
-        )}
-      </CardContent>
-    </Card>
+        </div>
+      )}
+    </SettingsSection>
   );
 }
 
