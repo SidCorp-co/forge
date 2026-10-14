@@ -115,16 +115,55 @@ export interface MatchExcerpt extends MatchSpan {
 const BEFORE = 40;
 const AFTER = 120;
 
-/** A markdown line as a reader sees it: no heading, quote or list marker, link target or emphasis. */
+const LINE_MARKER = /^\s*(#{1,6}\s+|>\s?|[-*+]\s+|\d+\.\s+)/;
+const TAG = /^<[A-Za-z/!?][^<>]*>/;
+const LINK = /^!?\[([^\]]*)\]\([^)]*\)/;
+const TAG_START = /[A-Za-z/!?]/;
+
+/**
+ * A markdown line as a reader sees it, read once from left to right: no heading, quote or list
+ * marker, no HTML tag, link target, emphasis or code mark, a code span's text kept as written. What
+ * is dropped never joins its neighbours into a tag: a `<` read as text is kept apart from a letter
+ * after it, so no input reads as `<script` once its markup is gone.
+ */
 function plainLine(line: string): string {
-  return line
-    .replace(/^\s*(#{1,6}\s+|>\s?|[-*+]\s+|\d+\.\s+)/, "")
-    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/<[^>]+>/g, "")
-    .replace(/`|\*\*/g, "")
-    .replace(/\|/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  let out = "";
+  let looseAngle = false;
+  const emit = (text: string, code: boolean) => {
+    for (const ch of text) {
+      if (looseAngle && TAG_START.test(ch)) out += " ";
+      out += ch;
+      looseAngle = !code && ch === "<";
+    }
+  };
+  const read = (src: string) => {
+    let i = 0;
+    while (i < src.length) {
+      const rest = src.slice(i);
+      if (rest.startsWith("`")) {
+        const fence = /^`+/.exec(rest)?.[0] ?? "`";
+        const close = rest.indexOf(fence, fence.length);
+        if (close !== -1) emit(rest.slice(fence.length, close), true);
+        i += close !== -1 ? close + fence.length : fence.length;
+      } else if (rest.startsWith("**")) {
+        i += 2;
+      } else if (rest.startsWith("|")) {
+        emit(" ", false);
+        i += 1;
+      } else if (TAG.test(rest)) {
+        i += TAG.exec(rest)?.[0].length ?? 1;
+      } else if (LINK.test(rest)) {
+        const link = LINK.exec(rest) ?? ["", ""];
+        read(link[1]);
+        i += link[0].length;
+      } else {
+        emit(src[i], false);
+        i += 1;
+      }
+    }
+  };
+  read(line.replace(LINE_MARKER, ""));
+  return out.replace(/\s+/g, " ").trim();
 }
 
 function trimmed(span: MatchSpan): MatchSpan {

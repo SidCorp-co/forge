@@ -88,6 +88,28 @@ describe("where a page matched", () => {
     expect(excerpt("1. Start the runner")?.before).toBe("Start the ");
   });
 
+  it("never rebuilds a tag out of what dropping markup leaves behind", () => {
+    const shown = (line: string) => {
+      const e = matchExcerpt(page("T", line), "run");
+      return `${e?.before}${e?.match}${e?.after}`;
+    };
+    const planted = [
+      "run <`script` here",
+      "run <**script here",
+      "run <[](x)script here",
+      "run <`script`>alert(1)",
+      "run <<b>script>",
+      "run <b>x</b><script",
+      "run <scr<i>ipt>",
+    ];
+    expect(planted.filter((line) => /<[A-Za-z/!?]/.test(shown(line))).map((line) => `${line} → ${shown(line)}`)).toEqual([]);
+  });
+
+  it("drops a whole tag and keeps a code span's text, angle brackets included", () => {
+    const e = matchExcerpt(page("T", "Run <kbd>Enter</kbd> in place of `<your-forge-host>` and a < b."), "run");
+    expect(`${e?.match}${e?.after}`).toBe("Run Enter in place of <your-forge-host> and a < b.");
+  });
+
   it("shows a line as written where the words are only in its markup, such as a link's address", () => {
     expect(matchExcerpt(page("T", "Read [the guide](/guides/dispatch-a-wave)."), "dispatch-a")).toEqual({
       heading: null,
