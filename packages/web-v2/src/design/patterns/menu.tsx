@@ -1,5 +1,5 @@
 
-import { Fragment, type ReactNode } from "react";
+import { Fragment, type ReactElement } from "react";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -25,7 +25,10 @@ export interface MenuItem {
 }
 
 interface MenuProps {
-  trigger: ReactNode;
+  /** The one button that opens the menu. It becomes the trigger itself (its own role, focus and
+   *  aria-expanded), never a child of one: a wrapper with role=button around a button nested one
+   *  interactive element inside another, so a screen reader met two buttons and the tab order a dead stop. */
+  trigger: ReactElement;
   items: MenuItem[];
   align?: "left" | "right";
   side?: "top" | "bottom";
@@ -92,13 +95,7 @@ export function Menu({
   return (
     <div className={cn("relative inline-flex", className)}>
       <DropdownMenu>
-        <DropdownMenuTrigger
-          nativeButton={false}
-          tabIndex={-1}
-          render={<span className={cn("outline-none", triggerClassName)} />}
-        >
-          {trigger}
-        </DropdownMenuTrigger>
+        <DropdownMenuTrigger render={trigger} className={triggerClassName} />
         <DropdownMenuContent
           side={side}
           align={align === "right" ? "end" : "start"}
