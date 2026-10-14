@@ -4,6 +4,9 @@
  * the app's own routes, against real Postgres. The release's build is the commit its approval was
  * asked at; its two issues carry four criteria judged a pass on that build, a short on it, a pass on
  * the merged commit only, and a fail on it. The page claims only the first.
+ *
+ * @direct-test-of packages/core/src/release-page/sections.ts
+ * @direct-test-of packages/contracts/src/release-page.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -239,12 +242,18 @@ describe('the page reads off the release record', () => {
     const w = await releaseWorldOfFour();
     const p = await page('member');
     expect(p.improvements).toEqual([
-      { issueKey: await keyOf(w.a), kind: 'new', line: 'Nurses see a reminder before each visit.' },
+      {
+        issueKey: await keyOf(w.a),
+        kind: 'new',
+        section: 'Added',
+        line: 'Nurses see a reminder before each visit.',
+      },
     ]);
     expect(p.fixes).toEqual([
       {
         issueKey: await keyOf(w.b),
         kind: 'fixed',
+        section: 'Fixed',
         line: 'A visit report keeps its filter after a reload.',
       },
     ]);

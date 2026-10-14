@@ -2,6 +2,9 @@
  * The release read model a person reads (`release-batch/release-read.ts`): the gate as words, who a
  * release waits on, and the requirements and criteria it carries — through the app's own routes,
  * against real Postgres.
+ *
+ * @direct-test-of packages/core/src/release-page/sections.ts
+ * @direct-test-of packages/contracts/src/release-page.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -404,7 +407,7 @@ describe('an issue reopened between two releases reads as the rework of the one 
     const dev225 = await page('0.4.0-dev.225');
     expect(dev225.withoutNotes).toEqual([]);
     const key = dev225.fixes[0]?.issueKey;
-    expect(dev225.fixes).toEqual([{ issueKey: key, kind: 'fixed', line: RETRY }]);
+    expect(dev225.fixes).toEqual([{ issueKey: key, kind: 'fixed', section: 'Fixed', line: RETRY }]);
     expect(dev225.actionRequired).toEqual([
       expect.objectContaining({ kind: 'migration', ref: MIGRATION, issues: [key] }),
     ]);
