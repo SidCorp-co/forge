@@ -45,6 +45,7 @@ import { sessionContextExpectSchema, sessionContextSchema } from '../../issues/s
 import { updateIssueFields } from '../../issues/update-service.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
 import { markUntrusted, sanitizeUntrusted } from '../../prompt/sanitize.js';
+import { ISSUE_ACTIONS, refuseUnservedIssueAction } from './forge-issues-actions.js';
 import { refuseStrayArchiveFields, runArchiveAction } from './forge-issues-archive.js';
 import { forgeIssuesDescription } from './forge-issues-description.js';
 import { toMcpIssueError } from './forge-issues-errors.js';
@@ -179,18 +180,7 @@ const GET_SELECTABLE_FIELDS = [...STEP_START_HEAVY_FIELDS, 'releaseNotes'] as co
 
 const inputSchema = z
   .object({
-    action: z.enum([
-      'list',
-      'get',
-      'create',
-      'update',
-      'transition',
-      'mark_merged',
-      'unmark',
-      'setAttributes',
-      'archive',
-      'unarchive',
-    ]),
+    action: z.enum(ISSUE_ACTIONS),
     projectId: z.uuid().optional(),
     documentId: issueRefSchema.optional(),
     filters: filtersSchema,
@@ -440,6 +430,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
   description: forgeIssuesDescription(ISSUE_REF_CLAUSE),
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
+    refuseUnservedIssueAction((args as { action?: unknown } | null)?.action);
     const input = inputSchema.parse(args);
     const { principal } = ctx;
     const refs = refsFor(input, ctx, principal);

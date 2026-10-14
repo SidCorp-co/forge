@@ -5,7 +5,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import type { ReleaseNotes } from "@forge/contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import type { IssueStatus } from "../types";
-import { BUILT_NOT_RELEASED, ReleaseNoteCard } from "./release-note-card";
+import { BUILT_NOT_RELEASED, ReleaseNoteSection } from "./release-note-section";
 
 expect.extend(matchers);
 afterEach(cleanup);
@@ -17,7 +17,7 @@ const FIXED: ReleaseNotes = {
 const SKIP: ReleaseNotes = { section: "Skip", userFacing: "-" };
 
 function show(status: IssueStatus, releaseNotes: ReleaseNotes | null | undefined) {
-  return render(<ReleaseNoteCard issue={{ status, releaseNotes }} />);
+  return render(<ReleaseNoteSection issue={{ status, releaseNotes }} />);
 }
 
 describe("the release note on an issue's page", () => {
