@@ -241,8 +241,12 @@ const whole = (label: string, min: number, max: number) =>
 
 const BACKLOG_LIMIT = whole("Backlog rows", 1, 100);
 
-export const WEEKLY_INCOMPLETE =
-  "Fill in the pinned issue, the judge provider id and the judge model before turning the weekly reading on.";
+/** The weekly reading's three required fields, each named at its own input when it is empty while the reading is on. */
+export const WEEKLY_REQUIRED = [
+  ["pinnedIssue", "the pinned issue"],
+  ["judgeProviderId", "the judge provider id"],
+  ["judgeModel", "the judge model"],
+] as const;
 export const BACKLOG_NEEDS_INTAKE_GATE_OFF =
   "Intake gate is on, which parks every new issue at Draft for a human to approve. A master that may promote drafts is that human, so Draft can’t also be admitted here — turn the intake gate off, or drop Draft from this list.";
 
@@ -269,12 +273,16 @@ export const pipelineSchema: z.ZodType<PipelineDraft, PipelineDraft> = z
   })
   .superRefine((draft, ctx) => {
     const weekly = draft.assistantWeekly;
-    const complete =
-      weekly.pinnedIssue.trim() !== "" &&
-      weekly.judgeProviderId.trim() !== "" &&
-      weekly.judgeModel.trim() !== "";
-    if (weekly.enabled && !complete) {
-      ctx.addIssue({ code: "custom", path: ["assistantWeekly", "enabled"], message: WEEKLY_INCOMPLETE });
+    if (weekly.enabled) {
+      for (const [key, name] of WEEKLY_REQUIRED) {
+        if (weekly[key].trim() === "") {
+          ctx.addIssue({
+            code: "custom",
+            path: ["assistantWeekly", key],
+            message: `Fill in ${name} before turning the weekly reading on.`,
+          });
+        }
+      }
     }
     // The row limit is on screen, and written, only while some status is admitted.
     if (draft.poolBacklog.statuses.length > 0) {

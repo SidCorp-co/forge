@@ -71,6 +71,9 @@ function mergeMarkSentence(err: ApiError): string | null {
   return null;
 }
 
+/** The text a server error carries when nothing wrote it: the HTTP status text, which says nothing a person can use. */
+const BARE_SERVER_TEXT = /^(internal server error|bad gateway|service unavailable|gateway timeout)\.?$/i;
+
 export function formatApiError(err: unknown): string {
   if (err instanceof ApiError) {
     const mergeMark = mergeMarkSentence(err);
@@ -78,11 +81,20 @@ export function formatApiError(err: unknown): string {
     const claimed = err.code === 'CLAIM_CONFLICT' ? claimConflictSentence(err.details) : null;
     if (claimed) return claimed;
     if (err.code && FRIENDLY_CODES[err.code]) return FRIENDLY_CODES[err.code];
+    if (err.status >= 500 && BARE_SERVER_TEXT.test(err.message.trim())) {
+      return `The server could not complete the request (${err.status}).`;
+    }
     if (err.message) return err.message;
     return `Request failed (${err.status})`;
   }
   if (err instanceof Error) return err.message;
   return 'Unknown error';
+}
+
+/** A failure as a sentence of its own, so what a message says next starts after a full stop. */
+export function formatApiReason(err: unknown): string {
+  const text = formatApiError(err).trim();
+  return /[.!?]$/.test(text) ? text : `${text}.`;
 }
 
 
@@ -199,19 +211,24 @@ const SETTING_LABELS: [prefix: string, label: string][] = [
   ['limits', 'Limits'],
 ];
 
+/** The entry stage's two switches are one control on the Pipeline page, named for what it does and not for a stage. */
+const ENTRY_GATE_LABEL = 'Start queued issues automatically';
+
 const STAGE_SETTING_LABELS: Record<string, string> = {
   deviceIds: 'Runner pools',
   allowedTools: 'Stage permissions',
   disallowedTools: 'Stage permissions',
   mcpServers: 'Stage permissions',
+  mode: ENTRY_GATE_LABEL,
+  enabled: ENTRY_GATE_LABEL,
 };
 
-/** `states.open.deviceIds` → "Runner pools (Open)"; `intakeGate.enabled` → "Intake gate". */
+/** `states.open.deviceIds` → "Runner pools (Open)"; `intakeGate.enabled` → "Intake gate"; `states.open.mode` → the switch's own name. */
 export function settingLabel(path: string): string {
   const parts = path.split('.');
   if (parts[0] === 'states' && parts.length >= 3) {
     const leaf = STAGE_SETTING_LABELS[parts[2]] ?? 'Stage settings';
-    return `${leaf} (${stageLabel(parts[1])})`;
+    return leaf === ENTRY_GATE_LABEL ? leaf : `${leaf} (${stageLabel(parts[1])})`;
   }
   for (const [prefix, label] of SETTING_LABELS) {
     if (path === prefix || path.startsWith(prefix)) return label;

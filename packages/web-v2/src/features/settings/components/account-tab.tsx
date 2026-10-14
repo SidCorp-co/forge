@@ -19,7 +19,7 @@ import {
   useSettingsForm,
   SettingsSection,
 } from "@/design";
-import { formatApiError } from "@/lib/api/error";
+import { formatApiError, formatApiReason } from "@/lib/api/error";
 import { useAuth } from "@/providers/auth-provider";
 import {
   useAssistantPreferences,
@@ -101,7 +101,7 @@ function AccountPreferences({
         }
       } catch (err) {
         setFailure(
-          `${saved.length > 0 ? `${saved.join(" and ")} saved, but not the rest: ` : "Nothing was saved: "}${formatApiError(err)} Your other edits are still here — Save sends them again.`,
+          `${saved.length > 0 ? `${saved.join(" and ")} saved, but not the rest: ` : "Nothing was saved: "}${formatApiReason(err)} Your other edits are still here — Save sends them again.`,
         );
         throw err;
       }

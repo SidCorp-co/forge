@@ -22,7 +22,7 @@ import {
 } from "@/design";
 import { useProject } from "@/features/projects/hooks";
 import { useProjectRunners } from "@/features/runners/hooks";
-import { formatApiError } from "@/lib/api/error";
+import { formatApiError, formatApiReason } from "@/lib/api/error";
 import {
   isFeatureOff,
   usePipelineConfig,
@@ -133,7 +133,7 @@ function PipelinePage({
         try {
           await updatePlugins.mutateAsync(writes.plugins);
         } catch (err) {
-          setPluginsFailure({ configSaved: writes.config !== null, reason: formatApiError(err) });
+          setPluginsFailure({ configSaved: writes.config !== null, reason: formatApiReason(err) });
           throw err;
         }
       }
@@ -212,7 +212,7 @@ function PipelinePage({
         />
 
         <div className="mt-6 border-t border-line pt-5">
-          <Collapsible title={`Configured elsewhere — ${API_ONLY_KEYS.length} keys this screen doesn't edit`}>
+          <Collapsible flat title={`Configured elsewhere — ${API_ONLY_KEYS.length} keys this screen doesn't edit`}>
             <ul className="space-y-2">
               {API_ONLY_KEYS.map((k) => (
                 <li key={k.key}>

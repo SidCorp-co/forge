@@ -2,7 +2,7 @@
 // hierarchy from type and whitespace, no card mosaic. A settings page that stacks `Card`s again fails
 // here by name, so the rule outlives the pass that applied it.
 
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -34,7 +34,50 @@ const SETTINGS_PAGES = [
   "settings/components/mcp-tab.tsx",
 ];
 
+/** Every class list in a source file: each string literal that could hold one. */
+function classLists(source: string): string[] {
+  return [...source.matchAll(/"([^"\n]*)"|`([^`]*)`/g)].map((m) => m[1] ?? m[2] ?? "");
+}
+
+/**
+ * A container drawn as a box: all four sides bordered, or rounded and filled and padded. A flat page
+ * rules its sections with a hairline on one side and takes its hierarchy from type and whitespace.
+ * A pill, a fixed-size control and a code readout are not containers.
+ */
+function boxedContainer(classes: string): boolean {
+  const t = classes.split(/\s+/).filter(Boolean);
+  const rounded = t.some((x) => /^rounded-(sm|md|lg|xl|2xl)$/.test(x));
+  const bordered = t.includes("border");
+  const filled = t.some((x) => /^bg-(surface|sunken)/.test(x)) && t.some((x) => /^p[xy]?-/.test(x));
+  const control = t.some((x) => /^h-\d+$/.test(x)) && t.some((x) => /^w-\d+$/.test(x));
+  const exempt = control || t.includes("rounded-pill") || t.includes("font-mono");
+  return (bordered || (rounded && filled)) && !exempt;
+}
+
+/** Each source file of a screen's own components, by path under `features/`. */
+function componentFiles(dir: string): string[] {
+  return readdirSync(resolve(FEATURES, dir))
+    .filter((name) => name.endsWith(".tsx") && !name.includes(".test."))
+    .map((name) => `${dir}/${name}`);
+}
+
+const SCREEN_COMPONENTS = [
+  ...new Set([...componentFiles("project-settings/components"), ...componentFiles("settings/components")]),
+];
+
 describe("the settings pages are flat", () => {
+  it.each(SCREEN_COMPONENTS)("%s draws no box around a section", (file) => {
+    const boxes = classLists(readFileSync(resolve(FEATURES, file), "utf8")).filter(boxedContainer);
+    expect(boxes).toEqual([]);
+  });
+
+  it.each(SCREEN_COMPONENTS)("%s discloses a section flat", (file) => {
+    const source = readFileSync(resolve(FEATURES, file), "utf8");
+    const opened = source.match(/<Collapsible\b/g)?.length ?? 0;
+    const flat = source.match(/<Collapsible\s+flat\b/g)?.length ?? 0;
+    expect(opened - flat).toBe(0);
+  });
+
   it.each(SETTINGS_PAGES)("%s stacks no Card", (file) => {
     const source = readFileSync(resolve(FEATURES, file), "utf8");
     expect(source).not.toMatch(/<Card[\s>]|<CardContent|<CardHeader/);

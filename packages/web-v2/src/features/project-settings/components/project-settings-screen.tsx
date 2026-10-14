@@ -158,7 +158,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 						</header>
 
 						{!canEdit && (
-							<p className="fg-body-sm mb-4 rounded-md border border-line bg-surface px-3 py-2 text-muted">
+							<p className="fg-body-sm mb-4 border-b border-line pb-3 text-muted">
 								{isProjectAdmin
 									? "Basics, Repo, Testing, Pipeline, Integrations and Advanced need an org owner/admin — you can still manage Members and Labels."
 									: "You have read-only access to these settings."}

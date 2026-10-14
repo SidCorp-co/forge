@@ -194,7 +194,7 @@ export function McpTab() {
                 </>
               )}
             </p>
-            <pre className="overflow-x-auto rounded-md border border-line bg-sunken p-3 text-12-5 leading-relaxed text-fg">
+            <pre className="overflow-x-auto border-y border-line py-3 font-mono text-12-5 leading-relaxed text-fg">
               <code>
                 <SnippetCode content={snippet.content} />
               </code>
