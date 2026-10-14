@@ -25,5 +25,5 @@ Run this over a skill before shipping it.
 
 ## Ship
 - [ ] Read `forge_skills_effective` and reconciled against the live server body before overwriting.
-- [ ] `forge_skills_update`/`create` (server, `installOnly: true`) → `forge_skills_push`.
+- [ ] `forge_skills_update`, or `forge_skills_create` then `forge_skills_update` with `installOnly: true` (create does not take it) → `forge_skills_push`.
 - [ ] Verified ON DISK (`.claude/skills/<name>/SKILL.md`), not just the sync dashboard.

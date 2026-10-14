@@ -61,7 +61,7 @@ Need different pipeline behaviour for THIS project?
 
 1. **Read what's live:** `forge_skills_effective` (catalog + which are shadowed) and the global body you're customizing. **Reconcile first** — the server may have diverged from any local copy.
 2. **Draft** from `references/authoring-template.md`; run it through `references/authoring-checklist.md`.
-3. **Ship server-first:** `forge_skills_update` (existing project skill) or `forge_skills_create` (new shadow). Set `installOnly: true` so it force-syncs to runners as a user-invocable skill.
+3. **Ship server-first:** `forge_skills_update` (existing project skill), or `forge_skills_create` (new shadow) and then `forge_skills_update` on the returned skill with `installOnly: true` — create does not take that flag. `installOnly` is what force-syncs it to runners as a user-invocable skill.
 4. **Sync + verify:** `forge_skills_push` → then **verify ON DISK** (`md5`/grep the marker in `.claude/skills/<name>/SKILL.md`). The WS sync-status dashboard is unreliable (false-negatives) — trust the disk.
 
 ## 6. What ships where
