@@ -284,6 +284,16 @@ describe('a server error that carries only its HTTP status text', () => {
     );
   });
 
+  it('covers every standard 5xx status text, whole-message only', () => {
+    expect(formatApiError(new ApiError(501, 'Not Implemented'))).toBe('The server could not complete the request (501).');
+    expect(formatApiError(new ApiError(505, 'HTTP Version Not Supported'))).toBe(
+      'The server could not complete the request (505).',
+    );
+    expect(formatApiError(new ApiError(501, 'Not Implemented for this provider'))).toBe(
+      'Not Implemented for this provider',
+    );
+  });
+
   it("keeps a server error's own words, and a client error's status text", () => {
     expect(formatApiError(new ApiError(500, 'the plugins store is down'))).toBe('the plugins store is down');
     expect(formatApiError(new ApiError(400, 'Internal Server Error'))).toBe('Internal Server Error');

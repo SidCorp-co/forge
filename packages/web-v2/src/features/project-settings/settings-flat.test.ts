@@ -65,6 +65,28 @@ const SCREEN_COMPONENTS = [
   ...new Set([...componentFiles("project-settings/components"), ...componentFiles("settings/components")]),
 ];
 
+/** The `<Collapsible>` tags a source opens that are not flat: no `flat`, or `flat={false}`. */
+function unflatDisclosures(source: string): number {
+  const opened = source.match(/<Collapsible\b/g)?.length ?? 0;
+  const flat = source.match(/<Collapsible\s+flat(?=\s|>|\/|=\{true\})/g)?.length ?? 0;
+  return opened - flat;
+}
+
+describe("the detector of a boxed disclosure", () => {
+  it.each([
+    ['<Collapsible flat title="Stage">x</Collapsible>', 0],
+    ["<Collapsible\n  flat\n  title={t}\n>x</Collapsible>", 0],
+    ["<Collapsible flat={true} title={t}>x</Collapsible>", 0],
+    ['<Collapsible title="Stage">x</Collapsible>', 1],
+    ['<Collapsible flat={false} title="Stage">x</Collapsible>', 1],
+    ['<Collapsible flat={on} title="Stage">x</Collapsible>', 1],
+    ['<Collapsible flatten title="Stage">x</Collapsible>', 1],
+    ['<Collapsible title="a" flat>x</Collapsible>', 1],
+  ])("reads %j as %i not flat", (source, notFlat) => {
+    expect(unflatDisclosures(source)).toBe(notFlat);
+  });
+});
+
 describe("the settings pages are flat", () => {
   it.each(SCREEN_COMPONENTS)("%s draws no box around a section", (file) => {
     const boxes = classLists(readFileSync(resolve(FEATURES, file), "utf8")).filter(boxedContainer);
@@ -72,10 +94,7 @@ describe("the settings pages are flat", () => {
   });
 
   it.each(SCREEN_COMPONENTS)("%s discloses a section flat", (file) => {
-    const source = readFileSync(resolve(FEATURES, file), "utf8");
-    const opened = source.match(/<Collapsible\b/g)?.length ?? 0;
-    const flat = source.match(/<Collapsible\s+flat\b/g)?.length ?? 0;
-    expect(opened - flat).toBe(0);
+    expect(unflatDisclosures(readFileSync(resolve(FEATURES, file), "utf8"))).toBe(0);
   });
 
   it.each(SETTINGS_PAGES)("%s stacks no Card", (file) => {

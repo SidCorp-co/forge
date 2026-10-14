@@ -72,7 +72,22 @@ function mergeMarkSentence(err: ApiError): string | null {
 }
 
 /** The text a server error carries when nothing wrote it: the HTTP status text, which says nothing a person can use. */
-const BARE_SERVER_TEXT = /^(internal server error|bad gateway|service unavailable|gateway timeout)\.?$/i;
+const BARE_SERVER_TEXT = new RegExp(
+  `^(${[
+    'internal server error',
+    'not implemented',
+    'bad gateway',
+    'service unavailable',
+    'gateway timeout',
+    'http version not supported',
+    'variant also negotiates',
+    'insufficient storage',
+    'loop detected',
+    'not extended',
+    'network authentication required',
+  ].join('|')})\\.?$`,
+  'i',
+);
 
 export function formatApiError(err: unknown): string {
   if (err instanceof ApiError) {
