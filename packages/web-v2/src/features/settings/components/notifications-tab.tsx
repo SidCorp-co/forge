@@ -11,11 +11,11 @@ import {
   Button,
   EmptyState,
   ErrorState,
-  Pagination,
   SectionTitle,
   Skeleton,
   Toggle,
   SettingsSection,
+  VirtualList,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import {
@@ -33,10 +33,9 @@ import {
   primeAudio,
   setEnabled as setSoundEnabled,
 } from "@/lib/notifications/sound";
-import { NOTIFICATIONS_PAGE_SIZE } from "../api";
 import {
   useMarkAllRead,
-  useNotifications,
+  useNotificationFeed,
   usePreferences,
   useUpdatePreferences,
 } from "../hooks";
@@ -50,21 +49,28 @@ function fmtTime(iso: string): string {
 }
 
 export function NotificationsTab() {
-  const [page, setPage] = useState(1);
-  const notificationsQ = useNotifications(page);
+  const feedQ = useNotificationFeed();
   const markAll = useMarkAllRead();
 
-  const rows = notificationsQ.data?.items ?? [];
-  const totalCount = notificationsQ.data?.totalCount ?? 0;
-  const pageCount = Math.max(1, Math.ceil(totalCount / NOTIFICATIONS_PAGE_SIZE));
+  const rows = feedQ.data?.rows ?? [];
+  const totalCount = feedQ.data?.totalCount ?? 0;
   const hasUnread = rows.some((n) => n.readAt === null);
+  // A failed refresh keeps the rows already read; only a first load that failed has nothing to show.
+  const failedToLoad = feedQ.isError && !feedQ.data;
 
   return (
     <div className="space-y-6">
       <DeliveryPreferences />
 
       <div className="flex items-center justify-between gap-3">
-        <SectionTitle className="fg-h3">Notifications</SectionTitle>
+        <div className="min-w-0">
+          <SectionTitle className="fg-h3">Notifications</SectionTitle>
+          {totalCount > 0 && (
+            <p className="fg-caption mt-0.5">
+              {totalCount === 1 ? "1 notification" : `${totalCount.toLocaleString("en-US")} notifications`}
+            </p>
+          )}
+        </div>
         <Button
           variant="secondary"
           size="sm"
@@ -78,7 +84,7 @@ export function NotificationsTab() {
         </Button>
       </div>
 
-      {notificationsQ.isLoading && (
+      {feedQ.isLoading && (
         <div className="space-y-2.5">
           {Array.from({ length: 5 }).map((_, i) => (
             <Skeleton key={i} className="h-16 w-full rounded-lg" />
@@ -86,30 +92,37 @@ export function NotificationsTab() {
         </div>
       )}
 
-      {notificationsQ.isError && (
+      {failedToLoad && (
         <ErrorState
           title="Couldn't load notifications"
-          message={formatApiError(notificationsQ.error)}
-          onRetry={() => notificationsQ.refetch()}
+          message={formatApiError(feedQ.error)}
+          onRetry={() => feedQ.refetch()}
         />
       )}
 
-      {!notificationsQ.isLoading && !notificationsQ.isError && rows.length === 0 && (
+      {!feedQ.isLoading && !failedToLoad && rows.length === 0 && (
         <EmptyState title="All caught up" message="You have no notifications." />
       )}
 
-      {!notificationsQ.isLoading && !notificationsQ.isError && rows.length > 0 && (
-        <div className="divide-y divide-line">
-          {rows.map((n) => (
-            <NotificationItem key={n.id} row={n} />
-          ))}
-        </div>
-      )}
-
-      {totalCount > NOTIFICATIONS_PAGE_SIZE && (
-        <div className="flex justify-center">
-          <Pagination page={page} pageCount={pageCount} onChange={setPage} />
-        </div>
+      {rows.length > 0 && (
+        <VirtualList
+          aria-label="Notifications"
+          rows={rows}
+          totalCount={totalCount}
+          getRowId={(n) => n.id}
+          getRowLabel={(n) => n.title}
+          estimateRowHeight={72}
+          renderRow={(n) => <NotificationItem row={n} />}
+          more={
+            feedQ.hasNextPage
+              ? {
+                  onLoad: () => void feedQ.fetchNextPage(),
+                  loading: feedQ.isFetchingNextPage,
+                  failed: feedQ.isFetchNextPageError,
+                }
+              : undefined
+          }
+        />
       )}
     </div>
   );

@@ -16,6 +16,7 @@ import {
   PageContainer,
   ProjectCardSkeleton,
   useDataTableRows,
+  useMediaQuery,
 } from '@/design';
 import { formatApiError } from '@/lib/api/error';
 import { useActiveOrg } from '@/features/orgs/active-org';
@@ -53,6 +54,9 @@ function SectionLabel({
 
 const NO_FILTERS: Record<string, string> = {};
 
+// Below Tailwind's `sm` breakpoint.
+const PHONE_WIDTH = 'not all and (min-width: 40rem)';
+
 export function ProjectsConsole() {
   const { items: allItems, isLoading, isError, error, healthRead, refetch, toggle } = useProjectsConsole();
   const router = useRouter();
@@ -61,7 +65,11 @@ export function ProjectsConsole() {
   const [createOpen, setCreateOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<ProjectSortState>(DEFAULT_PROJECT_SORT);
-  const [view, setView] = useState<ProjectView>('cards');
+  // The owner's rule is flat rows with no card mosaic, so a phone opens as the list and a wide
+  // screen as the cards; a view the person picks wins over either.
+  const [pickedView, setView] = useState<ProjectView | null>(null);
+  const phone = useMediaQuery(PHONE_WIDTH);
+  const view: ProjectView = pickedView ?? (phone ? 'list' : 'cards');
   const [attentionOnly, setAttentionOnly] = useState(false);
   // Org scope is driven by the global active-org switcher (ISS-469), not a
   // local toolbar filter — so the chrome selection and the console never

@@ -12,7 +12,7 @@ import {
   SegmentedControl, Select, SessionRowSkeleton, Skeleton, SlideOver, Spinner,
   STAGES, Stat, StatusChip,
   StreamingText, Table, TBody, TD, TH, THead, TR, Tabs, Textarea, Toggle, Tooltip,
-  TopBar, HelpButton, PinnedTabBar, useAnimatedNumber, useElapsed,
+  TopBar, HelpButton, PinnedTabBar, VirtualList, useAnimatedNumber, useElapsed,
   type Command, type DataTableColumn, type NotificationItem, type PinnedTab,
   type StageKey, type StatusKey, type TopBarDensity,
 } from "@/design";
@@ -104,7 +104,7 @@ const NAV_ANCHORS = [
   "tokens", "type", "buttons", "status", "avatars", "tags", "forms", "cards",
   "pipeline", "kanban", "navrail", "topbar", "shell", "overlays", "states",
   "mascot", "skeletons", "progress", "feedback", "realtime",
-  "formcontrols", "display", "disclosure", "data", "datatable", "overlays2", "pageload",
+  "formcontrols", "display", "disclosure", "data", "datatable", "virtuallist", "overlays2", "pageload",
 ];
 
 function MascotProgressDemo() {
@@ -439,6 +439,22 @@ function RankedDemo() {
       sort={{ id: by, desc: true }}
       onSortChange={(s) => setBy(s.id === "spend" ? "spend" : "runs")}
       manualSort
+    />
+  );
+}
+
+const LONG_LIST = Array.from({ length: 1300 }, (_, i) => ({ id: `n${i + 1}`, title: `Notification ${i + 1}` }));
+
+// 1,300 rows, of which the document holds only those in view: PageDown and PageUp walk row to row.
+function VirtualListDemo() {
+  return (
+    <VirtualList
+      aria-label="Notifications, 1,300 of them"
+      rows={LONG_LIST}
+      getRowId={(r) => r.id}
+      getRowLabel={(r) => r.title}
+      estimateRowHeight={44}
+      renderRow={(r) => <p className="fg-body-sm px-1 py-3 text-fg">{r.title}</p>}
     />
   );
 }
@@ -973,6 +989,10 @@ export default function KitPage() {
               <DataTableDemo />
               <RankedDemo />
             </div>
+          </Section>
+
+          <Section id="virtuallist" title="VirtualList" hint="A long list that draws only the rows in view: each row says its place in the whole, and PageDown, PageUp, Ctrl+Home and Ctrl+End move focus between rows. A table of more than 100 rows does the same inside its own frame.">
+            <VirtualListDemo />
           </Section>
 
           <Section id="overlays2" title="Slide-over & menu" hint="Right-hand detail drawer (RunDetail) + dropdown menus.">

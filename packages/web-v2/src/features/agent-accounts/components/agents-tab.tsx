@@ -192,7 +192,7 @@ export function AgentsTab() {
             },
             {
               id: "self",
-              label: selfOpen === agent.userId ? "Close self" : "Self",
+              label: selfOpen === agent.userId ? "Close editor" : "Edit self",
               variant: "ghost",
               expanded: selfOpen === agent.userId,
               onClick: () => setSelfOpen(selfOpen === agent.userId ? null : agent.userId),

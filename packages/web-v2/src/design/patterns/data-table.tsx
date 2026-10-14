@@ -2,6 +2,7 @@
 
 import { type HTMLAttributes, type ReactNode, useState } from "react";
 import { cn } from "@/lib/utils/cn";
+import { useVirtualRows } from "../hooks/use-virtual-rows";
 import { Icon } from "../icons/icon";
 import { TBody, TD, TH, THead, TR, Table } from "../primitives/table";
 import {
@@ -28,6 +29,17 @@ export interface DataTableColumn<Row> extends DataTableModelColumn<Row> {
   sticky?: boolean;
 }
 
+/**
+ * How many rows a table draws whole. Above it the table scrolls inside a frame of its own and draws
+ * only the rows in view; at or below it nothing about the table changes.
+ */
+export const VIRTUALIZE_ABOVE = 100;
+
+// A row's height until it is measured, and the room the header takes from the top of the frame.
+const ESTIMATED_ROW_PX = 56;
+const HEADER_PX = 40;
+const FIRST_SCREEN_PX = 640;
+
 export interface DataTableProps<Row> {
   rows: readonly Row[];
   columns: readonly DataTableColumn<Row>[];
@@ -44,6 +56,8 @@ export interface DataTableProps<Row> {
   manualFilter?: boolean;
   /** Shown in place of the rows when none remain. */
   empty?: ReactNode;
+  /** Draw only the rows in view once there are more than this many. Defaults to {@link VIRTUALIZE_ABOVE}. */
+  virtualizeAbove?: number;
   rowProps?: (row: Row) => HTMLAttributes<HTMLTableRowElement>;
   className?: string;
   "aria-label"?: string;
@@ -57,6 +71,32 @@ function assertSticky<Row>(columns: readonly DataTableColumn<Row>[]): void {
       `DataTable column "${columns[at]?.id}" is sticky but is column ${at + 1}: only the first column can hold the start edge, because a column left of it would scroll away under it.`,
     );
   }
+}
+
+/** What a row drawn inside a window carries: the ref that measures it, and its place in the table. */
+interface WindowedRowProps {
+  ref?: (node: Element | null) => void;
+  "data-index"?: number;
+  "aria-rowindex"?: number;
+}
+
+/** The height of rows a windowed table does not draw, so the scrollbar still reads the whole table. */
+function Spacer({ height, span }: { height: number; span: number }) {
+  if (height <= 0) return null;
+  return (
+    <tr aria-hidden>
+      <td colSpan={span} style={{ height, padding: 0, border: 0 }} />
+    </tr>
+  );
+}
+
+function WindowedRow({ gapBefore, span, children }: { gapBefore: number; span: number; children: ReactNode }) {
+  return (
+    <>
+      <Spacer height={gapBefore} span={span} />
+      {children}
+    </>
+  );
 }
 
 const ARIA_SORT = { asc: "ascending", desc: "descending" } as const;
@@ -123,6 +163,7 @@ export function DataTable<Row>({
   manualSort,
   manualFilter,
   empty,
+  virtualizeAbove = VIRTUALIZE_ABOVE,
   rowProps,
   className,
   "aria-label": ariaLabel,
@@ -133,6 +174,15 @@ export function DataTable<Row>({
   const [ownSort, setOwnSort] = useState<DataTableSort | null>(defaultSort);
   const active = sort === undefined ? ownSort : sort;
   const shown = useDataTableRows(rows, columns, { sort: active, search, filters, manualSort, manualFilter });
+  const windowed = shown.length > virtualizeAbove;
+  const virtual = useVirtualRows({
+    count: shown.length,
+    enabled: windowed,
+    estimateSize: ESTIMATED_ROW_PX,
+    getKey: (index) => (shown[index] === undefined ? index : getRowId(shown[index] as Row)),
+    initialHeight: FIRST_SCREEN_PX,
+    scrollPaddingStart: HEADER_PX,
+  });
 
   function activate(column: DataTableColumn<Row>) {
     const next = nextSort(column, active);
@@ -140,10 +190,36 @@ export function DataTable<Row>({
     onSortChange?.(next);
   }
 
+  function renderRow(row: Row, extra: WindowedRowProps) {
+    const { className: rowClass, ...props } = rowProps?.(row) ?? {};
+    return (
+      <TR key={getRowId(row)} className={rowClass} {...props} {...extra}>
+        {columns.map((column) => (
+          <TD key={column.id} sticky={column.sticky} className={cn(column.align === "end" && "text-right", column.cellClassName)}>
+            {column.cell(row)}
+          </TD>
+        ))}
+      </TR>
+    );
+  }
+
   return (
-    <Table className={className} stickyStart={stickyStart} aria-label={ariaLabel} aria-labelledby={ariaLabelledBy}>
-      <THead>
-        <TR className="hover:bg-transparent">
+    <Table
+      className={className}
+      stickyStart={stickyStart}
+      aria-label={ariaLabel}
+      aria-labelledby={ariaLabelledBy}
+      {...(windowed
+        ? {
+            bounded: true,
+            scrollerRef: virtual.scrollerRef,
+            scrollerProps: virtual.trackFocus,
+            "aria-rowcount": shown.length + 1,
+          }
+        : {})}
+    >
+      <THead stuck={windowed}>
+        <TR className="hover:bg-transparent" aria-rowindex={windowed ? 1 : undefined}>
           {columns.map((column) => {
             const sorted = active?.id === column.id ? active : null;
             return (
@@ -171,19 +247,20 @@ export function DataTable<Row>({
           <TR className="hover:bg-transparent">
             <TD colSpan={columns.length}>{empty}</TD>
           </TR>
+        ) : windowed ? (
+          <>
+            {virtual.rows.map(({ index, gapBefore }) => {
+              const row = shown[index] as Row;
+              return (
+                <WindowedRow key={getRowId(row)} gapBefore={gapBefore} span={columns.length}>
+                  {renderRow(row, { ref: virtual.measureRow, "data-index": index, "aria-rowindex": index + 2 })}
+                </WindowedRow>
+              );
+            })}
+            <Spacer height={virtual.gapAfter} span={columns.length} />
+          </>
         ) : (
-          shown.map((row) => {
-            const { className: rowClass, ...props } = rowProps?.(row) ?? {};
-            return (
-              <TR key={getRowId(row)} className={rowClass} {...props}>
-                {columns.map((column) => (
-                  <TD key={column.id} sticky={column.sticky} className={cn(column.align === "end" && "text-right", column.cellClassName)}>
-                    {column.cell(row)}
-                  </TD>
-                ))}
-              </TR>
-            );
-          })
+          shown.map((row) => renderRow(row, {}))
         )}
       </TBody>
     </Table>

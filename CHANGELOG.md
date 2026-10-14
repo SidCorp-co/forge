@@ -126,6 +126,8 @@
 
 ### Added
 
+- **Long lists draw only the rows in view.** A table of more than 100 rows scrolls in a frame of its own with its header kept in view, and tells a screen reader how many rows it holds. (ISS-1264)
+
 - **The API publishes its own reference.** `/api/openapi.json` describes every route's input, answers, errors and permission, `/api/reference` renders it and `/api/reference/flows` draws four flows; none needs a login. (ISS-1371)
 
 - **A run now records which copy of the policy decided it.** The box reports the `forge` plugin copy its pane loaded, or says why it cannot, and the run keeps that. A copy core cannot read is refused by name.
@@ -3165,6 +3167,8 @@
   set is now 59.
 
 ### Fixed
+
+- **Three small repairs on API Tokens and Agents.** A project name in the Level pill reads on one line, the Agents project hint is a sentence, and each row's "Self" button is "Edit self". (ISS-1264)
 
 - **"Start queued issues automatically" can be switched off, and settings pages are flat.** It holds the entry gate instead of sending a refused value; cards give way to hairline sections. A backlog starts valid under the intake gate. (ISS-1262)
 - **API Tokens opens on what can still reach your account.** It says how many tokens can and lists them; revoked and expired ones wait behind one line with their number and end date, and carry no Revoke. (ISS-1166)
@@ -6405,6 +6409,10 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+
+- **Projects opens as a list on a phone, and the Overview is flat.** The cards stay from 640px up, and a view you pick wins. Overview sections are type over a hairline, with no cards. (ISS-1264)
+
+- **The notification inbox is one scrolling list.** Settings → Notifications loads the next 25 as you reach the end, with no pages, and PageDown and PageUp move between rows. (ISS-1264)
 
 - **Marking every notification read refuses a body that names a project.** `POST /api/notifications/mark-all-read` used to accept a `projectId`, ignore it and mark every project's notifications read; it now answers 400 naming the field. Send no body. (ISS-1371)
 
