@@ -24,11 +24,16 @@ export interface Refusal {
   body: string;
 }
 
-/** Said in place of a door, a page or the landing when the guide index they are built from is down. */
+/** Said in place of the landing, the agents' door or an agent page when the guide index is down. */
 export const GUIDES_UNAVAILABLE: Refusal = {
   heading: "The guides could not be loaded",
-  body: "This page is built from Forge's guide index, which did not answer. Try again in a moment, or start from one of the ways in below.",
+  body: "This page is built from Forge's guide index, which did not answer. Try again in a moment.",
 };
+
+/** Said, while the guide index is down, above the bundled doors and under a bundled page's search. */
+export const BUNDLED_WAYS_IN = "These ways in are built into this site and open without it:";
+export const HELP_ONLY_SEARCH =
+  "Search covers the pages for people only: the pages for agents could not be loaded.";
 
 const PICK_FROM_INDEX = "The index lists every page behind each of its three doors.";
 

@@ -3,6 +3,7 @@
 // The public documentation at `/guides`: a landing with the three doors and a search over every
 // page, and a reader built from the same furniture as the in-app `/docs` screen.
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { EmptyState, PageTitle } from "@/design";
 import { LINK_CLASS } from "@/design/patterns/body-tags";
@@ -10,6 +11,7 @@ import {
   DocsArticle,
   DocsLayout,
   type DocsNavItem,
+  DocTitle,
   DocsSearchField,
   DocsSearchResults,
   DocsSidebar,
@@ -17,9 +19,18 @@ import {
 import { deriveToc, matchExcerpt, searchDocs } from "@/features/docs/reader";
 import { coreFileUrl } from "@/lib/utils/core-url";
 import type { GuideScope } from "../api";
-import { AUDIENCES, type Audience, DOORS, doorHref, documentTitle, INDEX_PATH, ONE_CORPUS } from "../audience";
+import {
+  AUDIENCES,
+  type Audience,
+  BUNDLED_AUDIENCES,
+  DOORS,
+  doorHref,
+  documentTitle,
+  INDEX_PATH,
+  ONE_CORPUS,
+} from "../audience";
 import { type PublicDoc, docsBehind, doorSections } from "../corpus";
-import { ALL_DOORS_LINK_TEXT, type Refusal, SEARCH_UNAVAILABLE } from "../missing";
+import { ALL_DOORS_LINK_TEXT, BUNDLED_WAYS_IN, GUIDES_UNAVAILABLE, HELP_ONLY_SEARCH, type Refusal, SEARCH_UNAVAILABLE } from "../missing";
 
 /** What the reader shows: a door's page list, or one page by its href, unique across both homes. */
 export type ReaderView =
@@ -71,10 +82,30 @@ function Said({ text }: { text: string }) {
   return <>{parts}</>;
 }
 
+/** The address's `q`, which holds what was typed into the search. */
+export const QUERY_PARAM = "q";
+
+/** The search, its words kept in the address as they are typed, so Back from a result returns to
+ *  them and a reload or a shared link opens on them. Replacing the history entry rather than adding
+ *  one keeps Back a step through pages, not keystrokes, and asks the server for nothing. Back can
+ *  land on a reader still mounted from the page before, so the words are read again on `popstate`. */
 function useSearch(corpus: readonly PublicDoc[]) {
-  const [query, setQuery] = useState("");
+  const params = useSearchParams();
+  const [query, setQuery] = useState(() => params?.get(QUERY_PARAM) ?? "");
+  useEffect(() => {
+    const restore = () => setQuery(new URLSearchParams(window.location.search).get(QUERY_PARAM) ?? "");
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, []);
   const results = useMemo(() => searchDocs(corpus, query), [corpus, query]);
-  return { query, setQuery, results };
+  const onQuery = (next: string) => {
+    setQuery(next);
+    const url = new URL(window.location.href);
+    if (next) url.searchParams.set(QUERY_PARAM, next);
+    else url.searchParams.delete(QUERY_PARAM);
+    window.history.replaceState(null, "", url);
+  };
+  return { query, setQuery: onQuery, results };
 }
 
 export function PublicLanding({
@@ -103,20 +134,18 @@ export function PublicLanding({
         />
         {results ? <DocsSearchResults results={results.map((d) => resultItem(d, null, query))} /> : null}
       </div>
-      <nav aria-label="Ways in" className="grid grid-cols-1 gap-3 md:grid-cols-3">
+      <nav aria-label="Ways in" className="flex max-w-[72ch] flex-col divide-y divide-line-subtle border-y border-line-subtle">
         {AUDIENCES.map((audience) => {
           const count = docsBehind(corpus, audience).length;
           return (
-            <Link
-              key={audience}
-              href={doorHref(audience)}
-              className="flex flex-col gap-1.5 rounded-lg border border-line bg-surface p-5 shadow-sm hover:bg-hover"
-            >
-              <span className="fg-h3 text-fg">{DOORS[audience].label}</span>
+            <Link key={audience} href={doorHref(audience)} className="group flex flex-col gap-1 py-4">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+                <span className="fg-h3 text-fg group-hover:underline group-hover:underline-offset-4">{DOORS[audience].label}</span>
+                <span className="fg-caption text-subtle">
+                  {count} {count === 1 ? "page" : "pages"}
+                </span>
+              </div>
               <span className="fg-body-sm text-muted">{DOORS[audience].blurb}</span>
-              <span className="fg-caption mt-auto pt-2 text-subtle">
-                {count} {count === 1 ? "page" : "pages"}
-              </span>
               {audience === "agent" ? (
                 <span className="fg-caption text-subtle">
                   <Said text={scope.elsewhere} />
@@ -157,7 +186,7 @@ function DoorPage({
 }: {
   audience: Audience;
   docs: readonly PublicDoc[];
-  scope: GuideScope;
+  scope: GuideScope | null;
 }) {
   return (
     <div style={{ maxWidth: "72ch" }} className="mx-auto">
@@ -166,12 +195,14 @@ function DoorPage({
         <JumpToSearch />
       </div>
       <p className="fg-body-sm mt-1.5 mb-6 text-muted">{DOORS[audience].blurb}</p>
-      {audience === "agent" ? <MachineDoor docs={docs} scope={scope} /> : null}
+      {audience === "agent" && scope ? <MachineDoor docs={docs} scope={scope} /> : null}
       <ul aria-label="Pages" className="flex flex-col gap-1">
         {docs.map((doc) => (
           <li key={doc.href}>
             <Link href={doc.href} className="-mx-3 block rounded-md px-3 py-2.5 hover:bg-hover">
-              <span className="fg-body block font-semibold text-fg">{doc.title}</span>
+              <span className="fg-body block font-semibold text-fg">
+                <DocTitle title={doc.title} />
+              </span>
               <span className="fg-body-sm mt-0.5 block text-muted">{doc.summary ?? doc.section}</span>
               {doc.markdownUrl ? (
                 <code className="fg-caption mt-0.5 block break-all font-mono text-subtle">{doc.markdownUrl}</code>
@@ -230,6 +261,9 @@ function JumpToSearch() {
  *  its first word; the examples are taught on the landing, whose field has the width for them. */
 const SIDEBAR_PLACEHOLDER = "Search every page";
 
+/** A door or page served from the pages bundled into the site. `scope` is `null` where core's guide
+ *  index could not be read: the corpus is then the bundled pages alone, which the sidebar says, and
+ *  only the doors those pages fill are offered as ways on. */
 export function PublicReader({
   corpus,
   view,
@@ -237,7 +271,7 @@ export function PublicReader({
 }: {
   corpus: readonly PublicDoc[];
   view: ReaderView;
-  scope: GuideScope;
+  scope: GuideScope | null;
 }) {
   const { query, setQuery, results } = useSearch(corpus);
   const doc = view.kind === "page" ? (corpus.find((d) => d.href === view.href) ?? null) : null;
@@ -255,7 +289,8 @@ export function PublicReader({
       }))
     : [];
 
-  const otherDoors = AUDIENCES.filter((a) => a !== audience);
+  const helpOnly = scope === null;
+  const otherDoors = (helpOnly ? BUNDLED_AUDIENCES : AUDIENCES).filter((a) => a !== audience);
   const sidebar = (
     <DocsSidebar
       query={query}
@@ -266,6 +301,7 @@ export function PublicReader({
       results={results ? results.map((d) => resultItem(d, activeHref, query)) : null}
       sections={sections}
       navLabel={audience ? DOORS[audience].label : "Documentation"}
+      searchNote={helpOnly ? <p className="fg-caption px-2 text-subtle">{HELP_ONLY_SEARCH}</p> : null}
       footer={
         <nav aria-label="Other ways in" className="mt-2 flex flex-col gap-0.5 border-t border-line-subtle pt-3">
           <span className="fg-overline px-2 py-1 font-mono text-subtle">
@@ -276,9 +312,11 @@ export function PublicReader({
               {DOORS[a].label}
             </Link>
           ))}
-          <Link href={INDEX_PATH} className="rounded-md px-2 py-1 text-13 text-muted hover:bg-hover hover:text-fg">
-            All three ways in
-          </Link>
+          {helpOnly ? null : (
+            <Link href={INDEX_PATH} className="rounded-md px-2 py-1 text-13 text-muted hover:bg-hover hover:text-fg">
+              {ALL_DOORS_LINK_TEXT}
+            </Link>
+          )}
         </nav>
       }
     />
@@ -330,8 +368,9 @@ function RefusalCopy({ refusal }: { refusal: Refusal }) {
   );
 }
 
-/** An address naming no page or door, when the guide index could not be reached to search: every
- *  door as the way on, and the reason there is no search said rather than left out. With the index
+/** An address the guide index is needed for, or one naming no page or door, while that index could
+ *  not be reached: the reason there is no search said rather than left out, and as the way on only
+ *  the doors whose pages are bundled into the site, the rest needing the index too. With the index
  *  in hand a refusal is a `PublicReader` view, which offers the search. */
 export function PublicRefusal({ refusal }: { refusal: Refusal }) {
   useDocumentTitle(refusal.heading);
@@ -339,16 +378,14 @@ export function PublicRefusal({ refusal }: { refusal: Refusal }) {
     <div className="mx-auto flex max-w-[72ch] flex-col gap-4 py-8">
       <PageTitle className="fg-h2 text-fg">{refusal.heading}</PageTitle>
       <p className="fg-body-sm text-muted">{refusal.body}</p>
-      <p className="fg-body-sm text-muted">{SEARCH_UNAVAILABLE}</p>
+      {refusal === GUIDES_UNAVAILABLE ? null : <p className="fg-body-sm text-muted">{SEARCH_UNAVAILABLE}</p>}
+      <p className="fg-body-sm text-muted">{BUNDLED_WAYS_IN}</p>
       <nav aria-label="Ways in" className="flex flex-col gap-1">
-        {AUDIENCES.map((a) => (
+        {BUNDLED_AUDIENCES.map((a) => (
           <Link key={a} href={doorHref(a)} className={LINK_CLASS}>
             {DOORS[a].label}
           </Link>
         ))}
-        <Link href={INDEX_PATH} className={LINK_CLASS}>
-          {ALL_DOORS_LINK_TEXT}
-        </Link>
       </nav>
     </div>
   );

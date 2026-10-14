@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HELP_DOCS } from "./help-content.generated";
-import { matchExcerpt, searchDocs, splitAtMatch } from "./reader";
+import { matchExcerpt, plainText, searchDocs, splitAtMatch, titleParts } from "./reader";
 
 const page = (title: string, body: string, summary: string | null = null) => ({ title, body, summary });
 
@@ -26,6 +26,11 @@ describe("the order of search results", () => {
     expect(titles[0]).toBe("Read an issue's status");
     const firstWithout = titles.findIndex((t) => !t.toLowerCase().includes("status"));
     expect(titles.slice(firstWithout).every((t) => !t.toLowerCase().includes("status"))).toBe(true);
+  });
+
+  it("matches a title on the words it shows, its code marks left out", () => {
+    const docs = [page("Gates", "Conformance gates & pnpm verify are listed."), page("Conformance gates & `pnpm verify`", "body")];
+    expect(searchDocs(docs, "gates & pnpm")?.map((d) => d.title)).toEqual(["Conformance gates & `pnpm verify`", "Gates"]);
   });
 
   it("finds a page by its summary alone, and answers null for a blank query", () => {
@@ -146,5 +151,109 @@ describe("where a page matched", () => {
     expect(e?.before.length).toBeLessThanOrEqual(41);
     expect(e?.after.endsWith("tail…")).toBe(true);
     expect(e?.after.length).toBeLessThanOrEqual(121);
+  });
+
+  const conformance = page(
+    "Conformance gates & `pnpm verify`",
+    "## Conformance gates & `pnpm verify`\n\nA repo may carry gates, and `pnpm verify` is the entrypoint.\n\n### When to run it\n\nBefore you push.",
+  );
+
+  it("passes over a heading repeating a title that carries code marks", () => {
+    expect(matchExcerpt(conformance, "pnpm verify")).toEqual({
+      heading: null,
+      before: "A repo may carry gates, and ",
+      match: "pnpm verify",
+      after: " is the entrypoint.",
+    });
+    expect(matchExcerpt(conformance, "the")).toMatchObject({ heading: null, match: "the" });
+    expect(matchExcerpt(conformance, "push")).toMatchObject({ heading: "When to run it" });
+  });
+
+  it("shows no line where the only other place the words appear is a heading repeating the title", () => {
+    expect(matchExcerpt(conformance, "Conformance gates &")).toBeNull();
+  });
+
+  const gettingStarted = page(
+    "Getting started",
+    "# Getting started with Forge\n\nForge runs your work as an automated pipeline.\n\n## The four pieces\n\nA runner on your machine.",
+  );
+
+  it("never names the page's own top heading as a section, though it is not the title word for word", () => {
+    expect(matchExcerpt(gettingStarted, "pipeline")).toEqual({
+      heading: null,
+      before: "Forge runs your work as an automated ",
+      match: "pipeline",
+      after: ".",
+    });
+    expect(matchExcerpt(gettingStarted, "runner")).toMatchObject({ heading: "The four pieces" });
+  });
+
+  it("reads the page's own top heading as a match only where the title does not already hold the words", () => {
+    expect(matchExcerpt(gettingStarted, "getting")).toBeNull();
+    expect(matchExcerpt(gettingStarted, "with forge")).toEqual({
+      heading: null,
+      before: "Getting started ",
+      match: "with Forge",
+      after: "",
+    });
+  });
+
+  it("keeps a code line as written, angle brackets and all", () => {
+    const body = "## Baselines\n\n```sh\nnode scripts/check-<axis>.mjs --update-baseline\n```";
+    expect(matchExcerpt(page("T", body), "update-baseline")).toEqual({
+      heading: "Baselines",
+      before: "node scripts/check-<axis>.mjs --",
+      match: "update-baseline",
+      after: "",
+    });
+  });
+
+  it("reads a paragraph the source wraps as one, so the line starts where its sentence does", () => {
+    const body = "Reused by a *different*\nagent on an issue — a convention\nworth keeping.\n\nNext paragraph.";
+    expect(matchExcerpt(page("T", body), "issue")).toEqual({
+      heading: null,
+      before: "Reused by a different agent on an ",
+      match: "issue",
+      after: " — a convention worth keeping.",
+    });
+    expect(matchExcerpt(page("T", body), "different agent")?.match).toBe("different agent");
+  });
+
+  it("reads each list item, with its wrapped lines, apart from the next", () => {
+    const body = "- First item that\n  wraps here.\n- Second item.";
+    expect(matchExcerpt(page("T", body), "wraps")).toMatchObject({ before: "First item that ", after: " here." });
+    expect(matchExcerpt(page("T", body), "second")).toMatchObject({ before: "", after: " item." });
+  });
+
+  it("reads a table row with its cells set apart, and passes over the row that only rules the table", () => {
+    const body = "| Header | What goes in it |\n|---|:---:|\n| `Auth` | `Bearer`, then your token |";
+    expect(matchExcerpt(page("T", body), "token")).toMatchObject({ before: "Auth · Bearer, then your " });
+    expect(matchExcerpt(page("T", body), "---")).toMatchObject({ before: "|", match: "---" });
+  });
+
+  it("drops emphasis marks and keeps an asterisk or underscore that marks nothing", () => {
+    const shown = (line: string, q: string) => {
+      const e = matchExcerpt(page("T", line), q);
+      return `${e?.before}${e?.match}${e?.after}`;
+    };
+    expect(shown("a *different* agent and _another_ one", "agent")).toBe("a different agent and another one");
+    expect(shown("2 * 3 = 6 for some_name", "6")).toBe("2 * 3 = 6 for some_name");
+  });
+});
+
+describe("a title as a reader sees it", () => {
+  it("leaves its code marks out of the plain form", () => {
+    expect(plainText("Conformance gates & `pnpm verify`")).toBe("Conformance gates & pnpm verify");
+    expect(plainText("Read an issue's status")).toBe("Read an issue's status");
+  });
+
+  it("splits it into prose and code, the words asked for marked across both", () => {
+    expect(titleParts("Conformance gates & `pnpm verify`", "gates & pnpm")).toEqual([
+      { text: "Conformance ", code: false, marked: false },
+      { text: "gates & ", code: false, marked: true },
+      { text: "pnpm", code: true, marked: true },
+      { text: " verify", code: true, marked: false },
+    ]);
+    expect(titleParts("Pair a runner", "")).toEqual([{ text: "Pair a runner", code: false, marked: false }]);
   });
 });

@@ -4,10 +4,10 @@
 // field and grouped page list, the article, the table of contents. The in-app `/docs` screen
 // and the public `/guides` pages both compose these, so there is one reading UI, not two.
 import Link from "next/link";
-import { type ReactNode, useEffect, useRef } from "react";
-import { Card, CardContent, Icon, Input, Markdown } from "@/design";
+import { Fragment, type ReactNode, useEffect, useRef } from "react";
+import { Icon, Input, Markdown } from "@/design";
 import { cn } from "@/lib/utils/cn";
-import { type MatchExcerpt, type MatchSpan, slugify, splitAtMatch } from "../reader";
+import { type MatchExcerpt, type MatchSpan, slugify, titleParts } from "../reader";
 import type { TocEntry } from "../types";
 
 /** One entry in the sidebar: a button where the reader selects in place, a link where each
@@ -45,9 +45,37 @@ function Marked({ span }: { span: MatchSpan }) {
   );
 }
 
+/** A page title as the reader sees it: a code span set as code, never its backticks, and the words
+ *  searched for marked wherever they fall across prose and code. */
+export function DocTitle({ title, query = "" }: { title: string; query?: string }) {
+  let offset = 0;
+  const parts = titleParts(title, query).map((part) => {
+    const key = `${offset}`;
+    offset += part.text.length;
+    const text = part.code ? (
+      <code key="code" className="font-mono">
+        {part.text}
+      </code>
+    ) : (
+      part.text
+    );
+    return part.marked ? (
+      <mark key={key} className="bg-transparent font-semibold text-fg">
+        {text}
+      </mark>
+    ) : (
+      <Fragment key={key}>{text}</Fragment>
+    );
+  });
+  return <>{parts}</>;
+}
+
 function Title({ item }: { item: DocsNavItem }) {
-  const span = item.found ? splitAtMatch(item.title, item.found.query) : null;
-  return <span className="truncate">{span ? <Marked span={span} /> : item.title}</span>;
+  return (
+    <span className="truncate">
+      <DocTitle title={item.title} query={item.found?.query} />
+    </span>
+  );
 }
 
 function ItemBody({ item }: { item: DocsNavItem }) {
@@ -131,12 +159,14 @@ export function DocsSearchResults({ results }: { results: DocsNavItem[] }) {
   );
 }
 
-/** The search field, then either its results or the grouped page list. */
+/** The search field, anything said of what it searches, then either its results or the grouped
+ *  page list. */
 export function DocsSidebar({
   query,
   onQuery,
   placeholder,
   searchLabel,
+  searchNote,
   results,
   sections,
   navLabel,
@@ -147,6 +177,7 @@ export function DocsSidebar({
   onQuery: (q: string) => void;
   placeholder: string;
   searchLabel: string;
+  searchNote?: ReactNode;
   results: DocsNavItem[] | null;
   sections: DocsNavSection[];
   navLabel: string;
@@ -156,6 +187,7 @@ export function DocsSidebar({
   return (
     <div className="flex flex-col gap-2">
       <DocsSearchField query={query} onQuery={onQuery} placeholder={placeholder} label={searchLabel} id={searchId} />
+      {searchNote}
       {results ? (
         <DocsSearchResults results={results} />
       ) : (
@@ -238,10 +270,12 @@ export function DocsArticle({
                 </span>
               ) : null}
               {typeof crumb === "string" ? (
-                <span className={last ? "text-muted" : undefined}>{crumb}</span>
+                <span className={last ? "text-muted" : undefined}>
+                  <DocTitle title={crumb} />
+                </span>
               ) : (
                 <Link href={crumb.href} className="text-muted underline underline-offset-2 hover:text-fg">
-                  {crumb.label}
+                  <DocTitle title={crumb.label} />
                 </Link>
               )}
             </span>
@@ -283,7 +317,8 @@ export function DocsToc({ toc }: { toc: TocEntry[] }) {
   );
 }
 
-/** Sidebar, content, table of contents — sticky sidebar beside the scrolling content.
+/** Sidebar, content, table of contents — sticky sidebar beside the scrolling content, the columns
+ *  parted by a hairline and whitespace rather than each set in a card.
  *  `contentFirst` puts the content above the sidebar where the columns stack (below `lg`), for a
  *  reader who arrived at a page from a link rather than to browse. */
 export function DocsLayout({
@@ -298,18 +333,16 @@ export function DocsLayout({
   contentFirst?: boolean;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[260px_minmax(0,1fr)_220px]">
-      <Card
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[260px_minmax(0,1fr)_220px] lg:gap-8">
+      <div
         className={cn(
-          "lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto",
-          contentFirst && "order-2 lg:order-none",
+          "border-t border-line-subtle pt-4 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto lg:border-t-0 lg:border-r lg:pt-0 lg:pr-4",
+          contentFirst ? "order-2 lg:order-none" : "border-t-0 pt-0",
         )}
       >
-        <CardContent>{sidebar}</CardContent>
-      </Card>
-      <Card className={contentFirst ? "order-1 lg:order-none" : undefined}>
-        <CardContent>{children}</CardContent>
-      </Card>
+        {sidebar}
+      </div>
+      <div className={cn("min-w-0", contentFirst && "order-1 lg:order-none")}>{children}</div>
       <div className="hidden lg:block">
         <DocsToc toc={toc} />
       </div>
