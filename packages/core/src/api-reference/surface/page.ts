@@ -28,14 +28,23 @@ const STYLE = `
 :root[data-theme="dark"] { --bg: #161513; --fg: #ece9e2; --muted: #9b978d; --line: #2d2b27; --accent: #d9a35a; }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.55 Inter, system-ui, sans-serif; }
-main { max-width: 56rem; margin: 0 auto; padding: 2rem 16px 4rem; }
+main { max-width: 80rem; margin: 0 auto; padding: 2rem 16px 4rem; }
+main > h1, main > p, section > h2, section > p, section > ol, .scroll-hint { max-width: 56rem; }
 h1 { font-size: 1.6rem; margin: 0 0 .25rem; }
 h2 { font-size: 1.2rem; margin: 2.5rem 0 .25rem; }
 p, li { color: var(--muted); }
 a { color: var(--accent); }
 section { border-top: 1px solid var(--line); margin-top: 2rem; padding-top: .5rem; }
 code { font: .9em ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--fg); }
-pre.mermaid { overflow-x: auto; max-width: 100%; padding: 1rem 0; }
+pre.mermaid {
+  overflow-x: auto; max-width: 100%; padding: 1rem 0; margin: 0;
+  background:
+    linear-gradient(to right, var(--bg) 30%, transparent) left / 40px 100% no-repeat local,
+    linear-gradient(to left, var(--bg) 30%, transparent) right / 40px 100% no-repeat local,
+    linear-gradient(to right, var(--line), transparent) left / 16px 100% no-repeat scroll,
+    linear-gradient(to left, var(--line), transparent) right / 16px 100% no-repeat scroll;
+}
+.scroll-hint { margin: 0 0 .5rem; font-size: .85rem; }
 ol { padding-left: 1.2rem; }
 `;
 
@@ -75,7 +84,7 @@ export function renderFlowsPage(
       return `<section id="${escapeHtml(flow.id)}">
 <h2>${escapeHtml(flow.title)}</h2>
 <p>${escapeHtml(flow.summary)}</p>
-<pre class="mermaid">${escapeHtml(toMermaid(flow))}</pre>
+<pre class="mermaid" tabindex="0" aria-label="${escapeHtml(flow.title)} diagram">${escapeHtml(toMermaid(flow))}</pre>
 <ol>
 ${steps}
 </ol>
@@ -100,10 +109,19 @@ ${sections}
 <script src="${MERMAID.src}" integrity="${MERMAID.integrity}" crossorigin="anonymous"></script>
 <script>
   mermaid.initialize({
-    startOnLoad: true,
+    startOnLoad: false,
     sequence: { useMaxWidth: false },
     flowchart: { useMaxWidth: false },
     theme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default',
+  });
+  mermaid.run().then(() => {
+    for (const frame of document.querySelectorAll('pre.mermaid')) {
+      if (frame.scrollWidth <= frame.clientWidth) continue;
+      const hint = document.createElement('p');
+      hint.className = 'scroll-hint';
+      hint.textContent = 'This diagram is wider than the screen: scroll it sideways.';
+      frame.before(hint);
+    }
   });
 </script>
 </body>

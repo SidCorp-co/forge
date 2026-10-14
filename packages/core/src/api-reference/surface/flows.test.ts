@@ -83,7 +83,7 @@ describe('the pages', () => {
   it('render the flows page with a diagram and the steps of each flow, escaped', async () => {
     const document = await documentWith(['POST', '/api/pat'], ['GET', '/api/issues/:id']);
     const html = renderFlowsPage([{ ...flow, title: 'A <b> & C' }], document, '/api/reference');
-    expect(html).toContain('<pre class="mermaid">sequenceDiagram');
+    expect(html).toMatch(/<pre class="mermaid"[^>]*>sequenceDiagram/);
     expect(html).toContain('A &lt;b&gt; &amp; C');
     expect(html).toContain('<code>POST /api/pat</code> — POST /api/pat');
     expect(html).toContain('href="/api/reference"');
@@ -93,7 +93,9 @@ describe('the pages', () => {
     const document = await documentWith(['POST', '/api/pat'], ['GET', '/api/issues/:id']);
     const html = renderFlowsPage([flow], document, '/api/reference');
     expect(html).toContain('sequence: { useMaxWidth: false }');
-    expect(html).toContain('pre.mermaid { overflow-x: auto; max-width: 100%');
+    expect(html).toContain('overflow-x: auto; max-width: 100%');
+    expect(html).toContain('scroll it sideways');
+    expect(html).toContain('tabindex="0"');
   });
 
   it('name an icon on both pages, so the browser does not ask the host for /favicon.ico', async () => {
