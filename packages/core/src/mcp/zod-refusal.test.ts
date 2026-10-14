@@ -21,6 +21,8 @@ describe('zodRefusalMessage', () => {
     expect(text).toMatch(/^BAD_REQUEST: invalid arguments — `metric`: /);
     expect(text).not.toContain('\n');
     expect(text).not.toMatch(/"code"|"path"/);
+    expect(text).toMatch(/cost/);
+    expect(text).toMatch(/throughput/);
   });
 
   it('names a nested field by its dotted path', () => {
