@@ -128,6 +128,10 @@
 
 ### Added
 
+- **Writing an issue into `clarified` or `tested` is refused.** Both were retired rungs that accepted the write and stranded the issue; the refusal names `approved` or `awaiting_release`. Issues already there can still move.
+
+- **The agent tools `forge_skills.register` and `forge_skills.list_registrations` are gone.** No status runs a skill, so binding one to a stage did nothing. Mark a skill `installOnly` with `forge_skills.update` instead.
+
 - **An agent tool refuses a bad argument in one sentence.** It used to answer with the validation library's raw issue list; it now names each field and what is wrong with it, so a retired metric reads as retired. (ISS-1132)
 
 - **`pnpm verify` gives the same answer from any checkout path.** Under a directory named `.cache` it went red on lint-budget and scripts lint, because biome found neither the scripts config nor the React domains there. (ISS-1132)
