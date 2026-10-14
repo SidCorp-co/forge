@@ -1,5 +1,8 @@
 const SEPARATOR = '|';
 
+/** The one shape this list mints: UTC, microsecond digits, so a token that is not this was not minted here. */
+const KEY_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/;
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Where a project's session list resumes: strictly after the row at `(updatedAtKey, id)`. */
@@ -28,8 +31,14 @@ export function decodeSessionCursor(token: string): SessionCursor {
   if (!UUID_RE.test(id)) throw new SessionCursorInvalidError('cursor carries no session id');
 
   const updatedAtKey = raw.slice(0, at);
-  if (Number.isNaN(Date.parse(updatedAtKey))) {
+  if (!KEY_RE.test(updatedAtKey) || !isRealInstant(updatedAtKey)) {
     throw new SessionCursorInvalidError('cursor carries no timestamp');
   }
   return { updatedAtKey, id };
+}
+
+/** A calendar date JS would normalise (February 30) is not an instant Postgres will accept. */
+function isRealInstant(key: string): boolean {
+  const parsed = new Date(`${key.slice(0, 23)}Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 19) === key.slice(0, 19);
 }

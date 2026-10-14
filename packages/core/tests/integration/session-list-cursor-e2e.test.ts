@@ -260,16 +260,27 @@ describe('the cursor holds where the response-size cap, not the limit, ends a pa
 });
 
 describe('a cursor this list did not mint is refused by name', () => {
-  it('REST answers 400 naming the cursor', async () => {
+  const impossibleDay = Buffer.from(
+    '2026-02-30T00:00:00.000000Z|3f2a1c9e-8b7d-4e6f-a5b4-c3d2e1f0a9b8',
+    'utf8',
+  ).toString('base64url');
+
+  it.each([
+    ['not a cursor at all', 'not-a-cursor'],
+    ['a day the calendar does not have, which Postgres would refuse as a 500', impossibleDay],
+  ])('REST answers 400 naming the cursor: %s', async (_why, bad) => {
     const w = await seedWorld();
     await seedSessions(w, 2, AT);
 
-    const res = await rest(w, 'cursor=not-a-cursor');
+    const res = await rest(w, `cursor=${bad}`);
     expect(res.status).toBe(400);
     expect(JSON.stringify(await res.json())).toContain('cursor');
   });
 
-  it('the MCP tool refuses naming the cursor and what is wrong with it', async () => {
+  it.each([
+    ['not a cursor at all', 'not-a-cursor', 'cursor is not an agent-session cursor'],
+    ['a day the calendar does not have', impossibleDay, 'cursor carries no timestamp'],
+  ])('the MCP tool refuses naming the cursor and what is wrong with it: %s', async (_why, bad, message) => {
     const w = await seedWorld();
     await seedSessions(w, 2, AT);
     const ctx = await connectClientAsPat(w.pat);
@@ -277,9 +288,9 @@ describe('a cursor this list did not mint is refused by name', () => {
 
     const res = (await ctx.client.callTool({
       name: 'forge_agent_sessions.list',
-      arguments: { projectId: w.projectId, cursor: 'not-a-cursor' },
+      arguments: { projectId: w.projectId, cursor: bad },
     })) as { isError?: boolean; content: Array<{ text: string }> };
     expect(res.isError).toBe(true);
-    expect(res.content[0]?.text).toContain('cursor: cursor is not an agent-session cursor');
+    expect(res.content[0]?.text).toContain(`cursor: ${message}`);
   });
 });
