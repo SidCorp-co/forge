@@ -228,7 +228,7 @@ function EpodsystemBindingRow({
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-subtle p-4">
+    <div className="flex flex-col gap-3 border-t border-subtle pt-4">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           {bindingLabel ? (
@@ -414,7 +414,7 @@ function AddEpodsystemForm({
   }
 
   return (
-    <div className="flex flex-col gap-4 rounded-lg border border-subtle p-4">
+    <div className="flex flex-col gap-4 border-t border-subtle pt-4">
       <span className="fg-label font-semibold">Add storefront</span>
 
       <ConnectionOwnerField
@@ -540,7 +540,7 @@ function ThemePanel({ config }: { config: EpodsystemReadConfig }) {
       : [];
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-subtle bg-sunken p-3">
+    <div className="flex flex-col gap-2 border-t border-subtle pt-3">
       <span className="fg-label text-subtle">Store &amp; themes</span>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-12">
         <dt className="text-subtle">Store</dt>

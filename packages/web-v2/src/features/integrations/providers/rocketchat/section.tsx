@@ -98,7 +98,7 @@ function AnswerModePanel({ projectId }: { projectId: string }) {
       | undefined) ?? "fast";
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-subtle p-4">
+    <div className="flex flex-col gap-3 border-t border-subtle pt-4">
       <span className="fg-label font-semibold">Answer mode</span>
       <p className="fg-body-sm text-muted">
         Fast answers with the quick-chat model; Agent routes every question
@@ -137,7 +137,7 @@ function BotPersonalityPanel({ projectId }: { projectId: string }) {
   const value = draft ?? saved;
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-subtle p-4">
+    <div className="flex flex-col gap-3 border-t border-subtle pt-4">
       <span className="fg-label font-semibold">Bot personality</span>
       <p className="fg-body-sm text-muted">
         Per-project reply style for the chat bot — tone, address form, language,
@@ -259,7 +259,7 @@ function RocketchatBindingPanel({
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-subtle p-4">
+    <div className="flex flex-col gap-3 border-t border-subtle pt-4">
       <div className="flex items-center justify-between gap-2">
         <span className="fg-body-sm font-semibold">
           {cfg.serverUrl ?? "Rocket.Chat"}
@@ -473,7 +473,7 @@ function AddRocketchatForm({ projectId }: { projectId: string }) {
   }
 
   return (
-    <div className="flex flex-col gap-4 rounded-lg border border-subtle p-4">
+    <div className="flex flex-col gap-4 border-t border-subtle pt-4">
       <span className="fg-label font-semibold">Connect Rocket.Chat bot</span>
       <p className="fg-body-sm text-muted">
         Create a bot user on your Rocket.Chat server, add it to the project&apos;s

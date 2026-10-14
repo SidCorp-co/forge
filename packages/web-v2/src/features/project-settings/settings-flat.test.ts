@@ -5,6 +5,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { boxedContainer, classLists } from "@/test-support/flat-rule";
 
 const FEATURES = resolve(process.cwd(), "src/features");
 
@@ -34,35 +35,23 @@ const SETTINGS_PAGES = [
   "settings/components/mcp-tab.tsx",
 ];
 
-/** Every class list in a source file: each string literal that could hold one. */
-function classLists(source: string): string[] {
-  return [...source.matchAll(/"([^"\n]*)"|`([^`]*)`/g)].map((m) => m[1] ?? m[2] ?? "");
-}
-
-/**
- * A container drawn as a box: all four sides bordered, or rounded and filled and padded. A flat page
- * rules its sections with a hairline on one side and takes its hierarchy from type and whitespace.
- * A pill, a fixed-size control and a code readout are not containers.
- */
-function boxedContainer(classes: string): boolean {
-  const t = classes.split(/\s+/).filter(Boolean);
-  const rounded = t.some((x) => /^rounded-(sm|md|lg|xl|2xl)$/.test(x));
-  const bordered = t.includes("border");
-  const filled = t.some((x) => /^bg-(surface|sunken)/.test(x)) && t.some((x) => /^p[xy]?-/.test(x));
-  const control = t.some((x) => /^h-\d+$/.test(x)) && t.some((x) => /^w-\d+$/.test(x));
-  const exempt = control || t.includes("rounded-pill") || t.includes("font-mono");
-  return (bordered || (rounded && filled)) && !exempt;
-}
-
-/** Each source file of a screen's own components, by path under `features/`. */
+/** Each source file under a directory of `features/`, by path under `features/`, tests left out. */
 function componentFiles(dir: string): string[] {
-  return readdirSync(resolve(FEATURES, dir))
-    .filter((name) => name.endsWith(".tsx") && !name.includes(".test."))
-    .map((name) => `${dir}/${name}`);
+  return readdirSync(resolve(FEATURES, dir), { withFileTypes: true }).flatMap((entry) => {
+    const path = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) return componentFiles(path);
+    return entry.name.endsWith(".tsx") && !entry.name.includes(".test.") ? [path] : [];
+  });
 }
 
+/** The two settings screens' own components, the project Runners tab, and every Integrations component. */
 const SCREEN_COMPONENTS = [
-  ...new Set([...componentFiles("project-settings/components"), ...componentFiles("settings/components")]),
+  ...new Set([
+    ...componentFiles("project-settings/components"),
+    ...componentFiles("settings/components"),
+    ...componentFiles("integrations"),
+    "runners/components/project-runners-screen.tsx",
+  ]),
 ];
 
 /** The `<Collapsible>` tags a source opens that are not flat: no `flat`, or `flat={false}`. */
@@ -71,6 +60,24 @@ function unflatDisclosures(source: string): number {
   const flat = source.match(/<Collapsible\s+flat(?=\s|>|\/|=\{true\})/g)?.length ?? 0;
   return opened - flat;
 }
+
+describe("the detector of a boxed container", () => {
+  it.each([
+    ["rounded-lg border border-line bg-surface p-3", true],
+    ["flex flex-col gap-3 rounded-md border border-subtle p-3", true],
+    ["rounded-md bg-sunken px-3 py-2", true],
+    ["border border-line p-4", true],
+    ["border-t border-line pt-3", false],
+    ["divide-y divide-line border-y border-line", false],
+    ["border-b border-line pb-2 text-muted", false],
+    ["rounded-pill border border-line px-2", false],
+    ["inline-flex h-6 w-6 rounded-md border border-line", false],
+    ["inline-flex items-center gap-0.5 rounded-md border border-line bg-sunken p-0.5", false],
+    ["overflow-x-auto font-mono rounded-md border border-line p-3", false],
+  ])("reads %j as boxed: %s", (classes, boxed) => {
+    expect(boxedContainer(classes)).toBe(boxed);
+  });
+});
 
 describe("the detector of a boxed disclosure", () => {
   it.each([

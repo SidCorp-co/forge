@@ -160,7 +160,7 @@ function GoogleBindingPanel({
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-subtle p-4">
+    <div className="flex flex-col gap-3 border-t border-subtle pt-4">
       <div className="flex items-center justify-between gap-2">
         <span className="fg-body-sm font-semibold">
           {cfg.clientEmail ?? "Google service account"}
@@ -317,7 +317,7 @@ function AddGoogleForm({ projectId }: { projectId: string }) {
   }
 
   return (
-    <div className="flex flex-col gap-4 rounded-lg border border-subtle p-4">
+    <div className="flex flex-col gap-4 border-t border-subtle pt-4">
       <span className="fg-label font-semibold">Connect a Google service account</span>
       <p className="fg-body-sm text-muted">
         In the Google Cloud console: IAM &amp; Admin → Service Accounts → Keys → Add
