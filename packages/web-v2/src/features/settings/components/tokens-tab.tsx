@@ -453,7 +453,7 @@ export function TokensTab() {
                 header — calls resolve to this project automatically.
               </p>
             )}
-            <div className="rounded-md border border-line bg-sunken p-3">
+            <div className="border-y border-line py-3">
               <code className="block break-all font-mono text-13 text-fg">
                 {revealed.plaintext}
               </code>

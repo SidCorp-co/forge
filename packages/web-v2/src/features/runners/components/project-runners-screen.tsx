@@ -210,7 +210,7 @@ function GitConfigCard({
 					) : cred.isError ? (
 						<ErrorState message={formatApiError(cred.error)} onRetry={() => cred.refetch()} />
 					) : credData?.configured ? (
-						<div className="mt-2 flex flex-col gap-2 rounded-lg border border-line bg-sunken p-3">
+						<div className="mt-2 flex flex-col gap-2">
 							<div className="flex items-center justify-between gap-2">
 								<span className="inline-flex items-center gap-1.5 text-13 text-fg">
 									<Icon
@@ -421,14 +421,14 @@ function RunnerActivityPanel({ runnerId }: { runnerId: string }) {
 	}
 
 	return (
-		<div className="flex flex-col gap-4 rounded-lg border border-line bg-sunken p-3">
+		<div className="flex flex-col gap-4">
 			{sessions.length > 0 && (
 				<div className="flex flex-col gap-2">
 					<span className="fg-label">Recent sessions on this device</span>
 					{sessions.map((s) => (
 						<div
 							key={s.id}
-							className="flex flex-col gap-1 rounded-md border border-line bg-surface px-3 py-2"
+							className="flex flex-col gap-1 border-t border-line pt-2"
 						>
 							<div className="flex items-center justify-between gap-2">
 								<span className="truncate text-13 text-fg">
@@ -541,7 +541,7 @@ function RunnerRow({
 	) : undefined;
 
 	return (
-		<div className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-3">
+		<div className="flex flex-col gap-3 py-3">
 			<div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-2">
 				<div className="flex min-w-0 flex-wrap items-center gap-2">
 					<HealthDot health={online ? "healthy" : "idle"} withLabel={false} />
@@ -680,7 +680,7 @@ function RunnerRow({
 			<ProvisionStepper runner={runner} />
 
 			{current ? (
-				<div className="flex items-center gap-2 rounded-md border border-line bg-sunken px-3 py-1.5">
+				<div className="flex items-center gap-2 border-y border-line py-1.5">
 					<HealthDot health="healthy" withLabel={false} />
 					<span className="fg-body-sm text-fg">
 						Running{" "}
@@ -886,9 +886,9 @@ function AssignDevice({
 					</Button>
 				</div>
 
-				<div className="rounded-lg border border-dashed border-line-strong p-3">
+				<div className="border-t border-dashed border-line-strong pt-3">
 					<span className="fg-label">No device yet? Set one up</span>
-					<div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-line bg-sunken px-3 py-2">
+					<div className="mt-2 flex items-center justify-between gap-2 border-y border-line py-2">
 						<code className="font-mono text-13 text-fg">
 							forge-runner setup
 						</code>
@@ -1021,7 +1021,7 @@ export function ProjectRunnersScreen({
 						mascot={false}
 					/>
 				) : (
-					<div className="flex flex-col gap-3">
+					<div className="flex flex-col divide-y divide-line">
 						{rows.map((r) => (
 							<RunnerRow
 								key={r.runnerId}

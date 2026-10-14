@@ -234,7 +234,7 @@ function StagePanel({
 
   return (
     <div
-      className={`flex flex-col gap-4 rounded-lg border p-4 ${isLive ? "border-red" : "border-subtle"}`}
+      className={`flex flex-col gap-4 border-t pt-4 ${isLive ? "border-red" : "border-subtle"}`}
     >
       <p className="fg-body-sm text-muted">
         {isLive
@@ -242,7 +242,7 @@ function StagePanel({
           : "Preview — auto-dispatch on release."}
       </p>
 
-      <fieldset className="flex flex-col gap-3 rounded-md border border-subtle bg-sunken/40 p-3">
+      <fieldset className="flex flex-col gap-3 border-t border-subtle pt-3">
         <legend className="fg-label px-1 text-subtle">
           Coolify server · shared credential
         </legend>
@@ -419,7 +419,7 @@ function ProdGateSection({
   return (
     <div className="flex flex-col gap-3">
       {featureOff ? (
-        <div className="flex flex-col gap-1 rounded-lg border border-subtle bg-sunken p-3">
+        <div className="flex flex-col gap-1 border-t border-subtle pt-3">
           <span className="fg-label text-subtle">Live approval gate</span>
           <span className="fg-body-sm text-muted">
             Pipeline control is disabled for this project, so auto-approve
@@ -428,7 +428,7 @@ function ProdGateSection({
           </span>
         </div>
       ) : (
-        <div className="flex flex-col gap-1 rounded-lg border border-subtle bg-sunken p-3">
+        <div className="flex flex-col gap-1 border-t border-subtle pt-3">
           <div className="flex items-center justify-between gap-3">
             <span className="fg-label text-subtle">
               Auto-approve production deploys
@@ -474,7 +474,7 @@ function ProdGateSection({
 
 function DeployConfirmationHint() {
   return (
-    <div className="flex flex-col gap-1 rounded-lg border border-subtle bg-sunken p-3">
+    <div className="flex flex-col gap-1 border-t border-subtle pt-3">
       <span className="fg-label text-subtle">Deploy confirmation</span>
       <span className="fg-body-sm">
         Forge reads each deploy&apos;s outcome back from Coolify and holds the

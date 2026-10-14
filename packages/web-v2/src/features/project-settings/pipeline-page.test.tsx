@@ -29,6 +29,8 @@ let plugins: Plugin[];
 let configWrites: Array<{ base: Doc; patch: Doc }>;
 let pluginWrites: Plugin[][];
 let pluginsFail: boolean;
+/** What the plugins route says when it fails: its own words, or only the HTTP status text a bare 500 carries. */
+let pluginsFailsWith: string;
 /** The runners the project answers for. */
 let runners: Array<{ deviceId: string; deviceName: string; deviceStatus: string; runnerStatus: string }>;
 
@@ -60,7 +62,7 @@ vi.mock("@/lib/api/client", async () => {
 			if (path.endsWith("/plugins") && init?.method === "PATCH") {
 				const body = JSON.parse(init.body ?? "{}") as { plugins: Plugin[] };
 				pluginWrites.push(body.plugins);
-				if (pluginsFail) throw new ApiError(500, "the plugins store is down", "SERVER_ERROR");
+				if (pluginsFail) throw new ApiError(500, pluginsFailsWith, "SERVER_ERROR");
 				plugins = body.plugins;
 				return { plugins };
 			}
@@ -122,6 +124,7 @@ beforeEach(() => {
 	configWrites = [];
 	pluginWrites = [];
 	pluginsFail = false;
+	pluginsFailsWith = "the plugins store is down";
 	runners = [
 		{ deviceId: "box-a", deviceName: "box-a", deviceStatus: "online", runnerStatus: "online" },
 		{ deviceId: "box-b", deviceName: "box-b", deviceStatus: "online", runnerStatus: "online" },
@@ -301,8 +304,22 @@ describe("a Save that lands in part", () => {
 		press();
 
 		const banner = await screen.findByText(/the pipeline settings were saved, but the plugins were not/i);
-		expect(banner.textContent).toMatch(/the plugins store is down/);
+		expect(banner.textContent).toBe(
+			"The pipeline settings were saved, but the plugins were not: the plugins store is down. Your plugin edits are still here — Save sends them again.",
+		);
 		expect((stored.intakeGate as Doc).enabled).toBe(true);
+	});
+
+	it("does not echo a bare HTTP status text, and still ends the reason before the next sentence", async () => {
+		pluginsFail = true;
+		pluginsFailsWith = "Internal Server Error";
+		await editBoth();
+		press();
+
+		const banner = await screen.findByText(/the pipeline settings were saved, but the plugins were not/i);
+		expect(banner.textContent).toBe(
+			"The pipeline settings were saved, but the plugins were not: The server could not complete the request (500). Your plugin edits are still here — Save sends them again.",
+		);
 	});
 
 	it("reads the saved fields as clean, keeps the plugin edit, and a retry sends the plugins alone", async () => {
@@ -359,14 +376,26 @@ describe("a value the page cannot accept", () => {
 		expect(screen.queryByText("Marketplace is required.")).toBeNull();
 	});
 
-	it("names an incomplete weekly reading, and clears the note once it is complete", async () => {
+	it("marks each empty field of an incomplete weekly reading, and clears each as it is filled", async () => {
 		mountPage();
 		await ready();
 		toggle("Post a weekly assistant reading");
-		await screen.findByText(/before turning the weekly reading on/i);
+		const pinned = await screen.findByText("Fill in the pinned issue before turning the weekly reading on.");
+		expect(pinned).toHaveAttribute("role", "alert");
+		expect(pinned.getAttribute("style")).toContain("var(--red-600)");
+		const fields = [/pinned issue key/, /judge provider id/, /judge model/].map(
+			(label) => screen.getByLabelText(label) as HTMLElement,
+		);
+		for (const field of fields) expect(field).toHaveAttribute("aria-invalid", "true");
+		expect(fields[0]?.getAttribute("aria-describedby")).toBe(pinned.id);
+		expect(screen.getByText("Fill in the judge provider id before turning the weekly reading on.")).toBeInTheDocument();
+		expect(screen.getByText("Fill in the judge model before turning the weekly reading on.")).toBeInTheDocument();
 		expect(saveButton()).toBeDisabled();
 
 		type(/pinned issue key/, "ISS-1");
+		await waitFor(() => expect(screen.queryByText(/Fill in the pinned issue/)).toBeNull());
+		expect(fields[0]).not.toHaveAttribute("aria-invalid");
+		expect(fields[1]).toHaveAttribute("aria-invalid", "true");
 		type(/judge provider id/, "litellm");
 		type(/judge model/, "cx/gpt-6-astra");
 		await waitFor(() => expect(screen.queryByText(/before turning the weekly reading on/i)).toBeNull());

@@ -42,7 +42,7 @@ function ProviderSection({ provider, projectId }: { provider: string; projectId:
   const Section = SECTIONS.get(provider);
   if (!Section) {
     return (
-      <p className="fg-body-sm rounded-md border border-line bg-surface px-3 py-2 text-muted">
+      <p className="fg-body-sm border-b border-line pb-2 text-muted">
         {providerLabel(provider)} has nothing to configure here.
       </p>
     );
@@ -141,13 +141,13 @@ function BindingsList({
 }) {
   if (items.length === 0) {
     return (
-      <p className="fg-body-sm rounded-md border border-line bg-surface px-3 py-2 text-muted">
+      <p className="fg-body-sm border-b border-line pb-2 text-muted">
         Only this project uses this connection.
       </p>
     );
   }
   return (
-    <ul className="flex flex-col gap-1.5">
+    <ul className="flex flex-col divide-y divide-line">
       {items.map((b) => {
         const isCurrent =
           b.projectId === currentProjectId &&
@@ -156,7 +156,7 @@ function BindingsList({
         return (
           <li
             key={b.id}
-            className="flex items-center gap-3 rounded-md border border-line bg-surface px-3 py-2"
+            className="flex items-center gap-3 py-2"
           >
             <span className="truncate text-fg">{name}</span>
             <span className="fg-body-sm text-muted">{scopeLabel(b.role, b.stages)}</span>

@@ -26,28 +26,40 @@ export function AssistantWeeklySection({
 	const slice = form.draft.assistantWeekly;
 	const set = (next: Partial<PipelineDraft["assistantWeekly"]>) =>
 		form.setDraft((d) => ({ ...d, assistantWeekly: { ...d.assistantWeekly, ...next } }));
-	const incomplete = form.errorAt("assistantWeekly.enabled");
 
 	const field = (
 		key: "pinnedIssue" | "judgeProviderId" | "judgeModel" | "source",
 		label: string,
 		placeholder: string,
-	) => (
-		<div className="flex items-center gap-3">
-			<Input
-				id={`assistant-weekly-${key}`}
-				type="text"
-				value={slice[key] ?? ""}
-				disabled={!canEdit || !slice.enabled}
-				placeholder={placeholder}
-				className="w-64"
-				onChange={(e) => set({ [key]: e.target.value })}
-			/>
-			<label className="fg-body-sm text-fg" htmlFor={`assistant-weekly-${key}`}>
-				{label}
-			</label>
-		</div>
-	);
+	) => {
+		const id = `assistant-weekly-${key}`;
+		const error = form.errorAt(`assistantWeekly.${key}`);
+		return (
+			<div className="flex flex-col gap-1.5">
+				<div className="flex items-center gap-3">
+					<Input
+						id={id}
+						type="text"
+						value={slice[key] ?? ""}
+						disabled={!canEdit || !slice.enabled}
+						placeholder={placeholder}
+						className="w-64"
+						aria-invalid={error ? true : undefined}
+						aria-describedby={error ? `${id}-error` : undefined}
+						onChange={(e) => set({ [key]: e.target.value })}
+					/>
+					<label className="fg-body-sm text-fg" htmlFor={id}>
+						{label}
+					</label>
+				</div>
+				{error && (
+					<p id={`${id}-error`} role="alert" className="fg-caption" style={{ color: "var(--red-600)" }}>
+						{error}
+					</p>
+				)}
+			</div>
+		);
+	};
 
 	return (
 		<div className="mt-6 border-t border-line pt-5">
@@ -79,11 +91,6 @@ export function AssistantWeeklySection({
 				)}
 				{field("judgeModel", "judge model (never the model under test)", "cx/gpt-6-astra")}
 				{field("source", "one door only (optional)", "web")}
-				{incomplete && (
-					<p role="alert" className="fg-caption text-[var(--red-600)]">
-						{incomplete}
-					</p>
-				)}
 			</div>
 
 			{canEdit && (

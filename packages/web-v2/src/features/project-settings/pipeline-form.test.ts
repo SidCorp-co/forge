@@ -5,6 +5,7 @@
 
 import { comparePatchBase } from "@forge/contracts/document-patch";
 import { describe, expect, it } from "vitest";
+import { settingLabel } from "@/lib/api/error";
 import { type PipelineDraft, pipelineSchema, pipelineWrites, readPipeline } from "./pipeline-form";
 import type { PipelineConfig } from "./types";
 
@@ -18,6 +19,17 @@ function edit(read: PipelineDraft, change: (d: PipelineDraft) => void): Pipeline
 	change(held);
 	return held;
 }
+
+describe("a refusal names every stage setting the form writes", () => {
+	it("by a name the page carries, never the catch-all", () => {
+		const entry = readPipeline({}, []).states.open;
+		const written = Object.keys(entry ?? {});
+		expect(written).toEqual(expect.arrayContaining(["enabled", "mode", "deviceIds", "allowedTools", "disallowedTools", "mcpServers"]));
+		for (const key of written) {
+			expect(settingLabel(`states.open.${key}`), key).not.toMatch(/^Stage settings/);
+		}
+	});
+});
 
 describe("pipelineWrites", () => {
 	it("owes nothing for a draft nobody touched, defaults and all", () => {
@@ -115,10 +127,20 @@ describe("pipelineSchema", () => {
 		expect(issues(d)).toEqual(["plugins.0.pinnedRef: Pinned SHA must be 7–40 hex characters."]);
 	});
 
-	it("names a weekly reading that is on and incomplete, and not one that is off", () => {
+	it("names each empty field of a weekly reading that is on, and not one that is off", () => {
 		const d = base();
 		d.assistantWeekly.enabled = true;
-		expect(issues(d)).toEqual([expect.stringContaining("assistantWeekly.enabled: Fill in the pinned issue")]);
+		expect(issues(d)).toEqual([
+			"assistantWeekly.pinnedIssue: Fill in the pinned issue before turning the weekly reading on.",
+			"assistantWeekly.judgeProviderId: Fill in the judge provider id before turning the weekly reading on.",
+			"assistantWeekly.judgeModel: Fill in the judge model before turning the weekly reading on.",
+		]);
+		d.assistantWeekly.pinnedIssue = "ISS-1";
+		d.assistantWeekly.judgeModel = "   ";
+		expect(issues(d)).toEqual([
+			"assistantWeekly.judgeProviderId: Fill in the judge provider id before turning the weekly reading on.",
+			"assistantWeekly.judgeModel: Fill in the judge model before turning the weekly reading on.",
+		]);
 		d.assistantWeekly.enabled = false;
 		expect(issues(d)).toEqual([]);
 	});

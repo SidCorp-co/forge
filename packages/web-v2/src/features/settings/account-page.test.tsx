@@ -19,6 +19,8 @@ let assistant: { answerStyle: string; assistantInstructions: string | null };
 let prefsWrites: unknown[];
 let assistantWrites: unknown[];
 let assistantFails: boolean;
+/** What the assistant-preferences route says when it fails. */
+let assistantFailsWith: string;
 
 vi.mock("@/lib/api/client", async () => {
 	const actual = await vi.importActual<typeof import("@/lib/api/client")>("@/lib/api/client");
@@ -34,7 +36,7 @@ vi.mock("@/lib/api/client", async () => {
 			if (path === "/auth/me/preferences") return { ...prefs };
 			if (path === "/auth/preferences" && init?.method === "PATCH") {
 				assistantWrites.push(body);
-				if (assistantFails) throw new ApiError(500, "the preferences store is down", "SERVER_ERROR");
+				if (assistantFails) throw new ApiError(500, assistantFailsWith, "SERVER_ERROR");
 				assistant = { ...assistant, ...body };
 				return { ...prefs, ...assistant };
 			}
@@ -72,6 +74,7 @@ beforeEach(() => {
 	prefsWrites = [];
 	assistantWrites = [];
 	assistantFails = false;
+	assistantFailsWith = "the preferences store is down";
 });
 afterEach(cleanup);
 
@@ -154,6 +157,19 @@ describe("what one Save writes", () => {
 });
 
 describe("when one of the two routes fails", () => {
+	it("does not echo a bare HTTP status text, and ends the reason before the next sentence", async () => {
+		assistantFails = true;
+		assistantFailsWith = "Internal Server Error";
+		mount();
+		fireEvent.change(await screen.findByLabelText("Standing instructions"), { target: { value: "Be brief." } });
+		fireEvent.click(saveButton());
+
+		const banner = await screen.findByText(/Nothing was saved/i);
+		expect(banner.textContent).toBe(
+			"Nothing was saved: The server could not complete the request (500). Your other edits are still here — Save sends them again.",
+		);
+	});
+
 	it("reads what the other saved as clean, keeps the failed edit, and a retry sends the failed route alone", async () => {
 		assistantFails = true;
 		mount();
@@ -163,7 +179,9 @@ describe("when one of the two routes fails", () => {
 		fireEvent.click(saveButton());
 
 		const banner = await screen.findByText(/Theme and language saved, but not the rest/i);
-		expect(banner.textContent).toMatch(/the preferences store is down/);
+		expect(banner.textContent).toBe(
+			"Theme and language saved, but not the rest: the preferences store is down. Your other edits are still here — Save sends them again.",
+		);
 		expect(prefs.theme).toBe("dark");
 		expect(instructions().value).toBe("Be brief.");
 		await waitFor(() => expect(saveButton()).toBeEnabled());

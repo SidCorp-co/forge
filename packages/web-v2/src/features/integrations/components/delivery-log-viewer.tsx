@@ -50,6 +50,7 @@ function DeliveryRow({
 
   return (
     <Collapsible
+      flat
       title={
         <span className="flex w-full flex-wrap items-center gap-x-3 gap-y-1">
           <span className="inline-flex items-center gap-1.5 text-muted">
@@ -72,14 +73,14 @@ function DeliveryRow({
         {row.errorMessage && <Banner tone="danger">{row.errorMessage}</Banner>}
         <div>
           <span className="fg-overline text-subtle">Payload</span>
-          <pre className="mt-1 overflow-x-auto rounded bg-sunken p-2 font-mono text-11 leading-relaxed">
+          <pre className="mt-1 overflow-x-auto bg-sunken p-2 font-mono text-11 leading-relaxed">
             {JSON.stringify(redactSensitive(row.payload), null, 2)}
           </pre>
         </div>
         {row.response && (
           <div>
             <span className="fg-overline text-subtle">Response</span>
-            <pre className="mt-1 overflow-x-auto rounded bg-sunken p-2 font-mono text-11 leading-relaxed">
+            <pre className="mt-1 overflow-x-auto bg-sunken p-2 font-mono text-11 leading-relaxed">
               {JSON.stringify(redactSensitive(row.response), null, 2)}
             </pre>
           </div>
@@ -140,7 +141,7 @@ export function DeliveryLogViewer({
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col divide-y divide-line border-y border-line">
       {items.map((row) => (
         <DeliveryRow key={row.id} row={row} projectId={projectId} bindingId={bindingId} />
       ))}

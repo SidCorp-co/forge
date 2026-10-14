@@ -51,7 +51,7 @@ export function CoolifyTargetsField({
   }
 
   return (
-    <fieldset className="flex flex-col gap-3 rounded-md border border-subtle p-3">
+    <fieldset className="flex flex-col gap-3 border-t border-subtle pt-3">
       <legend className="fg-label px-1 text-subtle">
         Deploy targets · this project · {stage}
       </legend>

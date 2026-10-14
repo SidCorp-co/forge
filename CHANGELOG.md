@@ -3171,6 +3171,7 @@
 
 - **Three small repairs on API Tokens and Agents.** A project name in the Level pill reads on one line, the Agents project hint is a sentence, and each row's "Self" button is "Edit self". (ISS-1264)
 
+- **Settings pages are flat, and notices read cleanly.** Pipeline, Runners and Integrations use hairline rows; an empty weekly-reading field is marked; a half-saved page ends its reason with a stop; a phone toast no longer shifts the page. (ISS-1262)
 - **"Start queued issues automatically" can be switched off, and settings pages are flat.** It holds the entry gate instead of sending a refused value; cards give way to hairline sections. A backlog starts valid under the intake gate. (ISS-1262)
 - **API Tokens opens on what can still reach your account.** It says how many tokens can and lists them; revoked and expired ones wait behind one line with their number and end date, and carry no Revoke. (ISS-1166)
 - **The assistant's per-chat-turn credentials are one line on API Tokens, not a row each.** The line says how many exist and how many are live. (ISS-1166)

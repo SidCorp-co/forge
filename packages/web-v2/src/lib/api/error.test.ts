@@ -3,6 +3,7 @@ import { ApiError } from './client';
 import {
   describeSettings,
   formatApiError,
+  formatApiReason,
   formatPipelineConfigError,
   formatSettingsWriteError,
   isRetryableApiError,
@@ -262,5 +263,47 @@ describe('describeSettings', () => {
 
   it('keeps a stage setting in the stage it belongs to', () => {
     expect(describeSettings(['states.open.deviceIds']).text).toBe('Runner pools (Open)');
+  });
+
+  it("names the entry stage's switch as the Pipeline page does, with no stage after it", () => {
+    expect(describeSettings(['states.open.mode']).text).toBe('Start queued issues automatically');
+    expect(describeSettings(['states.open.enabled', 'states.open.mode'])).toEqual({
+      text: 'Start queued issues automatically',
+      count: 1,
+    });
+  });
+});
+
+describe('a server error that carries only its HTTP status text', () => {
+  it('is said as a failed request, not echoed', () => {
+    expect(formatApiError(new ApiError(500, 'Internal Server Error'))).toBe(
+      'The server could not complete the request (500).',
+    );
+    expect(formatApiError(new ApiError(503, 'Service Unavailable'))).toBe(
+      'The server could not complete the request (503).',
+    );
+  });
+
+  it('covers every standard 5xx status text, whole-message only', () => {
+    expect(formatApiError(new ApiError(501, 'Not Implemented'))).toBe('The server could not complete the request (501).');
+    expect(formatApiError(new ApiError(505, 'HTTP Version Not Supported'))).toBe(
+      'The server could not complete the request (505).',
+    );
+    expect(formatApiError(new ApiError(501, 'Not Implemented for this provider'))).toBe(
+      'Not Implemented for this provider',
+    );
+  });
+
+  it("keeps a server error's own words, and a client error's status text", () => {
+    expect(formatApiError(new ApiError(500, 'the plugins store is down'))).toBe('the plugins store is down');
+    expect(formatApiError(new ApiError(400, 'Internal Server Error'))).toBe('Internal Server Error');
+  });
+
+  it('ends a reason with a stop so the next sentence starts after one', () => {
+    expect(formatApiReason(new ApiError(500, 'the plugins store is down'))).toBe('the plugins store is down.');
+    expect(formatApiReason(new ApiError(404, 'Not found.'))).toBe('Not found.');
+    expect(formatApiReason(new ApiError(500, 'Internal Server Error'))).toBe(
+      'The server could not complete the request (500).',
+    );
   });
 });

@@ -59,12 +59,13 @@ function ToastStack({ items, remove }: Pick<ToastLaneApi, "items" | "remove">) {
 }
 
 /**
- * Where a frame's toasts go. Mounted as an in-flow sibling after the frame's
- * scrolling `<main>`, it takes its height out of `<main>`'s box instead of
- * painting over it, so no content sits under a toast. Its height is capped so
- * the reading area always keeps most of the column; anything past the cap
- * scrolls inside the lane. `className` carries the frame's own clearance,
- * such as the mobile bottom tab bar.
+ * Where a frame's toasts go. On a wide screen it is an in-flow sibling after the frame's scrolling
+ * `<main>`, so it takes its height out of `<main>`'s box instead of painting over it and no content
+ * sits under a toast. On a phone there is no room to give: the same height would lift every
+ * bottom-anchored thing on the page (a save bar) for as long as a toast shows, so there the lane
+ * overlays the top edge, clear of the tab bar and the save bar, and lets touches through everywhere
+ * but the toasts. Its height is capped so the reading area always keeps most of the column; anything
+ * past the cap scrolls inside the lane. `className` carries the frame's own clearance.
  */
 export function ToastLane({ className }: { className?: string }) {
   const lane = useContext(ToastLaneContext);
@@ -79,7 +80,8 @@ export function ToastLane({ className }: { className?: string }) {
       aria-label="Notifications"
       data-testid="toast-lane"
       className={cn(
-        "flex max-h-[35dvh] flex-none flex-col items-end gap-2.5 overflow-y-auto border-t border-line-subtle px-5 py-3",
+        "flex max-h-[35dvh] flex-none flex-col items-end gap-2.5 overflow-y-auto px-5 py-3 md:border-t md:border-line-subtle",
+        "max-md:pointer-events-none max-md:fixed max-md:inset-x-0 max-md:top-[env(safe-area-inset-top)] max-md:z-[60]",
         className,
       )}
     >

@@ -501,7 +501,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
           <CurrentProjectProvider project={railProject}>{children}</CurrentProjectProvider>
         </main>
 
-        <ToastLane className="mb-[calc(56px+env(safe-area-inset-bottom))] md:mb-0" />
+        <ToastLane />
       </div>
 
       {railProject && chatOpen && chatDocked && (
