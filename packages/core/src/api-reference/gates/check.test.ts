@@ -223,93 +223,6 @@ describe('each rule, planted once, continued', () => {
     expect(findings).toEqual([]);
   });
 
-  it('typo-code: a declared code that no source file writes is named', async () => {
-    const app = new Hono();
-    app.get(
-      '/api/issues',
-      describeOperation({
-        summary: 's',
-        responses: { 200: json(z.object({})), 409: fail('CONFLCIT') },
-      }),
-      (c) => c.json({}),
-    );
-    const { findings } = await checked(app);
-    expect(rules(findings)).toEqual(['typo-code document']);
-    expect(findings[0]?.detail).toContain('CONFLCIT');
-  });
-
-  it('typo-code: a code is not written by the descriptor that declares it, in either form of fail', async () => {
-    const app = new Hono();
-    app.get(
-      '/api/issues',
-      describeOperation({
-        summary: 's',
-        responses: {
-          200: json(z.object({})),
-          409: fail('CONFLCIT', 'two writers'),
-          410: fail({ GONEE: 'was here' }),
-        },
-      }),
-      (c) => c.json({}),
-    );
-    const reference = await buildReference(app, { version: 't' });
-    const declaring = `export const x = describeOperation({ responses: { 409: fail('CONFLCIT', 'two writers'), 410: fail({ GONEE: 'was here' }) } });`;
-    const findings = checkReference({ reference, written: writing(declaring) });
-    expect(rules(findings)).toEqual(['typo-code document', 'typo-code document']);
-    expect(findings.map((f) => f.detail).join(' ')).toContain('CONFLCIT');
-  });
-
-  it('typo-code: a comment, a regular expression or a string before the declaration changes nothing', () => {
-    const written = writing(
-      [
-        'const note = "fail(";',
-        '// fail( is how a descriptor starts',
-        "const apostrophe = /'/;",
-        "const slashes = '//';",
-        "fail(/* ) */ 'CONFLCIT', 'two writers');",
-        "throw new HTTPException(409, { cause: { code: 'CONFLICT' } });",
-      ].join('\n'),
-    );
-    expect(written.has('CONFLICT')).toBe(true);
-    expect(written.has('CONFLCIT')).toBe(false);
-  });
-
-  it('typo-code: a fail that is not the descriptor one, a template string and a quote are all writing', () => {
-    const written = stringsWrittenOutsideDeclarations([
-      "const fail = (code: string) => code; fail('LOCAL');",
-      'const code = `TEMPLATED`;',
-    ]);
-    expect(written.has('LOCAL')).toBe(true);
-    expect(written.has('TEMPLATED')).toBe(true);
-  });
-
-  it('typo-code: a call one file leaves open does not reach the next file', () => {
-    const written = writing(
-      "fail('A', 'never closed'",
-      "throw new HTTPException(409, { cause: { code: 'CONFLICT' } });",
-    );
-    expect(written.has('CONFLICT')).toBe(true);
-  });
-
-  it('typo-code: a code a handler throws is written, so it is not named', async () => {
-    const app = new Hono();
-    app.get(
-      '/api/issues',
-      describeOperation({
-        summary: 's',
-        responses: { 200: json(z.object({})), 409: fail('CONFLICT', 'two writers') },
-      }),
-      () => {
-        throw new HTTPException(409, { message: 'x', cause: { code: 'CONFLICT' } });
-      },
-    );
-    const reference = await buildReference(app, { version: 't' });
-    const written = writing(
-      "fail('CONFLICT', 'two writers'); throw new HTTPException(409, { cause: { code: 'CONFLICT' } });",
-    );
-    expect(checkReference({ reference, written })).toEqual([]);
-  });
-
   it('omitted: a route the document does not carry is named', async () => {
     const app = new Hono();
     app.get('/api/issues', ok, (c) => c.json({}));
@@ -412,5 +325,94 @@ describe('what the check reads out of handler text', () => {
       { status: 422, code: 'ONE' },
       { status: 404, code: 'NOT_FOUND' },
     ]);
+  });
+});
+
+describe('typo-code, planted once', () => {
+  it('typo-code: a declared code that no source file writes is named', async () => {
+    const app = new Hono();
+    app.get(
+      '/api/issues',
+      describeOperation({
+        summary: 's',
+        responses: { 200: json(z.object({})), 409: fail('CONFLCIT') },
+      }),
+      (c) => c.json({}),
+    );
+    const { findings } = await checked(app);
+    expect(rules(findings)).toEqual(['typo-code document']);
+    expect(findings[0]?.detail).toContain('CONFLCIT');
+  });
+
+  it('typo-code: a code is not written by the descriptor that declares it, in either form of fail', async () => {
+    const app = new Hono();
+    app.get(
+      '/api/issues',
+      describeOperation({
+        summary: 's',
+        responses: {
+          200: json(z.object({})),
+          409: fail('CONFLCIT', 'two writers'),
+          410: fail({ GONEE: 'was here' }),
+        },
+      }),
+      (c) => c.json({}),
+    );
+    const reference = await buildReference(app, { version: 't' });
+    const declaring = `export const x = describeOperation({ responses: { 409: fail('CONFLCIT', 'two writers'), 410: fail({ GONEE: 'was here' }) } });`;
+    const findings = checkReference({ reference, written: writing(declaring) });
+    expect(rules(findings)).toEqual(['typo-code document', 'typo-code document']);
+    expect(findings.map((f) => f.detail).join(' ')).toContain('CONFLCIT');
+  });
+
+  it('typo-code: a comment, a regular expression or a string before the declaration changes nothing', () => {
+    const written = writing(
+      [
+        'const note = "fail(";',
+        '// fail( is how a descriptor starts',
+        "const apostrophe = /'/;",
+        "const slashes = '//';",
+        "fail(/* ) */ 'CONFLCIT', 'two writers');",
+        "throw new HTTPException(409, { cause: { code: 'CONFLICT' } });",
+      ].join('\n'),
+    );
+    expect(written.has('CONFLICT')).toBe(true);
+    expect(written.has('CONFLCIT')).toBe(false);
+  });
+
+  it('typo-code: a fail that is not the descriptor one, a template string and a quote are all writing', () => {
+    const written = stringsWrittenOutsideDeclarations([
+      "const fail = (code: string) => code; fail('LOCAL');",
+      'const code = `TEMPLATED`;',
+    ]);
+    expect(written.has('LOCAL')).toBe(true);
+    expect(written.has('TEMPLATED')).toBe(true);
+  });
+
+  it('typo-code: a call one file leaves open does not reach the next file', () => {
+    const written = writing(
+      "fail('A', 'never closed'",
+      "throw new HTTPException(409, { cause: { code: 'CONFLICT' } });",
+    );
+    expect(written.has('CONFLICT')).toBe(true);
+  });
+
+  it('typo-code: a code a handler throws is written, so it is not named', async () => {
+    const app = new Hono();
+    app.get(
+      '/api/issues',
+      describeOperation({
+        summary: 's',
+        responses: { 200: json(z.object({})), 409: fail('CONFLICT', 'two writers') },
+      }),
+      () => {
+        throw new HTTPException(409, { message: 'x', cause: { code: 'CONFLICT' } });
+      },
+    );
+    const reference = await buildReference(app, { version: 't' });
+    const written = writing(
+      "fail('CONFLICT', 'two writers'); throw new HTTPException(409, { cause: { code: 'CONFLICT' } });",
+    );
+    expect(checkReference({ reference, written })).toEqual([]);
   });
 });
