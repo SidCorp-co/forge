@@ -279,5 +279,6 @@ integrationsRoutes.get('/:projectId/integrations/mcp-preview', async (c) => {
 
 export { deviceGitCredentialRoutes } from './git-credential-routes.js';
 export { githubCallbackRoutes, githubConnectRoutes } from './github-connect-routes.js';
+export { gitlabRepositoriesRoutes } from './gitlab-repositories-routes.js';
 export { issueMergePullRequestRoutes } from './issue-merge-routes.js';
 export { webhookInboundRoutes } from './webhook-inbound-routes.js';

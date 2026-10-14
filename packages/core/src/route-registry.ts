@@ -64,6 +64,7 @@ import {
   deviceGitCredentialRoutes,
   githubCallbackRoutes,
   githubConnectRoutes,
+  gitlabRepositoriesRoutes,
   integrationConnectionsRoutes,
   integrationsRoutes,
   issueMergePullRequestRoutes,
@@ -262,6 +263,7 @@ function mountProjectAndOrgRoutes(app: Hono<{ Variables: RequestIdVars }>): void
   app.route('/api/org-invitations', orgInvitationRoutes);
   app.route('/api/projects', integrationsRoutes);
   app.route('/api/projects', githubConnectRoutes);
+  app.route('/api/projects', gitlabRepositoriesRoutes);
   app.route('/api', githubCallbackRoutes);
   app.route('/api/integration-connections', integrationConnectionsRoutes);
   app.route('/api/projects', memberRoutes);
