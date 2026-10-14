@@ -74,7 +74,7 @@ const standing = {
       rule: { key: "issues.rule.leaseHeld", vars: { holder: "box-1" } },
     },
   },
-  criteria: { total: 18, passing: 8, failing: 4, skipped: 0 },
+  criteria: { total: 18, met: 8, failing: 4, skipped: 0 },
   requirement: { key: "REQ-34", title: "Checklists", criteria: ["BC-1"], staleCriteria: [], plannedRevision: 2, currentRevision: 2, changedSincePlan: false },
   module: null,
   feedback: [],
@@ -213,7 +213,7 @@ describe("an issue page in the person's view", () => {
     expect(within(root).getByRole("button", { name: "All 18" })).toBeInTheDocument();
     expect(within(root).getByRole("button", { name: "Failing 4" })).toBeInTheDocument();
     expect(within(root).getByRole("button", { name: "Not judged 6" })).toBeInTheDocument();
-    expect(within(root).getByRole("button", { name: "Passing 8" })).toBeInTheDocument();
+    expect(within(root).getByRole("button", { name: "Met 8" })).toBeInTheDocument();
     expect(within(root).getByTestId("criterion-1-verdict")).toHaveAccessibleName("Pass");
     expect(within(root).getByTestId("criterion-9-verdict")).toHaveAccessibleName("Fail");
     await userEvent.click(within(root).getByRole("button", { name: "Failing 4" }));

@@ -55,7 +55,7 @@ const issue = (n: number, kind: WaitingKind, attentionGroup: string): IssueStand
       tone: "ready",
       attentionGroup,
       waitingOn: waitingOn(kind, { who: say("standing.who.nobody"), act: say("standing.act.none"), rule: RULE }),
-      criteria: { total: 0, passing: 0, failing: 0, skipped: 0 },
+      criteria: { total: 0, met: 0, failing: 0, skipped: 0 },
       requirement: null,
       module: null,
       feedback: [],

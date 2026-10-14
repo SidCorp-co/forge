@@ -59,7 +59,7 @@ function factsLine(r: IssueStandingRow, t: Copy): string[] {
   if (s.requirement?.staleCriteria.length) parts.push(t("issues.facts.staleShort", { codes: s.requirement.staleCriteria.join(", ") }));
   if (r.priority === "high" || r.priority === "critical") parts.push(r.priority === "critical" ? t("issues.facts.critical") : t("issues.facts.high"));
   if (s.feedback[0]) parts.push(`${t("issues.facts.from", { key: s.feedback[0] })}${s.feedbackDropped.includes(s.feedback[0]) ? ` (${t("issues.facts.dropped")})` : ""}`);
-  if (s.criteria.total > 0) parts.push(t("issues.facts.passing", { passing: s.criteria.passing, total: s.criteria.total }));
+  if (s.criteria.total > 0) parts.push(t("issues.facts.met", { met: s.criteria.met, total: s.criteria.total }));
   return parts;
 }
 
@@ -139,16 +139,16 @@ export function IssueSteps({ standing, caption = true, named = true }: { standin
   );
 }
 
-/** One mark per step and per criterion, the peek's at-a-glance strip: "Steps ▮▮▮▯ Test · Criteria ▮▮▯▯ 2 of 4 pass". */
+/** One mark per step and per criterion, the peek's at-a-glance strip: "Steps ▮▮▮▯ Test · Criteria ▮▮▯▯ 2 of 4 met". */
 export function IssueStrip({ standing }: { standing: IssueStanding }) {
   const t = useCopy();
   const L = useLabel();
   const over = standing.state === "awaiting_release" || standing.state === "closed";
   const at = standing.step ? WORK_STEPS.indexOf(standing.step) : -1;
   const c = standing.criteria;
-  const unjudged = Math.max(0, c.total - c.passing - c.failing - c.skipped);
+  const unjudged = Math.max(0, c.total - c.met - c.failing - c.skipped);
   const crit: MarkView[] = [
-    ...Array.from({ length: c.passing }, (_, i) => ({ key: `p${i}`, label: t("issues.crit.passing"), tone: "ready" as const })),
+    ...Array.from({ length: c.met }, (_, i) => ({ key: `m${i}`, label: t("issues.crit.met"), tone: "ready" as const })),
     ...Array.from({ length: c.failing }, (_, i) => ({ key: `f${i}`, label: t("issues.crit.failing"), tone: "err" as const })),
     ...Array.from({ length: c.skipped }, (_, i) => ({ key: `s${i}`, label: t("issues.crit.skipped"), tone: "neutral" as const })),
     ...Array.from({ length: unjudged }, (_, i) => ({ key: `u${i}`, label: t("issues.crit.unjudged") })),
@@ -175,7 +175,7 @@ export function IssueStrip({ standing }: { standing: IssueStanding }) {
         {c.total ? (
           <>
             <MarkStrip size="sm" marks={crit} />
-            <span className="text-fg">{t("issues.crit.ofPass", { passing: c.passing, total: c.total })}</span>
+            <span className="text-fg">{t("issues.crit.ofMet", { met: c.met, total: c.total })}</span>
           </>
         ) : (
           <span className="text-subtle">{t("issues.steps.none")}</span>

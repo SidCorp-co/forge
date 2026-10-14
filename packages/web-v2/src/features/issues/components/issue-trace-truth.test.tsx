@@ -1,7 +1,8 @@
 // coverage-truth r2. The issue rail said "Traces to BC-1 … BC-10" on ISS-479 although its BC-4 and
 // BC-8 rows traced wording REQ-37 had retired, which the requirement counts as stale; and the
 // Criteria tab drew a Short verdict as "✓ Pass". A trace on an earlier wording reads stale and names
-// the re-tie act, and a Short reads Short (it still counts as a pass in coverage).
+// the re-tie act, and a Short reads Short: met short of its wording, never proven (REQ-35 decision
+// 7b261fca), so no tally that counts it says passing or proven.
 
 import { screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
@@ -9,6 +10,7 @@ import { fakeCore, renderWithQuery } from "@/test/render";
 import type { IssueStandingRow } from "@forge/contracts/issue-standing";
 import type { IssueDetail } from "../types";
 import { IssueCriteria } from "./issue-criteria";
+import { IssueStrip } from "./issue-standing-bits";
 import { RailTraceRows } from "./rail-trace";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
@@ -23,7 +25,7 @@ const row = {
   priority: "medium",
   standing: {
     attentionGroup: "done",
-    criteria: { total: 10, passing: 8, failing: 0, skipped: 0 },
+    criteria: { total: 10, met: 8, failing: 0, skipped: 0 },
     requirement: {
       key: "REQ-37",
       title: "Scripts",
@@ -122,5 +124,18 @@ describe("a Short verdict on the Criteria tab", () => {
     const short = await screen.findByTestId("criterion-1-verdict");
     expect(short).toHaveAccessibleName("Short");
     expect(screen.getByTestId("criterion-2-verdict")).toHaveAccessibleName("Pass");
+    // the pill counts the short with the pass as met, and never calls that count passing or proven
+    expect(screen.getByRole("button", { name: "Met 2" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^passing|proven/i })).toBeNull();
+  });
+});
+
+describe("the issue's own tally counts met, not proven (forge-core-eb ruling, 2026-10-14)", () => {
+  it("reads a tally holding a short as met, never as passing or proven", () => {
+    const standing = { ...row.standing, state: "in_progress", step: "test", tone: "run", criteria: { total: 2, met: 2, failing: 0, skipped: 0 } } as never;
+    renderWithQuery(<IssueStrip standing={standing} />);
+    const strip = screen.getByTestId("issue-strip");
+    expect(strip).toHaveTextContent("2 of 2 met");
+    expect(strip.textContent ?? "").not.toMatch(/pass|proven/i);
   });
 });

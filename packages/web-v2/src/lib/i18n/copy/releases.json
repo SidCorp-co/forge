@@ -389,7 +389,7 @@
     "releases.provenOf": "Đã chứng minh {proven}/{total}",
     "releases.reason": "Lý do:",
     "releases.refused.allShippedEarlier": "Mọi issue trong bản này đã phát hành ở một bản trước.",
-    "releases.refused.criteriaUnearned": "Một số tiêu chí của các issue chưa có kết luận đạt.",
+    "releases.refused.criteriaUnearned": "Một số tiêu chí của các issue chưa được chứng minh.",
     "releases.refused.finishErrored": "Bước hoàn tất bản phát hành gặp lỗi.",
     "releases.refused.notVerified": "Bản đang chạy chưa phục vụ đủ mọi thay đổi bản phát hành này đưa lên, nên không chứng minh được việc hoàn tất.",
     "releases.refused.nothingRecorded": "Không có gì trong bản phát hành được ghi là đã phát hành, nên không có gì để hoàn tất.",

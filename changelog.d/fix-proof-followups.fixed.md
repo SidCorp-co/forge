@@ -1,0 +1,1 @@
+**An issue's tally says met, not passing.** A short meets its criterion and is never proven; a design-only issue is refused awaiting_release outside git too; a person handing an issue back to open or approved must say why.
