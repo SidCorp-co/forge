@@ -1,29 +1,16 @@
 // Lays a page out in a real Chrome and reports whether each control in a table's body can be scrolled
 // fully clear of the table's sticky column. jsdom has no layout, so a test of "can a phone user reach
 // this button" can only be run where a layout engine is: a width cap that is wrong reads green there.
-import { execFile, execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import postcss from "postcss";
 import tailwind from "@tailwindcss/postcss";
+import { type ChromeSession, launchChrome, within, WARM_HOOK_MS, WARM_LAUNCH_MS, WARM_STYLESHEET_MS } from "./chrome-session";
+
+export { WARM_HOOK_MS, WARM_LAUNCH_MS, WARM_STYLESHEET_MS };
 
 const WEB_V2 = resolve(__dirname, "../..");
-const CHROMES = ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/bin/chromium-browser"];
-
-function chromeBinary(): string {
-  const named = process.env.CHROME_BIN;
-  if (named && !existsSync(named)) {
-    throw new Error(`CHROME_BIN names ${named}, which is not a file: a layout test that cannot run is not a pass. Point it at a Chrome or Chromium binary.`);
-  }
-  const found = named || CHROMES.find((path) => existsSync(path));
-  if (!found) {
-    throw new Error(
-      `No Chrome to lay the page out in: looked for ${CHROMES.join(", ")} and CHROME_BIN. Set CHROME_BIN to a Chrome or Chromium binary; a layout test that cannot run is not a pass.`,
-    );
-  }
-  return found;
-}
 
 let stylesheet: Promise<string> | undefined;
 
@@ -37,65 +24,39 @@ export function appStylesheet(): Promise<string> {
   return stylesheet;
 }
 
-/** What a first launch may take, and what the first stylesheet compile may take, each on its own clock. */
-export const WARM_LAUNCH_MS = 60_000;
-export const WARM_STYLESHEET_MS = 60_000;
-/** A `beforeAll` hook's timeout: it holds both steps, so it outlasts them and each names itself first. */
-export const WARM_HOOK_MS = WARM_LAUNCH_MS + WARM_STYLESHEET_MS + 30_000;
-
 export interface WarmOptions {
   chrome?: string;
   launchMs?: number;
   stylesheetMs?: number;
 }
 
-function within<T>(what: string, ms: number, work: Promise<T>): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  const late = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${what} did not finish within ${ms}ms`)), ms);
-  });
-  return Promise.race([work, late]).finally(() => clearTimeout(timer));
-}
+let session: Promise<ChromeSession> | undefined;
+let launches = 0;
 
-let warmed: Promise<void> | undefined;
+export const chromeLaunches = () => launches;
 
 /**
  * Pays what a first Chrome-backed case would otherwise pay inside its own test timeout: the app's
- * stylesheet compile and the browser's first launch. Each runs under its own clock and fails with
- * what it was waiting for, so a slow machine reads as a slow launch and never as a test that timed
- * out. Call it from `beforeAll` with `WARM_HOOK_MS`; every case after it is a warm one.
+ * stylesheet compile and the browser's launch, each on its own clock, failing with what it was
+ * waiting for. The browser it leaves running is the one every `measureReach` after it uses. Call it
+ * from `beforeAll` with `WARM_HOOK_MS` and `closeChrome` from `afterAll`.
  */
-export function warmChrome(options: WarmOptions = {}): Promise<void> {
-  const run = async () => {
-    const { chrome = chromeBinary(), launchMs = WARM_LAUNCH_MS, stylesheetMs = WARM_STYLESHEET_MS } = options;
-    await within(`Compiling the app stylesheet for the layout tests`, stylesheetMs, appStylesheet());
-    const dir = mkdtempSync(join(tmpdir(), "forge-chrome-warm-"));
-    try {
-      await new Promise<void>((done, fail) => {
-        execFile(
-          chrome,
-          ["--headless=new", "--no-sandbox", "--disable-gpu", `--user-data-dir=${join(dir, "profile")}`, "--dump-dom", "about:blank"],
-          { timeout: launchMs, killSignal: "SIGKILL" },
-          (error) => {
-            if (!error) return done();
-            const timedOut = (error as NodeJS.ErrnoException & { killed?: boolean }).killed === true;
-            fail(
-              new Error(
-                timedOut
-                  ? `Chrome at ${chrome} did not finish its first launch within ${launchMs}ms, so the layout tests would carry that launch inside a test's own timeout.`
-                  : `Chrome at ${chrome} could not be launched: ${error.message}. A layout test that cannot run is not a pass.`,
-              ),
-            );
-          },
-        );
-      });
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  };
-  if (options.chrome !== undefined || options.launchMs !== undefined || options.stylesheetMs !== undefined) return run();
-  warmed ??= run();
-  return warmed;
+export function warmChrome(options: WarmOptions = {}): Promise<ChromeSession> {
+  session ??= (async () => {
+    await within("Compiling the app stylesheet for the layout tests", options.stylesheetMs ?? WARM_STYLESHEET_MS, appStylesheet());
+    launches += 1;
+    return launchChrome({ chrome: options.chrome, launchMs: options.launchMs ?? WARM_LAUNCH_MS });
+  })();
+  session.catch(() => {
+    session = undefined;
+  });
+  return session;
+}
+
+export async function closeChrome(): Promise<void> {
+  const running = session;
+  session = undefined;
+  if (running) await (await running.catch(() => undefined))?.close();
 }
 
 export interface Measured {
@@ -228,6 +189,10 @@ parent.postMessage(btoa(String.fromCharCode(...new TextEncoder().encode(JSON.str
  * window narrower than 500px, so the page is a frame \`viewport\` wide: a frame is its own viewport.
  */
 export async function measureReach(markup: string, width: number, viewport: number): Promise<Measured> {
+  if (!session) {
+    throw new Error("measureReach ran before warmChrome(): call it from beforeAll with WARM_HOOK_MS, so no case carries the launch inside its own timeout.");
+  }
+  const chrome = await session;
   const css = await appStylesheet();
   const inner = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><style>${css}</style></head><body style="margin:0"><div style="width:${width}px">${markup}</div><script>${MEASURE}</script></body></html>`;
   const outer = `<!doctype html><html><body style="margin:0"><iframe src="inner.html" style="width:${viewport}px;height:1200px;border:0"></iframe><pre id="reach"></pre><script>addEventListener("message", (e) => { document.getElementById("reach").textContent = e.data; });</script></body></html>`;
@@ -235,26 +200,9 @@ export async function measureReach(markup: string, width: number, viewport: numb
   try {
     writeFileSync(join(dir, "inner.html"), inner);
     writeFileSync(join(dir, "outer.html"), outer);
-    const dom = execFileSync(
-      chromeBinary(),
-      [
-        "--headless=new",
-        "--no-sandbox",
-        "--disable-gpu",
-        "--hide-scrollbars",
-        "--allow-file-access-from-files",
-        `--user-data-dir=${join(dir, "profile")}`,
-        "--window-size=1000,1300",
-        "--virtual-time-budget=4000",
-        "--dump-dom",
-        `file://${join(dir, "outer.html")}`,
-      ],
-      { encoding: "utf8", timeout: 60_000, maxBuffer: 64 * 1024 * 1024 },
-    );
-    const found = /<pre id="reach">([\s\S]*?)<\/pre>/.exec(dom);
-    const body = found?.[1];
+    const body = await chrome.evaluateWhenReady(`file://${join(dir, "outer.html")}`, 'document.getElementById("reach")?.textContent ?? ""', 20_000);
     if (!body) throw new Error("Chrome laid the page out but reported no measurement: the frame's script did not run.");
-    // The report crosses the DOM dump as base64, so no `&`, `<` or `"` in it is escaped and nothing is unescaped here.
+    // The report crosses as base64, so no `&`, `<` or `"` in it needs unescaping and nothing is unescaped here.
     const text = Buffer.from(body, "base64").toString("utf8");
     const measured = JSON.parse(text) as { viewport: number; out: Reach[]; overflowing: string[]; stickyWidest: Record<string, number>; pinned: Measured["pinned"]; broken: string[]; clipped: Measured["clipped"]; scrolling: string[]; pillLines: Record<string, number>; headerLost: string[]; bodyRows: Record<string, number> };
     if (measured.viewport !== viewport) {

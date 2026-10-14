@@ -4,10 +4,11 @@
 // A control name holding entities comes back from Chrome as typed, not decoded a second time.
 
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeAll, describe, expect, it } from "vitest";
-import { measureReach, WARM_HOOK_MS, warmChrome } from "./chrome-layout";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { closeChrome, measureReach, WARM_HOOK_MS, warmChrome } from "./chrome-layout";
 
 beforeAll(() => warmChrome(), WARM_HOOK_MS);
+afterAll(() => closeChrome());
 
 const TYPED = '&lt; &amp;lt; "';
 
