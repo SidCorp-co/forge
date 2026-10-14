@@ -3169,7 +3169,7 @@
 
 ### Fixed
 
-- **A session's message count no longer reads as nothing for sessions that did real work.** Master and run sessions keep no transcript here, so their count is now empty and marked `transcript: not-recorded` instead of `0`, and a session from before the turn ledger reads its real length. (ISS-1241)
+- **A session's message count no longer reads 0 for work it never recorded.** Master and run sessions keep no transcript here, so they show no count and `transcript: not-recorded`; older sessions show their real length. (ISS-1241)
 - **Three small repairs on API Tokens and Agents.** A project name in the Level pill reads on one line, the Agents project hint is a sentence, and each row's "Self" button is "Edit self". (ISS-1264)
 
 - **Settings pages are flat, and notices read cleanly.** Pipeline, Runners and Integrations use hairline rows; an empty weekly-reading field is marked; a half-saved page ends its reason with a stop; a phone toast no longer shifts the page. (ISS-1262)

@@ -34,12 +34,7 @@ export const NON_CLIENT_SESSION_KINDS = [
   'run_session',
 ] as const satisfies readonly AgentSessionKind[];
 
-/**
- * Which lanes put their transcript in core. `master` and `run_session` are a box's own claude
- * process: the only carriers into the turn writer are `job` (pipeline, pm) and `chat`, so those two
- * have no turns and no messages here, whatever they did. A record, so a kind added to the
- * vocabulary is refused until it is classified.
- */
+/** master and run_session are a box's own process: only the job and chat carriers reach the turn writer. A Record, so a new kind must be classified. */
 export const SESSION_TRANSCRIPT_BY_KIND: Record<AgentSessionKind, SessionTranscript> = {
   master: 'not-recorded',
   run_session: 'not-recorded',

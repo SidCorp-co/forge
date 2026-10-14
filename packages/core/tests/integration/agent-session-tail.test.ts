@@ -139,8 +139,7 @@ describe('agent_sessions reads that must not carry a transcript', () => {
 
     const rows = await listAgentSessionsForMcp({ projectId, limit: 10 });
 
-    // ISS-1241 — null used to stand for "predates the ledger", which told a reader nothing about a
-    // chat that held 35 messages. Null now means only that the lane keeps no transcript.
+    // Null means only that the lane keeps no transcript; a chat holding 35 messages reads 35.
     expect(rows[0]?.messageCount).toBe(35);
     expect(rows[0]?.transcript).toBe('recorded');
   });

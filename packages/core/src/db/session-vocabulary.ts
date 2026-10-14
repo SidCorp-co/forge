@@ -4,10 +4,6 @@ export const agentSessionKinds = ['master', 'run_session', 'pipeline', 'pm', 'ch
 
 export type AgentSessionKind = (typeof agentSessionKinds)[number];
 
-/**
- * Whether core holds a session's transcript. A lane that keeps none reads `not-recorded`, so a
- * count of 0 (nothing was said) is never confused with a count nobody writes (ISS-1241).
- */
 export const sessionTranscripts = ['recorded', 'not-recorded'] as const;
 export type SessionTranscript = (typeof sessionTranscripts)[number];
 

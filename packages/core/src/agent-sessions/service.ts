@@ -17,14 +17,7 @@ import { kindTuple, TRANSCRIPTLESS_SESSION_KINDS } from '../jobs/session-kinds.j
 /** SQL true for a row whose lane keeps no transcript in core (master, run_session). */
 const lanePutsNoTranscriptInCore = sql`${agentSessions.kind} IN ${kindTuple(TRANSCRIPTLESS_SESSION_KINDS)}`;
 
-/**
- * The transcript's length for a lane that records one, null for a lane that does not.
- *
- * A count nobody writes is not a count (`VISION: state-never-lies`): master and run_session keep
- * their transcript in the box's own claude process, so a 0 or a ledger-less null for them says
- * "nothing was said" about sessions that ran for hours. Null here means exactly that, and
- * `transcript` names it.
- */
+/** A count nobody writes is not a count: null here only for a lane that records no transcript. */
 const transcriptLength = sql<number | null>`CASE WHEN ${lanePutsNoTranscriptInCore} THEN NULL
   ELSE coalesce(jsonb_array_length(${agentSessions.messages}), 0) END`;
 
@@ -46,13 +39,7 @@ export const agentSessionListColumns = {
   pipelineControl: agentSessions.pipelineControl,
   pipelineTelemetry: agentSessions.pipelineTelemetry,
   pipelineHealth: agentSessions.pipelineHealth,
-  /**
-   * How many entries the transcript holds, null only where the lane records none (see
-   * `transcript`). The turn ledger answers without reading the transcript; the transcript's own
-   * length answers only for a session with no ledger rows, which for a recorded lane is one from
-   * before the ledger or one that has said nothing, so a list never detoasts a transcript the
-   * ledger already counts.
-   */
+  // The turn ledger answers without reading the transcript; its length answers only where the ledger has no rows.
   messageCount: sql<number | null>`CASE WHEN ${lanePutsNoTranscriptInCore} THEN NULL ELSE coalesce((
     SELECT max(t.turn_index) + 1
     FROM agent_session_turns t
