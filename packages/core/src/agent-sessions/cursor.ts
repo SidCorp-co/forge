@@ -37,8 +37,13 @@ export function decodeSessionCursor(token: string): SessionCursor {
   return { updatedAtKey, id };
 }
 
-/** A calendar date JS would normalise (February 30) is not an instant Postgres will accept. */
+/**
+ * An instant Postgres will accept as `timestamptz`. JS normalises February 30 and takes year 0000,
+ * and Postgres refuses both, so the round-trip below and the year check stand between a forged
+ * token and a database error that would answer 500 where the caller is owed a named 400.
+ */
 function isRealInstant(key: string): boolean {
+  if (key.startsWith('0000-')) return false;
   const parsed = new Date(`${key.slice(0, 23)}Z`);
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 19) === key.slice(0, 19);
 }

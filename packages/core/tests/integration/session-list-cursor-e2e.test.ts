@@ -265,8 +265,14 @@ describe('a cursor this list did not mint is refused by name', () => {
     'utf8',
   ).toString('base64url');
 
+  const yearZero = Buffer.from(
+    '0000-01-01T00:00:00.000000Z|3f2a1c9e-8b7d-4e6f-a5b4-c3d2e1f0a9b8',
+    'utf8',
+  ).toString('base64url');
+
   it.each([
     ['not a cursor at all', 'not-a-cursor'],
+    ['year zero, which Postgres would refuse as a 500', yearZero],
     ['a day the calendar does not have, which Postgres would refuse as a 500', impossibleDay],
   ])('REST answers 400 naming the cursor: %s', async (_why, bad) => {
     const w = await seedWorld();
@@ -280,6 +286,7 @@ describe('a cursor this list did not mint is refused by name', () => {
   it.each([
     ['not a cursor at all', 'not-a-cursor', 'cursor is not an agent-session cursor'],
     ['a day the calendar does not have', impossibleDay, 'cursor carries no timestamp'],
+    ['year zero', yearZero, 'cursor carries no timestamp'],
   ])('the MCP tool refuses naming the cursor and what is wrong with it: %s', async (_why, bad, message) => {
     const w = await seedWorld();
     await seedSessions(w, 2, AT);
