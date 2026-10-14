@@ -162,11 +162,22 @@ describe("the keyboard", () => {
     expect(document.activeElement).toHaveAttribute("data-index", "1299");
   });
 
-  it("leaves Shift+End, Alt+End and Meta+End to the browser, which selects or navigates with them", async () => {
+  it("takes a plain Home back to the first row, as Ctrl+Home does, so focus is not left on a row scrolled out of view", async () => {
     const first = await opened();
-    for (const modifier of [{ shiftKey: true }, { altKey: true }, { metaKey: true }]) {
-      expect(fireEvent.keyDown(first, { key: "End", ...modifier })).toBe(true);
-      expect(document.activeElement).toBe(first);
+    await act(async () => void fireEvent.keyDown(first, { key: "End" }));
+    expect(document.activeElement).toHaveAttribute("data-index", "1299");
+    await act(async () => void fireEvent.keyDown(document.activeElement as Element, { key: "Home" }));
+    expect(document.activeElement).toHaveAttribute("data-index", "0");
+    expect(indexes()).toContain(0);
+  });
+
+  it("leaves Shift, Alt and Meta with End or Home to the browser, which selects or navigates with them", async () => {
+    const first = await opened();
+    for (const key of ["End", "Home"]) {
+      for (const modifier of [{ shiftKey: true }, { altKey: true }, { metaKey: true }]) {
+        expect(fireEvent.keyDown(first, { key, ...modifier })).toBe(true);
+        expect(document.activeElement).toBe(first);
+      }
     }
   });
 

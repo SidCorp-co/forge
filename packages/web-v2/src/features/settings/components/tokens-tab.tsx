@@ -93,10 +93,11 @@ export function TokensTab() {
     { value: "", label: "None — user-level / all my projects" },
     ...projects.map((p) => ({ value: p.id, label: `${p.name} (${p.slug})` })),
   ];
-  /** Human level label for a token row: "User-level" or "Project: <slug>". */
+  /** Human level label for a token row: "User-level" or "Project: <name>", the slug only where the project has no name. */
   function levelLabel(t: PatToken): string {
     if (!t.boundProjectId) return "User-level";
-    return `Project: ${projectsById.get(t.boundProjectId)?.slug ?? t.boundProjectId.slice(0, 8)}`;
+    const project = projectsById.get(t.boundProjectId);
+    return `Project: ${project?.name || project?.slug || t.boundProjectId.slice(0, 8)}`;
   }
 
   // One-time plaintext reveal.

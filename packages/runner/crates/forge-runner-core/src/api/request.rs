@@ -20,7 +20,11 @@ pub struct Request {
 
 /// What `run` produced, so the caller can print it and pick an exit code.
 pub struct Response {
-    pub stdout: String,
+    /// The body as the server sent it, byte for byte: a PNG downloaded through this command must
+    /// come out as the PNG, not as its lossy UTF-8 reading.
+    pub stdout: Vec<u8>,
+    /// Text is printed with a trailing newline, as it always was; a binary body gets none.
+    pub stdout_is_text: bool,
     pub stderr: String,
     pub outcome: Outcome,
 }
@@ -58,6 +62,23 @@ fn failure_json(outcome: &Outcome, status: Option<u16>, message: &str) -> String
     Value::Object(obj).to_string()
 }
 
+/// Whether a body is text to print with a newline, or bytes to write as they came: a content type
+/// that names text, JSON or XML, or none at all, and bytes that are UTF-8 either way.
+fn reads_as_text(content_type: Option<&str>, bytes: &[u8]) -> bool {
+    if std::str::from_utf8(bytes).is_err() {
+        return false;
+    }
+    let Some(kind) = content_type else {
+        return true;
+    };
+    let kind = kind.split(';').next().unwrap_or("").trim().to_lowercase();
+    kind.starts_with("text/")
+        || kind == "application/json"
+        || kind == "application/xml"
+        || kind.ends_with("+json")
+        || kind.ends_with("+xml")
+}
+
 /// Execute the request. Never panics on a malformed response — a body that is
 /// not JSON is still the caller's to see.
 pub async fn run(client: &CoreClient, req: &Request) -> Response {
@@ -71,7 +92,8 @@ pub async fn run(client: &CoreClient, req: &Request) -> Response {
             };
             let msg = format!("not an HTTP method: {}", req.method);
             return Response {
-                stdout: String::new(),
+                stdout: Vec::new(),
+                stdout_is_text: true,
                 stderr: failure_json(&outcome, None, &msg),
                 outcome,
             };
@@ -101,7 +123,8 @@ pub async fn run(client: &CoreClient, req: &Request) -> Response {
         Err(e) => {
             let (outcome, msg) = transport_failure(&req.method, format!("{url}: {e}"));
             return Response {
-                stdout: String::new(),
+                stdout: Vec::new(),
+                stdout_is_text: true,
                 stderr: failure_json(&outcome, None, &msg),
                 outcome,
             };
@@ -116,12 +139,20 @@ pub async fn run(client: &CoreClient, req: &Request) -> Response {
             header_dump.push_str(&format!("{k}: {}\n", v.to_str().unwrap_or("<binary>")));
         }
     }
-    let text = resp.text().await.unwrap_or_default();
+    let content_type = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    let bytes = resp.bytes().await.map(|b| b.to_vec()).unwrap_or_default();
+    let stdout_is_text = reads_as_text(content_type.as_deref(), &bytes);
+    let text = String::from_utf8_lossy(&bytes).into_owned();
     let outcome = classify(status, body_code(&text).as_deref());
 
     if outcome.exit_code == 0 {
         return Response {
-            stdout: text,
+            stdout: bytes,
+            stdout_is_text,
             stderr: header_dump,
             outcome,
         };
@@ -137,7 +168,8 @@ pub async fn run(client: &CoreClient, req: &Request) -> Response {
         failure_json(&outcome, Some(status), &message)
     );
     Response {
-        stdout: String::new(),
+        stdout: Vec::new(),
+        stdout_is_text: true,
         stderr,
         outcome,
     }
@@ -171,6 +203,25 @@ mod tests {
         (format!("http://{addr}"), rx)
     }
 
+    /// One-shot server that answers once with raw bytes and a content type.
+    async fn serve_bytes_once(content_type: &'static str, body: Vec<u8>) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 8192];
+            let _ = sock.read(&mut buf).await;
+            let head = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            let _ = sock.write_all(head.as_bytes()).await;
+            let _ = sock.write_all(&body).await;
+            let _ = sock.shutdown().await;
+        });
+        format!("http://{addr}")
+    }
+
     fn req(path: &str) -> Request {
         Request {
             method: "GET".into(),
@@ -200,7 +251,7 @@ mod tests {
         let c = CoreClient::new(url, "tok".to_string());
         let r = run(&c, &req("issues")).await;
         assert_eq!(r.outcome.exit_code, 0);
-        assert_eq!(r.stdout, r#"{"items":[]}"#);
+        assert_eq!(r.stdout, br#"{"items":[]}"#);
         assert_eq!(r.stderr, "");
     }
 
@@ -211,7 +262,7 @@ mod tests {
         let c = CoreClient::new(url, "tok".to_string());
         let r = run(&c, &req("issues/nope")).await;
         assert_eq!(
-            r.stdout, "",
+            r.stdout, b"",
             "stdout must stay empty so a redirect captures nothing"
         );
         assert_eq!(r.outcome.exit_code, 5);
@@ -256,7 +307,7 @@ mod tests {
         assert_eq!(out.outcome.exit_code, 10);
         assert!(!out.outcome.retryable);
         assert!(out.stderr.contains("DELIVERY_UNKNOWN"));
-        assert_eq!(out.stdout, "");
+        assert_eq!(out.stdout, b"");
     }
 
     #[tokio::test]
@@ -268,7 +319,7 @@ mod tests {
         let r = run(&c, &req("issues")).await;
         assert_eq!(r.outcome.exit_code, 9);
         assert!(r.outcome.retryable);
-        assert_eq!(r.stdout, "");
+        assert_eq!(r.stdout, b"");
     }
 
     #[tokio::test]
@@ -324,5 +375,53 @@ mod tests {
             "a closed port would give 9; usage must be decided first"
         );
         assert!(out.stderr.contains("USAGE"));
+    }
+
+    /// The bytes of a PNG header and a few non-UTF-8 bytes, which a lossy decode turns into U+FFFD.
+    fn png_like() -> Vec<u8> {
+        let mut b = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+        b.extend((0u8..=255).collect::<Vec<u8>>());
+        b
+    }
+
+    #[tokio::test]
+    async fn a_binary_body_comes_out_byte_for_byte() {
+        let sent = png_like();
+        let url = serve_bytes_once("image/png", sent.clone()).await;
+        let c = CoreClient::new(url, "tok".to_string());
+        let r = run(&c, &req("attachments/x/download")).await;
+        assert_eq!(r.outcome.exit_code, 0);
+        assert_eq!(
+            r.stdout, sent,
+            "the PNG must not be re-encoded as lossy UTF-8"
+        );
+        assert!(
+            !r.stdout_is_text,
+            "a binary body is written without a newline"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_body_that_is_utf8_but_not_text_is_still_bytes() {
+        let sent = b"GIF89a plain ascii".to_vec();
+        let url = serve_bytes_once("image/gif", sent.clone()).await;
+        let c = CoreClient::new(url, "tok".to_string());
+        let r = run(&c, &req("attachments/x/download")).await;
+        assert_eq!(r.stdout, sent);
+        assert!(!r.stdout_is_text);
+    }
+
+    #[tokio::test]
+    async fn json_and_text_bodies_keep_the_newline_they_always_had() {
+        for (kind, body) in [
+            ("application/json", "{}"),
+            ("text/plain; charset=utf-8", "héllo"),
+        ] {
+            let url = serve_bytes_once(kind, body.as_bytes().to_vec()).await;
+            let c = CoreClient::new(url, "tok".to_string());
+            let r = run(&c, &req("issues")).await;
+            assert_eq!(r.stdout, body.as_bytes());
+            assert!(r.stdout_is_text, "{kind}");
+        }
     }
 }
