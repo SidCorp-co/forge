@@ -935,7 +935,7 @@ export interface RequirementBaseline {
 	seq: number;
 	act: (typeof BASELINE_ACTS)[number];
 	agreedBy: string | null;
-	/** `kernel`: Forge's own follow of a pin-only design approval, which names no user. */
+	/** `kernel`: Forge's own follow of a pin-only design approval, written before nothing re-pinned by itself; it names no user, and nothing writes one now. */
 	agreedKind: "person" | "kernel";
 	agreedByName: string | null;
 	agreedAt: string;

@@ -4,14 +4,14 @@ import { goneByRecord } from './loop-close.js';
 const resolvedSince = new Date('2026-10-01T00:00:00Z');
 const passing = { ref: 'REQ-3 BC-2', verdict: 'passing' as const, why: null };
 
-// Feedback lifecycle r14 loop-check: past the window, the record answers "is the problem gone?" only
-// with its sources; anything it cannot answer is left to a person, never assumed gone.
-describe('loop close answered from the record', () => {
-  it('verifies where the violated criterion passes on the running build and nothing was filed since', () => {
+// Feedback lifecycle r14 loop-check: past the window, the record says what it reads about "is the
+// problem gone?" with its sources, for a person to answer from; it never answers, nor assumes gone.
+describe('loop close read from the record', () => {
+  it('reads it gone where the violated criterion passes on the running build and nothing was filed since', () => {
     expect(goneByRecord({ criterion: passing, filedSince: [], resolvedSince })).toEqual({
       gone: true,
-      reason:
-        'Verified from the record: REQ-3 BC-2 passes on the running build, and nothing was filed against it since 2026-10-01.',
+      why:
+        'the record reads it gone: REQ-3 BC-2 passes on the running build, and nothing was filed against it since 2026-10-01.',
     });
   });
 

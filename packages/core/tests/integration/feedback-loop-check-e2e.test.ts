@@ -1,11 +1,11 @@
 /**
  * Anyone confirms a fix (owner, 2026-10-07): any member may verify a resolved item and the decision
  * names them; a sweep dates the first time an item reads resolved, and once the project's window has
- * run it is verified only where the record says the problem is gone (Feedback lifecycle r14
- * loop-check; `feedback-triage-checklist-e2e.test.ts` proves that case), never assumed gone; an item
- * still inside its window is left alone; the BA's Needs you holds no verify row. An item the record
- * cannot verify promises no date, and past its window the sweep writes why on it and it waits on a
- * holder of feedback.approve, never held in silence.
+ * run it writes what the record reads on the item and the item waits on a holder of feedback.approve
+ * (Feedback lifecycle r14 loop-check): nothing verifies it by itself, a record that reads it gone
+ * included (`feedback-triage-checklist-e2e.test.ts` proves that case; the owner's ruling of
+ * 2026-10-14); an item still inside its window is left alone; the BA's Needs you holds no verify row.
+ * An item that names no criterion promises no record date, and is never held in silence.
  */
 
 import { sql } from 'drizzle-orm';
@@ -123,7 +123,7 @@ describe('any member confirms a fix, and the record says who and when', () => {
   });
 });
 
-describe('Forge answers for an item nobody confirmed only from the record, once its window has run', () => {
+describe('Forge verifies no item nobody confirmed: past its window it writes what the record reads for a person', () => {
   it('dates the first sighting, and past the window leaves an item no criterion vouches for to a person', async () => {
     const { sweepResolvedFeedback } = await import('../../src/feedback/index.js');
     const fb = await resolved('ann', 'Is the export meant to skip blanks?');
@@ -131,7 +131,7 @@ describe('Forge answers for an item nobody confirmed only from the record, once 
     expect(first.dated).toBeGreaterThanOrEqual(1);
     const dated = await read(fb);
     expect(dated.status).toBe('triaged');
-    expect(dated.autoVerify, 'its triage named no criterion: no date is promised').toBeNull();
+    expect(dated.recordCheck, 'its triage named no criterion: no record date is promised').toBeNull();
 
     await seen(fb, 8);
     const before = (await bell('ann')).length;
@@ -205,7 +205,7 @@ describe('an item triaged before a criterion could be named (FB-19, 31, 36, 48, 
     await sweepResolvedFeedback();
     const inside = await get();
     expect(inside.phase).toBe('resolved');
-    expect(inside.autoVerify, 'no criterion: the record can never verify it').toBeNull();
+    expect(inside.recordCheck, 'no criterion: the record can never say').toBeNull();
     expect(inside.verifyHeld).toBeNull();
     expect(inside.waitingOn).toMatchObject({
       says: { rule: { key: 'feedback.rule.verifyByPerson' } },
@@ -216,7 +216,7 @@ describe('an item triaged before a criterion could be named (FB-19, 31, 36, 48, 
        WHERE project_id = ${w.projectId} AND fb_seq = ${seq(fb)}
     `);
     const past = await sweepResolvedFeedback();
-    expect(past.noted, 'the sweep wrote why on the item it held').toBeGreaterThanOrEqual(1);
+    expect(past.noted, 'the sweep wrote what the record reads on the item it held').toBeGreaterThanOrEqual(1);
     const held = await get();
     expect(held.status).toBe('triaged');
     expect(held.verifyHeld).toMatchObject({

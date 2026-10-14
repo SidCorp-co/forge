@@ -52,10 +52,17 @@ export function personGatePermission(
 	return personGateOn(approvals, gate) ? step.on : step.off;
 }
 
-/** The act a refusal names, saying why the approve permission is asked where the switch is on. */
-export function personGateAct(approvals: Approvals | null | undefined, gate: PersonGate): string {
+/**
+ * The act a refusal names, saying why the approve permission is asked where the switch is on; `label`
+ * names another act the same switch holds (a re-pin is held by `revisions`).
+ */
+export function personGateAct(
+	approvals: Approvals | null | undefined,
+	gate: PersonGate,
+	label: string = PERSON_GATE_STEPS[gate].label,
+): string {
 	const step = PERSON_GATE_STEPS[gate];
 	return personGateOn(approvals, gate)
-		? `${step.label}, which this project asks a holder of ${step.on} to do (its approvals.${gate} setting is on),`
-		: step.label;
+		? `${label}, which this project asks a holder of ${step.on} to do (its approvals.${gate} setting is on),`
+		: label;
 }

@@ -13,7 +13,7 @@ const DOC = { $schema: "https://forge.sidcorp.co/schemas/project-v1.json", versi
 
 const LABELS = [
   "A person agrees each requirement",
-  "A person accepts each requirement revision",
+  "A person accepts each requirement revision and re-pin",
   "A person accepts each breakdown",
   "A person admits each new issue",
   "A person accepts each delivered requirement",

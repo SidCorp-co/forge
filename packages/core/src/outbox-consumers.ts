@@ -35,7 +35,6 @@ import { registerReleaseHighlightsRefresh } from './release-page/index.js';
 import {
   registerReasonAnswers,
   registerRequirementDelivery,
-  registerRequirementFollow,
   registerStaleDraftAct,
 } from './requirements/index.js';
 import { registerMasterWakeSubscribers, registerWsBroadcastSubscribers } from './ws/index.js';
@@ -70,7 +69,6 @@ export function registerOutboxConsumers(): void {
   registerRequirementDelivery();
   registerRequirementNotifications();
   registerFirstRequirementsCase();
-  registerRequirementFollow();
   registerStaleDraftAct();
   registerReasonAnswers();
   registerQuestionSuggest();

@@ -1,8 +1,8 @@
 /**
  * Every notice a reporter gets about their item reads in their language: the person's own choice,
  * else the project's content language, else English. One notice kind per test: a decline, a merge
- * into an original, a triager's message (each reporter of a merged item in their own language), the
- * automatic verify, the ask to verify, and "tell the reporter now". The project here writes
+ * into an original, a triager's message (each reporter of a merged item in their own language), a
+ * triager's verify on their behalf past the window, the ask to verify, and "tell the reporter now". The project here writes
  * Vietnamese; bo chose nothing and reads it, ann chose English and reads English.
  */
 
@@ -163,7 +163,7 @@ describe('a reporter reads each notice about their item in their language', () =
     ]);
   });
 
-  it('auto-verified: told Forge verified it from the record after the window', async () => {
+  it('verified for them: the sweep tells nothing, and the triager who verifies from the record is told in their language', async () => {
     const fb = await answered('bo', 'Vì sao bảng chỉ đọc?');
     const [row] = (await db.execute(sql`
       SELECT id FROM feedback WHERE project_id = ${projectId} AND fb_seq = ${seq(fb)}
@@ -183,11 +183,14 @@ describe('a reporter reads each notice about their item in their language', () =
     `);
     const { sweepResolvedFeedback } = await import('../../src/feedback/index.js');
     await sweepResolvedFeedback();
+    expect(
+      (await bell('bo', fb)).filter((x) => x.title.includes('xác nhận')),
+      'Feedback triage r16: nothing verifies an item by itself',
+    ).toEqual([]);
+    ok(await say('owner', 'POST', item(fb, 'verify'), {}));
     const [n] = (await bell('bo', fb)).filter((x) => x.title.includes('xác nhận'));
     expect(n?.title).toBe(`${fb} đã được xác nhận: Vì sao bảng chỉ đọc?`);
-    expect(n?.body).toMatch(
-      /^Tự động xác nhận sau \d+ ngày không có phản hồi\. Nếu bản sửa chưa giải quyết điều bạn báo, hãy gửi lại thành một phản hồi mới\.$/,
-    );
+    expect(n?.body).toBe('Bản sửa đã được xác nhận thay cho bạn.');
   });
 
   it('verify-ask: asked to confirm the fix', async () => {

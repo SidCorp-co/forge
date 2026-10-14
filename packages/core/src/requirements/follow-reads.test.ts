@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { nodesOfDesign, tracedStepChanges } from './auto-follow.js';
+import { nodesOfDesign, tracedStepChanges } from './follow-reads.js';
 
-// REQ-41 BC-10: what decides whether a requirement follows an approved design by itself.
+// REQ-41 BC-10: what an approved design changed of the steps a requirement's criteria trace.
 
 const design = (steps: [string, string?][], edges: [string, string, string?][] = []) => {
   const nodes = nodesOfDesign({

@@ -45,7 +45,7 @@ import {
   type StandingViewer,
 } from './standing.js';
 import { targetView } from './target-view.js';
-import { autoVerifyOf, verifyHeldOf, verifyWindowDays } from './verify-window.js';
+import { recordCheckOf, verifyHeldOf, verifyWindowDays } from './verify-window.js';
 
 /** Everything the rows point at, loaded once for a page of rows. */
 export interface Linked {
@@ -398,8 +398,8 @@ export function summaryOf(
     {
       masterOwesTriage: l.masterOwed.has(r.id),
       snoozedUntil: snoozed?.until ?? null,
-      autoVerifyAt: autoVerifyOf(r, phase, l.verifyWindowDays)?.toISOString() ?? null,
-      recordCanVerify: r.violatedCriterionId !== null,
+      recordCheckAt: recordCheckOf(r, phase, l.verifyWindowDays)?.toISOString() ?? null,
+      recordCanSay: r.violatedCriterionId !== null,
       verifyHeld: verifyHeldOf(r, phase)?.why ?? null,
       carrierRelease:
         phase === 'planned' &&

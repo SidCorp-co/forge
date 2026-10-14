@@ -21,7 +21,7 @@ const item = (over: Partial<FeedbackView> = {}): FeedbackView =>
     reporters: [],
     messages: [],
     verified: null,
-    autoVerify: null,
+    recordCheck: null,
     verifyHeld: null,
     snoozed: null,
     decisions: [],

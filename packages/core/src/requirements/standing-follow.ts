@@ -35,7 +35,7 @@ export function updateToApprovedEffect(
   });
 }
 
-/** A node a live criterion traces that a newer approved design removed or renamed (`auto-follow.ts:tracedStepChanges`). */
+/** A node a live criterion traces that a newer approved design removed or renamed (`follow-reads.ts:tracedStepChanges`). */
 export interface TracedChange {
   code: string;
   flow: string;

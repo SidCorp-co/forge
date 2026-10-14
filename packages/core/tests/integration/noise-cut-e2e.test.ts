@@ -1,10 +1,10 @@
 /**
- * REQ-41 BC-10, BC-11, BC-12 (docs/proposals/chat-first.md, "Noise cut at the source"): three rows
- * that waited on a person and need nobody. A design approval no traced step of a requirement's
- * criteria failed to survive is followed by the kernel; one that removed a traced step waits on the
- * assistant, never on a person. An issue that spent its run sessions parks for its master. A draft
- * nobody touched for a week gets one merge-or-drop question with a recommended answer; a younger
- * draft gets none.
+ * REQ-41 BC-10, BC-11, BC-12 (docs/proposals/chat-first.md, "Noise cut at the source"). A design
+ * approval no traced step of a requirement's criteria failed to survive makes a re-pin due and moves
+ * no pin: its mover re-pins it through the requirement's own re-pin act (nothing re-pins by itself,
+ * the owner's ruling of 2026-10-14); one that removed a traced step waits on the assistant, never on
+ * a person. An issue that spent its run sessions parks for its master. A draft nobody touched for a
+ * week gets one merge-or-drop question with a recommended answer; a younger draft gets none.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -130,30 +130,50 @@ afterAll(async () => {
   await closeWorld();
 });
 
-describe('BC-10: a requirement follows an approved design by itself when its criteria do not change', () => {
-  it('is re-pinned by the kernel when the new revision keeps every step its criteria trace', async () => {
+describe('BC-10: a requirement follows an approved design when its mover re-pins it, never by itself', () => {
+  it('moves no pin on the approval, waits on a re-pin, and follows once the signer re-pins it', async () => {
     const design = await approvedDesign('follows-flow');
     const key = await agreedTracing(design.id, 'case');
     await approveRevision2(design, (d) => {
       d.steps[0].node.label = 'Hospital HIS (renamed, untraced)';
     });
 
+    expect(
+      (await baselines(key)).map((b) => b.act),
+      'REQ-41 BC-10: nothing re-pins a requirement by itself on a design approval',
+    ).toEqual(['agree']);
+    const waiting = await standingOf(key);
+    expect((waiting.facts as Doc).stalePins).toHaveLength(1);
+    expect(waiting.attentionGroup).toBe('needs_you');
+    expect((waiting.waitingOn as Doc).act).toBe(
+      'Update to the approved design: Post-discharge follow-up (revision 2)',
+    );
+    expect(await needsYouKeys()).toContain(key);
+
+    ok(
+      await as('POST', `/requirements/${key}/repin`, {
+        revision: 1,
+        reason: 'follows-flow r2 renamed an untraced step',
+      }),
+    );
     const pins = await baselines(key);
     expect(pins.map((b) => [b.seq, b.act])).toEqual([
       [1, 'agree'],
       [2, 'repin'],
     ]);
-    expect(pins[1]?.reason).toContain(
-      'Followed by itself on the design approval: follows-flow r1 → r2',
-    );
+    const [kind] = await rows<{ agreed_kind: string; agreed_by: string | null }>(sql`
+      SELECT b.agreed_kind, b.agreed_by FROM requirement_baselines b JOIN requirements r ON r.id = b.requirement_id
+       WHERE r.project_id = ${projectId} AND r.req_seq = ${Number(key.slice(4))} AND b.act = 'repin'`);
+    expect(kind, 'the re-pin is the signer\'s own act').toEqual({
+      agreed_kind: 'person',
+      agreed_by: ownerId,
+    });
     const s = await standingOf(key);
     expect((s.facts as Doc).stalePins).toEqual([]);
-    expect(s.attentionGroup).not.toBe('needs_you');
-    expect(String((s.waitingOn as Doc).act)).not.toContain('Update to the approved design');
     expect(await needsYouKeys()).not.toContain(key);
   });
 
-  it('is followed by the timer where the approval found it not agreed, so no row stays stale', async () => {
+  it('leaves a requirement deferred across the approval pinned behind once it is back, for its mover', async () => {
     const design = await approvedDesign('deferred-flow');
     const key = await agreedTracing(design.id, 'case');
     ok(await as('POST', `/requirements/${key}/defer`, { reason: 'next release' }));
@@ -161,20 +181,12 @@ describe('BC-10: a requirement follows an approved design by itself when its cri
       d.summary = 'revision two, same steps';
     });
     ok(await as('POST', `/requirements/${key}/undefer`, { reason: 'back in this release' }));
-    expect(
-      (await baselines(key)).map((b) => b.act),
-      'a deferred requirement follows nothing',
-    ).toEqual(['agree']);
+    expect((await baselines(key)).map((b) => b.act)).toEqual(['agree']);
     expect(((await standingOf(key)).waitingOn as Doc).act).toBe(
       'Update to the approved design: Post-discharge follow-up (revision 2)',
     );
-
-    const { followApprovedDesigns } = await import('../../src/requirements/auto-follow.js');
-    expect((await followApprovedDesigns()).followed).toBe(1);
+    ok(await as('POST', `/requirements/${key}/repin`, { revision: 1, reason: 'same steps' }));
     expect((await baselines(key)).map((b) => b.act)).toEqual(['agree', 'repin']);
-    expect((await followApprovedDesigns()).followed, 'a followed row is not followed twice').toBe(
-      0,
-    );
   });
 
   it('is not re-pinned when the new revision removes a traced step, and waits on the assistant, not a person', async () => {

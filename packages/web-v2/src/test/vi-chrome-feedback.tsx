@@ -67,7 +67,7 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
     ...summary(2),
     target: { type: "screen", key: "Bang dieu khien", title: null },
     verified: null,
-    autoVerify: { at: "2026-10-20T08:00:00.000Z", windowDays: 14 },
+    recordCheck: { at: "2026-10-20T08:00:00.000Z", windowDays: 14 },
     verifyHeld: null,
     shipNotice: null,
     body: "Noi dung",
@@ -163,7 +163,7 @@ const feedbackFacts = () => (
       developer
     />
     <LinkedFeedback slug="hop" f={view({ phase: "verified", attentionGroup: "done", verified: { at: AT, how: "automatic", by: null, byName: null, byReporter: false, ...noted(say("feedback.notice.autoVerified", { n: 14 })) }, shipNotice: { state: "told", how: "notice", at: AT, release: "0.2.0", by: null, shipped: { at: AT, release: "0.2.0" }, told: null, says: { told: null } }, route: null })} />
-    <LinkedFeedback slug="hop" f={view({ phase: "verified", attentionGroup: "done", verified: { at: AT, how: "person", by: "u1", byName: "Lan", byReporter: true, reason: null, says: { reason: null } }, autoVerify: null })} />
+    <LinkedFeedback slug="hop" f={view({ phase: "verified", attentionGroup: "done", verified: { at: AT, how: "person", by: "u1", byName: "Lan", byReporter: true, reason: null, says: { reason: null } }, recordCheck: null })} />
     <LinkedFeedback slug="hop" f={view({ verified: { at: AT, how: "person", by: "u2", byName: null, byReporter: false, reason: null, says: { reason: null } }, shipNotice: { state: "not_told", ...noted(say("feedback.notice.noRelease")), shipped: { at: null, release: null }, beforeNotices: false, noticesBegan: null } })} />
     <FeedbackBanner slug="hop" f={view({ phase: "verified", attentionGroup: "done", waitingOn: waitingOn("none", { who: say("standing.who.nobody"), act: say("standing.act.none"), rule: RULE }) })} />
     <FeedbackBanner slug="hop" f={view({ attentionGroup: "needs_you", route: { route: "issue", carriers: [{ key: "ISS-4", status: "closed", release: "0.2.0" }], answer: null }, waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.approveReleaseV", { v: "0.2.0" }), rule: RULE }, { ref: "0.2.0" }) })} />

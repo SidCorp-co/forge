@@ -1,5 +1,5 @@
 export { dropAsDuplicateIn } from './acceptance.js';
-export { followApprovedDesigns, nodesOfDesign, registerRequirementFollow } from './auto-follow.js';
+export { nodesOfDesign } from './follow-reads.js';
 export { latestBaselineIn } from './baselines.js';
 export { requirementKeysAndTitles, requirementStatusesBySeq } from './cited-requirements.js';
 export {

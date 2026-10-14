@@ -365,9 +365,8 @@ export async function decideDesign(
     workflowId: string;
     revision: number;
     decision: DesignDecision;
-    /** The deciding person; null where `kernel` decides. */
-    userId: string | null;
-    kernel?: boolean;
+    /** The deciding person or agent: a design is never approved by itself (REQ-41 BC-23). */
+    userId: string;
     reason: string | null;
     /** `reason` as said where Forge composed it; null where the decider wrote it. */
     reasonSays?: Said | null;
@@ -377,8 +376,8 @@ export async function decideDesign(
     .update(projectWorkflowDesigns)
     .set({
       decision: input.decision,
-      decidedByUser: input.kernel ? null : input.userId,
-      decidedKind: input.kernel ? 'kernel' : 'person',
+      decidedByUser: input.userId,
+      decidedKind: 'person',
       decidedAt: sql`now()`,
       reason: input.reason,
       reasonSays: input.reasonSays ?? null,

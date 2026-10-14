@@ -1,9 +1,10 @@
 /**
- * Loop close, question two, answered from the record (Feedback lifecycle r14 loop-check; Feedback
- * triage r16 auto-verify): once nobody answered "is the problem gone?" within the project's window,
- * the item is verified only where its violated criterion's latest verdict on the running build passes
- * and nothing was filed against that criterion since it read resolved. Anything else leaves it
- * resolved for a person to answer (BC-1): it is never assumed gone.
+ * Loop close, question two, read from the record for a person (Feedback lifecycle r14 loop-check;
+ * Feedback triage r16): once nobody answered "is the problem gone?" within the project's window, the
+ * record says what it holds: whether the item's violated criterion's latest verdict on the running
+ * build passes and nothing was filed against that criterion since it read resolved. Either way the
+ * item stays resolved for a holder of feedback.approve to answer (BC-1): the record informs that
+ * answer and never gives it, so nothing verifies an item by itself.
  */
 
 import { feedbackKey } from '@forge/contracts/feedback';
@@ -21,9 +22,10 @@ export interface LoopCloseFacts {
   resolvedSince: Date;
 }
 
-export type RecordAnswer = { gone: true; reason: string } | { gone: false; why: string };
+/** What the record reads, as one sentence a person answers from: `gone` where it reads the problem gone. */
+export type RecordAnswer = { gone: boolean; why: string };
 
-/** Whether the record says the problem is gone, with its sources, or why it cannot say. */
+/** Whether the record reads the problem gone, with its sources, or why it cannot say. */
 export function goneByRecord(f: LoopCloseFacts): RecordAnswer {
   if (!f.criterion) {
     return {
@@ -46,7 +48,7 @@ export function goneByRecord(f: LoopCloseFacts): RecordAnswer {
   }
   return {
     gone: true,
-    reason: `Verified from the record: ${ref} passes on the running build, and nothing was filed against it since ${f.resolvedSince.toISOString().slice(0, 10)}.`,
+    why: `the record reads it gone: ${ref} passes on the running build, and nothing was filed against it since ${f.resolvedSince.toISOString().slice(0, 10)}.`,
   };
 }
 

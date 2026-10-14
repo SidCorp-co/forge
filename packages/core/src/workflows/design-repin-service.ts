@@ -1,9 +1,10 @@
 /**
  * The one act that approves a moved base's pin-only dependents (`design-repin.ts:planRepins`): read
- * as a plan before anyone acts, then taken by whoever holds `workflow-designs.approve` in one
- * transaction, each design's pin-only revision written as a re-pin by the acting person (or a filed
- * one approved as it stands) and approved, one recorded decision per design naming the act. Whether
- * a pin ever moves without that act is the owner's open rule; nothing here moves one on its own.
+ * as a plan before anyone acts, then taken by whoever the project's `designs` person gate asks
+ * (`approverRefusalFor`) in one transaction, each design's pin-only revision written as a re-pin by
+ * the acting person (or a filed one approved as it stands) and approved, one recorded decision per
+ * design naming the act. No pin moves without that act or the design's own decision (REQ-41 BC-23,
+ * the owner's ruling of 2026-10-14).
  */
 
 import { randomUUID } from 'node:crypto';

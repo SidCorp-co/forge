@@ -71,7 +71,8 @@ export const projectWorkflowDesigns = pgTable(
     proposedAt: timestamp('proposed_at', { withTimezone: true }).notNull().defaultNow(),
     decision: text('decision'),
     decidedByUser: uuid('decided_by_user').references(() => users.id, { onDelete: 'restrict' }),
-    // who decided: a person names their user, Forge's kernel names none (REQ-41 BC-23)
+    // who decided: a person names their user; `kernel`, naming none, is only on pin-only approvals
+    // written before nothing approved itself (REQ-41 BC-23)
     decidedKind: text('decided_kind', { enum: ['person', 'kernel'] }),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     reason: text('reason'),

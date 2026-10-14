@@ -737,12 +737,12 @@ export interface FeedbackView extends FeedbackSummary {
 	/** Set once the item is verified. */
 	verified: FeedbackVerifiedView | null;
 	/**
-	 * While it reads resolved and names a violated criterion: when the record is read to answer "is
-	 * the problem gone?" if nobody has, and the window that dates it. Null where no criterion is
-	 * named, since then no record can verify it and a person answers.
+	 * While it reads resolved and names a violated criterion: when the record is read on "is the
+	 * problem gone?" if nobody has answered, and the window that dates it. Null where no criterion is
+	 * named, since then no record can say. Either way a person answers; nothing verifies it by itself.
 	 */
-	autoVerify: { at: string; windowDays: number } | null;
-	/** Past its window, the record could not say the problem is gone: why, as the sweep wrote it. */
+	recordCheck: { at: string; windowDays: number } | null;
+	/** Past its window, what the record reads, as the sweep wrote it: the item waits on a holder of feedback.approve. */
 	verifyHeld: { at: string; why: string } | null;
 	/** Null until the work that carries the item has shipped (phase resolved or verified on an issue route). */
 	shipNotice: FeedbackShipNotice | null;

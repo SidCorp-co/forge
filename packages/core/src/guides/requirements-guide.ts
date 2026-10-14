@@ -91,6 +91,8 @@ it lives in numbered revisions, and each revision carries business criteria unde
 7. **repin** writes a new baseline of the same text revision once a linked design has been approved
    past what the latest baseline pins, or a linked contract has a current version it does not pin. Only an agreed requirement is re-pinned
    (\`REQUIREMENT_NOT_AGREED\`), and a re-pin with nothing moved is \`REQUIREMENT_PINS_CURRENT\`.
+   Nothing re-pins by itself: a design approval only makes the re-pin due, and the requirement waits on
+   it (REQ-41 BC-10).
 
 ### Issues against a requirement
 - **link_issue** once the requirement is agreed or accepted (\`REQUIREMENT_NOT_AGREED\` before that). An
@@ -152,8 +154,8 @@ reason), refused while any live issue links to it (\`REQUIREMENT_HAS_LIVE_ISSUES
 Anyone on the project creates, revises, edits and proposes revisions, and links designs. Accept,
 return, agree, repin, defer, undefer, accept, drop, promote, linking an issue and \`adoptPlan\` take \`requirements.approve\`,
 except where the project document's person gates say no person is needed: with \`approvals.agree\`,
-\`approvals.revisions\` or \`approvals.accept\` off (the default), agreeing, accepting a revision, or
-accepting the delivery takes \`project.write\` and its complete checklist decides; on, it takes
+\`approvals.revisions\` or \`approvals.accept\` off (the default), agreeing, accepting a revision or
+re-pinning (both held by \`approvals.revisions\`), or accepting the delivery takes \`project.write\` and its complete checklist decides; on, it takes
 \`requirements.approve\`. Promote takes \`issues.admit\` beside it. Each is held on the project (project admin, or an org owner or admin), person or agent alike, the revision's author
 included; without it the call is refused \`PERMISSION_FORBIDDEN\` naming the permission. Whoever
 lacks it proposes and stops; the requirement's \`waitingOn\` names whose turn it is. A change an agent

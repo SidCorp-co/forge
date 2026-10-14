@@ -1,10 +1,10 @@
 /**
- * REQ-41 BC-23 (docs/proposals/chat-first.md): a design revision whose only change is re-pins approves
- * by itself. On dev five "approve N pin-only changes" rows waited on the owner though nothing in the
- * design changed but which revision of another design it pins. A pin-only proposal is approved by the
- * kernel in the transaction that proposes it, naming each pin moved; a pin plus one other change waits
- * on a person; a row already waiting when the rule shipped is cleared at boot by the same path; and
- * the requirement re-pin of BC-10 runs on that approval as on any other.
+ * REQ-41 BC-23 (docs/proposals/chat-first.md): nothing approves itself, a pin-only design revision
+ * included (the owner's ruling of 2026-10-14). A proposal whose only change is its pins is read as
+ * pin-only and waits inside its base's one "pin moved" act; its approver clears it there, or on its
+ * own decision, and that approval names the person. The approval re-pins no requirement either
+ * (BC-10): the requirement's mover does. Decisions the kernel wrote before the ruling still read as
+ * Forge's, and the CHECKs that keep a kernel row from naming a person stay.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -150,7 +150,7 @@ beforeAll(async () => {
   say = requester(app, { owner: await signUserToken(ownerId) });
   await approvedAt1('access');
   // every dependent is approved on access r1, before access moves
-  for (const flow of ['ux', 'billing', 'summary', 'chain', 'legacy', 'opaque']) {
+  for (const flow of ['ux', 'billing', 'chain']) {
     await approvedAt1(flow, pinTo(1));
   }
 }, 120_000);
@@ -186,8 +186,10 @@ describe('BC-23: a decision names who made it', () => {
   });
 });
 
-describe('BC-23: a revision whose only change is its pins approves by itself', () => {
-  it('approves a proposal that only moves its pin, naming the pin, recorded as Forge and never a row for a person', async () => {
+const RULE = 'REQ-41 BC-23: nothing approves itself, a pin-only revision included';
+
+describe('BC-23: a revision whose only change is its pins waits on its approver', () => {
+  it('leaves a proposal that only moves its pin proposed, read as pin-only, inside its base\'s act', async () => {
     const key = await agreedTracing(ids.get('ux') as string, 'case');
     const r2 = await moveAccess('Hospital HIS (revised)');
     await settleOutbox();
@@ -195,47 +197,45 @@ describe('BC-23: a revision whose only change is its pins approves by itself', (
     await rewrite('ux', (d) => {
       d.basedOn = pinTo(r2);
     });
+    await settleOutbox();
 
     const d = await read('ux');
-    expect(d.status).toBe('approved');
-    expect(d.approvedRevision).toBe(2);
-    const [latest] = d.revisions;
-    expect(latest).toMatchObject({
-      revision: 2,
-      decision: 'approve',
-      decidedBy: null,
-      decidedKind: 'kernel',
-      decidedByName: 'Forge (pin-only)',
-    });
-    expect(latest.proposedBy, 'the proposer is the proposer, not the decider').toBe(ownerId);
-    expect(latest.reason).toContain(`access r1 → r${r2}`);
-    expect(latest.reason).toContain('Forge approved it: only pins');
-    expect(latest.says.reason.key).toBe('designs.reason.pinOnlyKernel');
-    expect((await ledger(ids.get('ux') as string))[0]).toMatchObject({ actor_type: 'sweeper' });
-    expect(await needsYouDesigns()).not.toContain('ux');
-
-    // the ordinary approval's consequences follow: BC-10 re-pins the requirement on this approval
-    await settleOutbox();
-    expect((await baselineActs(key)).map((b) => b.act)).toEqual(['agree', 'repin']);
-    // the follow was Forge's own, so the baseline names no person for it (state-never-lies)
-    const [followed] = await rows<{ agreed_kind: string; agreed_by: string | null }>(sql`
-      SELECT b.agreed_kind, b.agreed_by FROM requirement_baselines b JOIN requirements r ON r.id = b.requirement_id
-       WHERE r.project_id = ${projectId} AND r.req_seq = ${Number(key.slice(4))} AND b.act = 'repin'`);
-    expect(followed).toEqual({ agreed_kind: 'kernel', agreed_by: null });
-    const detail = ok(await as('GET', `/requirements/${key}`));
-    expect((detail.baselines as Doc[]).find((b) => b.act === 'repin')).toMatchObject({
-      agreedBy: null,
-      agreedKind: 'kernel',
-      agreedByName: 'Forge (pin-only)',
-    });
-    const history = detail.history as Doc[];
-    const entry = history.find((h) => h.kind === 'Agreed' && h.source === 'system');
-    expect(entry, JSON.stringify(history.map((h) => [h.kind, h.source, h.who]))).toBeDefined();
-    expect(String(entry?.who)).toBe('Forge');
-    expect(String(entry?.text)).toContain('Forge followed design ux r2 (pin-only)');
+    expect(d.status, RULE).toBe('proposed');
+    expect(d.approvedRevision).toBe(1);
+    expect(d.revisions[0]).toMatchObject({ revision: 2, decision: null, decidedKind: null });
+    expect(d.pinOnly).toMatchObject({ pins: [{ workflow: 'access', from: 1, to: r2 }] });
+    expect(await ledger(ids.get('ux') as string), 'no kernel approval is on the ledger').toHaveLength(1);
+    expect(await readyFlows()).toContain('ux');
+    // the requirement tracing ux moves with no approval: nothing re-pins it by itself (BC-10)
+    expect((await baselineActs(key)).map((b) => b.act)).toEqual(['agree']);
   });
 
-  it('leaves a proposal that moves a pin and changes one step label waiting on a person', async () => {
+  it('approves it through its base\'s one act as the person who took it, and still re-pins no requirement', async () => {
+    const plan = ok(await as('GET', `/workflows/${ids.get('access')}/design/repins`));
+    const ux = (plan.ready as Doc[]).find((r) => r.flow === 'ux') as Doc;
+    const done = ok(
+      await as('POST', `/workflows/${ids.get('access')}/design/repins`, {
+        revision: plan.base.approvedRevision,
+        designs: [{ workflowId: ux.workflowId, revision: ux.revision }],
+      }),
+    );
+    expect(done.approved).toHaveLength(1);
+    await settleOutbox();
+    const d = await read('ux');
+    expect(d.status).toBe('approved');
+    expect(d.revisions[0]).toMatchObject({
+      decision: 'approve',
+      decidedBy: ownerId,
+      decidedKind: 'person',
+    });
+    expect(d.revisions[0].decidedByName).not.toBe('Forge (pin-only)');
+    const [rows0] = await rows<{ n: number }>(sql`
+      SELECT count(*)::int AS n FROM requirement_baselines b JOIN requirements r ON r.id = b.requirement_id
+       WHERE r.project_id = ${projectId} AND b.act = 'repin'`);
+    expect(rows0?.n, 'REQ-41 BC-10: a design approval re-pins no requirement by itself').toBe(0);
+  });
+
+  it('leaves a proposal that moves a pin and changes one step label waiting on a person, outside the act', async () => {
     await rewrite('billing', (d) => {
       d.basedOn = pinTo(2);
       d.steps[0].node.label = 'Billing source (renamed)';
@@ -243,18 +243,11 @@ describe('BC-23: a revision whose only change is its pins approves by itself', (
     const d = await read('billing');
     expect(d.status).toBe('proposed');
     expect(d.revisions[0].decision).toBe(null);
+    expect(d.pinOnly).toBe(null);
     expect(await needsYouDesigns()).toContain('billing');
   });
 
-  it('leaves a proposal that moves a pin and changes only the summary text waiting on a person', async () => {
-    await rewrite('summary', (d) => {
-      d.basedOn = pinTo(2);
-      d.summary = 'the same steps, other words';
-    });
-    expect((await read('summary')).status).toBe('proposed');
-  });
-
-  it('approves a pin-only proposal resting on a base still waiting when the base is approved', async () => {
+  it('leaves a pin-only proposal resting on a base still waiting proposed once the base is approved', async () => {
     const before = await read('access');
     const r3 = (before.revisions[0].revision as number) + 1;
     await rewrite('access', (d) => {
@@ -270,73 +263,17 @@ describe('BC-23: a revision whose only change is its pins approves by itself', (
         decision: 'approve',
       }),
     );
+    await settleOutbox();
     const d = await read('chain');
-    expect(d.status).toBe('approved');
-    expect(d.revisions[0].says.reason.key).toBe('designs.reason.pinOnlyKernel');
-  });
-
-  it('clears a pin-only row that was already waiting when the rule shipped, through the same approval', async () => {
-    const id = ids.get('legacy') as string;
-    const r = (await read('access')).approvedRevision as number;
-    await rewrite('legacy', (d) => {
-      d.basedOn = pinTo(r);
-    });
-    expect((await read('legacy')).status).toBe('approved');
-    // put the row back as dev held it: proposed, undecided, the approved revision the one before
-    await rows(sql`
-      UPDATE project_workflow_designs
-         SET decision = NULL, decided_by_user = NULL, decided_kind = NULL, decided_at = NULL, reason = NULL, reason_says = NULL
-       WHERE workflow_id = ${id} AND revision = 2`);
-    await db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT set_config('forge.kernel_txn', txid_current()::text, true)`);
-      await tx.execute(
-        sql`UPDATE project_workflows SET design_status = 'proposed', approved_revision = 1 WHERE id = ${id}`,
-      );
-    });
-    expect((await read('legacy')).status).toBe('proposed');
-    // a filed pin-only proposal is no row of its own: it waits inside its base's one "pin moved" act
-    expect(await readyFlows()).toContain('legacy');
-
-    const { reconcilePinOnlyDesigns } = await import('../../src/workflows/index.js');
-    const settled = await reconcilePinOnlyDesigns();
-    expect(settled.approved.map((a) => a.flow)).toContain('legacy');
-    expect(settled.refused).toEqual([]);
-
-    const d = await read('legacy');
-    expect(d.status).toBe('approved');
-    expect(d.revisions[0].says.reason.key).toBe('designs.reason.pinOnlyKernel');
-    expect(await readyFlows()).not.toContain('legacy');
-    expect((await ledger(id))[0]).toMatchObject({ actor_type: 'sweeper' });
-    expect((await reconcilePinOnlyDesigns()).approved, 'a second boot writes nothing').toEqual([]);
-  });
-
-  it('refuses a design whose shape cannot be compared by name and approves nothing', async () => {
-    const id = ids.get('opaque') as string;
-    await rewrite('opaque', (d) => {
-      d.basedOn = pinTo(1);
-      d.steps[0].node.label = 'one real change, so it waits';
-    });
-    await rows(sql`
-      UPDATE project_workflow_designs SET document = '{"unreadable": true}'::jsonb
-       WHERE workflow_id = ${id} AND revision = 1`);
-    const { reconcilePinOnlyDesigns } = await import('../../src/workflows/index.js');
-    const settled = await reconcilePinOnlyDesigns();
-    expect(settled.refused).toEqual([
-      expect.objectContaining({ workflowId: id, code: 'WORKFLOW_DESIGN_UNCOMPARABLE' }),
-    ]);
-    expect(settled.approved.map((a) => a.workflowId)).not.toContain(id);
-    expect((await read('opaque')).status).toBe('proposed');
+    expect(d.status, RULE).toBe('proposed');
+    expect(d.revisions[0].decision).toBe(null);
+    expect(await readyFlows()).toContain('chain');
   });
 });
 
-describe('BC-23: the design issue is told by Forge, not by a person', () => {
-  it('posts the approval notice as the project agent, saying Forge approved it', async () => {
-    const issue = randomUUID();
+describe('BC-23: the design issue hears of no approval nobody made', () => {
+  it('posts no approval notice for a pin-only proposal drawn under an issue', async () => {
     const second = randomUUID();
-    await withKernelMarker(db, (tx) =>
-      tx.execute(sql`INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
-        VALUES (${issue}, ${projectId}, 801, 'draws noticed', 'in_progress', ${ownerId})`),
-    );
     await withKernelMarker(db, (tx) =>
       tx.execute(sql`INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
         VALUES (${second}, ${projectId}, 802, 'draws the pin move', 'in_progress', ${ownerId})`),
@@ -350,7 +287,7 @@ describe('BC-23: the design issue is told by Forge, not by a person', () => {
       201,
     ).document as Doc;
     ids.set('noticed', made.id as string);
-    ok(await as('POST', `/workflows/${made.id}/design/propose`, { revision: 1, issue: 'ISS-801' }));
+    ok(await as('POST', `/workflows/${made.id}/design/propose`, { revision: 1 }));
     ok(
       await as('POST', `/workflows/${made.id}/design/decision`, {
         revision: 1,
@@ -366,14 +303,11 @@ describe('BC-23: the design issue is told by Forge, not by a person', () => {
       },
       'ISS-802',
     );
-    expect((await read('noticed')).status).toBe('approved');
-    const notices = await rows<{ body: string; kind: string; author: string }>(sql`
-      SELECT c.body, u.kind, c.author_id::text AS author FROM comments c JOIN users u ON u.id = c.author_id
-       WHERE c.issue_id = ${second} ORDER BY c.created_at`);
-    const told = notices.find((n) => n.body.includes('by Forge itself (pin-only'));
-    expect(told, JSON.stringify(notices)).toBeDefined();
-    expect(told).toMatchObject({ kind: 'agent' });
-    expect(told?.author).not.toBe(ownerId);
+    await settleOutbox();
+    expect((await read('noticed')).status, RULE).toBe('proposed');
+    const notices = await rows<{ body: string }>(sql`
+      SELECT c.body FROM comments c WHERE c.issue_id = ${second} ORDER BY c.created_at`);
+    expect(notices.filter((n) => n.body.includes('by Forge itself'))).toEqual([]);
   });
 });
 
