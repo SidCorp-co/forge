@@ -3,83 +3,76 @@
  * which refuses a stored test credential, and `system-write.ts` for core's own writers, which
  * withhold it. A third writer is a path on which text reaches an issue unchecked, which is how a
  * run-close reason carrying a stored credential was posted whole (ISS-1389).
+ *
+ * The scan reads each source's syntax tree and follows the table through aliases, namespace
+ * imports and re-exports (`single-door.fixture.ts`), so `db.insert(s.comments)` is a write and a
+ * comment that says `insert(comments)` is not.
  */
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { type CommentWrite, commentWrites } from './single-door.fixture.js';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 const DOORS = new Set(['comments/service.ts', 'comments/system-write.ts']);
 
-const WRITES = [
-  /\.(insert|update)\(\s*comments\s*\)/g,
-  /\binsert\s+into\s+"?comments"?\b/gi,
-  /\bupdate\s+(?:only\s+)?"?comments"?\s+set\b/gi,
-];
-
-const stripComments = (text: string): string =>
-  text
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
-    .replace(/\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '));
-
-/** The 1-based lines of `source` that write the comments table. */
-function commentWriteLines(source: string): number[] {
-  const text = stripComments(source);
-  const lines = new Set<number>();
-  for (const pattern of WRITES) {
-    for (const hit of text.matchAll(pattern)) {
-      lines.add(text.slice(0, hit.index).split('\n').length);
-    }
-  }
-  return [...lines].sort((a, b) => a - b);
-}
-
-function sources(dir: string, out: string[] = []): string[] {
+function sources(dir: string, out: Map<string, string> = new Map()): Map<string, string> {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) sources(path, out);
-    else if (/\.ts$/.test(entry.name) && !/\.test\.ts$/.test(entry.name)) out.push(path);
+    else if (/\.ts$/.test(entry.name) && !/\.(?:test|fixture)\.ts$/.test(entry.name)) {
+      out.set(relative(SRC, path).split(sep).join('/'), readFileSync(path, 'utf8'));
+    }
   }
   return out;
 }
 
-describe('the scan sees a write of the comments table', () => {
-  it('finds a drizzle insert and update, and raw SQL, by line', () => {
-    const source = [
-      'await tx.insert(comments).values({});',
-      'const other = 1;',
-      'await db',
-      '  .update(comments)',
-      '  .set({});',
-      'await db.execute(sql`INSERT INTO comments (id) VALUES (1)`);',
-    ].join('\n');
-    expect(commentWriteLines(source)).toEqual([1, 4, 6]);
-  });
+const named = (writes: readonly CommentWrite[]): string[] =>
+  writes.map((w) => `${w.file}:${w.line} ${w.how}`);
 
-  it('does not read a comment, a select, or another table as a write', () => {
-    const source = [
-      '// await tx.insert(comments).values({});',
-      "/* db.update(comments) */ const x = 'text';",
-      'await db.select().from(comments);',
-      'await db.insert(commentAttachments).values({});',
-    ].join('\n');
-    expect(commentWriteLines(source)).toEqual([]);
-  });
-});
+const PLANTS: Array<[string, string]> = [
+  ['the literal table', "import { comments } from '../db/schema.js';\ndb.insert(comments);"],
+  ['a namespace import', "import * as s from '../db/schema.js';\ndb.insert(s.comments);"],
+  ['an aliased import', "import { comments as c } from '../db/schema.js';\ndb.update(c).set({});"],
+];
 
 describe('who writes the comments table', () => {
+  const real = sources(SRC);
+
   it('is the two doors, and a writer outside them fails naming its file and line', () => {
-    const faults = sources(SRC).flatMap((path) => {
-      const rel = relative(SRC, path).split(sep).join('/');
-      if (DOORS.has(rel)) return [];
-      return commentWriteLines(readFileSync(path, 'utf8')).map((line) => `${rel}:${line}`);
-    });
     expect(
-      faults,
-      'post through postSystemComment or insertSystemComment (core writing) or insertComment (a caller writing): a direct write skips the stored-credential check',
+      named(commentWrites(real, DOORS)),
+      'post through postSystemComment, insertSystemComment or deleteSystemComment (core writing) or insertComment (a caller writing): a direct write skips the stored-credential check',
     ).toEqual([]);
+  });
+
+  it.each(PLANTS)('goes red on %s planted in a real source, naming the line', (_form, plant) => {
+    const original = real.get('pipeline/reconciler.ts') as string;
+    const planted = new Map(real).set('pipeline/reconciler.ts', `${original}\n${plant}\n`);
+    const line = original.split('\n').length + 2;
+    const found = commentWrites(planted, DOORS);
+    expect(found.map((w) => `${w.file}:${w.line}`)).toEqual([`pipeline/reconciler.ts:${line}`]);
+  });
+
+  it('keeps a write planted in pm/routes.ts failing, there being no amnesty for the file', () => {
+    const original = real.get('pm/routes.ts') as string;
+    const plant =
+      "import { comments as c } from '../db/schema.js';\nawait db.insert(c).values({});";
+    const planted = new Map(real).set('pm/routes.ts', `${original}\n${plant}\n`);
+    const found = commentWrites(planted, DOORS);
+    expect(found.map((w) => w.file)).toEqual(['pm/routes.ts']);
+  });
+
+  it('finds the real schema declaring the table, so a pass is not a scan that found nothing to follow', () => {
+    const planted = new Map(real).set(
+      'zz/planted.ts',
+      "import * as schema from '../db/schema.js';\ndb.delete(schema.comments);",
+    );
+    expect(named(commentWrites(planted, DOORS))).toEqual([
+      'zz/planted.ts:2 .delete(schema.comments)',
+    ]);
   });
 });

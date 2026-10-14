@@ -100,3 +100,8 @@ export async function rewriteSystemComment(
     .returning({ id: comments.id });
   return row?.id ?? null;
 }
+
+/** Remove a comment core posted, for the writer that must take back what it wrote when a later step fails. */
+export async function deleteSystemComment(commentId: string, executor: Tx = db): Promise<void> {
+  await executor.delete(comments).where(eq(comments.id, commentId));
+}

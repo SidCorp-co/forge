@@ -5,15 +5,16 @@
  * error leaves, so the runner's failure comment is the only thing left (codex F1 on the plan).
  */
 
-import { eq } from 'drizzle-orm';
 import {
   discardCommentAttachments,
   persistCommentAttachment,
   validateCommentAttachment,
 } from '../../comments/attachment-service.js';
-import { insertSystemComment, postSystemComment } from '../../comments/system-write.js';
-import { db } from '../../db/client.js';
-import { comments } from '../../db/schema.js';
+import {
+  deleteSystemComment,
+  insertSystemComment,
+  postSystemComment,
+} from '../../comments/system-write.js';
 import { failureLine, type WeeklyReport } from '../bench/history/report.js';
 
 export interface PostWeeklyArgs {
@@ -48,7 +49,7 @@ export async function postWeeklyComment(args: PostWeeklyArgs): Promise<{ comment
     }
   } catch (err) {
     await discardCommentAttachments(written);
-    await db.delete(comments).where(eq(comments.id, inserted.id));
+    await deleteSystemComment(inserted.id);
     throw err;
   }
   return { commentId: inserted.id };
