@@ -13,6 +13,20 @@ const jsonRpcErrorSchema = z.object({
   id: z.null(),
 });
 
+/** A JSON-RPC response: the id of the request it answers, and either its result or an error. */
+const jsonRpcResponseSchema = z.union([
+  z.object({
+    jsonrpc: z.literal('2.0'),
+    id: z.union([z.string(), z.number(), z.null()]),
+    result: z.record(z.string(), z.unknown()),
+  }),
+  z.object({
+    jsonrpc: z.literal('2.0'),
+    id: z.union([z.string(), z.number(), z.null()]),
+    error: z.object({ code: z.number().int(), message: z.string(), data: z.unknown().optional() }),
+  }),
+]);
+
 const MALFORMED = json(
   jsonRpcErrorSchema,
   'The body is not valid JSON-RPC, or the protocol version is unsupported',
@@ -25,7 +39,7 @@ const mcpPost = describeOperation({
   description:
     'A personal access token is required. Each request is answered on its own, with no session: `initialize`, `tools/list` and `tools/call` all arrive as JSON-RPC and are answered as JSON. `Accept` must list both `application/json` and `text/event-stream`. A message that is only a notification or a response is answered 202 with no body. `X-Forge-Project-Slug` binds the call to a project.',
   responses: {
-    200: raw('application/json', 'The JSON-RPC response'),
+    200: json(jsonRpcResponseSchema, 'The JSON-RPC response'),
     202: empty('The message needed no answer'),
     400: MALFORMED,
     403: BAD_ORIGIN,

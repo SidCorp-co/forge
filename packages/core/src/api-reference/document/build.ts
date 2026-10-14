@@ -22,6 +22,7 @@ export type BuildRule =
   | 'undeclared-input'
   | 'param-not-in-path'
   | 'no-response'
+  | 'raw-json'
   | 'more-than-one-descriptor'
   | 'schema-name-clash'
   | 'operation-id-clash';
@@ -277,6 +278,13 @@ async function responsesOf(entry: RouteEntry, access: Access | null, doc: Docume
         },
       };
     } else if (a.kind === 'raw') {
+      if (/json/i.test(a.contentType)) {
+        doc.findings.push({
+          rule: 'raw-json',
+          route: entry.key,
+          detail: `the ${status} response is declared raw(${a.contentType}), which states a JSON body as a string: declare it with json(schema)`,
+        });
+      }
       responses[String(status)] = {
         description: a.description,
         content: { [a.contentType]: { schema: { type: 'string' } } },
