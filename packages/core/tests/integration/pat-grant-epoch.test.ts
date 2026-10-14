@@ -149,7 +149,7 @@ describe('a token minted before the menu grew keeps its reach (ISS-1373)', () =>
     expect(added.length).toBeGreaterThan(0);
     const wrong: string[] = [];
     for (const prefix of added) {
-      const [method, path] = probeFor(prefix);
+      const [method, path] = await probeFor(prefix);
       const res = await send(method, path, token(), method === 'POST' ? {} : undefined);
       if (res.status !== 403 || codeOf(res) !== 'PAT_GRANT_PREDATES_ROUTE') {
         wrong.push(`${method} ${path} -> ${res.status} ${codeOf(res)}`);
@@ -193,16 +193,29 @@ async function addedPrefixes(reach?: 'project' | 'account'): Promise<string[]> {
 const ZERO = '00000000-0000-4000-8000-000000000000';
 
 /**
- * A served route under a prefix, which reaches the token door. The two
- * invitation lookups by their own token are public, so their token-gated
- * siblings stand in; `/api/me` and `/api/devices` serve nothing at `/:id`.
+ * A route the app serves under a prefix, which reaches the token door: a path nothing serves is
+ * answered 404 before any door runs (ISS-1305), so a made-up `/:id` would prove nothing about the
+ * door. The route is read off the app's own table, the way the reference reads it, and is one a
+ * token is not kept out of by name. The two invitation lookups by their own token are public
+ * without being named, so their token-gated siblings stand in.
  */
-function probeFor(prefix: string): readonly ['GET' | 'POST', string] {
+async function probeFor(prefix: string): Promise<readonly ['GET' | 'POST', string]> {
+  const { patPrefixForPath, patUngrantableFor } = await import('../../src/auth/pat-permissions.js');
   if (prefix === '/api/invitations') return ['GET', `${prefix}/pending`];
   if (prefix === '/api/org-invitations') return ['POST', `${prefix}/${ZERO}/accept`];
-  if (prefix === '/api/me') return ['GET', `${prefix}/devices`];
-  if (prefix === '/api/devices') return ['GET', `${prefix}/${ZERO}/runners`];
-  return ['GET', `${prefix}/${ZERO}`];
+  const served = app.routes
+    .filter((r) => r.method === 'GET' || r.method === 'POST')
+    .filter(
+      (r) => patPrefixForPath(r.path)?.prefix === prefix && !patUngrantableFor(r.path, r.method),
+    )
+    .sort((a, b) =>
+      a.method === b.method ? a.path.localeCompare(b.path) : a.method === 'GET' ? -1 : 1,
+    );
+  const route = served[0];
+  if (!route)
+    throw new Error(`no route is served under ${prefix}, so the menu grants nothing there`);
+  const path = route.path.replace(/:[A-Za-z0-9_]+(\{[^}]*\})?\??/g, ZERO).replace(/\*/g, 'x');
+  return [route.method as 'GET' | 'POST', path];
 }
 
 describe('a token minted now reaches every feature mount it is granted (ISS-1373)', () => {
@@ -263,7 +276,7 @@ describe('a token minted now reaches every feature mount it is granted (ISS-1373
     const wrong: string[] = [];
     for (const [label, token] of Object.entries(scoped)) {
       for (const prefix of account) {
-        const [method, path] = probeFor(prefix);
+        const [method, path] = await probeFor(prefix);
         const res = await send(method, path, token, method === 'POST' ? {} : undefined);
         if (res.status !== 403 || codeOf(res) !== 'PAT_ACCOUNT_ROUTE') {
           wrong.push(`${label}: ${method} ${path} -> ${res.status} ${codeOf(res)}`);

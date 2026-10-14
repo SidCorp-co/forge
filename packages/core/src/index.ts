@@ -118,6 +118,7 @@ import { requestLogger } from './middleware/logger.js';
 import { PAT_ACCEPTED_PERMISSIONS_HEADER } from './middleware/pat-rest-surface.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
 import { requirePat } from './middleware/require-pat.js';
+import { answerUnservedPath } from './middleware/unserved-path.js';
 import { notificationRoutes } from './notifications/routes.js';
 import { orgInvitationRoutes } from './orgs/invitations-routes.js';
 import { orgRoutes } from './orgs/routes.js';
@@ -214,6 +215,10 @@ const corsMiddleware = cors({
 });
 app.use('/api/*', corsMiddleware);
 app.use('/mcp', corsMiddleware);
+app.use(
+  '/api/*',
+  answerUnservedPath(() => app),
+);
 
 const apiReference = referenceOf(() => app);
 app.use('/api/*', responseConformance(apiReference));
