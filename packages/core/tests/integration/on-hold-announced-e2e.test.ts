@@ -252,8 +252,13 @@ describe('REST POST /transition into on_hold', () => {
 
     const res = await rest(id, w.token, { toStatus: 'on_hold', reason: '   ' });
 
-    expect(res.status).toBeGreaterThanOrEqual(400);
-    expect(res.status).toBeLessThan(500);
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as {
+      code: string;
+      details?: { fieldErrors?: { reason?: string[] } };
+    };
+    expect(body.code).toBe('BAD_REQUEST');
+    expect(body.details?.fieldErrors?.reason?.length).toBeGreaterThan(0);
     expect(await statusOf(id)).toBe('in_progress');
     expect(await thread(id)).toHaveLength(0);
   });
@@ -330,6 +335,22 @@ describe('MCP forge_issues into on_hold', () => {
 
     expect(answer.isError).toBe(true);
     expect(answer.text).toContain('TRANSITION_REASON_REQUIRED');
+    expect(await statusOf(id)).toBe('in_progress');
+    expect(await thread(id)).toHaveLength(0);
+  });
+
+  it('refuses a blank reason by the tool’s own schema, naming the field', async () => {
+    const w = await seed();
+    const id = await insertIssue(w, 'in_progress');
+
+    const answer = await mcp(w.pat, {
+      action: 'transition',
+      documentId: id,
+      data: { status: 'on_hold', reason: '   ' },
+    });
+
+    expect(answer.isError).toBe(true);
+    expect(answer.text).toContain('reason');
     expect(await statusOf(id)).toBe('in_progress');
     expect(await thread(id)).toHaveLength(0);
   });
