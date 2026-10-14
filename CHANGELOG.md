@@ -6436,7 +6436,9 @@
 
 ### Changed
 
-- **Putting an issue on hold now asks why, and the thread says so.** A hold with no reason is refused by name, the bulk menu no longer offers it, and each hold posts its reason on the thread. (ISS-1251)
+- **Putting an issue on hold now asks why, and the thread says so.** A hold with no reason is refused by name, and each hold posts its reason on the thread. (ISS-1251)
+
+- **Many issues can be held at once, with one reason.** The bulk menu offers On hold again and asks why once. A blank reason is now refused as a missing reason, not "too small". (ISS-1251)
 
 - **An attribute that holds one value per issue now holds exactly one row.** Two simultaneous writers could leave two; the second now replaces the first, and a batch naming the key twice is refused. (ISS-1132)
 

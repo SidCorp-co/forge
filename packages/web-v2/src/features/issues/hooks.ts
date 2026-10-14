@@ -331,7 +331,7 @@ export function useRunPipelineStep() {
 
 /** A single field to apply across many issues. */
 export type BulkUpdate =
-  | { kind: "status"; toStatus: IssueStatus }
+  | { kind: "status"; toStatus: IssueStatus; reason?: string }
   | { kind: "priority"; priority: IssuePriority };
 
 /**
@@ -439,7 +439,7 @@ export function useBulkUpdateIssues() {
       const summary: BulkSummary = { updated: 0, skipped: 0, failed: 0 };
       const apply = (id: string) =>
         update.kind === "status"
-          ? issuesApi.transition(id, update.toStatus)
+          ? issuesApi.transition(id, update.toStatus, { reason: update.reason })
           : issuesApi.patch(id, { priority: update.priority });
       for (let i = 0; i < ids.length; i += BULK_CHUNK) {
         const results = await Promise.allSettled(ids.slice(i, i + BULK_CHUNK).map(apply));

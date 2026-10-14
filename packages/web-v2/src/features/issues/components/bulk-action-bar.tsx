@@ -7,7 +7,9 @@
 //
 // Set-status offers only `bulkAllowedStatuses()` — the intersection, across the
 // whole selection, of the exits core declares for each row's rung — so a bulk
-// pick can't mass-409 (mirrors the per-row ISS-308 E1 guard). The control is
+// pick can't mass-409 (mirrors the per-row ISS-308 E1 guard). A status that
+// needs a reason is offered only where one reason can serve the selection: On
+// hold asks it once, in the reason dialog, and sends it with every issue (ISS-1251). The control is
 // disabled, with the reason rendered beside it, both when that intersection is
 // empty and while the exits themselves are unread. Priority has no
 // state-machine constraint, so all five values are offered — except while a
@@ -16,11 +18,17 @@
 
 import { useId, useState } from "react";
 import { Button, Menu, type MenuItem } from "@/design";
-import { bulkAllowedStatuses, priorityLabel, transitionLabels } from "../derive";
+import {
+  BULK_SHARES_ONE_REASON,
+  bulkAllowedStatuses,
+  priorityLabel,
+  transitionLabels,
+} from "../derive";
 import { agentHoldsSelection, heldInSelection } from "../edit-lock";
 import { type BulkUpdate, useBulkUpdateIssues, useStatusExits } from "../hooks";
 import { ISSUE_PRIORITIES, type IssueRow } from "../types";
 import { BatchReleaseDialog, type BatchReleaseIssue } from "./batch-release-dialog";
+import { TransitionReasonDialog } from "./transition-reason-dialog";
 
 const BATCH_RELEASE_GATE = "awaiting_release" as const;
 
@@ -78,6 +86,7 @@ export function BulkActionBar({
   const bulk = useBulkUpdateIssues();
   const { exits, isPending: exitsPending, isError: exitsFailed } = useStatusExits();
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
+  const [holdOpen, setHoldOpen] = useState(false);
   const statusReasonId = useId();
   const count = selectedRows.length;
   if (count === 0) return null;
@@ -100,7 +109,8 @@ export function BulkActionBar({
   const statusNames = transitionLabels(statusTargets);
   const statusItems: MenuItem[] = statusTargets.map((s, i) => ({
     label: statusNames[i],
-    onSelect: () => run({ kind: "status", toStatus: s }),
+    onSelect: () =>
+      BULK_SHARES_ONE_REASON.has(s) ? setHoldOpen(true) : run({ kind: "status", toStatus: s }),
   }));
   const priorityItems: MenuItem[] = ISSUE_PRIORITIES.map((p) => ({
     label: priorityLabel(p),
@@ -177,6 +187,23 @@ export function BulkActionBar({
           </Button>
         </span>
       </div>
+      <TransitionReasonDialog
+        status={holdOpen ? "on_hold" : null}
+        issueCount={count}
+        loading={bulk.isPending}
+        onConfirm={(reason) => {
+          bulk.mutate(
+            { ids, update: { kind: "status", toStatus: "on_hold", reason } },
+            {
+              onSuccess: () => {
+                setHoldOpen(false);
+                onCleared();
+              },
+            },
+          );
+        }}
+        onClose={() => setHoldOpen(false)}
+      />
       <BatchReleaseDialog
         projectId={projectId}
         selectedIssues={batchRelease.enabled ? selectedRows.map((r): BatchReleaseIssue => ({ id: r.id, displayId: r.displayId, title: r.title })) : []}

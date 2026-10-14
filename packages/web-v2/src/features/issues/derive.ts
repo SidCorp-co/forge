@@ -267,8 +267,11 @@ export function bulkAllowedStatuses(
 	return (common ?? []).filter((s) => !BULK_HAS_NO_REASON_TO_COLLECT.has(s));
 }
 
+/** The statuses a bulk move may name though they need a reason: one reason is asked for the whole selection and goes with each issue. */
+export const BULK_SHARES_ONE_REASON: ReadonlySet<string> = new Set(["on_hold"]);
+
 const BULK_HAS_NO_REASON_TO_COLLECT: ReadonlySet<string> = new Set(
-	REASON_REQUIRED_ISSUE_STATUSES,
+	REASON_REQUIRED_ISSUE_STATUSES.filter((s) => !BULK_SHARES_ONE_REASON.has(s)),
 );
 
 export interface DepCounts {

@@ -22,7 +22,7 @@ export function transitionByData(
   data: TransitionData | undefined,
 ) {
   return transitionIssueStatus(issue, status, principalActor(principal), {
-    transitionReason: data?.reason ?? data?.note,
+    transitionReason: data?.reason?.trim() || data?.note?.trim() || undefined,
     waitingKind: data?.waitingKind,
     needs: data?.needs,
     voidQuestions: data?.voidQuestions,
