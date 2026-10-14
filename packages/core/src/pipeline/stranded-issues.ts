@@ -4,6 +4,7 @@ import { issueStatuses, issues, projects } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
+import { type SweepDetector, sweepGroup } from '../notifications/explanations.js';
 import { projectAdminUserIdsFor } from '../notifications/project-admins.js';
 import { isTerminalPlacement } from './status-assertions.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
@@ -41,18 +42,6 @@ export function strandedResolutionKey(issueId: string): string {
   return `issue:${issueId}:stranded`;
 }
 
-/**
- * ISS-1063 — the grouping key: one evaluation of one detector.
- *
- * Alertmanager's `group_by`. Every strand this sweep tick finds shares it, so a reader is
- * told once about the sweep rather than once per issue it named. The tick is truncated to
- * the evaluation interval so the passes inside one `runPipelineSweep` agree on it without
- * having to pass a value between them.
- */
-export function sweepGroupKey(detector: string, now: Date): string {
-  return `sweep:${detector}:${Math.floor(now.getTime() / 60_000)}`;
-}
-
 export function owedCloseResolutionKey(issueId: string): string {
   return `issue:${issueId}:owed-close`;
 }
@@ -71,8 +60,7 @@ async function surfaceOnce(args: {
   resolutionKey: string;
   title: string;
   body: string;
-  groupKey: string;
-  groupTitle: string;
+  detector: SweepDetector;
 }): Promise<number> {
   const adminIds = args.admins.get(args.projectId) ?? [];
   if (adminIds.length === 0) return -1;
@@ -84,8 +72,7 @@ async function surfaceOnce(args: {
     title: args.title,
     body: args.body,
     resolutionKey: args.resolutionKey,
-    groupKey: args.groupKey,
-    groupTitle: args.groupTitle,
+    ...sweepGroup(args.detector, args.now),
   });
   return sent?.delivered ?? 0;
 }
@@ -152,19 +139,18 @@ export async function detectStrandedIssues(
       const days = Math.floor((now.getTime() - since.getTime()) / 86_400_000);
       const age = days >= 1 ? `${days} day${days === 1 ? '' : 's'}` : 'hours';
       const lead = row.mergedAt
-        ? `Its code merged ${age} ago but the issue is still parked`
-        : `It has been parked ${age}`;
+        ? `its code merged ${age} ago but the issue is still parked`
+        : `it has been parked ${age}`;
 
       const sent = await surfaceOnce({
         now,
         admins,
-        groupKey: sweepGroupKey('stranded', now),
-        groupTitle: 'Issues are parked with nothing coming for them',
+        detector: 'stranded',
         projectId: row.projectId,
         issueId: row.id,
         resolutionKey: strandedResolutionKey(row.id),
         title: `${ref} is waiting on you — ${row.projectName}`,
-        body: `${lead}, so nothing will move it forward until you decide. Open it and read the last comment: a step that could not finish its checks leaves the decision here.`,
+        body: `${ref} "${row.title}": ${lead}.`,
       });
       if (sent < 0) unreachable += 1;
       else notified += sent;
@@ -209,6 +195,7 @@ export async function detectOwedCloses(
         issuePrefix: projects.issuePrefix,
         issSeq: issues.issSeq,
         status: issues.status,
+        title: issues.title,
         mergedAt: issues.mergedAt,
         cursorTs: sql<string>`"issues"."merged_at"::text`,
         projectName: projects.name,
@@ -249,13 +236,12 @@ export async function detectOwedCloses(
       const sent = await surfaceOnce({
         now,
         admins,
-        groupKey: sweepGroupKey('owed-close', now),
-        groupTitle: 'Issues whose code shipped and whose close was never written',
+        detector: 'owed-close',
         projectId: row.projectId,
         issueId: row.id,
         resolutionKey: owedCloseResolutionKey(row.id),
         title: `${ref} shipped but never closed — ${row.projectName}`,
-        body: `Its code has carried a merge mark for ${age} while the issue still reads \`${row.status}\`, and nothing is running on it. The step that owed the close did not write it. Read the branch, then close it — or, if it never landed, clear the mark with \`unmark\` and move the issue to \`dropped\`.`,
+        body: `${ref} "${row.title}" has carried a merge mark for ${age} while it still reads \`${row.status}\`, with nothing running on it.`,
       });
       if (sent < 0) unreachable += 1;
       else notified += sent;

@@ -27,6 +27,7 @@ export interface EmitNotificationInput {
   title: string;
   body?: string | null;
   issueId?: string | null;
+  subject?: string | null;
   agentSessionId?: string | null;
   /** Overrides the contract default severity for this single event. */
   severity?: string | null;

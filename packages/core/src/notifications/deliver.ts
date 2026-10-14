@@ -2,12 +2,15 @@ import { and, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { NotificationType } from '../db/schema.js';
 import {
+  issues,
   notificationDeliveries,
   notificationDeliveryMembers,
   notificationSilences,
   notifications,
+  projects,
   userPreferences,
 } from '../db/schema.js';
+import { formatIssueRef, textNamesIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { hooks } from '../pipeline/hooks.js';
 import { emissionAllowed, noteSuppressed } from './emission-switch.js';
@@ -40,10 +43,60 @@ export interface DeliverInput {
   resolutionKey?: string | null;
   dedupeKey?: string | null;
   decisionId?: string | null;
+  /** What the notification is about when that is neither an issue nor its project: a runner, a session. */
+  subject?: string | null;
   /** Records raised by one evaluation share this and reach a reader as one delivery. */
   groupKey?: string | null;
   /** What that one delivery is called. Ignored when `groupKey` is absent. */
   groupTitle?: string | null;
+}
+
+/**
+ * ISS-1168 — a notification names what it is about in its title.
+ *
+ * A title is what a reader sees first, and a producer that wrote "Pipeline wedge: heartbeat hop miss
+ * on job" or "A runner can no longer authenticate" left the reader to open the row to learn which.
+ * Producers differ in how much of the subject they name, so the one door every record goes through
+ * settles it: an issue's reference leads the title, else the named subject (a runner, a session),
+ * else the project. A title that already holds the name is left alone, and one about none of them is
+ * too. The prefix is reported, not silent: a producer reading this line in its logs is the producer
+ * that should have named its subject.
+ */
+async function titleNamingItsSubject(input: DeliverInput): Promise<string> {
+  const name = await subjectNameOf(input);
+  if (name === null || textNamesSubject(input.title, name)) return input.title;
+  logger.info(
+    { type: input.type, issueId: input.issueId, projectId: input.projectId, title: input.title },
+    'notifications: the title did not name its subject, so the subject leads it',
+  );
+  return `${name} — ${input.title}`;
+}
+
+async function subjectNameOf(input: DeliverInput): Promise<string | null> {
+  if (input.issueId) {
+    const [row] = await db
+      .select({ prefix: projects.issuePrefix, seq: issues.issSeq })
+      .from(issues)
+      .innerJoin(projects, eq(projects.id, issues.projectId))
+      .where(eq(issues.id, input.issueId))
+      .limit(1);
+    return row && row.seq >= 1 ? formatIssueRef(row.prefix, row.seq) : null;
+  }
+  if (input.subject) return input.subject;
+  if (!input.projectId) return null;
+  const [project] = await db
+    .select({ name: projects.name })
+    .from(projects)
+    .where(eq(projects.id, input.projectId))
+    .limit(1);
+  return project?.name ?? null;
+}
+
+/** An issue reference is matched as a reference; any other name as the text it is. */
+function textNamesSubject(title: string, name: string): boolean {
+  return /^[A-Za-z][A-Za-z0-9]{1,5}-\d+$/.test(name)
+    ? textNamesIssueRef(title, name)
+    : title.toLowerCase().includes(name.toLowerCase());
 }
 
 /** A silence THIS reader set that covers this record. */
@@ -116,8 +169,16 @@ async function activeRecord(input: DeliverInput) {
  * Write one delivery per recipient, joining this record to the group's delivery where the
  * emitter named one. Returns how many people were told for the first time.
  */
-async function deliverTo(recordId: string, input: DeliverInput, now: Date): Promise<number> {
+async function deliverTo(
+  recordId: string,
+  input: DeliverInput,
+  now: Date,
+  named: string | undefined,
+): Promise<number> {
   let told = 0;
+  // The record's own title, with its issue named: read once, and only when somebody is told, since
+  // a sweep raises the same standing condition every minute and almost every pass tells nobody.
+  let title = named;
   for (const userId of input.recipients) {
     if (await silencedFor(userId, input, now)) {
       logger.info(
@@ -144,6 +205,7 @@ async function deliverTo(recordId: string, input: DeliverInput, now: Date): Prom
       .limit(1);
     if (already) continue;
 
+    title ??= await titleNamingItsSubject(input);
     let deliveryId: string | undefined;
     if (input.groupKey) {
       const [existing] = await db
@@ -169,7 +231,7 @@ async function deliverTo(recordId: string, input: DeliverInput, now: Date): Prom
           channel: 'bell',
           groupKey: input.groupKey ?? null,
           // A grouped delivery names the cause; an ungrouped one is its record.
-          title: input.groupKey ? (input.groupTitle ?? input.title) : input.title,
+          title: input.groupKey ? (input.groupTitle ?? title) : title,
           createdAt: now,
         })
         .returning({ id: notificationDeliveries.id });
@@ -188,7 +250,7 @@ async function deliverTo(recordId: string, input: DeliverInput, now: Date): Prom
       announce: founded,
       projectId: input.projectId ?? null,
       type: input.type,
-      title: input.groupKey ? (input.groupTitle ?? input.title) : input.title,
+      title: input.groupKey ? (input.groupTitle ?? title) : title,
       body: input.body ?? null,
       severity: input.severity ?? null,
       resolutionKey: input.resolutionKey ?? null,
@@ -248,7 +310,7 @@ export async function deliverExisting(
     .where(eq(notifications.id, recordId))
     .limit(1);
   if (!row) return 0;
-  return deliverTo(recordId, { ...row, recipients }, now);
+  return deliverTo(recordId, { ...row, recipients }, now, row.title);
 }
 
 export async function recordAndDeliver(
@@ -291,10 +353,11 @@ export async function recordAndDeliver(
     if (existing.state === 'pending' && !promote) return { id: existing.id, delivered: 0 };
     if (existing.state === 'inhibited') return { id: existing.id, delivered: 0 };
     if (inhibitedNow) return { id: existing.id, delivered: 0 };
-    const delivered = await deliverTo(existing.id, input, now);
+    const delivered = await deliverTo(existing.id, input, now, undefined);
     return { id: existing.id, delivered };
   }
 
+  const title = await titleNamingItsSubject(input);
   const inhibitedBy = kind === 'condition' ? await inhibitor(input) : null;
   const waits = kind === 'condition' && pendingEvaluationsFor(input.type) > 0;
   const state = inhibitedBy ? 'inhibited' : waits ? 'pending' : INITIAL_STATE[kind];
@@ -307,7 +370,7 @@ export async function recordAndDeliver(
       kind,
       tier: tierOf(input.type),
       state,
-      title: input.title,
+      title,
       body: input.body ?? null,
       severity: input.severity ?? null,
       resolutionKey: input.resolutionKey ?? null,
@@ -333,6 +396,6 @@ export async function recordAndDeliver(
   }
   if (state === 'pending') return { id: record.id, delivered: 0 };
 
-  const delivered = await deliverTo(record.id, input, now);
+  const delivered = await deliverTo(record.id, input, now, title);
   return { id: record.id, delivered };
 }

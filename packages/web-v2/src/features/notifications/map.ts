@@ -1,6 +1,27 @@
 import type { NotificationAction, NotificationItem } from "@/design";
 import { formatRelativeTime } from "@/lib/utils/format";
-import type { NotificationRow, PendingInvitation } from "./types";
+import { NOTIFICATION_TYPES } from "@forge/contracts/notifications";
+import type { NotificationRow, NotificationType, PendingInvitation } from "./types";
+
+/** What a type is called wherever a person picks or reads one. Every type has an entry, so a new
+ *  type cannot reach the inbox's filter unnamed. */
+export const TYPE_NAMES: Record<NotificationType, string> = {
+  issue_status_changed: "Status changes",
+  mention: "Mentions",
+  pm_escalation: "Escalations",
+  pipeline_wedge: "Pipeline stalls",
+  invitation_received: "Invitations",
+  intake_pending: "Intake review",
+  schedule_report: "Schedule reports",
+  reconcile_gate_pending: "Skill updates",
+  issue_stranded: "Stranded issues",
+  retry_rescue_threshold: "Retry rescues",
+  ops_alert: "Operations",
+};
+
+/** The inbox's type filter: every type there is, in the order the contract lists them. */
+export const TYPE_FILTER_OPTIONS: { value: NotificationType; label: string }[] =
+  NOTIFICATION_TYPES.map((value) => ({ value, label: TYPE_NAMES[value] }));
 
 /** Short uppercase tag shown in the row's leading MonoTag. */
 function typeLabel(type: string): string {
@@ -19,6 +40,10 @@ function typeLabel(type: string): string {
       return "STRANDED";
     case "retry_rescue_threshold":
       return "RETRY";
+    case "intake_pending":
+      return "INTAKE";
+    case "ops_alert":
+      return "OPS";
     default:
       return "EVENT";
   }
@@ -57,7 +82,8 @@ export function toNotificationItem(
     text: row.title,
     sub: row.body ?? undefined,
     time: formatRelativeTime(row.createdAt),
-    unread: row.readAt === null,
+    // The server says whether anything is left to read: a resolved row is history, read or not.
+    unread: row.unread,
     hue: hueFor(row),
     // A delivery carrying one record is a plain row; one carrying several names the
     // cause, says how many are still true, and expands to them.

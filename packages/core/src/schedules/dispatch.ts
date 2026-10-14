@@ -352,6 +352,7 @@ async function dispatchScheduleScriptRun(
       await emitNotification({
         userId,
         projectId: resolvedProjectId,
+        subject: schedule.name?.trim() || 'Scheduled run',
         type: 'schedule_report',
         title: n.title,
         body: n.body ?? null,

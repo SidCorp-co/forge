@@ -11,7 +11,9 @@ export interface NotificationRow {
   tier: string;
   title: string;
   body: string | null;
+  explanation: string | null;
   readAt: string | null;
+  unread: boolean;
   /** Non-null when this delivery groups several records under one cause. */
   groupKey: string | null;
   /** True when this delivery announces that a condition CLEARED. */
@@ -20,6 +22,8 @@ export interface NotificationRow {
   members: number;
   openMembers: number;
   severity: NotificationSeverity | null;
+  projectSlug: string | null;
+  projectName: string | null;
   issueId: string | null;
   secondaryIssueId: string | null;
   agentSessionId: string | null;
@@ -36,6 +40,8 @@ export interface NotificationMember {
   body: string | null;
   severity: NotificationSeverity | null;
   projectId: string | null;
+  projectSlug: string | null;
+  projectName: string | null;
   issueId: string | null;
   secondaryIssueId: string | null;
   resolvedAt: string | null;

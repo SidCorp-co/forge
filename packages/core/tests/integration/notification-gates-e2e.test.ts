@@ -226,7 +226,9 @@ describe('notifications · a condition maturing into a live cause is that cause�
       sql`SELECT state FROM notifications WHERE resolution_key = 'stranded:1'`,
     )) as unknown as [{ state: string }];
     expect(state).toBe('inhibited');
-    expect((await bellOf(alice)).map((r) => r.title)).toEqual(['the pipeline is wedged']);
+    expect((await bellOf(alice)).map((r) => r.title)).toEqual([
+      expect.stringMatching(/ — the pipeline is wedged$/),
+    ]);
   });
 });
 
@@ -344,7 +346,9 @@ describe('notifications · a live root cause stops the delivery retry too', () =
     // catches up a reader gated out earlier is a telling like any other.
     await wedge('wedge:root', [alice, bob]);
     expect((await strand('stranded:1', [alice, bob], 1))?.delivered).toBe(0);
-    expect((await bellOf(bob)).map((r) => r.title)).toEqual(['the pipeline is wedged']);
+    expect((await bellOf(bob)).map((r) => r.title)).toEqual([
+      expect.stringMatching(/ — the pipeline is wedged$/),
+    ]);
 
     // …and the child stays FIRING rather than being demoted, because it is still true and the
     // count of what is still true is the number this whole change exists to make honest.

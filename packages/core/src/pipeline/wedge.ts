@@ -1,6 +1,6 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { notifications, projects } from '../db/schema.js';
+import { agentSessions, devices, jobs, notifications, projects, runners } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { resolveNotifications } from '../notifications/auto-resolve.js';
 import { createNotification } from '../notifications/routes.js';
@@ -59,6 +59,49 @@ export interface PipelineWedgeEvent {
   secondaryIssueId?: string | null;
 }
 
+/**
+ * ISS-1168 — what a wedge that names no issue is about, in the words a person already knows it by.
+ *
+ * A runner is the device the Runners page lists, so it is named by that device's name; a session by
+ * its title (or its kind) and the device it ran on; a job by its step. Anything else is the
+ * project's own, which the notification door names. Null where the row is gone or the wedge has an
+ * issue, so the issue's reference leads instead.
+ */
+export async function wedgeSubjectName(
+  ev: Pick<PipelineWedgeEvent, 'entity' | 'entityId' | 'issueId'>,
+): Promise<string | null> {
+  if (ev.issueId) return null;
+  if (ev.entity === 'runner') {
+    const [row] = await db
+      .select({ device: devices.name, runner: runners.name })
+      .from(runners)
+      .leftJoin(devices, eq(devices.id, runners.deviceId))
+      .where(eq(runners.id, ev.entityId))
+      .limit(1);
+    return row ? (row.device ?? row.runner) : null;
+  }
+  if (ev.entity === 'session') {
+    const [row] = await db
+      .select({ title: agentSessions.title, kind: agentSessions.kind, device: devices.name })
+      .from(agentSessions)
+      .leftJoin(devices, eq(devices.id, agentSessions.deviceId))
+      .where(eq(agentSessions.id, ev.entityId))
+      .limit(1);
+    if (!row) return null;
+    const what = row.title?.trim() || `${row.kind} session`;
+    return row.device ? `${what} on ${row.device}` : what;
+  }
+  if (ev.entity === 'job') {
+    const [row] = await db
+      .select({ type: jobs.type })
+      .from(jobs)
+      .where(eq(jobs.id, ev.entityId))
+      .limit(1);
+    return row ? `${row.type} step` : null;
+  }
+  return null;
+}
+
 export async function emitPipelineWedge(ev: PipelineWedgeEvent): Promise<void> {
   try {
     const resolutionKey = wedgeResolutionKey(ev.entityId);
@@ -102,6 +145,7 @@ export async function emitPipelineWedge(ev: PipelineWedgeEvent): Promise<void> {
       title,
       body,
       issueId: ev.issueId ?? null,
+      subject: await wedgeSubjectName(ev),
       secondaryIssueId: ev.secondaryIssueId ?? null,
       resolutionKey,
       agentSessionId: ev.entity === 'session' ? ev.entityId : null,
