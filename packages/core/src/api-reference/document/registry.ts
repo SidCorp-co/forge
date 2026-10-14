@@ -34,6 +34,13 @@ type RouterWithMatch = {
   match: (method: string, path: string) => [MatchedRoute[], ...unknown[]];
 };
 
+/** Whether a route answers `method` at `path`: a record of method `ALL` is a gate, not a route. HEAD is GET. */
+export function servesRoute(app: RouteSource, method: string, path: string): boolean {
+  const upper = method.toUpperCase();
+  const [matched] = (app.router as RouterWithMatch).match(upper === 'HEAD' ? 'GET' : upper, path);
+  return matched.some(([[, record]]) => record.method !== 'ALL');
+}
+
 const SAMPLES = ['00000000-0000-4000-8000-000000000000', '1', 'x'];
 
 /** A path a request could take to this route: each `:name` gets a value, each `*` a segment. */
