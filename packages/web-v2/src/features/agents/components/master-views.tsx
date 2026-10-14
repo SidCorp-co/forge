@@ -5,6 +5,7 @@
 import { Link } from "@/lib/navigation/router";
 import {
   DetailLayout,
+  DetailLeadEnd,
   DetailMobileTitle,
   DetailPane,
   DetailTabs,
@@ -447,6 +448,7 @@ export function MasterPage({ projectId, slug }: { projectId: string; slug: strin
           >
             <DetailMobileTitle itemKey={t("agents.master.word")} title={masterName(m, language)} badge={<StatusBadge family="masterState" value={m.state} />} />
             <MasterBanner m={m} className="px-8 py-2.5 max-md:px-4" />
+            <DetailLeadEnd />
             <DetailTabs tabs={tabs} value={tab} onChange={setTab} testId="master-tabs" />
             <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("agents.master.tab.passes")}>
               {tab === "passes" ? <Passes projectId={projectId} slug={slug} /> : null}

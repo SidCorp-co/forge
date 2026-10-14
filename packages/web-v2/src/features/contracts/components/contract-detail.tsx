@@ -1,6 +1,6 @@
 
 import { useState } from "react";
-import { Button, DetailLayout, DetailMobileTitle, DetailPane, DetailTabs, EnumBadge, FactsRail, RecordViewSwitch, RowItem, RowList, StatusBadge, Textarea, useRecordView, ViewHeading } from "@/design";
+import { Button, DetailLayout, DetailLeadEnd, DetailMobileTitle, DetailPane, DetailTabs, EnumBadge, FactsRail, RecordViewSwitch, RowItem, RowList, StatusBadge, Textarea, useRecordView, ViewHeading } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { formatStamp } from "@/lib/utils/format";
@@ -180,6 +180,7 @@ export function ContractPage({ d, slug, projectId, tab, onTab }: { d: ContractSt
     >
       <DetailMobileTitle itemKey={c.ref} title={c.title} badge={<StatusBadge family="contractState" value={c.state} />} />
       <ContractBanner row={c} slug={slug} className="px-8 py-2.5 max-md:px-4" />
+      <DetailLeadEnd />
       <div className="flex justify-end px-8 pt-3 max-md:px-4" data-testid="contract-view-bar">
         <RecordViewSwitch view={view} onView={onView} />
       </div>

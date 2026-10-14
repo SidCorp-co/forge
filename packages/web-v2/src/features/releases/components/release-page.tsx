@@ -20,7 +20,7 @@ import { useRelease, useReleasePage, useReleases } from "../hooks";
 import { ContinuedAs, EndedAttempt } from "./release-attempts";
 import { ReleaseBanner } from "./release-bits";
 import { ChecksPane } from "./release-checks";
-import { ReleaseProperties, ReleasePhoneStanding } from "./release-facts";
+import { ReleaseProperties } from "./release-facts";
 import { ReleasePageActions } from "./release-page-actions";
 import { ReleaseReader, useReleaseContents } from "./release-reader";
 import { CriteriaPane, IssuesPane, NotesPane, OverviewPane, RELEASE_TABS, type ReleaseTab } from "./release-panes";
@@ -96,7 +96,6 @@ export function ReleasePage({ projectId, slug, version }: { projectId: string; s
             <ReleaseBanner r={r} className="px-8 py-2.5 max-md:px-4" />
             <EndedAttempt r={r} slug={slug} />
             {r.continuedAs ? <ContinuedAs to={r.continuedAs} slug={slug} className="border-b border-line-subtle px-8 py-2 max-md:px-4" /> : null}
-            <ReleasePhoneStanding r={r} forecast={forecastQ.data} />
             <div className="flex flex-wrap items-center gap-3 border-b border-line-subtle px-8 py-2.5 max-md:px-4" data-testid="release-view-bar">
               <span data-tour="rel-technical" data-testid="release-view-switch" title={t("releases.page.view.label")}>
                 <SegmentedControl

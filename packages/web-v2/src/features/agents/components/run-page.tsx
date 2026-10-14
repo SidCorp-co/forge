@@ -6,6 +6,7 @@
 import { Link } from "@/lib/navigation/router";
 import {
   DetailLayout,
+  DetailLeadEnd,
   DetailMobileTitle,
   DetailPane,
   DetailTabs,
@@ -260,6 +261,7 @@ export function RunPage({ projectId, slug, runId }: { projectId: string; slug: s
           >
             <DetailMobileTitle itemKey={runKey(r, language)} title={runName(r, language)} badge={<StatusBadge family="runStanding" value={r.state} />} />
             <RunBanner r={r} developer={developer} className="px-8 py-2.5 max-md:px-4" />
+            <DetailLeadEnd />
             <ViewBar view={view} onView={onView} />
             <DetailTabs tabs={tabs} value={tab} onChange={setTab} testId="run-tabs" />
             <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("runs.tab.overview")}>

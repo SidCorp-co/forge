@@ -1,10 +1,12 @@
-// A release says why it asks to be split and what splitting does, and on a phone shows its forecast and approval first.
+// A release says why it asks to be split and what splitting does, and keeps its forecast and approval
+// in its rail at every width: the template places the rail on a phone (detail-rail-place.test.tsx), so
+// the release neither copies them above its summary nor leaves its Run group behind on its own.
 
 import type { ScopeForecast } from "@forge/contracts/forecast";
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ReleaseBanner } from "./release-bits";
-import { ReleasePhoneStanding } from "./release-facts";
+import * as facts from "./release-facts";
 
 const NOW = Date.parse("2026-10-07T12:00:00Z");
 const at = (min: number) => new Date(NOW + min * 60_000).toISOString();
@@ -29,13 +31,12 @@ describe("a release that has to be split", () => {
   });
 });
 
-describe("a release on a phone", () => {
-  it("shows its forecast and approval above the long content, below 640px only", () => {
-    render(<ReleasePhoneStanding r={release as never} forecast={scope} />);
-    const block = screen.getByTestId("phone-standing");
-    expect(block.className).toMatch(/\bhidden\b/);
-    expect(block.className).toMatch(/max-sm:block/);
-    expect(within(block).getByTestId("facts-approval")).toBeInTheDocument();
-    expect(within(block).getByTestId("phone-release-forecast")).toBeInTheDocument();
+describe("a release's rail", () => {
+  it("holds the approval and the forecast itself, hidden at no width and copied nowhere", () => {
+    const { container } = render(<facts.ReleaseProperties r={{ ...release, issues: [], criteria: { total: 0, proven: 0, failing: 0, open: 0 }, cutCount: 0 } as never} forecast={scope} besideReader />);
+    expect(screen.getByTestId("facts-approval")).toBeInTheDocument();
+    expect(within(screen.getByTestId("facts-run")).getByTestId("facts-release-forecast")).toBeInTheDocument();
+    expect(container.innerHTML).not.toMatch(/max-(sm|md|lg):hidden/);
+    expect(Object.keys(facts)).not.toContain("ReleasePhoneStanding");
   });
 });

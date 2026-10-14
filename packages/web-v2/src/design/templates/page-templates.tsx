@@ -4,7 +4,7 @@
 // The title and the page's acts render into the top bar (PageTitle, TopBarActions).
 
 import type { ReactNode } from "react";
-import { DetailLayout, DetailPane } from "../patterns/detail-tabs";
+import { DetailLayout, DetailLeadEnd, DetailPane } from "../patterns/detail-tabs";
 import { KanbanBoard } from "../patterns/kanban-board";
 import { ListLayout, ListToolbar } from "../patterns/list-page";
 import { PageTitle } from "../primitives/heading";
@@ -73,6 +73,7 @@ export function DetailPage({ header, rail, railCollapsed, lead, tabs, label, chi
       {header}
       <DetailLayout rail={rail} railCollapsed={railCollapsed} dataKey={dataKey}>
         {lead}
+        <DetailLeadEnd />
         {tabs}
         <DetailPane label={label}>{children}</DetailPane>
       </DetailLayout>

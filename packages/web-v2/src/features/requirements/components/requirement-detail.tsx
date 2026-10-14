@@ -17,6 +17,7 @@ import {
   AGENT_TINT,
   Disclosure,
   DetailLayout,
+  DetailLeadEnd,
   DetailMobileTitle,
   DetailPane,
   DetailTabs,
@@ -224,6 +225,7 @@ export function RequirementPage({
             <DetailMobileTitle itemKey={d.key} title={d.title} badge={<StatusBadge family="requirement" value={s.state} />} />
             <RequirementProgress standing={s} slug={slug} inset="px-8 max-md:px-4" />
             <RequirementPicture d={d} projectId={projectId} slug={slug} inset="px-8 max-md:px-4" />
+            <DetailLeadEnd />
             <ViewBar view={view} onView={onView} />
             <DetailTabs tabs={tabs} value={shownTab} onChange={onTab} testId="requirement-tabs" />
             <DetailPane label={tabs.find((x) => x.value === shownTab)?.label ?? t("requirements.tab.overview")}>
