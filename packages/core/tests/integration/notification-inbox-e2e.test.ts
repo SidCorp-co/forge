@@ -301,7 +301,9 @@ describe('a notification about no issue', () => {
       title: 'A runner can no longer authenticate, and will take no more work',
     });
     const [row] = await only();
-    expect(row?.title).toBe('build-box-7 — A runner can no longer authenticate, and will take no more work');
+    expect(row?.title).toBe(
+      'build-box-7 — A runner can no longer authenticate, and will take no more work',
+    );
     expect(row?.projectSlug).toBe(project.slug);
     expect(row?.issueId).toBeNull();
   });
@@ -321,7 +323,9 @@ describe('a notification about no issue', () => {
       action: 'check the device',
     });
     const [row] = await only();
-    expect(row?.title).toBe('Nightly sync on build-box-8 — Pipeline wedge: heartbeat hop miss on session');
+    expect(row?.title).toBe(
+      'Nightly sync on build-box-8 — Pipeline wedge: heartbeat hop miss on session',
+    );
   });
 
   it('names the step it is about by its kind', async () => {
@@ -339,7 +343,9 @@ describe('a notification about no issue', () => {
       title: 'A release was cancelled because no machine picked it up',
     });
     const [row] = await only();
-    expect(row?.title).toBe('custom step — A release was cancelled because no machine picked it up');
+    expect(row?.title).toBe(
+      'custom step — A release was cancelled because no machine picked it up',
+    );
   });
 
   it('names its project where the project is the subject', async () => {
@@ -382,7 +388,10 @@ describe('a notification about no issue', () => {
       title: 'Invoicing needs a decision on its release window',
     });
     const titles = (await only()).map((r) => r.title).sort();
-    expect(titles).toEqual(['Invoicing needs a decision on its release window', 'Invoicing — PM cadence auto-disabled']);
+    expect(titles).toEqual([
+      'Invoicing needs a decision on its release window',
+      'Invoicing — PM cadence auto-disabled',
+    ]);
   });
 });
 
