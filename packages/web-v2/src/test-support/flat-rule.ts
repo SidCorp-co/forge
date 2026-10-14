@@ -1,5 +1,4 @@
-// The owner's flat-settings rule as two reads: the class lists a source writes, and the classes a
-// rendered element carries. A flat page rules its sections with one hairline and has no boxes.
+// The flat-settings rule, read off a source and off a rendered tree: sections are ruled, never boxed.
 
 export function classLists(source: string): string[] {
   return [...source.matchAll(/"([^"\n]*)"|`([^`]*)`/g)].map((m) => m[1] ?? m[2] ?? "");
