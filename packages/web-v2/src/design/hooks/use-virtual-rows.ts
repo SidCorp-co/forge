@@ -177,6 +177,7 @@ export function useVirtualRows({
 
   // The library stops aiming after a frame at its target and the last rows measure later, with no
   // scroll to say so: while End is fresh, a new total height that leaves a gap aims again.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: totalSize is the trigger, a new total height, and is read from the DOM as scrollHeight.
   useLayoutEffect(() => {
     const scroller = scrollerRef.current;
     if (!enabled || count === 0 || !scroller || Date.now() > endWantedUntil.current) return;
