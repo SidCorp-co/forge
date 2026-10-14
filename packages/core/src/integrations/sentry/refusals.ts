@@ -19,6 +19,8 @@ export const SENTRY_REFUSAL_REASONS = [
   'target_no_org',
   'confined_out',
   'bad_argument',
+  'no_organization',
+  'unreadable_answer',
 ] as const;
 
 export type SentryRefusalReason = (typeof SENTRY_REFUSAL_REASONS)[number];

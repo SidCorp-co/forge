@@ -113,6 +113,22 @@ export function useCoolifyApplications(
   });
 }
 
+/** ISS-1380 — the Sentry projects a token can read, for the target picker. `auth` is a saved
+ *  integration, or the credential typed on the create form once the person asks for the list; null
+ *  holds the query back. */
+export function useSentryProjects(
+  projectId: string | undefined,
+  auth: { integrationId: string } | { host: string; authToken: string } | null,
+) {
+  return useQuery({
+    queryKey: ["integrations", "sentry-projects", projectId, JSON.stringify(auth)],
+    queryFn: () => integrationsApi.sentryProjects(projectId as string, auth as never),
+    enabled: !!projectId && !!auth,
+    retry: false,
+    staleTime: 60_000,
+  });
+}
+
 /** The bound targets with the identity Coolify reports for each. */
 export function useCoolifyTargets(projectId: string | undefined, integrationId: string | undefined) {
   return useQuery({

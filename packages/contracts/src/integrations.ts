@@ -230,12 +230,13 @@ export interface SentryTargetInput {
   notes?: string;
 }
 
+/**
+ * `host` is connection-tier; `targets` are binding-tier — held by the project's integration, never by
+ * the connection many projects share, so one project's agents cannot name another's (ISS-1380).
+ */
 export type SentryConfigInput = {
   host: string;
   targets?: SentryTargetInput[];
-  /** @deprecated ISS-526 — superseded by `targets[]`; read-only back-compat. */
-  organizationSlug?: string;
-  projectSlug?: string;
 };
 export type SentrySecretsInput = {
   authToken: string;

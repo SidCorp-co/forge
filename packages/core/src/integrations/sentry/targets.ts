@@ -1,18 +1,9 @@
 import { SentryRefusal } from './refusals.js';
 import type { SentryConfig, SentryTarget } from './types.js';
 
+/** The targets this binding declares — the only ones a read, a pull or a prompt may name. */
 export function resolveSentryTargets(config: SentryConfig | null | undefined): SentryTarget[] {
-  if (!config) return [];
-  if (Array.isArray(config.targets) && config.targets.length > 0) {
-    return config.targets;
-  }
-  if (config.organizationSlug || config.projectSlug) {
-    const legacy: SentryTarget = { label: 'default' };
-    if (config.organizationSlug) legacy.organizationSlug = config.organizationSlug;
-    if (config.projectSlug) legacy.projectSlug = config.projectSlug;
-    return [legacy];
-  }
-  return [];
+  return Array.isArray(config?.targets) ? config.targets : [];
 }
 
 /**

@@ -7,7 +7,6 @@ import {
   CardTitle,
   Field,
   Input,
-  Textarea,
   SettingsSection,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
@@ -25,7 +24,6 @@ import type {
   IntegrationSummary,
   IntegrationTestResult,
   SentryConfig,
-  SentryTarget,
 } from "../../types";
 import {
   AGENT_ACCESS_CLOSED,
@@ -35,15 +33,13 @@ import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { sentry } from "./index";
 import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
-
-/** Editable Sentry target row — strings only so inputs stay controlled. */
-interface TargetRow {
-  label: string;
-  organizationSlug: string;
-  projectSlug: string;
-  environment: string;
-  notes: string;
-}
+import {
+  initialTargets,
+  rowInvalid,
+  SentryTargetsField,
+  type TargetRow,
+  toTargets,
+} from "./targets-field";
 
 interface FormState {
   authToken: string;
@@ -51,93 +47,23 @@ interface FormState {
   targets: TargetRow[];
 }
 
-const emptyRow = (): TargetRow => ({
-  label: "",
-  organizationSlug: "",
-  projectSlug: "",
-  environment: "",
-  notes: "",
-});
-
-/** Seed the editable rows from the stored config — `targets[]` if present, else
- *  the legacy single-slug pair as one row, else a single blank starter row. */
-function initialTargets(cfg: Partial<SentryConfig>): TargetRow[] {
-  if (Array.isArray(cfg.targets) && cfg.targets.length > 0) {
-    return cfg.targets.map((t) => ({
-      label: t.label ?? "",
-      organizationSlug: t.organizationSlug ?? "",
-      projectSlug: t.projectSlug ?? "",
-      environment: t.environment ?? "",
-      notes: t.notes ?? "",
-    }));
-  }
-  if (cfg.organizationSlug || cfg.projectSlug) {
-    return [
-      {
-        ...emptyRow(),
-        label: "default",
-        organizationSlug: cfg.organizationSlug ?? "",
-        projectSlug: cfg.projectSlug ?? "",
-      },
-    ];
-  }
-  return [emptyRow()];
-}
-
 function initialForm(existing: IntegrationSummary | undefined): FormState {
   const cfg = (existing?.config ?? {}) as Partial<SentryConfig>;
   return {
     authToken: "",
     host: cfg.host ?? "",
-    targets: initialTargets(cfg),
+    targets: initialTargets(cfg.targets),
   };
 }
 
-/** A row carrying any data but no label — must be fixed before save. */
-function rowInvalid(t: TargetRow): boolean {
-  const hasContent =
-    t.organizationSlug.trim() ||
-    t.projectSlug.trim() ||
-    t.environment.trim() ||
-    t.notes.trim();
-  return !t.label.trim() && Boolean(hasContent);
-}
-
-/** A row with nothing at all — silently dropped, never persisted. */
-function rowBlank(t: TargetRow): boolean {
-  return (
-    !t.label.trim() &&
-    !t.organizationSlug.trim() &&
-    !t.projectSlug.trim() &&
-    !t.environment.trim() &&
-    !t.notes.trim()
-  );
-}
-
-/** Build the config payload — drops blank rows and trims, omitting empties. */
-function toConfig(f: FormState): SentryConfig {
-  const targets: SentryTarget[] = f.targets
-    .filter((t) => !rowBlank(t))
-    .map((t) => {
-      const out: SentryTarget = { label: t.label.trim() };
-      if (t.organizationSlug.trim()) out.organizationSlug = t.organizationSlug.trim();
-      if (t.projectSlug.trim()) out.projectSlug = t.projectSlug.trim();
-      if (t.environment.trim()) out.environment = t.environment.trim();
-      if (t.notes.trim()) out.notes = t.notes.trim();
-      return out;
-    });
-  return { host: f.host.trim(), targets };
-}
-
 /**
- * ISS-524 / ISS-526 — Sentry integration config form. Reads/writes the
- * per-project `sentry` integration via the REST CRUD endpoints. One connection
- * (host + masked, write-only auth token) maps to a LIST of labelled targets
- * (backend / frontend / mobile …) — each with optional org/project slug,
- * environment label and notes. The official `@sentry/mcp-server` MCP tools reach this project's
- * agents only where the binding's `agentAccess` grant is on; the target list is surfaced in the
- * agent's prompt so it queries the right org/project. Test connection validates the token against Sentry
- * `GET /api/0/organizations/`.
+ * ISS-524 / ISS-526 / ISS-1380 — Sentry integration config form. One connection (host + masked,
+ * write-only auth token) is shared by the projects bound to it; THIS project's integration holds its
+ * own LIST of labelled targets (backend / frontend / mobile …), picked from the Sentry projects the
+ * token can read. The official `@sentry/mcp-server` MCP tools reach this project's agents only where
+ * the binding's `agentAccess` grant is on; the target list is surfaced in the agent's prompt so it
+ * queries the right org/project, and no agent can name a target another project's integration holds.
+ * Test connection validates the token against Sentry `GET /api/0/organizations/`.
  */
 export function SentrySection({ projectId }: { projectId: string }) {
   const list = useIntegrationsList(projectId);
@@ -163,19 +89,10 @@ export function SentrySection({ projectId }: { projectId: string }) {
   const [testResult, setTestResult] = useState<IntegrationTestResult | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
   const [agentAccess, setAgentAccess] = useState<AgentAccess>(AGENT_ACCESS_CLOSED);
+  const [listRequested, setListRequested] = useState(false);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
-
-  const setTarget = (index: number, key: keyof TargetRow, value: string) =>
-    setForm((f) => ({
-      ...f,
-      targets: f.targets.map((t, i) => (i === index ? { ...t, [key]: value } : t)),
-    }));
-  const addTarget = () =>
-    setForm((f) => ({ ...f, targets: [...f.targets, emptyRow()] }));
-  const removeTarget = (index: number) =>
-    setForm((f) => ({ ...f, targets: f.targets.filter((_, i) => i !== index) }));
 
   const keyRequired = !existing; // a brand-new integration must carry a token
   const hostRequired = !existing || !form.host.trim();
@@ -184,23 +101,31 @@ export function SentrySection({ projectId }: { projectId: string }) {
   // active. Test connection stays enabled (binding-level, project admin OK).
   const orgLocked = useOrgConnectionLocked(projectId, existing?.connectionId);
   const isOrgAdmin = useIsOrgAdmin(projectId);
+  // The host and token belong to the shared connection, so an org-owned one locks them; the targets
+  // are this project's own and stay editable, which is why a lock does not disable the save.
   const canSave =
     form.host.trim().length > 0 &&
     (!keyRequired || form.authToken.trim().length >= 8) &&
     !hasInvalidTarget &&
     !create.isPending &&
-    !update.isPending &&
-    !orgLocked;
+    !update.isPending;
+  const storedHost = ((existing?.config ?? {}) as Partial<SentryConfig>).host ?? "";
 
   async function handleSave() {
     setTestResult(null);
     setTestError(null);
     if (existing) {
+      // Only what changed at the connection tier is sent: any connection-tier key makes the server
+      // ask for an org admin, which a project admin editing their own targets is not.
+      const hostChanged = !orgLocked && form.host.trim() !== storedHost;
       await update.mutateAsync({
         id: existing.id,
         body: {
-          config: { ...toConfig(form) },
-          ...(form.authToken.trim()
+          config: {
+            targets: toTargets(form.targets),
+            ...(hostChanged ? { host: form.host.trim() } : {}),
+          },
+          ...(form.authToken.trim() && !orgLocked
             ? { secrets: { authToken: form.authToken.trim() } }
             : {}),
         },
@@ -210,7 +135,7 @@ export function SentrySection({ projectId }: { projectId: string }) {
       await create.mutateAsync({
         provider: "sentry",
         role: "service",
-        config: { ...toConfig(form) },
+        config: { host: form.host.trim(), targets: toTargets(form.targets) },
         secrets: { authToken: form.authToken.trim() },
         ...agentAccessBody(sentry.agentPathKind, agentAccess),
         ...(ownerOrgId ? { orgId: ownerOrgId } : {}),
@@ -246,10 +171,10 @@ export function SentrySection({ projectId }: { projectId: string }) {
       </div>
       <div className="flex flex-col gap-4">
         <p className="fg-body-sm text-muted">
-          Store one Sentry host + auth token, then register every Sentry project it can read
-          (e.g. backend, frontend, mobile). The official Sentry MCP tools reach this
-          project&apos;s agents only once the grant below is on; the target list is then shared
-          with them so they query the right org/project.
+          Store one Sentry host + auth token, then pick the Sentry projects this project&apos;s
+          agents may read (e.g. backend, frontend, mobile). The official Sentry MCP tools reach
+          this project&apos;s agents only once the grant below is on; the target list is then
+          shared with them so they query the right org/project.
         </p>
 
         <Field
@@ -286,7 +211,7 @@ export function SentrySection({ projectId }: { projectId: string }) {
 
         {orgLocked && (
           <p className="fg-body-sm text-muted">
-            Org-shared credential — only an org owner/admin can change it.
+            Org-shared credential — only an org owner/admin can change its host and token. This project&apos;s Sentry projects below stay editable.
           </p>
         )}
 
@@ -298,110 +223,17 @@ export function SentrySection({ projectId }: { projectId: string }) {
           />
         )}
 
-        {/* ISS-526 — repeatable target rows. One shared token reads them all. */}
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-2">
-            <span className="fg-label text-muted">Sentry projects</span>
-            <Button
-              variant="secondary"
-              icon="plus"
-              onClick={addTarget}
-              disabled={orgLocked}
-            >
-              Add project
-            </Button>
-          </div>
-
-          {form.targets.length === 0 ? (
-            <p className="fg-body-sm text-muted border-y border-dashed border-subtle py-4 text-center">
-              No Sentry projects registered yet. Add one (e.g. “Backend” →
-              org/project slug) so agents know which Sentry project to query.
-            </p>
-          ) : (
-            form.targets.map((t, i) => (
-              <div
-                // biome-ignore lint/suspicious/noArrayIndexKey: rows have no stable id; order is the identity
-                key={i}
-                className="flex flex-col gap-3 border-t border-subtle pt-3"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <span className="fg-label text-muted">
-                    Project {i + 1}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    icon="trash"
-                    onClick={() => removeTarget(i)}
-                    disabled={orgLocked}
-                    aria-label={`Remove project ${i + 1}`}
-                  />
-                </div>
-                <Field
-                  label="Label"
-                  hint="A name the agent recognizes, e.g. Backend prod."
-                  required
-                  error={
-                    rowInvalid(t)
-                      ? "A label is required for this project."
-                      : undefined
-                  }
-                >
-                  <Input
-                    value={t.label}
-                    onChange={(e) => setTarget(i, "label", e.target.value)}
-                    placeholder="Backend prod"
-                    disabled={orgLocked}
-                  />
-                </Field>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <Field label="Organization slug" hint="Optional — scopes the Sentry org.">
-                    <Input
-                      value={t.organizationSlug}
-                      onChange={(e) =>
-                        setTarget(i, "organizationSlug", e.target.value)
-                      }
-                      placeholder="(optional)"
-                      disabled={orgLocked}
-                    />
-                  </Field>
-                  <Field label="Project slug" hint="Optional — scopes the Sentry project.">
-                    <Input
-                      value={t.projectSlug}
-                      onChange={(e) =>
-                        setTarget(i, "projectSlug", e.target.value)
-                      }
-                      placeholder="(optional)"
-                      disabled={orgLocked}
-                    />
-                  </Field>
-                </div>
-                <Field
-                  label="Environment"
-                  hint="Optional label only (e.g. prod, staging) — not a separate token."
-                >
-                  <Input
-                    value={t.environment}
-                    onChange={(e) => setTarget(i, "environment", e.target.value)}
-                    placeholder="(optional)"
-                    disabled={orgLocked}
-                  />
-                </Field>
-                <Field
-                  label="Notes"
-                  hint="Optional free text shared with agents (e.g. what lives in this project)."
-                >
-                  <Textarea
-                    value={t.notes}
-                    onChange={(e) => setTarget(i, "notes", e.target.value)}
-                    rows={2}
-                    placeholder="(optional)"
-                    disabled={orgLocked}
-                  />
-                </Field>
-              </div>
-            ))
-          )}
-        </div>
+        <SentryTargetsField
+          projectId={projectId}
+          integrationId={existing?.id}
+          host={form.host}
+          authToken={form.authToken}
+          loading={list.isPending}
+          listRequested={listRequested}
+          onRequestList={() => setListRequested(true)}
+          rows={form.targets}
+          onChange={(next) => set("targets", next)}
+        />
 
         {testError && <Banner tone="danger">{testError}</Banner>}
         {testResult &&
