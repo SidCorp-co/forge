@@ -6,7 +6,12 @@ import { type KernelActor, recordKernelTransition } from '../lifecycle/transitio
 import { logger } from '../logger.js';
 import { withActorContext } from '../pipeline/outbox-session.js';
 import { closeOpenRunForIssue, setCurrentStepForOpenIssueRun } from '../pipeline/runs.js';
-import { canTransitionFree, DRAFT_EXIT_TARGETS, isReopenEntry } from '../pipeline/state-machine.js';
+import {
+  canTransitionFree,
+  DRAFT_EXIT_TARGETS,
+  isReopenEntry,
+  RETIRED_STATUS_REPLACEMENTS,
+} from '../pipeline/state-machine.js';
 import { settleOpenQuestions } from '../questions/issue-coupling.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -59,10 +64,11 @@ type TransitionTx = Parameters<Parameters<Db['transaction']>[0]>[0];
 export interface ApplyStatusTransitionOptions {
   beforeStatusWrite?: (tx: TransitionTx) => Promise<void>;
   /**
-   * Bypass `canTransitionFree`. In practice that guard only forbids `draft`
-   * as a target and restricts `draft`'s own exits, so this flag buys exactly
-   * two things: entering `draft` (nothing does) and moving a `draft` issue to
-   * a status outside {open, closed, developed}.
+   * Bypass `canTransitionFree`. In practice that guard forbids `draft` and the
+   * retired rungs as a target and restricts `draft`'s own exits, so this flag
+   * buys exactly three things: entering `draft` (nothing does), entering a
+   * retired rung (only the staged job tables still name one), and moving a
+   * `draft` issue to a status outside {open, closed, developed}.
    *
    * It is NOT a general safety override: NO_OP, stale-transition detection and
    * every content guard still run. The orchestrator is its caller.
@@ -253,6 +259,14 @@ export async function transitionIssueStatus(
   }
 
   if (!options.skip && !canTransitionFree(fromStatus, requestedStatus)) {
+    const replacement = RETIRED_STATUS_REPLACEMENTS.get(requestedStatus);
+    if (replacement) {
+      throw new TransitionError(
+        'ILLEGAL_TRANSITION',
+        `\`${requestedStatus}\` is a retired rung: nothing dispatches at it, so an issue written there is stranded until a person moves it by hand. Write \`${replacement}\` instead — it is the rung that took its place.`,
+        { from: fromStatus, to: requestedStatus, replacedBy: replacement },
+      );
+    }
     if (requestedStatus === 'draft') {
       await assertIssueNeverEnteredPipeline(issue.id, fromStatus);
     } else {
