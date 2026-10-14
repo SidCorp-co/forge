@@ -15,8 +15,7 @@ afterAll(() => closeChrome());
 
 const HARNESS = fileURLToPath(new URL("../../test-support/truncated-harness.tsx", import.meta.url));
 const WHOLE = "Project: qa-project-available-for-testing-0xxxxxx";
-const centre = (selector: string) =>
-  `(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`;
+const CENTRE = "function (selector) { const r = document.querySelector(selector).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }";
 const shown = "(() => { const t = document.querySelector('[role=tooltip]'); if (!t) return null; const r = t.getBoundingClientRect(); return { text: t.textContent, inside: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight }; })()";
 
 describe("text cut short, in a real Chrome at 390px with touch on", () => {
@@ -31,11 +30,11 @@ describe("text cut short, in a real Chrome at 390px with touch on", () => {
     withApp(HARNESS, "", 390, async (tab) => {
       await tab.waitFor("window.ready === true", 15_000, "the page to be laid out in the app's fonts");
       expect(await tab.evaluate(shown)).toBeNull();
-      const at = await tab.evaluate<{ x: number; y: number }>(centre("#cut > span"));
+      const at = await tab.call<{ x: number; y: number }>(CENTRE, "#cut > span");
       await tab.tap(at.x, at.y);
       await tab.waitFor("document.querySelector('[role=tooltip]') !== null", 5_000, "the whole text to be shown after a tap");
       expect(await tab.evaluate(shown)).toEqual({ text: WHOLE, inside: true });
-      const away = await tab.evaluate<{ x: number; y: number }>(centre("#after"));
+      const away = await tab.call<{ x: number; y: number }>(CENTRE, "#after");
       await tab.tap(away.x, away.y);
       await tab.waitFor("document.querySelector('[role=tooltip]') === null", 5_000, "the text to go away when another control is tapped");
     }));

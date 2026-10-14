@@ -44,6 +44,8 @@ export interface LaunchOptions {
 /** A tab at a phone's size with touch on: what a person does to a page, and what the browser says of it. */
 export interface Tab {
   evaluate<T = unknown>(expression: string): Promise<T>;
+  /** Calls a function declaration with `argument` passed as data, never spliced into code. */
+  call<T = unknown>(functionDeclaration: string, argument: unknown): Promise<T>;
   /** Polls `expression` until it is truthy, failing with `what` it was waiting for. */
   waitFor(expression: string, waitMs: number, what: string): Promise<void>;
   tap(x: number, y: number): Promise<void>;
@@ -170,8 +172,15 @@ export async function launchChrome({ chrome = chromeBinary(), launchMs = WARM_LA
             if (reply.exceptionDetails) throw new Error(`The page threw while evaluating ${expression.slice(0, 80)}: ${reply.exceptionDetails.exception?.description ?? reply.exceptionDetails.text}`);
             return reply.result.value as V;
           };
+          const call = async <V>(functionDeclaration: string, argument: unknown): Promise<V> => {
+            const { result: global } = (await tab("Runtime.evaluate", { expression: "globalThis" })) as { result: { objectId: string } };
+            const reply = (await tab("Runtime.callFunctionOn", { functionDeclaration, objectId: global.objectId, arguments: [{ value: argument }], returnByValue: true, awaitPromise: true })) as { result: { value?: V }; exceptionDetails?: { text: string; exception?: { description?: string } } };
+            if (reply.exceptionDetails) throw new Error(`The page threw in ${functionDeclaration.slice(0, 80)}: ${reply.exceptionDetails.exception?.description ?? reply.exceptionDetails.text}`);
+            return reply.result.value as V;
+          };
           return await run({
             evaluate,
+            call,
             async waitFor(expression, waitMs, what) {
               const until = Date.now() + waitMs;
               while (!(await evaluate<unknown>(expression).catch(() => false))) {
