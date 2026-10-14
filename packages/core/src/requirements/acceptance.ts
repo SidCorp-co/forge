@@ -22,7 +22,7 @@ import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { movedRow, transition } from '../lifecycle/index.js';
 import { emitEvent } from '../outbox/index.js';
-import { personGateOf } from '../project-config/index.js';
+import { personGateOf, readEffectivePolicy } from '../project-config/index.js';
 import {
   acceptRefusals,
   type DeliveryProof,
@@ -61,7 +61,8 @@ export async function liveBuildOfRequirement(
 
 /**
  * The delivery phase of `row` at its head, read on `ex` by the computation the standing reads,
- * against what the live build holds (`liveBuildOfRequirement`, read before `ex` was opened).
+ * against what the live build holds (`liveBuildOfRequirement`, read before `ex` was opened) and
+ * under the judge the project's policy declares, as the standing reads it.
  */
 export async function deliveryIn(
   ex: Tx,
@@ -91,6 +92,7 @@ export async function deliveryIn(
     .from(requirementCriteria)
     .where(eq(requirementCriteria.requirementId, row.id));
   const prefix = await activeIssuePrefix(projectId);
+  const policy = await readEffectivePolicy(projectId);
   const issueCriteria = await issueCriteriaOf(
     linked.map((i) => i.id),
     ex,
@@ -112,6 +114,7 @@ export async function deliveryIn(
       issues: standingIssues,
       issueCriteria,
       liveBuild,
+      judge: policy?.document.qa ?? null,
     },
     row.currentRevision,
   );

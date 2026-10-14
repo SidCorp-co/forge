@@ -151,7 +151,7 @@ export type ProofIssue = Omit<StandingIssue, 'parkedOn'>;
 /** What the delivery phase and coverage read, and nothing else. */
 type ProofInput<I extends ProofIssue = ProofIssue> = Pick<
   StandingInput,
-  'status' | 'criteria' | 'issueCriteria' | 'uncovered' | 'liveBuild'
+  'status' | 'criteria' | 'issueCriteria' | 'uncovered' | 'liveBuild' | 'judge'
 > & { issues: readonly I[] };
 
 /** The input with its delivery phase read (`deliveryOf`). */

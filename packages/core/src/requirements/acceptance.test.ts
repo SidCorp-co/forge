@@ -103,7 +103,7 @@ describe('the delivery phase the accept reads', () => {
     changedSincePlan: false,
   });
   const criteria = [{ id: 'c1', code: 'BC-1', body: 'b', sinceRevision: 1, retiredRevision: null }];
-  const verdict = (v: 'pass' | 'fail' | null) => [
+  const verdict = (v: 'pass' | 'fail' | null, byBuilder = false) => [
     {
       issueId: 'i1',
       n: 1,
@@ -111,6 +111,7 @@ describe('the delivery phase the accept reads', () => {
       verdict: v,
       verdictAt: v ? at : null,
       identity: v ? ({ kind: 'commit', sha: 'f'.repeat(40) } as const) : null,
+      byBuilder,
     },
   ];
 
@@ -121,6 +122,7 @@ describe('the delivery phase the accept reads', () => {
         criteria,
         issues: [issue('i1', 'closed'), issue('i2', 'dropped')],
         issueCriteria: verdict('pass'),
+        judge: 'independent',
         liveBuild: {
           sha: 'f'.repeat(40),
           holds: new Map([['f'.repeat(40), true]]),
@@ -141,6 +143,7 @@ describe('the delivery phase the accept reads', () => {
         criteria,
         issues: [issue('i1', 'closed')],
         issueCriteria: verdict('pass'),
+        judge: 'independent',
         liveBuild: {
           sha: null,
           holds: new Map(),
@@ -154,9 +157,38 @@ describe('the delivery phase the accept reads', () => {
     expect(coverage[0]?.verdict).toBe('not_judged');
   });
 
+  // REQ-35 decision 7b261fca: the accept read the builder's own pass as proof, under independent QA
+  it("reads in_delivery where the only pass is the builder's own and the project judges apart", () => {
+    const { delivery, coverage } = deliveryAt(
+      {
+        status: 'agreed',
+        criteria,
+        issues: [issue('i1', 'closed')],
+        issueCriteria: verdict('pass', true),
+        judge: 'independent',
+        liveBuild: {
+          sha: 'f'.repeat(40),
+          holds: new Map([['f'.repeat(40), true]]),
+          runtimes: new Map(),
+          unanswered: new Map(),
+        },
+      },
+      1,
+    );
+    expect(delivery.phase).toBe('in_delivery');
+    expect(coverage[0]?.verdict).toBe('not_judged');
+    expect(coverage[0]?.why).toContain('passed by the run that built it');
+  });
+
   it('reads in_delivery when every issue closed but a BC is unproven', () => {
     const { delivery, coverage } = deliveryAt(
-      { status: 'agreed', criteria, issues: [issue('i1', 'closed')], issueCriteria: verdict(null) },
+      {
+        status: 'agreed',
+        criteria,
+        issues: [issue('i1', 'closed')],
+        issueCriteria: verdict(null),
+        judge: 'independent',
+      },
       1,
     );
     expect(delivery.phase).toBe('in_delivery');

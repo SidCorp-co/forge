@@ -4,6 +4,7 @@
  * release's requirement bar. Pure, so every rule below is a unit test (`standing.test.ts`).
  */
 
+import type { PolicyQaMode } from '@forge/contracts/project-config';
 import type {
   BcVerdict,
   CoverageCount,
@@ -39,6 +40,8 @@ export interface StandingIssueCriterion {
   files?: readonly CoverageFile[];
   /** What the verdict was judged against; null where there is no verdict or it names nothing. */
   identity: CoverageIdentity | null;
+  /** Whether the verdict was recorded by the issue's builder (`issues/built-by.ts`); false where there is none. */
+  byBuilder: boolean;
 }
 
 /**
@@ -73,6 +76,8 @@ interface CoverageInput {
   uncovered?: ReadonlyMap<string, string> | undefined;
   /** What the live build holds of the verdict commits; null or absent where it was not read. */
   liveBuild?: LiveBuildHolds | null | undefined;
+  /** Who judges an issue's criteria, the policy's `qa` (`StandingInput.judge`); null where no policy is declared. */
+  judge: PolicyQaMode | null;
 }
 
 const short = (sha: string) => sha.slice(0, 12);
@@ -181,13 +186,13 @@ function resolve(identity: CoverageIdentity | null, live: LiveBuildHolds | null)
 // (issue_criteria.requirement_criterion_id, ISS-55). Only links to the wording live at the shown
 // revision count as proof; a link to an earlier wording of the same code is stale evidence. Over
 // the live links the newest judgement that counts decides (requirement-lifecycle `delivered`): of the
-// latest verdicts that are a pass, short or fail, the one recorded last counts — a pass or short →
-// passing, a fail → failing — so a link nobody judged, or judged could-not-judge, masks nothing and
-// an old fail stands only while it is the newest. A judgement counts only where its identity resolves
-// to something checked (`resolve`): one that does not is named on its line and never counts. None
-// counts → not live where a judgement sits on a build the live one does not hold, else not judged.
-// No live link but an earlier one → stale; no link at all → gap, carrying the reason an accepted
-// breakdown gave for leaving it uncovered. A dropped issue proves nothing and is left out.
+// latest verdicts that count, the one recorded last — a pass → passing, a fail → failing — so a link
+// nobody judged, or judged could-not-judge, masks nothing and an old fail stands only while it is the
+// newest. A judgement counts only where its identity resolves to something checked (`resolve`) and
+// it is a verification (`unverifiedWhy`): one that is not is named on its line and never counts.
+// None counts → not live where a judgement sits on a build the live one does not hold, else not
+// judged. No live link but an earlier one → stale; no link at all → gap, carrying the reason an
+// accepted breakdown gave for leaving it uncovered. A dropped issue proves nothing and is left out.
 export function coverageOf(
   input: CoverageInput,
   shownRevision: number | null,
@@ -220,7 +225,7 @@ export function coverageOf(
           identity: ic.verdict === null ? null : identityWords(ic.identity),
           commit: r?.commit ?? null,
           inLiveBuild: r?.inLiveBuild ?? null,
-          notCounted: judged ? (r?.notCounted ?? null) : null,
+          notCounted: judged ? (r?.notCounted ?? unverifiedWhy(ic, input.judge)) : null,
           stale: wording.id !== bc.id,
         } satisfies CoverageIssue,
       ];
@@ -239,6 +244,23 @@ export function coverageOf(
       uncoveredReason: uncovered,
     };
   });
+}
+
+// What counts as verified (REQ-35, decision 7b261fca): only a pass from someone other than the
+// builder. A short is met short of its wording, not verified, so it never counts on a requirement
+// whatever an issue's own gates read it as (contracts `criterionCountsAsPass`). Where the project
+// declares an independent judge, the builder's own pass is not that judge's; under `self`, or with no
+// policy declared, the builder is the judge the project named and its pass counts. A fail counts
+// whoever records it: it is evidence the criterion does not hold, and verification is only owed for
+// a claim that it does. The one rule every reader of the count reads, through `notCounted`.
+function unverifiedWhy(ic: StandingIssueCriterion, judge: PolicyQaMode | null): string | null {
+  if (ic.verdict === 'short') {
+    return 'judged short: met short of its wording, and only a pass counts as verified';
+  }
+  if (ic.verdict === 'pass' && ic.byBuilder && judge === 'independent') {
+    return 'passed by the run that built it, and this project counts only a pass from its independent judge';
+  }
+  return null;
 }
 
 /** Of the live links' judgements that count, the newest. */

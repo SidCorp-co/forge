@@ -8,7 +8,7 @@ import type { CoverageFile } from '@forge/contracts/requirements';
 import { inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issueAttachments } from '../db/schema.js';
-import { reopenedAtOf } from '../issues/index.js';
+import { reopenedAtOf, verdictByBuilderSql } from '../issues/index.js';
 import { requirementDependents } from './dependents.js';
 import type { LiveBuildHolds, StandingIssueCriterion } from './standing.js';
 import type { CoverageIdentity } from './standing-coverage.js';
@@ -34,6 +34,7 @@ type CriterionVerdictRow = {
   storefront_workflow_id: string | null;
   storefront_draft_version: string | null;
   storefront_environment: string | null;
+  by_builder: boolean | null;
 };
 
 /** The identity a stored verdict names, as coverage checks it; null where it names none. */
@@ -111,7 +112,13 @@ export async function issueCriteriaOf(
            v.commit_sha, v.runtime_ref, w.flow AS design_flow, v.design_workflow_id,
            v.design_revision, dp.design_revision AS design_pinned, v.contract_ref,
            v.contract_version, cp.contract_version AS contract_pinned, v.storefront_workflow_id,
-           v.storefront_draft_version, v.storefront_environment
+           v.storefront_draft_version, v.storefront_environment,
+           (${verdictByBuilderSql({
+             issueId: sql`c.issue_id`,
+             authorUser: sql`v.author_user_id`,
+             authorDevice: sql`v.author_device_id`,
+             at: sql`v.verdict_at`,
+           })}) AS by_builder
       FROM issue_criteria c
       JOIN requirement_criteria rc ON rc.id = c.requirement_criterion_id
       LEFT JOIN LATERAL (
@@ -119,7 +126,7 @@ export async function issueCriteriaOf(
                cv.commit_sha,
                cv.runtime_ref, cv.design_workflow_id, cv.design_revision, cv.contract_ref,
                cv.contract_version, cv.storefront_workflow_id, cv.storefront_draft_version,
-               cv.storefront_environment
+               cv.storefront_environment, cv.author_user_id, cv.author_device_id
           FROM criterion_verdicts cv
          WHERE cv.criterion_id = c.id
          ORDER BY cv.created_at DESC, cv.id DESC
@@ -171,6 +178,7 @@ export async function issueCriteriaOf(
         ? []
         : (r.evidence ?? []).flatMap((name) => files.get(`${r.issue_id}\u0000${name}`) ?? []),
       identity: voided || r.verdict === null ? null : identityOf(r),
+      byBuilder: !voided && r.verdict !== null && r.by_builder === true,
     };
   });
 }

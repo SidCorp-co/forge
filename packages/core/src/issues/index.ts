@@ -22,6 +22,7 @@ export {
   refuseBlockedTake,
   refuseHeldTakeForSeqs,
 } from './blocked-by.js';
+export { verdictByBuilderSql } from './built-by.js';
 export {
   artifactsCarriedFor,
   type Carrier,
