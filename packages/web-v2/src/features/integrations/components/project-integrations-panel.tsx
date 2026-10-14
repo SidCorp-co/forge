@@ -150,7 +150,7 @@ function RepositoryAction({
         href={remote}
         target="_blank"
         rel="noreferrer"
-        className="inline-flex items-center gap-1 text-13 font-semibold text-accent hover:underline"
+        className="inline-flex items-center gap-1 text-13 font-semibold text-accent-text hover:underline"
       >
         {t("integrations.panel.openRepo")}
         <Icon name="arrowRight" size={13} />
@@ -175,7 +175,7 @@ function RepositoryAction({
           row.scrollIntoView?.({ block: "center" });
           row.querySelector<HTMLButtonElement>("button")?.focus();
         }}
-        className="inline-flex items-center gap-1 text-13 font-semibold text-accent hover:underline"
+        className="inline-flex items-center gap-1 text-13 font-semibold text-accent-text hover:underline"
       >
         {t("integrations.repository.connectOn", { provider })}
         <Icon name="arrowDown" size={13} />
@@ -183,7 +183,7 @@ function RepositoryAction({
     );
   }
   return (
-    <Link href="?tab=delivery#repository" className="text-13 font-semibold text-accent hover:underline">
+    <Link href="?tab=delivery#repository" className="text-13 font-semibold text-accent-text hover:underline">
       {t("integrations.panel.setRepo")}
     </Link>
   );

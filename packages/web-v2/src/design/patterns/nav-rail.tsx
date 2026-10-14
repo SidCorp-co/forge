@@ -65,7 +65,7 @@ function Count({ n, compact }: { n: number; compact: boolean }) {
   return compact ? (
     <span
       className="absolute right-2 top-3px inline-flex h-[15px] min-w-[15px] items-center justify-center rounded-pill px-[3px] font-mono text-9 font-bold text-white"
-      style={{ background: "var(--accent)", border: "1.5px solid var(--bg-surface)" }}
+      style={{ background: "var(--accent)", border: "1.5px solid var(--bg-shell)" }}
     >
       {shown(n)}
     </span>
@@ -352,8 +352,9 @@ export function NavRail({
 
   return (
     <nav
+      data-layer="shell"
       className={cn(
-        "flex h-full flex-none flex-col border-r border-line bg-surface",
+        "flex h-full flex-none flex-col border-r border-line bg-shell",
         compact ? "w-[88px] items-center gap-2.5 px-1.5 pb-3 pt-[14px]" : "w-[280px] gap-3.5 px-3 py-4",
       )}
     >

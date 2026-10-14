@@ -31,7 +31,7 @@ import {
 const SCALES = ["neutral", "accent", "ok", "warn", "danger", "info", "muted", "ai"] as const;
 const STEPS = Array.from({ length: 12 }, (_, i) => i + 1);
 const SEMANTIC = [
-  "bg-app", "bg-surface", "bg-sunken", "bg-hover", "bg-active",
+  "bg-shell", "bg-app", "bg-surface", "bg-sunken", "bg-hover", "bg-active",
   "border-subtle", "border-default", "border-strong",
   "fg-default", "fg-muted", "fg-subtle", "fg-disabled",
   "accent", "accent-hover", "accent-text", "link", "focus-ring",

@@ -35,7 +35,7 @@ export function ProvisionStepper({ runner }: { runner: ProjectRunner }) {
 								done
 									? "fg-caption text-fg"
 									: active
-										? "fg-caption font-semibold text-accent"
+										? "fg-caption font-semibold text-accent-text"
 										: "fg-caption text-subtle"
 							}
 						>

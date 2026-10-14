@@ -118,7 +118,8 @@
   --font-sans: "Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
-  /* surfaces */
+  /* surfaces: the shell's base, the content on it, a bar or control on the content */
+  --color-shell: var(--bg-shell);
   --color-app: var(--bg-app);
   --color-surface: var(--bg-surface);
   --color-sunken: var(--bg-sunken);
@@ -258,8 +259,9 @@
   [data-shell]:has([data-dock-placement="beside"]) [data-page] { container: page column / inline-size; }
 
   ::-webkit-scrollbar { width: 11px; height: 11px; }
-  ::-webkit-scrollbar-thumb { background: var(--paper-300); border-radius: 999px; border: 3px solid var(--bg-app); }
-  ::-webkit-scrollbar-thumb:hover { background: var(--paper-400); }
+  /* the thumb's inset is a transparent border, so it reads the same on the base and the content */
+  ::-webkit-scrollbar-thumb { background: var(--paper-300) padding-box; border-radius: 999px; border: 3px solid transparent; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--paper-400) padding-box; }
 
   /* Default keyboard-focus ring: soft cobalt box-shadow that follows the
      element's OWN radius (no radius mutation). Accent controls + inputs +
@@ -319,7 +321,7 @@
 
 /* ── Loading & live effects ────────────────────────────────── */
 
-/* Skeleton — warm paper shimmer (not cold gray). */
+/* Skeleton — a sunken block with a sweep across it. */
 @keyframes forge-shimmer { 100% { transform: translateX(100%); } }
 .skeleton { position: relative; overflow: hidden; background: var(--paper-100); }
 .skeleton::after {

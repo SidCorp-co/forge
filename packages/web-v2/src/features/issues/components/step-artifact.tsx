@@ -160,7 +160,7 @@ export function StepArtifact({ outcome, open, onToggle }: StepArtifactCardProps)
                     {t("issues.artifact.attempt", { n: outcome.handoff.attempt })}
                     {outcome.handoff.pipelineRunId ? ` · ${t("issues.artifact.run", { id: outcome.handoff.pipelineRunId })}` : ""}
                   </p>
-                  <pre className="max-h-72 overflow-auto rounded-md bg-app/60 p-2 text-12 leading-snug">
+                  <pre className="max-h-72 overflow-auto rounded-md bg-sunken p-2 text-12 leading-snug">
                     {JSON.stringify(outcome.handoff.payload ?? {}, null, 2)}
                   </pre>
                 </div>

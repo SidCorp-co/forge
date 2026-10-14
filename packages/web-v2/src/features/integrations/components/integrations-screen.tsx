@@ -70,7 +70,7 @@ function AddConnection({ projects }: { projects: Array<{ id: string; slug: strin
               <li key={p.id}>
                 <Link
                   href={`/projects/${p.slug}/settings?tab=connections#integrations`}
-                  className="block py-2 text-13 font-semibold text-fg hover:text-accent"
+                  className="block py-2 text-13 font-semibold text-fg hover:text-accent-text"
                   onClick={() => setOpen(false)}
                 >
                   {p.name}

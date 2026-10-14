@@ -43,7 +43,7 @@ export function OperatorShell({
   const initials = initialWhoami.email.slice(0, 2).toUpperCase() || "OP";
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-app">
+    <div className="flex h-dvh overflow-hidden bg-shell">
       {!lostAdmin && (
         <div className="hidden h-full md:block">
           <NavRail
@@ -65,7 +65,7 @@ export function OperatorShell({
           </div>
         )}
 
-        <main className="min-h-0 flex-1 overflow-y-auto p-6">{children}</main>
+        <main className="min-h-0 flex-1 overflow-y-auto bg-app p-6">{children}</main>
       </div>
     </div>
   );
