@@ -3175,6 +3175,11 @@
 ### Fixed
 
 - **A session's message count no longer reads 0 for work it never recorded.** Master and run sessions keep no transcript here, so they show no count; every other session shows its real length, the same in list and detail. (ISS-1241)
+
+- **The API reference page shows each operation's permission or door.** Sign-in, pairing and invitation routes are shown with no bearer, and a route no longer lists refusals from a gate registered after it. Flow steps read as sentences. (ISS-1371)
+
+- **The biome schemas follow the pinned CLI.** Three `biome.json` files named 2.5.14 against a CLI at 2.5.15; the CLI is now pinned exactly and a test holds the schemas to it. (ISS-1371)
+
 - **Three small repairs on API Tokens and Agents.** A project name in the Level pill reads on one line, the Agents project hint is a sentence, and each row's "Self" button is "Edit self". (ISS-1264)
 
 - **Settings pages are flat, and notices read cleanly.** Pipeline, Runners and Integrations use hairline rows; an empty weekly-reading field is marked; a half-saved page ends its reason with a stop; a phone toast no longer shifts the page. (ISS-1262)
