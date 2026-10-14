@@ -31,9 +31,11 @@ function closedMeansShipped(shape: LandingShape | null, held?: MergeMarkKind): s
  * `closed` are entered only by an issue whose merge is recorded, as this project's shape records
  * one. Recording it moves no status. Null where the merge stands.
  *
- * A mark that is a design approval's stamp alone (`design-delivery.ts:designOnlyMarkSql`) stands for
- * the `design_delivered` close and never for `awaiting_release`: that status waits for a release, and
- * no release carries a design-only issue (`release-batch/create.ts:withoutDesignOnly`, REQ-45 BC-4).
+ * On a project that lands through git, a mark that is a design approval's stamp alone — no commit,
+ * no landing, no paths (`merge-record.ts:designOnlyStamp`, `design-delivery.ts:designOnlyMarkSql`) —
+ * stands for the `design_delivered` close and never for `awaiting_release`: that status waits for a
+ * release, and no release carries a design-only issue (`release-batch/create.ts:withoutDesignOnly`,
+ * REQ-45 BC-4). Outside git the approval writes a landing, which is where that work landed.
  * Taken as a merge there, the approval of a design an issue drew passed a code carrier on to the
  * release before any code was marked (ISS-526, forge-dev, 2026-10-14). Refused by name.
  */
@@ -49,7 +51,9 @@ export async function mergeNotRecorded(
   const code = args.to === 'closed' ? 'CLOSE_REQUIRES_SHIPPED' : 'MERGE_NOT_RECORDED';
   const evidence = await readLandingEvidence(executor, args.issueId);
   if (evidence && !landingShortfall(evidence.columns, evidence.shape)) {
-    return args.to === 'awaiting_release' ? await designStampOnly(executor, args.issueId) : null;
+    return args.to === 'awaiting_release' && evidence.shape === 'git'
+      ? await designStampOnly(executor, args.issueId)
+      : null;
   }
   if (!evidence || evidence.shape === 'git') {
     return {
