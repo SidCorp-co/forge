@@ -126,10 +126,15 @@ for (const table of document.querySelectorAll("table")) {
   if (max > 1) scrolling.push(label + ": " + max + "px");
   bodyRows[label] = table.querySelectorAll("tbody tr[data-index]").length || table.querySelectorAll("tbody tr").length;
   for (const pill of table.querySelectorAll("tbody span.rounded-pill")) {
-    const range = document.createRange();
-    range.selectNodeContents(pill);
     const text = pill.textContent.trim();
-    pillLines[text] = Math.max(pillLines[text] || 0, new Set(Array.from(range.getClientRects(), (r) => Math.round(r.top))).size);
+    const tops = new Set();
+    const walker = document.createTreeWalker(pill, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      for (const r of range.getClientRects()) tops.add(Math.round(r.top));
+    }
+    pillLines[text] = Math.max(pillLines[text] || 0, tops.size);
     scroller.scrollLeft = 0;
     const at = pill.getBoundingClientRect();
     const view = scroller.getBoundingClientRect();

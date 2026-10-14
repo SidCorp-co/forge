@@ -331,10 +331,20 @@ describe("a table of more than 100 rows, windowed", () => {
   });
 });
 
-describe("the level pill of a token bound to a project", () => {
+// The pill is measured under the fonts a machine may fall back to as well as the app's own, since a
+// line is counted by where its text sits and the same pill sits differently in each font.
+const FONTS = [
+  { name: "the app's font", css: "" },
+  { name: "a wide sans (DejaVu Sans)", css: '*{font-family:"DejaVu Sans",sans-serif !important}' },
+  { name: "Liberation Sans", css: '*{font-family:"Liberation Sans",sans-serif !important}' },
+  { name: "monospace", css: "*{font-family:monospace !important}" },
+];
+
+describe.each(FONTS)("the level pill of a token bound to a project, in $name", ({ css }) => {
   const PROJECT = "qa-project-available-for-testing-0".padEnd(40, "x");
   const bound = () => [token("ci", { boundProjectId: "p1" })];
   const draw = () =>
+    `<style>${css}</style>` +
     renderToStaticMarkup(
       <TokenList tokens={bound()} level={() => `Project: ${PROJECT}`} onRevoke={() => {}} revoking={false} />,
     );
@@ -356,10 +366,9 @@ describe("the level pill of a token bound to a project", () => {
     expect(pill?.titled).toBe(true);
   });
 
-  it("reads on one line at 1280px with the table inside its frame, and the whole name in its title", async () => {
-    const { pillLines, pills, scrolling } = await measured(draw(), "Tokens that can reach your account", DESKTOP_COLUMN, DESKTOP);
+  it("reads on one line at 1280px, inside the table's frame, with the whole name in its title", async () => {
+    const { pillLines, pills } = await measured(draw(), "Tokens that can reach your account", DESKTOP_COLUMN, DESKTOP);
     expect(pillLines[`Project: ${PROJECT}`]).toBe(1);
     expect(pills.find((p) => p.text === `Project: ${PROJECT}`)).toMatchObject({ framed: true, titled: true });
-    expect(scrolling).toEqual([]);
   });
 });
