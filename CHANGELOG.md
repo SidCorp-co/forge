@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.233] - 2026-10-14
+
+A release page opened by its version number loads again
+
+### Fixed
+
+- **A release page opened by its version loads again.** `/releases/0.1.0` and its like no longer answer 401: core stops reading the version's trailing digits as a file extension.
+
 ## [0.4.0-dev.232] - 2026-10-13
 
 Web leaves Next.js for a Vite SPA served by core, plus five web fixes
