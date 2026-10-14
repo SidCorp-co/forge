@@ -1,11 +1,11 @@
 import { posix } from 'node:path';
 import ts from 'typescript';
 import {
-  bindingNames,
   type Ev,
   type FileFacts,
   type FnInfo,
   identifiersIn,
+  isNamedPath,
   type LiteralValue,
   merged,
   mergeInto,
@@ -482,14 +482,18 @@ export class Model extends Scopes {
     if (ts.isIdentifier(name)) return this.put(map, name.text, ev);
     let changed = false;
     if (ts.isArrayBindingPattern(name)) {
-      const element = this.anyMember(ev);
-      for (const id of bindingNames(name)) changed = this.put(map, id, element) || changed;
+      for (const el of name.elements) {
+        if (ts.isOmittedExpression(el)) continue;
+        let sub = el.dotDotDotToken ? ev : this.anyMember(ev);
+        if (el.initializer) sub = merged(sub, this.eval(el.initializer, file));
+        changed = this.bind(map, el.name, sub, file) || changed;
+      }
       return changed;
     }
     for (const el of name.elements) {
       const keyNode = el.propertyName ?? el.name;
       let sub: Ev;
-      if (el.dotDotDotToken) sub = this.anyMember(ev);
+      if (el.dotDotDotToken) sub = ev;
       else if (ts.isIdentifier(keyNode) || ts.isStringLiteralLike(keyNode)) {
         sub = this.prop(ev, keyNode.text);
       } else sub = this.anyMember(ev);
@@ -498,13 +502,4 @@ export class Model extends Scopes {
     }
     return changed;
   }
-}
-
-/** `f`, `a.b.c`, `a['b']`: a callee read by name, not through another call. */
-function isNamedPath(node: ts.Expression): boolean {
-  let current = node;
-  while (ts.isPropertyAccessExpression(current) || ts.isElementAccessExpression(current)) {
-    current = unwrap(current.expression);
-  }
-  return ts.isIdentifier(current);
 }

@@ -389,3 +389,12 @@ export function merged(a: Ev, b: Ev): Ev {
   mergeInto(out, b);
   return out;
 }
+
+/** `f`, `a.b.c`, `a['b']`: a callee read by name, not through another call. */
+export function isNamedPath(node: ts.Expression): boolean {
+  let current = node;
+  while (ts.isPropertyAccessExpression(current) || ts.isElementAccessExpression(current)) {
+    current = unwrap(current.expression);
+  }
+  return ts.isIdentifier(current);
+}

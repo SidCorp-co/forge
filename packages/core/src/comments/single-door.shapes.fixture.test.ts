@@ -463,4 +463,23 @@ describe('a table that arrives some way later than where it is named', () => {
     ].join('\n');
     expect(found(source)).toEqual(['pipeline/planted.ts:4 write', 'pipeline/planted.ts:6 write']);
   });
+
+  it('finds the table in what an object or array rest binding keeps of its source', () => {
+    const source = [
+      "import { comments } from '../db/schema.js';",
+      'export const go = async (db: any) => {',
+      '  const { ...rest } = { table: comments };',
+      '  await db.delete(rest.table);',
+      '  const [, ...others] = [comments, comments];',
+      '  await db.delete(others[0]);',
+      '  const [...all] = [comments];',
+      '  await db.delete(all.at(0));',
+      '};',
+    ].join('\n');
+    expect(found(source)).toEqual([
+      'pipeline/planted.ts:4 write',
+      'pipeline/planted.ts:6 write',
+      'pipeline/planted.ts:8 unresolved',
+    ]);
+  });
 });
