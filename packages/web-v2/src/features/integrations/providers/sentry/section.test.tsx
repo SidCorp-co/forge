@@ -261,6 +261,32 @@ describe("before an integration exists", () => {
   });
 });
 
+describe("asking for the list again", () => {
+  it("reads it again on a second press with the credential unchanged, after a first answer that failed", async () => {
+    bound = false;
+    listing = new ApiError(424, "sentry: Sentry answered HTTP 503", "SENTRY_REFUSED");
+    mount();
+    await settled();
+    fireEvent.change(screen.getByPlaceholderText("logs.canawan.com"), {
+      target: { value: "logs.canawan.com" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("sntryu_…"), {
+      target: { value: "sntryu_a_token_value" },
+    });
+    const load = screen.getByRole("button", { name: "Load projects from Sentry" });
+
+    fireEvent.click(load);
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent("Sentry answered HTTP 503"),
+    );
+    listing = LISTED;
+    fireEvent.click(load);
+
+    await screen.findByLabelText("Sentry project for target 1");
+    expect(calls.filter((c) => c.path.endsWith("/sentry/projects"))).toHaveLength(2);
+  });
+});
+
 describe("saving", () => {
   it("sends this project's targets alone when the host is unchanged", async () => {
     mount();

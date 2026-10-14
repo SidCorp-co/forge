@@ -261,6 +261,37 @@ describe('what a project could resolve before still resolves', () => {
 });
 
 describe('a binding that already holds its own targets', () => {
+  it('keeps an explicitly empty list, which resolved no target before and must resolve none after', async () => {
+    const conn = await aConnection({
+      host: 'logs.canawan.com',
+      targets: [target('a'), target('b')],
+    });
+    const binding = await aBinding(conn, { targets: [] });
+
+    await migrate();
+
+    expect(
+      await configOf('integration_bindings', binding.id),
+      'an empty binding list overrode the connection list; copying it in would grant reads the binding never declared',
+    ).toEqual({ targets: [] });
+    expect(await configOf('integration_connections', conn)).toEqual({ host: 'logs.canawan.com' });
+  });
+
+  it('still lets an empty list inherit the legacy default target it never overrode', async () => {
+    const conn = await aConnection({
+      host: 'logs.canawan.com',
+      organizationSlug: 'canawan',
+      projectSlug: 'web',
+    });
+    const binding = await aBinding(conn, { targets: [] });
+
+    await migrate();
+
+    expect(await configOf('integration_bindings', binding.id)).toEqual({
+      targets: [{ label: 'default', organizationSlug: 'canawan', projectSlug: 'web' }],
+    });
+  });
+
   it('keeps them, and the connection copy it overrode is removed', async () => {
     const conn = await aConnection({ host: 'logs.canawan.com', targets: [target('old')] });
     const first = await aBinding(conn, { targets: [target('mine')] });

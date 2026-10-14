@@ -9,9 +9,12 @@
 -- DATA ONLY. No DDL, no snapshot: `integration_connections.config` and `integration_bindings.config`
 -- are jsonb, and the only rows touched are Sentry's.
 --
--- WHICH BINDING GETS THEM. A binding that already holds its own non-empty `targets` was never reading
--- the connection's (the binding's wins in `effectiveConfig`), so it is left as it is. The bindings
--- WITHOUT their own are the ones inheriting; where some are active only those count. Then:
+-- WHICH BINDING GETS THEM. A binding that already holds its own `targets` key was never reading the
+-- connection's list (the binding's wins in `effectiveConfig`, and an explicitly EMPTY list wins too:
+-- that binding resolved none), so it is left as it is. The bindings WITHOUT one are the ones
+-- inheriting; where some are active only those count. The one exception is the legacy pair below,
+-- which an empty `targets: []` on the binding did NOT override, so there an empty list still inherits.
+-- Then:
 --   exactly one inheriting binding  -> the connection's targets move onto it.
 --   no binding inheriting, some exist (every one holds its own) -> the connection's copy was overridden
 --                                       everywhere; it is removed, and a NOTICE says so.
@@ -82,11 +85,11 @@ BEGIN
       SELECT coalesce(array_agg(b.id ORDER BY b.created_at, b.id), ARRAY[]::uuid[]) INTO inheriting
         FROM integration_bindings b
        WHERE b.connection_id = conn.id
-         AND NOT (CASE WHEN jsonb_typeof(b.config -> 'targets') = 'array' THEN jsonb_array_length(b.config -> 'targets') ELSE 0 END > 0)
+         AND NOT (CASE WHEN jsonb_typeof(b.config -> 'targets') = 'array' THEN (has_targets OR jsonb_array_length(b.config -> 'targets') > 0) ELSE false END)
          AND (b.active OR NOT EXISTS (
                SELECT 1 FROM integration_bindings a
                 WHERE a.connection_id = conn.id AND a.active
-                  AND NOT (CASE WHEN jsonb_typeof(a.config -> 'targets') = 'array' THEN jsonb_array_length(a.config -> 'targets') ELSE 0 END > 0)));
+                  AND NOT (CASE WHEN jsonb_typeof(a.config -> 'targets') = 'array' THEN (has_targets OR jsonb_array_length(a.config -> 'targets') > 0) ELSE false END)));
 
       IF cardinality(inheriting) > 1 OR total_bindings = 0 THEN
         SELECT string_agg(format('binding %s (project %s, %s)', b.id, b.project_id,

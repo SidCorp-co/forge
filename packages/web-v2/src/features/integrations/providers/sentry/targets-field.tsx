@@ -169,7 +169,7 @@ export function SentryTargetsField({
           {!integrationId && (
             <Button
               variant="secondary"
-              onClick={onRequestList}
+              onClick={() => (listRequested ? listing.refetch() : onRequestList())}
               disabled={!typedCredential || listing.isFetching}
             >
               Load projects from Sentry
