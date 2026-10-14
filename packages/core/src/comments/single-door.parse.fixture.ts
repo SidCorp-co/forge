@@ -9,6 +9,10 @@ export interface FnInfo {
   /** Where the name that binds it is declared: the nearest function, or the file. */
   scope: ts.Node;
   returns: ts.Expression[];
+  /** Whether a name in its scope holds it, so a call is traced into it by that name. */
+  bound: boolean;
+  /** Whether a call can reach it at all, by its name, as a property of an object or at once. */
+  named: boolean;
 }
 
 export interface NsValue {
@@ -63,6 +67,7 @@ export interface FileFacts {
   declarations: ts.VariableDeclaration[];
   assignments: ts.BinaryExpression[];
   fns: FnInfo[];
+  paramDefaults: ts.ParameterDeclaration[];
   calls: ts.CallExpression[];
   refs: ts.Node[];
   strings: ts.LiteralLikeNode[];
@@ -183,6 +188,7 @@ function parseFresh(file: string, text: string): FileFacts {
     declarations: [],
     assignments: [],
     fns: [],
+    paramDefaults: [],
     calls: [],
     refs: [],
     strings: [],
@@ -190,16 +196,38 @@ function parseFresh(file: string, text: string): FileFacts {
     types: new Map(),
   };
 
-  const addFn = (name: string, node: ts.FunctionLikeDeclaration, declared: ts.Node): void => {
-    const fn: FnInfo = {
+  const addFn = (
+    name: string,
+    node: ts.FunctionLikeDeclaration,
+    declared: ts.Node,
+    how: { bound: boolean; named: boolean },
+  ): void => {
+    facts.fns.push({
       kind: 'fn',
       file,
       name,
       node,
       scope: scopeAbove(declared),
       returns: collectReturns(node),
-    };
-    facts.fns.push(fn);
+      ...how,
+    });
+  };
+
+  const addFunctionLike = (node: ts.FunctionLikeDeclaration): void => {
+    if (ts.isFunctionDeclaration(node)) {
+      addFn(node.name?.text ?? 'default', node, node, { bound: true, named: true });
+      if (node.name) facts.ownNames.add(node.name.text);
+      return;
+    }
+    const parent = outerParent(node);
+    if (ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)) {
+      addFn(parent.name.text, node, parent, { bound: true, named: true });
+    } else if (ts.isPropertyAssignment(parent) || ts.isObjectLiteralExpression(node.parent)) {
+      const name = ts.isPropertyAssignment(parent) ? parent.name : node.name;
+      addFn(name?.getText() ?? 'member', node, node, { bound: false, named: true });
+    } else if (ts.isCallExpression(parent) && unwrap(parent.expression) === node) {
+      addFn('(anonymous)', node, node, { bound: false, named: true });
+    } else addFn('(anonymous)', node, node, { bound: false, named: false });
   };
 
   for (const statement of sf.statements) {
@@ -238,16 +266,20 @@ function parseFresh(file: string, text: string): FileFacts {
     if (ts.isInterfaceDeclaration(node)) facts.types.set(node.name.text, node);
     if (ts.isTypeAliasDeclaration(node)) facts.types.set(node.name.text, node.type);
     if (ts.isTypeNode(node)) return;
-    if (ts.isFunctionDeclaration(node)) {
-      addFn(node.name?.text ?? 'default', node, node);
-      if (node.name) facts.ownNames.add(node.name.text);
+    if (
+      ts.isFunctionDeclaration(node) ||
+      ts.isFunctionExpression(node) ||
+      ts.isArrowFunction(node) ||
+      ts.isMethodDeclaration(node)
+    ) {
+      addFunctionLike(node);
+    } else if (ts.isClassDeclaration(node) && node.name) {
+      facts.ownNames.add(node.name.text);
+    } else if (ts.isParameter(node) && node.initializer) {
+      facts.paramDefaults.push(node);
     } else if (ts.isVariableDeclaration(node)) {
       facts.declarations.push(node);
       for (const n of bindingNames(node.name)) facts.ownNames.add(n);
-      const init = node.initializer && unwrap(node.initializer);
-      if (ts.isIdentifier(node.name) && init && isFunctionExpression(init)) {
-        addFn(node.name.text, init, node);
-      }
     } else if (
       ts.isBinaryExpression(node) &&
       node.operatorToken.kind === ts.SyntaxKind.EqualsToken
@@ -284,10 +316,76 @@ export function parse(file: string, text: string): FileFacts {
   return facts;
 }
 
+/** The node that holds this one once parentheses and type assertions are looked through. */
+function outerParent(node: ts.Node): ts.Node {
+  let parent = node.parent;
+  while (
+    ts.isParenthesizedExpression(parent) ||
+    ts.isAsExpression(parent) ||
+    ts.isNonNullExpression(parent) ||
+    ts.isSatisfiesExpression(parent)
+  ) {
+    parent = parent.parent;
+  }
+  return parent;
+}
+
 /** The nearest function, or the file, that holds a node. */
 export function scopeAbove(node: ts.Node): ts.Node {
   for (let n: ts.Node | undefined = node.parent; n; n = n.parent) {
     if (ts.isFunctionLike(n) || ts.isSourceFile(n)) return n;
   }
   return node;
+}
+
+/**
+ * Whether `type`, read in the file `facts` describes, gives the member reached by `path` a primitive
+ * type, so a property of a parameter is a string or a number and cannot be a table.
+ */
+export function primitiveMember(
+  facts: FileFacts,
+  type: ts.TypeNode | undefined,
+  path: readonly string[],
+): boolean {
+  let current: ts.TypeNode | ts.InterfaceDeclaration | undefined = type;
+  for (const name of path) {
+    let members: readonly ts.TypeElement[] | undefined;
+    for (let depth = 0; current && depth < 8 && !members; depth++) {
+      if (ts.isTypeLiteralNode(current) || ts.isInterfaceDeclaration(current)) {
+        members = current.members;
+      } else if (ts.isTypeReferenceNode(current) && ts.isIdentifier(current.typeName)) {
+        current = facts.types.get(current.typeName.text);
+      } else if (ts.isParenthesizedTypeNode(current)) current = current.type;
+      else return false;
+    }
+    const member = members?.find(
+      (m): m is ts.PropertySignature =>
+        ts.isPropertySignature(m) &&
+        !!m.name &&
+        (ts.isIdentifier(m.name) || ts.isStringLiteralLike(m.name)) &&
+        m.name.text === name,
+    );
+    current = member?.type;
+  }
+  return !!current && isPrimitiveType(current);
+}
+
+export const none = (): Ev => ({ values: new Set(), unknown: null });
+export const unknownBecause = (why: string): Ev => ({ values: new Set(), unknown: why });
+
+export function identifiersIn(node: ts.Node, out: string[] = []): string[] {
+  if (ts.isIdentifier(node)) out.push(node.text);
+  else ts.forEachChild(node, (child) => void identifiersIn(child, out));
+  return out;
+}
+
+export function mergeInto(into: Ev, from: Ev): void {
+  for (const v of from.values) into.values.add(v);
+  into.unknown ??= from.unknown;
+}
+
+export function merged(a: Ev, b: Ev): Ev {
+  const out = { values: new Set(a.values), unknown: a.unknown };
+  mergeInto(out, b);
+  return out;
 }

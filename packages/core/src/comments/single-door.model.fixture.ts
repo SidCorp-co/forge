@@ -5,23 +5,24 @@ import {
   type Ev,
   type FileFacts,
   type FnInfo,
-  isFunctionExpression,
-  isPrimitiveType,
+  identifiersIn,
   type LiteralValue,
+  merged,
+  mergeInto,
   type NsValue,
-  type ParamRef,
+  none,
   parse,
+  primitiveMember,
   scopeAbove,
   TABLE,
+  unknownBecause,
   unwrap,
   type Value,
 } from './single-door.parse.fixture.js';
+import { Scopes } from './single-door.scope.fixture.js';
 
 /** Drizzle's wrappers that hand back the table they were given, under another name. */
 const ALIASING = new Set(['alias', 'aliasedTable']);
-
-const none = (): Ev => ({ values: new Set(), unknown: null });
-const unknownBecause = (why: string): Ev => ({ values: new Set(), unknown: why });
 
 /**
  * What the sources name the comments table, followed to a fixed point: the export declared as
@@ -30,18 +31,18 @@ const unknownBecause = (why: string): Ev => ({ values: new Set(), unknown: why }
  * and the functions that return it. What it cannot follow it reports as `unknown`, with the reason,
  * so the caller refuses it by name and never reads it as "not the table".
  */
-export class Model {
+export class Model extends Scopes {
   readonly facts = new Map<string, FileFacts>();
-  readonly fnByNode = new Map<ts.Node, FnInfo>();
-  /** What each name holds, per scope: the source file for module level, else the function. */
-  private readonly env = new Map<ts.Node, Map<string, Ev>>();
   private readonly exp = new Map<string, Map<string, Ev>>();
   private readonly namespaces = new Map<string, NsValue>();
   private readonly visiting = new Set<FnInfo>();
   private readonly literals = new Map<ts.Node, LiteralValue>();
   private readonly reading = new Set<ts.Node>();
+  /** What is stored into an object or array after it is written: by key, and `*` for any key. */
+  private readonly assigned = new Map<LiteralValue, Map<string, Ev>>();
 
   constructor(sources: ReadonlyMap<string, string>) {
+    super();
     for (const [file, text] of sources) {
       const facts = parse(file, text);
       this.facts.set(file, facts);
@@ -65,80 +66,9 @@ export class Model {
     return [...ev.values].filter((v): v is FnInfo => v.kind === 'fn');
   }
 
-  private envOf(scope: ts.Node): Map<string, Ev> {
-    let held = this.env.get(scope);
-    if (!held) {
-      held = new Map();
-      this.env.set(scope, held);
-    }
-    return held;
-  }
-
-  private paramIn(fn: ts.SignatureDeclaration, name: string): ParamRef | null {
-    const params = fn.parameters;
-    for (let i = 0; i < params.length; i++) {
-      const p = params[i] as ts.ParameterDeclaration;
-      if (ts.isIdentifier(p.name)) {
-        if (p.name.text !== name) continue;
-        const type = p.type;
-        const primitive = !!type && isPrimitiveType(type);
-        return {
-          fn: this.fnByNode.get(fn) ?? null,
-          index: p.dotDotDotToken ? -1 : i,
-          primitive,
-          type,
-        };
-      }
-      if (bindingNames(p.name).includes(name)) {
-        return { fn: null, index: -1, primitive: false, type: undefined };
-      }
-    }
-    return null;
-  }
-
-  /** What a name means where it is used: the innermost scope declaring it decides. */
-  private lookup(id: ts.Identifier): { param: ParamRef | null; ev: Ev | null } {
-    for (let n: ts.Node | undefined = id.parent; n; n = n.parent) {
-      if (ts.isSourceFile(n)) return { param: null, ev: this.env.get(n)?.get(id.text) ?? null };
-      if (!ts.isFunctionLike(n)) continue;
-      const param = this.paramIn(n, id.text);
-      const ev = this.env.get(n)?.get(id.text) ?? null;
-      if (param || ev) return { param, ev };
-    }
-    return { param: null, ev: null };
-  }
-
-  /**
-   * Whether `type`, read in `file`, gives the member reached by `path` a primitive type, so a
-   * property of a parameter is a string or a number and cannot be a table.
-   */
   primitiveMember(type: ts.TypeNode | undefined, path: readonly string[], file: string): boolean {
-    let current: ts.TypeNode | ts.InterfaceDeclaration | undefined = type;
-    for (const name of path) {
-      let members: readonly ts.TypeElement[] | undefined;
-      for (let depth = 0; current && depth < 8 && !members; depth++) {
-        if (ts.isTypeLiteralNode(current) || ts.isInterfaceDeclaration(current))
-          members = current.members;
-        else if (ts.isTypeReferenceNode(current) && ts.isIdentifier(current.typeName)) {
-          current = this.facts.get(file)?.types.get(current.typeName.text);
-        } else if (ts.isParenthesizedTypeNode(current)) current = current.type;
-        else return false;
-      }
-      const member = members?.find(
-        (m): m is ts.PropertySignature =>
-          ts.isPropertySignature(m) &&
-          !!m.name &&
-          (ts.isIdentifier(m.name) || ts.isStringLiteralLike(m.name)) &&
-          m.name.text === name,
-      );
-      current = member?.type;
-    }
-    return !!current && isPrimitiveType(current);
-  }
-
-  /** The parameter an identifier names inside the function that declares it, if it names one. */
-  paramOf(id: ts.Identifier): ParamRef | null {
-    return this.lookup(id).param;
+    const facts = this.facts.get(file);
+    return !!facts && primitiveMember(facts, type, path);
   }
 
   eval(expr: ts.Expression, file: string): Ev {
@@ -159,6 +89,15 @@ export class Model {
     if (ts.isCallExpression(node)) return this.call(node, file);
     if (ts.isObjectLiteralExpression(node) || ts.isArrayLiteralExpression(node)) {
       return { values: new Set<Value>([this.literal(node, file)]), unknown: null };
+    }
+    if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
+      const fn = this.fnByNode.get(node);
+      return fn ? { values: new Set<Value>([fn]), unknown: null } : none();
+    }
+    if (ts.isNewExpression(node) && ts.isIdentifier(node.expression)) {
+      return this.facts.get(file)?.ownNames.has(node.expression.text)
+        ? unknownBecause(`an instance of \`${node.expression.text}\``)
+        : none();
     }
     if (node.kind === ts.SyntaxKind.ThisKeyword) return unknownBecause('`this`');
     return none();
@@ -205,8 +144,15 @@ export class Model {
       if (v.kind === 'ns') {
         const held = this.exp.get(v.file)?.get(name);
         if (held) mergeInto(out, held);
-      } else if (v.kind === 'literal' && ts.isObjectLiteralExpression(v.node)) {
-        mergeInto(out, this.property(v.node, v.file, name));
+      } else if (v.kind === 'literal') {
+        if (ts.isObjectLiteralExpression(v.node)) {
+          mergeInto(out, this.property(v.node, v.file, name));
+        }
+        const added = this.assigned.get(v);
+        for (const key of [name, '*']) {
+          const held = added?.get(key);
+          if (held) mergeInto(out, held);
+        }
       }
     }
     return out;
@@ -218,7 +164,10 @@ export class Model {
     for (const v of base.values) {
       if (v.kind === 'ns')
         for (const held of this.exp.get(v.file)?.values() ?? []) mergeInto(out, held);
-      else if (v.kind === 'literal') mergeInto(out, this.members(v));
+      else if (v.kind === 'literal') {
+        mergeInto(out, this.members(v));
+        for (const held of this.assigned.get(v)?.values() ?? []) mergeInto(out, held);
+      }
     }
     return out;
   }
@@ -234,6 +183,7 @@ export class Model {
         mergeInto(out, this.anyMember(this.eval(item.expression, v.file)));
       } else if (ts.isPropertyAssignment(item)) mergeInto(out, this.eval(item.initializer, v.file));
       else if (ts.isShorthandPropertyAssignment(item)) mergeInto(out, this.eval(item.name, v.file));
+      else if (ts.isMethodDeclaration(item)) mergeInto(out, this.method(item));
       else if (ts.isExpression(item) && !ts.isOmittedExpression(item))
         mergeInto(out, this.eval(item, v.file));
     }
@@ -250,6 +200,8 @@ export class Model {
         mergeInto(out, this.prop(this.eval(item.expression, file), name));
       } else if (ts.isShorthandPropertyAssignment(item)) {
         if (item.name.text === name) mergeInto(out, this.eval(item.name, file));
+      } else if (ts.isMethodDeclaration(item)) {
+        if (item.name.getText() === name) mergeInto(out, this.method(item));
       } else if (ts.isPropertyAssignment(item)) {
         if (ts.isComputedPropertyName(item.name)) {
           mergeInto(out, unknownBecause('an object with a computed key'));
@@ -263,6 +215,11 @@ export class Model {
     }
     this.reading.delete(node);
     return out;
+  }
+
+  private method(node: ts.MethodDeclaration): Ev {
+    const fn = this.fnByNode.get(node);
+    return fn ? { values: new Set<Value>([fn]), unknown: null } : none();
   }
 
   /** Whether a call enters a function the scan holds the source of. */
@@ -291,13 +248,11 @@ export class Model {
     const held = this.eval(callee, file);
     const fns = this.fnsOf(held);
     if (fns.length === 0) {
-      const own = ts.isIdentifier(callee) && this.facts.get(file)?.ownNames.has(callee.text);
-      if (own || held.unknown?.startsWith('`this`')) {
-        return unknownBecause(
-          `the result of \`${callee.getText().slice(0, 40)}(...)\`, a call the scan cannot enter`,
-        );
-      }
-      return none();
+      return this.entersNothing(callee, held, file)
+        ? unknownBecause(
+            `the result of \`${callee.getText().slice(0, 40)}(...)\`, a call the scan cannot enter`,
+          )
+        : none();
     }
     const out = none();
     for (const fn of fns) {
@@ -307,6 +262,21 @@ export class Model {
       this.visiting.delete(fn);
     }
     return out;
+  }
+
+  /**
+   * Whether the result of a call the scan cannot enter may still be a table: the call is on a name
+   * or an object the sources declare. A method of a parameter is the caller's object, and a table it
+   * holds arrives as the parameter.
+   */
+  private entersNothing(callee: ts.Expression, held: Ev, file: string): boolean {
+    if (ts.isIdentifier(callee)) return !!this.facts.get(file)?.ownNames.has(callee.text);
+    if (!ts.isPropertyAccessExpression(callee) && !ts.isElementAccessExpression(callee)) {
+      return false;
+    }
+    const base = this.eval(callee.expression, file);
+    const built = [...base.values].some((v) => v.kind === 'literal' || v.kind === 'ns');
+    return built || (!!held.unknown && !held.unknown.startsWith('the parameter'));
   }
 
   private ns(file: string): NsValue {
@@ -329,27 +299,6 @@ export class Model {
     return null;
   }
 
-  private put(map: Map<string, Ev>, key: string, ev: Ev): boolean {
-    let held = map.get(key);
-    if (!held) {
-      held = none();
-      map.set(key, held);
-    }
-    const before = held.values.size + (held.unknown ? 1 : 0);
-    mergeInto(held, ev);
-    return held.values.size + (held.unknown ? 1 : 0) !== before;
-  }
-
-  /** The scope an assigned name belongs to: the one declaring it, else the nearest function. */
-  private scopeDeclaring(id: ts.Identifier, sf: ts.SourceFile): ts.Node {
-    for (let n: ts.Node | undefined = id.parent; n; n = n.parent) {
-      if (!ts.isFunctionLike(n) && !ts.isSourceFile(n)) continue;
-      if (this.env.get(n)?.has(id.text)) return n;
-      if (ts.isFunctionLike(n) && this.paramIn(n, id.text)) return n;
-    }
-    return sf;
-  }
-
   private step(f: FileFacts): boolean {
     const env = this.envOf(f.sf);
     const exp = this.exp.get(f.file) as Map<string, Ev>;
@@ -370,12 +319,18 @@ export class Model {
     }
 
     for (const fn of f.fns) {
-      put(this.envOf(fn.scope), fn.name, { values: new Set<Value>([fn]), unknown: null });
+      if (fn.bound) {
+        put(this.envOf(fn.scope), fn.name, { values: new Set<Value>([fn]), unknown: null });
+      }
+    }
+
+    for (const p of f.paramDefaults) {
+      const given = this.eval(p.initializer as ts.Expression, f.file);
+      changed = this.bind(this.envOf(p.parent), p.name, given, f.file) || changed;
     }
 
     for (const d of f.declarations) {
       const init = d.initializer && unwrap(d.initializer);
-      if (init && ts.isIdentifier(d.name) && isFunctionExpression(init)) continue;
       const loop = d.parent.parent;
       const iterated = ts.isForOfStatement(loop)
         ? this.anyMember(this.eval(loop.expression, f.file))
@@ -392,8 +347,22 @@ export class Model {
         for (const id of identifiersIn(left)) {
           put(this.envOf(scopeAbove(a)), id, unknownBecause('a destructuring assignment'));
         }
+      } else if (ts.isPropertyAccessExpression(left) || ts.isElementAccessExpression(left)) {
+        const key = ts.isPropertyAccessExpression(left)
+          ? left.name.text
+          : ts.isStringLiteralLike(left.argumentExpression)
+            ? left.argumentExpression.text
+            : '*';
+        const stored = this.store(
+          this.eval(left.expression, f.file),
+          key,
+          this.eval(a.right, f.file),
+        );
+        changed = stored || changed;
       }
     }
+
+    for (const call of f.calls) changed = this.mutation(call, f.file) || changed;
 
     if (f.defaultExpr) put(exp, 'default', this.eval(f.defaultExpr, f.file));
     for (const [local, as] of f.exportedLocals) {
@@ -418,6 +387,44 @@ export class Model {
     return changed;
   }
 
+  /** Records what is written into every object or array `base` can be. */
+  private store(base: Ev, key: string, ev: Ev): boolean {
+    let changed = false;
+    for (const v of base.values) {
+      if (v.kind !== 'literal') continue;
+      let held = this.assigned.get(v);
+      if (!held) {
+        held = new Map();
+        this.assigned.set(v, held);
+      }
+      changed = this.put(held, key, ev) || changed;
+    }
+    return changed;
+  }
+
+  /** `list.push(t)`, `Object.assign(box, { t })`: a call that stores into an object it is given. */
+  private mutation(call: ts.CallExpression, file: string): boolean {
+    const callee = unwrap(call.expression);
+    if (!ts.isPropertyAccessExpression(callee)) return false;
+    const [target, ...rest] = call.arguments;
+    const assign =
+      ts.isIdentifier(callee.expression) &&
+      callee.expression.text === 'Object' &&
+      callee.name.text === 'assign';
+    let changed = false;
+    if (assign && target) {
+      for (const source of rest) {
+        const given = this.anyMember(this.eval(source, file));
+        changed = this.store(this.eval(target, file), '*', given) || changed;
+      }
+    } else if (['push', 'unshift', 'splice', 'fill', 'set'].includes(callee.name.text)) {
+      const into = this.eval(callee.expression, file);
+      for (const arg of call.arguments)
+        changed = this.store(into, '*', this.eval(arg, file)) || changed;
+    }
+    return changed;
+  }
+
   private bind(map: Map<string, Ev>, name: ts.BindingName, ev: Ev, file: string): boolean {
     if (ts.isIdentifier(name)) return this.put(map, name.text, ev);
     let changed = false;
@@ -438,21 +445,4 @@ export class Model {
     }
     return changed;
   }
-}
-
-function identifiersIn(node: ts.Node, out: string[] = []): string[] {
-  if (ts.isIdentifier(node)) out.push(node.text);
-  else ts.forEachChild(node, (child) => void identifiersIn(child, out));
-  return out;
-}
-
-function mergeInto(into: Ev, from: Ev): void {
-  for (const v of from.values) into.values.add(v);
-  into.unknown ??= from.unknown;
-}
-
-function merged(a: Ev, b: Ev): Ev {
-  const out = { values: new Set(a.values), unknown: a.unknown };
-  mergeInto(out, b);
-  return out;
 }

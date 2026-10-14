@@ -85,6 +85,36 @@ const PLANTS: Plant[] = [
     at: 2,
   },
   {
+    form: 'a helper that takes the table by default',
+    plant: [
+      "import { comments } from '../db/schema.js';",
+      'function writeTo(table: unknown = comments) {',
+      '  return db.insert(table).values({});',
+      '}',
+    ].join('\n'),
+    at: 3,
+  },
+  {
+    form: 'a table stored into an object after it is written',
+    plant: [
+      "import { comments } from '../db/schema.js';",
+      'const box: { table?: unknown } = {};',
+      'box.table = comments;',
+      'await db.delete(box.table);',
+    ].join('\n'),
+    at: 4,
+  },
+  {
+    form: 'a table returned by a method and kept in a variable',
+    plant: [
+      "import { comments } from '../db/schema.js';",
+      'const registry = { pick: () => comments };',
+      'const t = registry.pick();',
+      'await db.delete(t);',
+    ].join('\n'),
+    at: 4,
+  },
+  {
     form: 'a table held by an exported constant that is a namespace',
     barrel: "import * as s from '../db/schema.js';\nexport const dbSchema = s;",
     plant: "import { dbSchema } from './barrel.js';\ndb.insert(dbSchema['comments']);",
