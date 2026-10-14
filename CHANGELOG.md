@@ -9,6 +9,19 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.240] - 2026-10-14
+
+The sidebar gets its own graphite layer, and nothing advances without its mover
+
+### Changed
+
+- **Nothing re-pins, approves or verifies by itself.** A design approval leaves requirements to their re-pin, a pin-only design revision waits for its approver, and feedback past its window waits on a triager; the release page proves only verified passes.
+- **The sidebar stands on a graphite base in both themes.** Its labels and icons read light at AA instead of mid-grey on pale grey, and the phone's nav drawer stands on the same base.
+
+### Fixed
+
+- **Status text in the sidebar and drawer reads at 4.6:1 or more.** Each status hue takes its own lighter text step on the graphite base, clearing hovered and active rows in both themes.
+
 ## [0.4.0-dev.239] - 2026-10-14
 
 Ask Agent Half floor, requirements move only by hand, verified counts and proposal diffs
