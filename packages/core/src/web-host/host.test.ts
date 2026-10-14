@@ -35,6 +35,7 @@ const ROUTES = [
   '/guides/$slug/',
   '/projects/$slug/',
   '/projects/$slug/issues/$id/',
+  '/projects/$slug/releases/$version/',
   '/s/$token/',
 ];
 
@@ -124,7 +125,14 @@ describe('the build files', () => {
 describe('the page', () => {
   it('is served for every route the web declares, params and nesting included, and is revalidated', async () => {
     const { get } = core();
-    for (const path of ['/', '/login', '/projects/hop', '/projects/hop/issues/ISS-7']) {
+    for (const path of [
+      '/',
+      '/login',
+      '/projects/hop',
+      '/projects/hop/issues/ISS-7',
+      '/projects/hop/releases/0.1.0',
+      '/projects/hop/releases/0.4.0-dev.232',
+    ]) {
       const res = await get(path);
       expect(res.status, path).toBe(200);
       expect(res.headers.get('content-type')).toBe('text/html; charset=utf-8');

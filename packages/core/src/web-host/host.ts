@@ -24,8 +24,12 @@ function publicOrigin(c: Context): string {
   return url.origin;
 }
 
-/** A file name in the last segment (`/guides/<slug>.md`, `/install.sh`) is a file, never a page. */
-const NAMES_A_FILE = /\.[A-Za-z0-9]+$/;
+/**
+ * A file name in the last segment (`/guides/<slug>.md`, `/install.sh`) is a file, never a page. An
+ * extension holds a letter: a segment ending in digits after a dot is a version (`/releases/0.1.0`,
+ * `/releases/0.4.0-dev.232`), and the release page a route declares for it is a page.
+ */
+const NAMES_A_FILE = /\.[A-Za-z0-9]*[A-Za-z][A-Za-z0-9]*$/;
 
 const isPageRequest = (c: Context, rel: string): boolean =>
   !NAMES_A_FILE.test(rel) && (c.req.header('accept')?.includes('text/html') ?? false);
