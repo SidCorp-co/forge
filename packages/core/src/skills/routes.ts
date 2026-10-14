@@ -93,7 +93,7 @@ skillSyncRoutes.post(
       throw forbidden("mode 'full' requires a project-admin device");
     }
 
-    // Meta skills (plugin channel) are Forge-owned and non-overridable — a
+    // Meta skills are Forge-owned and non-overridable — a
     // device must never author/overwrite one via this manifest push. The
     // user-token CRUD/adopt/register paths funnel through the service guard
     // (`createProjectSkill`); this device-token path writes `skills` directly,
@@ -101,7 +101,7 @@ skillSyncRoutes.post(
     const reserved = body.skills.find((s) => isMetaSkillName(s.name));
     if (reserved) {
       throw forbidden(
-        `'${reserved.name}' is a Forge meta skill delivered via the plugin channel and cannot be authored per-project`,
+        `'${reserved.name}' is a Forge-owned skill name and cannot be authored per-project`,
       );
     }
 
