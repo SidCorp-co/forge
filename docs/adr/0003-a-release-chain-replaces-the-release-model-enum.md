@@ -4,13 +4,13 @@
 
 ## Context
 
-A project declares how its code reaches production through three columns on `projects`:
-`release_model` (`none` | `promote` | `publish`), `live_branch` and `release_strategy`
-(`merge-branch` | `cherry-pick` | `tag-mr`). A fourth, `base_branch`, stands beside them and is
-read when a release is built, but is not part of the declaration — what it is, and why it is the
+Before this decision a project declared how its code reaches production through three columns on
+`projects`: `release_model` (`none` | `promote` | `publish`), `live_branch` and `release_strategy`
+(`merge-branch` | `cherry-pick` | `tag-mr`). A fourth, `base_branch`, stood beside them and was
+read when a release was built, but was not part of the declaration — what it is, and why it is the
 one of the four that stays, is under *`base_branch` is the fourth column and it stays* below.
 
-Three readings say the three are one fact spelled three ways.
+Three readings said the three were one fact spelled three ways.
 
 **The ledger already models a release as a sequence.**
 `packages/core/src/db/schema-release-ledger.ts:RELEASE_ATTEMPT_STAGES` is
@@ -18,19 +18,18 @@ Three readings say the three are one fact spelled three ways.
 `promote` row. The ledger does not run a different algorithm; the config layer above it claims two
 exist.
 
-**Two CHECK constraints exist only to stop the columns contradicting each other.**
-`packages/core/src/db/release-axes.ts` carries `release_model <> 'promote' OR live_branch IS NOT NULL`
+**Two CHECK constraints existed only to stop the columns contradicting each other.**
+`packages/core/src/db/release-axes.ts` carried `release_model <> 'promote' OR live_branch IS NOT NULL`
 and `(release_model = 'promote') = (release_strategy IS NOT NULL)`, and the project write door
-answers `LIVE_BRANCH_REQUIRED` for the same reason. A rule whose whole job is to keep two fields agreeing is a rule about a fact stored
-twice.
+answered `LIVE_BRANCH_REQUIRED` for the same reason. A rule whose whole job is to keep two fields
+agreeing is a rule about a fact stored twice.
 
-**`release_strategy` is not what it appears to be.** One site in core branches on its value —
-`packages/core/src/projects/live-reading.ts:takeLiveReading` — and it branches only to *refuse*: a
+**`release_strategy` was not what it appeared to be.** One site in core branched on its value —
+`packages/core/src/projects/live-reading.ts:takeLiveReading` — and it branched only to *refuse*: a
 `cherry-pick` project cannot be asked whether its commits reached the live branch, because the shas
-are new. Nothing anywhere executes a release according to the strategy. `merge-branch` and `tag-mr`
-are never distinguished. `tag-mr` appears in the enum, in the CHECK, and in
-`packages/web-v2/src/features/project-settings/types.ts`, and nowhere else: no behaviour, no
-document, no project.
+are new. Nothing anywhere executed a release according to the strategy. `merge-branch` and `tag-mr`
+were never distinguished. `tag-mr` appeared in the enum, in the CHECK, and in the web project
+settings types, and nowhere else: no behaviour, no document, no project.
 
 The community answer is uniform. GitLab Flow's environment branches say deployment *is* merging
 downstream, with commits flowing one way, however many environments there are. GitOps promotion

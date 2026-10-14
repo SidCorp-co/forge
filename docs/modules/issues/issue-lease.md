@@ -109,11 +109,19 @@ its own permission to read that release back, and the close loop — which marks
 run closed only on a successful read — would never terminate. A refusal whose
 condition the successful operation creates is not a loud failure; it is a wedge.
 
-## The two booleans are two questions
+## Two booleans are two questions, and a third answer is about the issue
 
 `held` is the fleet-wide fact the pool turns on. `heldByThisDevice` is what a
 box's own close loop needs, because a box that never sees its own release land
 never marks the run closed. A caller has to say which it is asking.
+
+`issueOver` is not about the lease at all: whether the issue has reached a
+terminal status. `readDeviceIssueLease` reads it off the issue and not the
+lease row, because the rows that most need it are the ones whose lease core has
+already freed (ISS-1245). It is `true`, `false` or `null`, and `null` means *not
+known to be over*: `iss_seq` restarts per project, so a request naming no
+project is answered `null` rather than tie-broken, and a box keeps its run on
+`null`.
 
 ## Two questions about work on an issue
 
