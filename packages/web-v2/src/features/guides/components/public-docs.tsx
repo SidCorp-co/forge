@@ -143,7 +143,10 @@ function DoorPage({
 }) {
   return (
     <div style={{ maxWidth: "72ch" }} className="mx-auto">
-      <PageTitle className="fg-h2 text-fg">{DOORS[audience].label}</PageTitle>
+      <div className="flex items-start justify-between gap-4">
+        <PageTitle className="fg-h2 text-fg">{DOORS[audience].label}</PageTitle>
+        <JumpToSearch />
+      </div>
       <p className="fg-body-sm mt-1.5 mb-6 text-muted">{DOORS[audience].blurb}</p>
       {audience === "agent" ? <MachineDoor docs={docs} scope={scope} /> : null}
       <ul aria-label="Pages" className="flex flex-col gap-1">
@@ -184,6 +187,27 @@ function AudienceNotice({ doc }: { doc: PublicDoc }) {
   );
 }
 
+const SEARCH_FIELD_ID = "docs-search";
+
+/** Below `lg` the sidebar, and the search field in it, sits after the page, so this takes the reader
+ *  to the field and focuses it. From `lg` up the sidebar is beside the page and this is not shown. */
+function JumpToSearch() {
+  return (
+    <a
+      href={`#${SEARCH_FIELD_ID}`}
+      onClick={(e) => {
+        const field = document.getElementById(SEARCH_FIELD_ID);
+        if (!field) return;
+        e.preventDefault();
+        field.focus();
+      }}
+      className="fg-caption flex-none text-muted underline underline-offset-2 hover:text-fg lg:hidden"
+    >
+      Search
+    </a>
+  );
+}
+
 /** The sidebar's field is 260px wide, where the landing's teaching placeholder is cut off after
  *  its first word; the examples are taught on the landing, whose field has the width for them. */
 const SIDEBAR_PLACEHOLDER = "Search every page";
@@ -219,6 +243,7 @@ export function PublicReader({
       onQuery={setQuery}
       placeholder={SIDEBAR_PLACEHOLDER}
       searchLabel="Search every page"
+      searchId={SEARCH_FIELD_ID}
       results={results ? results.map((d) => resultItem(d, activeHref)) : null}
       sections={sections}
       navLabel={audience ? DOORS[audience].label : "Documentation"}
@@ -252,16 +277,15 @@ export function PublicReader({
       <EmptyState title="This page is missing from the documentation it was resolved against" message={view.href} mascot={false} />
     );
   } else {
-    const crumbs =
-      doc.audience === "agent"
-        ? [DOORS[doc.audience].label, doc.title]
-        : [DOORS[doc.audience].label, doc.section, doc.title];
+    const door = { label: DOORS[doc.audience].label, href: doorHref(doc.audience) };
+    const crumbs = doc.audience === "agent" ? [door, doc.title] : [door, doc.section, doc.title];
     content = (
       <DocsArticle
         crumbs={crumbs}
         body={doc.body}
         docBasePath={doc.audience === "agent" ? undefined : doc.slug}
         docRoute={INDEX_PATH}
+        trailing={<JumpToSearch />}
       >
         <AudienceNotice doc={doc} />
       </DocsArticle>
@@ -280,6 +304,9 @@ function RefusalCopy({ refusal }: { refusal: Refusal }) {
     <div className="flex max-w-[72ch] flex-col gap-2">
       <PageTitle className="fg-h2 text-fg">{refusal.heading}</PageTitle>
       <p className="fg-body-sm text-muted">{refusal.body}</p>
+      <div>
+        <JumpToSearch />
+      </div>
     </div>
   );
 }

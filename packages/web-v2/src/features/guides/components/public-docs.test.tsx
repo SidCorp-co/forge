@@ -192,11 +192,72 @@ describe("a page", () => {
 
   it("keeps a link to another help page on /guides", () => {
     reader({ kind: "page", href: helpPageHref("getting-started") });
-    const links = [...document.querySelectorAll("article a, [aria-label='Breadcrumb'] ~ * a")]
+    const links = [...document.querySelectorAll("a")]
+      .filter((a) => !a.closest("nav"))
       .map((a) => a.getAttribute("href") ?? "")
       .filter((h) => h.includes("?path="));
     expect(links.length).toBeGreaterThan(0);
     expect(links.every((h) => h.startsWith("/guides?path="))).toBe(true);
+  });
+});
+
+describe("a phone reader on a page, before scrolling past it", () => {
+  it("is given the door the page sits behind as a link, at the head of the breadcrumb", () => {
+    reader({ kind: "page", href: helpPageHref("getting-started") });
+    const crumbs = within(screen.getByRole("navigation", { name: "Breadcrumb" }));
+    const door = crumbs.getByRole("link", { name: "I use Forge" });
+    expect(door).toHaveAttribute("href", "/guides?for=user");
+    expect(crumbs.getAllByRole("link")).toHaveLength(1);
+  });
+
+  it("names the agent door for an agent page", () => {
+    reader({ kind: "page", href: "/guides/what-is-an-issue" });
+    const door = within(screen.getByRole("navigation", { name: "Breadcrumb" })).getByRole("link", {
+      name: "I'm an agent or a script",
+    });
+    expect(door).toHaveAttribute("href", "/guides?for=agent");
+  });
+
+  it("is given a link beside the breadcrumb that takes it to the search field and focuses it", () => {
+    reader({ kind: "page", href: helpPageHref("getting-started") });
+    const jump = screen.getByRole("link", { name: "Search" });
+    const field = screen.getByRole("textbox", { name: "Search every page" });
+    expect(jump).toHaveAttribute("href", `#${field.id}`);
+    expect(field.id).not.toBe("");
+    expect(jump.className).toContain("lg:hidden");
+    expect(document.activeElement).not.toBe(field);
+    fireEvent.click(jump);
+    expect(document.activeElement).toBe(field);
+  });
+
+  it("keeps the breadcrumb row at the top of the screen below lg, so it is there partway down", () => {
+    reader({ kind: "page", href: helpPageHref("getting-started") });
+    const row = screen.getByRole("navigation", { name: "Breadcrumb" }).parentElement;
+    expect(row?.className).toContain("sticky");
+    expect(row?.className).toContain("top-0");
+    expect(row?.className).toContain("lg:static");
+  });
+
+  it("keeps the article ahead of the sidebar it jumps to, below lg", () => {
+    reader({ kind: "page", href: helpPageHref("getting-started") });
+    const field = screen.getByRole("textbox", { name: "Search every page" });
+    const heading = screen.getByRole("heading", { level: 1 });
+    expect(heading.closest(".order-1")).not.toBeNull();
+    expect(field.closest(".order-2")).not.toBeNull();
+  });
+
+  it.each([
+    ["a door", { kind: "door", audience: "user" }],
+    ["a refused address", { kind: "refused", refusal: missingDoor("users") }],
+  ] as const)("is given the same link on %s", (_name, view) => {
+    reader(view);
+    const field = screen.getByRole("textbox", { name: "Search every page" });
+    expect(screen.getByRole("link", { name: "Search" })).toHaveAttribute("href", `#${field.id}`);
+  });
+
+  it("is given none where there is no search to reach", () => {
+    render(<PublicRefusal refusal={missingDoor("users")} />);
+    expect(screen.queryByRole("link", { name: "Search" })).toBeNull();
   });
 });
 

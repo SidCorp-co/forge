@@ -70,14 +70,18 @@ export function DocsSearchField({
   onQuery,
   placeholder,
   label,
+  id,
 }: {
   query: string;
   onQuery: (q: string) => void;
   placeholder: string;
   label: string;
+  /** The field's address, for a link elsewhere on the page that takes the reader to it. */
+  id?: string;
 }) {
   return (
     <Input
+      id={id}
       icon="search"
       value={query}
       onChange={(e) => onQuery(e.target.value)}
@@ -113,6 +117,7 @@ export function DocsSidebar({
   sections,
   navLabel,
   footer,
+  searchId,
 }: {
   query: string;
   onQuery: (q: string) => void;
@@ -122,10 +127,11 @@ export function DocsSidebar({
   sections: DocsNavSection[];
   navLabel: string;
   footer?: ReactNode;
+  searchId?: string;
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <DocsSearchField query={query} onQuery={onQuery} placeholder={placeholder} label={searchLabel} />
+      <DocsSearchField query={query} onQuery={onQuery} placeholder={placeholder} label={searchLabel} id={searchId} />
       {results ? (
         <DocsSearchResults results={results} />
       ) : (
@@ -145,17 +151,26 @@ export function DocsSidebar({
   );
 }
 
+/** One step of a breadcrumb: plain text, or a link where the step is a page of its own. */
+export type DocsCrumb = string | { label: string; href: string };
+
+const crumbLabel = (c: DocsCrumb) => (typeof c === "string" ? c : c.label);
+
 /** A page: its breadcrumb, anything the caller puts above the body, and the markdown, with
- *  heading ids assigned after render so the table of contents can scroll to them. */
+ *  heading ids assigned after render so the table of contents can scroll to them. `trailing` sits
+ *  at the end of the breadcrumb's row, and a breadcrumb that has one stays at the top of the screen
+ *  below `lg`. */
 export function DocsArticle({
   crumbs,
   body,
   docBasePath,
   docRoute,
+  trailing,
   children,
 }: {
-  crumbs: string[];
+  crumbs: DocsCrumb[];
   body: string;
+  trailing?: ReactNode;
   docBasePath?: string;
   docRoute?: string;
   children?: ReactNode;
@@ -172,24 +187,44 @@ export function DocsArticle({
   });
   const trail = crumbs.map((crumb, depth) => ({
     crumb,
-    path: crumbs.slice(0, depth + 1).join(" / "),
+    path: crumbs
+      .slice(0, depth + 1)
+      .map(crumbLabel)
+      .join(" / "),
     last: depth === crumbs.length - 1,
   }));
 
   return (
     <div ref={ref} style={{ maxWidth: "72ch" }} className="mx-auto">
-      <nav aria-label="Breadcrumb" className="fg-caption mb-5 flex flex-wrap items-center gap-1.5 text-subtle">
-        {trail.map(({ crumb, path, last }) => (
-          <span key={path} className="contents">
-            {path !== crumb ? (
-              <span aria-hidden className="text-line-strong">
-                /
-              </span>
-            ) : null}
-            <span className={last ? "text-muted" : undefined}>{crumb}</span>
-          </span>
-        ))}
-      </nav>
+      <div
+        className={cn(
+          "mb-5 flex items-start justify-between gap-4",
+          // Below `lg` a reader partway down a long page keeps the way to search and to the door at
+          // the top of the screen; from `lg` up the sidebar is beside the page and this scrolls away.
+          trailing &&
+            "sticky top-0 z-10 -mx-5 border-b border-line-subtle bg-surface px-5 py-2.5 lg:static lg:mx-0 lg:border-b-0 lg:bg-transparent lg:p-0",
+        )}
+      >
+        <nav aria-label="Breadcrumb" className="fg-caption flex flex-wrap items-center gap-1.5 text-subtle">
+          {trail.map(({ crumb, path, last }, depth) => (
+            <span key={path} className="contents">
+              {depth > 0 ? (
+                <span aria-hidden className="text-line-strong">
+                  /
+                </span>
+              ) : null}
+              {typeof crumb === "string" ? (
+                <span className={last ? "text-muted" : undefined}>{crumb}</span>
+              ) : (
+                <Link href={crumb.href} className="text-muted underline underline-offset-2 hover:text-fg">
+                  {crumb.label}
+                </Link>
+              )}
+            </span>
+          ))}
+        </nav>
+        {trailing}
+      </div>
       {children}
       <Markdown variant="prose" docBasePath={docBasePath} docRoute={docRoute}>
         {body}

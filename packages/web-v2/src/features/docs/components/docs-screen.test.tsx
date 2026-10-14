@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 expect.extend(matchers);
@@ -25,6 +25,14 @@ describe("the Docs screen opened from a link", () => {
   it("opens the page the link names", () => {
     open("path=what-done-means");
     expect(breadcrumb()).toContain("Tell when an issue is done");
+  });
+
+  it("keeps its breadcrumb as plain text, with no link to search beside it", () => {
+    open("path=what-done-means");
+    const crumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
+    expect(within(crumbs).queryAllByRole("link")).toHaveLength(0);
+    expect(screen.queryByRole("link", { name: "Search" })).toBeNull();
+    expect(crumbs.parentElement?.className).not.toContain("sticky");
   });
 
   it("opens the first page when no page is asked for", () => {
