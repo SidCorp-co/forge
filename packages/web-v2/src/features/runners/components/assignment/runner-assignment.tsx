@@ -56,7 +56,8 @@ export function RunnerAssignment({
 
 	return (
 		<div className="flex flex-col gap-3 py-3">
-			<div className="flex items-center justify-between gap-2">
+			{/* the acts wrap under the heading where the row is too narrow for both, so the device keeps its name */}
+			<div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1" data-testid="runner-row-head">
 				<RunnerHeading runner={runner} limit={limit} deviceDisabled={deviceDisabled} />
 				{canEdit && (
 					<RunnerRowActions runner={runner} projectId={projectId} deviceDisabled={deviceDisabled} />
@@ -129,9 +130,9 @@ function RunnerHeading({
 	const t = useCopy();
 	const language = useInterfaceLanguage();
 	return (
-		<div className="flex min-w-0 items-center gap-2">
+		<div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
 			<HealthDot health={online ? "healthy" : "idle"} withLabel={false} />
-			<span className="truncate font-semibold text-fg">
+			<span className="min-w-0 max-w-full truncate font-semibold text-fg" data-testid="runner-device-name">
 				{runner.deviceName ?? t("runners.row.unknownDevice")}
 			</span>
 			{deviceDisabled && (

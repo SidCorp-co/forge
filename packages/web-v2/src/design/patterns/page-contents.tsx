@@ -59,6 +59,32 @@ export function useCurrentAnchor(ids: readonly string[]): string | null {
   return current;
 }
 
+/** The attribute a group sets to be listed in its page's contents: its label, beside its `id`. */
+export const CONTENTS_LABEL = "data-contents-label";
+
+/** The groups a region draws, read off the region itself: every element in it carrying an `id` and
+ *  `data-contents-label`, in document order, re-read as the region's content changes. Pass the region
+ *  as state (a callback ref's setter), so a region drawn after the first render is still read. A page whose
+ *  groups differ by tab or by what loaded lists exactly what it shows, with nothing to keep in step. */
+export function useContentsIn(root: HTMLElement | null): ContentsItem[] {
+  const [items, setItems] = useState<ContentsItem[]>([]);
+  useEffect(() => {
+    if (!root) return;
+    const read = () => {
+      const next = [...root.querySelectorAll<HTMLElement>(`[id][${CONTENTS_LABEL}]`)].map((el) => ({ id: el.id, label: el.getAttribute(CONTENTS_LABEL) ?? el.id }));
+      setItems((was) => (was.length === next.length && was.every((w, i) => w.id === next[i]?.id && w.label === next[i]?.label) ? was : next));
+    };
+    const watch = new MutationObserver(read);
+    watch.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["id", CONTENTS_LABEL] });
+    const first = requestAnimationFrame(read);
+    return () => {
+      cancelAnimationFrame(first);
+      watch.disconnect();
+    };
+  }, [root]);
+  return items;
+}
+
 function scrollerOf(el: HTMLElement): HTMLElement | null {
   for (let p = el.parentElement; p; p = p.parentElement) {
     if (/(auto|scroll)/.test(getComputedStyle(p).overflowY) && p.scrollHeight > p.clientHeight) return p;

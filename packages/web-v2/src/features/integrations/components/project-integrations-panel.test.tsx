@@ -121,4 +121,19 @@ describe("ProjectIntegrations", () => {
     const github = screen.getByRole("button", { name: "Connect GitHub" });
     expect(github).toBeTruthy();
   });
+
+  // Beside the settings rail at 1024px the table had about 550px but chose its columns by the screen
+  // (`sm:`), so the five columns clipped the Connect act and crushed the target to a sliver. jsdom
+  // applies no container query, so this holds the contract: the folded columns answer to the table's
+  // own container and to no screen width.
+  it("chooses its columns by the width the table is given, never by the screen's", async () => {
+    serve([UNREACHED_REPOSITORY, GITHUB_OPEN]);
+    renderWithQuery(<ProjectIntegrations projectId="p1" />);
+    const box = await screen.findByTestId("integrations-table");
+    expect(box).toHaveClass("@container/integrations");
+    const folding = [...box.querySelectorAll<HTMLElement>("th, td, span")].filter((el) => /(^|\s)\S*:(hidden|table-cell)(\s|$)/.test(el.className));
+    expect(folding.length, "no column folds at all").toBeGreaterThan(0);
+    for (const el of folding) expect(el.className, "a column that folds by the screen's width").not.toMatch(/(^|\s)(sm|md|lg|xl):(hidden|table-cell)/);
+  });
 });
+

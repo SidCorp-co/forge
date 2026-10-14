@@ -126,12 +126,30 @@ function RailFacts({ children }: { children: ReactNode }) {
  * The page grid. From 1024px the facts rail stands beside the main column; below it the rail moves,
  * whole, to where the page marks the end of its lead (DetailLeadEnd), behind one Facts disclosure.
  * This is the one rule: no page moves or copies its own facts for a phone.
+ *
+ * `contentsRail` is a rail that holds no facts, only the page's contents (a ContentsList). Below
+ * 1024px it is not drawn and nothing is folded: the page's own ContentsMenu stands in for it, and a
+ * Facts row would open onto nothing.
  */
-export function DetailLayout({ children, rail, testId, dataKey, railCollapsed = false }: { children: ReactNode; rail: ReactNode; testId?: string; dataKey?: string; railCollapsed?: boolean }) {
+export function DetailLayout({
+  children,
+  rail,
+  testId,
+  dataKey,
+  railCollapsed = false,
+  contentsRail = false,
+}: {
+  children: ReactNode;
+  rail: ReactNode;
+  testId?: string;
+  dataKey?: string;
+  railCollapsed?: boolean;
+  contentsRail?: boolean;
+}) {
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   const { articleRef, probeRef, beside } = useRailBeside();
   // a collapsed rail is a wide-screen choice: below 1024px the rail is offered as always
-  const facts = beside ? null : <RailFacts>{rail}</RailFacts>;
+  const facts = beside || contentsRail ? null : <RailFacts>{rail}</RailFacts>;
   return (
     <LeadEndSlotContext value={setSlot}>
       <article

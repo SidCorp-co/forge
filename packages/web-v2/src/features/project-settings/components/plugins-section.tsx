@@ -1,6 +1,6 @@
 
 import { useRef, useState } from "react";
-import { Badge, Banner, Button, PageSectionTitle, ConfirmDialog, EmptyState, ErrorState, Field, Input, Skeleton } from "@/design";
+import { Badge, Banner, Button, ConfirmDialog, ErrorState, Field, Input, SettingsGroup, Skeleton } from "@/design";
 import { useProject } from "@/features/projects";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -40,10 +40,7 @@ export function PluginSettings({ projectId, canEdit }: { projectId: string; canE
   const t = useCopy();
   const projectQ = useProject(projectId);
   return (
-    <div id="plugins" className="mt-6 scroll-mt-24 border-t border-line pt-5">
-      <div>
-        <PageSectionTitle className="fg-label text-fg">{t("settings.project.plugins.title")}</PageSectionTitle>
-      </div>
+    <SettingsGroup id="plugins" title={t("settings.project.plugins.title")}>
       <PinConflicts projectId={projectId} />
       {projectQ.isError ? (
         <div className="mt-3">
@@ -57,7 +54,7 @@ export function PluginSettings({ projectId, canEdit }: { projectId: string; canE
           <Skeleton className="h-16 w-2/3 rounded-md" />
         </div>
       )}
-    </div>
+    </SettingsGroup>
   );
 }
 
@@ -96,12 +93,14 @@ function PluginsEditor({ projectId, agentConfig, canEdit }: { projectId: string;
   return (
     <>
       {draft.length === 0 ? (
-        <div className="mt-3">
-          <EmptyState
-            message={t("settings.project.plugins.emptyTitle")}
-            mascot
-            action={canEdit ? { label: t("settings.project.plugins.add"), onClick: addRow } : undefined}
-          />
+        // one flat line, not an illustration: "none" is a fact of the project, not an event
+        <div className="flex flex-wrap items-center gap-3" data-testid="plugins-none">
+          <p className="fg-body-sm text-muted">{t("settings.project.plugins.emptyTitle")}</p>
+          {canEdit ? (
+            <Button variant="secondary" size="sm" icon="plus" onClick={addRow}>
+              {t("settings.project.plugins.add")}
+            </Button>
+          ) : null}
         </div>
       ) : (
         <ul className="mt-3 divide-y divide-line-subtle">
@@ -117,7 +116,7 @@ function PluginsEditor({ projectId, agentConfig, canEdit }: { projectId: string;
           ))}
         </ul>
       )}
-      {canEdit && (
+      {canEdit && (draft.length > 0 || dirty) && (
         <div className="mt-3 space-y-3">
           {draft.length > 0 && (
             <Button variant="secondary" onClick={addRow}>
@@ -125,15 +124,12 @@ function PluginsEditor({ projectId, agentConfig, canEdit }: { projectId: string;
             </Button>
           )}
           {firstError && <Banner tone="attention">{firstError}</Banner>}
-          <Button
-            variant="primary"
-            loading={update.isPending}
-            disabled={!dirty || firstError !== null}
-            onClick={() => update.mutate(draft.map(stripKey))}
-            className="min-h-11"
-          >
-            {t("settings.project.plugins.save")}
-          </Button>
+          {/* the save act shows only while there is a change to save */}
+          {dirty ? (
+            <Button variant="primary" loading={update.isPending} disabled={firstError !== null} onClick={() => update.mutate(draft.map(stripKey))} className="min-h-11">
+              {t("settings.project.plugins.save")}
+            </Button>
+          ) : null}
         </div>
       )}
       <ConfirmDialog

@@ -1,13 +1,14 @@
 
 // Settings → Delivery: where work is made and how it ships. The repository and its branches, the
-// environments it goes live in, the release path between them and who runs the work are fields of
+// environments it goes live in (each read first as a short summary, its fields under Edit), the release path between them and who runs the work are fields of
 // the project document and the policy, held as one draft each and saved together by the section's
 // one save bar, through the same document writes the raw editors send. What the release can do
 // right now is read underneath, from core's release readiness.
 import { withArticle } from "@forge/contracts/articles";
 import { useState } from "react";
-import { Button, IconButton, Input, keyedRows, SettingRow, SettingsGroup, Skeleton, useListKeys } from "@/design";
-import { useBindingDocuments, usePolicyDocument, useWritePolicy } from "@/features/project-config";
+import { Button, CONTENTS_LABEL, IconButton, Input, keyedRows, SettingRow, SettingsGroup, Skeleton, useListKeys } from "@/design";
+import { useBindingDocuments, useEnvironmentState, usePolicyDocument, useTestingProfiles, useWritePolicy } from "@/features/project-config";
+import type { EnvironmentState } from "@/features/project-config";
 import { type DocumentDraft, sectionOf, useDocumentDraft } from "@/features/project-config";
 import { useProviderLabel } from "@/features/integrations";
 import type { ProjectDetail } from "@/features/projects";
@@ -16,6 +17,7 @@ import type { Copy } from "@/lib/i18n/product-copy";
 import { policyTemplate } from "../config-templates";
 import { ChoiceSetting, optionsOf, Picker, refusalError, SaveBar, SwitchSetting, TextSetting } from "./setting-controls";
 import { UndeclaredNotice, useProjectDraft } from "./general-section";
+import { EnvironmentSummary } from "./environment-rows";
 import { ReleaseSettings } from "./release-section";
 
 const TIERS = ["production", "staging", "preview", "dev"] as const;
@@ -176,15 +178,25 @@ function Probes({ draft, base, off }: { draft: DocumentDraft; base: string[]; of
 	);
 }
 
-function EnvironmentChoice({ draft, name, options, off }: { draft: DocumentDraft; name: string; options: { value: string; label: string }[]; off: boolean }) {
+interface EnvironmentReading {
+	slug: string;
+	options: { value: string; label: string }[];
+	live: EnvironmentState | null | undefined;
+	accounts: { profile: string; names: string[] } | null;
+}
+
+function EnvironmentChoice({ draft, name, off, reading }: { draft: DocumentDraft; name: string; off: boolean; reading: EnvironmentReading }) {
 	const t = useCopy();
+	const [editing, setEditing] = useState(false);
+	const { options } = reading;
 	const base = ["environments", name];
 	const env = obj(draft.get(base));
 	const deployment = obj(env.deployment);
 	const bound = typeof deployment.binding === "string" ? deployment.binding : EXTERNAL;
 	const environments = obj(draft.get(["environments"]));
+	const deployLabel = bound === EXTERNAL ? null : (options.find((o) => o.value === bound)?.label ?? bound);
 	return (
-		<section className="space-y-4 border-t border-line-subtle pt-4 first:border-t-0 first:pt-0" aria-label={t("settings.project.delivery.environmentNamed", { name })}>
+		<section className="space-y-3 border-t border-line-subtle pt-4 first:border-t-0 first:pt-0" aria-label={t("settings.project.delivery.environmentNamed", { name })}>
 			<div className="flex items-center gap-2">
 				<h4 className="fg-h4 font-mono text-fg" translate="no">
 					{name}
@@ -192,6 +204,11 @@ function EnvironmentChoice({ draft, name, options, off }: { draft: DocumentDraft
 				{env.tier === "production" && <span className="fg-caption text-accent-text">{t("settings.project.delivery.isProduction")}</span>}
 				<span className="flex-1" />
 				{!off && (
+					<Button variant="secondary" size="sm" aria-expanded={editing} onClick={() => setEditing((e) => !e)}>
+						{editing ? t("settings.project.env.done") : t("settings.project.env.edit")}
+					</Button>
+				)}
+				{!off && editing && (
 					<IconButton
 						icon="trash"
 						aria-label={t("settings.project.delivery.environmentRemove", { name })}
@@ -202,6 +219,23 @@ function EnvironmentChoice({ draft, name, options, off }: { draft: DocumentDraft
 					/>
 				)}
 			</div>
+			<EnvironmentSummary
+				slug={reading.slug}
+				env={env}
+				defaultBranch={str(obj(obj(draft.get(["source"])).git).defaultBranch)}
+				deployLabel={deployLabel}
+				live={reading.live}
+				accounts={reading.accounts}
+			/>
+			{editing ? <EnvironmentFields draft={draft} base={base} bound={bound} deployment={deployment} options={options} off={off} /> : null}
+		</section>
+	);
+}
+
+function EnvironmentFields({ draft, base, bound, deployment, options, off }: { draft: DocumentDraft; base: string[]; bound: string; deployment: Obj; options: { value: string; label: string }[]; off: boolean }) {
+	const t = useCopy();
+	return (
+		<div className="space-y-4 border-t border-line-subtle pt-4">
 			<ChoiceSetting draft={draft} path={[...base, "tier"]} options={optionsOf(t, "settings.project.delivery.tier", TIERS)} label={t("settings.project.delivery.tierLabel")} disabled={off} />
 			<TextSetting draft={draft} path={[...base, "deploysFrom"]} optional mono label={t("settings.project.delivery.deploysFrom")} disabled={off} />
 			<SettingRow
@@ -228,15 +262,27 @@ function EnvironmentChoice({ draft, name, options, off }: { draft: DocumentDraft
 			)}
 			<TextSetting draft={draft} path={[...base, "url"]} optional mono placeholder="https://" label={t("settings.project.delivery.url")} disabled={off} />
 			<Probes draft={draft} base={base} off={off} />
-		</section>
+		</div>
 	);
 }
 
-function EnvironmentsGroup({ draft, projectId, off }: { draft: DocumentDraft; projectId: string; off: boolean }) {
+function EnvironmentsGroup({ draft, projectId, slug, off }: { draft: DocumentDraft; projectId: string; slug: string; off: boolean }) {
 	const t = useCopy();
 	const providerLabel = useProviderLabel();
 	const bindings = useBindingDocuments(projectId);
 	const options = bindingOptions(bindings.data?.bindings ?? [], providerLabel, t);
+	const states = useEnvironmentState(projectId);
+	const profiles = useTestingProfiles(projectId);
+	const readingOf = (name: string): EnvironmentReading => {
+		const profile = str(obj(draft.get(["environments", name])).testing);
+		const held = profiles.data?.profiles.find((p) => p.profileId === profile);
+		return {
+			slug,
+			options,
+			live: states.data ? (states.data.environments.find((e) => e.environment === name) ?? null) : states.isError ? null : undefined,
+			accounts: profile ? { profile, names: Object.keys(obj(held?.document.actors)) } : null,
+		};
+	};
 	const environments = obj(draft.get(["environments"]));
 	const names = Object.keys(environments);
 	const [adding, setAdding] = useState("");
@@ -245,7 +291,7 @@ function EnvironmentsGroup({ draft, projectId, off }: { draft: DocumentDraft; pr
 		<SettingsGroup id="environments" title={t("settings.project.delivery.environments")}>
 			{names.length === 0 && <p className="fg-body-sm text-muted">{t("settings.project.delivery.noEnvironments")}</p>}
 			{names.map((name) => (
-				<EnvironmentChoice key={name} draft={draft} name={name} options={options} off={off} />
+				<EnvironmentChoice key={name} draft={draft} name={name} off={off} reading={readingOf(name)} />
 			))}
 			{!off && (
 				<div className="flex flex-col gap-2 border-t border-line-subtle pt-4 sm:flex-row sm:items-end">
@@ -348,7 +394,6 @@ function AutomationGroup({ policy, off }: { policy: DocumentDraft; off: boolean 
 		<SettingsGroup id="automation" title={t("settings.project.delivery.automation")} summary={policy.declared ? undefined : t("settings.project.delivery.automationUndeclared")}>
 			<ChoiceSetting draft={policy} path={["qa"]} options={optionsOf(t, "settings.project.delivery.qa", ["self", "independent"])} label={t("settings.project.delivery.qaLabel")} disabled={off} />
 			<SettingRow
-				inline
 				label={t("settings.project.delivery.intake")}
 				error={refusalError(policy.refusedAt(["intake"]))}
 				control={
@@ -356,7 +401,7 @@ function AutomationGroup({ policy, off }: { policy: DocumentDraft; off: boolean 
 						aria-label={t("settings.project.delivery.intake")}
 						value={str(obj(policy.get(["intake"])).mode) || "manual"}
 						disabled={off}
-						width="w-44"
+						width="sm:max-w-md"
 						options={optionsOf(t, "settings.project.delivery.intakeMode", ["auto", "manual"])}
 						onChange={(e) => policy.set(["intake", "mode"], e.target.value)}
 					/>
@@ -367,6 +412,7 @@ function AutomationGroup({ policy, off }: { policy: DocumentDraft; off: boolean 
 }
 
 export function DeliverySettings({ project, canEdit }: { project: ProjectDetail; canEdit: boolean }) {
+	const t = useCopy();
 	const draft = useProjectDraft(project.id);
 	const policyQ = usePolicyDocument(project.id);
 	const policy = useDocumentDraft(policyQ.data, useWritePolicy(project.id), () => policyQ.refetch(), policyTemplate());
@@ -377,11 +423,11 @@ export function DeliverySettings({ project, canEdit }: { project: ProjectDetail;
 		<div>
 			{!draft.declared && <UndeclaredNotice slug={project.slug} />}
 			<RepositoryGroup draft={draft} off={off} />
-			<EnvironmentsGroup draft={draft} projectId={project.id} off={off} />
+			<EnvironmentsGroup draft={draft} projectId={project.id} slug={project.slug} off={off} />
 			<ReleasePathGroup draft={draft} off={off} />
 			{policy.ready && <AutomationGroup policy={policy} off={!canEdit} />}
 			<SaveBar section={section} canEdit={canEdit} />
-			<div id="release-state" className="scroll-mt-24 border-t border-line pt-6">
+			<div id="release-state" className="scroll-mt-24 border-t border-line pt-6" {...{ [CONTENTS_LABEL]: t("settings.project.release.title") }}>
 				<ReleaseSettings projectId={project.id} slug={project.slug} />
 			</div>
 		</div>

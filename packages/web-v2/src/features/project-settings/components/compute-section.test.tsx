@@ -53,7 +53,8 @@ describe("the compute setting in Advanced", () => {
   it("reads off where the document has no compute key, with the sandbox choices held and no explaining line", async () => {
     core({ declared: true, revision: 6, document: doc() });
     mount();
-    expect(await screen.findByRole("switch", { name: "Computation" })).not.toBeChecked();
+    expect(await screen.findByRole("switch", { name: "Allow computation" })).not.toBeChecked();
+    expect(screen.queryByRole("switch", { name: "Computation" }), "a row that says its group's title again").toBeNull();
     expect(screen.getByTestId("compute-section").textContent).not.toMatch(/runner/i);
     expect(screen.getByTestId("compute-section").textContent).not.toMatch(/JavaScript|read-only|leaves Forge/);
     expect(toggle("Third-party sandboxes")).toHaveAttribute("aria-disabled", "true");
@@ -63,7 +64,7 @@ describe("the compute setting in Advanced", () => {
   it("turns computation on with a third-party sandbox admitted, saved at the revision read", async () => {
     const calls = core({ declared: true, revision: 6, document: doc() });
     mount();
-    fireEvent.click(await screen.findByRole("switch", { name: "Computation" }));
+    fireEvent.click(await screen.findByRole("switch", { name: "Allow computation" }));
     fireEvent.click(toggle("Third-party sandboxes"));
     save();
     await waitFor(() => {
@@ -75,7 +76,7 @@ describe("the compute setting in Advanced", () => {
   it("turning it off removes the key where nothing else is set, which core reads as off", async () => {
     const calls = core({ declared: true, revision: 6, document: doc({ compute: { enabled: true } }) });
     mount();
-    fireEvent.click(await screen.findByRole("switch", { name: "Computation" }));
+    fireEvent.click(await screen.findByRole("switch", { name: "Allow computation" }));
     save();
     await waitFor(() => expect(calls.find((c) => c.method === "PUT")).toBeDefined());
     expect(calls.find((c) => c.method === "PUT")?.body).not.toHaveProperty("document.compute");
@@ -85,7 +86,7 @@ describe("the compute setting in Advanced", () => {
   it("turning it off keeps the admitted sandboxes, written enabled: false", async () => {
     const calls = core({ declared: true, revision: 6, document: doc({ compute: { enabled: true, zdrOnly: true } }) });
     mount();
-    fireEvent.click(await screen.findByRole("switch", { name: "Computation" }));
+    fireEvent.click(await screen.findByRole("switch", { name: "Allow computation" }));
     save();
     await waitFor(() => {
       expect(calls.find((c) => c.method === "PUT")?.body).toMatchObject({ document: { compute: { enabled: false, zdrOnly: true } } });

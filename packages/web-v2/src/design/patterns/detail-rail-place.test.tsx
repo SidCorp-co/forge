@@ -102,6 +102,28 @@ describe("a rail folded on a wide screen", () => {
   });
 });
 
+describe("a rail that only lists the page's contents", () => {
+  const contentsOnly = () =>
+    render(
+      <DetailLayout testId="layout" rail={<FactsRail testId="contents-rail"><p>Repository · Environments</p></FactsRail>} contentsRail>
+        <p>Delivery</p>
+        <DetailLeadEnd />
+      </DetailLayout>,
+    );
+
+  it("draws no Facts row below 1024px, where the page's own contents menu stands in", () => {
+    contentsOnly();
+    expect(screen.queryByTestId("rail-facts"), "a Facts row that would open onto nothing").toBeNull();
+    expect(screen.queryByTestId("contents-rail")).toBeNull();
+  });
+
+  it("stands beside the main column from 1024px", () => {
+    railBeside();
+    contentsOnly();
+    expect(screen.getByTestId("contents-rail").parentElement).toBe(screen.getByTestId("layout"));
+  });
+});
+
 describe("a fact in its group", () => {
   it("never repeats the group's title as its label", () => {
     render(
@@ -139,8 +161,15 @@ describe("every page on the detail layout", () => {
     expect(pages.length).toBeGreaterThanOrEqual(12);
   });
 
-  it.each(pages)("%s marks where its own lead ends", (f) => {
+  // a page whose rail only lists its contents folds nothing: it owes the menu that stands in for the rail instead
+  const contentsOnly = (f: string) => /<DetailLayout\b[^>]*\bcontentsRail\b/.test(readFileSync(join(WEB, f), "utf8"));
+
+  it.each(pages.filter((f) => !contentsOnly(f)))("%s marks where its own lead ends", (f) => {
     const marked = LEAD_END_IN[f] ?? f;
     expect(readFileSync(join(WEB, marked), "utf8"), `${marked} has no <DetailLeadEnd />`).toMatch(/<DetailLeadEnd\b/);
+  });
+
+  it.each(pages.filter(contentsOnly))("%s, whose rail is only its contents, draws the contents menu that stands in below 1024px", (f) => {
+    expect(readFileSync(join(WEB, f), "utf8"), `${f} folds no Facts row and draws no <ContentsMenu />`).toMatch(/<ContentsMenu\b/);
   });
 });

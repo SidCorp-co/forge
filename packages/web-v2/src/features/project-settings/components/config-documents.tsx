@@ -1,6 +1,6 @@
 
 import { useState, type ReactNode } from "react";
-import { Banner, Button, PageSectionTitle, ErrorState, Field, Input, Skeleton, enumLabel } from "@/design";
+import { Banner, Button, ErrorState, Field, Input, Skeleton, enumLabel } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { documentRefusals, readRefusal } from "@/lib/api/refusals";
 import {
@@ -8,7 +8,6 @@ import {
 	useDeleteTestingProfile,
 	usePolicyDocument,
 	useProjectDocument,
-	useTestingProfiles,
 	useWriteBinding,
 	useWritePolicy,
 	useWriteProjectDocument,
@@ -112,64 +111,56 @@ function RefusedBanner({ err }: { err: unknown }) {
 	);
 }
 
-export function TestingProfiles({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+/** A new testing profile's id, checked as it is typed; the profile is written by its own raw editor. */
+export function NewTestingProfile({ held, onAdd }: { held: ReadonlySet<string>; onAdd: (id: string) => void }) {
 	const t = useCopy();
-	const q = useTestingProfiles(projectId);
-	const remove = useDeleteTestingProfile(projectId);
 	const [name, setName] = useState("");
-	const [adding, setAdding] = useState<string[]>([]);
-	if (!q.data) return <Loading query={q} />;
-	const held = new Set(q.data.profiles.map((p) => p.profileId));
-	const pending = adding.filter((id) => !held.has(id));
 	const nameError =
 		name === "" || NAME.test(name) ? (held.has(name) ? t("settings.project.raw.profileExists", { id: name }) : undefined) : t("settings.project.raw.profileIdRule");
 	return (
-		<div className="mt-6 border-t border-line pt-5">
-			<PageSectionTitle className="fg-label text-fg">{t("settings.project.raw.profiles")}</PageSectionTitle>
-			{q.data.profiles.length === 0 && pending.length === 0 && (
-				<p className="fg-caption mt-2 text-subtle">{t("settings.project.raw.noProfiles")}</p>
-			)}
-			{remove.isError && <RefusedBanner err={remove.error} />}
-			{q.data.profiles.map((p) => (
-				<ProfileEditor
-					key={p.profileId}
-					projectId={projectId}
-					profileId={p.profileId}
-					read={p}
-					canEdit={canEdit}
-					onReload={() => q.refetch()}
-					actions={
-						canEdit && (
-							<Button variant="ghost" size="sm" loading={remove.isPending} onClick={() => remove.mutate(p.profileId)}>
-								{t("settings.project.raw.delete")}
-							</Button>
-						)
-					}
-				/>
-			))}
-			{pending.map((id) => (
-				<ProfileEditor key={id} projectId={projectId} profileId={id} read={UNDECLARED} canEdit={canEdit} onReload={() => q.refetch()} />
-			))}
-			{canEdit && (
-				<div className="mt-4 flex flex-wrap items-end gap-2">
-					<div className="w-64">
-						<Field label={t("settings.project.raw.newProfile")} error={nameError}>
-							<Input value={name} onChange={(e) => setName(e.target.value)} placeholder="forge-beta" />
-						</Field>
-					</div>
-					<Button
-						variant="secondary"
-						disabled={name === "" || nameError !== undefined}
-						onClick={() => {
-							setAdding((a) => [...a, name]);
-							setName("");
-						}}
-					>
-						{t("settings.project.raw.addProfile")}
-					</Button>
-				</div>
-			)}
+		<div className="mt-4 flex flex-wrap items-end gap-2">
+			<div className="w-64">
+				<Field label={t("settings.project.raw.newProfile")} error={nameError}>
+					<Input value={name} onChange={(e) => setName(e.target.value)} placeholder="forge-beta" />
+				</Field>
+			</div>
+			<Button
+				variant="secondary"
+				disabled={name === "" || nameError !== undefined}
+				onClick={() => {
+					onAdd(name);
+					setName("");
+				}}
+			>
+				{t("settings.project.raw.addProfile")}
+			</Button>
 		</div>
+	);
+}
+
+/** A testing profile's raw document, with its delete act; a pending one (not yet written) has none. */
+export function TestingProfileDocument({ projectId, profileId, read, canEdit, onReload }: { projectId: string; profileId: string; read: V1Read | null; canEdit: boolean; onReload: () => unknown }) {
+	const t = useCopy();
+	const remove = useDeleteTestingProfile(projectId);
+	return (
+		<>
+			{remove.isError && <RefusedBanner err={remove.error} />}
+			<ProfileEditor
+				projectId={projectId}
+				profileId={profileId}
+				read={read ?? UNDECLARED}
+				canEdit={canEdit}
+				onReload={onReload}
+				actions={
+					canEdit &&
+					read && (
+						<Button variant="ghost" size="sm" loading={remove.isPending} onClick={() => remove.mutate(profileId)}>
+							{t("settings.project.raw.delete")}
+						</Button>
+					)
+				}
+			/>
+		</>
 	);
 }
 
@@ -197,8 +188,7 @@ export function BindingDocuments({ projectId, canEdit }: { projectId: string; ca
 	const held = new Set(q.data.bindings.map((b) => String(b.document.id)));
 	const pending = adding.filter((id) => !held.has(id));
 	return (
-		<div className="mt-6 border-t border-line pt-5">
-			<PageSectionTitle className="fg-label text-fg">{t("settings.project.raw.bindings")}</PageSectionTitle>
+		<div className="pb-4">
 			{q.data.unrepresentable.map((u) => (
 				<Banner key={u.id} tone="attention">
 					{t("settings.project.raw.unrepresentable", { id: u.id, provider: u.provider, role: enumLabel("bindingRole", u.role) })} {u.reason}

@@ -188,7 +188,7 @@ export function McpServers({
   return (
     <PageSection>
       <PageSectionBody style={{ paddingTop: 0 }}>
-        <PageSectionTitle className="mb-1">{t("integrations.mcp.title")}</PageSectionTitle>
+        <PageSectionTitle className="mb-1 text-accent-text!">{t("integrations.mcp.title")}</PageSectionTitle>
         {preview.isLoading ? (
           <div className="flex flex-col gap-2">
             <Skeleton className="h-16 w-full" />

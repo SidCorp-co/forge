@@ -216,7 +216,7 @@ export function DocumentEditor({
 	const placed = placeRefusals(held.draft, write.isError ? documentRefusals(write.error) : []);
 
 	return (
-		<section aria-label={title} className="mt-6 border-t border-line pt-5">
+		<section aria-label={title} className="border-t border-line-subtle pb-4 pt-4 first:border-t-0 first:pt-0">
 			<div className="flex flex-wrap items-center gap-2">
 				<PageSectionTitle className="fg-label text-fg">{title}</PageSectionTitle>
 				<MonoTag>{read.declared ? t("settings.project.raw.revision", { revision: read.revision }) : t("settings.project.raw.notDeclared")}</MonoTag>

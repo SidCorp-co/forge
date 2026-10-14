@@ -225,19 +225,19 @@ function IntegrationItem({
               {row.name}
               {row.sub && <span className="font-normal text-muted"> · {row.sub}</span>}
             </span>
-            <span className="sm:hidden">
+            <span className="@3xl/integrations:hidden">
               <StatusPill card={card} />
             </span>
-            {target && <span className="wrap-anywhere sm:hidden">{target}</span>}
-            {row.health && <span className="text-subtle sm:hidden">{row.health}</span>}
+            {target && <span className="wrap-anywhere @3xl/integrations:hidden">{target}</span>}
+            {row.health && <span className="text-subtle @3xl/integrations:hidden">{row.health}</span>}
           </span>
         </span>
       </TD>
-      <TD className="hidden align-top sm:table-cell">
+      <TD className="hidden align-top @3xl/integrations:table-cell">
         <StatusPill card={card} />
       </TD>
-      <TD className="hidden align-top wrap-anywhere sm:table-cell">{target}</TD>
-      <TD className="hidden max-w-prose align-top text-muted sm:table-cell">{row.health}</TD>
+      <TD className="hidden align-top wrap-anywhere @3xl/integrations:table-cell">{target}</TD>
+      <TD className="hidden max-w-prose align-top text-muted @3xl/integrations:table-cell">{row.health}</TD>
       <TD className="text-right align-top whitespace-nowrap" data-tour={tourConnect ? "int-connect" : undefined}>
         {isRepositoryCard(card) ? (
           <RepositoryAction card={card} canEdit={canEdit} owner={owner} />
@@ -299,7 +299,7 @@ export function ProjectIntegrations({
       <PageSection>
         <PageSectionHeader className="border-b-0 pt-0">
           <span className="flex items-baseline gap-3">
-            <PageSectionTitle>{t("integrations.title")}</PageSectionTitle>
+            <PageSectionTitle className="text-accent-text!">{t("integrations.title")}</PageSectionTitle>
             {status.data && (
               <span className="fg-body-sm text-subtle">
                 {t("integrations.panel.connectedOf", { n: connectedCount, total: rows.length })}
@@ -319,30 +319,34 @@ export function ProjectIntegrations({
         ) : status.isError ? (
           <ErrorState message={formatApiError(status.error)} onRetry={() => void status.refetch()} />
         ) : (
-          <Table aria-label={t("integrations.title")} data-tour="int-status">
-            <THead>
-              <TR>
-                <TH>{t("integrations.panel.integration")}</TH>
-                <TH className="hidden sm:table-cell">{t("integrations.panel.status")}</TH>
-                <TH className="hidden sm:table-cell">{t("integrations.panel.target")}</TH>
-                <TH className="hidden sm:table-cell">{t("integrations.panel.health")}</TH>
-                <TH className="text-right">
-                  <span className="sr-only">{t("integrations.panel.action")}</span>
-                </TH>
-              </TR>
-            </THead>
-            <TBody>
-              {rows.map((row) => (
-                <IntegrationItem
-                  key={row.card.key}
-                  row={row}
-                  canEdit={canEdit}
-                  onOpen={setSelectedCard}
-                  owner={owner}
-                />
-              ))}
-            </TBody>
-          </Table>
+          // the columns follow the width the table is given, not the screen's: beside a settings rail at
+          // 1024px it has about 550px, where the five columns clipped the act and crushed the target
+          <div className="@container/integrations" data-testid="integrations-table">
+            <Table aria-label={t("integrations.title")} data-tour="int-status">
+              <THead>
+                <TR>
+                  <TH>{t("integrations.panel.integration")}</TH>
+                  <TH className="hidden @3xl/integrations:table-cell">{t("integrations.panel.status")}</TH>
+                  <TH className="hidden @3xl/integrations:table-cell">{t("integrations.panel.target")}</TH>
+                  <TH className="hidden @3xl/integrations:table-cell">{t("integrations.panel.health")}</TH>
+                  <TH className="text-right">
+                    <span className="sr-only">{t("integrations.panel.action")}</span>
+                  </TH>
+                </TR>
+              </THead>
+              <TBody>
+                {rows.map((row) => (
+                  <IntegrationItem
+                    key={row.card.key}
+                    row={row}
+                    canEdit={canEdit}
+                    onOpen={setSelectedCard}
+                    owner={owner}
+                  />
+                ))}
+              </TBody>
+            </Table>
+          </div>
         )}
       </PageSection>
 
