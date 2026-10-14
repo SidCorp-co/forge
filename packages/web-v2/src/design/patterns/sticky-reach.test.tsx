@@ -114,7 +114,7 @@ const STICKY_FLOOR_PX = 128;
 const STICKY_CAP_PX = 160;
 
 async function measured(markup: string, table: string, column = PHONE_COLUMN, viewport = PHONE) {
-  const { reach, overflowing, stickyWidest, pinned, broken, clipped, scrolling } = await measureReach(markup, column, viewport);
+  const { reach, overflowing, stickyWidest, pinned, broken, clipped, scrolling, pillLines, headerLost, bodyRows } = await measureReach(markup, column, viewport);
   return {
     reach: reach.filter((r) => r.table === table),
     overflowing: overflowing.filter((o) => o.startsWith(`${table}:`)),
@@ -123,6 +123,9 @@ async function measured(markup: string, table: string, column = PHONE_COLUMN, vi
     broken: broken.filter((b) => b.startsWith(`${table}:`)),
     clipped: clipped.filter((c) => c.table === table),
     scrolling: scrolling.filter((s) => s.startsWith(`${table}:`)),
+    pillLines,
+    headerLost: headerLost.filter((h) => h === table),
+    bodyRows: bodyRows[table] ?? 0,
   };
 }
 
@@ -272,7 +275,7 @@ describe("every row action sits inside the table's frame at 1280px, with nothing
       ...Array.from({ length: 5 }, (_, i) => agent(9 + i, { activeTokens: i % 2, canAct: i % 2 === 1 })),
     ];
     const { reach, scrolling } = await measured(renderToStaticMarkup(<AgentsTab />), "Agents", DESKTOP_COLUMN, DESKTOP);
-    expect(reach.filter((r) => r.control.startsWith("Self")).length).toBe(state.agents.length);
+    expect(reach.filter((r) => r.control.startsWith("Edit self")).length).toBe(state.agents.length);
     expect(unframed(reach)).toEqual([]);
     expect(scrolling).toEqual([]);
   });
@@ -288,5 +291,61 @@ describe("every row action sits inside the table's frame at 1280px, with nothing
     expect(reach.filter((r) => r.control.startsWith("Revoke")).length).toBe(2);
     expect(unframed(reach)).toEqual([]);
     expect(scrolling).toEqual([]);
+  });
+});
+
+// ISS-1264: above 100 rows a table draws only the rows in view and scrolls down inside a frame of its
+// own. The measurements above are about a table's width; these say they still hold for one that is
+// windowed, and that the header is still at the top of the frame when the rows scroll under it.
+describe("a table of more than 100 rows, windowed", () => {
+  const MANY = 300;
+  const long = () => {
+    state.agents = Array.from({ length: MANY }, (_, i) => agent(i, { handle: i === 7 ? LONGEST_HANDLE : `agent-${i}`, activeTokens: i % 2, canAct: i % 2 === 1 }));
+  };
+
+  it("Agents at 390px: draws a window of the rows, keeps its sticky column, and every action scrolls clear of it", async () => {
+    long();
+    const { reach, overflowing, stickyWidest, headerLost, bodyRows } = await measured(renderToStaticMarkup(<AgentsTab />), "Agents");
+    expect(bodyRows).toBeGreaterThan(5);
+    expect(bodyRows).toBeLessThan(60);
+    expect(reach.length).toBeGreaterThan(0);
+    expect(clearOf(reach)).toEqual([]);
+    expect(overflowing).toEqual([]);
+    expect(stickyWidest).toBeGreaterThanOrEqual(STICKY_FLOOR_PX);
+    expect(stickyWidest).toBeLessThanOrEqual(STICKY_CAP_PX);
+    expect(headerLost).toEqual([]);
+  });
+
+  it("Agents at 1280px: every action inside the frame and nothing to scroll sideways", async () => {
+    long();
+    const { reach, scrolling, bodyRows, headerLost } = await measured(renderToStaticMarkup(<AgentsTab />), "Agents", DESKTOP_COLUMN, DESKTOP);
+    expect(bodyRows).toBeLessThan(60);
+    expect(reach.length).toBeGreaterThan(0);
+    expect(unframed(reach)).toEqual([]);
+    expect(scrolling).toEqual([]);
+    expect(headerLost).toEqual([]);
+  });
+});
+
+describe("the level pill of a token bound to a project", () => {
+  const PROJECT = "qa-project-available-for-testing-0".padEnd(40, "x");
+  const bound = () => [token("ci", { boundProjectId: "p1" })];
+  const draw = () =>
+    renderToStaticMarkup(
+      <TokenList tokens={bound()} level={() => `Project: ${PROJECT}`} onRevoke={() => {}} revoking={false} />,
+    );
+
+  it("is a project name 40 characters long", () => {
+    expect(PROJECT).toHaveLength(40);
+  });
+
+  it("reads on one line at 390px, never broken at a hyphen", async () => {
+    const { pillLines } = await measured(draw(), "Tokens that can reach your account");
+    expect(pillLines[`Project: ${PROJECT}`]).toBe(1);
+  });
+
+  it("reads on one line at 1280px", async () => {
+    const { pillLines } = await measured(draw(), "Tokens that can reach your account", DESKTOP_COLUMN, DESKTOP);
+    expect(pillLines[`Project: ${PROJECT}`]).toBe(1);
   });
 });

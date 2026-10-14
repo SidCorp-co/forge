@@ -45,10 +45,14 @@ const MAX_ROWS = 8;
  * How wide the composer's own frame is, for a control in the footer slot that
  * has to shrink with it. Null until it has been measured — and in a runtime
  * with no `ResizeObserver`, which is what a reader of this value renders for.
+ * A frame with no width has no box to measure (hidden, detached, or no layout
+ * engine), so it reads as null as well and never as a frame 0px wide.
  * The frame is the subject rather than the viewport: this composer is as wide
  * as the pane it is in, and the dock is 420px inside a 1440px window.
  */
 export const ComposerWidthContext = createContext<number | null>(null);
+
+const measuredWidth = (px: number): number | null => (px > 0 ? px : null);
 
 interface StagedFile {
   id: string;
@@ -135,10 +139,10 @@ export function ChatComposer({
   useEffect(() => {
     const node = rowRef.current;
     if (!node || typeof ResizeObserver === "undefined") return;
-    setFrameWidth(node.getBoundingClientRect().width);
+    setFrameWidth(measuredWidth(node.getBoundingClientRect().width));
     const observer = new ResizeObserver((entries) => {
       const width = entries[0]?.contentRect.width;
-      if (width !== undefined) setFrameWidth(width);
+      if (width !== undefined) setFrameWidth(measuredWidth(width));
     });
     observer.observe(node);
     return () => observer.disconnect();

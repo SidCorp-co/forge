@@ -8,7 +8,9 @@ The Forge cloud UI — canonical at root `/` since ISS-397 (2026-06-07; legacy
   JetBrains Mono.
 - **Stack:** Next.js 16 (App Router) · React 19 · Tailwind v4 (CSS `@theme`, no config
   file) · custom primitives (no shadcn) · lucide-react · TanStack Query · TanStack Table, imported
-  only by `design/patterns/data-table-model.ts` behind `DataTable`. Consumes the
+  only by `design/patterns/data-table-model.ts` behind `DataTable` · TanStack Virtual (pinned exactly),
+  imported only by `design/hooks/use-virtual-rows.ts` behind `VirtualList` and a `DataTable` of more than
+  100 rows. Consumes the
   `core` REST/WS contract via `@forge/contracts`.
 
 ## Tokens — 2 layers (light-only now, dark drop-in)

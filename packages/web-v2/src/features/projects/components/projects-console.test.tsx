@@ -6,7 +6,7 @@
 // thing; these drive the console as a person does and read both views.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectConsoleItem } from "../types";
 import { ProjectsConsole } from "./projects-console";
@@ -49,7 +49,10 @@ beforeEach(() => {
     project("charlie", { health: "attention", lastActivityAt: "2026-10-01T00:00:00Z" }),
   ];
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 const showList = () => fireEvent.click(screen.getByRole("button", { name: "List" }));
 const showCards = () => fireEvent.click(screen.getByRole("button", { name: "Cards" }));
@@ -226,5 +229,51 @@ describe("search and the needs-attention filter, in both views", () => {
     expect(cardNames()).toEqual(["charlie"]);
     showList();
     expect(listNames()).toEqual(["charlie"]);
+  });
+});
+
+// ISS-1264 — the owner's rule is flat rows with hairline dividers and no card mosaic, so below the
+// `sm` breakpoint the console opens as the list, and a view a person picks beats either default.
+describe("the view the console opens in", () => {
+  function atWidth(phone: boolean) {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query === "not all and (min-width: 40rem)" ? phone : false,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+  }
+  const table = () => screen.queryByRole("table", { name: "Projects" });
+
+  it("is the flat list on a phone", async () => {
+    atWidth(true);
+    render(<ProjectsConsole />);
+    await act(async () => {});
+    expect(table()).toBeInTheDocument();
+    expect(listNames()).toEqual(["alpha", "bravo", "charlie"]);
+  });
+
+  it("is the cards from 640px up", async () => {
+    atWidth(false);
+    render(<ProjectsConsole />);
+    await act(async () => {});
+    expect(table()).toBeNull();
+    expect(cardNames()).toHaveLength(3);
+  });
+
+  it("gives way to the cards a person picks on a phone, and keeps them", async () => {
+    atWidth(true);
+    render(<ProjectsConsole />);
+    await act(async () => {});
+    showCards();
+    expect(table()).toBeNull();
+    expect(cardNames()).toHaveLength(3);
+  });
+
+  it("gives way to the list a person picks on a wide screen", async () => {
+    atWidth(false);
+    render(<ProjectsConsole />);
+    await act(async () => {});
+    showList();
+    expect(table()).toBeInTheDocument();
   });
 });

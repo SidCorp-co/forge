@@ -47,6 +47,12 @@ export interface Measured {
   clipped: { table: string; text: string; titled: boolean }[];
   /** Tables whose scroller has to scroll sideways, with by how much. */
   scrolling: string[];
+  /** How many lines each pill in a table body takes, by its text. */
+  pillLines: Record<string, number>;
+  /** Tables with a frame of their own whose header does not stay at the top of it when the rows scroll under it. */
+  headerLost: string[];
+  /** How many rows each table draws in its body, by label. */
+  bodyRows: Record<string, number>;
 }
 
 export interface Reach {
@@ -72,12 +78,28 @@ const pinned = [];
 const broken = [];
 const clipped = [];
 const scrolling = [];
+const pillLines = {};
+const headerLost = [];
+const bodyRows = {};
 for (const table of document.querySelectorAll("table")) {
   const scroller = table.parentElement;
   const sticky = table.querySelector("tbody td.sticky");
   const label = table.getAttribute("aria-label") || "table";
   const max = scroller.scrollWidth - scroller.clientWidth;
   if (max > 1) scrolling.push(label + ": " + max + "px");
+  bodyRows[label] = table.querySelectorAll("tbody tr[data-index]").length || table.querySelectorAll("tbody tr").length;
+  for (const pill of table.querySelectorAll("tbody span.rounded-pill")) {
+    const range = document.createRange();
+    range.selectNodeContents(pill);
+    const text = pill.textContent.trim();
+    pillLines[text] = Math.max(pillLines[text] || 0, new Set(Array.from(range.getClientRects(), (r) => Math.round(r.top))).size);
+  }
+  if (scroller.scrollHeight > scroller.clientHeight + 1) {
+    scroller.scrollTop = 200;
+    const head = table.querySelector("thead th");
+    if (Math.abs(head.getBoundingClientRect().top - scroller.getBoundingClientRect().top) > 1) headerLost.push(label);
+    scroller.scrollTop = 0;
+  }
   for (const cell of table.querySelectorAll("td.sticky, th.sticky")) {
     const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -132,7 +154,7 @@ for (const table of document.querySelectorAll("table")) {
     });
   }
 }
-parent.postMessage(btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify({ viewport: innerWidth, out, overflowing, stickyWidest, pinned, broken, clipped, scrolling })))), "*");
+parent.postMessage(btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify({ viewport: innerWidth, out, overflowing, stickyWidest, pinned, broken, clipped, scrolling, pillLines, headerLost, bodyRows })))), "*");
 `;
 
 /**
@@ -169,11 +191,11 @@ export async function measureReach(markup: string, width: number, viewport: numb
     if (!body) throw new Error("Chrome laid the page out but reported no measurement: the frame's script did not run.");
     // The report crosses the DOM dump as base64, so no `&`, `<` or `"` in it is escaped and nothing is unescaped here.
     const text = Buffer.from(body, "base64").toString("utf8");
-    const measured = JSON.parse(text) as { viewport: number; out: Reach[]; overflowing: string[]; stickyWidest: Record<string, number>; pinned: Measured["pinned"]; broken: string[]; clipped: Measured["clipped"]; scrolling: string[] };
+    const measured = JSON.parse(text) as { viewport: number; out: Reach[]; overflowing: string[]; stickyWidest: Record<string, number>; pinned: Measured["pinned"]; broken: string[]; clipped: Measured["clipped"]; scrolling: string[]; pillLines: Record<string, number>; headerLost: string[]; bodyRows: Record<string, number> };
     if (measured.viewport !== viewport) {
       throw new Error(`Chrome laid the page out in a ${measured.viewport}px viewport, not the ${viewport}px asked for, so the responsive classes answered for another screen.`);
     }
-    return { reach: measured.out, overflowing: measured.overflowing, stickyWidest: measured.stickyWidest, pinned: measured.pinned, broken: measured.broken, clipped: measured.clipped, scrolling: measured.scrolling };
+    return { reach: measured.out, overflowing: measured.overflowing, stickyWidest: measured.stickyWidest, pinned: measured.pinned, broken: measured.broken, clipped: measured.clipped, scrolling: measured.scrolling, pillLines: measured.pillLines, headerLost: measured.headerLost, bodyRows: measured.bodyRows };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

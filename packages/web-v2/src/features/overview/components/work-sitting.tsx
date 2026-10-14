@@ -2,8 +2,6 @@
 
 import Link from "next/link";
 import {
-  Card,
-  CardContent,
   CardTitle,
   DataTable,
   type DataTableColumn,
@@ -74,61 +72,59 @@ export function WorkSitting({ pulse, nowMs }: WorkSittingProps) {
   const ages = pulse.work.blockedOnPersonAges;
 
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-4">
-        <SectionTitle className="fg-h3">Where the work is sitting</SectionTitle>
+    <section aria-labelledby="overview-work" className="flex flex-col gap-4 border-t border-line pt-5">
+      <SectionTitle id="overview-work" className="fg-h3">Where the work is sitting</SectionTitle>
 
-        {cells.some((c) => c.count > 0) ? (
-          <Waffle
-            categories={cells.map((c) => ({
-              key: c.key,
-              label: c.label,
-              count: c.count,
-              color: c.color,
-              onOpen: () => {
-                document
-                  .getElementById("pulse-per-project")
-                  ?.scrollIntoView({ behavior: "smooth", block: "start" });
-              },
+      {cells.some((c) => c.count > 0) ? (
+        <Waffle
+          categories={cells.map((c) => ({
+            key: c.key,
+            label: c.label,
+            count: c.count,
+            color: c.color,
+            onOpen: () => {
+              document
+                .getElementById("pulse-per-project")
+                ?.scrollIntoView({ behavior: "smooth", block: "start" });
+            },
+          }))}
+        />
+      ) : (
+        <p className="fg-body-sm text-muted">No unfinished issues in scope.</p>
+      )}
+
+      {ages.length > 0 ? (
+        <div className="flex flex-col gap-1">
+          <CardTitle className="fg-body-sm text-muted">
+            {WORK_STATE_LABELS.blocked_on_person} — {ages.length} {ages.length === 1 ? "issue" : "issues"}, oldest{" "}
+            {formatElapsed(Math.max(...ages))}
+          </CardTitle>
+          <DotStrip
+            items={ages.map((age, i) => ({
+              key: `age-${i}`,
+              value: age,
+              label: `An issue waiting ${formatElapsed(age)}`,
             }))}
+            axisLabels={["just blocked", `${formatElapsed(Math.max(...ages))} waiting`]}
           />
-        ) : (
-          <p className="fg-body-sm text-muted">No unfinished issues in scope.</p>
-        )}
-
-        {ages.length > 0 ? (
-          <div className="flex flex-col gap-1">
-            <CardTitle className="fg-body-sm text-muted">
-              {WORK_STATE_LABELS.blocked_on_person} — {ages.length} {ages.length === 1 ? "issue" : "issues"}, oldest{" "}
-              {formatElapsed(Math.max(...ages))}
-            </CardTitle>
-            <DotStrip
-              items={ages.map((age, i) => ({
-                key: `age-${i}`,
-                value: age,
-                label: `An issue waiting ${formatElapsed(age)}`,
-              }))}
-              axisLabels={["just blocked", `${formatElapsed(Math.max(...ages))} waiting`]}
-            />
-          </div>
-        ) : null}
-
-        <div id="pulse-per-project" className="flex flex-col gap-2">
-          <CardTitle className="fg-body-sm text-muted">Longest without an issue run</CardTitle>
-          {rows.length === 0 ? (
-            <p className="fg-body-sm text-muted">No projects in scope.</p>
-          ) : (
-            <DataTable
-              aria-label="Longest without an issue run"
-              className="min-w-[32rem]"
-              rows={rows}
-              columns={SILENCE_COLUMNS}
-              getRowId={(r) => r.id}
-              defaultSort={{ id: "silence", desc: true }}
-            />
-          )}
         </div>
-      </CardContent>
-    </Card>
+      ) : null}
+
+      <div id="pulse-per-project" className="flex flex-col gap-2">
+        <CardTitle className="fg-body-sm text-muted">Longest without an issue run</CardTitle>
+        {rows.length === 0 ? (
+          <p className="fg-body-sm text-muted">No projects in scope.</p>
+        ) : (
+          <DataTable
+            aria-label="Longest without an issue run"
+            className="min-w-[32rem]"
+            rows={rows}
+            columns={SILENCE_COLUMNS}
+            getRowId={(r) => r.id}
+            defaultSort={{ id: "silence", desc: true }}
+          />
+        )}
+      </div>
+    </section>
   );
 }
