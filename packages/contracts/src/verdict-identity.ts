@@ -98,7 +98,7 @@ interface VerdictReading extends StorefrontDraftVerdictView {
 	contractVersion: string | null;
 }
 
-// a backfilled abbreviated commit that never resolved reads Unresolved whatever it said; `short` reads Short on every screen and counts as a pass where verdicts are counted (`criterionCountsAsPass`)
+// a backfilled abbreviated commit that never resolved reads Unresolved whatever it said; `short` reads Short on every screen and counts as a pass at an issue's gates (`criterionCountsAsPass`), never on a requirement's coverage
 export function criterionStandingOf(
 	latest: Pick<VerdictReading, "verdict" | "identityKind"> | null,
 ): CriterionStanding {

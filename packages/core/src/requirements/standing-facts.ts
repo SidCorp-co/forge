@@ -8,12 +8,13 @@ import type { CoverageFile } from '@forge/contracts/requirements';
 import { inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issueAttachments } from '../db/schema.js';
-import { reopenedAtOf } from '../issues/index.js';
+import { reopenedAtOf, verdictByBuilderSql } from '../issues/index.js';
 import { requirementDependents } from './dependents.js';
-import type { LiveBuildHolds, StandingIssueCriterion } from './standing.js';
+import type { LiveBuildHolds, StandingIssueCriterion, StandingVerdict } from './standing.js';
 import type { CoverageIdentity } from './standing-coverage.js';
 
 type CriterionVerdictRow = {
+  criterion_id: string;
   issue_id: string;
   n: number;
   requirement_criterion_id: string;
@@ -34,6 +35,8 @@ type CriterionVerdictRow = {
   storefront_workflow_id: string | null;
   storefront_draft_version: string | null;
   storefront_environment: string | null;
+  by_builder: boolean | null;
+  authored: boolean | null;
 };
 
 /** The identity a stored verdict names, as coverage checks it; null where it names none. */
@@ -98,7 +101,9 @@ async function filesOf(issueIds: readonly string[]): Promise<Map<string, Coverag
 /**
  * Each live traced criterion of `issueIds` with its latest verdict and what that verdict names: a
  * design or contract identity beside the revision or version the traced requirement's latest
- * baseline pins for it, the anchor coverage holds it to (`standing-coverage.ts:resolve`).
+ * baseline pins for it, the anchor coverage holds it to (`standing-coverage.ts:resolve`). Every
+ * earlier verdict since the issue's latest reopen comes with it, newest first, so coverage can read
+ * past a newer one that is not the judge's (`standing-coverage.ts:judgesOf`).
  */
 export async function issueCriteriaOf(
   issueIds: readonly string[],
@@ -106,24 +111,29 @@ export async function issueCriteriaOf(
 ): Promise<StandingIssueCriterion[]> {
   if (issueIds.length === 0) return [];
   const rows = (await ex.execute(sql`
-    SELECT c.issue_id, c.n, c.requirement_criterion_id, v.verdict, v.verdict_at, v.reason, v.evidence,
+    SELECT c.id AS criterion_id, c.issue_id, c.n, c.requirement_criterion_id, v.verdict, v.verdict_at, v.reason, v.evidence,
            v.identity_kind,
            v.commit_sha, v.runtime_ref, w.flow AS design_flow, v.design_workflow_id,
            v.design_revision, dp.design_revision AS design_pinned, v.contract_ref,
            v.contract_version, cp.contract_version AS contract_pinned, v.storefront_workflow_id,
-           v.storefront_draft_version, v.storefront_environment
+           v.storefront_draft_version, v.storefront_environment,
+           (${verdictByBuilderSql({
+             issueId: sql`c.issue_id`,
+             authorUser: sql`v.author_user_id`,
+             authorDevice: sql`v.author_device_id`,
+             at: sql`v.verdict_at`,
+           })}) AS by_builder,
+           (v.author_user_id IS NOT NULL OR v.author_device_id IS NOT NULL) AS authored
       FROM issue_criteria c
       JOIN requirement_criteria rc ON rc.id = c.requirement_criterion_id
       LEFT JOIN LATERAL (
-        SELECT cv.verdict, cv.created_at AS verdict_at, cv.reason, cv.evidence, cv.identity_kind,
+        SELECT cv.id, cv.verdict, cv.created_at AS verdict_at, cv.reason, cv.evidence, cv.identity_kind,
                cv.commit_sha,
                cv.runtime_ref, cv.design_workflow_id, cv.design_revision, cv.contract_ref,
                cv.contract_version, cv.storefront_workflow_id, cv.storefront_draft_version,
-               cv.storefront_environment
+               cv.storefront_environment, cv.author_user_id, cv.author_device_id
           FROM criterion_verdicts cv
          WHERE cv.criterion_id = c.id
-         ORDER BY cv.created_at DESC, cv.id DESC
-         LIMIT 1
       ) v ON true
       LEFT JOIN project_workflows w ON w.id = v.design_workflow_id
       LEFT JOIN LATERAL (
@@ -150,20 +160,17 @@ export async function issueCriteriaOf(
        sql`, `,
      )})
        AND c.retired_at IS NULL
-     ORDER BY c.issue_id, c.position, c.n`)) as unknown as CriterionVerdictRow[];
+     ORDER BY c.issue_id, c.position, c.n, v.verdict_at DESC NULLS LAST, v.id DESC`)) as unknown as CriterionVerdictRow[];
   // A verdict recorded at or before the issue's latest reopen is evidence about a build the
   // reopen rejected (`issues/release-evidence.ts:reopenedAtOf`), so coverage reads it as not judged
   const reopened = await reopenedAtOf(ex, issueIds);
   const files = await filesOf(
     rows.flatMap((r) => ((r.evidence ?? []).length > 0 ? [r.issue_id] : [])),
   );
-  return [...rows].map((r) => {
+  const verdictOf = (r: CriterionVerdictRow): StandingVerdict => {
     const at = reopened.get(r.issue_id);
     const voided = at && r.verdict_at && new Date(r.verdict_at).getTime() <= at.getTime();
     return {
-      issueId: r.issue_id,
-      n: r.n,
-      requirementCriterionId: r.requirement_criterion_id,
       verdict: voided ? null : r.verdict,
       verdictAt: voided || !r.verdict_at ? null : new Date(r.verdict_at),
       note: voided || !r.reason?.trim() ? null : r.reason,
@@ -171,6 +178,21 @@ export async function issueCriteriaOf(
         ? []
         : (r.evidence ?? []).flatMap((name) => files.get(`${r.issue_id}\u0000${name}`) ?? []),
       identity: voided || r.verdict === null ? null : identityOf(r),
+      byBuilder: !voided && r.verdict !== null && r.by_builder === true,
+      authored: !voided && r.verdict !== null && r.authored === true,
+    };
+  };
+  const byCriterion = new Map<string, CriterionVerdictRow[]>();
+  for (const r of rows)
+    byCriterion.set(r.criterion_id, [...(byCriterion.get(r.criterion_id) ?? []), r]);
+  return [...byCriterion.values()].map(([latest, ...older]) => {
+    const r = latest as CriterionVerdictRow;
+    return {
+      issueId: r.issue_id,
+      n: r.n,
+      requirementCriterionId: r.requirement_criterion_id,
+      ...verdictOf(r),
+      earlier: older.map(verdictOf).filter((v) => v.verdict !== null),
     };
   });
 }
@@ -183,7 +205,9 @@ export async function liveBuildOf(
   projectId: string,
   rows: readonly StandingIssueCriterion[],
 ): Promise<LiveBuildHolds | null> {
-  const judged = rows.filter((r) => r.verdict !== null && r.verdict !== 'skipped');
+  const judged = rows
+    .flatMap((r) => [r, ...(r.earlier ?? [])])
+    .filter((r) => r.verdict !== null && r.verdict !== 'skipped');
   const commits = judged.flatMap((r) => (r.identity?.kind === 'commit' ? [r.identity.sha] : []));
   const runtimes = judged.flatMap((r) => (r.identity?.kind === 'runtime' ? [r.identity.ref] : []));
   if (commits.length === 0 && runtimes.length === 0) return null;

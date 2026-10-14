@@ -45,7 +45,11 @@ import { proofTurn } from './standing-proof.js';
 import { breakdownTaskOf, checkTaskOf, replanTasksOf, tasksOf } from './standing-tasks.js';
 import { type ParkedWait, workTurn } from './standing-work.js';
 
-export type { LiveBuildHolds, StandingIssueCriterion } from './standing-coverage.js';
+export type {
+  LiveBuildHolds,
+  StandingIssueCriterion,
+  StandingVerdict,
+} from './standing-coverage.js';
 
 /** Untouched this long, an open requirement is listed as stuck. */
 const STUCK_AFTER_DAYS = 21;
@@ -151,7 +155,7 @@ export type ProofIssue = Omit<StandingIssue, 'parkedOn'>;
 /** What the delivery phase and coverage read, and nothing else. */
 type ProofInput<I extends ProofIssue = ProofIssue> = Pick<
   StandingInput,
-  'status' | 'criteria' | 'issueCriteria' | 'uncovered' | 'liveBuild'
+  'status' | 'criteria' | 'issueCriteria' | 'uncovered' | 'liveBuild' | 'judge'
 > & { issues: readonly I[] };
 
 /** The input with its delivery phase read (`deliveryOf`). */

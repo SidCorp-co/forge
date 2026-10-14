@@ -293,7 +293,7 @@ export const BC_VERDICT_TONES: Record<BcVerdict, StandingTone> = {
 
 export const BC_VERDICT_HINTS: Record<BcVerdict, string> = {
 	passing:
-		"passing: the newest verdict on a tracing criterion is a pass",
+		"passing: the newest verdict that counts is a pass; a short never counts",
 	failing:
 		"failing: the newest verdict on a tracing criterion is a fail",
 	stale:
@@ -409,7 +409,8 @@ export interface CoverageCount {
 	issueId: string;
 	displayId: string;
 	criterion: number;
-	verdict: "pass" | "short" | "fail";
+	/** A pass or a fail: a short never counts on coverage (REQ-35 decision 7b261fca). */
+	verdict: "pass" | "fail";
 	/** When it was recorded (ISO). */
 	at: string;
 	/** What it was judged against, in words (`CoverageIssue.identity`). */
