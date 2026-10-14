@@ -197,7 +197,7 @@ describe("BulkActionBar", () => {
     const btn = bulk([row({ status: "open" }), row({ id: "i2", status: "in_progress" })]);
     await vi.waitFor(() => expect(btn()).not.toBeDisabled());
     fireEvent.click(btn());
-    expect(labels()).toEqual(["Dropped"]);
+    expect(labels()).toEqual(["On hold", "Dropped"]);
   });
 });
 

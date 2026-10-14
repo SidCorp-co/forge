@@ -150,3 +150,30 @@ describe("TransitionReasonDialog, putting an issue on hold", () => {
     expect(screen.queryAllByRole("radio")).toHaveLength(0);
   });
 });
+
+// ISS-1251 round 4 — where one confirm holds a selection, the dialog says how many and keeps one reason.
+describe("TransitionReasonDialog, putting a selection on hold", () => {
+  it("names the count in its title and its button, and still sends one reason", () => {
+    const onConfirm = vi.fn();
+    render(
+      <TransitionReasonDialog
+        status="on_hold"
+        issueCount={4}
+        loading={false}
+        onConfirm={onConfirm}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Put 4 issues on hold")).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "the window is closed" } });
+    fireEvent.click(screen.getByRole("button", { name: "Put 4 on hold" }));
+    expect(onConfirm).toHaveBeenCalledWith("the window is closed", undefined);
+  });
+
+  it("keeps the one-issue words for a count of one", () => {
+    render(
+      <TransitionReasonDialog status="on_hold" issueCount={1} loading={false} onConfirm={vi.fn()} onClose={vi.fn()} />,
+    );
+    expect(screen.getByText("Put this issue on hold")).toBeInTheDocument();
+  });
+});

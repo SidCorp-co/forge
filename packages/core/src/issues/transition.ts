@@ -35,7 +35,9 @@ import {
 const transitionBodySchema = z
   .object({
     toStatus: z.enum(issueStatuses),
-    reason: z.string().trim().min(1).max(2000).optional(),
+    // A blank reason is let through to the gate, which refuses it by name where the move owes one
+    // and reads it as none where it owes none (ISS-1251); `min(1)` here answered it first and named nothing.
+    reason: z.string().trim().max(2000).optional(),
     waitingKind: z.enum(waitingKinds).optional(),
     needs: z.string().trim().min(1).max(2000).optional(),
     voidQuestions: z.string().max(2000).optional(),
@@ -224,7 +226,8 @@ transitionRoutes.post(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { toStatus, reason, waitingKind, needs, voidQuestions } = c.req.valid('json');
+    const { toStatus, waitingKind, needs, voidQuestions } = c.req.valid('json');
+    const reason = c.req.valid('json').reason || undefined;
     const userId = c.get('userId');
 
     const [issue] = await db

@@ -78,6 +78,19 @@ const COPY: Record<DialogMode, CopySpec> = {
   },
 };
 
+/** The words for one issue, or for a selection where more than one is moved by the same confirm. */
+function copyFor(status: DialogMode, issueCount: number | undefined): CopySpec {
+  const copy = COPY[status];
+  if (status !== "on_hold" || issueCount === undefined || issueCount < 2) return copy;
+  return {
+    ...copy,
+    title: `Put ${issueCount} issues on hold`,
+    confirm: `Put ${issueCount} on hold`,
+    blurb:
+      "A hold pauses each issue on purpose. This one reason is posted on every selected issue's thread when it moves, where whoever lifts the hold reads why it was put there.",
+  };
+}
+
 const KIND_LABEL: Record<WaitingCause, string> = {
   needs_decision: "A decision — someone has to choose",
   needs_resource: "A resource — someone has to supply what I cannot create",
@@ -89,6 +102,8 @@ interface TransitionReasonDialogProps {
   openQuestions?: number;
   /** Every target a `move_anyway` may pick, the transitions map unchanged. */
   targets?: IssueStatus[];
+  /** How many issues one confirm moves, where it moves a selection and not one issue (ISS-1251). */
+  issueCount?: number;
   loading: boolean;
   onConfirm: (reason: string, waitingKind?: WaitingCause, target?: IssueStatus) => void;
   onClose: () => void;
@@ -98,6 +113,7 @@ export function TransitionReasonDialog({
   status,
   openQuestions,
   targets,
+  issueCount,
   loading,
   onConfirm,
   onClose,
@@ -121,7 +137,7 @@ export function TransitionReasonDialog({
   }, [loading]);
 
   if (!status) return null;
-  const copy = COPY[status];
+  const copy = copyFor(status, issueCount);
   const trimmed = reason.trim();
   const picking = status === "move_anyway";
   const asksKind = status === "waiting" || (picking && target === "waiting");
