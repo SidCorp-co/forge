@@ -72,8 +72,16 @@ learns the help slugs from `packages/web-v2/src/features/docs/help-slugs.generat
 does not bundle every page body. The page reads the same function, so a client-side navigation to
 the same address shows the same words in the content pane. On `/guides/<slug>` it refuses a slug
 `GUIDE_SLUG` rejects without asking core, asks core about the rest, and answers
-a 404 with `missingGuideDocument` — a styleless HTML page naming the slug and
-linking the index, with the slug escaped because it comes off the URL. The price
+a 404 with `missingGuideDocument`, an HTML page naming the slug, with the slug escaped because it
+comes off the URL. Both documents
+(`refusalDocument` is the other) are written to look like the pages around them: the header
+`GuideShell` prints, the name `SITE_NAME` gives the surface, the type scale of `PublicRefusal`, and
+every door as the way on. The middleware cannot render React or name the app's hashed stylesheet,
+so the CSS is inline, and the colours it paints with are `DOCUMENT_TOKENS`, each held by
+`packages/web-v2/src/features/guides/missing-document.test.ts` to the value `packages/web-v2/src/styles/tokens.css` resolves it to.
+The font is the app's own, copied to `packages/web-v2/public/fonts/` because the one `next/font`
+serves has a hashed address; the test holds the copy to `packages/web-v2/src/app/fonts/`, byte for byte.
+The price
 of that shape is one extra core request per guide view on the happy path, paid so
 that a reader without JavaScript gets the refusal instead of a blank document. It
 ends when Next server-renders a `notFound()` body.

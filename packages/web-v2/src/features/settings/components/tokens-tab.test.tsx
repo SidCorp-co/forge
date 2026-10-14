@@ -39,11 +39,12 @@ function aToken(over: Partial<PatToken>): PatToken {
 }
 
 let tokens: PatToken[] = [];
+let projects: { id: string; name: string; slug: string }[] = [];
 const createMutate = vi.fn();
 const revokeMutate = vi.fn();
 
 vi.mock("@/features/projects/hooks", () => ({
-  useProjects: () => ({ data: [], isLoading: false, isError: false }),
+  useProjects: () => ({ data: projects, isLoading: false, isError: false }),
 }));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock("@/providers/auth-provider", () => ({
@@ -68,6 +69,7 @@ const createButton = () => screen.getByRole("button", { name: "Create token" });
 
 beforeEach(() => {
   tokens = [];
+  projects = [];
   createMutate.mockClear();
   revokeMutate.mockClear();
 });
@@ -324,5 +326,28 @@ describe("TokensTab — what still has access comes first", () => {
   it("draws no card list beside the table for a narrow screen", () => {
     render(<TokensTab />);
     expect(screen.getAllByText("iss974-walk-2")).toHaveLength(1);
+  });
+});
+
+describe("TokensTab — the level a project token is bound to", () => {
+  const BOUND = "00000000-0000-0000-0000-0000000000aa";
+
+  it("names the project by its name, and not by its slug", () => {
+    projects = [{ id: BOUND, name: "Forge Platform", slug: "forge-dev" }];
+    tokens = [aToken({ id: "t1", name: "ci", boundProjectId: BOUND })];
+    render(<TokensTab />);
+    expect(screen.getByText("Project: Forge Platform")).toBeInTheDocument();
+    expect(screen.queryByText("Project: forge-dev")).toBeNull();
+  });
+
+  it("falls back to the slug where the project has no name, and to its id where it is not listed", () => {
+    projects = [{ id: BOUND, name: "", slug: "forge-dev" }];
+    tokens = [
+      aToken({ id: "t1", name: "ci", boundProjectId: BOUND }),
+      aToken({ id: "t2", name: "other", boundProjectId: "11111111-2222-3333-4444-555555555555" }),
+    ];
+    render(<TokensTab />);
+    expect(screen.getByText("Project: forge-dev")).toBeInTheDocument();
+    expect(screen.getByText("Project: 11111111")).toBeInTheDocument();
   });
 });

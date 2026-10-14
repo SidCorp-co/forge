@@ -23,6 +23,6 @@ describe("the not-found of an unknown guide", () => {
     expect(screen.getByRole("heading", { name: "Forge publishes no guide called “no-such-guide”" })).toBeInTheDocument();
     expect(screen.getByRole("banner")).toHaveTextContent("Forge documentation");
     expect(screen.getByRole("main")).toContainElement(screen.getByRole("heading"));
-    expect(screen.getByRole("link", { name: "All Forge guides" })).toHaveAttribute("href", "/guides");
+    expect(screen.getByRole("link", { name: "All three ways in" })).toHaveAttribute("href", "/guides");
   });
 });

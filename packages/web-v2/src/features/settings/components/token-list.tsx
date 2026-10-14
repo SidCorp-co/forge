@@ -75,10 +75,17 @@ function ScopeBadges({ scopes }: { scopes: PatScope[] }) {
   );
 }
 
+// The columns after the name are `dense`, and the name column is capped
+// at 12rem from the `sm` breakpoint (the table primitive allows 18rem): with a paired box named for
+// its device id the five columns of a live token only fit the 894px the settings page leaves a table
+// at 1280px that way. The name is cut by `Truncated`, which shows all of it on focus and tap.
+
 const NAME_COLUMN: DataTableColumn<PatToken> = {
   id: "name",
   header: "Name",
   sticky: true,
+  headerClassName: "sm:max-w-48",
+  cellClassName: "sm:max-w-48",
   sortValue: (t) => t.name,
   cell: (t) => (
     <>
@@ -95,21 +102,20 @@ function describing(level: (token: PatToken) => string): DataTableColumn<PatToke
     {
       id: "level",
       header: "Level",
-      // The pill is cut on one line at a width that fits beside the pinned name column at 390px and leaves the table inside its frame at 1280px, with the whole of it in a title and in the cell's text: a long project name is never found by scrolling the table sideways to its end.
-      headerClassName: "px-3",
-      cellClassName: "px-3",
+      dense: true,
       cell: (t) => (
         <Badge tone={t.boundProjectId ? "cobalt" : "neutral"}>
-          <Truncated text={level(t)} className="max-w-32" />
+          <Truncated text={level(t)} className="max-w-28" />
         </Badge>
       ),
     },
-    { id: "scopes", header: "Scopes", cell: (t) => <ScopeBadges scopes={t.scopes} /> },
-    { id: "grant", header: "Grant", cell: (t) => <GrantBadge token={t} /> },
+    { id: "scopes", header: "Scopes", dense: true, cell: (t) => <ScopeBadges scopes={t.scopes} /> },
+    { id: "grant", header: "Grant", dense: true, cell: (t) => <GrantBadge token={t} /> },
     {
       id: "created",
       header: "Created",
       firstSort: "desc",
+      dense: true,
       cellClassName: "font-mono text-muted",
       sortValue: (t) => time(t.createdAt),
       cell: (t) => fmtDate(t.createdAt),
@@ -118,6 +124,7 @@ function describing(level: (token: PatToken) => string): DataTableColumn<PatToke
       id: "lastUsed",
       header: "Last used",
       firstSort: "desc",
+      dense: true,
       cellClassName: "font-mono text-muted",
       sortValue: (t) => time(t.lastUsedAt),
       cell: (t) => fmtDate(t.lastUsedAt),
@@ -147,6 +154,7 @@ export function TokenList({ tokens, level, onRevoke, revoking }: TokenListProps)
       {
         id: "expires",
         header: "Expires",
+        dense: true,
         cellClassName: "font-mono text-muted",
         sortValue: (t) => time(t.expiresAt),
         cell: (t) => (t.expiresAt ? fmtDate(t.expiresAt) : "never"),
@@ -156,6 +164,7 @@ export function TokenList({ tokens, level, onRevoke, revoking }: TokenListProps)
         header: null,
         headerLabel: "Actions",
         align: "end",
+        dense: true,
         cell: (t) => (
           <RowActions
             subject={t.name}
@@ -174,6 +183,7 @@ export function TokenList({ tokens, level, onRevoke, revoking }: TokenListProps)
       {
         id: "ended",
         header: "Ended",
+        dense: true,
         cellClassName: "font-mono text-muted",
         sortValue: (t) => time(endOf(t, now)?.at ?? null),
         cell: (t) => {

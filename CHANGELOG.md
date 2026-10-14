@@ -3184,6 +3184,9 @@
 ### Fixed
 
 - **Closing a run with a checkpoint that declares another source is refused by name.** It answered a server error; it now answers 400 naming `source` and the one valid value, `reconstructed_from_box`, and leaves the run open to be closed again.
+
+- **A refused or unknown public docs address looks like Forge documentation.** A plain request for one still answers 404 naming what was asked for, now under the documentation's header and name with the three doors to go back to. (ISS-1293)
+
 - **Each numbered step on the four connect-an-assistant setup pages asks for one action, with a Check of its own.** The scopes step says read is already ticked and asks for write, as the form shows it. (ISS-1289)
 
 - **A notification names its subject and opens it.** A runner, session, step, schedule or project in the title; a sweep is one row expanding to its issues. A resolved row is no longer unread; filter by type and unread. (ISS-1168)
@@ -3199,6 +3202,12 @@
 - **The API reference page shows each operation's permission or door.** Sign-in, pairing and invitation routes are shown with no bearer, and a route no longer lists refusals from a gate registered after it. Flow steps read as sentences. (ISS-1371)
 
 - **The biome schemas follow the pinned CLI.** Three `biome.json` files named 2.5.14 against a CLI at 2.5.15; the CLI is now pinned exactly and a test holds the schemas to it. (ISS-1371)
+
+- **The API Tokens table fits its frame at 1280px.** With a paired box named for its device id, Expires and Revoke fell outside it. Names are cut shorter and columns tighter; a project token's level names the project. (ISS-1264)
+
+- **Home takes focus to the first notification.** It scrolled to the top and left focus on a row out of view. (ISS-1264)
+
+- **`forge-runner api` writes a download as it arrived.** A PNG fetched through it came out 1.8 times larger, every byte that is not UTF-8 replaced. Binary bodies are written raw. (ISS-1264)
 
 - **End takes a long list to its last row on the first press.** The notification inbox and tables of over 100 rows stopped short and took five presses. Cards and List on Projects now say which is selected. (ISS-1264)
 

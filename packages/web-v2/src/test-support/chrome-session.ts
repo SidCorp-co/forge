@@ -50,6 +50,8 @@ export interface Tab {
   waitFor(expression: string, waitMs: number, what: string): Promise<void>;
   tap(x: number, y: number): Promise<void>;
   pressTab(): Promise<void>;
+  /** A PNG of the whole page as it stands, for a person to look at. */
+  screenshot(): Promise<Buffer>;
   /** A real key press, as the browser handles it (so its own scrolling runs): `End`, with `ctrl` for Ctrl+End. */
   press(key: string, modifiers?: { ctrl?: boolean }): Promise<void>;
   /** The name the accessibility tree gives the first element `selector` matches: what a screen reader says. */
@@ -204,6 +206,11 @@ export async function launchChrome({ chrome = chromeBinary(), launchMs = WARM_LA
               const down = { key, code: key, windowsVirtualKeyCode: codes[key] ?? 0, modifiers: modifiers.ctrl ? 2 : 0 };
               await tab("Input.dispatchKeyEvent", { type: "rawKeyDown", ...down });
               await tab("Input.dispatchKeyEvent", { type: "keyUp", ...down });
+            },
+            async screenshot() {
+              const { height } = await evaluate<{ height: number }>("({ height: document.documentElement.scrollHeight })");
+              const { data } = (await tab("Page.captureScreenshot", { format: "png", captureBeyondViewport: true, clip: { x: 0, y: 0, width, height, scale: 1 } })) as { data: string };
+              return Buffer.from(data, "base64");
             },
             async accessibleName(selector) {
               const { root } = (await tab("DOM.getDocument", {})) as { root: { nodeId: number } };

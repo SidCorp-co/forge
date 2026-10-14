@@ -3,12 +3,8 @@ import Link from "next/link";
 import { PageTitle } from "@/design";
 import { LINK_CLASS } from "@/design/patterns/body-tags";
 import { GuideShell } from "@/features/guides/components/guide-shell";
-import {
-  INDEX_HREF,
-  MISSING_GUIDE_BODY,
-  MISSING_GUIDE_LINK_TEXT,
-  missingGuideHeading,
-} from "@/features/guides/missing";
+import { INDEX_PATH } from "@/features/guides/audience";
+import { ALL_DOORS_LINK_TEXT, MISSING_GUIDE_BODY, missingGuideHeading } from "@/features/guides/missing";
 import { GUIDE_PATH_HEADER, slugFromGuidePath } from "@/features/guides/requested-path";
 
 /** The 404 a client-side navigation lands on, inside the docs' own chrome; a plain request is
@@ -21,8 +17,8 @@ export default async function GuideNotFound() {
         <PageTitle className="fg-h2 text-fg">{missingGuideHeading(slug)}</PageTitle>
         <p className="fg-body-sm text-muted">{MISSING_GUIDE_BODY}</p>
         <p>
-          <Link href={INDEX_HREF} className={LINK_CLASS}>
-            {MISSING_GUIDE_LINK_TEXT}
+          <Link href={INDEX_PATH} className={LINK_CLASS}>
+            {ALL_DOORS_LINK_TEXT}
           </Link>
         </p>
       </div>
