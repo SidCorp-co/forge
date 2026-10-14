@@ -3169,6 +3169,10 @@
 
 ### Fixed
 
+- **The API reference page names the permission and the door of each operation, and no longer asks a sign-in route for a bearer.** `/api/reference` opens each operation with the permission a token must be granted, or the door that keeps a token out and why; the device login, pairing, sign-in, registration and invitation routes read no bearer and are shown with none, and no longer list the token refusals they never give. A route's refusals no longer include a gate registered after it, which never runs for it: `GET /api/admin/whoami` no longer lists `ADMIN_ONLY`. The flow steps read as sentences. (ISS-1371)
+
+- **The biome schemas follow the pinned CLI.** The three `biome.json` files named 2.5.14 against a CLI that had moved to 2.5.15, so every run printed a version mismatch; the CLI is now pinned exactly and a test holds the schemas to it. (ISS-1371)
+
 - **Three small repairs on API Tokens and Agents.** A project name in the Level pill reads on one line, the Agents project hint is a sentence, and each row's "Self" button is "Edit self". (ISS-1264)
 
 - **Settings pages are flat, and notices read cleanly.** Pipeline, Runners and Integrations use hairline rows; an empty weekly-reading field is marked; a half-saved page ends its reason with a stop; a phone toast no longer shifts the page. (ISS-1262)
