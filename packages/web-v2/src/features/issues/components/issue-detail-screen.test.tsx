@@ -244,6 +244,16 @@ describe("the issue detail's sections and rail", () => {
     expect(rail.querySelector(".shadow-sm, .rounded-lg")).toBeNull();
   });
 
+  it("draws the Description as a flat section under a hairline, ahead of the sections below it", () => {
+    issueOver = { acceptanceCriteria: "- [ ] it works" };
+    renderScreen();
+    const description = screen.getByRole("region", { name: "Description" });
+    expect(description.className.split(/\s+/)).toContain("border-t");
+    expect(description.className).not.toMatch(/\bshadow-sm\b|\brounded-lg\b|\bbg-surface\b/);
+    expect(within(description).getByText("What the issue says.")).toBeInTheDocument();
+    expect(precedes(description, screen.getByRole("region", { name: "Acceptance criteria" }))).toBe(true);
+  });
+
   it("draws Steps, Acceptance criteria and the Agent plan as flat sections in that order", () => {
     durations = ok([
       { step: "code", runId: "r1", durationSeconds: 12, costUsd: 0, startedAt: "2026-09-21T11:00:00Z", finishedAt: "2026-09-21T11:00:12Z" },

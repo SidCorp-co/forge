@@ -4,8 +4,8 @@
 // `['issue',id]` / `['comments',id]` / `['activities',id]` — the event-router invalidates
 // exactly those, so a query keyed anything else here stops updating and nothing reports it.
 //
-// The sections this file draws are flat, with no Card: after the banners and the description, the
-// main column reads Steps, Acceptance criteria, Agent plan, then the Comments / Activity region,
+// The sections this file draws are flat, with no Card: after the banners, the main column reads the
+// release note, Description, Steps, Acceptance criteria, Agent plan, then the Comments / Activity region,
 // each ruled off from the one above by a hairline. The Properties rail sits beside it behind a
 // hairline at `lg` and under it as a disclosure below.
 
@@ -39,7 +39,7 @@ import { useRoom } from "@/lib/ws/use-room";
 import { useToast } from "@/providers/toast-provider";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   canonicalIssueId,
   deriveBlockerState,
@@ -76,8 +76,9 @@ import { AwaitingReleaseBanner } from "./awaiting-release-banner";
 import { BlockerBanner } from "./blocker-banner";
 import { useGuardedTransition } from "./use-guarded-transition";
 import { CommentThread } from "./comment-thread";
-import { DescriptionCard } from "./description-card";
-import { ReleaseNoteCard } from "./release-note-card";
+import { DescriptionSection } from "./description-section";
+import { FlatSection } from "./flat-section";
+import { ReleaseNoteSection } from "./release-note-section";
 import { type LiveAgentState, LiveAgentPanel } from "./live-agent-panel";
 import { ModulePicker } from "./module-picker";
 import { PropertiesRail } from "./properties-rail";
@@ -424,9 +425,9 @@ export function IssueDetailScreen({
             />
           )}
 
-          <ReleaseNoteCard issue={issue} />
+          <ReleaseNoteSection issue={issue} />
 
-          <DescriptionCard
+          <DescriptionSection
             issue={issue}
             attachments={attachmentsQ.data ?? []}
             attachmentsLoading={attachmentsQ.isLoading}
@@ -577,16 +578,6 @@ export function IssueDetailScreen({
         labels={issue.labels ?? []}
       />
     </PageContainer>
-  );
-}
-
-/** A main-column section drawn flat: a hairline above, a label heading, then its content. */
-function FlatSection({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section aria-label={title} className="border-t border-line-subtle pt-4">
-      <h2 className="fg-label mb-3">{title}</h2>
-      {children}
-    </section>
   );
 }
 
