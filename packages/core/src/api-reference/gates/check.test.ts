@@ -6,7 +6,14 @@ import { PAT_DOOR_REFUSALS } from '../../middleware/pat-rest-surface.js';
 import { describeOperation, fail, json } from '../declare/describe.js';
 import { zValidator } from '../declare/validator.js';
 import { buildReference, type Reference } from '../document/build.js';
-import { checkReference, describeFinding, inputsRead, thrownInline } from './check.js';
+import {
+  checkReference,
+  describeFinding,
+  FILE_BREAK,
+  inputsRead,
+  thrownInline,
+  withoutDeclarations,
+} from './check.js';
 
 const ok = describeOperation({ summary: 'ok', responses: { 200: json(z.object({})) } });
 const hook = (r: { success: boolean }) => {
@@ -265,6 +272,28 @@ describe('each rule, planted once, continued', () => {
     const source = `${BUILT_IN}\nfail(/* ) */ 'CONFLCIT', 'two writers'); fail(\n // )\n 'CONFLCIT')`;
     const findings = checkReference({ reference, source });
     expect(rules(findings)).toEqual(['typo-code document']);
+  });
+
+  it('typo-code: a string or a comment that says fail( is not a declaration, and what follows it is kept', () => {
+    const source = [
+      'const note = "fail(";',
+      '// fail( is how a descriptor starts',
+      "throw new HTTPException(409, { cause: { code: 'CONFLICT' } });",
+      "fail('CONFLCIT', 'two writers');",
+    ].join('\n');
+    const kept = withoutDeclarations(source);
+    expect(kept).toContain("code: 'CONFLICT'");
+    expect(kept).not.toContain('CONFLCIT');
+  });
+
+  it('typo-code: a call one file leaves open does not swallow the next file', () => {
+    const kept = withoutDeclarations(
+      [
+        "fail('A', 'never closed'",
+        "throw new HTTPException(409, { cause: { code: 'CONFLICT' } });",
+      ].join(FILE_BREAK),
+    );
+    expect(kept).toContain("code: 'CONFLICT'");
   });
 
   it('typo-code: a code a handler throws is written, so it is not named', async () => {
