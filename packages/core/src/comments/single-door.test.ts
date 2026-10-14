@@ -14,13 +14,6 @@ const SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 const DOORS = new Set(['comments/service.ts', 'comments/system-write.ts']);
 
-/**
- * Writers owed a move onto a door and not yet moved, each held by the issue that owns the file.
- * `pm/routes.ts` is one of the route files ISS-1371 holds, so it is not edited from here; the entry
- * ends when that issue lands and the operator-reply comment is posted through `insertComment`.
- */
-const AMNESTY = new Map([['pm/routes.ts', 'ISS-1371']]);
-
 const WRITES = [
   /\.(insert|update)\(\s*comments\s*\)/g,
   /\binsert\s+into\s+"?comments"?\b/gi,
@@ -81,22 +74,12 @@ describe('who writes the comments table', () => {
   it('is the two doors, and a writer outside them fails naming its file and line', () => {
     const faults = sources(SRC).flatMap((path) => {
       const rel = relative(SRC, path).split(sep).join('/');
-      if (DOORS.has(rel) || AMNESTY.has(rel)) return [];
+      if (DOORS.has(rel)) return [];
       return commentWriteLines(readFileSync(path, 'utf8')).map((line) => `${rel}:${line}`);
     });
     expect(
       faults,
-      'post through insertSystemComment (core writing) or insertComment (a caller writing): a direct write skips the stored-credential check',
+      'post through postSystemComment or insertSystemComment (core writing) or insertComment (a caller writing): a direct write skips the stored-credential check',
     ).toEqual([]);
-  });
-
-  it('keeps an amnesty only while its file still writes the table', () => {
-    for (const [rel, owner] of AMNESTY) {
-      const lines = commentWriteLines(readFileSync(join(SRC, rel), 'utf8'));
-      expect(
-        lines.length,
-        `${rel} no longer writes comments: drop its ${owner} amnesty`,
-      ).toBeGreaterThan(0);
-    }
   });
 });

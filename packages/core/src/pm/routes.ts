@@ -5,8 +5,9 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
+import { insertSystemComment } from '../comments/system-write.js';
 import { db } from '../db/client.js';
-import { comments, issues, pmConfig, pmDecisions, pmPolicies } from '../db/schema.js';
+import { issues, pmConfig, pmDecisions, pmPolicies } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { logger } from '../logger.js';
@@ -151,10 +152,12 @@ pmRoutes.post(
         .limit(1);
       if (!issue || issue.projectId !== projectId) continue;
 
-      const [inserted] = await db
-        .insert(comments)
-        .values({ issueId, authorId: userId, body, parentId: null })
-        .returning({ id: comments.id, body: comments.body, parentId: comments.parentId });
+      const inserted = await insertSystemComment({
+        issueId,
+        authorId: userId,
+        body,
+        parentId: null,
+      });
       if (!inserted) continue;
       await hooks.emit('commentCreated', {
         issueId,
