@@ -3200,6 +3200,12 @@
 
 - **The biome schemas follow the pinned CLI.** Three `biome.json` files named 2.5.14 against a CLI at 2.5.15; the CLI is now pinned exactly and a test holds the schemas to it. (ISS-1371)
 
+- **The API Tokens table fits its frame at 1280px.** With a paired box named for its device id, Expires and Revoke fell outside it. Names are cut shorter and columns tighter; a project token's level names the project. (ISS-1264)
+
+- **Home takes focus to the first notification.** It scrolled to the top and left focus on a row out of view. (ISS-1264)
+
+- **`forge-runner api` writes a download as it arrived.** A PNG fetched through it came out 1.8 times larger, every byte that is not UTF-8 replaced. Binary bodies are written raw. (ISS-1264)
+
 - **End takes a long list to its last row on the first press.** The notification inbox and tables of over 100 rows stopped short and took five presses. Cards and List on Projects now say which is selected. (ISS-1264)
 
 - **Jumping to the end of a long list lands on the last row.** The inbox and tables of over 100 rows stopped hundreds of pixels short when rows ran tall, and only a second scroll reached the end. (ISS-1264)

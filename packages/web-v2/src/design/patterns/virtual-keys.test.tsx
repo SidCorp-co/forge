@@ -46,4 +46,20 @@ describe("the first press of End lands on the last row", () => {
       }
     }
   }
+
+  for (const width of [1280, 390]) {
+    for (const { name, ctrl } of [{ name: "Home", ctrl: false }, { name: "Ctrl+Home", ctrl: true }]) {
+      it(`${name} in the feed, after End, takes focus to the first row and shows it, at ${width}px`, () =>
+        withApp(HARNESS, "list:40", width, async (tab) => {
+          await tab.waitFor("window.ready === true", 15_000, "the page to be laid out in the app's fonts");
+          await tab.evaluate("window.focusFirst()");
+          await tab.press("End");
+          await new Promise((later) => setTimeout(later, 1000));
+          await tab.press("Home", { ctrl });
+          await new Promise((later) => setTimeout(later, 1000));
+          const top = await tab.evaluate<{ firstInView: boolean; focused: string | null }>("window.atTop()");
+          expect(top, JSON.stringify(top)).toEqual({ firstInView: true, focused: "0" });
+        }), 30_000);
+    }
+  }
 });

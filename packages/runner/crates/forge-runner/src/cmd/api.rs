@@ -1,4 +1,4 @@
-use std::io::Read;
+use std::io::{Read, Write};
 
 use clap::Args as ClapArgs;
 use forge_runner_core::api::{
@@ -93,7 +93,12 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     let client = CoreClient::new(core_url, token);
     let resp = run_api(&client, &req).await;
     if !resp.stdout.is_empty() {
-        println!("{}", resp.stdout);
+        let mut out = std::io::stdout().lock();
+        out.write_all(&resp.stdout)?;
+        if resp.stdout_is_text {
+            out.write_all(b"\n")?;
+        }
+        out.flush()?;
     }
     if !resp.stderr.is_empty() {
         eprintln!("{}", resp.stderr);
