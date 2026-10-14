@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.234] - 2026-10-14
+
+Release pages open on a summary, and detail pages fill to the side rail
+
+### Changed
+
+- **A release page now reads in thirty seconds.** It opens on a short summary and counts by kind, then one short line per change; criteria, keys and technical notes open under each row, behind a Technical view.
+
+### Fixed
+
+- **Detail pages fill the space up to the facts rail.** No blank band between content and rail. A release page lists its contents atop the rail, marking the group you are reading; narrow screens get one menu.
+
 ## [0.4.0-dev.233] - 2026-10-14
 
 A release page opened by its version number loads again
