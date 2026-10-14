@@ -75,7 +75,7 @@ the same address shows the same words in the content pane. On `/guides/<slug>` i
 a 404 with `missingGuideDocument`, an HTML page naming the slug, with the slug escaped because it
 comes off the URL. Both documents
 (`refusalDocument` is the other) are written to look like the pages around them: the header
-`GuideShell` prints, the name `SITE_NAME` gives the surface, the type scale of `PublicRefusal`, and
+`GuideShell` prints, the name `SITE_NAME` gives the surface, the type scale of the refusal the reader shows, and
 every door as the way on. The middleware cannot render React or name the app's hashed stylesheet,
 so the CSS is inline, and the colours it paints with are `DOCUMENT_TOKENS`, each held by
 `packages/web-v2/src/features/guides/missing-document.test.ts` to the value `packages/web-v2/src/styles/tokens.css` resolves it to.
@@ -88,9 +88,12 @@ ends when Next server-renders a `notFound()` body.
 
 A client-side navigation is left alone: the router fetches the same URL for flight data and would
 choke on an HTML document, and it has JavaScript by definition, so the page serves it inside the docs
-shell: `PublicRefusal` for a door or page, and
-`packages/web-v2/src/app/guides/[slug]/not-found.tsx` for a guide. Both renderers read one set of
-strings from `packages/web-v2/src/features/guides/missing.ts`.
+shell: a door or page as a `refused` view of `PublicReader`, which offers the docs' search and every
+door in the sidebar a door page has, and
+`packages/web-v2/src/app/guides/[slug]/not-found.tsx` for a guide. The search needs the guide
+index, so with core unreachable `PublicRefusal` keeps the refusal and the doors and says there is no
+search (`SEARCH_UNAVAILABLE`), where an address naming a real door fails loudly. Every renderer reads
+one set of strings from `packages/web-v2/src/features/guides/missing.ts`.
 
 The middleware cannot tell the two apart by the `RSC` header: Next 16's middleware adapter
 (`next/dist/server/web/adapter.js`, `FLIGHT_HEADERS`) deletes it, and `_rsc`, before middleware

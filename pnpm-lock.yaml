@@ -124,6 +124,12 @@ importers:
       postgres:
         specifier: ^3.4.9
         version: 3.4.9
+      remark-parse:
+        specifier: ^11.0.0
+        version: 11.0.0
+      unified:
+        specifier: ^11.0.5
+        version: 11.0.5
       ws:
         specifier: ^8.22.0
         version: 8.22.0
@@ -140,6 +146,9 @@ importers:
       '@types/jsdom':
         specifier: ^30.0.0
         version: 30.0.0
+      '@types/mdast':
+        specifier: ^4.0.4
+        version: 4.0.4
       '@types/node':
         specifier: ^26.6.3
         version: 26.6.3

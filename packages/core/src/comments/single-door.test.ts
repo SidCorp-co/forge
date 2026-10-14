@@ -115,6 +115,19 @@ const PLANTS: Plant[] = [
     at: 4,
   },
   {
+    form: 'raw SQL that interpolates the table',
+    plant: [
+      "import { comments } from '../db/schema.js';",
+      'db.execute(sql`delete from $' + '{comments}`);',
+    ].join('\n'),
+    at: 2,
+  },
+  {
+    form: 'raw SQL whose table name is joined from two strings',
+    plant: "db.execute(sql.raw('delete from ' + 'comments'));",
+    at: 1,
+  },
+  {
     form: 'a table held by an exported constant that is a namespace',
     barrel: "import * as s from '../db/schema.js';\nexport const dbSchema = s;",
     plant: "import { dbSchema } from './barrel.js';\ndb.insert(dbSchema['comments']);",

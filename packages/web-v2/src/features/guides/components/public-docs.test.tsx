@@ -9,7 +9,7 @@ import { HELP_DOCS } from "@/features/docs/help-content.generated";
 import type { Guide, GuideScope } from "../api";
 import { ONE_CORPUS } from "../audience";
 import { buildCorpus, helpPageHref, searchPlaceholder } from "../corpus";
-import { missingDoor } from "../missing";
+import { missingDoor, SEARCH_UNAVAILABLE } from "../missing";
 import { PublicLanding, PublicReader, PublicRefusal } from "./public-docs";
 
 expect.extend(matchers);
@@ -201,11 +201,43 @@ describe("a page", () => {
 });
 
 describe("a refused address, reached by a client navigation", () => {
-  it("shows the same refusal the middleware serves, with every door as the way on", () => {
+  const refusal = missingDoor("users");
+  const refused = () => reader({ kind: "refused", refusal });
+
+  it("says what the middleware's 404 says, in the reader's content", () => {
+    refused();
+    expect(screen.getByRole("heading", { name: refusal.heading })).toBeInTheDocument();
+    expect(screen.getByText(refusal.body)).toBeInTheDocument();
+  });
+
+  it("offers the docs' search, and finds a page behind any door", () => {
+    refused();
+    fireEvent.change(screen.getByRole("textbox", { name: "Search every page" }), {
+      target: { value: "dependencies" },
+    });
+    const results = within(screen.getByRole("list", { name: "Search results" })).getAllByRole("link");
+    expect(results.map((l) => l.getAttribute("href"))).toContain(`/guides/issue-dependencies`);
+  });
+
+  it("offers every door as the way on, in the sidebar a door page has", () => {
+    refused();
+    const ways = within(screen.getByRole("navigation", { name: "Other ways in" })).getAllByRole("link");
+    expect(ways.map((l) => l.getAttribute("href"))).toEqual([
+      "/guides?for=user",
+      "/guides?for=assistant-setup",
+      "/guides?for=agent",
+      "/guides",
+    ]);
+  });
+});
+
+describe("a refused address when the guide index cannot be reached", () => {
+  it("keeps the refusal and every door, and says there is no search and why", () => {
     const refusal = missingDoor("users");
     render(<PublicRefusal refusal={refusal} />);
     expect(screen.getByRole("heading", { name: refusal.heading })).toBeInTheDocument();
-    expect(screen.getByText(refusal.body)).toBeInTheDocument();
+    expect(screen.getByText(SEARCH_UNAVAILABLE)).toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).toBeNull();
     expect(within(screen.getByRole("navigation", { name: "Ways in" })).getAllByRole("link")).toHaveLength(4);
   });
 });
