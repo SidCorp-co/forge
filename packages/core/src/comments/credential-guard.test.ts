@@ -214,17 +214,20 @@ describe('what core writes in place of a stored credential', () => {
     expect(withholdCredentials(once.text, stored)).toEqual({ text: once.text, ids: [] });
   });
 
-  it('keeps an offset honest where a letter lower-cases to a different length', () => {
+  it('matches a letter whose lower-case form is two code units, and keeps every offset honest', () => {
     const turkish = credentialsFrom({
       testCredentials: [{ label: 'tr', username: 'x', password: `${DOTTED_I}stanbul-Secret-1` }],
     });
-    const { text } = withholdCredentials(
-      `${DOTTED_I.repeat(3)} ${DOTTED_I}stanbul-Secret-1 tail`,
-      turkish,
-    );
-    expect(text.endsWith(' tail')).toBe(true);
-    expect(text.startsWith(`${DOTTED_I.repeat(3)} `)).toBe(true);
-    expect(text).not.toContain('Secret');
+    const lowered = `${DOTTED_I}stanbul-Secret-1`.toLowerCase();
+    for (const written of [`${DOTTED_I}stanbul-Secret-1`, lowered]) {
+      const { text, ids } = withholdCredentials(`${DOTTED_I.repeat(3)} ${written} tail`, turkish);
+      expect(ids).toEqual(['tr']);
+      expect(text.startsWith(`${DOTTED_I.repeat(3)} `)).toBe(true);
+      expect(text.endsWith(' tail')).toBe(true);
+      expect(text).not.toContain('Secret');
+      expect(text).not.toContain('secret');
+    }
+    expect(findCredential(`${DOTTED_I} ${lowered}`, turkish)).toMatchObject({ column: 3 });
   });
 });
 

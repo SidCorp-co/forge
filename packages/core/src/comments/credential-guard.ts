@@ -38,15 +38,26 @@ function bare(text: string): string {
   return text.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
 }
 
-/**
- * Lower-case without moving an offset: a code point whose lower-case form is a different length
- * (a capital I with a dot above becomes two) stays as written, so a span found in the folded text is a span of the original.
- */
-const fold = (text: string): string =>
-  text.replace(/[\s\S]/gu, (one) => {
+/** Lower-case one code point at a time, so the same text folds the same way whole or in part. */
+const fold = (text: string): string => text.replace(/[\s\S]/gu, (one) => one.toLowerCase());
+
+/** The folded text with, for each of its code units, where in the original it began and ended. */
+function foldedWithOffsets(text: string): { folded: string; starts: number[]; ends: number[] } {
+  let folded = '';
+  const starts: number[] = [];
+  const ends: number[] = [];
+  let at = 0;
+  for (const one of text) {
     const lower = one.toLowerCase();
-    return lower.length === one.length ? lower : one;
-  });
+    for (let i = 0; i < lower.length; i += 1) {
+      starts.push(at);
+      ends.push(at + one.length);
+    }
+    folded += lower;
+    at += one.length;
+  }
+  return { folded, starts, ends };
+}
 
 function isWholeText(text: string, value: string): boolean {
   if (fold(text.trim()) === fold(value.trim()) && value.trim() !== '') return true;
@@ -56,13 +67,13 @@ function isWholeText(text: string, value: string): boolean {
 
 /** The half-open spans of `text` a stored credential covers, overlaps merged, in order. */
 function spansOf(text: string, credentials: readonly StoredCredential[]): Array<[number, number]> {
-  const lowered = fold(text);
+  const { folded, starts, ends } = foldedWithOffsets(text);
   const found: Array<[number, number]> = [];
   for (const { value } of credentials) {
     if (value.length >= SECRET_LENGTH) {
       const needle = fold(value);
-      for (let at = lowered.indexOf(needle); at >= 0; at = lowered.indexOf(needle, at + 1)) {
-        found.push([at, at + needle.length]);
+      for (let at = folded.indexOf(needle); at >= 0; at = folded.indexOf(needle, at + 1)) {
+        found.push([starts[at] as number, ends[at + needle.length - 1] as number]);
       }
     } else if (isWholeText(text, value)) {
       found.push([0, text.length]);
