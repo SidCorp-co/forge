@@ -7,7 +7,7 @@
 
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
-import { RECORD_DESTINATIONS, RECORD_GUIDE_SLUG } from '../messaging/record-screen.js';
+import { RECORD_GUIDE_SLUG } from '../messaging/record-screen.js';
 import { RECORDS_GUIDE } from './records-guide.js';
 import { getGuide, listGuides } from './registry.js';
 import { guideRoutes } from './routes.js';
@@ -42,10 +42,11 @@ describe('the records-and-comments guide', () => {
     expect(prose).toContain('has not been attached');
   });
 
-  it('names a store for every destination the rule routes to', () => {
-    for (const route of new Set(RECORD_DESTINATIONS.values())) {
-      expect(body).toContain(route);
-    }
+  it('routes neither a verdict nor a review to the step-context store, and says core has no store for them', () => {
+    expect(body).not.toContain('POST /api/issue-step-contexts');
+    const noStore = prose.slice(prose.indexOf('What core has no store for'));
+    expect(noStore).toContain('a verdict, a review');
+    expect(noStore).toContain('not where a verdict or a review goes');
   });
 
   it('names the store each kind of thing a run records belongs in', () => {

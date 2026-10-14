@@ -1,4 +1,5 @@
 import { type SQL, sql } from 'drizzle-orm';
+import { z } from 'zod';
 import { db } from '../db/client.js';
 import { bucketIso, utcDateTrunc } from '../lib/time-buckets.js';
 import { firstShipped } from '../pipeline/shipped-at.js';
@@ -10,13 +11,28 @@ export const METRICS = [
   'queue_wait',
   'runner_utilization',
   'cache_hit_rate',
-  // ISS-381 (Part 2) — backed by the new collection tables:
-  'pass_rate', // issue_step_contexts.verdict, step='test'
-  'approve_rate', // issue_step_contexts.verdict, step='review'
   'queue_depth',
   'runner_uptime', // runner_events (status-change audit)
 ] as const;
 export type Metric = (typeof METRICS)[number];
+
+/** Metrics that were served and are not, each with why, so a caller holding the old name is told rather than answered with an empty series. */
+const RETIRED_METRICS: Readonly<Record<string, string>> = {
+  pass_rate: 'no step handoff records a verdict any more, so no pass series is kept',
+  approve_rate: 'no step handoff records a verdict any more, so no approval series is kept',
+};
+
+/** The refusal a metric name outside {@link METRICS} is answered with, naming what was sent and what is served. */
+export function metricRefusal(received: unknown): string {
+  const name = typeof received === 'string' ? received : JSON.stringify(received);
+  const why = Object.hasOwn(RETIRED_METRICS, name)
+    ? `is retired: ${RETIRED_METRICS[name]}`
+    : 'is not a metric this project serves';
+  return `metric \`${name}\` ${why}. Served metrics: ${METRICS.join(', ')}.`;
+}
+
+/** The `metric` parameter, one schema for the REST route and the MCP tool. */
+export const metricSchema = z.enum(METRICS, { error: (issue) => metricRefusal(issue.input) });
 
 export const BUCKETS = ['day', 'hour'] as const;
 export type Bucket = (typeof BUCKETS)[number];
@@ -289,35 +305,6 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
           n: num(r.n),
         }),
         { cacheHitRate: null, n: 0 },
-      );
-      break;
-    }
-
-    case 'pass_rate':
-    case 'approve_rate': {
-      const isPassRate = metric === 'pass_rate';
-      const step = isPassRate ? 'test' : 'review';
-      const passed = isPassRate
-        ? sql`verdict IN ('pass', 'verified_by_test')`
-        : sql`verdict = 'pass'`;
-      const eligible = isPassRate ? sql`verdict <> 'blocked_fixture'` : sql`true`;
-      const rows = (await db.execute(sql`
-        SELECT ${utcDateTrunc(bucket, sql`created_at`)} AS bucket,
-               (count(*) FILTER (WHERE ${passed})::float / NULLIF(count(*) FILTER (WHERE ${eligible}), 0)) AS rate,
-               (count(*) FILTER (WHERE ${eligible}))::int AS n
-        FROM issue_step_contexts
-        WHERE project_id = ${projectId}
-          AND step = ${step}
-          AND verdict IS NOT NULL
-          AND created_at >= ${cutoff}
-        GROUP BY 1
-        ORDER BY 1
-      `)) as unknown as Array<Record<string, unknown>>;
-      series = densifyScalar(
-        buckets,
-        rows,
-        (r) => ({ rate: r.rate == null ? null : num(r.rate), n: num(r.n) }),
-        { rate: null, n: 0 },
       );
       break;
     }

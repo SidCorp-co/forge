@@ -35,43 +35,6 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
     });
   });
 
-  bus.on('taskCreated', (p) => {
-    roomManager.publish(projectRoom(p.projectId), {
-      event: 'task.created',
-      data: {
-        taskId: p.taskId,
-        issueId: p.issueId,
-        projectId: p.projectId,
-        actorId: p.actor.id,
-      },
-    });
-  });
-
-  bus.on('taskUpdated', (p) => {
-    roomManager.publish(projectRoom(p.projectId), {
-      event: 'task.updated',
-      data: {
-        taskId: p.taskId,
-        issueId: p.issueId,
-        projectId: p.projectId,
-        fields: p.fields,
-        actorId: p.actor.id,
-      },
-    });
-  });
-
-  bus.on('taskDeleted', (p) => {
-    roomManager.publish(projectRoom(p.projectId), {
-      event: 'task.deleted',
-      data: {
-        taskId: p.taskId,
-        issueId: p.issueId,
-        projectId: p.projectId,
-        actorId: p.actor.id,
-      },
-    });
-  });
-
   bus.on('scheduleRun', (p) => {
     roomManager.publish(projectRoom(p.projectId), {
       event: 'schedule.run',

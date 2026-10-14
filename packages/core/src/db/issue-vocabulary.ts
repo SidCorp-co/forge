@@ -41,9 +41,6 @@ export const issueStatuses = [
 ] as const;
 export type IssueStatus = (typeof issueStatuses)[number];
 
-export const taskStatuses = ['backlog', 'todo', 'in_progress', 'in_review', 'done'] as const;
-export type TaskStatus = (typeof taskStatuses)[number];
-
 export const issueDependencyKinds = [
   'blocks',
   'relates',
@@ -55,3 +52,20 @@ export type IssueDependencyKind = (typeof issueDependencyKinds)[number];
 
 export const issueDependencyHolds = ['settled', 'shipped'] as const;
 export type IssueDependencyHold = (typeof issueDependencyHolds)[number];
+
+/**
+ * The attribute keys that hold at most one row per issue. The registry derives each key's
+ * `cardinality` from this list and `issue_attributes` keeps the promise as a partial unique
+ * index over exactly these keys, so the writer and the database cannot disagree about which
+ * keys are single-row.
+ */
+export const singleRowAttributeKeys = [
+  'obligation_owner',
+  'obligation_carrier',
+  'delivered',
+  'delivered_of',
+  'human_required',
+  'irreversible_if_wrong',
+  'source',
+] as const;
+export type SingleRowAttributeKey = (typeof singleRowAttributeKeys)[number];

@@ -6,26 +6,13 @@ import {
   issueStepContextKinds,
   issueStepContexts,
   issues,
-  type StepVerdict,
 } from '../db/schema.js';
 import { actorAgencies, actorTypes } from '../db/schema-activity.js';
 import { refreshModuleKnowledgeForIssue } from '../labels/module-knowledge-refresh.js';
 import { type StepHandoffPayload, stepHandoffSchema } from '../memory/step-handoff-schema.js';
 import { hooks } from './hooks.js';
 
-/**
- * ISS-381 (2.1) — derive the unified verdict column value from a handoff
- * payload. Review handoffs carry `verdict` (pass/needs_fix/no_change); test
- * handoffs carry `result` (pass/fail). Every other step has no verdict (null),
- * which on a re-run upsert intentionally clears any prior value.
- */
-export function extractVerdict(payload: StepHandoffPayload): StepVerdict | null {
-  if (payload.step === 'review') return payload.verdict;
-  if (payload.step === 'test') return payload.result;
-  return null;
-}
-
-const PASSING_TEST_RESULTS: readonly StepVerdict[] = ['pass', 'verified_by_test'];
+const PASSING_TEST_RESULTS: readonly string[] = ['pass', 'verified_by_test'];
 
 function isPassingTestHandoff(payload: StepHandoffPayload): boolean {
   return payload.step === 'test' && PASSING_TEST_RESULTS.includes(payload.result);
@@ -120,7 +107,6 @@ export async function writeIssueContext(
         `writeIssueContext: payload.step (${validated.payload.step}) does not match scope.step (${validated.step})`,
       );
     }
-    const verdict = extractVerdict(validated.payload);
     const [row] = await db
       .insert(issueStepContexts)
       .values({
@@ -131,7 +117,6 @@ export async function writeIssueContext(
         step: validated.step,
         attempt: validated.attempt,
         payload: validated.payload,
-        verdict,
       })
       .onConflictDoUpdate({
         target: [issueStepContexts.issueId, issueStepContexts.step, issueStepContexts.attempt],
@@ -139,7 +124,6 @@ export async function writeIssueContext(
         set: {
           pipelineRunId: sql`excluded.pipeline_run_id`,
           payload: sql`excluded.payload`,
-          verdict: sql`excluded.verdict`,
           updatedAt: sql`now()`,
         },
       })
@@ -194,7 +178,6 @@ export interface IssueContextRow {
   step: string | null;
   attempt: number;
   payload: StepHandoffPayload;
-  verdict: StepVerdict | null;
   createdAt: Date;
   updatedAt: Date;
 }

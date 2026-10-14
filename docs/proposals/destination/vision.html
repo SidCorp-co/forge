@@ -572,7 +572,7 @@ trust budget — a breach that rewards itself.</p>
 <tr><td>5</td><td><b>May the master answer for the owner</b></td><td class="pick"><span class="tag ok">recommended</span> only <code>auto_answered</code> with a citation</td><td>let it author answers — absorbs ~80% of questions and opens the worst measured failure mode</td></tr>
 <tr><td>6</td><td><b>Per-child close policy</b></td><td><code>terminate</code> only — simple, and "deploy finished after the master died" is unrepresentable</td><td class="pick"><span class="tag ok">recommended</span> all three — correct, and each is a code path to test</td></tr>
 <tr><td>7</td><td><b>Coding forever, or first domain</b></td><td class="pick"><span class="tag ok">recommended</span> coding — lets git/PR/CI assumptions into the kernel and sharpens everything; the six primitives stay clean for later</td><td>domain-neutral now — the adapter must widen past five methods</td></tr>
-<tr><td>8</td><td><b>Label capture</b> <span class="tag">new</span></td><td class="pick"><span class="tag ok">recommended</span> instrument first — <code>approve_rate</code> and <code>pass_rate</code> return n=0 over 30 days and reopens are 0, so there is currently nothing to measure</td><td>defer — and every later claim about accuracy rests on nothing</td></tr>
+<tr><td>8</td><td><b>Label capture</b> <span class="tag">new</span></td><td class="pick"><span class="tag ok">recommended</span> instrument first — <code>approve_rate</code> and <code>pass_rate</code> (both since retired) returned n=0 over 30 days and reopens are 0, so there is currently nothing to measure</td><td>defer — and every later claim about accuracy rests on nothing</td></tr>
 </tbody>
 </table>
 
@@ -596,7 +596,7 @@ and state is derived from evidence rather than from someone's hand.</div>
 <tr><td class="ok"><b>Primary, solid</b></td><td>MAST · Huang et al. ICLR 2024 · ImpossibleBench · Cursor reward-hacking audit · OpenAI retiring SWE-bench Verified · I-PASS (NEJM 2014) · Temporal ParentClosePolicy · k8s garbage collection · Erlang Supervisor · pg_ivm · A2A spec · LangGraph docs · Claude Code Agent SDK docs · SLSA v1.0 threat model · in-toto (USENIX Sec '19) · de Kleer ATMS (AI 28, 1986) · Everett &amp; Forbus (AAAI-96) · Petrović &amp; Ivanković (ICSE-SEIP 2018)</td></tr>
 <tr><td class="warn"><b>Abstract/summary only</b></td><td>several 2026 arXiv items: SpecBench · Self-Correction Illusion · Causal Agent Replay · LLM-as-a-Judge Is Not an Oracle · Library Drift · MCB · STALE. <b>Re-read before building on them.</b></td></tr>
 <tr><td class="warn"><b>Vendor claims, not studies</b></td><td>AURA thresholds · LinearB 5.3× · mutation-as-gate practitioner posts · Linear's "30% of inbound bugs" · interventions-per-session figures</td></tr>
-<tr><td class="acc"><b>Measured in this repo</b></td><td>785 issues resolved in 90 days (8.72/day) · <code>approve_rate</code> and <code>pass_rate</code> n=0 over 30 days · 0 reopens · 77 <code>runner-v*</code> tags in 113 days · <code>dyn Runner</code> appears 0 times</td></tr>
+<tr><td class="acc"><b>Measured in this repo</b></td><td>785 issues resolved in 90 days (8.72/day) · <code>approve_rate</code> and <code>pass_rate</code> (both since retired) n=0 over 30 days · 0 reopens · 77 <code>runner-v*</code> tags in 113 days · <code>dyn Runner</code> appears 0 times</td></tr>
 </tbody>
 </table>
 

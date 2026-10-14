@@ -22,7 +22,6 @@ const READ_METHODS: ReadonlySet<string> = new Set([
 
 const READ_ACTIONS: ReadonlySet<string> = new Set([
   'list',
-  'listTasks',
   'get',
   'search',
   'events',

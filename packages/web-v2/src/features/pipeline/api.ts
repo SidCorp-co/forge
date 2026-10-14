@@ -8,7 +8,6 @@ import type {
   PipelineRunSummary,
   ProjectRunsOpts,
   StepDurationRow,
-  TaskRow,
   ThroughputRow,
 } from "./types";
 
@@ -92,9 +91,6 @@ export const pipelineApi = {
   /** `GET /api/pipeline/throughput?days&projectId` — daily closed/released. */
   throughput: (opts: AnalyticsOpts = {}) =>
     apiClient<ThroughputRow[]>(`/pipeline/throughput?${analyticsParams(opts)}`),
-
-  /** `GET /api/issues/:id/tasks` — subtasks for the RunDetail Tasks tab. */
-  tasksForIssue: (issueId: string) => apiClient<TaskRow[]>(`/issues/${issueId}/tasks`),
 
   issuesForProject: (projectId: string) => {
     const params = new URLSearchParams({

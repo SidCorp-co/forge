@@ -10,9 +10,7 @@ the person's share of the thread was 98 and 123 characters against 26,000 and 46
 | What you have | Where it goes | Format |
 |---|---|---|
 | A sentence a person needs to read | `comments` | prose, no fence, no field list. Say what happened and what it means |
-| A verdict on a step, per attempt | {{ROUTE_VERDICT}} → `issue_step_contexts` | the handoff payload, keyed `(issue, step, attempt)`, `verdict` typed |
-| A review of a head, per attempt | {{ROUTE_REVIEW}} → `issue_step_contexts` | the same key; the findings are the payload |
-| An assertion about the issue itself — blocking, delivered, obligation, supersedes, human_required | `{{ISSUE_ASSERTION_ROUTE}}` → `issue_attributes` | typed value under a registered key, `sourceCommentId` pointing at the line that asserted it |
+| An assertion about the issue itself — delivered, obligation, human_required | `{{ISSUE_ASSERTION_ROUTE}}` → `issue_attributes` | typed value under a registered key, `sourceCommentId` pointing at the line that asserted it |
 | A transcript, a tool result, what the agent said | `agent_session_turns` | written by the session; never copied into a comment |
 | A log, a diff, an evidence file | an attachment | the file, uploaded. A comment names it, does not paste it |
 | Who moved this issue and when | `kernel_transitions` | written by the transition, not narrated |
@@ -21,8 +19,10 @@ the person's share of the thread was 98 and 123 characters against 26,000 and 46
 
 ### What core has no store for, said plainly
 
-A run's own records — a baseline, a decision, a correction, a park, a merged mark — have no store
-here that holds them whole. `issue_attributes` takes ten registered keys of issue assertions and
+A run's own records — a baseline, a decision, a correction, a park, a merged mark, a verdict, a
+review — have no store here that holds them whole. `issue_step_contexts` holds a step's handoff
+payload keyed `(issue, step, attempt)` and no typed verdict, so it is not where a verdict or a
+review goes. `issue_attributes` takes only the registered keys of issue assertions and
 refuses anything else by name, so a baseline's gate/result/commit does not fit it and a route that
 would reject the write is not somewhere to be sent. Until one exists: put the assertions such a
 record makes ABOUT the issue at `{{ISSUE_ASSERTION_ROUTE}}` under a registered key, and keep the
@@ -38,7 +38,7 @@ id as `sourceCommentId` on the attribute, and a reader of either can reach the o
 
 **A fence in a comment is the smell.** A ` \`\`\`forge-record ` block in a comment body means a
 record was serialised instead of stored. That is what the `record-in-comment` rule refuses — by
-name, telling you the route for your record's own kind, never by a character count. A cap could not
+name, telling you that no store holds your record's kind whole and where its assertions go, never by a character count. A cap could not
 tell a 4,000-character record from a 4,000-character explanation somebody wants, and an agent
 meeting a cap splits across comments rather than writing less. `COMMENT_BODY_MAX_CHARS` is not the
 lever and is not moved.

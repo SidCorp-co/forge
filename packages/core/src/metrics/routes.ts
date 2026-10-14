@@ -6,7 +6,7 @@ import { zValidator } from '../api-reference/declare/validator.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { buildInterventionsReport } from './interventions-report.js';
-import { BUCKETS, METRICS, runTimeseries, stepDurationsForProject } from './queries.js';
+import { BUCKETS, metricSchema, runTimeseries, stepDurationsForProject } from './queries.js';
 import {
   interventionsSchema,
   readInterventions,
@@ -34,7 +34,7 @@ projectMetricsRoutes.use('/:id/metrics/*', requireAuth(), assertEmailVerified())
 const idParamSchema = z.object({ id: z.uuid() });
 
 const timeseriesQuerySchema = z.object({
-  metric: z.enum(METRICS),
+  metric: metricSchema,
   days: z.coerce.number().int().min(1).max(90).default(30),
   bucket: z.enum(BUCKETS).default('day'),
   groupBy: z.literal('step').optional(),

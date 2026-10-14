@@ -93,11 +93,8 @@ describe("issueDetailApi carries ?projectId= for a display-key id (ISS-1160)", (
     expect(lastUrl()).toBe("/api/issues/ISS-1185/activity?limit=50&projectId=p1");
   });
 
-  it("listTasks() and listAttachments() append projectId", async () => {
+  it("listAttachments() appends projectId", async () => {
     fetchMock.mockImplementation(async () => json([]));
-    await issueDetailApi.listTasks("ISS-1185", "p1");
-    expect(lastUrl()).toBe("/api/issues/ISS-1185/tasks?projectId=p1");
-
     await issueDetailApi.listAttachments("ISS-1185", "p1");
     expect(lastUrl()).toBe("/api/issues/ISS-1185/attachments?projectId=p1");
   });

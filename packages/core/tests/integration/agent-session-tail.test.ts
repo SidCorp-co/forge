@@ -134,12 +134,13 @@ describe('agent_sessions reads that must not carry a transcript', () => {
     expect(rows[0]?.messageCount).toBe(7);
   });
 
-  it('reports null, NOT zero, for a session the turn ledger does not cover', async () => {
+  it('reads the transcript length, NOT zero and NOT null, for a recorded-lane session the turn ledger does not cover', async () => {
     await seedSession({ messageCount: 35, turns: 0 });
 
     const rows = await listAgentSessionsForMcp({ projectId, limit: 10 });
 
-    expect(rows[0]?.messageCount).toBeNull();
-    expect(rows[0]?.messageCount).not.toBe(0);
+    // Null means only that the lane keeps no transcript; a chat holding 35 messages reads 35.
+    expect(rows[0]?.messageCount).toBe(35);
+    expect(rows[0]?.transcript).toBe('recorded');
   });
 });

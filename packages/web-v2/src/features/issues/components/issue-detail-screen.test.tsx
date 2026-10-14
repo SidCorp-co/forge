@@ -6,7 +6,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { IssueDetailScreen } from "./issue-detail-screen";
 
@@ -19,6 +19,7 @@ let durations: ReturnType<typeof ok> = ok([]);
 let attachments: ReturnType<typeof ok> = ok([]);
 let pipelineHealth: Record<string, unknown> | undefined;
 let status = "open";
+let issueOver: Record<string, unknown> = {};
 let park: Record<string, unknown> = { state: "ready", park: null };
 
 const ISSUE = {
@@ -62,11 +63,13 @@ vi.mock("./step-artifact-card", () => ({
 vi.mock("./html-attachment-card", () => ({
   HtmlAttachmentCard: ({ name }: { name: string }) => <div>preview {name}</div>,
 }));
-vi.mock("../detail-hooks", () => ({
-  useIssue: () => ok({ ...ISSUE, status, pipelineHealth }),
+vi.mock("@/lib/api/auth-api", () => ({ getAccessToken: () => "test-token" }));
+// The rest of the module stays real, so a read added back to it reaches `fetch` below instead of vanishing into a mock.
+vi.mock("../detail-hooks", async (importActual) => ({
+  ...(await importActual<typeof import("../detail-hooks")>()),
+  useIssue: () => ok({ ...ISSUE, ...issueOver, status, pipelineHealth }),
   useComments: () => ok({ items: [], totalCount: 0 }),
   useActivity: () => ok({ items: [] }),
-  useTasks: () => ok([]),
   useAttachments: () => attachments,
   useStepHandoffs: () => handoffs,
   useStepDurations: () => durations,
@@ -94,15 +97,24 @@ function renderScreen() {
 const precedes = (a: Element, b: Element) =>
   (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
 
+const fetchMock = vi.fn();
+
 beforeEach(() => {
+  fetchMock.mockReset();
+  fetchMock.mockImplementation(async () => new Response("[]", { status: 200, headers: { "content-type": "application/json" } }));
+  vi.stubGlobal("fetch", fetchMock);
   handoffs = ok([]);
   durations = ok([]);
   attachments = ok([]);
   pipelineHealth = undefined;
   status = "open";
+  issueOver = {};
   park = { state: "ready", park: null };
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe("the issue detail's main column", () => {
   it("draws an empty Steps panel as one line, not a card with an empty state", () => {
@@ -180,6 +192,74 @@ describe("the issue detail's main column", () => {
     const grid = screen.getByText("What the issue says.").closest(".grid");
     expect(grid?.className).toContain("lg:grid-cols-[minmax(0,1fr)_clamp(16rem,32%,22.5rem)]");
     expect(grid?.className).not.toContain("_360px]");
+  });
+});
+
+// The Comments / Activity region is the page's last section: a flat two-way region under a hairline,
+// with nothing standing where a third tab would.
+describe("the issue detail's Comments / Activity region", () => {
+  it("offers exactly the Comments and Activity tabs", () => {
+    renderScreen();
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Comments0", "Activity0"]);
+    expect(screen.queryByRole("tab", { name: /tasks/i })).toBeNull();
+  });
+
+  it("is a flat section under a hairline, not a Card, and keeps its #issue-comments anchor", () => {
+    renderScreen();
+    const region = document.getElementById("issue-comments") as HTMLElement;
+    expect(region).not.toBeNull();
+    expect(region.contains(screen.getByRole("tablist"))).toBe(true);
+    const classes = region.className.split(/\s+/);
+    expect(classes).toContain("border-t");
+    for (const card of ["rounded-lg", "shadow-sm", "bg-surface", "border"]) {
+      expect(classes, `a Card carries ${card}`).not.toContain(card);
+    }
+  });
+
+  it("asks core for no task list, on first paint or after switching tabs", async () => {
+    renderScreen();
+    fireEvent.click(screen.getByRole("tab", { name: /Activity/ }));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    const urls = fetchMock.mock.calls.map(([input]) => String(input));
+    expect(urls.filter((u) => /\/tasks(\?|\/|$)/.test(u)), `requests: ${urls.join(", ")}`).toEqual([]);
+  });
+
+  it("switches between comments and activity inside the region", () => {
+    renderScreen();
+    const region = document.getElementById("issue-comments") as HTMLElement;
+    expect(within(region).getByText("comments")).toBeInTheDocument();
+    fireEvent.click(within(region).getByRole("tab", { name: /Activity/ }));
+    expect(within(region).queryByText("comments")).toBeNull();
+  });
+});
+
+describe("the issue detail's sections and rail", () => {
+  it("draws the Properties rail flat: a heading and its rows behind a hairline at lg, no Card", () => {
+    renderScreen();
+    const rail = screen.getByRole("complementary", { name: "Properties" });
+    expect(rail.className.split(/\s+/)).toEqual(expect.arrayContaining(["lg:border-l", "lg:border-line-subtle"]));
+    expect(within(rail).getByRole("heading", { name: "Properties" })).toBeInTheDocument();
+    expect(rail.querySelector(".shadow-sm, .rounded-lg")).toBeNull();
+  });
+
+  it("draws Steps, Acceptance criteria and the Agent plan as flat sections in that order", () => {
+    durations = ok([
+      { step: "code", runId: "r1", durationSeconds: 12, costUsd: 0, startedAt: "2026-09-21T11:00:00Z", finishedAt: "2026-09-21T11:00:12Z" },
+    ]);
+    issueOver = { acceptanceCriteria: "- [ ] it works", plan: "the plan" };
+    renderScreen();
+    const steps = screen.getByRole("region", { name: "Steps" });
+    const criteria = screen.getByRole("region", { name: "Acceptance criteria" });
+    const plan = screen.getByRole("button", { name: "Agent plan" }).closest("div.border-t") as HTMLElement;
+    for (const section of [steps, criteria, plan]) {
+      expect(section.className.split(/\s+/)).toContain("border-t");
+      expect(section.className).not.toMatch(/\bshadow-sm\b|\brounded-lg\b|\bbg-surface\b/);
+    }
+    expect(precedes(steps, criteria)).toBe(true);
+    expect(precedes(criteria, plan)).toBe(true);
+    expect(precedes(plan, document.getElementById("issue-comments") as HTMLElement)).toBe(true);
   });
 });
 
