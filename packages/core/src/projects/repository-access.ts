@@ -6,7 +6,7 @@
  */
 
 import { HTTPException } from 'hono/http-exception';
-import { GIT_ACCESS, unresolvedHostRefusal } from '../git/bounded-fetch.js';
+import { GIT_ACCESS, REPO_URL_AT, unresolvedHostRefusal } from '../git/bounded-fetch.js';
 import { gitRepositoryReader } from '../git/repository-reading.js';
 import { isHostUnresolved } from '../git/ssh-host-guard.js';
 import { withDeployKey } from '../git/ssh-keys.js';
@@ -28,7 +28,7 @@ const defaultDeps: RepositoryAccessDeps = {
 export function readableThrough(route: RepositoryRoute): string {
   return route === 'binding'
     ? "once the tracker can read the project's repository, through a GitHub binding whose installation can read it"
-    : `once the tracker can read the project's repository with the deploy key attached under ${GIT_ACCESS}, over the SSH clone URL set there`;
+    : `once the tracker can read the project's repository with the deploy key attached under ${GIT_ACCESS}, over the SSH clone URL set under ${REPO_URL_AT}`;
 }
 
 /** `fn` with a reader, or why there is none; a deploy-key reading is removed when `fn` returns. */

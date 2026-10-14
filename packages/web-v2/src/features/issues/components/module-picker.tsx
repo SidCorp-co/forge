@@ -112,7 +112,7 @@ export function ModulePicker({
           mascot={false}
           action={{
             label: "Open project settings",
-            onClick: () => router.push(`/projects/${slug}/settings?tab=modules`),
+            onClick: () => router.push(`/projects/${slug}/settings?tab=taxonomy`),
           }}
         />
       ) : (

@@ -165,7 +165,7 @@ describe('a batch whose box took the job and then went silent', () => {
     await mods.recoverSilentReleaseBatches();
 
     const stamp = await abortStamp(runId);
-    expect(stamp?.reason).toContain(`${silent()} minutes`);
+    expect(stamp?.reason).toContain(`${silent()} minutes since a box took its job`);
     expect(stamp?.reason).toContain('nothing is running it');
     expect(stamp?.by).toBe('');
     const reasons = await transitionReasons(a);
@@ -190,6 +190,9 @@ describe('a batch whose box took the job and then went silent', () => {
 
     expect(await mods.recoverSilentReleaseBatches()).toEqual({ recovered: 1, held: 0 });
     expect(await runStatus(runId)).toBe('cancelled');
+    const reason = (await abortStamp(runId))?.reason;
+    expect(reason).toContain(`${silent()} minutes since its newest write`);
+    expect(reason).not.toContain('box took');
   });
 
   it('holds the roster at releasing where it declared a promotion and never settled it', async () => {

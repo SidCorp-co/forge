@@ -147,6 +147,8 @@ const NOT_DISCOVERY: Record<string, string> = {
     "which issue a waiting commit is the work of; an archived issue still owns its commits, or they would read as nobody's",
   'projects/routes.ts': 'by issue id',
   'projects/service.ts': 'by issue id',
+  'projects/stranded-work.ts':
+    'reads only `awaiting_release` or unclosed issues, and only a closed or dropped issue can be archived',
   'prompt/issue-snapshot.ts':
     'the one issue a job runs on, by id; an archived issue is terminal and runs no job',
   'questions/issue-coupling.ts': 'locks the one issue a transition moves',

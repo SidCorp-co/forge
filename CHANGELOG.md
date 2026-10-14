@@ -3187,6 +3187,7 @@
 
 ### Fixed
 
+- **A cancelled release says which silence it measured.** Its reason, and the release run's stall reading, name whether nothing was written since a box took the job or since the release's last write. (ISS-1319)
 - **A release batch whose box went silent no longer blocks the project.** After 25 minutes with nothing written to its ledger it is cancelled and its issues return to the release gate, so a new release can start. (ISS-1319)
 - **Writing a step handoff for a run that does not exist is refused by name.** It answered a server error; it now answers 404 naming `pipelineRunId`, over REST and through the tool. (ISS-1319)
 - **Closing a run with a checkpoint that declares another source is refused by name.** It answered a server error; it now answers 400 naming `source` and the one valid value, `reconstructed_from_box`, and leaves the run open to be closed again.
@@ -6466,6 +6467,8 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+
+- **Project settings has eight tabs; Shape & release says what kind of project it is.** Pick one of four shapes, see whether a release can start, edit repository and environments together. A change that strands waiting issues is refused. (ISS-1171)
 
 - **Putting an issue on hold now asks why, and the thread says so.** A hold with no reason is refused by name, and each hold posts its reason on the thread. (ISS-1251)
 

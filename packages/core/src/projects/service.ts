@@ -186,6 +186,7 @@ export async function readProjectSummary(projectId: string) {
       description: projects.description,
       orgId: projects.orgId,
       createdBy: projects.createdBy,
+      kind: projects.kind,
       repoPath: projects.repoPath,
       workspaceSetup: projects.workspaceSetup,
       baseBranch: projects.baseBranch,

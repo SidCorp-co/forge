@@ -1,7 +1,13 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projectGitCredentials, projects, workspaceSshKeys } from '../db/schema.js';
-import { GIT_ACCESS, hostOf, KEY_ACCESS, WHY_KEY_ACCESS } from '../git/bounded-fetch.js';
+import {
+  GIT_ACCESS,
+  hostOf,
+  KEY_ACCESS,
+  REPO_URL_AT,
+  WHY_KEY_ACCESS,
+} from '../git/bounded-fetch.js';
 import { classifyGitRemote } from '../git/provision-credential.js';
 import { type BranchRefs, readRemoteDivergence } from '../git/remote-divergence.js';
 import {
@@ -58,7 +64,7 @@ function noCredential(repoUrl: string | null): Refused {
     return {
       cause:
         'this project has no GitHub binding and names no repository URL, so there is no repository to read',
-      clears: `set an SSH clone URL and a deploy key under ${GIT_ACCESS}`,
+      clears: `set an SSH clone URL under ${REPO_URL_AT} and a deploy key under ${GIT_ACCESS}`,
     };
   }
   const host = hostOf(repoUrl);
@@ -99,7 +105,7 @@ export async function resolveLiveSource(
   if (classifyGitRemote(repoUrl) !== 'ssh') {
     return keyRefused({
       cause: `this project's repository URL ${repoUrl} is not an SSH remote, so its deploy key cannot read it`,
-      clears: `set an SSH clone URL (git@host:org/repo.git) under ${GIT_ACCESS}`,
+      clears: `set an SSH clone URL (git@host:org/repo.git) under ${REPO_URL_AT}`,
     });
   }
   if (!isVaultConfigured()) {

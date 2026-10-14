@@ -40,7 +40,7 @@ members only see projects they're explicitly added to.
 
 ## Move a project between orgs
 
-Open **Project → Settings → Advanced → Move to organization** and pick the
+Open **Project → Settings → General → Move to organization** and pick the
 destination. You must be an owner/admin of **both** the current and the
 destination org. The project's own members are kept.
 

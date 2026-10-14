@@ -136,7 +136,7 @@ export function useEnvironments(id: string | undefined) {
 	});
 }
 
-/** PATCH the environments document: the keys the Testing tab changed, and the values it
+/** PATCH the environments document: the keys Shape & release changed, and the values it
  *  read them against. A cleared field sends `null` for that key alone, so a key the form
  *  never showed survives the save (ISS-1170). */
 export function useUpdateEnvironments(id: string | undefined) {

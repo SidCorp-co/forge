@@ -3,7 +3,7 @@ import { db } from '../db/client.js';
 import { logger } from '../logger.js';
 import { emitPipelineWedge } from '../pipeline/wedge.js';
 import { readAbortStamp } from './abort-stamp.js';
-import { BOUND_DEFAULTS, readBounds } from './bounds.js';
+import { BOUND_DEFAULTS, readBounds, type StallOrigin, stallOrigin } from './bounds.js';
 import { ReleaseBatchNotAbortableError } from './errors.js';
 import { RELEASE_JOB_TYPE } from './job-start.js';
 import { listAttempts } from './ledger.js';
@@ -84,17 +84,30 @@ async function judge(row: TakenRow, now: number): Promise<Verdict> {
       : { act: false };
   }
 
-  const reading = readBounds(attempts, { now, takenAt: new Date(row.taken_at) });
+  const takenAt = new Date(row.taken_at);
+  const reading = readBounds(attempts, { now, takenAt });
   const stall = reading.bounds.find((b) => b.name === 'stall');
-  if (!reading.crossedNames.includes('stall') || stall?.measuredMs == null) return { act: false };
+  const origin = stallOrigin(attempts, takenAt);
+  if (!reading.crossedNames.includes('stall') || stall?.measuredMs == null || origin === null) {
+    return { act: false };
+  }
   if (promotes.some((a) => a.settledAt !== null)) return { act: false };
-  return { act: true, reason: reasonFor(stall.measuredMs), promoted: promotes.length > 0 };
+  return {
+    act: true,
+    reason: reasonFor(stall.measuredMs, origin.from),
+    promoted: promotes.length > 0,
+  };
 }
 
-function reasonFor(silentMs: number): string {
+const SILENT_SINCE: Record<StallOrigin['from'], string> = {
+  taken: 'a box took its job',
+  ledger: 'its newest write',
+};
+
+function reasonFor(silentMs: number, from: StallOrigin['from']): string {
   const minutes = Math.floor(silentMs / 60_000);
   const bound = BOUND_DEFAULTS.stall / 60_000;
-  return `nothing was written to this release's ledger for ${minutes} minutes after a box took its job (the bound is ${bound}), so nothing is running it`;
+  return `nothing was written to this release's ledger in the ${minutes} minutes since ${SILENT_SINCE[from]} (the bound is ${bound}), so nothing is running it`;
 }
 
 /**

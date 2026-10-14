@@ -142,8 +142,9 @@ running batch that holds no finish record and no abort stamp through
 `stall` bound measures from once the ledger holds nothing newer, so a batch that died before promoting reads as
 stalled too; `GET .../state` gives the same reading in `bounds`. Only the `stall` bound triggers it (`total` and
 `regression` describe a live batch a person should look at). A stalled batch goes through
-`packages/core/src/release-batch/service.ts:abortReleaseBatch` with no person: the abort stamp carries the reason
-and its `by` is empty, the roster goes back to the release gate, the run is cancelled and a pipeline wedge says so.
+`packages/core/src/release-batch/service.ts:abortReleaseBatch` with no person: the abort stamp carries the reason,
+naming the moment the silence is measured from (`packages/core/src/release-batch/bounds.ts:stallOrigin`, which the
+`stall` bound's own explanation names too), and its `by` is empty, the roster goes back to the release gate, the run is cancelled and a pipeline wedge says so.
 The stamp is written only while the run is still running with no finish record, in the one statement that writes it
 (`packages/core/src/release-batch/abort-stamp.ts:stampAbort`), so a pause or a finish landing after the read stops it; a pass
 that died after stamping is resumed by the next on the reason it stamped, and a person's unfinished abort is never resumed.
