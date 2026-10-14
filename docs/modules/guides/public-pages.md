@@ -66,8 +66,21 @@ was also tried; the status is ignored and the response is 200.
 
 `searchDocs` in `packages/web-v2/src/features/docs/reader.ts` is a substring match over title,
 summary and body, listing the pages whose title holds the words ahead of the rest, and each result
-shows `matchExcerpt` of that page: the heading the first matching line sits under and the words around
-it. The in-app `/docs` screen reads the same two functions.
+shows `matchExcerpt` of that page: the section heading the first matching block sits under and the
+words around it. The in-app `/docs` screen reads the same two functions.
+
+Both read a body as a reader meets it (`readBlocks`): a paragraph, list item or quote with its source
+wraps joined, so a shown line starts where its sentence does and a cut is marked `…`; a line of code
+kept as written, angle brackets included; emphasis, code and link marks left out of prose. A title is
+matched in the form it is shown (`plainText`, its code marks left out). The page's own heading — an
+`#` heading on its first line, or any heading repeating its title — is never a section, and is a
+match only where the title does not already hold the words: every help page opens with an `#` that
+is not always its title word for word, and every agent guide with a `##` repeating its title.
+
+A title carrying code is shown with it as code and never with its backticks (`DocTitle` in
+`packages/web-v2/src/features/docs/components/docs-reader.tsx`, from `titleParts`), and the tab names it with the marks left out. What was typed
+into the search is kept in the address as `q`, replacing the history entry rather than adding one,
+so Back from a result returns to the search and a reload opens on it.
 
 The tab's title is set by the reader as well as by `generateMetadata`, both through
 `documentTitle` in `packages/web-v2/src/features/guides/audience.ts`. A client-side navigation between
@@ -98,11 +111,16 @@ of that shape is one extra core request per guide view on the happy path, paid s
 that a reader without JavaScript gets the refusal instead of a blank document. It
 ends when Next server-renders a `notFound()` body.
 
-The same request decides the outage. A plain request for a real door, help page, the landing or a
+The same request decides the outage. A help page, and a door whose pages are all help pages
+(`BUNDLED_AUDIENCES` in `packages/web-v2/src/features/guides/audience.ts`), is bundled, so the
+middleware passes it without asking core and the page renders it from `HELP_DOCS` alone while the
+index is unreadable, the sidebar saying its search covers those pages only (`HELP_ONLY_SEARCH`) and
+offering only the doors that still open. A plain request for the landing, the agents' door or a
 guide asks core first (`coreStatus` in the middleware: the index for `/guides`; for `/guides/<slug>`
 the guide, then the index its page is also built from), and where core cannot be reached or answers anything but success (or, for a
-guide, 404) the middleware answers **503** with `Retry-After` and `unavailableDocument`, the same
-header and ways in as the 404s. Core unreachable is never a 404: that would tell a reader a guide
+guide, 404) the middleware answers **503** with `Retry-After` and `unavailableDocument`: the same
+header as the 404s, and as the way on only the bundled doors (`BUNDLED_WAYS_IN`), the landing and the
+agents' door needing the index too. Core unreachable is never a 404: that would tell a reader a guide
 does not exist on no evidence. The price is one core request per plain `/guides` view, and a second per guide view.
 
 A client-side navigation is left alone: the router fetches the same URL for flight data and would
@@ -110,9 +128,9 @@ choke on an HTML document, and it has JavaScript by definition, so the page serv
 shell: a door or page as a `refused` view of `PublicReader`, which offers the docs' search and every
 door in the sidebar a door page has, and
 `packages/web-v2/src/app/guides/[slug]/not-found.tsx` for a guide. The search needs the guide
-index, so with core unreachable `PublicRefusal` keeps the refusal and the doors and says there is no
-search (`SEARCH_UNAVAILABLE`). A door, a help page, the landing and a guide are built from that index, so
-on a client-side navigation with it unreadable (`GuideFetchError`, caught by `orUnreadable` in
+index, so with core unreachable `PublicRefusal` keeps the refusal, says there is no search
+(`SEARCH_UNAVAILABLE`) and offers the bundled doors. The landing, the agents' door and a guide are built
+from that index, so on a client-side navigation with it unreadable (`GuideFetchError`, caught by `orUnreadable` in
 `packages/web-v2/src/features/guides/unreadable.ts`) both pages render `PublicRefusal` with
 `GUIDES_UNAVAILABLE` in the docs' shell instead, and log why; any other error is still thrown. Every renderer reads one set of strings
 from `packages/web-v2/src/features/guides/missing.ts`.

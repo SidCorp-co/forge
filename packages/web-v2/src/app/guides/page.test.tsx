@@ -17,8 +17,12 @@ const fetchGuideScope = vi.fn(async (): Promise<unknown> => {
 vi.mock("@/features/guides/api", () => ({ fetchGuideCorpus, fetchGuideScope, GuideFetchError }));
 vi.spyOn(console, "error").mockImplementation(() => {});
 
-const { GUIDES_UNAVAILABLE, SEARCH_UNAVAILABLE } = await import("@/features/guides/missing");
-const { default: GuidesPage } = await import("./page");
+const { BUNDLED_WAYS_IN, GUIDES_UNAVAILABLE, HELP_ONLY_SEARCH, SEARCH_UNAVAILABLE } = await import(
+  "@/features/guides/missing"
+);
+const { default: GuidesPage, generateMetadata } = await import("./page");
+
+const BUNDLED_DOORS = ["/guides?for=user", "/guides?for=assistant-setup"];
 
 async function open(params: Record<string, string>) {
   render(await GuidesPage({ searchParams: Promise.resolve(params) }));
@@ -58,30 +62,64 @@ describe("/guides refusing an address, with the guide index reachable", () => {
 });
 
 describe("/guides refusing an address, with the guide index down", () => {
-  it.each(REFUSED)("still renders the refusal for %o, and says there is no search", async (params, heading) => {
+  it.each(REFUSED)("still renders the refusal for %o, says there is no search, and offers the doors that still open", async (params, heading) => {
     await open({ ...params });
     expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
     expect(screen.getByText(SEARCH_UNAVAILABLE)).toBeInTheDocument();
     expect(screen.queryByRole("textbox")).toBeNull();
+    const doors = within(screen.getByRole("navigation", { name: "Ways in" })).getAllByRole("link");
+    expect(doors.map((d) => d.getAttribute("href"))).toEqual(BUNDLED_DOORS);
   });
-
 });
 
-describe("/guides naming a real door, page or the landing, with the guide index down", () => {
-  it.each([[{ for: "user" }], [{ for: "agent" }], [{ path: "getting-started" }], [{}]])(
-    "renders in the docs' shell for %o: the site, that the guides could not be loaded, and every way in",
+describe("/guides naming the landing or the agents' door, with the guide index down", () => {
+  it.each([[{ for: "agent" }], [{}]])(
+    "renders in the docs' shell for %o: the site, that the guides could not be loaded, and only the doors that still open",
     async (params) => {
       await open(params);
       expect(screen.getByRole("link", { name: "Forge documentation" })).toHaveAttribute("href", "/guides");
       expect(screen.getByRole("heading", { name: GUIDES_UNAVAILABLE.heading })).toBeInTheDocument();
       expect(screen.getByText(GUIDES_UNAVAILABLE.body)).toBeInTheDocument();
-      expect(screen.getByText(SEARCH_UNAVAILABLE)).toBeInTheDocument();
-      expect(within(screen.getByRole("navigation", { name: "Ways in" })).getAllByRole("link")).toHaveLength(4);
+      expect(GUIDES_UNAVAILABLE.body).not.toMatch(/ways in below/);
+      expect(screen.getByText(BUNDLED_WAYS_IN)).toBeInTheDocument();
+      const doors = within(screen.getByRole("navigation", { name: "Ways in" })).getAllByRole("link");
+      expect(doors.map((d) => d.getAttribute("href"))).toEqual(BUNDLED_DOORS);
     },
   );
+});
+
+describe("/guides naming a help page or a door of help pages, with the guide index down", () => {
+  it("renders the help page from the bundle, its search saying it covers the help pages only", async () => {
+    await open({ path: "getting-started" });
+    expect(screen.queryByRole("heading", { name: GUIDES_UNAVAILABLE.heading })).toBeNull();
+    expect(screen.getByRole("heading", { level: 1, name: "Getting started with Forge" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Search every page" })).toBeInTheDocument();
+    expect(screen.getByText(HELP_ONLY_SEARCH)).toBeInTheDocument();
+    const onward = within(screen.getByRole("navigation", { name: "Other ways in" })).getAllByRole("link");
+    expect(onward.map((d) => d.getAttribute("href"))).toEqual(["/guides?for=assistant-setup"]);
+  });
+
+  it.each([
+    ["user", "I use Forge"],
+    ["assistant-setup", "I'm connecting an AI assistant"],
+  ])("renders the %s door from the bundle", async (door, label) => {
+    await open({ for: door });
+    expect(screen.getByRole("heading", { name: label })).toBeInTheDocument();
+    expect(screen.getByText(HELP_ONLY_SEARCH)).toBeInTheDocument();
+    expect(within(screen.getByRole("list", { name: "Pages" })).getAllByRole("link").length).toBeGreaterThan(0);
+  });
+
+  it("names the page in the tab, not the outage", async () => {
+    expect((await generateMetadata({ searchParams: Promise.resolve({ path: "getting-started" }) })).title).toBe(
+      "Getting started — Forge documentation",
+    );
+    expect((await generateMetadata({ searchParams: Promise.resolve({ for: "agent" }) })).title).toBe(
+      `${GUIDES_UNAVAILABLE.heading} — Forge documentation`,
+    );
+  });
 
   it("throws an error that is not an unreadable index, rather than calling it one", async () => {
     fetchGuideCorpus.mockRejectedValueOnce(new TypeError("a defect"));
-    await expect(GuidesPage({ searchParams: Promise.resolve({ for: "user" }) })).rejects.toThrow("a defect");
+    await expect(GuidesPage({ searchParams: Promise.resolve({ for: "agent" }) })).rejects.toThrow("a defect");
   });
 });

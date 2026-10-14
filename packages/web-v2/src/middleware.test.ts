@@ -9,8 +9,12 @@ const fetchGuide = vi.fn(async () => ({ status: 404 }));
 vi.stubGlobal("fetch", fetchGuide);
 
 const { middleware } = await import("./middleware");
+const { BUNDLED_WAYS_IN } = await import("./features/guides/missing");
 
-afterEach(() => fetchGuide.mockClear());
+afterEach(() => {
+  fetchGuide.mockReset();
+  fetchGuide.mockImplementation(async () => ({ status: 404 }));
+});
 
 const ORIGIN = "http://localhost:3100";
 
@@ -104,18 +108,21 @@ describe("a plain request for a refused /guides address", () => {
 
   it("passes a request for a real door through to the page", async () => {
     fetchGuide.mockResolvedValueOnce({ status: 200 });
-    const res = await ask("/guides?for=user", DOCUMENT);
+    const res = await ask("/guides?for=agent", DOCUMENT);
 
     expect(res.headers.get("x-middleware-next")).toBe("1");
   });
 });
 
-const REAL = ["/guides?for=user", "/guides?for=agent", "/guides?path=getting-started", "/guides", "/guides/issue-dependencies"];
+/** Built from core's guide index: the landing, the agents' door and an agent guide. */
+const FROM_CORE = ["/guides?for=agent", "/guides", "/guides/issue-dependencies"];
+/** Built from the help pages bundled into the web: a help page and the doors they fill. */
+const BUNDLED = ["/guides?for=user", "/guides?for=assistant-setup", "/guides?path=getting-started"];
 
 describe("a plain request for a real /guides address while core cannot answer for the guides", () => {
-  const down = () => fetchGuide.mockRejectedValueOnce(new TypeError("fetch failed"));
+  const down = () => fetchGuide.mockRejectedValue(new TypeError("fetch failed"));
 
-  it.each(REAL)("answers %s with a 503 and a Retry-After, in the docs' own header and with every way in", async (path) => {
+  it.each(FROM_CORE)("answers %s with a 503 and a Retry-After, in the docs' own header, offering only the doors that still open", async (path) => {
     down();
     const res = await ask(path, DOCUMENT);
 
@@ -125,21 +132,32 @@ describe("a plain request for a real /guides address while core cannot answer fo
     const html = await res.text();
     expect(html).toContain("<h1>The guides could not be loaded</h1>");
     expect(html).toContain('<a class="brand" href="/guides">Forge documentation</a>');
-    for (const door of ["user", "assistant-setup", "agent"]) expect(html).toContain(`href="/guides?for=${door}"`);
-    expect(html).toContain("All three ways in");
+    expect(html).toContain(BUNDLED_WAYS_IN);
+    for (const door of ["user", "assistant-setup"]) expect(html).toContain(`href="/guides?for=${door}"`);
+    expect(html).not.toContain('href="/guides?for=agent"');
+    expect(html).not.toContain("All three ways in");
+    expect(html).not.toMatch(/ways in below/);
     expect(html).toContain('<meta name="robots" content="noindex">');
   });
 
+  it.each(BUNDLED)("passes %s through to the page, which renders it from the bundled pages, without asking core", async (path) => {
+    down();
+    const res = await ask(path, DOCUMENT);
+
+    expect(res.headers.get("x-middleware-next")).toBe("1");
+    expect(fetchGuide).not.toHaveBeenCalled();
+  });
+
   it.each([
-    ["/guides?for=user", 502],
-    ["/guides?for=user", 404],
+    ["/guides?for=agent", 502],
+    ["/guides", 404],
     ["/guides/issue-dependencies", 500],
   ])("answers %s with a 503 when core says %i rather than the guides", async (path, status) => {
     fetchGuide.mockResolvedValueOnce({ status });
     expect((await ask(path, DOCUMENT)).status).toBe(503);
   });
 
-  it.each(REAL)("passes %s through when core answers for it and for the index", async (path) => {
+  it.each(FROM_CORE)("passes %s through when core answers for it and for the index", async (path) => {
     fetchGuide.mockResolvedValue({ status: 200 });
     const res = await ask(path, DOCUMENT);
     fetchGuide.mockResolvedValue({ status: 404 });
@@ -159,7 +177,7 @@ describe("a plain request for a real /guides address while core cannot answer fo
   });
 
   it("leaves a client-side navigation to the page, which renders the same shell, without asking core", async () => {
-    const res = await ask("/guides?for=user", FLIGHT);
+    const res = await ask("/guides?for=agent", FLIGHT);
 
     expect(res.headers.get("x-middleware-next")).toBe("1");
     expect(fetchGuide).not.toHaveBeenCalled();

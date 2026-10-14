@@ -3,12 +3,12 @@ import { cache } from "react";
 import { HELP_DOCS } from "@/features/docs/help-content.generated";
 import { HELP_SLUGS } from "@/features/docs/help-slugs.generated";
 import { fetchGuideCorpus, fetchGuideScope } from "@/features/guides/api";
-import { DOORS, documentTitle } from "@/features/guides/audience";
+import { BUNDLED_AUDIENCES, DOORS, documentTitle } from "@/features/guides/audience";
 import { buildCorpus, helpPageHref, searchPlaceholder } from "@/features/guides/corpus";
 import { GuideShell } from "@/features/guides/components/guide-shell";
 import { PublicLanding, PublicReader, PublicRefusal } from "@/features/guides/components/public-docs";
 import { GUIDES_UNAVAILABLE } from "@/features/guides/missing";
-import { readPublicRequest, toSearchParams } from "@/features/guides/requested-page";
+import { type PublicRequest, readPublicRequest, toSearchParams } from "@/features/guides/requested-page";
 import { orUnreadable } from "@/features/guides/unreadable";
 
 /** Per request, never prerendered: a prerender bakes the index into the image
@@ -21,15 +21,21 @@ const DESCRIPTION =
   "Forge's documentation — for people using Forge, people connecting an AI assistant, and agents.";
 
 /** The index every view is built from, read once per request; `null` where core's answer could not
- *  be read, and the page then says so in the docs' own shell. */
+ *  be read, and the page then says so in the docs' own shell or, for a page or door of bundled help
+ *  pages, shows it from those pages alone. */
 const readIndex = cache(async () => {
   const fetched = await orUnreadable(() => Promise.all([fetchGuideCorpus(), fetchGuideScope()]));
   return fetched && { corpus: buildCorpus(HELP_DOCS, fetched[0]), scope: fetched[1] };
 });
 
+/** Whether a view is built from the bundled help pages alone, and so served while core is down. */
+function bundled(asked: PublicRequest): boolean {
+  return asked.kind === "page" || (asked.kind === "door" && BUNDLED_AUDIENCES.includes(asked.audience));
+}
+
 export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
   const asked = readPublicRequest(toSearchParams(await searchParams), HELP_SLUGS);
-  if (asked.kind !== "refused" && !(await readIndex())) {
+  if (asked.kind !== "refused" && !bundled(asked) && !(await readIndex())) {
     return { title: documentTitle(GUIDES_UNAVAILABLE.heading), robots: { index: false } };
   }
   if (asked.kind === "door") return { title: documentTitle(DOORS[asked.audience].label), description: DESCRIPTION };
@@ -44,8 +50,19 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
 export default async function GuidesPage({ searchParams }: Props) {
   const asked = readPublicRequest(toSearchParams(await searchParams), HELP_SLUGS);
   const reached = await readIndex();
+  if (!reached && asked.kind !== "landing" && asked.kind !== "refused" && bundled(asked)) {
+    return (
+      <GuideShell>
+        <PublicReader
+          scope={null}
+          corpus={buildCorpus(HELP_DOCS, [])}
+          view={asked.kind === "page" ? { kind: "page", href: helpPageHref(asked.slug) } : asked}
+        />
+      </GuideShell>
+    );
+  }
   if (!reached) {
-    // The refusal and the doors need no index; the search does, and the page says it is missing.
+    // The refusal and the bundled doors need no index; the search does, and the page says it is missing.
     return (
       <GuideShell>
         <PublicRefusal refusal={asked.kind === "refused" ? asked.refusal : GUIDES_UNAVAILABLE} />

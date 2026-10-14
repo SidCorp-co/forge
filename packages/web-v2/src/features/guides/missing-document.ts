@@ -1,5 +1,7 @@
 import {
+  type Audience,
   AUDIENCES,
+  BUNDLED_AUDIENCES,
   DOORS,
   doorHref,
   INDEX_PATH,
@@ -9,11 +11,11 @@ import {
 import { assetPath } from "@/lib/asset";
 import {
   ALL_DOORS_LINK_TEXT,
+  BUNDLED_WAYS_IN,
   GUIDES_UNAVAILABLE,
   MISSING_GUIDE_BODY,
   missingGuideHeading,
   type Refusal,
-  SEARCH_UNAVAILABLE,
 } from "./missing";
 
 const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
@@ -71,11 +73,16 @@ nav{display:flex;flex-direction:column;gap:.25rem}
  *  neither render React nor name the app's hashed stylesheet. It shows what `GuideShell` and
  *  the refusal in `PublicReader` show a client-side navigation, less the search a page without
  *  JavaScript could not run. */
-export function refusalDocument({ heading, body }: Refusal, notes: readonly string[] = []): string {
+export function refusalDocument(
+  { heading, body }: Refusal,
+  { notes = [], doors: open = AUDIENCES }: { notes?: readonly string[]; doors?: readonly Audience[] } = {},
+): string {
   const h = escapeHtml(heading);
-  const doors = AUDIENCES.map(
+  const doors = open.map(
     (a) => `<a href="${doorHref(a)}">${escapeHtml(DOORS[a].label)}</a>`,
   ).join("");
+  // The landing offers every door, so it is a way on only where every door is.
+  const landing = open.length === AUDIENCES.length ? `<a href="${INDEX_PATH}">${escapeHtml(ALL_DOORS_LINK_TEXT)}</a>` : "";
   return [
     "<!DOCTYPE html>",
     '<html lang="en"><head><meta charset="utf-8">',
@@ -93,7 +100,7 @@ export function refusalDocument({ heading, body }: Refusal, notes: readonly stri
     `<h1>${h}</h1>`,
     `<p>${escapeHtml(body)}</p>`,
     ...notes.map((note) => `<p>${escapeHtml(note)}</p>`),
-    `<nav aria-label="Ways in">${doors}<a href="${INDEX_PATH}">${escapeHtml(ALL_DOORS_LINK_TEXT)}</a></nav>`,
+    `<nav aria-label="Ways in">${doors}${landing}</nav>`,
     "</div>",
     "</main>",
     "</body></html>",
@@ -109,7 +116,8 @@ export function missingGuideDocument(slug: string): string {
 /** How long a reader or a crawler is asked to wait before trying a page core could not answer for. */
 export const RETRY_AFTER_SECONDS = 30;
 
-/** The 503 for a door, page, landing or guide whose guide index core did not answer for. */
+/** The 503 for the landing, the agents' door or a guide whose guide index core did not answer for:
+ *  the doors bundled into the site as the way on, the rest needing that index too. */
 export function unavailableDocument(): string {
-  return refusalDocument(GUIDES_UNAVAILABLE, [SEARCH_UNAVAILABLE]);
+  return refusalDocument(GUIDES_UNAVAILABLE, { notes: [BUNDLED_WAYS_IN], doors: BUNDLED_AUDIENCES });
 }

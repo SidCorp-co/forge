@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { HELP_SLUGS } from "@/features/docs/help-slugs.generated";
+import { BUNDLED_AUDIENCES } from "@/features/guides/audience";
 import { FLIGHT_SIGNAL_HEADERS, isFlightRequest } from "@/features/guides/flight-request";
 import {
   missingGuideDocument,
@@ -30,8 +31,10 @@ async function coreStatus(path: string): Promise<number | null> {
 }
 
 /** Answers a `/guides/<slug>` naming no guide, and a `/guides?path=`/`?for=` naming no page or
- *  door, with a 404, and any of them whose guides core cannot answer for with a 503; it gates
- *  nobody on those routes — why it is here and not in the page: docs/modules/guides/public-pages.md. */
+ *  door, with a 404, and the landing, the agents' door or a guide whose guides core cannot answer
+ *  for with a 503. A help page and a door of help pages are bundled and need no answer from core.
+ *  It gates nobody on those routes — why it is here and not in the page:
+ *  docs/modules/guides/public-pages.md. */
 async function guides(request: NextRequest, pathname: string): Promise<NextResponse> {
   const headers = new Headers(request.headers);
   headers.set(GUIDE_PATH_HEADER, pathname);
@@ -59,6 +62,7 @@ async function guides(request: NextRequest, pathname: string): Promise<NextRespo
   if (!slug) {
     const asked = readPublicRequest(request.nextUrl.searchParams, HELP_SLUGS);
     if (asked.kind === "refused") return notFound(refusalDocument(asked.refusal));
+    if (asked.kind === "page" || (asked.kind === "door" && BUNDLED_AUDIENCES.includes(asked.audience))) return pass();
     return ok(await coreStatus("/guides")) ? pass() : unavailable();
   }
 

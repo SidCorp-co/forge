@@ -17,18 +17,19 @@ const fetchGuideScope = vi.fn(down);
 vi.mock("@/features/guides/api", () => ({ fetchGuide, fetchGuideCorpus, fetchGuideScope, GuideFetchError }));
 vi.spyOn(console, "error").mockImplementation(() => {});
 
-const { GUIDES_UNAVAILABLE, SEARCH_UNAVAILABLE } = await import("@/features/guides/missing");
+const { BUNDLED_WAYS_IN, GUIDES_UNAVAILABLE } = await import("@/features/guides/missing");
 const { default: GuidePage, generateMetadata } = await import("./page");
 
 const params = Promise.resolve({ slug: "issue-dependencies" });
 
 describe("/guides/<slug> while core cannot answer for the guides", () => {
-  it("renders in the docs' shell: the site, that the guides could not be loaded, and every way in", async () => {
+  it("renders in the docs' shell: the site, that the guides could not be loaded, and the doors that still open", async () => {
     render(await GuidePage({ params }));
     expect(screen.getByRole("link", { name: "Forge documentation" })).toHaveAttribute("href", "/guides");
     expect(screen.getByRole("heading", { name: GUIDES_UNAVAILABLE.heading })).toBeInTheDocument();
-    expect(screen.getByText(SEARCH_UNAVAILABLE)).toBeInTheDocument();
-    expect(within(screen.getByRole("navigation", { name: "Ways in" })).getAllByRole("link")).toHaveLength(4);
+    expect(screen.getByText(BUNDLED_WAYS_IN)).toBeInTheDocument();
+    const doors = within(screen.getByRole("navigation", { name: "Ways in" })).getAllByRole("link");
+    expect(doors.map((d) => d.getAttribute("href"))).toEqual(["/guides?for=user", "/guides?for=assistant-setup"]);
   });
 
   it("names the outage in the tab and asks not to be indexed", async () => {

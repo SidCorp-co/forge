@@ -4,16 +4,22 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { HELP_DOCS } from "@/features/docs/help-content.generated";
 import type { Guide, GuideScope } from "../api";
-import { ONE_CORPUS } from "../audience";
+import { BUNDLED_AUDIENCES, ONE_CORPUS } from "../audience";
 import { buildCorpus, helpPageHref, searchPlaceholder } from "../corpus";
-import { missingDoor, SEARCH_UNAVAILABLE } from "../missing";
-import { PublicLanding, PublicReader, PublicRefusal } from "./public-docs";
+import { BUNDLED_WAYS_IN, HELP_ONLY_SEARCH, missingDoor, SEARCH_UNAVAILABLE } from "../missing";
+
+// The address a client component reads is the window's, as Next's own hook reads it in a browser.
+vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(window.location.search) }));
+const { PublicLanding, PublicReader, PublicRefusal, QUERY_PARAM } = await import("./public-docs");
 
 expect.extend(matchers);
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.history.replaceState(null, "", "/");
+});
 
 const GUIDES: Guide[] = [
   {
@@ -293,13 +299,19 @@ describe("a refused address, reached by a client navigation", () => {
 });
 
 describe("a refused address when the guide index cannot be reached", () => {
-  it("keeps the refusal and every door, and says there is no search and why", () => {
+  it("keeps the refusal, says there is no search and why, and offers only the doors that open without the index", () => {
     const refusal = missingDoor("users");
     render(<PublicRefusal refusal={refusal} />);
     expect(screen.getByRole("heading", { name: refusal.heading })).toBeInTheDocument();
     expect(screen.getByText(SEARCH_UNAVAILABLE)).toBeInTheDocument();
+    expect(screen.getByText(BUNDLED_WAYS_IN)).toBeInTheDocument();
     expect(screen.queryByRole("textbox")).toBeNull();
-    expect(within(screen.getByRole("navigation", { name: "Ways in" })).getAllByRole("link")).toHaveLength(4);
+    const doors = within(screen.getByRole("navigation", { name: "Ways in" })).getAllByRole("link");
+    expect(doors.map((d) => d.getAttribute("href"))).toEqual(["/guides?for=user", "/guides?for=assistant-setup"]);
+  });
+
+  it("opens without the index exactly the doors every help page sits behind", () => {
+    expect([...BUNDLED_AUDIENCES].sort()).toEqual([...new Set(HELP_DOCS.map((d) => d.audience))].sort());
   });
 });
 
@@ -384,3 +396,95 @@ describe("the furniture", () => {
     }
   });
 });
+
+const CODE_TITLED: Guide = {
+  slug: "conformance-and-verify",
+  audience: "agent",
+  title: "Conformance gates & `pnpm verify`",
+  summary: "One checker per axis.",
+  version: 1,
+  body: "## Conformance gates & `pnpm verify`\nA repo may carry gates, and `pnpm verify` is the entrypoint.",
+};
+const withCode = buildCorpus(HELP_DOCS, [...GUIDES, CODE_TITLED]);
+
+describe("a title carrying code", () => {
+  it("shows its code as code and never its backticks, in the results, the sidebar and the door's list", () => {
+    render(<PublicReader corpus={withCode} view={{ kind: "door", audience: "agent" }} scope={SCOPE} />);
+    const sidebar = screen.getByRole("navigation", { name: "I'm an agent or a script" });
+    const listed = screen.getByRole("list", { name: "Pages" });
+    for (const where of [sidebar, listed]) {
+      const link = within(where).getByRole("link", { name: /Conformance gates/ });
+      expect(link.textContent).not.toContain("`");
+      expect(link.querySelector("code")?.textContent).toBe("pnpm verify");
+    }
+    fireEvent.change(screen.getByRole("textbox", { name: "Search every page" }), { target: { value: "gates & pnpm" } });
+    const result = within(screen.getByRole("list", { name: "Search results" })).getAllByRole("link")[0];
+    expect(result.textContent).not.toContain("`");
+    expect([...result.querySelectorAll("mark")].map((m) => m.textContent).join("")).toBe("gates & pnpm");
+    expect(result.querySelector("mark code")?.textContent).toBe("pnpm");
+  });
+
+  it("is named without its backticks in the tab", () => {
+    render(<PublicReader corpus={withCode} view={{ kind: "page", href: "/guides/conformance-and-verify" }} scope={SCOPE} />);
+    expect(document.title).toBe("Conformance gates & pnpm verify — Forge documentation");
+  });
+
+  it("shows no body line for a search only its title and the heading repeating it hold", () => {
+    landingOf(withCode);
+    fireEvent.change(screen.getByRole("textbox", { name: "Search every page" }), { target: { value: "Conformance gates &" } });
+    const result = within(screen.getByRole("list", { name: "Search results" })).getAllByRole("link")[0];
+    expect(result.querySelector("span.flex-col")?.children).toHaveLength(2);
+  });
+});
+
+function landingOf(docs: typeof corpus) {
+  return render(<PublicLanding corpus={docs} placeholder={placeholder} scope={SCOPE} />);
+}
+
+describe("what was typed into the search, kept in the address", () => {
+  it("writes the words into the address as they are typed, replacing the entry rather than adding one", () => {
+    landing();
+    const before = window.history.length;
+    const field = screen.getByRole("textbox", { name: "Search every page" });
+    fireEvent.change(field, { target: { value: "st" } });
+    fireEvent.change(field, { target: { value: "status" } });
+    expect(new URLSearchParams(window.location.search).get(QUERY_PARAM)).toBe("status");
+    expect(window.history.length).toBe(before);
+    fireEvent.change(field, { target: { value: "" } });
+    expect(window.location.search).toBe("");
+  });
+
+  it("opens on the words the address holds, as Back to a search or a reload of one does", () => {
+    window.history.replaceState(null, "", "/guides?q=status");
+    landing();
+    expect(screen.getByRole("textbox", { name: "Search every page" })).toHaveValue("status");
+    expect(within(screen.getByRole("list", { name: "Search results" })).getAllByRole("link")[0]).toHaveTextContent(
+      /^Read an issue's status/,
+    );
+    cleanup();
+    window.history.replaceState(null, "", "/guides?path=pair-a-runner&q=runner");
+    reader({ kind: "page", href: helpPageHref("pair-a-runner") });
+    expect(screen.getByRole("textbox", { name: "Search every page" })).toHaveValue("runner");
+  });
+});
+
+describe("the landing's ways in", () => {
+  it("are flat rows parted by hairlines, with no card around a door", () => {
+    landing();
+    for (const door of within(screen.getByRole("navigation", { name: "Ways in" })).getAllByRole("link")) {
+      expect(door.className).not.toMatch(/\b(rounded|shadow|border|bg-surface)/);
+    }
+  });
+});
+
+describe("a help page or door while the guide index cannot be reached", () => {
+  it("searches the bundled pages, says so, and offers only the doors that open without the index", () => {
+    render(
+      <PublicReader corpus={buildCorpus(HELP_DOCS, [])} view={{ kind: "page", href: helpPageHref("pair-a-runner") }} scope={null} />,
+    );
+    expect(screen.getByText(HELP_ONLY_SEARCH)).toBeInTheDocument();
+    const onward = within(screen.getByRole("navigation", { name: "Other ways in" })).getAllByRole("link");
+    expect(onward.map((l) => l.getAttribute("href"))).toEqual(["/guides?for=assistant-setup"]);
+  });
+});
+

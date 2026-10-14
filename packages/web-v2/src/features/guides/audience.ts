@@ -1,5 +1,7 @@
 // The three readers the public documentation serves, and the door each one comes in by.
 // The value is the `audience` a page declares; the words are the reader's own.
+import type { HelpDoc } from "@/features/docs/help-content.generated";
+import { plainText } from "@/features/docs/reader";
 
 export const AUDIENCES = ["user", "assistant-setup", "agent"] as const;
 export type Audience = (typeof AUDIENCES)[number];
@@ -7,6 +9,9 @@ export type Audience = (typeof AUDIENCES)[number];
 export function isAudience(value: string): value is Audience {
   return (AUDIENCES as readonly string[]).includes(value);
 }
+
+/** The doors of help pages, bundled into the web build and so open while core is down. */
+export const BUNDLED_AUDIENCES: readonly Audience[] = ["user", "assistant-setup"] satisfies HelpDoc["audience"][];
 
 export interface Door {
   label: string;
@@ -37,8 +42,9 @@ export const DOORS: Record<Audience, Door> = {
 /** The one name of the public surface, and what its header says under it. */
 export const SITE_NAME = "Forge documentation";
 
+/** The tab's title for a door, page or refusal, a page title's code marks left out. */
 export function documentTitle(subject: string | null): string {
-  return subject ? `${subject} — ${SITE_NAME}` : SITE_NAME;
+  return subject ? `${plainText(subject)} — ${SITE_NAME}` : SITE_NAME;
 }
 export const SITE_CAPTION = "For people using Forge, people connecting an assistant, and agents.";
 
