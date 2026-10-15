@@ -20,6 +20,7 @@ import { withKernelMarker } from '../db/kernel-marker.js';
 import { comments, issues, jobs, pipelineRuns } from '../db/schema.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
 import { ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
+import { admitJob } from '../jobs/admit.js';
 import type { PaneAsk } from '../jobs/blocked-wire.js';
 import { buildRequeueUpdate, dispatchRequeuedJob, HOLD_PAYLOAD_KEY } from '../jobs/hold.js';
 import { AUTO_RETRY_PAYLOAD_KEY } from '../jobs/retry.js';
@@ -143,27 +144,23 @@ export async function holdBlockedRelease(
       });
     }
     if (anchor) await pointOthersAt(tx, job, members.slice(1), anchor);
-    const [held] = await tx
-      .insert(jobs)
-      .values({
-        projectId: job.projectId,
-        issueId: job.issueId,
-        pipelineRunId: job.pipelineRunId,
-        createdBy: job.createdBy,
-        type: job.type,
-        payload: {
-          ...payload,
-          [HOLD_PAYLOAD_KEY]: { reason: AWAITING_DECISION, heldAt: now, autoRelease: false },
-          [DECISION_KEY]: ref,
-        },
-        modelTier: job.modelTier,
-        status: 'held',
-        attempts: job.attempts,
-        retryOf: job.id,
-        failureReason: AWAITING_DECISION,
-      })
-      .returning({ id: jobs.id });
-    if (!held) throw new Error('decision-hold: the held successor was not written');
+    const held = await admitJob(tx, {
+      projectId: job.projectId,
+      issueId: job.issueId,
+      pipelineRunId: job.pipelineRunId,
+      createdBy: job.createdBy,
+      type: job.type,
+      payload: {
+        ...payload,
+        [HOLD_PAYLOAD_KEY]: { reason: AWAITING_DECISION, heldAt: now, autoRelease: false },
+        [DECISION_KEY]: ref,
+      },
+      modelTier: job.modelTier,
+      status: 'held',
+      attempts: job.attempts,
+      retryOf: job.id,
+      failureReason: AWAITING_DECISION,
+    });
     return { heldJobId: held.id, questionIds, issueId: anchor, replayed: false };
   });
   if (written.replayed) return written;

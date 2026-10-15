@@ -2,8 +2,8 @@
 
 // Issue-detail properties rail. Read + inline-edit of the core fields, plus a
 // cost rollup, the merge mark (its date, and whether Forge observed the merge or
-// only recorded somebody's claim of it — ISS-1126), the ISS-<seq> branch
-// convention, and dependency edges (rendered as clickable `ISS-X` badges linking
+// only recorded somebody's claim of it — ISS-1126), the branch core's work-evidence
+// gate counts, and dependency edges (rendered as clickable `ISS-X` badges linking
 // to the related issue — ISS-331).
 
 import type { ComponentProps } from "react";
@@ -330,7 +330,11 @@ export function PropertiesRail({
         </Row>
       )}
       <Row label="Branch">
-        <MonoTag>{issue.displayId}</MonoTag>
+        {issue.recordedBranch ? (
+          <span className="fg-body-sm min-w-0 break-all font-mono text-fg">{issue.recordedBranch}</span>
+        ) : (
+          <span className="fg-body-sm text-muted">None recorded</span>
+        )}
       </Row>
       {issue.mergedAt && (
         <Row label="Merged">

@@ -13,6 +13,18 @@ vi.mock('./landing-evidence.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./landing-evidence.js')>()),
   readLandingShape: async () => 'git',
 }));
+// The detail answer carries the work-evidence gate's branch; that read is proved against Postgres
+// in `tests/integration/recorded-branch-e2e.test.ts`, so here it is the gate's answer verbatim.
+vi.mock('../pipeline/work-evidence.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../pipeline/work-evidence.js')>()),
+  collectWorkEvidence: async () => ({
+    branch: 'ISS-7-the-branch',
+    mergedCommitSha: null,
+    mergedLanding: null,
+    claimedCommit: null,
+    lane: null,
+  }),
+}));
 vi.mock('../config/env.js', () => ({
   env: { JWT_SECRET: TEST_SECRET, NODE_ENV: 'test' },
 }));

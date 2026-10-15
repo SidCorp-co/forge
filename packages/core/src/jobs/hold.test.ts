@@ -35,6 +35,15 @@ const dbStub = {
   select: () => ({ from: () => ({ where: async () => selectRows() }) }),
 };
 vi.mock('../db/client.js', () => ({ db: dbStub }));
+// The successor is written through the admission door; its run lock is proved against Postgres in
+// `tests/integration/job-admission-race-e2e.test.ts`, so here the door writes through the stub.
+vi.mock('./admit.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./admit.js')>()),
+  admitJob: async (_executor: unknown, values: unknown) => {
+    const rows = (await dbStub.insert().values(values).returning()) as { id: string }[];
+    return rows[0];
+  },
+}));
 
 vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },

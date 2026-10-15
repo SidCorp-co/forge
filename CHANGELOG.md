@@ -3193,6 +3193,9 @@
 
 ### Fixed
 
+- **An issue's Branch row shows the branch Forge counts as its work.** It printed the issue's key even when moving the issue on said no branch was recorded; it now shows that branch, or None recorded. (ISS-1133)
+- **A job started as its run ends goes to a run still open.** It could land under the run that just finished; it now starts a fresh run, or is refused where only that run would do. (ISS-1133)
+- **Cancelling a run's only job ends the run.** It read Running for up to an hour with nothing left to run; it now reads Cancelled at once. A run with another job still going keeps running. (ISS-1133)
 - **Every figure that says live counts the sessions the Pipeline page lists.** The rail and projects console no longer count open runs as live, a runner working sessions reads busy, and the operations page calls runs open. (ISS-1228)
 - **The project dashboard counts the sessions the Pipeline page shows.** It no longer reads none live while sessions work, and the costliest spend step is drawn again. (ISS-1228)
 - **A session page left open says what the Pipeline page says.** It no longer flags a working session a minute after opening, and the sessions list re-reads itself too. (ISS-1228)

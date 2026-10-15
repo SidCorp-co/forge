@@ -116,6 +116,13 @@ const issueDetailFields = {
   ...creatorFields,
   pipelineHealth: pipelineHealthSchema,
   liveReach: liveReachSchema.nullable(),
+  /** The branch the work-evidence gate counts for this issue (`work-evidence.ts:collectWorkEvidence`), or null where it counts none. */
+  recordedBranch: z
+    .string()
+    .nullable()
+    .describe(
+      'The branch the work-evidence gate counts for this issue: sessionContext.branch or sessionContext.worklog.branch, unless it names the base branch or the live branch. Null where the gate counts no branch.',
+    ),
   labels: z.array(issueLabelSchema),
   comments: z.array(z.never()),
   activity: z.array(z.never()),

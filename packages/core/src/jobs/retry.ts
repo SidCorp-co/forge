@@ -20,6 +20,7 @@ import {
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import type { RequiredCapabilities } from '../runners/types.js';
 import { buildVerifierPrompt } from '../skills/reconcile-service.js';
+import { admitJob, RunClosedToJobs } from './admit.js';
 import { resolveStageOverrides } from './stage-overrides.js';
 
 type JobRow = typeof jobs.$inferSelect;
@@ -427,9 +428,9 @@ export async function scheduleAutoRetryWithVerify(
     nextPayload.promptString = await buildVerifierPrompt(basePayload.reconcileRunId, newJobId);
   }
 
-  const [created] = await db
-    .insert(jobs)
-    .values({
+  let created: { id: string };
+  try {
+    created = await admitJob(db, {
       ...(newJobId ? { id: newJobId } : {}),
       projectId: job.projectId,
       issueId: job.issueId,
@@ -442,10 +443,11 @@ export async function scheduleAutoRetryWithVerify(
       attempts: job.attempts + 1,
       retryOf: job.id,
       retryAfterAt,
-    })
-    .returning({ id: jobs.id });
-
-  if (!created) throw new Error('retry: insert returned no row');
+    });
+  } catch (err) {
+    if (err instanceof RunClosedToJobs) return { scheduled: false, reason: 'run_closed' };
+    throw err;
+  }
 
   if (job.agentSessionId) {
     try {

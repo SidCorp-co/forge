@@ -25,13 +25,13 @@
 import { redactedMessage } from '@forge/observability';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { isJobType, jobs, pmDecisions, projects, RETIRED_JOB_TYPES } from '../db/schema.js';
+import { isJobType, pmDecisions, projects, RETIRED_JOB_TYPES } from '../db/schema.js';
+import { admitIssueJob } from '../jobs/admit.js';
 import { buildJobPromptString } from '../jobs/prompt-string.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
 import { indexMemory } from '../memory/indexer.js';
 import { Sentry } from '../observability/sentry.js';
-import { openIssueRun } from '../pipeline/runs.js';
 import { boss } from '../queue/boss.js';
 
 export const PM_ESCALATION_SWEEPER_QUEUE = 'pm.escalation-sweeper';
@@ -202,22 +202,17 @@ async function executeDispatchFallback(
 
   // ISS-101 — escalation fallback is an issue-pipeline job; attach it to the
   // issue's open run (creates one if missing).
-  const run = await openIssueRun({ projectId, issueId });
   let insertedId: string | null = null;
   try {
-    const [inserted] = await db
-      .insert(jobs)
-      .values({
-        projectId,
-        issueId,
-        pipelineRunId: run.id,
-        createdBy: creatorId,
-        type: jobType,
-        payload,
-        status: 'queued',
-      })
-      .returning({ id: jobs.id });
-    insertedId = inserted?.id ?? null;
+    const inserted = await admitIssueJob(db, {
+      projectId,
+      issueId,
+      createdBy: creatorId,
+      type: jobType,
+      payload,
+      status: 'queued',
+    });
+    insertedId = inserted.id;
   } catch (err) {
     if (isUniqueViolation(err)) {
       // Active dispatch of the same type already exists — treat as success
