@@ -3,6 +3,9 @@
 
 import type { ReactNode } from "react";
 
+/** A key, a field or a value breaks at its hyphen or dot otherwise; a URL or a phrase still wraps. */
+const oneLine = (part: string) => part.length <= 32 && !/\s/.test(part);
+
 export function inlineCode(text: string): ReactNode[] {
 	const out: ReactNode[] = [];
 	const parts = text.split("`");
@@ -11,7 +14,7 @@ export function inlineCode(text: string): ReactNode[] {
 		const paired = i % 2 === 1 && i < parts.length - 1;
 		out.push(
 			paired ? (
-				<code key={`c${i}`} className="fg-code">
+				<code key={`c${i}`} className={oneLine(part) ? "fg-code whitespace-nowrap" : "fg-code"}>
 					{part}
 				</code>
 			) : (

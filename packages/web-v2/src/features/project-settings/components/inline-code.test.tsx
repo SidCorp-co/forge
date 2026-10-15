@@ -213,3 +213,27 @@ describe("the measurement can fail", () => {
 		expect(Number(contrast("#767D8A", "#767D8A").toFixed(2))).toBe(1);
 	});
 });
+
+// ISS-1229 r5d: sid-desk's criteria hold broke `ISS-754` at its hyphen across two lines at 1280.
+describe("a code span keeps a short token on one line", () => {
+	const spans = (text: string) => {
+		const view = render(<p>{inlineCode(text)}</p>);
+		const out = [...view.container.querySelectorAll("code")].map((el) => el.className.split(/\s+/));
+		view.unmount();
+		return out;
+	};
+
+	it("does not break an issue key, a field or a value", () => {
+		for (const cls of spans("`ISS-754` owes criteria 1–30; send `data.commit` as `cut-below`")) {
+			expect(cls).toContain("whitespace-nowrap");
+		}
+	});
+
+	it("lets a long span or one holding spaces wrap, so a narrow screen never scrolls sideways", () => {
+		const [url, phrase] = spans(
+			"read `https://forge-beta-api.sidcorp.co/api/projects/sid-desk/release-readiness` or `the whole sentence here`",
+		);
+		expect(url).not.toContain("whitespace-nowrap");
+		expect(phrase).not.toContain("whitespace-nowrap");
+	});
+});
