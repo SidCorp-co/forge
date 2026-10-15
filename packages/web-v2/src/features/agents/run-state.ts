@@ -1,10 +1,5 @@
-import type { SemanticTone } from "@/design/status";
-import {
-  failureReasonLabel,
-  HEARTBEAT_REAP_MS,
-  STALLED_THRESHOLD_MS,
-  TERMINAL_SESSION_STATUSES,
-} from "@/features/sessions/types";
+import { SILENCE_WORD, type SemanticTone } from "@/design/status";
+import { failureReasonLabel, sessionSilence, TERMINAL_SESSION_STATUSES } from "@/features/sessions/types";
 import { formatElapsed } from "@/lib/utils/format";
 import type { RunSessionRow } from "./types";
 
@@ -118,13 +113,17 @@ export function pulse(
   row: Pick<RunSessionRow, "lastActivityAt">,
   nowMs: number,
 ): Pulse {
-  if (!row.lastActivityAt) return { state: "unheard", sinceMs: null };
-  const beat = Date.parse(row.lastActivityAt);
-  if (Number.isNaN(beat)) return { state: "unheard", sinceMs: null };
-  const sinceMs = Math.max(0, nowMs - beat);
-  if (sinceMs <= STALLED_THRESHOLD_MS) return { state: "beating", sinceMs };
-  if (sinceMs <= HEARTBEAT_REAP_MS) return { state: "silent", sinceMs };
-  return { state: "past-threshold", sinceMs };
+  if (!row.lastActivityAt || Number.isNaN(Date.parse(row.lastActivityAt))) {
+    return { state: "unheard", sinceMs: null };
+  }
+  const silence = sessionSilence(
+    { status: "running", lastHeartbeatAt: row.lastActivityAt, startedAt: null },
+    nowMs,
+  );
+  const sinceMs = Math.max(0, silence.sinceHeartbeatMs ?? 0);
+  if (silence.state === "stale") return { state: "silent", sinceMs };
+  if (silence.state === "reaping") return { state: "past-threshold", sinceMs };
+  return { state: "beating", sinceMs };
 }
 
 /** Whether this run is one a reader should stop trusting the "working" chip on. */
@@ -136,8 +135,8 @@ export function pulseText(p: Pulse): string | null {
   if (p.state === "beating" || p.state === "unheard" || p.sinceMs == null) return null;
   const since = formatElapsed(p.sinceMs);
   return p.state === "silent"
-    ? `no report for ${since}`
-    : `past the automatic-recovery threshold · no report for ${since}`;
+    ? `${SILENCE_WORD} · no report for ${since}`
+    : `${SILENCE_WORD} · past the automatic-recovery threshold · no report for ${since}`;
 }
 
 /** Whether the box claims a process exists for this run. */

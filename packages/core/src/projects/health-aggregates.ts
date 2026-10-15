@@ -1,6 +1,7 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns, projectMembers, projects, runners, users } from '../db/schema.js';
+import { HUMAN_PARK_STATUSES } from '../issues/status-sets.js';
 import { readWorkStateRows } from '../issues/work-state-read.js';
 import { createLimiter } from '../lib/bounded-concurrency.js';
 import { readLiveSessionCounts } from '../pipeline/live-session.js';
@@ -25,7 +26,8 @@ export const healthReadLoad = {
   },
 };
 
-export const BLOCKED_STATUSES = ['on_hold', 'needs_info'] as const;
+/** Every status a person parks an issue at, whoever owns it: the set the Held list holds by person. */
+export const BLOCKED_STATUSES = HUMAN_PARK_STATUSES;
 
 export type BlockerRow = {
   projectId: string;
