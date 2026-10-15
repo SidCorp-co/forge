@@ -24,7 +24,7 @@ const { useQueryClient } = await import("@tanstack/react-query");
 
 const sable = { id: "p1", slug: "sable", name: "Sable", orgId: "o1", orgName: "Org", orgIsPersonal: false, role: "admin", createdAt: "2026-10-01T00:00:00Z" };
 const healthRow = (totalActive: number) => ({
-  id: "p1", projectSlug: "sable", totalActive, blockers: [], pendingEscalations: 0, runnerCount: 1, liveRuns: 0,
+  id: "p1", projectSlug: "sable", totalActive, blockers: [], pendingEscalations: 0, runnerCount: 1, liveRuns: 0, liveSessions: 0,
 });
 const OPEN_WORK = "in open work";
 
@@ -89,5 +89,22 @@ describe("useRailProjectData openWork", () => {
     };
     await held.result.current.health.refetch();
     await waitFor(() => expect(held.result.current.rail.openWork).toEqual({ badgeRead: "failed", badgeCounts: OPEN_WORK }));
+  });
+});
+
+// ISS-1228 r3 — judge-14 read '4 live' on the rail of a project with no live session: the rail counted
+// pipeline runs left at running or paused. It counts the sessions the Pipeline page lists.
+describe("useRailProjectData live figure", () => {
+  it("states live sessions, not the runs left open", async () => {
+    server.health = async () => [{ ...healthRow(29), liveRuns: 4, liveSessions: 0 }];
+    const r = rail();
+    await waitFor(() => expect(r.result.current.railConsole).not.toBeNull());
+    await waitFor(() => expect(r.result.current.switcherProjects[0]?.liveSessionsRead).toBe("read"));
+    expect(r.result.current.switcherProjects[0]?.liveSessions).toBe(0);
+    cleanup();
+
+    server.health = async () => [{ ...healthRow(29), liveRuns: 0, liveSessions: 2 }];
+    const live = rail();
+    await waitFor(() => expect(live.result.current.switcherProjects[0]?.liveSessions).toBe(2));
   });
 });

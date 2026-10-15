@@ -1,4 +1,4 @@
-// Workspace summary row: project count, live runs, open issues, runners, and
+// Workspace summary row: project count, live sessions, open issues, runners, and
 // trailing-24h spend — all from `workspaceTotals`.
 import { Stat } from '@/design';
 import { formatSpend } from '../derive';
@@ -21,10 +21,11 @@ export function StatsBand({ totals }: StatsBandProps) {
       <Stat icon="folder">{totals.projects} projects</Stat>
       <span
         className="inline-flex items-center gap-1.5 font-mono text-12-5 text-accent-text"
-        title="Pipeline runs currently running or paused"
+        title="Agent sessions live now, as the Pipeline page lists them"
       >
         <span className="forge-pulse inline-block size-[7px] rounded-pill bg-accent" aria-hidden />
-        <ReadFigure value={totals.liveRuns} read={totals.healthRead} counts="live runs" /> live runs
+        <ReadFigure value={totals.liveSessions} read={totals.healthRead} counts="live sessions" />{" "}
+        {totals.liveSessions === 1 ? "live session" : "live sessions"}
       </span>
       <Stat icon="inbox" title={`${OPEN_WORK_LABEL}: ${OPEN_WORK_DEFINITION}`}>
         <ReadFigure value={totals.openIssues} read={totals.healthRead} counts={OPEN_WORK_COUNTS} /> {OPEN_WORK_LABEL.toLowerCase()}

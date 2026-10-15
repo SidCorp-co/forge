@@ -1,7 +1,7 @@
 "use client";
 
 // Rail project-context data: the glyph mark for the rail's switcher button and
-// the compact-rail rollup (per-project liveRuns/openIssues from the projects
+// the compact-rail rollup (per-project liveSessions/openIssues from the projects
 // console — the "{N} live" label, the switcher pulse dots, the Issues badge).
 import { useMemo } from "react";
 import { useProjectsConsole } from "@/features/projects/hooks";
@@ -46,8 +46,8 @@ export function useRailProjectData(opts: {
             initials: projectInitials(p.name),
             tint: g.tint,
             ink: g.ink,
-            liveRuns: p.liveRuns,
-            liveRunsRead: p.healthRead,
+            liveSessions: p.liveSessions,
+            liveSessionsRead: p.healthRead,
             pinned: p.pinned,
           };
         }),
@@ -72,8 +72,8 @@ export function useRailProjectData(opts: {
             initials: projectMark.initials,
             tint: projectMark.tint,
             ink: projectMark.ink,
-            liveRuns: railConsole ? railConsole.liveRuns : projectsConsole.healthRead === 'read' ? 0 : null,
-            liveRunsRead: projectsConsole.healthRead,
+            liveSessions: railConsole ? railConsole.liveSessions : projectsConsole.healthRead === 'read' ? 0 : null,
+            liveSessionsRead: projectsConsole.healthRead,
           }
         : null,
     [railProject, projectMark, railConsole, projectsConsole.healthRead],

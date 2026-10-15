@@ -14,6 +14,7 @@ import { loadIssuePark } from '../issues/park-view.js';
 import { HUMAN_PARK_STATUSES, ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { holderFanout, readClaim } from './lease-fanout.js';
+import { liveSessionWhere } from './live-session.js';
 import { type LeaseReading, leaseIsWorkInProgress } from './session-claim.js';
 
 export interface HeldIssueRef {
@@ -290,8 +291,7 @@ export async function readSessionsAndHolds(
       FROM agent_sessions s
       LEFT JOIN devices d ON d.id = s.device_id
      WHERE s.project_id = ${projectId}::uuid
-       AND s.kind <> 'chat'
-       AND s.status NOT IN (${terminalSessions})
+       AND ${liveSessionWhere}
      ORDER BY s.created_at
   `)) as unknown as SessionRow[];
 

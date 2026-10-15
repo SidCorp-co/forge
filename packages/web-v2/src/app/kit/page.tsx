@@ -65,9 +65,9 @@ const PROJECT_NAV: RailItem[] = PROJECT_ITEMS.map(({ key, label, icon }) => ({
 }));
 
 const RAIL_SWITCHER: SwitcherProject[] = [
-  { id: "p1", slug: "forge-core", name: "forge-core", initials: "FRG", tint: "var(--flame-50)", ink: "var(--flame-700)", liveRuns: 3, liveRunsRead: "read", pinned: true },
-  { id: "p2", slug: "forge-web", name: "forge-web", initials: "FWB", tint: "var(--cobalt-50)", ink: "var(--cobalt-700)", liveRuns: 1, liveRunsRead: "read", pinned: true },
-  { id: "p3", slug: "data-pipeline", name: "data-pipeline", initials: "DP", tint: "var(--green-50)", ink: "var(--green-600)", liveRuns: 0, liveRunsRead: "read", pinned: false },
+  { id: "p1", slug: "forge-core", name: "forge-core", initials: "FRG", tint: "var(--flame-50)", ink: "var(--flame-700)", liveSessions: 3, liveSessionsRead: "read", pinned: true },
+  { id: "p2", slug: "forge-web", name: "forge-web", initials: "FWB", tint: "var(--cobalt-50)", ink: "var(--cobalt-700)", liveSessions: 1, liveSessionsRead: "read", pinned: true },
+  { id: "p3", slug: "data-pipeline", name: "data-pipeline", initials: "DP", tint: "var(--green-50)", ink: "var(--green-600)", liveSessions: 0, liveSessionsRead: "read", pinned: false },
 ];
 
 const COMMANDS: Command[] = [
@@ -680,7 +680,7 @@ export default function KitPage() {
                   projectItems={PROJECT_NAV}
                   activeKey={navActive}
                   activeSlug="forge-core"
-                  activeProject={{ name: "forge-core", initials: "FRG", tint: "var(--flame-50)", ink: "var(--flame-700)", liveRuns: 3, liveRunsRead: "read" }}
+                  activeProject={{ name: "forge-core", initials: "FRG", tint: "var(--flame-50)", ink: "var(--flame-700)", liveSessions: 3, liveSessionsRead: "read" }}
                   switcherProjects={RAIL_SWITCHER}
                   onNavigate={setNavActive}
                   onSelectProject={() => {}}

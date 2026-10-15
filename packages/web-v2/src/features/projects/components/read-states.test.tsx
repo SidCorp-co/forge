@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // ISS-1156 — every reader of the health rollup says pending while it is on its way and failed when
-// it did not come in. A figure drawn as 0, an "idle" dot, "0 live runs" or no banner would be the
+// it did not come in. A figure drawn as 0, an "idle" dot, "0 live sessions" or no banner would be the
 // face of a project with no work, which is what a failed read is not.
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -44,22 +44,22 @@ afterEach(() => {
 const unread = (read: QueryRead): ProjectConsoleItem => ({
   id: "p1", slug: "sable", name: "Sable", orgId: "o1", orgName: "Org", orgIsPersonal: true, role: "admin",
   createdAt: "2026-10-01T00:00:00Z", description: null, repoPath: null, healthRead: read, health: null,
-  liveRuns: null, openIssues: null, runnerCount: null, spend24hUsd: null, memberCount: null, members: [],
+  liveSessions: null, openIssues: null, runnerCount: null, spend24hUsd: null, memberCount: null, members: [],
   lastActivityAt: null, pinned: false,
 });
 const read: ProjectConsoleItem = {
-  ...unread("read"), health: "healthy", liveRuns: 2, openIssues: 29, runnerCount: 1, spend24hUsd: 1.5, memberCount: 3, members: ["AB"],
+  ...unread("read"), health: "healthy", liveSessions: 2, openIssues: 29, runnerCount: 1, spend24hUsd: 1.5, memberCount: 3, members: ["AB"],
   lastActivityAt: "2026-10-02T00:00:00Z",
 };
 const SORT = DEFAULT_PROJECT_SORT;
 const totals = (healthRead: QueryRead): WorkspaceTotals =>
   healthRead === "read"
-    ? { projects: 2, healthRead, liveRuns: 2, openIssues: 29, runners: 1, spend24hUsd: 1.5 }
-    : { projects: 2, healthRead, liveRuns: null, openIssues: null, runners: null, spend24hUsd: null };
+    ? { projects: 2, healthRead, liveSessions: 2, openIssues: 29, runners: 1, spend24hUsd: 1.5 }
+    : { projects: 2, healthRead, liveSessions: null, openIssues: null, runners: null, spend24hUsd: null };
 
 const FAILED = /could not be read/;
 const PENDING = /^reading /;
-const NO_STATEMENT = /^0 live runs$|^0 live$|\$0\.00|^0$/;
+const NO_STATEMENT = /^0 live sessions$|^0 live$|\$0\.00|^0$/;
 
 function marks(re: RegExp) {
   return screen.queryAllByLabelText(re);
@@ -82,7 +82,7 @@ describe.each([
     render(<ProjectCard project={unread(state)} now={0} onTogglePin={() => {}} />);
     expect(marks(name).length).toBeGreaterThanOrEqual(5);
     expect(marks(name).map((m) => m.getAttribute("aria-label")).join("|")).toMatch(/health/);
-    expect(document.body.textContent).not.toMatch(/0 live runs|\$0\.00/);
+    expect(document.body.textContent).not.toMatch(/0 live sessions|\$0\.00/);
   });
 
   it("is named on a project card where the repository and the description were, never as the dash of no value", () => {
@@ -113,7 +113,7 @@ describe.each([
     expect(screen.getByRole("status").textContent).toMatch(state === "failed" ? /could not be read/ : /reading/i);
   });
 
-  it("is named by the live-run count, never as 0 live runs", () => {
+  it("is named by the live-session count, never as 0 live sessions", () => {
     render(<LiveCount n={null} read={state} />);
     expect(marks(name)).toHaveLength(1);
     expect(screen.queryByText(NO_STATEMENT)).toBeNull();
@@ -127,12 +127,15 @@ describe("a health read that came in", () => {
     expect(marks(FAILED)).toHaveLength(0);
     cleanup();
     render(<ProjectCard project={read} now={Date.parse("2026-10-02T01:00:00Z")} onTogglePin={() => {}} />);
-    expect(screen.getByText("2 live runs")).toBeTruthy();
+    expect(screen.getByText("2 live sessions")).toBeTruthy();
     expect(screen.getByText("29")).toBeTruthy();
     expect(marks(FAILED)).toHaveLength(0);
     cleanup();
     render(<LiveCount n={0} read="read" />);
-    expect(screen.getByText("0 live runs")).toBeTruthy();
+    expect(screen.getByText("0 live sessions")).toBeTruthy();
+    cleanup();
+    render(<LiveCount n={1} read="read" />);
+    expect(screen.getByText("1 live session")).toBeTruthy();
   });
 
   it("draws the dash of no value only for a project read to have no repository and no description", () => {
@@ -233,15 +236,15 @@ describe("the workspace band and the attention banner, with two organizations", 
     consoleState.read = "read";
     consoleState.activeOrgId = "o1";
     consoleState.items = [
-      inOrg("alpha", "o1", { openIssues: 29, liveRuns: 2, runnerCount: 1, spend24hUsd: 1.5, health: "attention" }),
-      inOrg("beta", "o2", { openIssues: 5, liveRuns: 1, runnerCount: 3, spend24hUsd: 2, health: "attention" }),
-      inOrg("gamma", "o2", { openIssues: 7, liveRuns: 1, runnerCount: 1, spend24hUsd: 1, health: "attention" }),
+      inOrg("alpha", "o1", { openIssues: 29, liveSessions: 2, runnerCount: 1, spend24hUsd: 1.5, health: "attention" }),
+      inOrg("beta", "o2", { openIssues: 5, liveSessions: 1, runnerCount: 3, spend24hUsd: 2, health: "attention" }),
+      inOrg("gamma", "o2", { openIssues: 7, liveSessions: 1, runnerCount: 1, spend24hUsd: 1, health: "attention" }),
     ];
     render(<ProjectsConsole />);
     const band = screen.getByText("Workspace").parentElement as HTMLElement;
     expect(band.textContent).toContain("1 projects");
     expect(band.textContent).toContain("29 open work");
-    expect(band.textContent).toContain("2 live runs");
+    expect(band.textContent).toContain("2 live sessions");
     expect(band.textContent).toContain("1 runners");
     expect(band.textContent).toContain("$1.50 / 24h");
     expect(screen.getByText("alpha")).toBeTruthy();

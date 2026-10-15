@@ -21,6 +21,7 @@ import {
   workStateOf,
 } from "@forge/contracts/work-state";
 import type { QueueStats } from "@/features/sessions/types";
+import type { LiveSession } from "@/features/pipeline/types";
 
 /* ------------------------------------------------------------------ *
  * Open work by state: the donut, drawn from the same counts as the tile (ISS-1156)
@@ -393,7 +394,10 @@ export interface RunnerLine {
   online: boolean;
   /** Accepting no new work while it finishes what it has — listed, never counted online. */
   draining: boolean;
+  /** Hosting a live session, or running a pool job or the active-runner snapshot's current one. */
   busy: boolean;
+  /** Live sessions on this runner's device, as the Pipeline page lists them. */
+  sessions: number;
   running: number;
   queued: number;
   /** Rate/usage/auth limit on this device's runner for this project, or null. */
@@ -407,6 +411,7 @@ export interface RunnerLine {
 export interface RunnersSummary {
   lines: RunnerLine[];
   onlineCount: number;
+  /** Online runners that are busy: the caption reads it against `onlineCount`. */
   busyCount: number;
   total: number;
 }
@@ -416,7 +421,12 @@ export function runnersSummary(
   queue: QueueStats | undefined,
   now: number = Date.now(),
   active?: ActiveRunner[] | undefined,
+  sessions?: readonly Pick<LiveSession, "deviceId">[] | undefined,
 ): RunnersSummary {
+  const sessionsByDevice = new Map<string, number>();
+  for (const s of sessions ?? []) {
+    if (s.deviceId) sessionsByDevice.set(s.deviceId, (sessionsByDevice.get(s.deviceId) ?? 0) + 1);
+  }
   const byDevice = new Map<string, { queued: number; running: number }>();
   for (const d of queue?.devices ?? []) {
     if (d.deviceId) byDevice.set(d.deviceId, { queued: d.queued, running: d.running });
@@ -431,7 +441,8 @@ export function runnersSummary(
       const draining = r.runnerStatus === "draining";
       const online = r.deviceStatus === "online" && !draining;
       const act = activeByRunner.get(r.runnerId);
-      const busy = act ? !!act.current : online && q.running > 0;
+      const hosted = (r.deviceId ? sessionsByDevice.get(r.deviceId) : undefined) ?? 0;
+      const busy = hosted > 0 || (act ? !!act.current : online && q.running > 0);
       return {
         id: r.runnerId,
         name: r.deviceName ?? act?.name ?? "unnamed runner",
@@ -439,6 +450,7 @@ export function runnersSummary(
         online,
         draining,
         busy,
+        sessions: hosted,
         running: q.running,
         queued: q.queued,
         limit: runnerLimitDisplay(r, now),
@@ -449,7 +461,7 @@ export function runnersSummary(
   return {
     lines,
     onlineCount: lines.filter((l) => l.online).length,
-    busyCount: lines.filter((l) => l.busy).length,
+    busyCount: lines.filter((l) => l.online && l.busy).length,
     total: lines.length,
   };
 }

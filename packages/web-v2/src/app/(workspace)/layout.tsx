@@ -217,7 +217,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   // Attention is folded into Overview — its live count rides Overview's badge.
   const railItems = useMemo<NavItem[]>(() => workspaceNavItems(attentionBadge), [attentionBadge]);
 
-  // Rail project context — switcher glyph + the console rollup (liveRuns /
+  // Rail project context — switcher glyph + the console rollup (liveSessions /
   // openIssues badges). See useRailProjectData.
   const { projectMark, switcherProjects, openWork, compactActiveProject, togglePin } =
     useRailProjectData({ railSlug, railProject, activeOrgId });

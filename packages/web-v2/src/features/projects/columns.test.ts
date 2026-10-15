@@ -22,7 +22,7 @@ const health = (id: string, over: Partial<ProjectHealthRow> = {}): ProjectHealth
   ({
     id, projectName: id, projectSlug: id, description: "d", repoPath: "r", throughput: 0, totalActive: 29,
     work: { open: 1, in_flight: 2, awaiting_release: 3, blocked_on_person: 4, draft: 0, finished: 0 },
-    blockers: [], blockersTotal: 0, pendingEscalations: 0, avgCycleTimeDays: 0, liveRuns: 2, runnerCount: 1,
+    blockers: [], blockersTotal: 0, pendingEscalations: 0, avgCycleTimeDays: 0, liveSessions: 2, runnerCount: 1,
     spend24hUsd: 1.5, memberCount: 3, members: ["AB"], lastActivityAt: "2026-10-02T00:00:00Z", ...over,
   }) as ProjectHealthRow;
 const none = new Set<string>();
@@ -42,7 +42,7 @@ function ids(items: ProjectConsoleItem[], options: DataTableModelOptions) {
 const by = (id: "recent" | "name" | "health", desc = FIRST_DESC[id]) => ({ sort: { id, desc } });
 
 describe("the projects console sorts", () => {
-  const quiet = { totalActive: 0, liveRuns: 0 };
+  const quiet = { totalActive: 0, liveSessions: 0 };
   const items = [
     read("b", { lastActivityAt: "2026-10-03T00:00:00Z" }, { name: "Bravo" }),
     read("a", { ...quiet, lastActivityAt: "2026-10-09T00:00:00Z" }, { name: "alpha" }),
@@ -75,11 +75,11 @@ describe("the projects console sorts", () => {
 
 describe("a project whose rollup was not read", () => {
   it("sorts after every project whose health was read, under the health sort", () => {
-    expect(ids([unread("a"), read("b", { totalActive: 0, liveRuns: 0 })], by("health"))).toEqual(["b", "a"]);
+    expect(ids([unread("a"), read("b", { totalActive: 0, liveSessions: 0 })], by("health"))).toEqual(["b", "a"]);
   });
 
   it("stays after every project whose health was read when the health sort runs the other way", () => {
-    const items = [unread("a"), stale("s", { health: "down" }), read("b", { totalActive: 0, liveRuns: 0 }), read("c", { blockers: [{} as never] })];
+    const items = [unread("a"), stale("s", { health: "down" }), read("b", { totalActive: 0, liveSessions: 0 }), read("c", { blockers: [{} as never] })];
     expect(ids(items, by("health", true)).slice(0, 2)).toEqual(["b", "c"]);
     expect(ids(items, by("health", false)).slice(0, 2)).toEqual(["c", "b"]);
     expect(ids(items, by("health", true)).slice(2).sort()).toEqual(["a", "s"]);

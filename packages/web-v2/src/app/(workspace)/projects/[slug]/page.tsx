@@ -195,7 +195,8 @@ export default function ProjectOverviewPage() {
   const durationsState = readOf(durationsQ);
   const throughputState = readOf(throughputQ);
   const runnersState = readOf(projectRunnersQ);
-  const activityState = readOfAll(queueQ, activeRunnersQ);
+  // A runner hosting a live session is busy, so the sessions read is part of what says busy or idle.
+  const activityState = readOfAll(queueQ, activeRunnersQ, sessionsQ);
   const schedulesState = readOf(schedulesQ);
   const runsIdle = idleRuns(runItems);
   const runsAwaitingRelease = awaitingReleaseRuns(runItems);
@@ -205,6 +206,7 @@ export default function ProjectOverviewPage() {
     activityState.read === "ok" ? queueQ.data : undefined,
     anyLimited ? tick : now,
     activityState.read === "ok" ? activeRunnersQ.data?.runners : undefined,
+    activityState.read === "ok" ? liveSessions : undefined,
   );
   const donut = statusDonut(health?.work);
   const awaitingReleaseIssues = health?.work.awaiting_release ?? 0;

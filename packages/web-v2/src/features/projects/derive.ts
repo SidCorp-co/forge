@@ -24,12 +24,12 @@ export function isAttention(item: Pick<ProjectConsoleItem, 'health' | 'healthRea
 export function deriveHealth(
   h: Pick<
     ProjectHealthRow,
-    'blockers' | 'pendingEscalations' | 'runnerCount' | 'totalActive' | 'liveRuns'
+    'blockers' | 'pendingEscalations' | 'runnerCount' | 'totalActive' | 'liveSessions'
   >,
 ): HealthKey {
   if ((h.blockers?.length ?? 0) > 0 || (h.pendingEscalations ?? 0) > 0) return 'attention';
-  if (h.runnerCount === 0 && (h.totalActive > 0 || h.liveRuns > 0)) return 'attention';
-  if (h.totalActive === 0 && h.liveRuns === 0) return 'idle';
+  if (h.runnerCount === 0 && (h.totalActive > 0 || h.liveSessions > 0)) return 'attention';
+  if (h.totalActive === 0 && h.liveSessions === 0) return 'idle';
   return 'healthy';
 }
 
@@ -64,7 +64,7 @@ export function mergeProjects(
       repoPath: h?.repoPath ?? null,
       healthRead,
       health: read ? (h ? deriveHealth(h) : 'idle') : null,
-      liveRuns: read ? (h?.liveRuns ?? 0) : null,
+      liveSessions: read ? (h?.liveSessions ?? 0) : null,
       openIssues: read ? (h?.totalActive ?? 0) : null,
       runnerCount: read ? (h?.runnerCount ?? 0) : null,
       spend24hUsd: read ? (h?.spend24hUsd ?? 0) : null,
@@ -79,18 +79,18 @@ export function mergeProjects(
 /** Workspace summary across all console items, for the stats band. Its figures are null until the health read is `read`. */
 export function workspaceTotals(items: ProjectConsoleItem[], healthRead: QueryRead): WorkspaceTotals {
   if (healthRead !== 'read') {
-    return { projects: items.length, healthRead, liveRuns: null, openIssues: null, runners: null, spend24hUsd: null };
+    return { projects: items.length, healthRead, liveSessions: null, openIssues: null, runners: null, spend24hUsd: null };
   }
   return items.reduce<WorkspaceTotals>(
     (acc, p) => ({
       projects: acc.projects + 1,
       healthRead,
-      liveRuns: (acc.liveRuns ?? 0) + (p.liveRuns ?? 0),
+      liveSessions: (acc.liveSessions ?? 0) + (p.liveSessions ?? 0),
       openIssues: (acc.openIssues ?? 0) + (p.openIssues ?? 0),
       runners: (acc.runners ?? 0) + (p.runnerCount ?? 0),
       spend24hUsd: (acc.spend24hUsd ?? 0) + (p.spend24hUsd ?? 0),
     }),
-    { projects: 0, healthRead, liveRuns: 0, openIssues: 0, runners: 0, spend24hUsd: 0 },
+    { projects: 0, healthRead, liveSessions: 0, openIssues: 0, runners: 0, spend24hUsd: 0 },
   );
 }
 

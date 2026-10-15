@@ -306,3 +306,13 @@ describe("the pipeline page's sessions and holds follow the events that move the
     expect(send("comment.created", { issueId: "i1" }).has(["sessions-and-holds"])).toBe(false);
   });
 });
+
+describe("the rail's live-session figure follows a session starting or ending (ISS-1228)", () => {
+  it.each([
+    ["agent-session.created", { sessionId: "s1" }],
+    ["agent-session.status", { sessionId: "s1" }],
+    ["agent-session.deleted", { sessionId: "s1" }],
+  ])("%s refreshes the health rollup it reads", (event, data) => {
+    expect(send(event, data).has(["projects", "health"])).toBe(true);
+  });
+});
