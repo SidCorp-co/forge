@@ -312,10 +312,13 @@ export function ProjectRefusal({
   );
 }
 
-/** What each in-flight status is called in a sentence about issues standing at it. */
+/**
+ * What each in-flight status is called in a sentence about issues standing at it. Each phrase is
+ * one list item once several are joined with commas and "and", so none holds a comma or a list word.
+ */
 const STANDING: Record<(typeof IN_FLIGHT)[number], string> = {
   in_progress: "in progress",
-  developed: "developed, waiting to be tested",
+  developed: "waiting to be tested",
   testing: "in testing",
   awaiting_release: "waiting for release",
 };
