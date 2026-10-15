@@ -135,6 +135,43 @@ describe('a cancelled job and its run', () => {
     expect(await journalStatus(issueId, runId)).toBe('running');
   });
 
+  it('keeps the run open for a job whose admission commits while the close waits on the run', async () => {
+    const { issueId, runId } = await seedIssueRun();
+    const cancelled = await seedJob(runId, issueId, 'cancelled');
+    const { jobs } = await import('../../src/db/schema.js');
+    const { eq } = await import('drizzle-orm');
+    const [row] = await harness.db.select().from(jobs).where(eq(jobs.id, cancelled));
+    if (!row) throw new Error('seeded job is missing');
+
+    let admitted!: () => void;
+    const admit = new Promise<void>((resolve) => {
+      admitted = resolve;
+    });
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const admission = harness.db.transaction(async (tx) => {
+      await tx.execute(sql`
+        INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, type, status, created_by)
+        VALUES (${randomUUID()}, ${projectId}, ${issueId}, ${runId}, 'smoke', 'queued', ${ownerId})
+      `);
+      admitted();
+      await held;
+    });
+    await admit;
+    const closing = syncAgentSessionLifecycle(row, 'cancelled');
+    await new Promise((r) => setTimeout(r, 300));
+    release();
+    await Promise.all([admission, closing]);
+
+    expect(await runStatus(runId)).toBe('running');
+    const live = await harness.db.execute<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM jobs WHERE pipeline_run_id = ${runId} AND status = 'queued'`,
+    );
+    expect(live[0]?.n).toBe(1);
+  });
+
   it('closes the run when a running job its runner stopped reports itself cancelled', async () => {
     const { issueId, runId } = await seedIssueRun();
     const sessionId = randomUUID();

@@ -197,16 +197,7 @@ export async function closeRun(
   const resolved = await gatedOutcome(runId, outcome);
   if (resolved === null) return 'deferred';
   const { rows, cascade } = await db.transaction(async (tx) => {
-    const updated = await applyKernelTransition(tx, {
-      entity: 'run',
-      to: resolved,
-      set: { finishedAt: new Date(), updatedAt: new Date() },
-      where: and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['running', 'paused'])),
-      fromStatus: 'open',
-      reason: reasonForOutcome(resolved),
-      actor: { type: 'system' },
-      source: 'runs',
-    });
+    const updated = await transitionRunClosed(tx, runId, resolved);
     const c =
       updated.length > 0
         ? await cascadeCancelChildJobs(tx, runId, reasonForOutcome(resolved))
@@ -218,36 +209,50 @@ export async function closeRun(
   return 'settled';
 }
 
+/** The kernel transition every close of one run writes; `guard` narrows which open run it takes. */
+function transitionRunClosed(
+  tx: Tx,
+  runId: string,
+  to: 'completed' | 'failed' | 'cancelled',
+  guard?: SQL,
+) {
+  return applyKernelTransition(tx, {
+    entity: 'run',
+    to,
+    set: { finishedAt: new Date(), updatedAt: new Date() },
+    where: and(
+      eq(pipelineRuns.id, runId),
+      inArray(pipelineRuns.status, ['running', 'paused']),
+      guard,
+    ),
+    fromStatus: 'open',
+    reason: reasonForOutcome(to),
+    actor: { type: 'system' },
+    source: 'runs',
+  });
+}
+
 /**
  * Close a run `cancelled` once no job of it is live, so cancelling its only job ends it at once
- * rather than at the concluded-run reaper's quiet hour. The no-live-job test sits in the UPDATE's
- * own WHERE, so a run that gained a job stays open and the cascade never reaches that job.
+ * rather than at the concluded-run reaper's quiet hour. The run row is locked `FOR UPDATE` first:
+ * a job insert takes `FOR KEY SHARE` on it for its foreign key, so a job being admitted either
+ * commits before the no-live-job test reads, keeping the run open, or is held until this commits.
+ * Nothing live is left to cascade to, so this close cancels no job.
  */
 export async function closeRunOnceJobsEnd(runId: string): Promise<void> {
-  const { rows, cascade } = await db.transaction(async (tx) => {
-    const updated = await applyKernelTransition(tx, {
-      entity: 'run',
-      to: 'cancelled',
-      set: { finishedAt: new Date(), updatedAt: new Date() },
-      where: and(
-        eq(pipelineRuns.id, runId),
-        inArray(pipelineRuns.status, ['running', 'paused']),
-        sql`NOT EXISTS (SELECT 1 FROM ${jobs} WHERE ${jobs.pipelineRunId} = ${runId}
-              AND ${inArray(jobs.status, [...LIVE_JOB_STATUSES])})`,
-      ),
-      fromStatus: 'open',
-      reason: reasonForOutcome('cancelled'),
-      actor: { type: 'system' },
-      source: 'runs',
-    });
-    const c =
-      updated.length > 0
-        ? await cascadeCancelChildJobs(tx, runId, reasonForOutcome('cancelled'))
-        : null;
-    return { rows: updated, cascade: c };
+  const rows = await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT 1 FROM ${pipelineRuns} WHERE ${pipelineRuns.id} = ${runId} FOR UPDATE`,
+    );
+    return transitionRunClosed(
+      tx,
+      runId,
+      'cancelled',
+      sql`NOT EXISTS (SELECT 1 FROM ${jobs} WHERE ${jobs.pipelineRunId} = ${runId}
+            AND ${inArray(jobs.status, [...LIVE_JOB_STATUSES])})`,
+    );
   });
-  if (cascade) await requestKillsForCascade(cascade.killableJobs, reasonForOutcome('cancelled'));
-  await emitCloseHook(rows, 'cancelled', cascade?.cancelledJobIds ?? []);
+  await emitCloseHook(rows, 'cancelled');
 }
 
 /**
