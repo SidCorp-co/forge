@@ -231,11 +231,8 @@ let registered = false;
 
 export async function registerRetentionSweeper(): Promise<void> {
   if (registered) return;
-  // pg-boss v10 requires explicit createQueue before schedule/work can reference it.
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(RETENTION_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(RETENTION_QUEUE, async () => {
+  await boss.createQueue(RETENTION_QUEUE);
+  await boss.work(RETENTION_QUEUE, async () => {
     try {
       const result = await runRetentionSweep();
       logger.info(
@@ -247,8 +244,7 @@ export async function registerRetentionSweeper(): Promise<void> {
       throw err;
     }
   });
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(RETENTION_QUEUE, '0 3 * * *');
+  await boss.schedule(RETENTION_QUEUE, '0 3 * * *');
   registered = true;
 }
 

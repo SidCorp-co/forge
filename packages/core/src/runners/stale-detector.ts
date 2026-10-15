@@ -73,7 +73,7 @@ export async function registerRunnerStaleDetector(): Promise<void> {
   });
   // ISS-198 — every minute (was */2). Lands the offline flip well inside
   // the 60s detection budget required by the acceptance criteria.
-  await (boss as any).schedule(RUNNER_STALE_DETECTOR_QUEUE, '* * * * *');
+  await boss.schedule(RUNNER_STALE_DETECTOR_QUEUE, '* * * * *');
   registered = true;
 }
 

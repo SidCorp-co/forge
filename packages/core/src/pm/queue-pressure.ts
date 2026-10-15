@@ -107,10 +107,8 @@ async function loadInFlightRunPressure(): Promise<
 
 export async function registerPmQueuePressureSweeper(): Promise<void> {
   if (registered) return;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(PM_QUEUE_PRESSURE_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(PM_QUEUE_PRESSURE_QUEUE, async () => {
+  await boss.createQueue(PM_QUEUE_PRESSURE_QUEUE);
+  await boss.work(PM_QUEUE_PRESSURE_QUEUE, async () => {
     try {
       await runPmQueuePressureSweepOnce();
     } catch (err) {
@@ -118,8 +116,7 @@ export async function registerPmQueuePressureSweeper(): Promise<void> {
       throw err;
     }
   });
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(PM_QUEUE_PRESSURE_QUEUE, PM_QUEUE_PRESSURE_CRON, {});
+  await boss.schedule(PM_QUEUE_PRESSURE_QUEUE, PM_QUEUE_PRESSURE_CRON, {});
   registered = true;
 }
 

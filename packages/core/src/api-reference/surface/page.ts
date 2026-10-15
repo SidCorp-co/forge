@@ -9,8 +9,8 @@ export const SCALAR = {
 } as const;
 
 export const MERMAID = {
-  src: 'https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js',
-  integrity: 'sha384-EOXBFmc3gx5mb+vn0vPvvGqACToJD24hhacX5Yx+8NUUQrHIle/Qi5Bg9o3zKwW2',
+  src: 'https://cdn.jsdelivr.net/npm/mermaid@12.2.0/dist/mermaid.min.js',
+  integrity: 'sha384-8xUhuLNMjW/cI2Dacg3DR4WliYznvIg0LVG1stctThKD/YVrJFI9TNCFxft5NYgp',
 } as const;
 
 function escapeHtml(text: string): string {
@@ -124,6 +124,8 @@ ${sections}
 <script>
   mermaid.initialize({
     startOnLoad: false,
+    layout: 'dagre',
+    look: 'classic',
     sequence: { useMaxWidth: false },
     flowchart: { useMaxWidth: false },
     theme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default',

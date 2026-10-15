@@ -9,10 +9,8 @@ let registered = false;
 
 export async function registerAssistantWeekly(): Promise<void> {
   if (registered) return;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(ASSISTANT_WEEKLY_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(ASSISTANT_WEEKLY_QUEUE, { batchSize: 1 }, async () => {
+  await boss.createQueue(ASSISTANT_WEEKLY_QUEUE);
+  await boss.work(ASSISTANT_WEEKLY_QUEUE, { batchSize: 1 }, async () => {
     try {
       const outcomes = await runAssistantWeeklyOnce();
       logger.info(
@@ -28,16 +26,14 @@ export async function registerAssistantWeekly(): Promise<void> {
       throw err;
     }
   });
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(ASSISTANT_WEEKLY_QUEUE, ASSISTANT_WEEKLY_CRON, {});
+  await boss.schedule(ASSISTANT_WEEKLY_QUEUE, ASSISTANT_WEEKLY_CRON, {});
   registered = true;
 }
 
 export async function unregisterAssistantWeekly(): Promise<void> {
   if (!registered) return;
   try {
-    // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-    await (boss as any).unschedule(ASSISTANT_WEEKLY_QUEUE);
+    await boss.unschedule(ASSISTANT_WEEKLY_QUEUE);
   } finally {
     registered = false;
   }

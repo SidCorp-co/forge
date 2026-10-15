@@ -208,8 +208,7 @@ export async function runChunkPurge(projectId: string): Promise<{ purged: boolea
 }
 
 export async function enqueueChunkReindex(projectId: string): Promise<void> {
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss send signature varies
-  await (boss as any).send(
+  await boss.send(
     MEMORY_CHUNK_REINDEX_QUEUE,
     { projectId },
     { singletonKey: projectId, retryLimit: 0 },
@@ -217,8 +216,7 @@ export async function enqueueChunkReindex(projectId: string): Promise<void> {
 }
 
 export async function enqueueChunkPurge(projectId: string): Promise<void> {
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss send signature varies
-  await (boss as any).send(
+  await boss.send(
     MEMORY_CHUNK_PURGE_QUEUE,
     { projectId },
     { singletonKey: `purge:${projectId}`, startAfter: CHUNK_PURGE_DELAY_SECONDS, retryLimit: 0 },
@@ -233,13 +231,10 @@ export async function registerChunkReindex(): Promise<void> {
     [MEMORY_CHUNK_REINDEX_QUEUE, runChunkReindex],
     [MEMORY_CHUNK_PURGE_QUEUE, runChunkPurge],
   ] as const) {
-    // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-    await (boss as any).createQueue(queue);
-    // biome-ignore lint/suspicious/noExplicitAny: handler arg shape stabilised at runtime
-    await (boss as any).work(queue, { batchSize: 1 }, async (arg: any) => {
-      const entries = Array.isArray(arg) ? arg : [arg];
-      for (const entry of entries) {
-        const projectId = entry?.data?.projectId as unknown;
+    await boss.createQueue(queue);
+    await boss.work<{ projectId?: unknown } | null>(queue, { batchSize: 1 }, async (jobs) => {
+      for (const { data } of jobs) {
+        const projectId = data?.projectId;
         if (typeof projectId !== 'string') continue;
         try {
           const result = await run(projectId);

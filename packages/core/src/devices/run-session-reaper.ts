@@ -84,17 +84,14 @@ let registered = false;
 export async function registerRunSessionReaper(): Promise<void> {
   if (registered) return;
   const { boss } = await import('../queue/boss.js');
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(RUN_SESSION_REAPER_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(RUN_SESSION_REAPER_QUEUE, async () => {
+  await boss.createQueue(RUN_SESSION_REAPER_QUEUE);
+  await boss.work(RUN_SESSION_REAPER_QUEUE, async () => {
     const reaped = await reapDeadRunSessions();
     if (reaped.length > 0) {
       logger.info({ reaped: reaped.length }, 'run-session-reaper: sweep returned runs');
     }
   });
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(RUN_SESSION_REAPER_QUEUE, '* * * * *');
+  await boss.schedule(RUN_SESSION_REAPER_QUEUE, '* * * * *');
   registered = true;
 }
 

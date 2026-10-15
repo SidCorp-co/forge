@@ -6492,6 +6492,7 @@
 
 ### Changed
 
+- **Background work queued before an upgrade still runs after it.** Forge moves its job queue to a new version on first start and carries every waiting job across; error reports still send no cookies, addresses or request bodies. (ISS-1342)
 - **An issue page shows each run as one record of what it did.** Each phase with its outcome, time and handoff, plus the run's sessions and cost. A handoff or phase end is written once; a second is refused. (ISS-1133)
 - **Work evidence is read off the issue itself.** A step handoff's commit no longer lets an agent move an issue to `developed`, and a merge mark naming no commit records none; record the branch or mark the commit. (ISS-1133)
 - **The Pipeline page shows a project's live sessions and what is held.** Each session names its issue, what it is doing and what it waits on; each held issue says who holds it, why and since when. (ISS-1228)

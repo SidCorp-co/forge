@@ -147,38 +147,42 @@ const SERIALIZER_HOOKS: [string, (text: string) => unknown][] = [
   ['a field of a tagged object', (text) => ({ [Symbol.toStringTag]: 'Reading', reason: text })],
 ];
 
-describe.each(SERIALIZER_HOOKS)('a Sentry event holding a value rendered through %s', (_, hook) => {
-  it.each([
-    ['a failed query', () => failedInsert().message],
-    ['a value the database quotes', () => QUOTED_REFUSAL],
-  ])('is scrubbed of %s wherever the value sits', (_, text) => {
-    const event = {
-      extra: { reading: hook(text()) },
-      contexts: { reading: { value: hook(text()) } },
-      breadcrumbs: [{ message: 'read', data: { reading: hook(text()) } }],
-    };
-    const sent = JSON.stringify(scrubSentryEvent(event));
-    expect(sent).not.toContain(HASH);
-    expect(sent).not.toContain(EMAIL);
-    expect(sent).not.toContain(QUOTED);
-  });
-
-  it("sends none of a failed query's bound params through the real client", async () => {
-    const { initSentry, Sentry } = await import('./sentry.js');
-    expect(initSentry()).toBe(true);
-    const before = envelopes.length;
-    Sentry.captureException(new Error('unrelated'), {
-      extra: { reading: hook(failedInsert().message) },
-      contexts: { reading: { value: hook(QUOTED_REFUSAL) } },
+describe.each(SERIALIZER_HOOKS)(
+  'a Sentry event holding a value rendered through %s',
+  (through, hook) => {
+    it.each([
+      ['a failed query', () => failedInsert().message],
+      ['a value the database quotes', () => QUOTED_REFUSAL],
+    ])('is scrubbed of %s wherever the value sits', (_, text) => {
+      const event = {
+        extra: { reading: hook(text()) },
+        contexts: { reading: { value: hook(text()) } },
+        breadcrumbs: [{ message: 'read', data: { reading: hook(text()) } }],
+      };
+      const sent = JSON.stringify(scrubSentryEvent(event));
+      expect(sent).not.toContain(HASH);
+      expect(sent).not.toContain(EMAIL);
+      expect(sent).not.toContain(QUOTED);
     });
-    expect(await Sentry.flush(5000)).toBe(true);
-    const sent = envelopes.slice(before).join('\n');
-    expect(sent).toContain('unrelated');
-    expect(sent).not.toContain(HASH);
-    expect(sent).not.toContain(EMAIL);
-    expect(sent).not.toContain(QUOTED);
-  });
-});
+
+    it("sends none of a failed query's bound params through the real client", async () => {
+      const { initSentry, Sentry } = await import('./sentry.js');
+      expect(initSentry()).toBe(true);
+      const before = envelopes.length;
+      // Sentry 11's Dedupe drops an error equal to the last one sent, so each hook's error is its own.
+      Sentry.captureException(new Error(`unrelated, through ${through}`), {
+        extra: { reading: hook(failedInsert().message) },
+        contexts: { reading: { value: hook(QUOTED_REFUSAL) } },
+      });
+      expect(await Sentry.flush(5000)).toBe(true);
+      const sent = envelopes.slice(before).join('\n');
+      expect(sent).toContain(`unrelated, through ${through}`);
+      expect(sent).not.toContain(HASH);
+      expect(sent).not.toContain(EMAIL);
+      expect(sent).not.toContain(QUOTED);
+    });
+  },
+);
 
 describe('scrubSentryEvent, given a request body that renders itself', () => {
   it('censors a key-named secret before the body renders it unlabelled', () => {
@@ -356,5 +360,68 @@ describe('a breadcrumb the scope re-sends with every event', () => {
     expect(sent).toContain('retry gave up after');
     expect(sent).not.toContain(HASH);
     expect(sent).not.toContain(EMAIL);
+  });
+});
+
+/** One secret per field the scrub covers, each a string no other part of the event can carry. */
+const PLANTED = {
+  header: 'hdr-planted-4f1',
+  url: 'url-planted-4f2',
+  body: 'body-planted-4f3',
+  crumb: `forge_pat_prd_${'4f'.repeat(16)}`,
+  crumbData: 'crumbdata-planted-4f5',
+};
+
+describe('the Sentry 11 client core starts, given a request it is handling', () => {
+  it('sends none of a secret planted in each field the scrub covers', async () => {
+    const { initSentry, Sentry } = await import('./sentry.js');
+    expect(initSentry()).toBe(true);
+    const before = envelopes.length;
+    Sentry.withIsolationScope((scope) => {
+      scope.setSDKProcessingMetadata({
+        normalizedRequest: {
+          method: 'POST',
+          url: `https://forge.test/api/hook?token=${PLANTED.url}`,
+          headers: { authorization: `Bearer ${PLANTED.header}`, 'x-api-key': PLANTED.header },
+          data: JSON.stringify({ password: PLANTED.body, note: 'kept' }),
+        },
+      });
+      Sentry.addBreadcrumb({
+        message: `called with ${PLANTED.crumb}`,
+        data: { token: PLANTED.crumbData },
+      });
+      Sentry.captureException(new Error('planted request'));
+    });
+    expect(await Sentry.flush(5000)).toBe(true);
+    const sent = envelopes.slice(before).join('\n');
+    expect(sent).toContain('planted request');
+    expect(sent).toContain('forge.test/api/hook');
+    for (const secret of Object.values(PLANTED)) expect(sent).not.toContain(secret);
+  });
+
+  it('collects no cookie or user address, which the scrub does not cover', async () => {
+    // Built rather than written out, for the reason ESCAPED is.
+    const cookie = ['cookie', 'planted', '4f6'].join('-');
+    const address = ['203', '0', '113', '77'].join('.');
+    const { initSentry, Sentry } = await import('./sentry.js');
+    expect(initSentry()).toBe(true);
+    const before = envelopes.length;
+    Sentry.withIsolationScope((scope) => {
+      scope.setSDKProcessingMetadata({
+        normalizedRequest: {
+          method: 'POST',
+          url: 'https://forge.test/api/session',
+          headers: { 'x-forwarded-for': address },
+          cookies: { sid: cookie },
+        },
+        ipAddress: address,
+      });
+      Sentry.captureException(new Error('planted session'));
+    });
+    expect(await Sentry.flush(5000)).toBe(true);
+    const sent = envelopes.slice(before).join('\n');
+    expect(sent).toContain('planted session');
+    expect(sent).not.toContain(cookie);
+    expect(sent).not.toContain(address);
   });
 });

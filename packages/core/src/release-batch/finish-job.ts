@@ -457,12 +457,7 @@ export async function resumeStrandedFinishes(
 export async function enqueueReleaseBatchFinish(runId: string): Promise<void> {
   try {
     const { boss } = await import('../queue/boss.js');
-    // biome-ignore lint/suspicious/noExplicitAny: pg-boss send signature varies
-    await (boss as any).send(
-      RELEASE_FINISH_QUEUE,
-      { runId },
-      { singletonKey: runId, retryLimit: 0 },
-    );
+    await boss.send(RELEASE_FINISH_QUEUE, { runId }, { singletonKey: runId, retryLimit: 0 });
   } catch (err) {
     logger.warn({ err, runId }, 'release-batch: could not wake the finish job; the sweep will');
   }
@@ -488,8 +483,7 @@ let registered = false;
 export async function registerReleaseBatchFinish(): Promise<void> {
   if (registered) return;
   const { boss } = await import('../queue/boss.js');
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  const b = boss as any;
+  const b = boss;
   await b.createQueue(RELEASE_FINISH_QUEUE, { policy: 'short' });
   await b.work(RELEASE_FINISH_QUEUE, { batchSize: 1 }, async (arg: unknown) => {
     for (const job of Array.isArray(arg) ? arg : [arg]) {

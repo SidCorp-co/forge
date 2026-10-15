@@ -151,14 +151,11 @@ let registered = false;
 export async function registerReleaseSilentRecovery(): Promise<void> {
   if (registered) return;
   const { boss } = await import('../queue/boss.js');
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(RECOVERY_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(RECOVERY_QUEUE, async () => {
+  await boss.createQueue(RECOVERY_QUEUE);
+  await boss.work(RECOVERY_QUEUE, async () => {
     await recoverSilentReleaseBatches();
   });
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(RECOVERY_QUEUE, '* * * * *');
+  await boss.schedule(RECOVERY_QUEUE, '* * * * *');
   registered = true;
 }
 
