@@ -303,8 +303,7 @@ function AddConnection({
   if (projects.length === 0) {
     return (
       <p className="fg-body-sm pb-10 text-center text-muted" data-testid="add-connection">
-        {scopeName.charAt(0).toUpperCase() + scopeName.slice(1)} has no project yet, and a connection is
-        added from one.{" "}
+        There is no project in {scopeName} yet, and a connection is added from one.{" "}
         <Link href="/projects?new=1" className={ADD_LINK}>
           Create a project
         </Link>

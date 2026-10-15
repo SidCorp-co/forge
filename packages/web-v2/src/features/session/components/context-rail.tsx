@@ -358,16 +358,14 @@ export function ContextRail({
 function SiblingRow({ row, onOpen }: { row: SessionRow; onOpen?: () => void }) {
   const display = deriveSessionDisplayStatus(row);
   const stage = sessionStep(row.metadata) ?? undefined;
-  const label =
-    (row.metadata?.step as string | undefined) ??
-    (row.metadata?.stage as string | undefined) ??
-    row.title ??
-    `Session ${row.id.slice(0, 8)}`;
+  // A step or stage is a lower-case slug and reads opened with a capital; a title is printed as written.
+  const slug = (row.metadata?.step as string | undefined) ?? (row.metadata?.stage as string | undefined);
+  const label = slug ?? row.title ?? `Session ${row.id.slice(0, 8)}`;
 
   const inner = (
     <>
       <Icon name="pipeline" size={13} className="flex-none text-subtle" />
-      <span className="flex-1 truncate fg-body-sm capitalize" title={label}>
+      <span className={`flex-1 truncate fg-body-sm${slug ? " capitalize" : ""}`} title={label}>
         {label}
       </span>
       <StatusChip status={statusToChip(display)} stage={stage} size="sm" domain="session" />
