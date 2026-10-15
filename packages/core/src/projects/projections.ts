@@ -91,6 +91,3 @@ export const ARCHIVED_PROJECT = {
   archivedAt: projects.archivedAt,
   createdAt: projects.createdAt,
 } as const;
-
-/** No other projection names a credential column (`projections.test.ts`): rotation alone shows the key. */
-export const ROTATED_API_KEY = { id: projects.id, apiKey: projects.apiKey } as const;

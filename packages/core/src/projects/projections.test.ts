@@ -2,26 +2,24 @@
  * ISS-1389 — no project read hands a reader a credential it did not ask for.
  *
  * `GET /api/projects` once answered every project's API key in every listing, so one listing put
- * several keys into an agent's session. Three walks hold the line: every projection in
- * `projections.ts`, every response schema in `routes-reference.ts`, and every source line of the
+ * several keys into an agent's session; the key is gone (0331) and the webhook secret stays, read
+ * only by the inbound webhook check. Three walks hold the line with no exemption: every projection
+ * in `projections.ts`, every response schema in `routes-reference.ts`, and every source line of the
  * module that reads a projects column. Each refuses a field named like a secret, by its JSON name
- * and by the column it reads, and names where it found it. `ROTATED_API_KEY` and
- * `rotatedApiKeySchema` are the one exemption: rotation is the route whose job is to show the key.
+ * and by the column it reads, and names where it found it.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getTableColumns } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import type { ZodType } from 'zod';
+import { type ZodType, z } from 'zod';
 import { projects } from '../db/schema.js';
 import * as projections from './projections.js';
 import * as reference from './routes-reference.js';
 
 /** A name ending in a credential noun: `apiKey`, `webhook_secret`, `accessToken`; a count such as `maxResumeTokens` is not one. */
 const SECRET_NAME = /(api_?key|token|secret|password)$/i;
-
-const SERVES_THE_KEY = new Set(['ROTATED_API_KEY', 'rotatedApiKeySchema']);
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -81,7 +79,7 @@ const isZodSchema = (value: unknown): value is ZodType =>
   typeof value === 'object' && value !== null && '_zod' in value;
 
 describe('projects projections name no secret', () => {
-  const entries = Object.entries(projections).filter(([name]) => !SERVES_THE_KEY.has(name));
+  const entries = Object.entries(projections);
 
   it('walks every projection the module exports', () => {
     expect(entries.map(([name]) => name).sort()).toEqual([
@@ -99,17 +97,13 @@ describe('projects projections name no secret', () => {
     expect(secretFieldsOf(projection as Record<string, unknown>), name).toEqual([]);
   });
 
-  it('refuses a planted apiKey by name, and one aliased under an innocent key by its column', () => {
-    expect(secretFieldsOf({ ...projections.PROJECT_LIST, apiKey: projects.apiKey })).toEqual([
-      'apiKey (api_key)',
-    ]);
+  it('refuses a planted secret by name, and one aliased under an innocent key by its column', () => {
+    expect(
+      secretFieldsOf({ ...projections.PROJECT_LIST, webhookSecret: projects.webhookSecret }),
+    ).toEqual(['webhookSecret (webhook_secret)']);
     expect(
       secretFieldsOf({ ...projections.PATCHED_PROJECT, hook: projects.webhookSecret }),
     ).toEqual(['hook (webhook_secret)']);
-  });
-
-  it('the rotation answer is the one projection that reads the key', () => {
-    expect(secretFieldsOf(projections.ROTATED_API_KEY)).toEqual(['apiKey (api_key)']);
   });
 
   it('the pattern reaches every credential column the projects table holds', () => {
@@ -117,14 +111,13 @@ describe('projects projections name no secret', () => {
       .map((column) => column.name)
       .filter((name) => SECRET_NAME.test(name))
       .sort();
-    expect(credentials).toEqual(['api_key', 'webhook_secret']);
+    expect(credentials).toEqual(['webhook_secret']);
   });
 });
 
 describe('projects response schemas name no secret', () => {
   const schemas = Object.entries(reference).flatMap(
-    ([name, value]): Array<[string, ZodType]> =>
-      isZodSchema(value) && !SERVES_THE_KEY.has(name) ? [[name, value]] : [],
+    ([name, value]): Array<[string, ZodType]> => (isZodSchema(value) ? [[name, value]] : []),
   );
 
   it('finds the response schemas to walk', () => {
@@ -146,13 +139,13 @@ describe('projects response schemas name no secret', () => {
 
   it('refuses a planted key in a listing row, naming its path', () => {
     const planted = reference.projectListSchema.element.extend({
-      apiKey: reference.rotatedApiKeySchema.shape.apiKey,
+      apiKey: z.string(),
     });
     expect(secretPathsOf(planted, 'projectListSchema[]')).toEqual(['projectListSchema[].apiKey']);
   });
 });
 
-/** Every `projects.<column>` a secret names, read anywhere in the module but `projections.ts`. */
+/** Every `projects.<column>` a secret names, read anywhere in the module. */
 function secretReadsIn(file: string, source: string): string[] {
   return source
     .split('\n')
@@ -163,12 +156,10 @@ function secretReadsIn(file: string, source: string): string[] {
     );
 }
 
-describe('the projects module reads a secret column through projections.ts alone', () => {
+describe('the projects module reads no secret column', () => {
   const sources = [
     ...readdirSync(HERE)
-      .filter(
-        (name) => name.endsWith('.ts') && !name.includes('.test.') && name !== 'projections.ts',
-      )
+      .filter((name) => name.endsWith('.ts') && !name.includes('.test.'))
       .map((name) => [`projects/${name}`, join(HERE, name)] as const),
     ['mcp/tools/forge-projects.ts', join(HERE, '..', 'mcp', 'tools', 'forge-projects.ts')] as const,
   ];

@@ -21,14 +21,12 @@ import {
 import {
   assertOrgAccess,
   assertOrgRoleOnProject,
-  assertProjectRole,
   loadPersonalOrgId,
   loadProjectAccess,
   maxProjectRole,
   orgDerivedProjectRole,
   visibleProjectsWhere,
 } from '../lib/authz.js';
-import { isUniqueViolation } from '../lib/db-errors.js';
 import { isEnabled } from '../lib/feature-flags.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
@@ -44,13 +42,7 @@ import { ENVIRONMENTS_MOVED_MESSAGE } from './environments.js';
 import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { projectOnboardRoutes } from './onboard-routes.js';
 import { projectFactsRoutes } from './project-facts-routes.js';
-import {
-  ARCHIVED_PROJECT,
-  PATCHED_PROJECT,
-  PROJECT_DETAIL,
-  PROJECT_LIST,
-  ROTATED_API_KEY,
-} from './projections.js';
+import { ARCHIVED_PROJECT, PATCHED_PROJECT, PROJECT_DETAIL, PROJECT_LIST } from './projections.js';
 import {
   chainLiveBranch,
   releaseChainGapFor,
@@ -86,12 +78,10 @@ import {
   pluginsWrittenSchema,
   projectDetailSchema,
   projectListSchema,
-  rotatedApiKeySchema,
-  rotateProjectApiKey,
   unarchiveProject,
 } from './routes-reference.js';
 import { projectRunnerRoutes } from './runners-routes.js';
-import { createProject, generateApiKey, ProjectSlugTakenError } from './service.js';
+import { createProject, ProjectSlugTakenError } from './service.js';
 import { projectSettingsWriteRoutes } from './settings-write-routes.js';
 import { strandedWorkFor } from './stranded-work.js';
 
@@ -297,56 +287,6 @@ projectRoutes.get(
         devicePool,
       }),
     );
-  },
-);
-
-projectRoutes.post(
-  '/:id/api-key/rotate',
-  rotateProjectApiKey,
-  zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(flatten(result.error));
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(id, userId);
-    assertProjectRole(access, 'admin', 'project admin required');
-
-    // Retry on the partial unique index violation. With 192 bits of
-    // entropy a collision is astronomical, but the `create` path already
-    // wraps inserts in `isUniqueViolation`; mirror the pattern so a freak
-    // collision presents as a 503 rather than an opaque 500.
-    let updated: { id: string; apiKey: string | null } | undefined;
-    let lastErr: unknown;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const apiKey = generateApiKey();
-        [updated] = await db
-          .update(projects)
-          .set({ apiKey })
-          .where(eq(projects.id, id))
-          .returning(ROTATED_API_KEY);
-        break;
-      } catch (err) {
-        if (isUniqueViolation(err)) {
-          lastErr = err;
-          continue;
-        }
-        throw err;
-      }
-    }
-    if (!updated) {
-      if (lastErr) {
-        throw new HTTPException(503, {
-          message: 'failed to mint a unique api key — try again',
-          cause: { code: 'API_KEY_COLLISION' },
-        });
-      }
-      throw notFound();
-    }
-
-    return c.json(answer(rotatedApiKeySchema, { id: updated.id, apiKey: updated.apiKey }));
   },
 );
 

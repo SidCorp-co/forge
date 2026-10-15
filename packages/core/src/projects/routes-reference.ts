@@ -133,8 +133,6 @@ export const patchedProjectSchema = projectRow
     environments: environmentsSchema,
   });
 
-export const rotatedApiKeySchema = z.object({ id: z.string(), apiKey: z.string().nullable() });
-
 export const archivedProjectSchema = projectRow.pick({
   id: true,
   slug: true,
@@ -162,14 +160,14 @@ const NO_PROJECT = fail('NOT_FOUND', 'the project does not exist');
 export const listProjects = describeOperation({
   summary: 'List the projects the caller can see',
   description:
-    'A project is visible to its members and to the owners and admins of its org. Archived projects are left out unless `archived` is `1` or `true`. No row carries the API key or the webhook secret.',
+    'A project is visible to its members and to the owners and admins of its org. Archived projects are left out unless `archived` is `1` or `true`. No row carries the webhook secret.',
   responses: { 200: json(projectListSchema, 'The visible projects, ordered by id') },
 });
 
 export const createNewProject = describeOperation({
   summary: "Create a project, owned by one of the caller's orgs",
   description:
-    "With no `orgId` the project goes to the caller's personal org. The caller becomes its admin and an API key is minted, which this answer does not carry: `POST /api/projects/:id/api-key/rotate` is the one route that serves it.",
+    "With no `orgId` the project goes to the caller's personal org. The caller becomes its admin.",
   responses: {
     201: json(createdProjectSchema, 'The new project'),
     403: fail('FORBIDDEN', 'the caller is not a member of the org named by `orgId`'),
@@ -182,23 +180,11 @@ export const createNewProject = describeOperation({
 export const getProject = describeOperation({
   summary: 'Read one project with its members, labels and runner devices',
   description:
-    '`releaseModel`, `liveBranch` and `releaseStrategy` are derived from `releaseChain` and answered for readers that have not moved to it. Neither the API key nor the webhook secret is answered: the key is served by `POST /api/projects/:id/api-key/rotate` alone.',
+    '`releaseModel`, `liveBranch` and `releaseStrategy` are derived from `releaseChain` and answered for readers that have not moved to it. The webhook secret is not answered: the inbound webhook check is its one reader.',
   responses: {
     200: json(projectDetailSchema, 'The project'),
     403: NOT_A_MEMBER,
     404: NO_PROJECT,
-  },
-});
-
-export const rotateProjectApiKey = describeOperation({
-  summary: "Replace the project's API key",
-  description:
-    'The one route that serves the key, to a project admin: no list, read, create, patch or archive answer carries it.',
-  responses: {
-    200: json(rotatedApiKeySchema, 'The new key'),
-    403: fail('FORBIDDEN', 'the caller is not a project admin'),
-    404: NO_PROJECT,
-    503: fail('API_KEY_COLLISION', 'three keys in a row collided with an existing one: try again'),
   },
 });
 

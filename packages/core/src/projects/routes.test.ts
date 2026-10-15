@@ -239,11 +239,9 @@ describe('POST /api/projects', () => {
     const res = await post({ slug: 'my-proj', name: 'My Project' }, token);
     expect(res.status).toBe(201);
     const body = (await res.json()) as { id: string; slug: string; createdBy: string };
-    // ISS-1389 — the key is minted here and served by the rotate route alone.
     expect(projectionsAsked(txInsertProjectReturning, 0)).toEqual([
       ['id', 'slug', 'name', 'orgId', 'createdBy', 'createdAt'],
     ]);
-    expect(body).not.toHaveProperty('apiKey');
     expect(body).toMatchObject({
       id: 'proj-1',
       slug: 'my-proj',
@@ -260,7 +258,6 @@ describe('POST /api/projects', () => {
         name: 'My Project',
         orgId: ORG_ID,
         createdBy: 'uuid-owner',
-        apiKey: expect.stringMatching(/^fk_[0-9a-f]{48}$/),
         // ISS-274 — `baseBranch` is defaulted at create time so the resolver
         // never surfaces a null-base misconfig for new projects.
         baseBranch: 'main',
@@ -298,7 +295,7 @@ describe('POST /api/projects', () => {
 
   it.each([
     ['projects_slug_unique', 409],
-    ['projects_api_key_unique', 500],
+    ['projects_issue_prefix_unique', 500],
   ])('maps a %s violation to %i', async (constraint_name, status) => {
     const token = await signUserToken('uuid-owner');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
@@ -356,7 +353,7 @@ describe('GET /api/projects', () => {
     expect(body[0]).toMatchObject({ id: 'p2', role: 'admin', orgRole: 'admin' });
   });
 
-  it('ISS-1389: a listing asks for no API key or webhook secret, whatever the role', async () => {
+  it('ISS-1389: a listing asks for no webhook secret, whatever the role', async () => {
     const token = await signUserToken('uuid-user');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     distinctOrderBy.mockResolvedValueOnce([
@@ -376,10 +373,8 @@ describe('GET /api/projects', () => {
     const res = await req('', { token });
     expect(res.status).toBe(200);
     const [asked] = projectionsAsked(dbSelectDistinctOn, 1);
-    expect(asked).not.toContain('apiKey');
     expect(asked).not.toContain('webhookSecret');
     const [row] = (await res.json()) as Array<Record<string, unknown>>;
-    expect(row).not.toHaveProperty('apiKey');
     expect(row).not.toHaveProperty('webhookSecret');
   });
 });
@@ -475,7 +470,7 @@ describe('GET /api/projects/:id', () => {
     expect(body.devicePool[0]?.runnerId).toBe('r1');
   });
 
-  it('ISS-1389: the detail asks for no API key or webhook secret, even for an admin', async () => {
+  it('ISS-1389: the detail asks for no webhook secret, even for an admin', async () => {
     const token = await signUserToken('uuid-user');
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]).mockResolvedValueOnce([
@@ -503,16 +498,14 @@ describe('GET /api/projects/:id', () => {
 
     const res = await req('/11111111-1111-4111-8111-111111111111', { token });
     expect(res.status).toBe(200);
-    // A read that names no projection is every column, so it counts as asking for both.
+    // A read that names no projection is every column, so it counts as asking for the secret.
     const asked = projectionsAsked(dbSelect, 0);
     expect(asked).not.toContain(null);
     expect(asked.some((keys) => keys?.includes('releaseChain'))).toBe(true);
     for (const keys of asked) {
-      expect(keys).not.toContain('apiKey');
       expect(keys).not.toContain('webhookSecret');
     }
     const body = (await res.json()) as Record<string, unknown>;
-    expect(body).not.toHaveProperty('apiKey');
     expect(body).not.toHaveProperty('webhookSecret');
   });
 });
@@ -596,7 +589,6 @@ describe('PATCH /api/projects/:id', () => {
     const [asked] = projectionsAsked(updateReturning, 0);
     expect(asked).toContain('name');
     expect(asked).not.toContain('webhookSecret');
-    expect(asked).not.toContain('apiKey');
     expect(await res.json()).not.toHaveProperty('webhookSecret');
   });
 
@@ -1007,36 +999,6 @@ describe('PATCH /api/projects/:id · retired keys and the agentConfig doors', ()
       token,
     });
     expect(res.status).toBe(400);
-  });
-});
-
-describe('POST /api/projects/:id/api-key/rotate', () => {
-  const ID = '11111111-1111-4111-8111-111111111111';
-
-  it('403 FORBIDDEN for non-admin member', async () => {
-    const token = await signUserToken('uuid-member');
-    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    projectAccess.mockResolvedValueOnce(access('member'));
-
-    const res = await req(`/${ID}/api-key/rotate`, { method: 'POST', token });
-    expect(res.status).toBe(403);
-    expect(updateSet).not.toHaveBeenCalled();
-  });
-
-  it('200 with fresh fk_-prefixed key for admin', async () => {
-    const token = await signUserToken('uuid-admin');
-    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    projectAccess.mockResolvedValueOnce(access('admin'));
-    updateReturning.mockImplementationOnce(async () => {
-      const setArg = updateSet.mock.calls[0]?.[0] as { apiKey: string };
-      return [{ id: 'p1', apiKey: setArg.apiKey }];
-    });
-
-    const res = await req(`/${ID}/api-key/rotate`, { method: 'POST', token });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { id: string; apiKey: string };
-    expect(body.id).toBe('p1');
-    expect(body.apiKey).toMatch(/^fk_[0-9a-f]{48}$/);
   });
 });
 

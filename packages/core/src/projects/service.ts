@@ -8,7 +8,6 @@
  * genuinely different queries and keep their own.
  */
 
-import { randomBytes } from 'node:crypto';
 import { and, count, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
@@ -84,11 +83,6 @@ export type NewProject = {
   releaseChain?: ReleaseChain | undefined;
 };
 
-/** A freshly generated project API key: `fk_` + 192 bits, the shape every validator accepts. */
-export function generateApiKey(): string {
-  return `fk_${randomBytes(24).toString('hex')}`;
-}
-
 export async function createProject(input: NewProject) {
   try {
     return await db.transaction(async (tx) => {
@@ -99,7 +93,6 @@ export async function createProject(input: NewProject) {
           name: input.name,
           orgId: input.orgId,
           createdBy: input.createdBy,
-          apiKey: generateApiKey(),
           baseBranch: input.baseBranch ?? 'main',
           ...(input.releaseChain !== undefined ? { releaseChain: input.releaseChain } : {}),
           ...(input.description !== undefined ? { description: input.description } : {}),

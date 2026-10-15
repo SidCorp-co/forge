@@ -1,5 +1,5 @@
 /**
- * ISS-1389 — no `forge_projects` answer hands an agent the project's API key or webhook secret.
+ * ISS-1389 — no `forge_projects` answer hands an agent a secret column a row carries.
  *
  * Each case plants a row that carries both, as a service that grew a column would hand it over,
  * and reads the whole answer for either name and either value. The tool names every field it

@@ -4,7 +4,7 @@
         "forge": {
             "enabled": true,
             "headers": {
-                "X-Forge-API-Key": "YOUR_FORGE_API_KEY",
+                "Authorization": "Bearer YOUR_FORGE_PERSONAL_ACCESS_TOKEN",
                 "X-Forge-Project-Slug": "your-project-slug",
                 "X-Sentry-Project": ""
             },

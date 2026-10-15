@@ -22,8 +22,8 @@ export interface ProjectListItem {
   createdAt: string;
 }
 
-/** No project read answers the API key or the webhook secret; rotation is the one route that shows the key. */
-export interface ProjectDetail extends Omit<Project, 'apiKey' | 'webhookSecret'> {
+/** No project read answers the webhook secret: the inbound webhook check is its one reader. */
+export interface ProjectDetail extends Omit<Project, 'webhookSecret'> {
   members: Array<Pick<ProjectMember, 'userId' | 'role'>>;
   labels: Array<{ id: string; name: string; color: string | null }>;
   devicePool: Array<{
