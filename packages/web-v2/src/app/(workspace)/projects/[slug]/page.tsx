@@ -17,7 +17,7 @@ import { AttentionQueue } from "@/features/project-dashboard/components/attentio
 import { AwaitingReleaseCard } from "@/features/project-dashboard/components/awaiting-release-card";
 import { ComingSoonNote } from "@/features/project-dashboard/components/dashboard-section";
 import { Headline } from "@/features/project-dashboard/components/headline";
-import { LiveRunsCard } from "@/features/project-dashboard/components/live-runs-card";
+import { LiveSessionsCard } from "@/features/project-dashboard/components/live-sessions-card";
 import { RunnersCard } from "@/features/project-dashboard/components/runners-card";
 import { SchedulesCard } from "@/features/project-dashboard/components/schedules-card";
 import { SpendCard } from "@/features/project-dashboard/components/spend-card";
@@ -26,12 +26,12 @@ import { StatusDonut } from "@/features/project-dashboard/components/status-donu
 import { StepTimes } from "@/features/project-dashboard/components/step-times";
 import { Throughput, THROUGHPUT_WINDOW_DAYS } from "@/features/project-dashboard/components/throughput";
 import {
-  activeRuns,
   attentionCaption,
   attentionReadFailure,
   attentionRefusal,
   attentionCut,
   idleRuns,
+  joblessRuns,
   liveRuns,
   activeSpend,
   awaitingReleaseRuns,
@@ -51,6 +51,7 @@ import {
 import { useAttention } from "@/features/attention/hooks";
 import { useIssues } from "@/features/issues/hooks";
 import { formatElapsed } from "@/features/overview/derive";
+import { useSessionsAndHolds } from "@/features/pipeline/hooks";
 import { useProjectRuns, useStepDurations, useThroughput } from "@/features/runs/hooks";
 import { useProjectHealth, useProjects } from "@/features/projects/hooks";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
@@ -94,6 +95,7 @@ export default function ProjectOverviewPage() {
   // on `projectId` so they no-op until the slug resolves.
   const attentionQ = useAttention();
   const runsQ = useProjectRuns(projectId);
+  const sessionsQ = useSessionsAndHolds(projectId);
   const durationsQ = useStepDurations({ days: METRICS_WINDOW_DAYS, projectId }, !!projectId);
   const throughputQ = useThroughput({ days: THROUGHPUT_WINDOW_DAYS, projectId }, !!projectId);
   const queueQ = useQueueStats(projectId);
@@ -188,12 +190,13 @@ export default function ProjectOverviewPage() {
       : { read: "ok" };
   const runItems = runsQ.data?.items;
   const runsState = readOf(runsQ);
+  const sessionsState = readOf(sessionsQ);
+  const liveSessions = sessionsQ.data?.sessions ?? [];
   const durationsState = readOf(durationsQ);
   const throughputState = readOf(throughputQ);
   const runnersState = readOf(projectRunnersQ);
   const activityState = readOfAll(queueQ, activeRunnersQ);
   const schedulesState = readOf(schedulesQ);
-  const runsActive = activeRuns(runItems);
   const runsIdle = idleRuns(runItems);
   const runsAwaitingRelease = awaitingReleaseRuns(runItems);
   const inFlight = activeSpend(runItems);
@@ -211,12 +214,13 @@ export default function ProjectOverviewPage() {
   const reading = projectShape({
     attention: attentionState,
     runs: runsState,
+    sessions: sessionsState,
     parked: parkedState,
     items: attention,
     cut: attentionLeftOut,
     slug: project.slug,
-    liveRuns: runsActive.length,
-    stuckRuns: stuckRuns(runsIdle, now),
+    liveSessions: liveSessions.length,
+    stuckRuns: stuckRuns(joblessRuns(runItems), now),
     failedJobs: attentionState.read === "ok" ? (attentionQ.view?.projectTotals[project.slug]?.failedJobs ?? 0) : 0,
     releaseRuns: runsAwaitingRelease.length,
     releaseIssues: awaitingReleaseIssues,
@@ -228,7 +232,16 @@ export default function ProjectOverviewPage() {
     return s === null ? oldest : Math.max(oldest ?? 0, s);
   }, null);
 
-  const liveRunsSection = <LiveRunsCard runs={runsActive} slug={project.slug} idle={runsIdle} read={runsState} />;
+  const liveSection = (
+    <LiveSessionsCard
+      sessions={liveSessions}
+      slug={project.slug}
+      now={now}
+      idle={runsIdle}
+      read={sessionsState}
+      runsRead={runsState}
+    />
+  );
   const releaseSection = (
     <AwaitingReleaseCard
       runs={runsAwaitingRelease}
@@ -283,9 +296,10 @@ export default function ProjectOverviewPage() {
 
         {(reading.shape === "working" || reading.shape === "unread") && (
           <StatStrip
-            liveRuns={runsActive.length}
-            runsUnread={runsState.read !== "ok"}
+            liveSessions={liveSessions.length}
+            sessionsUnread={sessionsState.read !== "ok"}
             openRuns={liveRuns(runItems).length}
+            runsUnread={runsState.read !== "ok"}
             runnersUnread={runnersState.read !== "ok"}
             activityUnread={activityState.read !== "ok"}
             busyRunners={runners.busyCount}
@@ -308,7 +322,7 @@ export default function ProjectOverviewPage() {
           // Quiet is short: the headline says nothing needs anyone, every empty section is one line,
           // and what holds data follows in one column.
           <div className="flex flex-col gap-4">
-            {liveRunsSection}
+            {liveSection}
             {releaseSection}
             {metricSections}
           </div>
@@ -325,7 +339,7 @@ export default function ProjectOverviewPage() {
                 slug={project.slug}
                 now={now}
               />
-              {liveRunsSection}
+              {liveSection}
               {releaseSection}
             </div>
             <div className="flex min-w-0 flex-col gap-5">{metricSections}</div>

@@ -1,6 +1,10 @@
 import { OPEN_WORK_STATES, WORK_STATE_LABELS } from "@forge/contracts/work-state";
 import { describe, expect, it } from "vitest";
 import {
+  activeRuns,
+  activeSpend,
+  idleRuns,
+  joblessRuns,
   spendByStep,
   type AttentionActionKind,
   attentionCaption,
@@ -12,6 +16,7 @@ import {
   statusDonut,
 } from "./derive";
 import type { AttentionItem, AttentionView } from "@/features/attention/types";
+import type { PipelineRunListItem } from "@/features/runs/types";
 
 const WORK = {
   open: 56,
@@ -350,7 +355,7 @@ describe("spendByStep — the steps the rows name, no stage fold (ISS-1228)", ()
     const out = spendByStep([row("drive", 1), row("drive", 2), row("pm", 1)]);
     expect(out.total).toBe(4);
     expect(out.segments.map((s) => [s.label, s.cost, s.color])).toEqual([
-      ["drive", 3, "var(--fg)"],
+      ["drive", 3, "var(--fg-default)"],
       ["pm", 1, "var(--fg-muted)"],
     ]);
   });
@@ -370,5 +375,30 @@ describe("spendByStep — the steps the rows name, no stage fold (ISS-1228)", ()
   it("returns no segment and a zero total for an empty or zero-cost window", () => {
     expect(spendByStep(undefined)).toEqual({ segments: [], total: 0 });
     expect(spendByStep([row("drive", 0)])).toEqual({ segments: [], total: 0 });
+  });
+});
+
+describe("what works an open run: a live job or a session that has not ended", () => {
+  const run = (id: string, over: Partial<PipelineRunListItem>) =>
+    ({ id, status: "running", currentStep: null, liveJobs: 0, lastSessionBeatAt: null, cost: { estimatedCost: 1 }, ...over }) as PipelineRunListItem;
+  const byJob = run("job", { liveJobs: 1 });
+  const bySession = run("session", { lastSessionBeatAt: "2026-10-15T05:00:00Z" });
+  const nothing = run("nothing", {});
+  const atGate = run("gate", { currentStep: "tested" });
+  const done = run("done", { status: "completed" as PipelineRunListItem["status"], liveJobs: 1 });
+  const runs = [byJob, bySession, nothing, atGate, done];
+  const ids = (rs: PipelineRunListItem[]) => rs.map((r) => r.id);
+
+  it("counts a run its session works as worked, though no job is on it", () => {
+    expect(ids(activeRuns(runs))).toEqual(["job", "session"]);
+    expect(activeSpend(runs)).toBe(2);
+  });
+
+  it("calls idle only an open run off the release gate that neither works", () => {
+    expect(ids(idleRuns(runs))).toEqual(["nothing"]);
+  });
+
+  it("keeps a session-worked run among the jobless, which is where a silent one goes stuck from", () => {
+    expect(ids(joblessRuns(runs))).toEqual(["session", "nothing"]);
   });
 });

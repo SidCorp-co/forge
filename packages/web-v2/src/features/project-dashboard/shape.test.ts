@@ -37,11 +37,12 @@ const item = (over: Partial<DashboardAttentionItem> = {}): DashboardAttentionIte
 const input = (over: Partial<ShapeInput> = {}): ShapeInput => ({
   attention: { read: "ok" },
   runs: { read: "ok" },
+  sessions: { read: "ok" },
   parked: { read: "ok" },
   items: [],
   cut: null,
   slug: "p",
-  liveRuns: 0,
+  liveSessions: 0,
   stuckRuns: [],
   failedJobs: 0,
   releaseRuns: 0,
@@ -62,13 +63,13 @@ describe("the shape of a project", () => {
   });
 
   it("is working with a sentence counting each part that is not zero, each worded with what it counts", () => {
-    const r = projectShape(input({ liveRuns: 3, items: [item(), item({ key: "k2" })], releaseRuns: 1 }));
+    const r = projectShape(input({ liveSessions: 3, items: [item(), item({ key: "k2" })], releaseRuns: 1 }));
     expect(r.shape).toBe("working");
-    expect(r.headline).toBe("3 runs are live, 2 items need a person and 1 run waits on a release decision.");
+    expect(r.headline).toBe("3 sessions are live, 2 items need a person and 1 run waits on a release decision.");
   });
 
   it("leaves a zero out of the sentence and uses the singular for one", () => {
-    expect(projectShape(input({ liveRuns: 1 })).headline).toBe("1 run is live.");
+    expect(projectShape(input({ liveSessions: 1 })).headline).toBe("1 session is live.");
     expect(projectShape(input({ items: [item()] })).headline).toBe("1 item needs a person.");
   });
 
@@ -108,11 +109,11 @@ describe("a degraded project", () => {
     expect(r.band?.entry).toEqual({ label: "Action needed — oldest item failed 3h", href: "/projects/p/issues/f1" });
   });
 
-  it("is degraded by a failed job the response counts but the capped list does not show, offering the pipeline", () => {
+  it("is degraded by a failed job the response counts but the capped list does not show, offering the runs", () => {
     const r = projectShape(input({ failedJobs: 2 }));
     expect(r.shape).toBe("degraded");
     expect(r.band?.text).toBe("Work is failing — 2 failed jobs");
-    expect(r.band?.entry).toEqual({ label: "Action needed — open the pipeline", href: "/projects/p/pipeline" });
+    expect(r.band?.entry).toEqual({ label: "Action needed — open the runs", href: "/projects/p/agents" });
   });
 
   it("takes no failed job from an attention read that did not arrive", () => {
@@ -139,16 +140,16 @@ describe("a degraded project", () => {
     expect(cut.band?.entry?.label).toBe("Action needed — oldest listed item waiting 112d");
   });
 
-  it("is degraded by a stuck run and offers the pipeline", () => {
+  it("is degraded by a stuck run and offers the runs, which the Pipeline page no longer lists", () => {
     const r = projectShape(input({ stuckRuns: [run({})] }));
     expect(r.shape).toBe("degraded");
-    expect(r.band?.text).toBe("Work is blocked — 1 run stuck with no job running");
-    expect(r.band?.entry).toEqual({ label: "Action needed — open the pipeline", href: "/projects/p/pipeline" });
+    expect(r.band?.text).toBe("Work is blocked — 1 run stuck, nothing heard for an hour");
+    expect(r.band?.entry).toEqual({ label: "Action needed — open the runs", href: "/projects/p/agents" });
   });
 
   it("words a failure and a block together", () => {
     const r = projectShape(input({ items: [item({ actionKind: "retry" })], stuckRuns: [run({})] }));
-    expect(r.band?.text).toBe("Work is blocked and failing — 1 failed job · 1 run stuck with no job running");
+    expect(r.band?.text).toBe("Work is blocked and failing — 1 failed job · 1 run stuck, nothing heard for an hour");
   });
 
   it("holds a run stuck only after an hour with no job and no beat", () => {
@@ -163,6 +164,7 @@ describe("a project whose reads have not all arrived", () => {
   it.each([
     ["pending attention", { attention: { read: "pending" } }],
     ["pending runs", { runs: { read: "pending" } }],
+    ["pending live sessions", { sessions: { read: "pending" } }],
     ["pending parked ages", { parked: { read: "pending" } }],
   ] as const)("is unread with %s, never quiet and never counted", (_name, over) => {
     const r = projectShape(input(over as Partial<ShapeInput>));
@@ -179,7 +181,7 @@ describe("a project whose reads have not all arrived", () => {
   });
 
   it("states no item count from an attention read that failed", () => {
-    const r = projectShape(input({ attention: { read: "failed", reason: "x" }, items: [item()], liveRuns: 2 }));
+    const r = projectShape(input({ attention: { read: "failed", reason: "x" }, items: [item()], liveSessions: 2 }));
     expect(r.shape).toBe("unread");
     expect(r.headline).not.toMatch(/need/);
   });

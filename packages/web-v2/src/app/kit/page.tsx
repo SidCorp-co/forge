@@ -74,7 +74,6 @@ const COMMANDS: Command[] = [
   { label: "FRG-238 · Review changes", icon: "clock", group: "recent" },
   { label: "forge-core", icon: "pin", group: "pinned", keywords: "project" },
   { label: "Issues · active", icon: "list", group: "pinned", keywords: "view" },
-  { label: "Go to Board", icon: "board", kbd: "G B", group: "navigate" },
   { label: "Go to Pipeline", icon: "pipeline", kbd: "G P", group: "navigate" },
   { label: "Go to Conversations", icon: "inbox", kbd: "G E", group: "navigate" },
   { label: "All projects", icon: "folder", kbd: "G O", group: "navigate" },
@@ -231,7 +230,7 @@ function AnimatedStatDemo() {
 
 function HighlightDemo() {
   const [tick, setTick] = useState(0);
-  const [stage, setStage] = useState("code");
+  const [stage, setStage] = useState("implement");
   const [status, setStatus] = useState<StatusKey>("running");
   return (
     <div className="flex max-w-xl flex-col gap-3">
@@ -248,7 +247,7 @@ function HighlightDemo() {
         icon="activity"
         onClick={() => {
           setStatus("passed");
-          setStage("test");
+          setStage("review");
           setTick((t) => t + 1);
         }}
       >
@@ -569,16 +568,16 @@ export default function KitPage() {
             </div>
           </Section>
 
-          <Section id="status" title="Status & health" hint="Two domains: issue lifecycle (pill, dot) vs agent/session execution (squared, agent glyph). Running pulses and shows the active stage.">
+          <Section id="status" title="Status & health" hint="Two domains: issue lifecycle (pill, dot) vs agent/session execution (squared, agent glyph). Running pulses and shows the step it is on.">
             <div className="flex flex-col gap-4">
               <Row>
                 {STATUSES.map((s) => (
-                  <StatusChip key={s} status={s} stage={s === "running" ? "code" : undefined} />
+                  <StatusChip key={s} status={s} stage={s === "running" ? "implement" : undefined} />
                 ))}
               </Row>
               <Row>
                 {STATUSES.map((s) => (
-                  <StatusChip key={s} status={s} stage={s === "running" ? "code" : undefined} domain="session" />
+                  <StatusChip key={s} status={s} stage={s === "running" ? "implement" : undefined} domain="session" />
                 ))}
               </Row>
               <Row>
@@ -926,7 +925,7 @@ export default function KitPage() {
               </THead>
               <TBody>
                 {[
-                  { sid: "S-1043", iss: "FRG-241", st: "running" as StatusKey, stage: "code", cost: "$0.42" },
+                  { sid: "S-1043", iss: "FRG-241", st: "running" as StatusKey, stage: "implement", cost: "$0.42" },
                   { sid: "S-1042", iss: "FRG-238", st: "review" as StatusKey, stage: undefined, cost: "$1.08" },
                   { sid: "S-1039", iss: "FRG-224", st: "failed" as StatusKey, stage: undefined, cost: "$0.91" },
                 ].map((r) => (

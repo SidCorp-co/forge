@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useLayoutEffect, useRef, useState } from "react";
 import { MonoTag } from "@/design";
 import { holderLine, orderHolds } from "../derive";
 import type { HeldIssue, Holder } from "../types";
@@ -19,6 +20,46 @@ function Label({ children }: { children: string }) {
   return <span className="fg-caption mr-1.5 sm:sr-only">{children}</span>;
 }
 
+/**
+ * A reason on one line, whatever its length: a claim's next step or a park's reason can run to a
+ * paragraph, which would push every row below it down. Where the line clips, a toggle opens the
+ * whole of it in place, so a phone with no hover reaches every word.
+ */
+function OneLineReason({ text }: { text: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [open, setOpen] = useState(false);
+  const [clipped, setClipped] = useState(false);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || open) return;
+    const measure = () => setClipped(el.scrollWidth > el.clientWidth);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [open]);
+
+  return (
+    <span className="flex min-w-0 items-baseline gap-2">
+      <span ref={ref} className={open ? "min-w-0 whitespace-pre-line break-words" : "min-w-0 truncate"} title={open ? undefined : text}>
+        {text}
+      </span>
+      {(clipped || open) && (
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+          className="fg-caption flex-none text-link hover:underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+        >
+          {open ? "Less" : "More"}
+        </button>
+      )}
+    </span>
+  );
+}
+
 function HoldRow({ hold, slug, now }: { hold: HeldIssue; slug: string; now: number }) {
   return (
     <li className={`flex flex-col gap-2 py-3 ${OUTER}`} data-issue-id={hold.issueId}>
@@ -26,7 +67,9 @@ function HoldRow({ hold, slug, now }: { hold: HeldIssue; slug: string; now: numb
         href={`/projects/${slug}/issues/${hold.issueId}`}
         className="flex min-w-0 items-baseline gap-2 hover:underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
       >
-        <MonoTag>{hold.displayId}</MonoTag>
+        <span className="flex-none whitespace-nowrap">
+          <MonoTag>{hold.displayId}</MonoTag>
+        </span>
         <span className="fg-label min-w-0 truncate">{hold.title}</span>
       </Link>
       <ul className="flex min-w-0 flex-col gap-1.5">
@@ -38,9 +81,9 @@ function HoldRow({ hold, slug, now }: { hold: HeldIssue; slug: string; now: numb
                 <Label>Held by</Label>
                 {line.who}
               </span>
-              <span className="min-w-0 break-words">
+              <span className="flex min-w-0 items-baseline">
                 <Label>Why</Label>
-                {line.why}
+                <OneLineReason key={line.why} text={line.why} />
               </span>
               <span>
                 <Label>Since</Label>

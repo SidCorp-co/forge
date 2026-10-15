@@ -264,7 +264,7 @@ function RulesEditor({
             className="h-full rounded-pill transition-all"
             style={{
               width: `${budgetPct}%`,
-              background: overBudget ? "var(--red-600)" : "var(--accent-solid)",
+              background: overBudget ? "var(--red-600)" : "var(--accent)",
             }}
           />
         </div>
