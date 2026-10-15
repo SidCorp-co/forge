@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { postSystemComment, withholdForIssue } from '../comments/system-write.js';
 import { db } from '../db/client.js';
 import { comments, type IssueStatus } from '../db/schema.js';
+import { statusLabel } from '../issues/status-sets.js';
 import { logger } from '../logger.js';
 
 export function buildCapReachedCommentBody(args: {
@@ -10,9 +11,9 @@ export function buildCapReachedCommentBody(args: {
   driveSessions: number;
 }): string {
   return [
-    `🛑 **The driver stopped at \`${args.fromStatus}\` ${args.cap} times without finishing** — this issue is now waiting on you.`,
+    `🛑 **The driver stopped at ${statusLabel(args.fromStatus)} ${args.cap} times without finishing** — this issue is now waiting on you.`,
     '',
-    `Each time, the \`drive\` job exited cleanly but left the issue at \`${args.fromStatus}\` with no work queued behind it, so nothing in the pipeline could carry it forward. The reconciler re-entered the driver ${args.cap} times; a ${args.cap + 1}th would mint another session with no reason to expect a different ending.`,
+    `Each time, the \`drive\` job exited cleanly but left the issue at ${statusLabel(args.fromStatus)} with no work queued behind it, so nothing in the pipeline could carry it forward. The reconciler re-entered the driver ${args.cap} times; a ${args.cap + 1}th would mint another session with no reason to expect a different ending.`,
     '',
     'What to look at:',
     '- Read the last drive session on this issue. An agent that stops here usually hit a decision it could not make alone, or a limit mid-turn.',

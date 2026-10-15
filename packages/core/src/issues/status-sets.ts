@@ -44,3 +44,14 @@ export const ISSUE_STATUS_LABELS: Readonly<Record<IssueStatus, string>> = {
   draft: 'Draft',
   dropped: 'Dropped',
 };
+
+/** A status as the screen names it; a stored value this build does not know is shown as stored. */
+export function statusLabel(status: string): string {
+  return ISSUE_STATUS_LABELS[status as IssueStatus] ?? status;
+}
+
+/** A status in a refusal: the label a person reads, then the value a caller sends back. */
+export function statusForCaller(status: string): string {
+  const label = ISSUE_STATUS_LABELS[status as IssueStatus];
+  return label ? `${label} (${status})` : status;
+}

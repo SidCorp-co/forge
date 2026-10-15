@@ -4,6 +4,7 @@
 
 import { sql } from 'drizzle-orm';
 import type { IssueDependencyExecutor } from '../issues/dependency-executor.js';
+import { statusLabel } from '../issues/status-sets.js';
 import { classifyLease, type LeaseReading, leaseIsWorkInProgress } from './session-claim.js';
 
 /** Holder fanout is not counted: the question is whether THIS issue's claim is unexpired, and a
@@ -57,10 +58,10 @@ export function buildWedgeResetBody(args: {
   reading: LeaseReading;
 }): string {
   return [
-    `**Moved by the reconciler: \`${args.from}\` -> \`${args.to}\`**`,
+    `**Moved by the reconciler: ${statusLabel(args.from)} -> ${statusLabel(args.to)}**`,
     '',
     `The reconciler's autonomous wedge pass made this move, not a person. It found nothing working the issue: its latest job is a \`drive\` job that is no longer live, no job is queued or running, nothing wrote to the issue for ${args.grace}, and ${leaseSentence(args.reading)}.`,
     '',
-    `The issue is back at \`${args.to}\`, where the next dispatch takes it up again.`,
+    `The issue is back at ${statusLabel(args.to)}, where the next dispatch takes it up again.`,
   ].join('\n');
 }

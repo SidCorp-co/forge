@@ -328,7 +328,8 @@ describe('a report core repeats about an issue', () => {
   it('is posted once where a stored credential sits in its own words', async () => {
     await harness.db.execute(
       sql`UPDATE projects SET environments = ${JSON.stringify({
-        testCredentials: [{ label: 'odd', username: 'u', password: 'awaiting_release' }],
+        // The words the comment writes for its status, so the stored value is in the comment itself.
+        testCredentials: [{ label: 'odd', username: 'u', password: 'Awaiting release' }],
       })}::jsonb WHERE id = ${projectId}`,
     );
     const here = await issue();
@@ -345,7 +346,7 @@ describe('a report core repeats about an issue', () => {
 
     const stored = await bodies(here);
     expect(stored).toHaveLength(1);
-    expect(stored[0]).not.toContain('awaiting_release');
+    expect(stored[0]).not.toContain('Awaiting release');
     expect(stored[0]).toContain('[withheld');
   });
 });

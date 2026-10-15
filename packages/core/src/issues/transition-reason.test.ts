@@ -28,7 +28,7 @@ describe('on_hold is a reason-required status (ISS-1251)', () => {
       for (const skip of [undefined, true]) {
         const fault = parkReasonFault('in_progress', 'on_hold', { transitionReason, skip });
         expect(fault?.code).toBe('TRANSITION_REASON_REQUIRED');
-        expect(fault?.detail).toContain('`on_hold`');
+        expect(fault?.detail).toContain('On hold');
         expect(fault?.detail).toContain('`reason`');
       }
     }

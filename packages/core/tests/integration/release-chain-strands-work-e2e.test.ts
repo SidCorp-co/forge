@@ -106,7 +106,7 @@ describe.each(Object.entries(doors))('%s', (_door, write) => {
       expect(out.refused).toContain('RELEASE_CHAIN_STRANDS_WORK');
       expect(out.refused).toContain(`${a}, ${b}`);
       expect(out.refused).not.toContain('ISS-3');
-      expect(out.refused).toContain('return each one to `developed`');
+      expect(out.refused).toContain('return each one to Developed (developed)');
       expect((await stored()).chain).toEqual([{ branch: 'main' }]);
     });
 

@@ -6,7 +6,7 @@ import { type IssueStatus, issues, projects } from '../db/schema.js';
 import { releaseAttempts } from '../db/schema-release-ledger.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
-import { ISSUE_STATUS_LABELS } from '../issues/status-sets.js';
+import { ISSUE_STATUS_LABELS, statusLabel } from '../issues/status-sets.js';
 import {
   pgBoundValues,
   pgDriverError,
@@ -276,7 +276,7 @@ export async function recoverStrandedReleasing(
   if (promoted && options.settlePromotedRoster !== true) {
     logger.warn(
       { runId, claimed: claimed.length, reason: options.reason },
-      'release-batch: this run promoted, so its roster stays at `releasing` for a person to settle',
+      'release-batch: this run promoted, so its roster stays at Releasing for a person to settle',
     );
     await noteOnRoster(runId, claimed, options, promotedNote(runId));
     return {
@@ -316,7 +316,7 @@ export async function recoverStrandedReleasing(
             authorId: author,
             body: promoted
               ? `${options.reason}. ${settledNote(issue.projectId, destination)}`
-              : `${options.reason}. The issue is at \`${destination}\` — a person decides whether it goes back to work or into another batch.`,
+              : `${options.reason}. The issue is at ${statusLabel(destination)} — a person decides whether it goes back to work or into another batch.`,
           });
         }
       } catch (err) {
@@ -366,7 +366,7 @@ export async function recoverStrandedReleasing(
   if (recovered.length > 0) {
     logger.warn(
       { runId, recovered: recovered.length, reason: options.reason },
-      'release-batch: issues rescued from `releasing` by a batch that wrote no outcome',
+      'release-batch: issues rescued from Releasing by a batch that wrote no outcome',
     );
   }
 
@@ -411,8 +411,8 @@ async function releaseClaims(
 function settledNote(projectId: string, destination: IssueStatus): string {
   return (
     `This batch recorded a promotion, so the code it carried may be on production, and an operator ` +
-    `settled the roster rather than leave it at \`releasing\` — the issue is back at ` +
-    `\`${destination}\`. If the release did land, record it with ` +
+    `settled the roster rather than leave it at Releasing — the issue is back at ` +
+    `${statusLabel(destination)}. If the release did land, record it with ` +
     `POST /api/projects/${projectId}/release-records, naming the commit production is serving and ` +
     `how it was released; that closes it against evidence instead of by hand.`
   );
@@ -420,7 +420,7 @@ function settledNote(projectId: string, destination: IssueStatus): string {
 
 function promotedNote(runId: string): (projectId: string) => string {
   return (projectId) =>
-    `This batch recorded a promotion, so its issues stay at \`releasing\` and stay claimed: the code may be on production, and no other status here would be safe to claim. No screen settles a promoted roster yet, so settling it is an operator's act. Read the run with \`GET /api/projects/${projectId}/release-batches/${runId}/state\`. To settle the issues, abort the batch with POST /api/projects/${projectId}/release-batches/${runId}/abort and a body of {"promotedRoster":"return-to-gate"}, which puts them back at the release gate, and then, if the release did land, record it with POST /api/projects/${projectId}/release-records; or settle each issue by hand.`;
+    `This batch recorded a promotion, so its issues stay at Releasing and stay claimed: the code may be on production, and no other status here would be safe to claim. No screen settles a promoted roster yet, so settling it is an operator's act. Read the run with \`GET /api/projects/${projectId}/release-batches/${runId}/state\`. To settle the issues, abort the batch with POST /api/projects/${projectId}/release-batches/${runId}/abort and a body of {"promotedRoster":"return-to-gate"}, which puts them back at the release gate, and then, if the release did land, record it with POST /api/projects/${projectId}/release-records; or settle each issue by hand.`;
 }
 
 function sayRefusedClose(

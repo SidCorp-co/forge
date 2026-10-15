@@ -19,7 +19,7 @@ export interface ShippedRuleRefusal {
 /** The sentence every close refusal carries, naming the route this issue's lane has. */
 export function closedMeansShipped(lane: Lane, held?: MergeMarkKind): string {
   return (
-    '`closed` means the work shipped. Use `dropped` for work that turned out not to be work — ' +
+    'Closed (closed) means the work shipped. Use Dropped (dropped) for work that turned out not to be work — ' +
     'a note, a question, a duplicate, something already done — which is terminal without the claim ' +
     `and releases every \`blocks\` dependent the same way. ${landingRoute(lane, held)}`
   );
@@ -60,10 +60,10 @@ export function refuseUnmarkOnClosed(status: IssueStatus): ShippedRuleRefusal | 
   if (status !== 'closed') return null;
   return {
     detail:
-      'this issue is `closed`, and `closed` means the work shipped, so the claim cannot be ' +
+      'this issue is Closed (closed), and Closed means the work shipped, so the claim cannot be ' +
       'withdrawn while it stands there: clearing `merged_at` would leave a closed issue with ' +
-      'nothing on it saying anything shipped. Move it off `closed` first — `reopen` is the only ' +
-      'exit `closed` has — and then `unmark`, or take `dropped` from `reopen` where the work ' +
+      'nothing on it saying anything shipped. Move it off Closed first — Reopened (reopen) is the only ' +
+      'exit it has — and then `unmark`, or take Dropped (dropped) from Reopened where the work ' +
       'never landed at all.',
     details: { status: 'closed', moveTo: 'reopen', useInstead: 'dropped' },
   };

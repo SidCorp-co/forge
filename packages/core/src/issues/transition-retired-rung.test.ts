@@ -3,6 +3,7 @@
 
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { statusForCaller } from './status-sets.js';
 
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
 
@@ -109,8 +110,8 @@ describe('a status write into a retired rung', () => {
     expect(res.status).toBe(409);
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('ILLEGAL_TRANSITION');
-    expect(body.message).toContain(`\`${retired}\` is a retired rung`);
-    expect(body.message).toContain(`Write \`${replacement}\` instead`);
+    expect(body.message).toContain(`${statusForCaller(retired)} is a retired rung`);
+    expect(body.message).toContain(`Write ${statusForCaller(replacement)} instead`);
     expect(dbUpdate).not.toHaveBeenCalled();
   });
 

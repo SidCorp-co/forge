@@ -290,7 +290,7 @@ describe('what an archive refuses, writing nothing', () => {
     const filter = { keys: ['ISS-1', 'ISS-3'] };
     const res = await archive('archive', { filter });
     expect(res.status).toBe(409);
-    expect(res.body.message).toContain('ISS-3 is `open`');
+    expect(res.body.message).toContain('ISS-3 is Open (open)');
     const none = { matched: ['ISS-1', 'ISS-3'], changed: [], unchanged: [] };
     expect(res.body.details).toMatchObject(none);
     const dry = await archive('archive', { filter, dryRun: true });
@@ -304,7 +304,7 @@ describe('what an archive refuses, writing nothing', () => {
     const res = await archive('archive', { filter: { keys: ['ISS-1', 'ISS-4'] } });
     expect(res.status).toBe(409);
     expect(res.body.message).toMatch(
-      /ISS-4 is still load-bearing: .*ISS-4 ← relates from ISS-3, which is `open`/,
+      /ISS-4 is still load-bearing: .*ISS-4 ← relates from ISS-3, which is Open \(open\)/,
     );
     expect(await archivedAt('old')).toBeNull();
     expect(await archivedAt('loadBearing')).toBeNull();

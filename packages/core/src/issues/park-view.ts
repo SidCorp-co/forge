@@ -32,6 +32,7 @@ import {
   AWAITING_INPUT_STATUSES,
   HUMAN_PARK_STATUSES,
   ISSUE_TERMINAL_STATUSES,
+  statusLabel,
 } from './status-sets.js';
 import { announcesAMove } from './transition-reason.js';
 
@@ -108,12 +109,15 @@ function resumeFrom(park: { id: string; left: string | undefined } | null): Park
     };
   }
   if (!(issueStatuses as readonly string[]).includes(left)) {
-    return { at: null, why: `the park record says it left \`${left}\`, which is no status` };
+    return {
+      at: null,
+      why: `the park record says it left ${statusLabel(left)}, which is no status`,
+    };
   }
   if (NOT_A_RUNG.includes(left)) {
     return {
       at: null,
-      why: `the park record says it left \`${left}\`, which is not a rung work resumes at`,
+      why: `the park record says it left ${statusLabel(left)}, which is not a rung work resumes at`,
     };
   }
   return { at: left as IssueStatus, recordId: park.id };
@@ -167,7 +171,7 @@ export function readPark(input: ParkInput): IssuePark | null {
       ? resumeFrom(record ? { id: record.commentId, left } : null)
       : {
           at: null,
-          why: `the issue has not stopped: it stands at \`${input.status}\` and waits on the answer`,
+          why: `the issue has not stopped: it stands at ${statusLabel(input.status)} and waits on the answer`,
         },
     record: parked ? record : null,
     readings: parked ? readings : [],

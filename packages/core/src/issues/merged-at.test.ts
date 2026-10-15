@@ -65,7 +65,7 @@ describe('refuseUnshippedClose — a close on a project that lands in git', () =
     const refusal = await refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus: 'closed' });
     expect(refusal).not.toBeNull();
     expect(refusal?.detail).toContain('nothing on it shows the work shipped');
-    expect(refusal?.detail).toContain('`dropped`');
+    expect(refusal?.detail).toContain('Dropped');
     expect(refusal?.detail).toContain('`data.commit`');
     expect(refusal?.detail).toContain('`landingShape: outside_git`');
     expect(refusal?.detail).not.toContain('naming where it landed');

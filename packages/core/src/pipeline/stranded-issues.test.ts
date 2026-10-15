@@ -54,6 +54,16 @@ function strand(projectId: string, i: number) {
   };
 }
 
+/** What the owed-close sweep reads: a row carrying a merge mark under a live status. */
+function merged(projectId: string, i: number) {
+  return {
+    ...strand(projectId, i),
+    status: 'developed',
+    mergedAt: new Date('2026-08-01T00:00:00.000Z'),
+    cursorTs: `2026-08-01 00:00:0${i}+00`,
+  };
+}
+
 describe('detectStrandedIssues resolves each project once per pass (ISS-1021)', () => {
   beforeEach(() => {
     adminsFor.mockClear();
@@ -91,7 +101,7 @@ describe('detectOwedCloses carries the same memo and bound (ISS-1021)', () => {
   });
 
   it('asks for the admin set ONCE however many rows the page holds', async () => {
-    rows.value = [strand('p1', 1), strand('p2', 2), strand('p1', 3), strand('p3', 4)];
+    rows.value = [merged('p1', 1), merged('p2', 2), merged('p1', 3), merged('p3', 4)];
 
     await detectOwedCloses();
 
@@ -103,7 +113,7 @@ describe('detectOwedCloses carries the same memo and bound (ISS-1021)', () => {
 
   it('asks the database for no more than its bound', async () => {
     limits.length = 0;
-    rows.value = Array.from({ length: STRANDED_SCAN_LIMIT }, (_, i) => strand('p1', i + 1));
+    rows.value = Array.from({ length: STRANDED_SCAN_LIMIT }, (_, i) => merged('p1', i + 1));
 
     const result = await detectOwedCloses();
 
@@ -128,31 +138,76 @@ describe('a stranded pass that fills its page says so (ISS-1021 criterion 6)', (
 
   // Both detectors, because they carry separate copies of the same block and a single case would
   // leave whichever one it did not name free to lose it silently.
-  const detectors: Array<[string, () => Promise<unknown>, RegExp]> = [
-    ['waiting-park', () => detectStrandedIssues(), /waiting-park scan filled its page/],
-    ['owed-close', () => detectOwedCloses(), /owed-close scan filled its page/],
+  const detectors: Array<
+    [string, () => Promise<unknown>, RegExp, (projectId: string, i: number) => object]
+  > = [
+    ['waiting-park', () => detectStrandedIssues(), /waiting-park scan filled its page/, strand],
+    ['owed-close', () => detectOwedCloses(), /owed-close scan filled its page/, merged],
   ];
 
-  it.each(detectors)('%s names the bound and the count it examined', async (_n, run, message) => {
-    const { logger } = await import('../logger.js');
-    vi.mocked(logger.warn).mockClear();
-    rows.value = Array.from({ length: STRANDED_SCAN_LIMIT }, (_, i) => strand('p1', i + 1));
+  it.each(detectors)(
+    '%s names the bound and the count it examined',
+    async (_n, run, message, row) => {
+      const { logger } = await import('../logger.js');
+      vi.mocked(logger.warn).mockClear();
+      rows.value = Array.from({ length: STRANDED_SCAN_LIMIT }, (_, i) => row('p1', i + 1));
 
-    await run();
+      await run();
 
-    const warn = vi.mocked(logger.warn).mock.calls.find((c) => message.test(String(c[1])));
-    expect(warn?.[0]).toMatchObject({ limit: STRANDED_SCAN_LIMIT, examined: STRANDED_SCAN_LIMIT });
+      const warn = vi.mocked(logger.warn).mock.calls.find((c) => message.test(String(c[1])));
+      expect(warn?.[0]).toMatchObject({
+        limit: STRANDED_SCAN_LIMIT,
+        examined: STRANDED_SCAN_LIMIT,
+      });
+    },
+  );
+
+  it.each(detectors)(
+    '%s says nothing on a page that did not fill',
+    async (_n, run, message, row) => {
+      const { logger } = await import('../logger.js');
+      vi.mocked(logger.warn).mockClear();
+      rows.value = [row('p1', 1), row('p1', 2)];
+
+      await run();
+
+      expect(
+        vi.mocked(logger.warn).mock.calls.find((c) => message.test(String(c[1]))),
+      ).toBeUndefined();
+    },
+  );
+});
+
+describe('what a stranded notice says, in the words a reader uses (ISS-1229)', () => {
+  const now = new Date('2026-08-04T06:00:00.000Z');
+
+  beforeEach(() => {
+    emitNotification.mockClear();
+    resetSweepCursorsForTest();
   });
 
-  it.each(detectors)('%s says nothing on a page that did not fill', async (_n, run, message) => {
-    const { logger } = await import('../logger.js');
-    vi.mocked(logger.warn).mockClear();
-    rows.value = [strand('p1', 1), strand('p1', 2)];
+  function sent(): { title: string; body: string } {
+    return (emitNotification.mock.calls[0] as unknown as [{ title: string; body: string }])[0];
+  }
 
-    await run();
+  it('says how long a waiting park has stood, in days, and names its project', async () => {
+    rows.value = [strand('p1', 1)];
+    await detectStrandedIssues(now);
+    expect(sent().body).toBe('ISS-1 "strand 1": it has been parked for 3 days.');
+    expect(sent().title).toBe('ISS-1 is waiting on you — Seed');
+  });
 
-    expect(
-      vi.mocked(logger.warn).mock.calls.find((c) => message.test(String(c[1]))),
-    ).toBeUndefined();
+  it('says how many hours, not the bare word, for a park younger than a day', async () => {
+    rows.value = [{ ...strand('p1', 1), updatedAt: new Date('2026-08-03T23:00:00.000Z') }];
+    await detectStrandedIssues(now);
+    expect(sent().body).toBe('ISS-1 "strand 1": it has been parked for 7 hours.');
+  });
+
+  it('names an owed close by the status a person reads, never its stored form', async () => {
+    rows.value = [{ ...merged('p1', 1), status: 'awaiting_release' }];
+    await detectOwedCloses(now);
+    expect(sent().body).toBe(
+      'ISS-1 "strand 1" has carried a merge mark for 3 days while it still reads Awaiting release, with nothing running on it.',
+    );
   });
 });

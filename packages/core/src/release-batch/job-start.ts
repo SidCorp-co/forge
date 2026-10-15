@@ -194,7 +194,7 @@ export async function readReleaseStart(
         kind: 'ended',
         status: row.status,
         at: row.finishedAt?.toISOString() ?? null,
-        why: `It ended \`${row.status}\` before any box took it${row.error ? `, with: ${row.error}` : ''}.`,
+        why: `It ended ${row.status} before any box took it${row.error ? `, with: ${row.error}` : ''}.`,
       };
   }
 }

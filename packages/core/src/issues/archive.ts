@@ -41,7 +41,7 @@ import { pgErrorCode } from '../lib/db-errors.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import type { Actor } from '../pipeline/activity.js';
 import { heldIssuePrefixes, issueRefFormatter } from './issue-prefix-read.js';
-import { ISSUE_TERMINAL_STATUSES } from './status-sets.js';
+import { ISSUE_TERMINAL_STATUSES, statusForCaller } from './status-sets.js';
 
 /** The condition a discovery read composes: nothing when the caller asked for archived rows too. */
 export function issueArchiveSide(includeArchived: boolean | undefined): SQL[] {
@@ -243,7 +243,7 @@ async function loadBearingEdges(
         direction,
         other: otherKey,
         otherStatus: e.otherStatus,
-        message: `${key} is still load-bearing: edge ${e.edgeId} (${key} ${verb} ${otherKey}, which is \`${e.otherStatus}\`). Retract the edge, finish ${otherKey}, or leave ${key} out with \`filter.exclude\``,
+        message: `${key} is still load-bearing: edge ${e.edgeId} (${key} ${verb} ${otherKey}, which is ${statusForCaller(e.otherStatus)}). Retract the edge, finish ${otherKey}, or leave ${key} out with \`filter.exclude\``,
       });
     }
   }
@@ -257,7 +257,7 @@ function refuseForArchive(rows: Row[], keyOf: (seq: number) => string): IssueArc
       kind: 'not_terminal' as const,
       key: keyOf(r.issSeq),
       status: r.status,
-      message: `${keyOf(r.issSeq)} is \`${r.status}\`: only a \`closed\` or \`dropped\` issue can be archived, because an archived issue is out of every list that live work is found in`,
+      message: `${keyOf(r.issSeq)} is ${statusForCaller(r.status)}: only a Closed (closed) or Dropped (dropped) issue can be archived, because an archived issue is out of every list that live work is found in`,
     }));
 }
 
@@ -319,7 +319,7 @@ export async function runIssueArchive(input: {
       filterRefusals.push({
         kind: 'status_not_terminal',
         status,
-        message: `\`filter.statuses\` names \`${status}\`: only \`closed\` and \`dropped\` issues can be archived`,
+        message: `\`filter.statuses\` names ${statusForCaller(status)}: only Closed (closed) and Dropped (dropped) issues can be archived`,
       });
     }
   }
@@ -421,7 +421,7 @@ export async function archiveRefusalForTransition(
     .limit(1);
   if (!tied) return null;
   const key = (await issueRefFormatter(tied.projectId))(tied.issSeq);
-  return `this issue cannot become \`${toStatus}\` while a live \`${tied.edgeKind}\` edge ties it to ${key}, which is archived and would be load-bearing again. Retract the edge, or: ${archivedIssueSentence(key, tied.projectId)}`;
+  return `this issue cannot become ${statusForCaller(toStatus)} while a live \`${tied.edgeKind}\` edge ties it to ${key}, which is archived and would be load-bearing again. Retract the edge, or: ${archivedIssueSentence(key, tied.projectId)}`;
 }
 
 /**

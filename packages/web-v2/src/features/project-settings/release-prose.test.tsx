@@ -192,6 +192,26 @@ describe("the Release section's prose", () => {
 		);
 	});
 
+	// ISS-1229 round 5 — judge-15 read "No build-commands fact": the key a gap is stored under, and
+	// the word an agent uses for it, where the reader wants what is missing.
+	it("names an unwritten build, test or release instruction by what it is, never by its stored key", () => {
+		readiness.mockReturnValue({
+			isLoading: false,
+			error: null,
+			data: ready({ gaps: ["build-commands", "test-commands", "release-procedure"] }),
+		});
+
+		draw(<ReleaseSection projectId={PROJECT_ID} />);
+
+		const undeclared = screen.getByRole("list", { name: "What is not declared" });
+		expect([...undeclared.querySelectorAll("li")].map((li) => li.textContent?.split(" — ")[0])).toEqual([
+			"No build commands written",
+			"No test commands written",
+			"No release instructions written",
+		]);
+		expect(undeclared.textContent).not.toMatch(/\bfact\b|build-commands|test-commands|release-procedure|\brepo\b/);
+	});
+
 	it("renders a warning's code spans the same way, not only a blocker's", () => {
 		readiness.mockReturnValue({
 			isLoading: false,

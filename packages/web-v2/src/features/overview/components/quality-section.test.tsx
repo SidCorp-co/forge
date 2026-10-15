@@ -20,10 +20,16 @@ const quality = {
     scheduler: { failed: 0, total: 0 },
     other: { failed: 0, total: 0 },
   },
-  sessionFailures: [],
+  sessionFailures: [
+    { reason: "runner_unreachable", count: 4 },
+    { reason: "no_client_ack", count: 2 },
+    { reason: "unclassified", count: 1 },
+  ],
   pipelineFlow: [
+    { type: "drive", count: 9, medianSeconds: 600 },
     { type: "reconcile", count: 5, medianSeconds: 60 },
-    { type: "fix", count: 2, medianSeconds: 120 },
+    { type: "release_batch", count: 3, medianSeconds: 300 },
+    { type: "verify_skill", count: 2, medianSeconds: 120 },
   ],
 } as unknown as PulseQuality;
 
@@ -35,8 +41,49 @@ describe("QualitySection", () => {
   });
 
   it("marks no pipeline-flow row as looping back, whatever its type", () => {
-    render(<QualitySection quality={quality} />);
-    expect(screen.getByText("fix")).toBeInTheDocument();
+    render(<QualitySection quality={{ ...quality, pipelineFlow: [{ type: "fix", count: 2, medianSeconds: 120 }] }} />);
+    expect(screen.getByText("Unrecognised work (fix)")).toBeInTheDocument();
     expect(screen.queryByText(/loops back/)).toBeNull();
+  });
+});
+
+// ISS-1229 round 5 — judge-15 read this section as a stage table printing stored codes.
+describe("QualitySection, in the words a reader uses", () => {
+  it("heads the work table by kind of work, not by stage", () => {
+    render(<QualitySection quality={quality} />);
+    expect(screen.getByRole("columnheader", { name: "Work" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Stage" })).toBeNull();
+    const table = screen.getByRole("table", { name: /What the pipeline actually ran/ });
+    expect(table.getAttribute("aria-labelledby")).toBe("overview-ran");
+    expect(screen.getByText(/What the pipeline actually ran/).textContent).not.toMatch(/stage/i);
+  });
+
+  it("names each kind of work the way a reader says it, never its stored type", () => {
+    const { container } = render(<QualitySection quality={quality} />);
+    for (const label of ["Issue work", "Skill updates", "Releases", "Skill checks"]) {
+      expect(screen.getByRole("cell", { name: label })).toBeInTheDocument();
+    }
+    expect(container.textContent).not.toMatch(/\b(?:drive|release_batch|verify_skill|reconcile)\b/);
+  });
+
+  it("names a kind this build does not know as unrecognised, the one place its stored type shows", () => {
+    render(<QualitySection quality={{ ...quality, pipelineFlow: [{ type: "future_kind", count: 1, medianSeconds: 30 }] }} />);
+    expect(screen.getByRole("cell", { name: "Unrecognised work (future_kind)" })).toBeInTheDocument();
+  });
+
+  it("names each session failure by its cause, never its stored code", () => {
+    const { container } = render(<QualitySection quality={quality} />);
+    expect(screen.getByText("Runner unreachable")).toBeInTheDocument();
+    expect(screen.getByText("No acknowledgement")).toBeInTheDocument();
+    expect(screen.getByText("Unclassified")).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/runner_unreachable|no_client_ack/);
+  });
+
+  // The dispatcher's r5 review: with no flow between kinds the bars said nothing the table does not.
+  it("says what the pipeline ran as a table alone, with no chart drawn beside it", () => {
+    render(<QualitySection quality={quality} />);
+    expect(screen.queryByRole("img")).toBeNull();
+    const rows = screen.getAllByRole("row").slice(1).map((r) => r.textContent);
+    expect(rows).toEqual(["Issue work910m", "Skill updates51m", "Releases35m", "Skill checks22m"]);
   });
 });

@@ -135,7 +135,7 @@ describe('a project that ships by version tag', () => {
     expect(refusal.code).toBe('CLOSE_REQUIRES_RELEASE_TAG');
     expect(refusal.detail).toContain(LANDING);
     expect(refusal.detail).toContain('`v1.18.0`');
-    expect(refusal.detail).toContain('`awaiting_release`');
+    expect(refusal.detail).toContain('Awaiting release');
     expect(refusal.detail).toContain('`v*.*.*`');
     expect(refusal.details).toMatchObject({
       requires: 'releaseTag',

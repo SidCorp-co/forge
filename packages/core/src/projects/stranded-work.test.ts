@@ -28,14 +28,14 @@ describe('chainStrandsWork', () => {
   it('names both ways out, and says a close is not one', () => {
     const r = chainStrandsWork(['ISS-7', 'ISS-8']);
     expect(r.message).toContain('Release them first');
-    expect(r.message).toContain('return each one to `developed`');
+    expect(r.message).toContain('return each one to Developed');
     expect(r.message).toContain('Closing them is not a way out');
   });
 
   it('speaks of one issue in the singular, with the noun still counted among its issues', () => {
     const one = chainStrandsWork(['ISS-7']).message;
     expect(one).toContain('while 1 of its issues waits at');
-    expect(one).toContain('Release it first, or return it to `developed`');
+    expect(one).toContain('Release it first, or return it to Developed');
     expect(one).toContain('Closing it is not a way out');
     expect(one).not.toMatch(/\bthem\b|\bthey\b|of its issue wait/);
   });

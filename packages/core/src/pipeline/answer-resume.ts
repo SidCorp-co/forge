@@ -11,6 +11,7 @@ import {
 import { agentQuestions, questionWaiters } from '../db/schema-questions.js';
 import { sessionInbox } from '../db/schema-session-inbox.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
+import { statusLabel } from '../issues/status-sets.js';
 import { postTransitionReasonComment } from '../issues/transition-reason.js';
 import type { LoopScope } from '../jobs/loop-monitor.js';
 import { logger } from '../logger.js';
@@ -51,7 +52,7 @@ function answerTarget(admitted: readonly string[]): { to: IssueStatus; why: stri
   if (admitted.includes(SETTLED_STATUS)) return { to: SETTLED_STATUS, why: null };
   return {
     to: AUTONOMOUS_ENTRY_STATUS,
-    why: `The last open question was answered. It returns to \`${AUTONOMOUS_ENTRY_STATUS}\` rather than \`${SETTLED_STATUS}\` because this project admits nothing at \`${SETTLED_STATUS}\` (pipelineConfig.poolBacklog.statuses), so no dispatcher here would read it there.`,
+    why: `The last open question was answered. It returns to ${statusLabel(AUTONOMOUS_ENTRY_STATUS)} rather than ${statusLabel(SETTLED_STATUS)} because this project admits nothing at ${statusLabel(SETTLED_STATUS)} (pipelineConfig.poolBacklog.statuses), so no dispatcher here would read it there.`,
   };
 }
 
