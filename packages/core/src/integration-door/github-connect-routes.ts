@@ -171,17 +171,35 @@ function apiBaseUrl(): string {
   return base;
 }
 
-function assertApiOriginReachable(c: Context, api: string): void {
+/** The public origin this request reached core at, as the proxy in front of core reports it. */
+function reachedOrigin(c: Context): string {
   const url = new URL(c.req.url);
   const proto = c.req.header('x-forwarded-proto')?.split(',')[0]?.trim();
   if (proto === 'https' || proto === 'http') url.protocol = `${proto}:`;
   const forwardedHost = c.req.header('x-forwarded-host')?.split(',')[0]?.trim();
   if (forwardedHost) url.host = forwardedHost;
-  if (new URL(api).origin === url.origin) return;
+  return url.origin;
+}
+
+/**
+ * Where GitHub sends the browser back after creating and installing the App: the origin this
+ * request reached core at, when it is one this core is configured to answer on — the API's own
+ * (PUBLIC_API_BASE_URL) or the web's (APP_BASE_URL, where the web serves `/api` in front of core).
+ * This request proves that origin routes `/api` to core, and it is the origin the person's session
+ * rides on, so the return carries the session the callbacks admit. Insisting on the API's origin
+ * refused every connect begun on a web that proxies `/api`, which is how forge-dev is served.
+ */
+function browserReturnOrigin(c: Context, api: string): string {
+  const reached = reachedOrigin(c);
+  const configured = [api, process.env.APP_BASE_URL]
+    .filter((u): u is string => typeof u === 'string' && u.length > 0)
+    .map((u) => new URL(u).origin);
+  if (configured.includes(reached)) return reached;
   throw new HTTPException(500, {
     message:
-      `GitHub would be told to call back at ${new URL(api).origin}, but this request reached core at ${url.origin}. ` +
-      "Set PUBLIC_API_BASE_URL to this API's public origin — APP_BASE_URL is the web frontend and cannot serve the callback.",
+      `This request reached core at ${reached}, which is not an origin this core is configured to answer on ` +
+      `(${configured.join(', ')}). GitHub sends the browser back to the origin the request came from, so open ` +
+      'Forge at one of those, or set PUBLIC_API_BASE_URL to the origin this core is served at.',
   });
 }
 
@@ -236,7 +254,7 @@ githubConnectRoutes.post(
     });
 
     const api = apiBaseUrl();
-    assertApiOriginReachable(c, api);
+    const returnTo = browserReturnOrigin(c, api);
 
     return c.json({
       postUrl: manifestPostUrl(org),
@@ -250,6 +268,7 @@ githubConnectRoutes.post(
         appName: `Forge — ${project.name}`,
         webBaseUrl: webBaseUrl(),
         apiBaseUrl: api,
+        returnBaseUrl: returnTo,
         projectSlug: project.slug,
       }),
     });
