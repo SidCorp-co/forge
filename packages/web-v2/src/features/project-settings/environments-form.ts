@@ -2,6 +2,7 @@
 // ships to and the preview one QA opens), the test credentials and the limits of either. Written
 // through PATCH /api/projects/:id/environments as the keys the form changed beside the values it
 // read them against (ISS-1170). The Shape & release page renders it; this file holds no markup.
+import { type CredentialFinding, findCredentialFaults } from "@forge/contracts";
 import { z } from "zod";
 import type { EnvironmentsConfig, TestCredential, TestingUrl } from "./types";
 
@@ -173,52 +174,32 @@ const urlRow = z.looseObject({ label: z.string(), url: z.string() }).superRefine
   else if (!isValidUrl(url)) ctx.addIssue({ code: "custom", message: URL_MESSAGE });
 });
 
-/** The name two labels are compared by: what a run reads when it picks a login. */
-const labelKey = (label: string) => label.trim().toLowerCase();
-
 const credentialRow = z
   .looseObject({ label: z.string(), username: z.string(), password: z.string() })
   .superRefine((row, ctx) => {
-    const label = row.label.trim();
-    if (label === "" && (row.username !== "" || row.password !== "")) {
+    if (row.label.trim() === "" && (row.username !== "" || row.password !== "")) {
       ctx.addIssue({ code: "custom", path: ["label"], message: "Label is required." });
-    } else if (label !== "" && row.password.trim() === "") {
-      ctx.addIssue({
-        code: "custom",
-        path: ["password"],
-        message: `${label} has no password. Type its password, or remove the row.`,
-      });
     }
   });
 
-/** A second row for a label or a login already listed: the server refuses both (ISS-1171 r6). */
+/** What each credential rule says beside the field it marks; the rules are the server's own. */
+function credentialMessage(rows: CredRow[], f: CredentialFinding): string {
+  const label = rows[f.index]?.label.trim() ?? "";
+  const other = f.sameAs === undefined ? 0 : f.sameAs + 1;
+  switch (f.rule) {
+    case "password-required":
+      return `${label} has no password. Type its password, or remove the row.`;
+    case "duplicate-label":
+      return `Credential ${other} is already labelled ${rows[other - 1]?.label.trim() ?? label}. Rename this one, or remove it.`;
+    case "duplicate-login":
+      return `This is the same login as credential ${other}. Remove one of them.`;
+  }
+}
+
 const credentialRows = z.array(credentialRow).superRefine((rows, ctx) => {
-  const labels = new Map<string, number>();
-  const logins = new Map<string, number>();
-  rows.forEach((row, i) => {
-    const label = row.label.trim();
-    if (label === "") return;
-    const sameLabel = labels.get(labelKey(label));
-    if (sameLabel !== undefined) {
-      ctx.addIssue({
-        code: "custom",
-        path: [i, "label"],
-        message: `Credential ${sameLabel + 1} is already labelled ${rows[sameLabel]?.label.trim()}. Rename this one, or remove it.`,
-      });
-      return;
-    }
-    labels.set(labelKey(label), i);
-    if (row.password.trim() === "") return;
-    const login = `${row.username.trim().toLowerCase()}\0${row.password}`;
-    const sameLogin = logins.get(login);
-    if (sameLogin !== undefined) {
-      ctx.addIssue({
-        code: "custom",
-        path: [i, "username"],
-        message: `This is the same login as credential ${sameLogin + 1}. Remove one of them.`,
-      });
-    } else logins.set(login, i);
-  });
+  for (const f of findCredentialFaults(rows)) {
+    ctx.addIssue({ code: "custom", path: [f.index, f.field], message: credentialMessage(rows as CredRow[], f) });
+  }
 });
 
 export const environmentsSchema = z.object({

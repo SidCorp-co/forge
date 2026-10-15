@@ -735,6 +735,19 @@ describe("judge-15's five findings (ISS-1171 r6)", () => {
 		expect(sent).toEqual([]);
 	});
 
+	it("describes each marked field of one credential by its own fault", async () => {
+		await mount();
+		fireEvent.click(screen.getByRole("button", { name: "Add credential" }));
+		fireEvent.change(screen.getByLabelText("Credential 2 label"), { target: { value: "QA" } });
+		fireEvent.change(screen.getByLabelText("Credential 2 username"), { target: { value: "new@example.com" } });
+		await screen.findByText("QA has no password. Type its password, or remove the row.");
+		const said = (label: string) =>
+			document.getElementById(screen.getByLabelText(label).getAttribute("aria-describedby") ?? "")?.textContent;
+		expect(said("Credential 2 label")).toBe("Credential 1 is already labelled QA. Rename this one, or remove it.");
+		expect(said("Credential 2 password")).toBe("QA has no password. Type its password, or remove the row.");
+		expect(screen.getByLabelText("Credential 2 username")).not.toHaveAttribute("aria-invalid");
+	});
+
 	it("keeps the shape the person picked in view below the top bar when a save is refused", async () => {
 		projectRefusal = new ApiError(409, "PROJECT_KIND_STRANDS_WORK: a mark would stop counting.", "PROJECT_KIND_STRANDS_WORK", {
 			issues: ["ISS-4"],
