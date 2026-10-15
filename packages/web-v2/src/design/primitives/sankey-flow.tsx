@@ -6,8 +6,6 @@ export interface SankeyNode {
   count: number;
   /** Median seconds one of these took, or null where none finished. */
   medianSeconds: number | null;
-  /** True where this node feeds back into the run rather than forward out of it. */
-  loop?: boolean;
 }
 
 export interface SankeyFlowProps {
@@ -24,20 +22,17 @@ export interface SankeyFlowProps {
 export function SankeyFlow({ nodes, label, formatDuration, className }: SankeyFlowProps) {
   if (nodes.length === 0) return null;
 
-  const forward = nodes.filter((n) => !n.loop);
-  const loops = nodes.filter((n) => n.loop);
   const max = Math.max(1, ...nodes.map((n) => n.count));
 
   const width = 640;
   const height = 96;
-  const slot = forward.length > 0 ? width / forward.length : width;
+  const slot = width / nodes.length;
   const barW = Math.max(4, slot * 0.5);
   const mid = 34;
 
   return (
     <figure className={cn("m-0 flex w-full flex-col gap-3", className)}>
-      {forward.length > 0 ? (
-        <svg
+      <svg
           role="img"
           aria-label={label}
           viewBox={`0 0 ${width} ${height}`}
@@ -45,7 +40,7 @@ export function SankeyFlow({ nodes, label, formatDuration, className }: SankeyFl
           className="block h-24 w-full"
         >
           <title>{label}</title>
-          {forward.map((n, i) => {
+          {nodes.map((n, i) => {
             const h = Math.max(3, (n.count / max) * 44);
             const x = i * slot + (slot - barW) / 2;
             return (
@@ -73,24 +68,7 @@ export function SankeyFlow({ nodes, label, formatDuration, className }: SankeyFl
               </g>
             );
           })}
-          {loops.length > 0 && forward.length > 1
-            ? (() => {
-                const from = (forward.length - 1) * slot + slot / 2;
-                const to = slot / 2;
-                return (
-                  <path
-                    d={`M${from},${mid + 26} C${from},${height - 6} ${to},${height - 6} ${to},${mid + 26}`}
-                    fill="none"
-                    stroke="var(--amber-500)"
-                    strokeWidth={1.5}
-                    strokeDasharray="5 3"
-                    vectorEffect="non-scaling-stroke"
-                  />
-                );
-              })()
-            : null}
         </svg>
-      ) : null}
       <table className="w-full">
         <caption className="sr-only">{label}</caption>
         <thead>
@@ -105,7 +83,6 @@ export function SankeyFlow({ nodes, label, formatDuration, className }: SankeyFl
             <tr key={n.key} className="fg-body-sm">
               <td className="py-0.5 text-left">
                 {n.label}
-                {n.loop ? <span className="text-subtle"> · loops back</span> : null}
               </td>
               <td className="py-0.5 text-right tabular-nums">{n.count}</td>
               <td className="py-0.5 text-right tabular-nums text-muted">

@@ -1,6 +1,5 @@
 import { registerContractCheckSubscribers } from './integrations/github/contract-check-subscribers.js';
 import { registerMemoryReconcileTrigger } from './memory/consolidation.js';
-import { registerMemoryExtraction } from './memory/extraction.js';
 import { registerMemoryIndexer } from './memory/indexer.js';
 import { registerNotifyMentionsSubscriber } from './notifications/notify-mentions.js';
 import { registerTransitionNotifications } from './notifications/notify-transitions.js';
@@ -21,7 +20,6 @@ export function registerEagerSubscribers(bus: HooksBus): void {
   registerMemoryIndexer(bus);
   registerMemoryReconcileTrigger(bus);
   registerCiFixPatternLearner(bus);
-  registerMemoryExtraction(bus);
   registerNotifyMentionsSubscriber(bus);
   registerTransitionNotifications(bus);
   registerPmSubscribers(bus);

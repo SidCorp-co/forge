@@ -38,7 +38,7 @@ function sentencesRoutingNonWorkToAClose(text: string): string[] {
 
 const arms = [
   ['drive', mandatoryPreambleBlocks('drive').pipelineRules],
-  ['code', mandatoryPreambleBlocks('code').pipelineRules],
+  ['custom', mandatoryPreambleBlocks('custom').pipelineRules],
 ] as const;
 
 describe('the mandatory pipeline-rules block a job is given', () => {

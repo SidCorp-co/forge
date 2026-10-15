@@ -2559,6 +2559,9 @@
   (ISS-1313)
 
 ### Removed
+- **The staged pipeline's job types are gone.** A job queued as one of its nine stages is refused by name, listing the types still taken; old jobs of those types are deleted on deploy. (ISS-1229)
+- **A failed job no longer moves its issue back a step.** It is retried or held, and the issue stays where it was. (ISS-1229)
+- **The "Fix jobs against code jobs" tile is gone from the overview,** and no pipeline-flow row is marked as looping back: both counted job types nothing runs any more. (ISS-1229)
 - **Subtasks are gone.** `/api/tasks` and `/api/issues/:id/tasks` answer 404, `forge_issues` refuses `createTask`, `listTasks`, `updateTask` and `deleteTask` by name, and the Tasks tabs are removed. All 359 subtasks are deleted, and the priority 354 of them carried is withdrawn. (ISS-1132)
 - **`pass_rate` and `approve_rate` are gone from the metrics.** Asking for either is refused by name as retired, with the metrics still served listed. (ISS-1132)
 - **The attribute keys `blocking` and `supersedes` are gone.** Writing either is refused as unregistered; a blocking relation is a dependency edge. (ISS-1132)

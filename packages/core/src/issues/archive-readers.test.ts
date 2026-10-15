@@ -104,7 +104,6 @@ const NOT_DISCOVERY: Record<string, string> = {
   'me/pulse-quality.ts': 'counts, no issue identity',
   'me/pulse-work.ts': 'reads only in-flight and release statuses, and counts',
   'memory/chunk-writer.ts': 'the issue a memory row names',
-  'memory/extraction.ts': 'by issue id',
   'messaging/gather.ts': 'the ids and seqs a message cites',
   'metrics/queries.ts': 'throughput and cycle-time aggregates, no issue identity',
   'notifications/deliver.ts': 'by issue id',

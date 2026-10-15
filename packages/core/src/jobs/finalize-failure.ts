@@ -1,13 +1,10 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issues, type jobs, projects } from '../db/schema.js';
-import type { DeviceLite } from '../issues/actor-agency.js';
-import { applyStatusTransition, type TransitionIssueRow } from '../issues/apply-transition.js';
+import { issues, type jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { logger } from '../logger.js';
 import { classifyFailure } from '../pipeline/failure-classifier.js';
 import { hooks } from '../pipeline/hooks.js';
-import { classifyVerdict, JOB_TYPE_ENTRY_STATUS } from '../pipeline/recovery-verifier.js';
 import { closeOpenRunForIssue } from '../pipeline/runs.js';
 import { emitPipelineWedge } from '../pipeline/wedge.js';
 import { stampRunnerLimit } from '../runners/apply-runner-limit.js';
@@ -80,7 +77,7 @@ export interface FinalizeFailedJobOptions {
   runContinues?: boolean | undefined;
 }
 
-async function reconcileIssueStatusAfterFailure(
+async function settleIssueAfterFailure(
   job: JobRow,
   retry: RetryOutcome,
   recoveredViaVerify: boolean,
@@ -88,57 +85,24 @@ async function reconcileIssueStatusAfterFailure(
   if (!job.issueId) return;
 
   const [row] = await db
-    .select({
-      id: issues.id,
-      projectId: issues.projectId,
-      status: issues.status,
-      reopenCount: issues.reopenCount,
-      projectCreatedBy: projects.createdBy,
-    })
+    .select({ id: issues.id, projectId: issues.projectId })
     .from(issues)
-    .innerJoin(projects, eq(projects.id, issues.projectId))
     .where(eq(issues.id, job.issueId))
     .limit(1);
   if (!row) {
     logger.warn(
       { issueId: job.issueId },
-      'finalize-failure: issue not found, skipping status reconcile',
+      'finalize-failure: issue not found, skipping the hold and the run close',
     );
     return;
   }
 
-  // activity_log.actorId has no FK; the project creator (audit
-  // `projects.created_by`) is a valid stand-in for a system-initiated
-  // transition (mirrors orchestrator `resolveSkipDevice`). Fall back to the
-  // job creator.
-  const actorId = row.projectCreatedBy ?? job.createdBy;
-  const device: DeviceLite = { id: actorId, ownerId: actorId };
-  const issueRow: TransitionIssueRow = {
-    id: row.id,
-    projectId: row.projectId,
-    status: row.status,
-    reopenCount: row.reopenCount,
-  };
-
-  // Verify-first recovery (issue already advanced or moved to another step's
-  // territory) — the work is effectively done; leave the issue untouched.
+  // The issue already finished, so the job's work is done; nothing is held and no run closes.
   if (recoveredViaVerify) return;
 
   const reason = retry.reason ?? 'unknown';
-  const heldJobId = retry.scheduled ? null : await holdJobForReason(job, reason);
-
-  const entry = JOB_TYPE_ENTRY_STATUS[job.type];
-  if (entry && row.status !== entry && classifyVerdict(row.status, job.type) === 'pending') {
-    try {
-      await applyStatusTransition(issueRow, entry, device, { skip: true });
-    } catch (err) {
-      logger.warn(
-        { err, issueId: row.id, to: entry },
-        'finalize-failure: entry-status revert failed',
-      );
-    }
-  }
   if (retry.scheduled) return;
+  const heldJobId = await holdJobForReason(job, reason);
 
   if (heldJobId) {
     if (holdAutoReleases(job.payload, reason)) {
@@ -205,12 +169,10 @@ export async function finalizeFailedJob(
   const retry: RetryOutcome =
     opts.precomputedRetry ?? (await scheduleAutoRetryWithVerify(updated, opts.error));
 
-  const recoveredViaVerify =
-    retry.reason === 'completed_via_recovery' || retry.reason === 'cancelled_stale';
+  const recoveredViaVerify = retry.reason === 'completed_via_recovery';
 
-  // ISS-393 — never no-op a failed job with an issueId: revert to entry-status
-  // (retry path) or park at `waiting` + reap the run (no-retry path).
-  await reconcileIssueStatusAfterFailure(updated, retry, recoveredViaVerify);
+  // A failed job never writes its issue's status (ISS-1229): with no retry it is held or its run is closed.
+  await settleIssueAfterFailure(updated, retry, recoveredViaVerify);
 
   if (!retry.scheduled) {
     await failReconcileRunForFailedJob(updated).catch((err) =>

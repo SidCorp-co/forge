@@ -126,6 +126,12 @@ describe('the pulse groups session failures on the cause set (ISS-1157)', () => 
     }
   });
 
+  it('carries no rework count: the fix and code jobs it counted are retired (ISS-1229)', async () => {
+    const seed = await seedProject();
+    const { body } = await readPulse(seed.token);
+    expect(Object.keys(body.quality)).not.toContain('rework');
+  });
+
   it('leaves every stored reason as it was', async () => {
     const seed = await seedProject();
     await plantFailed(seed, PROMPT);

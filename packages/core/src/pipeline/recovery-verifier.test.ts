@@ -1,93 +1,50 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ISSUE_RESOLVED_STATUSES } from '../issues/status-sets.js';
+
+let rows: Array<{ status: string }> = [];
+const limit = vi.fn(async () => rows);
+const chain = { from: () => chain, where: () => chain, limit };
 
 vi.mock('../db/client.js', () => ({
-  db: { select: vi.fn() },
+  db: { select: vi.fn(() => chain) },
 }));
 
-const { classifyVerdict } = await import('./recovery-verifier.js');
+const { verifyRecovery } = await import('./recovery-verifier.js');
 
-describe('classifyVerdict (pure)', () => {
-  it('triage job, issue at open → pending', () => {
-    expect(classifyVerdict('open', 'triage')).toBe('pending');
+beforeEach(() => {
+  rows = [];
+  limit.mockClear();
+});
+
+describe('verifyRecovery', () => {
+  it.each([...ISSUE_RESOLVED_STATUSES])('an issue at %s → advanced', async (status) => {
+    rows = [{ status }];
+    expect(await verifyRecovery({ issueId: 'i-1' })).toBe('advanced');
   });
 
-  it('triage job, issue at confirmed → advanced (confirmed is a triage exit)', () => {
-    expect(classifyVerdict('confirmed', 'triage')).toBe('advanced');
+  it.each([
+    'open',
+    'confirmed',
+    'approved',
+    'in_progress',
+    'developed',
+    'testing',
+    'needs_info',
+    'dropped',
+    'waiting',
+  ])('an issue at %s → pending, never a stale cancel (ISS-1229)', async (status) => {
+    rows = [{ status }];
+    expect(await verifyRecovery({ issueId: 'i-1' })).toBe('pending');
+    // A historical row of a retired staged type is read the same way: no stage table survives to revert it.
+    expect(await verifyRecovery({ issueId: 'i-1', type: 'code' } as never)).toBe('pending');
   });
 
-  it('triage job, issue at needs_info → advanced (needs_info is a triage exit)', () => {
-    expect(classifyVerdict('needs_info', 'triage')).toBe('advanced');
+  it('an issue-less job → pending, with no read', async () => {
+    expect(await verifyRecovery({ issueId: null })).toBe('pending');
+    expect(limit).not.toHaveBeenCalled();
   });
 
-  it('clarify job, issue at confirmed → pending (still at entry)', () => {
-    expect(classifyVerdict('confirmed', 'clarify')).toBe('pending');
-  });
-
-  it('clarify job, issue at clarified → advanced', () => {
-    expect(classifyVerdict('clarified', 'clarify')).toBe('advanced');
-  });
-
-  it('clarify job, issue at needs_info → advanced (cannot-reproduce bounce)', () => {
-    expect(classifyVerdict('needs_info', 'clarify')).toBe('advanced');
-  });
-
-  it('plan job, issue at clarified → pending', () => {
-    expect(classifyVerdict('clarified', 'plan')).toBe('pending');
-  });
-
-  it('plan job, issue at approved → advanced', () => {
-    expect(classifyVerdict('approved', 'plan')).toBe('advanced');
-  });
-
-  it('plan job, issue at developed → reverted (developed is owned by review)', () => {
-    expect(classifyVerdict('developed', 'plan')).toBe('reverted');
-  });
-
-  it('code job, issue at closed → advanced (terminal status)', () => {
-    expect(classifyVerdict('closed', 'code')).toBe('advanced');
-  });
-
-  it('code job, issue at released → advanced (terminal status)', () => {
-    expect(classifyVerdict('awaiting_release', 'code')).toBe('advanced');
-  });
-
-  it('code job, issue at developed → advanced', () => {
-    expect(classifyVerdict('developed', 'code')).toBe('advanced');
-  });
-
-  it('code job, issue at approved → pending', () => {
-    expect(classifyVerdict('approved', 'code')).toBe('pending');
-  });
-
-  it('review job, issue at testing → advanced', () => {
-    expect(classifyVerdict('testing', 'review')).toBe('advanced');
-  });
-
-  it('review job, issue at reopen → advanced (review can route back to fix)', () => {
-    expect(classifyVerdict('reopen', 'review')).toBe('advanced');
-  });
-
-  it('release job, issue at closed → advanced (terminal)', () => {
-    expect(classifyVerdict('closed', 'release')).toBe('advanced');
-  });
-
-  it('fix job, issue at developed → advanced', () => {
-    expect(classifyVerdict('developed', 'fix')).toBe('advanced');
-  });
-
-  it('custom job, any status → pending (no entry mapping)', () => {
-    expect(classifyVerdict('approved', 'custom')).toBe('pending');
-  });
-
-  it('pm job, any status → pending (no entry mapping)', () => {
-    expect(classifyVerdict('open', 'pm')).toBe('pending');
-  });
-
-  it('plan job, issue at open → reverted (regressed below entry)', () => {
-    expect(classifyVerdict('open', 'plan')).toBe('reverted');
-  });
-
-  it('ISS-702: code job, issue at waiting → reverted (parked by a later step; must not be reverted to approved)', () => {
-    expect(classifyVerdict('waiting', 'code')).toBe('reverted');
+  it('an issue that no longer exists → pending', async () => {
+    expect(await verifyRecovery({ issueId: 'gone' })).toBe('pending');
   });
 });

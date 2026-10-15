@@ -139,7 +139,6 @@ export const pulseSchema = z.object({
       dropped: z.number().int(),
     }),
     reopened: z.object({ issues: z.number().int(), events: z.number().int() }),
-    rework: z.object({ fix: z.number().int(), code: z.number().int() }),
     runFailure: z.object({ pipeline: lane, scheduler: lane, other: lane }),
     sessionFailures: z.array(z.object({ reason: z.enum(FAILURE_CAUSES), count: z.number().int() })),
     pipelineFlow: z.array(

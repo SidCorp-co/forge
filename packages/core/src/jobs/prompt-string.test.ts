@@ -16,29 +16,29 @@ const SAMPLE: IssueSnapshot = {
 describe('buildJobPromptString', () => {
   it('returns /<skillName> <issueId> when a skill name is provided', () => {
     expect(
-      buildJobPromptString({ skillName: 'forge-plan', jobType: 'plan', issueId: 'iss-1' }),
+      buildJobPromptString({ skillName: 'forge-plan', jobType: 'reconcile', issueId: 'iss-1' }),
     ).toBe('/forge-plan iss-1');
     expect(
-      buildJobPromptString({ skillName: 'custom-skill', jobType: 'code', issueId: 'iss-2' }),
+      buildJobPromptString({ skillName: 'custom-skill', jobType: 'custom', issueId: 'iss-2' }),
     ).toBe('/custom-skill iss-2');
   });
 
   it('falls back to /forge-<jobType> when skillName is null/missing/empty', () => {
-    expect(buildJobPromptString({ skillName: null, jobType: 'plan', issueId: 'iss-1' })).toBe(
-      '/forge-plan iss-1',
+    expect(buildJobPromptString({ skillName: null, jobType: 'reconcile', issueId: 'iss-1' })).toBe(
+      '/forge-reconcile iss-1',
     );
-    expect(buildJobPromptString({ jobType: 'review', issueId: 'iss-2' })).toBe(
-      '/forge-review iss-2',
+    expect(buildJobPromptString({ jobType: 'verify_skill', issueId: 'iss-2' })).toBe(
+      '/forge-verify_skill iss-2',
     );
-    expect(buildJobPromptString({ skillName: '', jobType: 'fix', issueId: 'iss-3' })).toBe(
-      '/forge-fix iss-3',
+    expect(buildJobPromptString({ skillName: '', jobType: 'smoke', issueId: 'iss-3' })).toBe(
+      '/forge-smoke iss-3',
     );
   });
 
   it('skips the ## Issue block when no snapshot is provided (legacy callers)', () => {
     const out = buildJobPromptString({
       skillName: 'forge-plan',
-      jobType: 'plan',
+      jobType: 'reconcile',
       issueId: 'iss-1',
     });
     expect(out).toBe('/forge-plan iss-1');
@@ -47,7 +47,7 @@ describe('buildJobPromptString', () => {
 
   describe('per-state issueSnapshot rendering (thin default — fetch-via-tool)', () => {
     it('every stage inlines NO body fields by default; carries title + forge_step_start pointer', () => {
-      for (const jobType of ['triage', 'code', 'review', 'test', 'release'] as const) {
+      for (const jobType of ['pm', 'custom', 'verify_skill', 'release_batch', 'smoke'] as const) {
         const out = buildJobPromptString({ jobType, issueId: 'iss-1', issueSnapshot: SAMPLE });
         expect(out, jobType).toContain('## Issue');
         // ISS-532: the title is framed as untrusted DATA under a `Title:` label.
@@ -63,7 +63,7 @@ describe('buildJobPromptString', () => {
 
     it('includeFields override re-inlines the requested fields', () => {
       const out = buildJobPromptString({
-        jobType: 'code',
+        jobType: 'custom',
         issueId: 'iss-1',
         issueSnapshot: SAMPLE,
         policy: { includeFields: ['description', 'plan', 'acceptanceCriteria'] },
@@ -77,7 +77,7 @@ describe('buildJobPromptString', () => {
 
     it('renders metadata line with status/priority/complexity (always, no override needed)', () => {
       const out = buildJobPromptString({
-        jobType: 'plan',
+        jobType: 'reconcile',
         issueId: 'iss-1',
         issueSnapshot: SAMPLE,
       });
@@ -87,7 +87,7 @@ describe('buildJobPromptString', () => {
     it('truncates long description with marker that names char count + tool hint', () => {
       const longDesc = 'x'.repeat(9000);
       const out = buildJobPromptString({
-        jobType: 'code',
+        jobType: 'custom',
         issueId: 'iss-1',
         issueSnapshot: { ...SAMPLE, description: longDesc },
         policy: { includeFields: ['description', 'plan'] },
@@ -107,7 +107,7 @@ describe('buildJobPromptString', () => {
       const tail = 'B'.repeat(2500);
       const desc = `${head}\n\n${tail}`;
       const out = buildJobPromptString({
-        jobType: 'code',
+        jobType: 'custom',
         issueId: 'iss-1',
         issueSnapshot: { ...SAMPLE, description: desc },
         policy: { includeFields: ['description', 'plan'] },
@@ -123,7 +123,7 @@ describe('buildJobPromptString', () => {
       // No spaces, no newlines → boundary search returns -1 → cut at cap.
       const desc = 'z'.repeat(9000);
       const out = buildJobPromptString({
-        jobType: 'code',
+        jobType: 'custom',
         issueId: 'iss-1',
         issueSnapshot: { ...SAMPLE, description: desc },
         policy: { includeFields: ['description', 'plan'] },
@@ -137,7 +137,7 @@ describe('buildJobPromptString', () => {
   describe('sessionContext preamble', () => {
     it('skips the block when sessionCount = 0', () => {
       const out = buildJobPromptString({
-        jobType: 'code',
+        jobType: 'custom',
         issueId: 'iss-1',
         issueSnapshot: {
           ...SAMPLE,
@@ -151,9 +151,9 @@ describe('buildJobPromptString', () => {
       expect(out).not.toContain('## Previous Session Context');
     });
 
-    it('renders the block for code when sessionCount >= 1 (fields re-enabled via override)', () => {
+    it('renders the block when sessionCount >= 1 (fields re-enabled via override)', () => {
       const out = buildJobPromptString({
-        jobType: 'code',
+        jobType: 'custom',
         issueId: 'iss-1',
         issueSnapshot: {
           ...SAMPLE,
@@ -187,7 +187,7 @@ describe('buildJobPromptString', () => {
 
     it('sessionContext.fields override gates which fields render (decisions + filesModified only)', () => {
       const out = buildJobPromptString({
-        jobType: 'review',
+        jobType: 'verify_skill',
         issueId: 'iss-1',
         issueSnapshot: {
           ...SAMPLE,
@@ -207,9 +207,9 @@ describe('buildJobPromptString', () => {
       expect(out).not.toContain('**Review feedback:**');
     });
 
-    it('triage skips sessionContext entirely even with sessionCount >= 1', () => {
+    it('the default policy renders no session fields even with sessionCount >= 1', () => {
       const out = buildJobPromptString({
-        jobType: 'triage',
+        jobType: 'pm',
         issueId: 'iss-1',
         issueSnapshot: {
           ...SAMPLE,
@@ -217,16 +217,15 @@ describe('buildJobPromptString', () => {
         },
       });
       expect(out).toContain('## Previous Session Context');
-      // Triage policy: no decisions, no filesModified rendered
       expect(out).not.toContain('**Key decisions:**');
       expect(out).not.toContain('**Files touched:**');
     });
   });
 
-  it('e2e shape: skill line + issue block + session block for a code re-run', () => {
+  it('e2e shape: skill line + issue block + session block for a re-run', () => {
     const out = buildJobPromptString({
       skillName: 'forge-code',
-      jobType: 'code',
+      jobType: 'custom',
       issueId: 'iss-42',
       issueSnapshot: {
         ...SAMPLE,

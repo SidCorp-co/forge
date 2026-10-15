@@ -302,12 +302,14 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
     expect(markSessionTerminalMock).toHaveBeenCalledWith('s1', 'completed_via_recovery');
   });
 
-  it('skips retry + marks cancelled_stale when verifier says reverted', async () => {
-    verifyRecoveryMock.mockResolvedValueOnce('reverted');
+  it('an unresolved issue goes on to the retry path and never ends the session cancelled_stale (ISS-1229)', async () => {
+    verifyRecoveryMock.mockResolvedValueOnce('pending');
+    insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
     const result = await run({}, 'crashed');
-    expect(result.scheduled).toBe(false);
-    expect(result.reason).toBe('cancelled_stale');
-    expect(markSessionTerminalMock).toHaveBeenCalledWith('s1', 'cancelled_stale');
+    expect(result.scheduled).toBe(true);
+    expect(result.reason).not.toBe('cancelled_stale');
+    expect(result.reason).not.toBe('completed_via_recovery');
+    expect(markSessionTerminalMock).not.toHaveBeenCalled();
   });
 
   it('ISS-702: fails safe to verify_unavailable (no retry) when verifyRecovery throws', async () => {

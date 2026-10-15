@@ -42,7 +42,6 @@ function pulse(work: Partial<PulseWork>): PulseResponse {
     quality: {
       finished: { merged: 0, closedUnmerged: 0, dropped: 0 },
       reopened: { issues: 0, events: 0 },
-      rework: { fix: 0, code: 0 },
       runFailure: {
         pipeline: { failed: 0, total: 0 },
         scheduler: { failed: 0, total: 0 },

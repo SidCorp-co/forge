@@ -11,7 +11,7 @@ import { jobEvents, jobs } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { classifyFailure, deriveActionFromKind } from '../pipeline/failure-classifier.js';
-import { verifyRecovery } from '../pipeline/recovery-verifier.js';
+import { type RecoveryVerdict, verifyRecovery } from '../pipeline/recovery-verifier.js';
 import {
   capacityWedgeEntityId,
   emitPipelineWedge,
@@ -346,7 +346,7 @@ export async function scheduleAutoRetryWithVerify(
   }
 
   if (job.issueId) {
-    let verdict: 'advanced' | 'reverted' | 'pending';
+    let verdict: RecoveryVerdict;
     try {
       verdict = await verifyRecovery(job);
     } catch (err) {
@@ -362,13 +362,6 @@ export async function scheduleAutoRetryWithVerify(
         await publishSessionRecoveryChanged(job.projectId, job.agentSessionId);
       }
       return { scheduled: false, reason: 'completed_via_recovery' };
-    }
-    if (verdict === 'reverted') {
-      if (job.agentSessionId) {
-        await markSessionTerminal(job.agentSessionId, 'cancelled_stale');
-        await publishSessionRecoveryChanged(job.projectId, job.agentSessionId);
-      }
-      return { scheduled: false, reason: 'cancelled_stale' };
     }
   }
 

@@ -27,9 +27,7 @@ import type { JobType } from '../db/schema.js';
 import {
   type HandoffScope,
   type HandoffStep,
-  isHandoffStep,
   renderDriveTerminationBlock,
-  renderTerminationBlock,
   type StepHandoffPayload,
 } from '../memory/step-handoff-schema.js';
 import { resolveHandoffsPolicy } from '../pipeline/handoff-policy.js';
@@ -100,15 +98,6 @@ const SESSION_CAPS = {
 } as const;
 
 const ISSUE_FIELDS_PER_STATE: Record<JobType, IssueField[]> = {
-  triage: [],
-  clarify: [],
-  plan: [],
-  code: [],
-  review: [],
-  test: [],
-  staging: [],
-  release: [],
-  fix: [],
   custom: [],
   drive: [],
   pm: [],
@@ -126,15 +115,6 @@ interface SessionFieldPolicy {
 }
 
 const SESSION_FIELDS_PER_STATE: Record<JobType, SessionFieldPolicy> = {
-  triage: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
-  clarify: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
-  plan: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
-  code: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
-  review: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
-  test: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
-  staging: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
-  release: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
-  fix: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
   custom: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
   drive: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
   pm: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
@@ -452,8 +432,8 @@ export function buildJobPromptString(args: {
 
   // System-default-on (see pipeline/handoff-policy.ts). Explicit project
   // config still wins per-field; absent config falls back to enabled=true
-  // with canonical inject lists per step.
-  const resolvedHandoffs = resolveHandoffsPolicy(args.policy ?? null, args.jobType);
+  // with nothing injected.
+  const resolvedHandoffs = resolveHandoffsPolicy(args.policy ?? null);
   const handoffsEnabled = resolvedHandoffs.enabled;
   const injectFromSteps = new Set<HandoffStep>(resolvedHandoffs.injectFromSteps);
   // Filter pre-fetched handoffs to the policy's allow-list so callers can
@@ -484,13 +464,8 @@ export function buildJobPromptString(args: {
     lines.push('', formatPriorHandoffs(handoffsToRender));
   }
 
-  if (handoffsEnabled && isHandoffStep(args.jobType) && args.handoffScope) {
-    lines.push(
-      '',
-      args.jobType === 'drive'
-        ? renderDriveTerminationBlock(args.handoffScope)
-        : renderTerminationBlock({ step: args.jobType, scope: args.handoffScope }),
-    );
+  if (handoffsEnabled && args.jobType === 'drive' && args.handoffScope) {
+    lines.push('', renderDriveTerminationBlock(args.handoffScope));
   }
 
   return lines.join('\n');

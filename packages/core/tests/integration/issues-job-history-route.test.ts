@@ -159,7 +159,7 @@ describe('GET /api/issues/:id/job-history (W2.1.4)', () => {
     });
   }
 
-  it('returns plan-jobs only, newest first, with token/cost rollup', async () => {
+  it('returns reconcile jobs only, newest first, with token/cost rollup', async () => {
     const { user, project } = await seedUserProject('admin');
     const { issueId, runId } = await seedIssueWithRun(project.id, user.id);
 
@@ -172,7 +172,7 @@ describe('GET /api/issues/:id/job-history (W2.1.4)', () => {
       ownerId: user.id,
       issueId,
       runId,
-      type: 'plan',
+      type: 'reconcile',
       modelUsed: 'claude-sonnet-4-6',
       queuedAt: tOlder,
       dispatchedAt: tOlder,
@@ -187,7 +187,7 @@ describe('GET /api/issues/:id/job-history (W2.1.4)', () => {
       ownerId: user.id,
       issueId,
       runId,
-      type: 'plan',
+      type: 'reconcile',
       modelUsed: 'claude-opus-4-7',
       queuedAt: tNewer,
       dispatchedAt: tNewer,
@@ -197,13 +197,13 @@ describe('GET /api/issues/:id/job-history (W2.1.4)', () => {
     await seedUsage(harness.db, project.id, newer.sessionId, 300, 0.005);
     await seedUsage(harness.db, project.id, newer.jobId, 999, 9.99);
 
-    // Queued (never dispatched) plan job — must still surface, tokens=0.
+    // Queued (never dispatched) reconcile job — must still surface, tokens=0.
     const queued = await seedJob(harness.db, {
       projectId: project.id,
       ownerId: user.id,
       issueId,
       runId,
-      type: 'plan',
+      type: 'reconcile',
       status: 'queued',
       modelUsed: null,
       queuedAt: tQueued,
@@ -212,20 +212,20 @@ describe('GET /api/issues/:id/job-history (W2.1.4)', () => {
       promptInputTokenEst: 75,
     });
 
-    // Different step on same issue — must NOT appear in ?step=plan.
+    // Different step on same issue — must NOT appear in ?step=reconcile.
     await seedJob(harness.db, {
       projectId: project.id,
       ownerId: user.id,
       issueId,
       runId,
-      type: 'review',
+      type: 'verify_skill',
       queuedAt: tNewer,
       dispatchedAt: tNewer,
       finishedAt: new Date(tNewer.getTime() + 2_000),
     });
 
     const token = await signUserToken(user.id);
-    const res = await getHistory(issueId, 'plan', token);
+    const res = await getHistory(issueId, 'reconcile', token);
     expect(res.status).toBe(200);
     const rows = (await res.json()) as Array<{
       jobId: string;
@@ -268,7 +268,7 @@ describe('GET /api/issues/:id/job-history (W2.1.4)', () => {
       ownerId: owner.id,
       issueId,
       runId,
-      type: 'plan',
+      type: 'reconcile',
     });
 
     const stranger = await createTestUser(harness.db);
@@ -277,7 +277,7 @@ describe('GET /api/issues/:id/job-history (W2.1.4)', () => {
     );
 
     const token = await signUserToken(stranger.id);
-    const res = await getHistory(issueId, 'plan', token);
+    const res = await getHistory(issueId, 'reconcile', token);
     expect(res.status).toBe(403);
   });
 
@@ -294,7 +294,7 @@ describe('GET /api/issues/:id/job-history (W2.1.4)', () => {
   it('returns 404 for an unknown issue id', async () => {
     const { user } = await seedUserProject('admin');
     const token = await signUserToken(user.id);
-    const res = await getHistory(randomUUID(), 'plan', token);
+    const res = await getHistory(randomUUID(), 'reconcile', token);
     expect(res.status).toBe(404);
   });
 
@@ -307,10 +307,10 @@ describe('GET /api/issues/:id/job-history (W2.1.4)', () => {
       ownerId: user.id,
       issueId,
       runId,
-      type: 'review',
+      type: 'verify_skill',
     });
     const token = await signUserToken(user.id);
-    const res = await getHistory(issueId, 'plan', token);
+    const res = await getHistory(issueId, 'reconcile', token);
     expect(res.status).toBe(200);
     const rows = await res.json();
     expect(rows).toEqual([]);

@@ -139,13 +139,6 @@ export const CANONICAL_LADDER: readonly IssueStatus[] = [
 ];
 
 const HANDOFF_KEYS: Partial<Record<JobType, string>> = {
-  triage: 'summary, suggestedApproach, complexity, risks, affectedAreas',
-  clarify: 'outcome, environment, stepsVerified[], rootCauseHypothesis, openQuestions',
-  plan: 'planSummary, affectedFiles[], acceptanceChecklist[], unknowns',
-  code: 'filesModified[], decisions[], verificationCommands[], knownLimitations[], commitSha',
-  review: 'verdict, findings[], reviewedDiffSha',
-  test: 'result, resultReason, failures[], flakyTests[]',
-  fix: 'filesModified[], decisions[], reviewItemsResolved[], knownLimitations[]',
   drive: 'outcome, summary, workDone[], openQuestions[], commitSha',
 };
 
@@ -180,7 +173,7 @@ export const FORGE_FACTS: readonly ForgeFact[] = [
     tier: 'contextual',
     scope: 'global',
     namespace: 'forge',
-    appliesTo: ['clarify', 'release', 'drive'],
+    appliesTo: ['drive'],
     version: 5,
     render: (ctx) => `## Release-notes shape
 Seed \`releaseNotes\` via ${
@@ -231,7 +224,7 @@ ${tail}`;
     tier: 'contextual',
     scope: 'global',
     namespace: 'forge',
-    appliesTo: ['code', 'fix', 'drive'],
+    appliesTo: ['drive'],
     version: 4,
     render: () => `## Worktree isolation
 Implement on the ISS-* branch inside a dedicated git worktree under \`.claude/worktrees/iss-XX-short-title/\` — never check out branches in the main tree.
@@ -249,7 +242,7 @@ Implement on the ISS-* branch inside a dedicated git worktree under \`.claude/wo
     tier: 'contextual',
     scope: 'global',
     namespace: 'forge',
-    appliesTo: ['release', 'drive'],
+    appliesTo: ['drive'],
     version: 2,
     render: () => `## Remove this issue's worktree
 The branch you just merged leaves a worktree behind at \`.claude/worktrees/iss-XX-short-title/\`, carrying its own \`node_modules\` and build cache — routinely 0.8-3 GB each. Nothing else ever removes it, so releasing without this step is how a runner box fills up and every project on it starts failing.

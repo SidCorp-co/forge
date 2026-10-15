@@ -41,28 +41,6 @@ const EMPTY: StageOverrides = {
   declaredNames: null,
 };
 
-export const SKILL_MAINTENANCE_LABEL = 'skill-maintenance';
-
-export const SKILL_MAINTENANCE_TOOLS = [
-  'mcp__forge__forge_skills_update',
-  'mcp__forge__forge_skills_push',
-  'mcp__forge__forge_skills_sync_status',
-] as const;
-
-export function applySkillMaintenanceCarveout(
-  overrides: StageOverrides,
-  opts: { hasSkillMaintenanceLabel: boolean; jobType: string },
-): number {
-  if (!opts.hasSkillMaintenanceLabel) return 0;
-  if (opts.jobType !== 'code' && opts.jobType !== 'fix') return 0;
-  if (!overrides.disallowedTools) return 0;
-  const before = overrides.disallowedTools.length;
-  overrides.disallowedTools = overrides.disallowedTools.filter(
-    (t) => !SKILL_MAINTENANCE_TOOLS.includes(t as (typeof SKILL_MAINTENANCE_TOOLS)[number]),
-  );
-  return before - overrides.disallowedTools.length;
-}
-
 export const DEFAULT_STAGE_MODELS: Record<string, string> = {
   open: 'sonnet',
   in_progress: 'sonnet',

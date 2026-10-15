@@ -231,15 +231,6 @@ describe('db/schema — jobs', () => {
       'cancelled',
     ]);
     expect(jobTypes).toEqual([
-      'triage',
-      'clarify',
-      'plan',
-      'code',
-      'review',
-      'test',
-      'staging',
-      'release',
-      'fix',
       'custom',
       'pm',
       'smoke',

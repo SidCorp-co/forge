@@ -21,6 +21,7 @@ let harness: TestDatabase;
 let app: Hono<{ Variables: RequestIdVars }>;
 let userToken: string;
 let m: {
+  runPmEscalationSweep: typeof import('../../src/pm/escalation-sweeper.js').runPmEscalationSweep;
   spawnPmSession: typeof import('../../src/pm/spawner.js').spawnPmSession;
   signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
 };
@@ -34,7 +35,12 @@ beforeAll(async () => {
   await registerIntegrationsForTest();
   const pm = await import('../../src/pm/spawner.js');
   const jwt = await import('../../src/auth/jwt.js');
-  m = { spawnPmSession: pm.spawnPmSession, signUserToken: jwt.signUserToken };
+  const escalation = await import('../../src/pm/escalation-sweeper.js');
+  m = {
+    runPmEscalationSweep: escalation.runPmEscalationSweep,
+    spawnPmSession: pm.spawnPmSession,
+    signUserToken: jwt.signUserToken,
+  };
   const { jobProjectRoutes } = await import('../../src/jobs/routes.js');
   const { issueExtrasRoutes } = await import('../../src/issues/extras-routes.js');
   const { pmRoutes } = await import('../../src/pm/routes.js');
@@ -138,4 +144,47 @@ describe('lanes the pool cannot brief are refused by name', () => {
     expect(await count('jobs')).toBe(0);
     expect(await count('pipeline_runs')).toBe(0);
   });
+
+  it('an expired escalation whose fallback names a retired staged type is skipped by name and mints nothing', async () => {
+    const issueId = await issueRow();
+    await harness.db.execute(sql`
+      INSERT INTO pm_decisions (project_id, cause, summary, event_ref, actions)
+      VALUES (${projectId}, 'tick', 'escalated',
+              ${JSON.stringify({ expiresAt: new Date(Date.now() - 60_000).toISOString() })}::jsonb,
+              ${JSON.stringify([
+                {
+                  type: 'escalate',
+                  fallback: { type: 'dispatch', issueId, jobType: 'code', payload: {} },
+                },
+              ])}::jsonb)
+    `);
+    const swept = await m.runPmEscalationSweep();
+    expect(swept).toMatchObject({ executed: 0, skipped: 1, errors: 0 });
+    expect(await count('jobs')).toBe(0);
+    const recorded = (await harness.db.execute(sql`
+      SELECT event_ref->'fallbackOutcomes' AS outcomes FROM pm_decisions
+      WHERE project_id = ${projectId} AND cause = 'escalation-timeout'
+    `)) as unknown as Array<{ outcomes: Array<{ status: string; reason?: string }> }>;
+    expect(recorded[0]?.outcomes).toEqual([
+      { type: 'dispatch', status: 'skipped', reason: 'retired_job_type' },
+    ]);
+  });
+
+  it.each(['triage', 'clarify', 'plan', 'code', 'review', 'test', 'staging', 'release', 'fix'])(
+    'a manual job of the retired staged type %s answers 400 naming it and mints nothing',
+    async (type) => {
+      const res = await userPost(`/api/projects/${projectId}/jobs`, {
+        type,
+        payload: { promptString: 'run the old stage' },
+      });
+      expect(res.status).toBe(400);
+      const body = await res.text();
+      expect(body).toContain(
+        `job type '${type}' was a stage of the staged pipeline and is retired`,
+      );
+      expect(body).toContain('custom, pm, smoke, release_batch, reconcile, verify_skill, drive');
+      expect(await count('jobs')).toBe(0);
+      expect(await count('pipeline_runs')).toBe(0);
+    },
+  );
 });

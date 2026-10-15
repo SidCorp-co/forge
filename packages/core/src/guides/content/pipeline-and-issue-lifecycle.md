@@ -104,7 +104,7 @@ Two rules follow, both enforced at triage:
 Within a pipeline step: do your real work, post your findings/decision comment, write your handoff — status transition comes **last**, after all of that. The next step only picks the issue up once status has actually moved, so setting it early (before the comment lands) means the next step can start reading a half-written record.
 
 ### Bounce states, reachable from anywhere
-`needs_info` (requirements missing/unclear), `waiting` (blocked on a human decision), `reopen` (regression or failed check), `on_hold` (deliberate pause) are not restricted to the happy-path ladder — set one the moment the condition is true rather than forcing a step that can't succeed. `on_hold` specifically means "active work, paused on purpose" — don't use it to park work that never started (leave that at `draft`) and don't use it to survive a mechanical crash (the system already reverts and retries those automatically).
+`needs_info` (requirements missing/unclear), `waiting` (blocked on a human decision), `reopen` (regression or failed check), `on_hold` (deliberate pause) are not restricted to the happy-path ladder — set one the moment the condition is true rather than forcing a step that can't succeed. `on_hold` specifically means "active work, paused on purpose" — don't use it to park work that never started (leave that at `draft`) and don't use it to survive a mechanical crash (the system already retries those automatically).
 
 ### Leaving a park is symmetric with entering one
 Entering `waiting`/`on_hold` is open from anywhere (each costs the written reason above), and leaving one costs nothing. Set the next status through the UI, REST or MCP and the next step dispatches — no actor check, no `unblock` flag, no admin. If you set a forward status and no job appears, that is a real fault (a stuck runner, a held job, a blocking dependency), not a rule — read `pipelineHealth.waitingOn`.
@@ -162,4 +162,4 @@ Two things write it: `forge_issues` `mark_merged`, which is a claim you make, an
 When you report an issue, fill `title`, `description`, `priority`, `category` — and leave the rest to the pipeline.
 
 ### A crash is not a reason to hold
-If your job fails mechanically (process crash, non-zero exit), the system itself reverts the issue to the stage's entry status and re-dispatches with a retry budget — you never need to (and shouldn't) set `on_hold` to paper over that.
+If a pool job fails mechanically (process crash, non-zero exit), the system retries it within a retry budget, or holds it once the budget is spent, and leaves the issue's status where it was — you never need to (and shouldn't) set `on_hold` to paper over that.
