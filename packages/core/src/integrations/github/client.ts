@@ -9,6 +9,59 @@ import {
 import type { GitHubConfig, GitHubSecrets, HeadersLike } from './types.js';
 
 const READ_TIMEOUT_MS = 6000;
+
+/** Compare answers kept for the process, oldest out first: one between two commits never changes. */
+const COMPARE_CACHE_LIMIT = 1000;
+const compares = new Map<string, unknown>();
+/** GETs on their way to GitHub, so a second identical read joins the first instead of calling. */
+const inFlight = new Map<string, Promise<unknown>>();
+
+const SHA = /^[0-9a-f]{7,40}$/i;
+
+/** Whether a GET is a compare between two commits named by sha: its answer is content-addressed. */
+export function immutableCompare(path: string): boolean {
+  const range = /\/compare\/([^/?]+)$/.exec(path.split('?')[0] ?? '')?.[1];
+  if (!range) return false;
+  const [base, head] = decodeURIComponent(range).split('...');
+  return SHA.test(base ?? '') && SHA.test(head ?? '');
+}
+
+function keepCompare(key: string, data: unknown): void {
+  compares.delete(key);
+  compares.set(key, data);
+  if (compares.size > COMPARE_CACHE_LIMIT) {
+    const oldest = compares.keys().next().value;
+    if (oldest !== undefined) compares.delete(oldest);
+  }
+}
+
+/**
+ * One GET as GitHub answers it, at most once at a time per key: a compare between two shas is
+ * answered from the cache after its first success, and identical reads in flight share one call.
+ * A failure is never kept, since it is about the moment.
+ */
+async function readOnce<T>(key: string, path: string, call: () => Promise<T>): Promise<T> {
+  const immutable = immutableCompare(path);
+  if (immutable && compares.has(key)) return compares.get(key) as T;
+  const pending = inFlight.get(key);
+  if (pending) return pending as Promise<T>;
+  const read = call().then((data) => {
+    if (immutable) keepCompare(key, data);
+    return data;
+  });
+  inFlight.set(key, read);
+  try {
+    return await read;
+  } finally {
+    inFlight.delete(key);
+  }
+}
+
+/** Test seam: the process's compare cache and in-flight reads, forgotten. */
+export function forgetGitHubReads(): void {
+  compares.clear();
+  inFlight.clear();
+}
 const PUBLISH_TIMEOUT_MS = 8000;
 
 /**
@@ -146,29 +199,32 @@ export function buildRepoClient(args: {
     owner,
     repo,
     fullName,
-    async get<T>(path: string): Promise<T> {
-      try {
-        await mint();
-      } catch (err) {
-        if (err instanceof GitHubAuthError)
-          throw new GitHubReadError(err.status, err.message, 'mint');
-        throw err;
-      }
-      try {
-        const res = await octokit.request({
-          method: 'GET',
-          url: path,
-          request: { signal: AbortSignal.timeout(READ_TIMEOUT_MS) },
-        });
-        return res.data as T;
-      } catch (err) {
-        const answered = responseOf(err);
-        if (!answered) throw err;
-        throw new GitHubReadError(
-          answered.status,
-          `GET ${path} on ${fullName} returned HTTP ${answered.status}`,
-        );
-      }
+    get<T>(path: string): Promise<T> {
+      const key = `${args.config.apiBaseUrl ?? ''}|${installationId}|${path}`;
+      return readOnce(key, path, async () => {
+        try {
+          await mint();
+        } catch (err) {
+          if (err instanceof GitHubAuthError)
+            throw new GitHubReadError(err.status, err.message, 'mint');
+          throw err;
+        }
+        try {
+          const res = await octokit.request({
+            method: 'GET',
+            url: path,
+            request: { signal: AbortSignal.timeout(READ_TIMEOUT_MS) },
+          });
+          return res.data as T;
+        } catch (err) {
+          const answered = responseOf(err);
+          if (!answered) throw err;
+          throw new GitHubReadError(
+            answered.status,
+            `GET ${path} on ${fullName} returned HTTP ${answered.status}`,
+          );
+        }
+      });
     },
 
     async publish<T>(args: {

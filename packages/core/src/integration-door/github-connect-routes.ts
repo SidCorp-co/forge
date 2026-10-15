@@ -15,7 +15,6 @@
 
 import type { Context, MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import {
   type ConnectState,
@@ -44,6 +43,7 @@ import {
 import { SourceHostCallError } from '../integrations/source-host/index.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../lib/logger.js';
+import { providerRefused } from '../lib/provider-refusal.js';
 import {
   type AuthVars,
   assertEmailVerified,
@@ -171,10 +171,11 @@ githubConnectRoutes.get(
       );
     } catch (err) {
       if (!(err instanceof SourceHostCallError)) throw err;
-      throw new HTTPException(502, {
-        message: `${err.message}, so the repositories this App can see are unknown${err.detail ? `: ${err.detail}` : ''}`,
-        cause: { code: 'GITHUB_REFUSED', details: { httpStatus: err.status } },
-      });
+      throw providerRefused(
+        `${err.message}, so the repositories this App can see are unknown${err.detail ? `: ${err.detail}` : ''}`,
+        'GITHUB_REFUSED',
+        { details: { httpStatus: err.status }, retryAt: err.retryAt },
+      );
     }
   },
 );

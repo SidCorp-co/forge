@@ -1,6 +1,5 @@
 import type { Context } from 'hono';
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import {
   appAdvancedSettingsUrl,
@@ -33,9 +32,11 @@ import {
   notifyConnectionChanged,
   summarizeConnection,
 } from '../integrations/index.js';
+import { SourceHostCallError } from '../integrations/source-host/index.js';
 import { projectOrgOf } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../lib/logger.js';
+import { providerRefused } from '../lib/provider-refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { isPlatformAdmin } from '../middleware/require-admin.js';
 import { badRequest } from '../middleware/route-errors.js';
@@ -190,10 +191,11 @@ githubAppRoutes.post(
     try {
       identity = await readAppIdentity({ appId, privateKey });
     } catch (err) {
-      throw new HTTPException(502, {
-        message: `${err instanceof Error ? err.message : String(err)}, so the App cannot be completed`,
-        cause: { code: 'GITHUB_REFUSED' },
-      });
+      throw providerRefused(
+        `${err instanceof Error ? err.message : String(err)}, so the App cannot be completed`,
+        'GITHUB_REFUSED',
+        { retryAt: err instanceof SourceHostCallError ? err.retryAt : null },
+      );
     }
     const check = await clientSecretHolds({ clientId: identity.clientId, clientSecret });
     if (!check.holds) throw badRequest({ clientSecret: check.reason });

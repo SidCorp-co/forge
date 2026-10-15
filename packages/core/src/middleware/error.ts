@@ -50,6 +50,7 @@ function extractCause(cause: unknown): {
   code?: string;
   details?: unknown;
   wwwAuthenticate?: string;
+  retryAfter?: number;
 } {
   // Reject Error instances (Node fs `ENOENT`, pg `23505`, libuv `EACCES`…).
   // Their `.code` would otherwise be propagated into the response body's
@@ -58,10 +59,12 @@ function extractCause(cause: unknown): {
   // surface a custom code must pass a plain `cause` object.
   if (cause && typeof cause === 'object' && !(cause instanceof Error)) {
     const obj = cause as Record<string, unknown>;
-    const out: { code?: string; details?: unknown; wwwAuthenticate?: string } = {};
+    const out: { code?: string; details?: unknown; wwwAuthenticate?: string; retryAfter?: number } =
+      {};
     if (typeof obj.code === 'string') out.code = obj.code;
     if ('details' in obj) out.details = obj.details;
     if (typeof obj.wwwAuthenticate === 'string') out.wwwAuthenticate = obj.wwwAuthenticate;
+    if (typeof obj.retryAfter === 'number') out.retryAfter = obj.retryAfter;
     return out;
   }
   return {};
@@ -91,7 +94,7 @@ export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = (err, c)
 
   if (err instanceof HTTPException) {
     const status = err.status;
-    const { code: causeCode, details, wwwAuthenticate } = extractCause(err.cause);
+    const { code: causeCode, details, wwwAuthenticate, retryAfter } = extractCause(err.cause);
     const code = causeCode ?? statusToCode(status);
     const message = err.message || statusToCode(status);
 
@@ -118,6 +121,7 @@ export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = (err, c)
     if (status === 401 && wwwAuthenticate) {
       c.header('WWW-Authenticate', wwwAuthenticate);
     }
+    if (retryAfter !== undefined) c.header('Retry-After', String(retryAfter));
 
     return httpProblem(c, status, body);
   }

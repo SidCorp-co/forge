@@ -32,6 +32,7 @@ import {
   findBindingWithConnectionById,
   notFound,
 } from '../integrations/index.js';
+import { providerRefused } from '../lib/provider-refusal.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
@@ -114,7 +115,7 @@ async function answer(c: Context, run: () => Promise<unknown>): Promise<Response
   } catch (err) {
     const said = coolifyRefusal(err);
     if (said === null) throw err;
-    throw new HTTPException(502, { message: said, cause: { code: 'COOLIFY_API_ERROR' } });
+    throw providerRefused(said, 'COOLIFY_API_ERROR');
   }
 }
 

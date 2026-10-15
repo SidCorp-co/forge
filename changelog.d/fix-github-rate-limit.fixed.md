@@ -1,0 +1,1 @@
+**A GitHub rate limit stops the reads instead of feeding them**: each compare between two commits is asked once, the release sweep pages files only for diverged commits, and a limited installation answers 424 with its reset until then.
