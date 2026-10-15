@@ -26,9 +26,8 @@ let stored: Doc;
 let sent: unknown[];
 /** Every project PATCH body the page put on the wire. */
 let projectSent: Array<Record<string, unknown>>;
-/** What the next project PATCH answers with, where a case plants a refusal. */
+/** What the next project PATCH and environments PATCH answer with, where a case plants a failure. */
 let projectRefusal: ApiError | null;
-/** What the next environments PATCH answers with, where a case plants a failure. */
 let envFailure: ApiError | null;
 /** Issues per status, as the list's buckets count them. */
 let counts: Record<string, number>;
