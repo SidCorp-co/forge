@@ -14,6 +14,7 @@ import {
 	shapeMoved,
 	shapeOf,
 	shapePatch,
+	shipsNothing,
 } from "./shape-form";
 import type { ReleaseChainEntry, ReleaseReadiness } from "./types";
 
@@ -121,6 +122,29 @@ function readiness(over: Partial<ReleaseReadiness>): ReleaseReadiness {
 		...over,
 	} as ReleaseReadiness;
 }
+
+describe("shipsNothing", () => {
+	const draft = (p: ProjectDetail, change: Partial<ShapeDraft> = {}) => ({ ...readShape(p), ...change });
+
+	it("answers from the shape picked, never from an empty chain under a shape that ships", () => {
+		const p = project([{ branch: "dev" }]);
+		expect(shipsNothing(draft(p, { baseBranch: "" }), [{ branch: "dev" }])).toBe(false);
+		expect(shipsNothing(draft(p, { shape: "promote", baseBranch: "  " }), [{ branch: "dev" }])).toBe(false);
+	});
+
+	it("says the two shapes with no release ship nothing, whatever chain is stored", () => {
+		const p = project([{ branch: "dev" }]);
+		expect(shipsNothing(draft(p, { shape: "no-release" }), [{ branch: "dev" }])).toBe(true);
+		expect(shipsNothing(draft(p, { shape: "no-repository" }), [{ branch: "dev" }])).toBe(true);
+	});
+
+	it("keeps the stored chain's answer for a clash nobody has picked a shape for", () => {
+		const clash = project([{ branch: "main" }], { kind: "website" });
+		expect(shipsNothing(draft(clash), [{ branch: "main" }])).toBe(false);
+		const unknown = project([], { kind: "kiosk" });
+		expect(shipsNothing(draft(unknown), [])).toBe(true);
+	});
+});
 
 describe("releaseAnswer", () => {
 	const blocker = { code: "RELEASE_ROSTER_EMPTY", evaluated: true, message: "Nothing waits." };

@@ -42,6 +42,7 @@ import {
   shapeMoved,
   shapePatch,
   shapeSchema,
+  shipsNothing,
 } from "../shape-form";
 import type { ReleaseChainEntry } from "../types";
 import { EnvironmentBlocks } from "./environment-blocks";
@@ -261,7 +262,7 @@ function ShapePage({
         form={envForm}
         canEdit={canEdit}
         liveBranch={liveBranchText(d, draftChain)}
-        shipsNothing={draftChain.length === 0}
+        shipsNothing={shipsNothing(d, storedChain)}
       />
 
       {!shipsNothingNow && (
