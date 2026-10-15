@@ -1,8 +1,7 @@
 "use client";
 
-// The session page's row is read once and judged against a clock that keeps moving, and a check-in
-// moves no event. So a running session's check-in is read from the one live-session read the
-// Pipeline page polls, and the page judges whichever check-in is newer.
+// A check-in moves no event, so the session page takes the newer of its row's check-in and the one
+// the Pipeline page's polled read holds, rather than judging a row read once against a moving clock.
 
 import { useMemo } from "react";
 import { useSessionsAndHolds } from "@/features/pipeline/hooks";

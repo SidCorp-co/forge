@@ -92,7 +92,7 @@ function mount() {
   );
 }
 
-/** The orgs have answered and the preferences have been asked for and not answered: the window the stand-in used to fill. */
+/** The orgs have answered and the preferences have been asked for and not answered: the window a stand-in would fill. */
 async function orgsAnswered() {
   await waitFor(() => expect({ orgs: orgsRead, asked: preferences.asked }).toEqual({ orgs: 2, asked: true }));
   await act(async () => {});

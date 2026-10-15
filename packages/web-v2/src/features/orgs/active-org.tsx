@@ -40,8 +40,7 @@ export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
   const { data: orgsData } = useOrgs();
   const prefsQ = usePreferences();
   const prefs = prefsQ.data;
-  // Until the stored choice has been read there is no active org: a stand-in shown first and then
-  // replaced by the stored one reads, to everything watching, as a person switching orgs.
+  // No active org until the stored choice is read: a stand-in it replaced would read as a switch.
   const prefsRead = prefsQ.isSuccess || prefsQ.isError;
 
   const orgs = useMemo(() => sortOrgs(orgsData ?? []), [orgsData]);
