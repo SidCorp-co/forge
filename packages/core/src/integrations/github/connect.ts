@@ -80,23 +80,27 @@ export function readConnectState(
 }
 
 /**
- * The manifest GitHub renders as the App it is about to create. `redirect_url`
- * receives the conversion code; `hook_attributes.url` is where deliveries land.
+ * The manifest GitHub renders as the App it is about to create. `redirect_url` receives the
+ * conversion code and `setup_url` the installation, both in the person's browser, so they are built
+ * on `returnBaseUrl`, the origin that carries their session; `hook_attributes.url` is where GitHub's
+ * servers deliver, built on the API's public origin.
  */
 export function buildAppManifest(args: {
   appName: string;
   webBaseUrl: string;
   apiBaseUrl: string;
+  returnBaseUrl: string;
   projectSlug: string;
 }): Record<string, unknown> {
   const web = args.webBaseUrl.replace(/\/+$/, '');
   const api = args.apiBaseUrl.replace(/\/+$/, '');
+  const back = args.returnBaseUrl.replace(/\/+$/, '');
   return {
     name: args.appName,
     url: web,
     hook_attributes: { url: inboundWebhookUrl(api, args.projectSlug), active: true },
-    redirect_url: `${api}/api/integrations/github/manifest-callback`,
-    setup_url: `${api}/api/integrations/github/installed`,
+    redirect_url: `${back}/api/integrations/github/manifest-callback`,
+    setup_url: `${back}/api/integrations/github/installed`,
     setup_on_update: true,
     public: false,
     default_permissions: APP_PERMISSIONS,
