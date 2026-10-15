@@ -7,6 +7,7 @@ import {
   formatPipelineConfigError,
   formatSettingsWriteError,
   isRetryableApiError,
+  readFailure,
 } from './error';
 
 describe('formatPipelineConfigError', () => {
@@ -309,5 +310,29 @@ describe('a server error that carries only its HTTP status text', () => {
   it('never prints a bare number, for a failure that carries no message at all', () => {
     expect(formatApiError(new ApiError(500, ''))).not.toMatch(/\d{3}/);
     expect(formatApiError(new ApiError(422, ''))).not.toMatch(/\d{3}/);
+  });
+});
+
+describe('readFailure — a failed read in the product\'s words, and the server\'s own beside it', () => {
+  it('says a server failure by its status and keeps the code and message for the technical view', () => {
+    const planted = 'planted failure: relation "issue_leases" does not exist';
+    expect(readFailure(new ApiError(500, planted, 'INTERNAL'))).toEqual({
+      said: 'The server ran into a problem and could not finish the request.',
+      technical: `500 INTERNAL — ${planted}`,
+    });
+  });
+
+  it('says a refusal it has words for in those words', () => {
+    expect(readFailure(new ApiError(403, 'not a project member', 'FORBIDDEN'))).toEqual({
+      said: 'You do not have access to this resource.',
+      technical: '403 FORBIDDEN — not a project member',
+    });
+  });
+
+  it('says an unreached server as one, and keeps what the browser said', () => {
+    expect(readFailure(new TypeError('Failed to fetch'))).toEqual({
+      said: 'Forge could not be reached. Check your connection, then try again.',
+      technical: 'Failed to fetch',
+    });
   });
 });

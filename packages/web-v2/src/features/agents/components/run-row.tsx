@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Icon, MonoTag } from "@/design";
+import { Icon, MonoTag, SILENCE_TONE } from "@/design";
 import { TONE_META } from "@/design/status";
 import { formatRelativeTime } from "@/lib/utils/format";
 import {
@@ -77,7 +77,7 @@ function CoreReading({ row, now }: { row: RunSessionRow; now: number }) {
   return (
     <span className="fg-caption flex min-w-0 flex-col gap-0.5 text-muted sm:flex-none sm:text-right">
       {lines.map((l) => (
-        <span key={l} className="truncate">
+        <span key={l} className="truncate" style={l === silence ? { color: TONE_META[SILENCE_TONE].fg } : undefined}>
           {l}
         </span>
       ))}

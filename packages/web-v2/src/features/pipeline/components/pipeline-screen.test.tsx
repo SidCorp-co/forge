@@ -7,6 +7,7 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "@/lib/api/client";
 import type { SessionsAndHolds } from "../types";
 import { PipelineScreen } from "./pipeline-screen";
 
@@ -183,6 +184,17 @@ describe("the Pipeline page with nothing to show, or no reading", () => {
     expect(screen.getByText("Couldn't read sessions and holds")).toBeInTheDocument();
     screen.getByRole("button", { name: /retry/i }).click();
     expect(refetch).toHaveBeenCalled();
+  });
+
+  it("says what failed in the product's words, and keeps the server's code and message under Technical details", () => {
+    const planted = 'planted failure: relation "issue_leases" does not exist';
+    query = { data: undefined, isError: true, error: new ApiError(500, planted, "INTERNAL"), refetch: vi.fn() };
+    screenFor();
+    expect(screen.getByText("The server ran into a problem and could not finish the request.")).toBeInTheDocument();
+    const details = screen.getByText("Technical details").closest("details");
+    expect(details).not.toBeNull();
+    expect(details).not.toHaveAttribute("open");
+    expect(within(details as HTMLElement).getByText(`500 INTERNAL — ${planted}`)).toBeInTheDocument();
   });
 
   it("keeps the last reading when a refresh fails, and says when it was read", () => {

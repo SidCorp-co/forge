@@ -140,10 +140,30 @@ describe('the counts beside the lists the Needs you tile is read from', () => {
 
     const totals = attention.projectTotals[slug];
     expect(totals?.awaitingInput).toBe(2);
-    expect(totals?.awaitingOutsideBlockers).toBe(1);
+    expect(totals?.awaitingOutsideBlockers).toBe(0);
     const blockersTotal = health.find((h) => h.projectSlug === slug)?.blockersTotal ?? 0;
-    expect(blockersTotal).toBe(3);
+    expect(blockersTotal).toBe(4);
     // four distinct issues are owed to this viewer or parked; the two sources sum to four.
     expect((totals?.awaitingOutsideBlockers ?? 0) + blockersTotal).toBe(4);
+  });
+
+  it("lists a waiting issue somebody else owns, which the viewer's attention response leaves out", async () => {
+    // j15's scratch reading: the headline counted it as blocked on a person and no list named it.
+    const other = (await createTestUser(harness.db)).id;
+    await createTestProjectMember(harness.db, { userId: other, projectId, role: 'member' });
+    await issueAt('waiting', false, other);
+
+    const attention = await get<{ projectTotals: Record<string, unknown> }>('/api/me/attention');
+    const health =
+      await get<
+        Array<{ projectSlug: string; blockers: Array<{ status: string }>; blockersTotal: number }>
+      >('/api/projects/health');
+
+    expect(attention.projectTotals[slug]).toBeUndefined();
+    const row = health.find((h) => h.projectSlug === slug);
+    expect({ listed: row?.blockers.map((b) => b.status), total: row?.blockersTotal }).toEqual({
+      listed: ['waiting'],
+      total: 1,
+    });
   });
 });

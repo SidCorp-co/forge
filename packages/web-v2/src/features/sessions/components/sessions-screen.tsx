@@ -23,6 +23,8 @@ import {
   PageTitle,
   SegmentedControl,
   SessionRowSkeleton,
+  SILENCE_TONE,
+  SILENCE_WORD,
   StatusChip,
   Table,
   TBody,
@@ -35,6 +37,7 @@ import {
   type SegmentOption,
   useElapsed,
 } from "@/design";
+import { TONE_META } from "@/design/status";
 import { useOrgScopedProjects, useProject, useProjects } from "@/features/projects/hooks";
 import { useDevices } from "@/features/runners/hooks";
 import { IssueRefBadge } from "@/features/issues/components/issue-ref-badge";
@@ -333,9 +336,9 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
             <StatPill label="Active" value={String(stats.active)} />
             <StatPill label="Queued" value={String(stats.queued)} />
             <StatPill
-              label="Zombie jobs"
+              label={SILENCE_WORD}
               value={String(stats.zombies)}
-              tone={stats.zombies > 0 ? "alert" : "default"}
+              ink={stats.zombies > 0 ? TONE_META[SILENCE_TONE].fg : undefined}
             />
             <StatPill
               label="Median wait"
@@ -498,24 +501,14 @@ interface RowActions {
   abort: MutationLike;
 }
 
-/** Compact inline metric (ISS-391) — replaces the old big-number StatCard grid.
- *  `label: value` on one line; the value turns red in `alert` tone (e.g. zombie
- *  jobs > 0). */
-function StatPill({
-  label,
-  value,
-  tone = "default",
-}: {
-  label: string;
-  value: string;
-  tone?: "default" | "alert";
-}) {
+/** Compact inline metric (ISS-391): `label: value` on one line, the value in the ink its state takes. */
+function StatPill({ label, value, ink }: { label: string; value: string; ink?: string }) {
   return (
     <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
       <span className="fg-overline">{label}</span>
       <span
         className="fg-body-sm font-semibold tabular-nums"
-        style={tone === "alert" ? { color: "var(--color-red)" } : undefined}
+        style={ink ? { color: ink } : undefined}
       >
         {value}
       </span>

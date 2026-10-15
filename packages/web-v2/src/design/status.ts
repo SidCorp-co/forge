@@ -35,6 +35,11 @@ export const TONE_META: Record<SemanticTone, ColorMeta> = {
   infra: { label: "Infra", fg: "var(--slate-600)", bg: "var(--slate-50)", dot: "var(--slate-500)" },
 };
 
+/** The one word and the one tone for a running session silent past the line `sessionSilence` draws,
+ *  on every screen: silent is not failed, so it is amber, not red. */
+export const SILENCE_WORD = "Quiet";
+export const SILENCE_TONE: SemanticTone = "attention";
+
 export type StatusKey =
   | "running"
   | "queued"
@@ -64,10 +69,9 @@ export const STATUS_KEY_TONE: Record<StatusKey, SemanticTone> = {
   shipped: "shipped",
   archived: "archived",
   // The review/test stages are AUTOMATED pipeline work in motion → `active`
-  // (cobalt), not amber. Amber is reserved strictly for "a human must act".
+  // (cobalt), not amber. Amber is for what wants a person's eye: a human must act, or a session went quiet.
   review: "active",
-  // A LIVE stalled session is genuinely attention-worthy (ISS-322) → failure.
-  zombie: "failure",
+  zombie: SILENCE_TONE,
   // ISS-322 — benign auto-cleanup / stale-sweep stays neutral, never red.
   swept: "neutral",
 };
@@ -92,7 +96,7 @@ export const STATUS_KEY_LABEL: Record<StatusKey, string> = {
   shipped: "Released",
   archived: "Closed",
   review: "In review",
-  zombie: "Zombie",
+  zombie: SILENCE_WORD,
   swept: "Swept",
 };
 

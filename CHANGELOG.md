@@ -3194,7 +3194,13 @@
 ### Fixed
 
 - **Every figure that says live counts the sessions the Pipeline page lists.** The rail and projects console no longer count open runs as live, a runner working sessions reads busy, and the operations page calls runs open. (ISS-1228)
-- **The project dashboard counts the sessions the Pipeline page shows.** It no longer reads none live while sessions work. The costliest spend step is drawn again, and a long held reason sits on one line with More. (ISS-1228)
+- **The project dashboard counts the sessions the Pipeline page shows.** It no longer reads none live while sessions work, and the costliest spend step is drawn again. (ISS-1228)
+- **A session page left open says what the Pipeline page says.** It no longer flags a working session a minute after opening, and the sessions list re-reads itself too. (ISS-1228)
+- **A session that has gone silent reads Quiet, in amber, on every screen.** The session page, sessions list, runner strip and Agents runs tab said Stalled or Zombie, some in red. Silent is not failed. (ISS-1228)
+- **Needs you lists an issue waiting on a person whoever filed it.** The headline no longer counts a waiting issue the list leaves out. (ISS-1228)
+- **A held reason of a sentence or two is shown whole.** More appears only past three lines. (ISS-1228)
+- **When the Pipeline page cannot read, it says why in plain words.** The server's own message sits under Technical details. (ISS-1228)
+- **Opening a project link right after switching organizations stays on that project.** It no longer jumps to the projects list. (ISS-1228)
 - **The pipeline help page says what Settings holds, and that a gated draft is dropped, not closed.** It described a per-stage Auto/Manual/Skip setting that does not exist, and told readers to close a draft, which is refused. (ISS-1229)
 - **Getting started no longer walks an issue through stages that are gone.** It now says one agent carries an issue from filed to shipped, as the public guide index does. (ISS-1229)
 - **A name prints as you typed it.** An empty Connections page no longer opens your organization's name with a capital, and a session listed beside another for the same issue keeps its title's own case. (ISS-1171)

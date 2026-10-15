@@ -1,5 +1,5 @@
 import type { SemanticTone } from "@/design/status";
-import { STALLED_THRESHOLD_MS } from "@/features/sessions/types";
+import { STALLED_THRESHOLD_MS, sessionSilence } from "@/features/sessions/types";
 import { formatElapsed } from "@/lib/utils/format";
 import type { HeldIssue, Holder, LiveSession, PersonOwes } from "./types";
 
@@ -70,18 +70,17 @@ export interface CheckIn {
   quiet: boolean;
 }
 
-/** How long ago the session last checked in, and whether a running one has gone quiet. */
+/** How long ago the session last checked in, and whether a running one has gone quiet, judged by the
+ *  one silence reading the session page and the sessions list also read. */
 export function checkInOf(
-  session: Pick<LiveSession, "status" | "lastHeartbeatAt">,
+  session: Pick<LiveSession, "status" | "lastHeartbeatAt" | "startedAt">,
   now: number,
 ): CheckIn {
+  const silence = sessionSilence(session, now);
+  const quiet = silence.state === "stale" || silence.state === "reaping";
   const at = session.lastHeartbeatAt ? Date.parse(session.lastHeartbeatAt) : Number.NaN;
-  if (Number.isNaN(at)) {
-    return { text: "No check-in yet", quiet: session.status === "running" };
-  }
-  const since = Math.max(0, now - at);
-  const quiet = session.status === "running" && since > QUIET_AFTER_MS;
-  return { text: `${formatElapsed(since)} ago`, quiet };
+  if (Number.isNaN(at)) return { text: "No check-in yet", quiet };
+  return { text: `${formatElapsed(Math.max(0, now - at))} ago`, quiet };
 }
 
 export interface OrderedSession {
