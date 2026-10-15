@@ -5,7 +5,7 @@
 
 import { ISSUE_STATUS_LABELS } from "@forge/contracts/issue-vocabulary";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Banner,
   Button,
@@ -23,7 +23,7 @@ import {
 } from "@/design";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
-import { type Hop, type Shape, SHAPES, type ShapeDraft } from "../shape-form";
+import { type Hop, IN_FLIGHT, type Shape, SHAPES, type ShapeDraft } from "../shape-form";
 import { inlineCode } from "./inline-code";
 import type { ReleaseCrossing } from "../types";
 
@@ -269,7 +269,9 @@ function strandedKeys(err: unknown): string[] {
   return Array.isArray(issues) ? issues.filter((k): k is string => typeof k === "string") : [];
 }
 
-/** A refused project save, said whole, with the issues it names one click away. */
+/** A refused project save, said whole, with the issues it names one click away. It sits in the
+ *  page under the shape it refuses rather than in the sticky save bar, where it would cover that
+ *  choice, and is scrolled into view when it appears. */
 export function ProjectRefusal({
   error,
   slug,
@@ -279,12 +281,16 @@ export function ProjectRefusal({
   slug?: string;
   onDismiss: () => void;
 }) {
+  const shown = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (error) shown.current?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+  }, [error]);
   if (!error) return null;
   const keys = strandedKeys(error);
   const chain = error instanceof ApiError && error.code === "RELEASE_CHAIN_STRANDS_WORK";
   return (
     <Banner tone="danger" onDismiss={onDismiss}>
-      <div className="space-y-2" data-testid="project-refusal">
+      <div ref={shown} className="space-y-2" data-testid="project-refusal">
         <p>Nothing was saved. {formatApiError(error)}</p>
         {keys.length > 0 && slug && (
           <p className="flex flex-wrap gap-x-3 gap-y-1">
@@ -306,11 +312,39 @@ export function ProjectRefusal({
   );
 }
 
+/** What each in-flight status is called in a sentence about issues standing at it. */
+const STANDING: Record<(typeof IN_FLIGHT)[number], string> = {
+  in_progress: "in progress",
+  developed: "developed, waiting to be tested",
+  testing: "in testing",
+  awaiting_release: "waiting for release",
+};
+
+/** The in-flight issues by what each is doing, e.g. "1 in progress and 2 waiting for release". */
+function standingParts(byStatus: Record<string, number> | undefined): string[] {
+  return IN_FLIGHT.filter((s) => (byStatus?.[s] ?? 0) > 0).map((s) => `${byStatus?.[s]} ${STANDING[s]}`);
+}
+
+/** The sentence naming the in-flight issues by their status, never as one word none of them holds. */
+export function inFlightSentence(inFlight: number, byStatus: Record<string, number> | undefined): string {
+  const one = inFlight === 1;
+  const parts = standingParts(byStatus);
+  const routed = `the new shape decides how ${one ? "it lands and is released" : "each one lands and is released"}.`;
+  if (parts.length === 1) {
+    const only = IN_FLIGHT.find((s) => (byStatus?.[s] ?? 0) > 0) as (typeof IN_FLIGHT)[number];
+    return `${inFlight} ${one ? "issue is" : "issues are"} ${STANDING[only]}, and ${routed}`;
+  }
+  if (parts.length === 0) return `${inFlight} ${one ? "issue is" : "issues are"} started and not finished, and ${routed}`;
+  const listed = `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+  return `${inFlight} issues are started and not finished: ${listed}. The new shape decides how each one lands and is released.`;
+}
+
 /** The confirmation a shape change asks for: the project name where work is in flight. */
 export function ShapeConfirm({
   open,
   projectName,
   inFlight,
+  byStatus,
   to,
   onConfirm,
   onClose,
@@ -319,6 +353,8 @@ export function ShapeConfirm({
   projectName: string;
   /** Issues started and not closed; `null` while that count could not be read. */
   inFlight: number | null;
+  /** The issue count at each status, which names what the in-flight issues are doing. */
+  byStatus?: Record<string, number> | undefined;
   to: string;
   onConfirm: () => void;
   onClose: () => void;
@@ -341,8 +377,8 @@ export function ShapeConfirm({
           <>
             <p className="fg-body-sm text-fg">
               {inFlight === null
-                ? "How many issues are under way could not be read, so this asks as if some are."
-                : `${inFlight} ${inFlight === 1 ? "issue is" : "issues are"} under way, and ${inFlight === 1 ? "it" : "they"} will be routed by the new shape.`}
+                ? "How many issues are started and not finished could not be read, so this asks as if some are."
+                : inFlightSentence(inFlight, byStatus)}
             </p>
             <Field label="Type the project name to confirm" hint={projectName}>
               <Input
@@ -355,7 +391,7 @@ export function ShapeConfirm({
           </>
         ) : (
           <p className="fg-body-sm text-muted">
-            No issue is under way, so nothing already started is re-routed.
+            No issue is started and not finished, so nothing already started is re-routed.
           </p>
         )}
         <div className="mt-auto flex items-center justify-end gap-2.5 pt-2">

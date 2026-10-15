@@ -9,6 +9,7 @@
 // the operator comes looking for an app before a credential. What a row holds,
 // and what it deliberately does not: `connection-row.tsx`.
 
+import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 import {
   EmptyState,
@@ -141,6 +142,14 @@ export function IntegrationsScreen() {
   const selected = items.find((c) => c.id === selectedId) ?? null;
   const closeDrawer = useCallback(() => setSelectedId(null), []);
 
+  const projectsHere = useMemo(
+    () =>
+      (projectsQ.data ?? []).filter(
+        (p) => !p.archivedAt && (activeOrg ? p.orgId === activeOrg.id : true),
+      ),
+    [projectsQ.data, activeOrg],
+  );
+
   const scopeName = activeOrg
     ? activeOrg.isPersonal
       ? "your personal space"
@@ -164,21 +173,32 @@ export function IntegrationsScreen() {
         />
       );
     }
-    if (all.length > 0) {
-      return (
-        <EmptyState
-          title={`No connections in ${scopeName}`}
-          message={`You can see ${all.length} connection${all.length > 1 ? "s" : ""} in your other spaces — switch space in the sidebar to reach ${all.length > 1 ? "them" : "it"}.`}
-          mascot={false}
-        />
-      );
-    }
     return (
-      <EmptyState
-        title="No connections yet"
-        message="Create one by configuring an integration in any project's settings → Integrations."
-        mascot={false}
-      />
+      <>
+        {all.length > 0 ? (
+          <EmptyState
+            title={`No connections in ${scopeName}`}
+            message={`You can see ${all.length} connection${all.length > 1 ? "s" : ""} in your other spaces — switch space in the sidebar to reach ${all.length > 1 ? "them" : "it"}.`}
+            mascot={false}
+          />
+        ) : (
+          <EmptyState
+            title="No connections yet"
+            message="A connection is added from a project's settings, under Integrations."
+            mascot={false}
+          />
+        )}
+        {projectsQ.isError ? (
+          <p className="pb-10 text-center text-sm text-muted" data-testid="add-connection">
+            The projects in {scopeName} could not be read, so none is offered to add a connection in.{" "}
+            <button type="button" className={ADD_LINK} onClick={() => projectsQ.refetch()}>
+              Read them again
+            </button>
+          </p>
+        ) : projectsQ.data ? (
+          <AddConnection projects={projectsHere} scopeName={scopeName} />
+        ) : null}
+      </>
     );
   }
 
@@ -260,5 +280,60 @@ export function IntegrationsScreen() {
         selected && <ConnectionEditDrawer connection={selected} onClose={closeDrawer} />
       }
     </PageContainer>
+  );
+}
+
+// No `fg-*` type class here: an unlayered one sets its own colour and would grey the link out.
+const ADD_LINK = "text-sm font-semibold text-accent-text hover:underline";
+
+/** The one act that fills an empty directory: a connection is added from a project's own
+ *  Integrations settings, so the way forward is that tab of a project in this space. */
+function AddConnection({
+  projects,
+  scopeName,
+}: {
+  projects: { id: string; slug: string; name: string }[];
+  scopeName: string;
+}) {
+  const [chosen, setChosen] = useState(projects[0]?.slug ?? "");
+  // The link is built from the project row the choice names, never from the select's own value.
+  const picked = projects.find((p) => p.slug === chosen) ?? projects[0];
+  const slug = picked?.slug ?? "";
+  const href = (s: string) => `/projects/${encodeURIComponent(s)}/settings?tab=integrations`;
+  if (projects.length === 0) {
+    return (
+      <p className="fg-body-sm pb-10 text-center text-muted" data-testid="add-connection">
+        {scopeName.charAt(0).toUpperCase() + scopeName.slice(1)} has no project yet, and a connection is
+        added from one.{" "}
+        <Link href="/projects?new=1" className={ADD_LINK}>
+          Create a project
+        </Link>
+      </p>
+    );
+  }
+  if (projects.length === 1) {
+    const only = projects[0] as { slug: string; name: string };
+    return (
+      <p className="pb-10 text-center" data-testid="add-connection">
+        <Link href={href(only.slug)} className={ADD_LINK}>
+          Add a connection in {only.name}
+        </Link>
+      </p>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-2 pb-10" data-testid="add-connection">
+      <div className="w-full max-w-[320px]">
+        <NativeSelect
+          value={slug}
+          onChange={(e) => setChosen(e.target.value)}
+          aria-label="Project to add a connection in"
+          options={projects.map((p) => ({ value: p.slug, label: p.name }))}
+        />
+      </div>
+      <Link href={href(slug)} className={ADD_LINK}>
+        Add a connection in this project
+      </Link>
+    </div>
   );
 }

@@ -12,9 +12,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Banner, Button, type SettingsForm } from "@/design";
 import {
+	asSentence,
 	describeSettings,
 	formatPipelineConfigError,
 	formatSettingsWriteError,
+	NOTHING_SAVED,
 	settingLabel,
 	settingsThatMoved,
 	writeConflicts,
@@ -26,6 +28,7 @@ export function SaveRefusedBanner({
 	onDismiss,
 	document = "pipeline-config",
 	draft,
+	saved = NOTHING_SAVED,
 }: {
 	projectId: string;
 	/** The refusal, or null where the last save was not refused. */
@@ -37,6 +40,9 @@ export function SaveRefusedBanner({
 	 *  re-read replaced. */
 	// biome-ignore lint/suspicious/noExplicitAny: every page's draft shape, read only through the contract's own paths.
 	draft: Pick<SettingsForm<any>, "takeStored" | "replaced" | "kept" | "dismissReplaced">;
+	/** The sentence the refusal opens with: what of the save was written, which is nothing unless
+	 *  the page wrote another part of it first. */
+	saved?: string;
 }) {
 	const qc = useQueryClient();
 	const conflicts = writeConflicts(error);
@@ -74,9 +80,11 @@ export function SaveRefusedBanner({
 		<Banner tone={conflicts.length > 0 ? "attention" : "danger"} onDismiss={onDismiss}>
 			<div className="space-y-2">
 				<p className={conflicts.length > 0 && !explained ? "line-clamp-2 md:line-clamp-none" : undefined}>
-					{document === "environments"
-						? formatSettingsWriteError(error)
-						: formatPipelineConfigError(error)}
+					{conflicts.length > 0
+						? formatSettingsWriteError(error, saved)
+						: `${saved} ${asSentence(
+								document === "environments" ? formatSettingsWriteError(error) : formatPipelineConfigError(error),
+							)}`}
 				</p>
 				{conflicts.length > 0 && (
 					<>

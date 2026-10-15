@@ -26,8 +26,9 @@ let stored: Doc;
 let sent: unknown[];
 /** Every project PATCH body the page put on the wire. */
 let projectSent: Array<Record<string, unknown>>;
-/** What the next project PATCH answers with, where a case plants a refusal. */
+/** What the next project PATCH and environments PATCH answer with, where a case plants a failure. */
 let projectRefusal: ApiError | null;
+let envFailure: ApiError | null;
 /** Issues per status, as the list's buckets count them. */
 let counts: Record<string, number>;
 /** Held open, or made to fail, by the cases about a read that has not landed. */
@@ -67,6 +68,7 @@ vi.mock("@/lib/api/client", async () => {
 			if (path.endsWith("/environments") && init?.method === "PATCH") {
 				const write = JSON.parse(init.body ?? "null") as { base: Doc; patch: Doc };
 				sent.push(write);
+				if (envFailure) throw envFailure;
 				if (!write || !("base" in write) || !("patch" in write)) {
 					throw new ApiError(400, "an environments write is `{ base, patch }`", "ENVIRONMENTS_WRITE_SHAPE");
 				}
@@ -172,6 +174,7 @@ beforeEach(() => {
 	sent = [];
 	projectSent = [];
 	projectRefusal = null;
+	envFailure = null;
 	counts = {};
 	held = null;
 	fails = false;
@@ -448,7 +451,7 @@ describe("saving a shape", () => {
 		await mount(project());
 		await waitFor(() => expect(screen.getByRole("radio", { name: /no repository/i })).toBeEnabled());
 		const dialog = await pick(/repository, no release/i);
-		expect(within(dialog).getByText(/2 issues are under way/)).toBeInTheDocument();
+		expect(within(dialog).getByText("2 issues are started and not finished: 1 in progress and 1 in testing. The new shape decides how each one lands and is released.")).toBeInTheDocument();
 		const confirm = within(dialog).getByRole("button", { name: "Change the shape" });
 		expect(confirm).toBeDisabled();
 		fireEvent.change(within(dialog).getByLabelText(/type the project name/i), { target: { value: "Des" } });
@@ -528,9 +531,9 @@ describe("a save that would strand work", () => {
 		expect(within(banner).getByRole("link", { name: "ISS-4" })).toHaveAttribute("href", "/projects/desk/issues/ISS-4");
 		expect(within(banner).getByRole("link", { name: "ISS-9" })).toBeInTheDocument();
 		expect(banner).toHaveTextContent(
-			"2 open issues carry merge marks that would stop counting as a landing once this project has no repository. Finish them first, then change the shape. Or keep their marks counting: on each issue, press Unmark, set Work lands to “In git”, and mark each one merged again; then change the shape.",
+			"2 unfinished issues carry merge marks that would stop counting as a landing once this project has no repository. Finish them first, then change the shape. Or keep their marks counting: on each issue, press Unmark, set Work lands to “In git”, and mark each one merged again; then change the shape.",
 		);
-		expect(banner.textContent).not.toMatch(/PROJECT_KIND_STRANDS_WORK|`|\/api\/|forge_issues|agent|no control/);
+		expect(banner.textContent).not.toMatch(/PROJECT_KIND_STRANDS_WORK|`|\/api\/|forge_issues|agent|no control|\bopen issue/);
 		expect(toast).not.toHaveBeenCalled();
 	});
 
@@ -546,9 +549,72 @@ describe("a save that would strand work", () => {
 		fireEvent.click(within(await pick(/repository, no release/i)).getByRole("button", { name: "Change the shape" }));
 		const banner = await screen.findByTestId("project-refusal");
 		expect(banner).toHaveTextContent(
-			"1 open issue carries a merge mark that would stop counting as a landing once this project has a repository. Finish it first, then change the shape. Or keep its mark counting: on the issue, press Unmark, set Work lands to “Outside git”, and mark it merged again; then change the shape.",
+			"1 unfinished issue carries a merge mark that would stop counting as a landing once this project has a repository. Finish it first, then change the shape. Or keep its mark counting: on the issue, press Unmark, set Work lands to “Outside git”, and mark it merged again; then change the shape.",
 		);
 		expect(banner.textContent).not.toMatch(/pull request|agent|no control/);
+	});
+
+	it("names issues waiting for release as waiting for release, never as under way", async () => {
+		counts = { awaiting_release: 2 };
+		await mount(project());
+		await waitFor(() => expect(screen.getByRole("radio", { name: /no repository/i })).toBeEnabled());
+		const dialog = await pick(/repository, no release/i);
+		expect(dialog).toHaveTextContent(
+			"2 issues are waiting for release, and the new shape decides how each one lands and is released.",
+		);
+		expect(dialog.textContent).not.toMatch(/under way/);
+	});
+
+	it("says the ordinary confirmation without calling anything under way", async () => {
+		const dialog = await (async () => {
+			await mount(project());
+			return pick(/no repository/i);
+		})();
+		expect(dialog).toHaveTextContent("No issue is started and not finished, so nothing already started is re-routed.");
+		expect(dialog.textContent).not.toMatch(/under way/);
+	});
+
+	it("shows a refusal under the shape it refuses, outside the sticky save bar", async () => {
+		projectRefusal = new ApiError(409, "PROJECT_KIND_STRANDS_WORK: a mark would stop counting.", "PROJECT_KIND_STRANDS_WORK", {
+			issues: ["ISS-4"],
+			total: 1,
+			from: "standard",
+			to: "website",
+			landingShape: "git",
+		});
+		await mount(project());
+		fireEvent.click(within(await pick(/no repository/i)).getByRole("button", { name: "Change the shape" }));
+		const banner = await screen.findByTestId("project-refusal");
+		expect(banner.closest(".sticky")).toBeNull();
+		const radios = screen.getByRole("radiogroup");
+		expect(radios.compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(screen.getByRole("heading", { name: "Environments" }).compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+	});
+
+	it("says a failed environments save opens with nothing saved", async () => {
+		envFailure = new ApiError(500, "", undefined);
+		await mount();
+		clear(/preview url/i);
+		save();
+		await waitFor(() => expect(sent).toHaveLength(1));
+		expect(
+			await screen.findByText("Nothing was saved. The server ran into a problem and could not finish the request."),
+		).toBeInTheDocument();
+	});
+
+	it("says what was saved where the project half landed and the environments half failed, in one banner", async () => {
+		envFailure = new ApiError(500, "", undefined);
+		await mount();
+		fireEvent.change(screen.getByLabelText("Repository URL"), { target: { value: "git@example.com:o/desk.git" } });
+		clear(/preview url/i);
+		save();
+		await waitFor(() => expect(sent).toHaveLength(1));
+		expect(
+			await screen.findByText(
+				"The shape and repository were saved; the environments were not. The server ran into a problem and could not finish the request.",
+			),
+		).toBeInTheDocument();
+		expect(screen.queryByText(/Nothing was saved/)).toBeNull();
 	});
 
 	it("says a save that landed once, in the tab's own name", async () => {

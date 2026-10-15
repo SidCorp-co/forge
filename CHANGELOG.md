@@ -3190,6 +3190,8 @@
 
 ### Fixed
 
+- **Shape & release names issues by what they are doing, and its refusal no longer covers the shape it refuses.** The confirmation counts those in progress and waiting for release; a failed save opens with what was saved. (ISS-1171)
+- **An empty Connections page offers a way to add one.** It links a project's Integrations settings, or creating a project where there is none. The Mark merged panel no longer shows backticks. (ISS-1171)
 - **A refused settings save reads in words, once.** An empty refusal no longer reads "Bad Request"; shape refusals name what to press; the release blocker opens where a live deploy target is added; narrow screens hint at more tabs. (ISS-1171)
 - **A cancelled release says which silence it measured.** Its reason, and the release run's stall reading, name whether nothing was written since a box took the job or since the release's last write. (ISS-1319)
 - **A release batch whose box went silent no longer blocks the project.** After 25 minutes with nothing written to its ledger it is cancelled and its issues return to the release gate, so a new release can start. (ISS-1319)
