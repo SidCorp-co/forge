@@ -15,6 +15,7 @@ import { resolveApiBaseUrl } from '../integrations/index.js';
 import { logger } from '../lib/logger.js';
 import { refuser } from '../lib/refusal.js';
 import { platformAdminNames } from '../middleware/require-admin.js';
+import { projectOrgHead } from '../projects/index.js';
 
 export const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
 
@@ -56,13 +57,19 @@ export async function nameStrandedApp(code: string): Promise<StrandedApp | null>
 }
 
 /** Where a finished connect lands: the page it began on. */
-export function finishedAt(
+/**
+ * Where a finished connect lands: Integrations to bind, or the connections section of the project
+ * it was started from, addressed by the slug the web routes on.
+ */
+export async function finishedAt(
   state: Pick<ConnectState, 'returnTo' | 'projectId'>,
   connectionId: string,
-) {
-  return state.returnTo === 'integrations' || !state.projectId
-    ? `${webBaseUrl()}/integrations?bind=${encodeURIComponent(connectionId)}`
-    : `${webBaseUrl()}/projects/${state.projectId}/settings/integrations`;
+): Promise<string> {
+  const bindAt = `${webBaseUrl()}/integrations?bind=${encodeURIComponent(connectionId)}`;
+  if (state.returnTo === 'integrations' || !state.projectId) return bindAt;
+  const project = await projectOrgHead(state.projectId);
+  if (!project) return bindAt;
+  return `${webBaseUrl()}/projects/${encodeURIComponent(project.slug)}/settings?tab=connections#integrations`;
 }
 
 export function stateSecret(): string {

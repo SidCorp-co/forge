@@ -1,0 +1,1 @@
+**Connect GitHub is one button, and binding opens pre-matched.** Each project is ticked with the repository it declared or is named after, ambiguity named; a project without one connects it from the App's repositories.

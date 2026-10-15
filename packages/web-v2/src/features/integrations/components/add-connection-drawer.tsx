@@ -1,9 +1,10 @@
-// FB-128 — adding a connection is finished on `/integrations`: pick the projects it serves and the
-// app, fill the app's own connect form, and one save binds every chosen project. The form is the
+// FB-128 — adding a connection is finished on `/integrations`: choose the app, pick the projects it
+// serves, fill the app's own connect form, and one save binds every chosen project. The form is the
 // provider's project section, rendered for the first chosen project with the rest handed to it
 // through `AlsoBindProvider`, so there is one connect form per provider, not a second copy here.
-// A provider that mints its credential itself names its own `createStep` in the registry, run for the
-// first project ticked; its return lands back here, where `BindConnectionDrawer` binds it.
+// A provider that mints its credential itself names its own `createStep` in the registry: one step
+// for the active org, no project ticked, whose return lands back here, where
+// `BindConnectionDrawer` binds it.
 
 import { createElement, lazy, Suspense, useState } from "react";
 import { Checkbox, Field, NativeSelect, Skeleton, SlideOver } from "@/design";
@@ -25,10 +26,13 @@ export function AddConnectionDrawer({
   open,
   onClose,
   projects,
+  orgId,
 }: {
   open: boolean;
   onClose: () => void;
   projects: SpaceProject[];
+  /** The active org a provider-minted connection is made for. */
+  orgId: string | null;
 }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
@@ -36,24 +40,13 @@ export function AddConnectionDrawer({
   const [provider, setProvider] = useState("");
   const ordered = projects.filter((p) => chosen.includes(p.id));
   const [first, ...rest] = ordered;
+  const CREATE_STEP = CREATE_STEPS.get(provider);
   const toggle = (id: string) =>
     setChosen((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   return (
     <SlideOver open={open} onClose={onClose} title={t("integrations.addFlow.title")} width={560}>
       <div className="flex flex-col gap-5" data-testid="add-connection-flow">
-        <Field label={t("integrations.addFlow.projects")}>
-          {projects.length === 0 ? (
-            <p className="fg-body-sm text-subtle">{t("integrations.addNoProject")}</p>
-          ) : (
-            <div className="flex flex-col gap-1">
-              {projects.map((p) => (
-                <Checkbox key={p.id} checked={chosen.includes(p.id)} onChange={() => toggle(p.id)} label={p.name} />
-              ))}
-            </div>
-          )}
-        </Field>
-
         <Field label={t("integrations.addFlow.app")}>
           <NativeSelect
             value={provider}
@@ -66,23 +59,41 @@ export function AddConnectionDrawer({
           />
         </Field>
 
-        {!first || !provider ? (
-          <p className="fg-body-sm text-muted">{t("integrations.addFlow.pickFirst")}</p>
-        ) : CREATE_STEPS.has(provider) ? (
-          <Suspense fallback={<Skeleton className="h-40 w-full" />}>
-            {createElement(CREATE_STEPS.get(provider) as NonNullable<ReturnType<typeof CREATE_STEPS.get>>, { projectId: first.id })}
-          </Suspense>
+        {CREATE_STEP ? (
+          orgId ? (
+            <Suspense fallback={<Skeleton className="h-40 w-full" />}>{createElement(CREATE_STEP, { orgId })}</Suspense>
+          ) : (
+            <p className="fg-body-sm text-subtle">{t("integrations.addFlow.orgFirst")}</p>
+          )
         ) : (
-          <div className="flex flex-col gap-3">
-            {rest.length > 0 && (
-              <p className="fg-body-sm text-muted">
-                {t("integrations.addFlow.bindsAll", { projects: ordered.map((p) => p.name).join(", ") })}
-              </p>
+          <>
+            <Field label={t("integrations.addFlow.projects")}>
+              {projects.length === 0 ? (
+                <p className="fg-body-sm text-subtle">{t("integrations.addNoProject")}</p>
+              ) : (
+                <div className="flex flex-col gap-1">
+                  {projects.map((p) => (
+                    <Checkbox key={p.id} checked={chosen.includes(p.id)} onChange={() => toggle(p.id)} label={p.name} />
+                  ))}
+                </div>
+              )}
+            </Field>
+
+            {!first || !provider ? (
+              <p className="fg-body-sm text-muted">{t("integrations.addFlow.pickFirst")}</p>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {rest.length > 0 && (
+                  <p className="fg-body-sm text-muted">
+                    {t("integrations.addFlow.bindsAll", { projects: ordered.map((p) => p.name).join(", ") })}
+                  </p>
+                )}
+                <AlsoBindProvider value={rest.map((p) => p.id)}>
+                  <ProviderDetails key={`${provider}:${first.id}`} provider={provider} projectId={first.id} />
+                </AlsoBindProvider>
+              </div>
             )}
-            <AlsoBindProvider value={rest.map((p) => p.id)}>
-              <ProviderDetails key={`${provider}:${first.id}`} provider={provider} projectId={first.id} />
-            </AlsoBindProvider>
-          </div>
+          </>
         )}
       </div>
     </SlideOver>

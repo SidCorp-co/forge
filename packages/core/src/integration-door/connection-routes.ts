@@ -47,14 +47,14 @@ import { requireOrgHeld } from '../permissions/index.js';
 import { readDeployMap } from '../project-config/index.js';
 import { summarizeBindings } from './binding-standing.js';
 import { bindConnectionInto } from './connect-and-bind.js';
-import { instanceInstallationsFor } from './github-reach.js';
+import { instanceInstallationsFor, suggestionsFor } from './github-reach.js';
 
 /**
  * Reading a connection, as opposed to managing it. Every principal the list
  * route shows a connection to can also read it; only WRITING is gated, on org
  * admin for an org's, and on a platform admin for the instance's own.
  */
-async function loadConnection(
+export async function loadConnection(
   id: string,
   userId: string,
   intent: 'read' | 'manage',
@@ -193,8 +193,9 @@ integrationConnectionsRoutes.post(
 
 /**
  * What this connection can be bound to, as binding-v1 targets a `bindings[].target` takes as they
- * stand: the repositories a GitHub App's installations granted. A provider whose target is typed
- * rather than listed is refused by name, with the fields its target takes.
+ * stand: the repositories a GitHub App's installations granted, with the one each unbound project the
+ * caller administers is offered pre-ticked (`suggestedFor`). A provider whose target is typed rather
+ * than listed is refused by name, with the fields its target takes.
  */
 integrationConnectionsRoutes.get('/:id/targets', async (c) => {
   const connection = await loadConnection(c.req.param('id'), c.get('userId'), 'read');
@@ -224,14 +225,16 @@ integrationConnectionsRoutes.get('/:id/targets', async (c) => {
         ? { installations: await instanceInstallationsFor(c.get('userId'), connection.id) }
         : {}),
     });
+    const targets = listed.repositories.map((r) => ({
+      provider: 'github' as const,
+      installationId: r.installationId,
+      owner: r.owner,
+      repo: r.repo,
+    }));
     return c.json({
-      targets: listed.repositories.map((r) => ({
-        provider: 'github' as const,
-        installationId: r.installationId,
-        owner: r.owner,
-        repo: r.repo,
-      })),
+      targets,
       truncated: listed.truncated,
+      suggestedFor: await suggestionsFor(c.get('userId'), connection.provider, targets),
     });
   } catch (err) {
     if (!(err instanceof SourceHostCallError)) throw err;

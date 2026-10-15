@@ -13,4 +13,5 @@ export const sentry: ProviderModule = {
   section: () => import("./section").then((m) => ({ default: m.SentrySettings })),
   connectionSection: null,
   createStep: null,
+  rowDetail: null,
 };

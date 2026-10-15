@@ -4,9 +4,17 @@
  * of can() and of the recorded installations, never of GitHub's own list of the App's installations.
  */
 
-import { installationsReachableBy } from '../integrations/github/index.js';
+import {
+  installationsReachableBy,
+  type RepositoryTarget,
+  suggestTargets,
+  type TargetSuggestion,
+} from '../integrations/github/index.js';
+import { listBindingsForProject } from '../integrations/index.js';
 import { loadVisibleProjectIds, projectOrgOf } from '../lib/authz.js';
 import { actorFor, can, projectResource } from '../permissions/index.js';
+import { readDeclaredSource } from '../project-config/index.js';
+import { listProjectHeads } from '../projects/index.js';
 
 /** The projects the caller may administer, asked of can() one by one. */
 export async function projectsAdministeredBy(userId: string): Promise<string[]> {
@@ -27,4 +35,28 @@ export async function instanceInstallationsFor(
   const orgs = await Promise.all(administeredProjectIds.map((id) => projectOrgOf(id)));
   const orgIds = [...new Set(orgs.filter((o): o is string => o !== null))];
   return installationsReachableBy({ connectionId, orgIds, administeredProjectIds });
+}
+
+/**
+ * What each project the caller administers is offered pre-ticked among these targets. A project
+ * that already has a live binding of this provider is offered nothing: it has its repository.
+ */
+export async function suggestionsFor(
+  userId: string,
+  provider: string,
+  targets: readonly RepositoryTarget[],
+): Promise<TargetSuggestion[]> {
+  const administered = await projectsAdministeredBy(userId);
+  if (administered.length === 0 || targets.length === 0) return [];
+  const unbound: string[] = [];
+  for (const id of administered) {
+    const pairs = await listBindingsForProject(id);
+    if (!pairs.some((p) => p.binding.provider === provider && p.binding.active)) unbound.push(id);
+  }
+  if (unbound.length === 0) return [];
+  const heads = await listProjectHeads(unbound);
+  const projects = await Promise.all(
+    heads.map(async (h) => ({ ...h, repository: (await readDeclaredSource(h.id)).repository })),
+  );
+  return suggestTargets(projects, targets);
 }

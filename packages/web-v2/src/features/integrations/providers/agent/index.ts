@@ -12,4 +12,5 @@ export const agent: ProviderModule = {
   section: null,
   connectionSection: null,
   createStep: null,
+  rowDetail: null,
 };

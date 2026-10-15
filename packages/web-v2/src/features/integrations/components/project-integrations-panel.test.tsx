@@ -81,7 +81,7 @@ describe("ProjectIntegrations", () => {
     renderWithQuery(<ProjectIntegrations projectId="p1" />);
     const repository = (await screen.findAllByText("Repository"))[0]?.closest("tr") as HTMLElement;
     expect(within(repository).queryAllByRole("button")).toEqual([]);
-    const connects = screen.getAllByRole("button", { name: /^Connect GitHub/ });
+    const connects = screen.getAllByRole("button", { name: /^Connect (GitHub|repository on GitHub)/ });
     expect(connects).toHaveLength(1);
     const owner = connects[0]?.closest("tr") as HTMLElement;
     expect(owner.id).toBe("integration-github");
@@ -90,10 +90,11 @@ describe("ProjectIntegrations", () => {
     expect(document.activeElement).toBe(connects[0]);
   });
 
-  it("offers the GitHub connect act on a github.com project, and it opens the GitHub drawer", async () => {
+  it("offers to connect the repository on a github.com project's GitHub row, and it opens the GitHub drawer", async () => {
     serve([UNREACHED_REPOSITORY, GITHUB_OPEN]);
     renderWithQuery(<ProjectIntegrations projectId="p1" />);
-    const connect = await screen.findByRole("button", { name: "Connect GitHub" });
+    const connect = await screen.findByRole("button", { name: "Connect repository on GitHub" });
+    expect(connect.textContent).toBe("Connect repository");
     expect(connect.closest("tr")?.textContent).toContain("GitHub");
     await userEvent.click(connect);
     expect(await screen.findByRole("dialog")).toBeTruthy();
@@ -118,7 +119,7 @@ describe("ProjectIntegrations", () => {
     await screen.findAllByText("Repository");
     expect(screen.queryByText("no sync data")).toBeNull();
     expect(screen.queryByText("no GitHub integration configured")).toBeNull();
-    const github = screen.getByRole("button", { name: "Connect GitHub" });
+    const github = screen.getByRole("button", { name: "Connect repository on GitHub" });
     expect(github).toBeTruthy();
   });
 

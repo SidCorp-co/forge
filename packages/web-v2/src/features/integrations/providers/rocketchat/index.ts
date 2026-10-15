@@ -14,4 +14,5 @@ export const rocketchat: ProviderModule = {
   connectionSection: () =>
     import("./connection-config").then((m) => ({ default: m.RocketchatConnectionConfig })),
   createStep: null,
+  rowDetail: null,
 };

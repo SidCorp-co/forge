@@ -47,7 +47,7 @@ const EMPTY_APPS: string[] = [];
  * Where a connection is made: here, for every project it serves (FB-128). The drawer binds them in
  * the same save; a project's own Integrations tab can still attach one, but is never the only way.
  */
-function AddConnection({ projects }: { projects: Array<{ id: string; slug: string; name: string }> }) {
+function AddConnection({ projects, orgId }: { projects: Array<{ id: string; slug: string; name: string }>; orgId: string | null }) {
   const [open, setOpen] = useState(false);
   const t = useCopy();
   return (
@@ -55,7 +55,7 @@ function AddConnection({ projects }: { projects: Array<{ id: string; slug: strin
       <Button variant="primary" size="sm" icon="plus" aria-expanded={open} onClick={() => setOpen(true)}>
         {t("integrations.add")}
       </Button>
-      {open ? <AddConnectionDrawer open onClose={() => setOpen(false)} projects={projects} /> : null}
+      {open ? <AddConnectionDrawer open onClose={() => setOpen(false)} projects={projects} orgId={orgId} /> : null}
     </>
   );
 }
@@ -119,14 +119,23 @@ export function IntegrationsScreen() {
   const all = connections.data?.items ?? [];
   // ISS-477 — scope the directory to the active org: a personal org shows the user's own
   // (`ownerType:'user'`) credentials; a team org shows credentials it owns. Connections from other
-  // orgs (or another principal) never appear.
+  // orgs (or another principal) never appear. The instance's own GitHub App serves every org, so it
+  // appears in each; core narrows its usage to the projects the caller sees.
   const inScope = activeOrg
-    ? all.filter((c) => (activeOrg.isPersonal ? c.ownerType === "user" : c.ownerType === "org" && c.ownerId === activeOrg.id))
+    ? all.filter(
+        (c) =>
+          c.ownerType === "instance" ||
+          (activeOrg.isPersonal ? c.ownerType === "user" : c.ownerType === "org" && c.ownerId === activeOrg.id),
+      )
     : all;
   const providersPresent = [...new Set(inScope.map((c) => c.provider))].sort();
   const items = inScope.filter((c) => (provider === "" || c.provider === provider) && matchesQuery(c, query, projectName, language));
   const ownerLabel = (c: ConnectionDirectoryItem) =>
-    c.ownerType === "org" ? (orgNameById.get(c.ownerId) ?? t("integrations.owner.org")) : t("overview.personal");
+    c.ownerType === "instance"
+      ? t("integrations.owner.instance")
+      : c.ownerType === "org"
+        ? (orgNameById.get(c.ownerId) ?? t("integrations.owner.org"))
+        : t("overview.personal");
   const groups = groupConnectionsByApp(items, language);
   const spaceProjects = (projectsQ.data ?? [])
     .filter((p) => p.archivedAt === null && (!activeOrg || p.orgId === activeOrg.id))
@@ -147,7 +156,7 @@ export function IntegrationsScreen() {
     <PageContainer className="flex flex-col gap-5">
       <PageTitle>{t("integrations.title")}</PageTitle>
       <TopBarActions>
-        <AddConnection projects={spaceProjects} />
+        <AddConnection projects={spaceProjects} orgId={activeOrg?.id ?? null} />
       </TopBarActions>
 
       <GitHubStrandedBanner params={params} onDismiss={clearReturn} />

@@ -42,10 +42,13 @@ export interface ProviderModule {
   connectionSection: (() => Promise<{ default: ConnectionSection }>) | null;
   /**
    * The step that makes a connection whose credential the provider mints itself, opened from the
-   * workspace Integrations page for the first project ticked. Null where the credential is pasted
-   * into the provider's own project form, which then binds every ticked project in one save.
+   * workspace Integrations page for the active org, with no project ticked: its return lands back
+   * there, where the connection is bound. Null where the credential is pasted into the provider's
+   * own project form, which then binds every ticked project in one save.
    */
-  createStep: (() => Promise<{ default: ComponentType<{ projectId: string }> }>) | null;
+  createStep: (() => Promise<{ default: ComponentType<{ orgId: string }> }>) | null;
+  /** What a directory row adds below its usage line, read for that connection; null for nothing. */
+  rowDetail: (() => Promise<{ default: ComponentType<{ connectionId: string }> }>) | null;
 }
 
 /** Every provider this build knows, in the order a list renders them. */

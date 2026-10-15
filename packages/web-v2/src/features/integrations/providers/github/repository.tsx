@@ -8,6 +8,7 @@ import { IntegrationEnabledControl } from "../../components/integration-enabled-
 import {
   useBindConnection,
   useDeleteProviderIntegration,
+  useGitHubConnect,
   useGitHubRepositories,
   useUpdateProviderIntegration,
 } from "../../hooks";
@@ -201,21 +202,24 @@ export function SetRepository({
  * Bind a project to a repository the App can already see. The picker lists what
  * each installation actually granted, so a project can only point at a
  * repository the credential reaches. This is the no-binding-row path; a project
- * that already has a row goes through `SetRepository` above.
+ * that already has a row goes through `SetRepository` above. On the instance's
+ * App, a repository it does not see yet is added on GitHub, through its install
+ * page, and the return lands back on this project.
  */
 export function UseExistingApp({
   projectId,
   connectionId,
   connectionLabel,
-  onNeedNewApp,
+  instance,
 }: {
   projectId: string;
   connectionId: string;
   connectionLabel: string;
-  onNeedNewApp: () => void;
+  instance: boolean;
 }) {
   const repos = useGitHubRepositories(projectId, connectionId);
   const bind = useBindConnection(projectId);
+  const addOnGitHub = useGitHubConnect(projectId);
   const [fullName, setFullName] = useState("");
   const [agentAccess, setAgentAccess] = useState<AgentAccess>(AGENT_ACCESS_CLOSED);
   const t = useCopy();
@@ -259,14 +263,27 @@ export function UseExistingApp({
 
         {bind.isError && <Banner tone="danger">{formatApiError(bind.error)}</Banner>}
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Button onClick={submit} disabled={!chosen || bind.isPending}>
             {bind.isPending ? t("integrations.github.connecting") : t("integrations.github.connectRepo")}
           </Button>
-          <Button variant="ghost" size="sm" onClick={onNeedNewApp}>
-            {t("integrations.github.separateApp")}
-          </Button>
+          {instance && (
+            <Button
+              variant="ghost"
+              size="sm"
+              icon="github"
+              disabled={addOnGitHub.isPending}
+              onClick={() =>
+                void addOnGitHub.mutateAsync({}).then((res) => {
+                  if (res.kind === "install") window.location.assign(res.installUrl);
+                })
+              }
+            >
+              {t("integrations.github.addRepoOnGitHub")}
+            </Button>
+          )}
         </div>
+        {addOnGitHub.isError && <Banner tone="danger">{formatApiError(addOnGitHub.error)}</Banner>}
       </PageSectionBody>
     </PageSection>
   );

@@ -55,13 +55,12 @@ function ConnectedState({
 }
 
 /**
- * One App per organization, one binding per project. An existing App is offered
- * first; creating another is the deliberate path, not the default.
+ * One App serves the instance, one binding per project. A project with no
+ * repository connects one the App already sees; there is no second App to make.
  */
 export function GitHubSettings({ projectId }: { projectId: string }) {
   const list = useIntegrationsList(projectId);
   const connections = useConnections();
-  const [forceCreate, setForceCreate] = useState(false);
   const [changing, setChanging] = useState(false);
   const t = useCopy();
 
@@ -108,19 +107,18 @@ export function GitHubSettings({ projectId }: { projectId: string }) {
     );
   }
 
-  const first = reusable[0];
-  if (first && !forceCreate) {
+  // the instance's App first; an App made before it still serves the projects it reaches
+  const app = reusable.find((c) => c.ownerType === "instance") ?? reusable[0];
+  if (app) {
     return (
       <UseExistingApp
         projectId={projectId}
-        connectionId={first.id}
-        connectionLabel={first.displayName ?? t("integrations.github.existingApp")}
-        onNeedNewApp={() => setForceCreate(true)}
+        connectionId={app.id}
+        connectionLabel={app.displayName ?? t("integrations.github.existingApp")}
+        instance={app.ownerType === "instance"}
       />
     );
   }
 
-  return (
-    <CreateApp projectId={projectId} onBack={first ? () => setForceCreate(false) : null} />
-  );
+  return <CreateApp projectId={projectId} />;
 }

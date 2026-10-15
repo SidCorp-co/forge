@@ -1,14 +1,19 @@
 
 
-import { useId, useState } from "react";
+import { createElement, lazy, Suspense, useId, useState } from "react";
 import { Badge, Button, Icon, statusReading } from "@/design";
 import type { ConnectionDirectoryItem } from "@forge/contracts/integrations";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { useCanManageConnection, useRemoveConnection, useUpdateConnection } from "../hooks";
 import { connectionTarget, connectionTitle } from "../connection-identity";
-import { providerIcon, providerLabel as labelFor } from "../providers/registry";
+import { PROVIDER_MODULES, providerIcon, providerLabel as labelFor } from "../providers/registry";
 import { DirectoryStatusPill } from "./status-pill";
+
+// Each provider's own row detail, made lazy once here at module scope.
+const ROW_DETAILS = new Map(
+  PROVIDER_MODULES.flatMap((m) => (m.rowDetail ? [[m.provider, lazy(m.rowDetail)] as const] : [])),
+);
 
 /** Projects a connection is bound to, named — the line that tells two credentials apart. */
 function UsageLine({
@@ -154,6 +159,7 @@ export function ConnectionItem({
   const title = connectionTitle(connection, language);
   const target = connectionTarget(connection);
   const providerLabel = labelFor(connection.provider, language);
+  const rowDetail = ROW_DETAILS.get(connection.provider);
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line-subtle px-3 py-2">
@@ -242,10 +248,17 @@ export function ConnectionItem({
           </>
         ) : (
           <span className="fg-body-sm text-subtle">
-            {t("integrations.row.readOnly", { owner: ownerLabel })}
+            {connection.ownerType === "instance"
+              ? t("integrations.row.readOnlyInstance")
+              : t("integrations.row.readOnly", { owner: ownerLabel })}
           </span>
         )}
       </span>
+
+      {/* outside the row's button: its links are controls of their own */}
+      {rowDetail && (
+        <Suspense fallback={null}>{createElement(rowDetail, { connectionId: connection.id })}</Suspense>
+      )}
     </div>
   );
 }

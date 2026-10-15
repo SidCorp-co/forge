@@ -21,6 +21,7 @@ import {
   type ConnectState,
   type ConvertedApp,
   convertManifestCode,
+  findAppsAwaitingCompletion,
   findConnectionOwningInstallation,
   findInstanceGithubApp,
   INSTANCE_OWNER_ID,
@@ -199,7 +200,7 @@ githubCallbackRoutes.get(
       return strandedAt(c, 'not_operator', await nameStrandedApp(code));
     }
     if (!isVaultConfigured()) return strandedAt(c, 'vault_missing', await nameStrandedApp(code));
-    if (await findInstanceGithubApp()) {
+    if ((await findInstanceGithubApp()) || (await findAppsAwaitingCompletion()).length > 0) {
       return strandedAt(c, 'app_exists', await nameStrandedApp(code));
     }
 
@@ -241,7 +242,7 @@ githubCallbackRoutes.get(
       "github: the instance's App created from manifest",
     );
 
-    if (!app.slug) return c.redirect(finishedAt(state, connection.id));
+    if (!app.slug) return c.redirect(await finishedAt(state, connection.id));
     // the install step carries the state on, so the return after it knows the org the
     // installation is recorded for and the page the flow began on without guessing
     const onward = signConnectState(stateSecret(), { ...state, connectionId: connection.id });
@@ -297,12 +298,12 @@ githubCallbackRoutes.get(
       return strandedAt(c, 'install_unproven');
     }
     const projectId = state?.projectId ?? owner?.projectId ?? null;
-    if (!projectId) return c.redirect(finishedAt({ returnTo: 'integrations' }, connectionId));
+    if (!projectId) return c.redirect(await finishedAt({ returnTo: 'integrations' }, connectionId));
     if (!(await can(actorFor(userId), 'project.admin', projectResource(projectId)))) {
       return strandedAt(c, 'not_admin');
     }
     return c.redirect(
-      finishedAt(
+      await finishedAt(
         { projectId, ...(state?.returnTo ? { returnTo: state.returnTo } : {}) },
         connectionId,
       ),
@@ -376,5 +377,5 @@ async function recordProvenInstall(
     { connectionId: app.id, installationId, orgId: state.orgId, account: proof.account.login },
     'github: installation recorded',
   );
-  return c.redirect(finishedAt(state, app.id));
+  return c.redirect(await finishedAt(state, app.id));
 }
