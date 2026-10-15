@@ -22,6 +22,12 @@ vi.mock('./runs.js', () => ({
   setCurrentStep: mocks.setCurrentStep,
 }));
 
+// The job is written through the admission door; its run lock is proved against Postgres in
+// `tests/integration/job-admission-race-e2e.test.ts`, so here the door writes through the mock.
+vi.mock('../jobs/admit.js', () => ({
+  admitJob: async () => ((await mocks.insertReturning()) as { id: string }[])[0],
+}));
+
 import { ActiveJobConflictError, insertAndEnqueueJob } from './enqueue-helper.js';
 
 describe('insertAndEnqueueJob', () => {

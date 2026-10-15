@@ -6,6 +6,7 @@ import { logger } from '../logger.js';
 import { resolvePipelineWedge } from '../pipeline/wedge.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import type { RequiredCapabilities } from '../runners/types.js';
+import { admitJob } from './admit.js';
 import { checkMonthlyBudget } from './budget-check.js';
 import { AUTO_RETRY_PAYLOAD_KEY } from './retry.js';
 import { resolveStageOverrides } from './stage-overrides.js';
@@ -107,24 +108,20 @@ export async function holdJobForReason(job: JobRow, reason: string): Promise<str
     : null;
 
   try {
-    const [created] = await db
-      .insert(jobs)
-      .values({
-        projectId: job.projectId,
-        issueId: job.issueId,
-        pipelineRunId: job.pipelineRunId,
-        createdBy: job.createdBy,
-        type: job.type,
-        payload: { ...basePayload, [HOLD_PAYLOAD_KEY]: state },
-        modelTier: job.modelTier,
-        status: 'held',
-        attempts: job.attempts,
-        retryOf: job.id,
-        failureReason: reason,
-        ...(retryAfterAt ? { retryAfterAt } : {}),
-      })
-      .returning({ id: jobs.id });
-    if (!created) return null;
+    const created = await admitJob(db, {
+      projectId: job.projectId,
+      issueId: job.issueId,
+      pipelineRunId: job.pipelineRunId,
+      createdBy: job.createdBy,
+      type: job.type,
+      payload: { ...basePayload, [HOLD_PAYLOAD_KEY]: state },
+      modelTier: job.modelTier,
+      status: 'held',
+      attempts: job.attempts,
+      retryOf: job.id,
+      failureReason: reason,
+      ...(retryAfterAt ? { retryAfterAt } : {}),
+    });
     logger.info(
       { jobId: created.id, heldFrom: job.id, issueId: job.issueId, ...state },
       'hold: job held',
