@@ -44,7 +44,13 @@ import { ENVIRONMENTS_MOVED_MESSAGE } from './environments.js';
 import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { projectOnboardRoutes } from './onboard-routes.js';
 import { projectFactsRoutes } from './project-facts-routes.js';
-import { PATCHED_PROJECT, PROJECT_DETAIL } from './projections.js';
+import {
+  ARCHIVED_PROJECT,
+  PATCHED_PROJECT,
+  PROJECT_DETAIL,
+  PROJECT_LIST,
+  ROTATED_API_KEY,
+} from './projections.js';
 import {
   chainLiveBranch,
   releaseChainGapFor,
@@ -199,21 +205,7 @@ projectRoutes.get('/', listProjects, declaresInput('query', listProjectsQuerySch
   // Visible = explicit membership (any role) OR org owner/admin on the
   // project's org (implicit admin) — same rule as lib/authz.ts.
   const rows = await db
-    .selectDistinctOn([projects.id], {
-      id: projects.id,
-      slug: projects.slug,
-      name: projects.name,
-      orgId: projects.orgId,
-      orgName: organizations.name,
-      orgIsPersonal: organizations.isPersonal,
-      createdBy: projects.createdBy,
-      memberRole: projectMembers.role,
-      orgRole: organizationMembers.role,
-      apiKey: projects.apiKey,
-      issuePrefix: projects.issuePrefix,
-      archivedAt: projects.archivedAt,
-      createdAt: projects.createdAt,
-    })
+    .selectDistinctOn([projects.id], PROJECT_LIST)
     .from(projects)
     .innerJoin(organizations, eq(organizations.id, projects.orgId))
     .leftJoin(
@@ -234,18 +226,13 @@ projectRoutes.get('/', listProjects, declaresInput('query', listProjectsQuerySch
     // the new list[0] at once. Console display is unaffected (client-sorted).
     .orderBy(projects.id);
 
-  // apiKey is returned as-is — the caller has effective access (ADR 0013
-  // documents the key is embedded in the widget page anyway). Redacting broke
-  // the desktop MCP install (key.length < 16 → 401) and the web widget
-  // snippet generator.
   return c.json(
     answer(
       projectListSchema,
-      rows.map(({ memberRole, orgRole, apiKey, ...row }) => {
+      rows.map(({ memberRole, orgRole, ...row }) => {
         const role = maxProjectRole(memberRole ?? null, orgDerivedProjectRole(orgRole ?? null));
         return {
           ...row,
-          apiKey: role === 'viewer' ? null : apiKey,
           role,
           orgRole: orgRole ?? null,
         };
@@ -300,12 +287,9 @@ projectRoutes.get(
       .innerJoin(devices, eq(devices.id, runners.deviceId))
       .where(and(eq(runners.projectId, id), eq(runners.type, 'claude-code')));
 
-    // apiKey is returned for member+ (ADR 0013); the viewer tier is read-only
-    // and the key is execution-grade (MCP pairing / widget), so it's withheld.
     return c.json(
       answer(projectDetailSchema, {
         ...withRetiredReleaseAxes(project),
-        apiKey: access.role === 'viewer' ? null : project.apiKey,
         role: access.role,
         orgRole: access.orgRole,
         members,
@@ -342,7 +326,7 @@ projectRoutes.post(
           .update(projects)
           .set({ apiKey })
           .where(eq(projects.id, id))
-          .returning({ id: projects.id, apiKey: projects.apiKey });
+          .returning(ROTATED_API_KEY);
         break;
       } catch (err) {
         if (isUniqueViolation(err)) {
@@ -488,17 +472,6 @@ projectRoutes.delete(
 // dispatching new auto-pipeline jobs (see orchestrator.loadPipelineConfig);
 // in-flight jobs are unaffected. The hard DELETE /:id route above is unchanged.
 
-const ARCHIVE_PROJECTION = {
-  id: projects.id,
-  slug: projects.slug,
-  name: projects.name,
-  orgId: projects.orgId,
-  createdBy: projects.createdBy,
-  apiKey: projects.apiKey,
-  archivedAt: projects.archivedAt,
-  createdAt: projects.createdAt,
-} as const;
-
 projectRoutes.post(
   '/:id/archive',
   archiveProject,
@@ -516,7 +489,7 @@ projectRoutes.post(
       .update(projects)
       .set({ archivedAt: sql`coalesce(${projects.archivedAt}, now())` })
       .where(eq(projects.id, id))
-      .returning(ARCHIVE_PROJECTION);
+      .returning(ARCHIVED_PROJECT);
     if (!updated) throw notFound();
     return c.json(answer(archivedProjectSchema, updated));
   },
@@ -539,7 +512,7 @@ projectRoutes.post(
       .update(projects)
       .set({ archivedAt: null })
       .where(eq(projects.id, id))
-      .returning(ARCHIVE_PROJECTION);
+      .returning(ARCHIVED_PROJECT);
     if (!updated) throw notFound();
     return c.json(answer(archivedProjectSchema, updated));
   },

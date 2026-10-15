@@ -92,10 +92,20 @@ const insertValues = vi.fn((..._args: unknown[]) => ({
 }));
 const dbInsert = vi.fn(() => ({ values: insertValues }));
 
+const dbSelect = vi.fn((_projection?: Record<string, unknown>) => ({ from: selectFrom }));
+const dbSelectDistinctOn = vi.fn((_on: unknown, _projection: Record<string, unknown>) => ({
+  from: distinctFrom,
+}));
+
+/** The keys of every projection a read or a `returning` handed the database, one per call. */
+const projectionsAsked = (fn: { mock: { calls: unknown[][] } }, at: number) =>
+  fn.mock.calls.map((call) => Object.keys((call[at] as Record<string, unknown>) ?? {}));
+
 vi.mock('../db/client.js', () => ({
   db: {
-    select: vi.fn(() => ({ from: selectFrom })),
-    selectDistinctOn: vi.fn(() => ({ from: distinctFrom })),
+    select: (projection?: Record<string, unknown>) => dbSelect(projection),
+    selectDistinctOn: (on: unknown, projection: Record<string, unknown>) =>
+      dbSelectDistinctOn(on, projection),
     transaction,
     update: dbUpdate,
     delete: dbDelete,
@@ -219,7 +229,6 @@ describe('POST /api/projects', () => {
         name: 'My Project',
         orgId: ORG_ID,
         createdBy: 'uuid-owner',
-        apiKey: 'fk_x',
         createdAt,
       },
     ]);
@@ -227,6 +236,11 @@ describe('POST /api/projects', () => {
     const res = await post({ slug: 'my-proj', name: 'My Project' }, token);
     expect(res.status).toBe(201);
     const body = (await res.json()) as { id: string; slug: string; createdBy: string };
+    // ISS-1389 — the key is minted here and served by the rotate route alone.
+    expect(projectionsAsked(txInsertProjectReturning, 0)).toEqual([
+      ['id', 'slug', 'name', 'orgId', 'createdBy', 'createdAt'],
+    ]);
+    expect(body).not.toHaveProperty('apiKey');
     expect(body).toMatchObject({
       id: 'proj-1',
       slug: 'my-proj',
@@ -304,7 +318,6 @@ describe('GET /api/projects', () => {
         createdBy: 'uuid-user',
         memberRole: 'admin',
         orgRole: 'owner',
-        apiKey: 'fk_x',
         archivedAt: null,
         createdAt: new Date('2026-04-01T00:00:00Z'),
       },
@@ -329,7 +342,6 @@ describe('GET /api/projects', () => {
         createdBy: 'uuid-other',
         memberRole: null,
         orgRole: 'admin',
-        apiKey: 'fk_y',
         archivedAt: null,
         createdAt: new Date('2026-04-01T00:00:00Z'),
       },
@@ -339,6 +351,33 @@ describe('GET /api/projects', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as Array<{ id: string; role: string; orgRole: string }>;
     expect(body[0]).toMatchObject({ id: 'p2', role: 'admin', orgRole: 'admin' });
+  });
+
+  it('ISS-1389: a listing asks for no API key or webhook secret, whatever the role', async () => {
+    const token = await signUserToken('uuid-user');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    distinctOrderBy.mockResolvedValueOnce([
+      {
+        id: 'p1',
+        slug: 'p-one',
+        name: 'P One',
+        orgId: ORG_ID,
+        createdBy: 'uuid-user',
+        memberRole: 'admin',
+        orgRole: 'owner',
+        archivedAt: null,
+        createdAt: new Date('2026-04-01T00:00:00Z'),
+      },
+    ]);
+
+    const res = await req('', { token });
+    expect(res.status).toBe(200);
+    const [asked] = projectionsAsked(dbSelectDistinctOn, 1);
+    expect(asked).not.toContain('apiKey');
+    expect(asked).not.toContain('webhookSecret');
+    const [row] = (await res.json()) as Array<Record<string, unknown>>;
+    expect(row).not.toHaveProperty('apiKey');
+    expect(row).not.toHaveProperty('webhookSecret');
   });
 });
 
@@ -389,7 +428,6 @@ describe('GET /api/projects/:id', () => {
         releaseChain: [{ branch: 'main' }, { branch: 'master', from: 'merge-branch' }],
         defaultDeviceId: null,
         agentConfig: null,
-        webhookSecret: null,
         createdAt: new Date('2026-04-01T00:00:00Z'),
       },
     ]);
@@ -434,10 +472,9 @@ describe('GET /api/projects/:id', () => {
     expect(body.devicePool[0]?.runnerId).toBe('r1');
   });
 
-  it('returns the full apiKey to project members (no redaction)', async () => {
+  it('ISS-1389: the detail asks for no API key or webhook secret, even for an admin', async () => {
     const token = await signUserToken('uuid-user');
-    const fullKey = 'fk_aaaabbbbccccddddeeeeffff00001111222233334444555566667777';
-    projectAccess.mockResolvedValueOnce(access('member'));
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]).mockResolvedValueOnce([
       {
         id: 'p1',
@@ -451,31 +488,25 @@ describe('GET /api/projects/:id', () => {
         releaseChain: [],
         defaultDeviceId: null,
         agentConfig: null,
-        webhookSecret: null,
-        apiKey: fullKey,
         createdAt: new Date('2026-04-01T00:00:00Z'),
       },
     ]);
     selectWhere
       .mockReturnValueOnce({ limit: selectLimit })
       .mockReturnValueOnce({ limit: selectLimit })
-      .mockResolvedValueOnce([{ userId: 'uuid-user', role: 'member' }])
-      .mockResolvedValueOnce([{ id: 'l1', name: 'bug', color: '#f00' }])
-      .mockResolvedValueOnce([
-        {
-          id: 'd1',
-          name: 'Beta-Linux',
-          platform: 'linux',
-          status: 'online',
-          lastSeenAt: null,
-          runnerId: 'r1',
-        },
-      ]);
+      .mockResolvedValueOnce([{ userId: 'uuid-user', role: 'admin' }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
 
     const res = await req('/11111111-1111-4111-8111-111111111111', { token });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { apiKey: string };
-    expect(body.apiKey).toBe(fullKey);
+    for (const asked of projectionsAsked(dbSelect, 0)) {
+      expect(asked).not.toContain('apiKey');
+      expect(asked).not.toContain('webhookSecret');
+    }
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body).not.toHaveProperty('apiKey');
+    expect(body).not.toHaveProperty('webhookSecret');
   });
 });
 
@@ -539,12 +570,7 @@ describe('PATCH /api/projects/:id', () => {
     const token = await signUserToken('uuid-owner');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
-    updateReturning.mockResolvedValueOnce([
-      patchedRow({
-        name: 'New Name',
-        webhookSecret: 'secret-of-at-least-16-chars',
-      }),
-    ]);
+    updateReturning.mockResolvedValueOnce([patchedRow({ name: 'New Name' })]);
 
     const res = await req('/11111111-1111-4111-8111-111111111111', {
       method: 'PATCH',
@@ -559,6 +585,12 @@ describe('PATCH /api/projects/:id', () => {
       name: 'New Name',
       webhookSecret: 'secret-of-at-least-16-chars',
     });
+    // ISS-1389 — the secret is written and never read back: the inbound webhook check is its one reader.
+    const [asked] = projectionsAsked(updateReturning, 0);
+    expect(asked).toContain('name');
+    expect(asked).not.toContain('webhookSecret');
+    expect(asked).not.toContain('apiKey');
+    expect(await res.json()).not.toHaveProperty('webhookSecret');
   });
 
   it('200 updates new settings fields (description, repoPath, branches, defaultDeviceId)', async () => {
@@ -573,7 +605,6 @@ describe('PATCH /api/projects/:id', () => {
         releaseChain: [{ branch: 'staging' }, { branch: 'main', from: 'merge-branch' }],
         defaultDeviceId: '22222222-2222-4222-8222-222222222222',
         agentConfig: null,
-        webhookSecret: null,
       }),
     ]);
 
@@ -610,7 +641,6 @@ describe('PATCH /api/projects/:id', () => {
       patchedRow({
         kind: 'website',
         agentConfig: null,
-        webhookSecret: null,
       }),
     ]);
 
@@ -677,7 +707,6 @@ describe('PATCH /api/projects/:id', () => {
         releaseChain: [],
         defaultDeviceId: null,
         agentConfig: null,
-        webhookSecret: null,
       }),
     ]);
 
@@ -1147,7 +1176,6 @@ describe('POST /api/projects/:id/archive (ISS-353)', () => {
         name: 'P One',
         orgId: ORG_ID,
         createdBy: 'uuid-owner',
-        apiKey: 'fk_x',
         archivedAt: new Date('2026-06-02T00:00:00Z'),
         createdAt: new Date(),
       },
@@ -1189,7 +1217,6 @@ describe('POST /api/projects/:id/unarchive (ISS-353)', () => {
         name: 'P One',
         orgId: ORG_ID,
         createdBy: 'uuid-owner',
-        apiKey: 'fk_x',
         archivedAt: null,
         createdAt: new Date(),
       },
@@ -1542,9 +1569,7 @@ describe('PATCH /api/projects/:id — contractInputChanged', () => {
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     selectLimit.mockResolvedValue([{ baseBranch: 'release/next', releaseChain: [] }]);
-    updateReturning.mockResolvedValueOnce([
-      patchedRow({ agentConfig: null, webhookSecret: null, ...row }),
-    ]);
+    updateReturning.mockResolvedValueOnce([patchedRow({ agentConfig: null, ...row })]);
     return req('/11111111-1111-4111-8111-111111111111', {
       method: 'PATCH',
       body: JSON.stringify(body),

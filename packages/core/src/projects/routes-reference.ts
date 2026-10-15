@@ -47,7 +47,6 @@ export const createdProjectSchema = projectRow.pick({
   name: true,
   orgId: true,
   createdBy: true,
-  apiKey: true,
   createdAt: true,
 });
 
@@ -62,7 +61,6 @@ export const projectListSchema = z.array(
       issuePrefix: true,
       archivedAt: true,
       createdAt: true,
-      apiKey: true,
     })
     .extend({
       orgName: z.string(),
@@ -86,8 +84,6 @@ export const projectDetailSchema = projectRow
     workspaceSetup: true,
     baseBranch: true,
     defaultDeviceId: true,
-    webhookSecret: true,
-    apiKey: true,
     issuePrefix: true,
     archivedAt: true,
     createdAt: true,
@@ -127,7 +123,6 @@ export const patchedProjectSchema = projectRow
     workspaceSetup: true,
     baseBranch: true,
     defaultDeviceId: true,
-    webhookSecret: true,
     issuePrefix: true,
     createdAt: true,
   })
@@ -146,7 +141,6 @@ export const archivedProjectSchema = projectRow.pick({
   name: true,
   orgId: true,
   createdBy: true,
-  apiKey: true,
   archivedAt: true,
   createdAt: true,
 });
@@ -168,16 +162,16 @@ const NO_PROJECT = fail('NOT_FOUND', 'the project does not exist');
 export const listProjects = describeOperation({
   summary: 'List the projects the caller can see',
   description:
-    'A project is visible to its members and to the owners and admins of its org. Archived projects are left out unless `archived` is `1` or `true`. `apiKey` is withheld (null) from a viewer.',
+    'A project is visible to its members and to the owners and admins of its org. Archived projects are left out unless `archived` is `1` or `true`. No row carries the API key or the webhook secret.',
   responses: { 200: json(projectListSchema, 'The visible projects, ordered by id') },
 });
 
 export const createNewProject = describeOperation({
   summary: "Create a project, owned by one of the caller's orgs",
   description:
-    "With no `orgId` the project goes to the caller's personal org. The caller becomes its admin and an API key is minted.",
+    "With no `orgId` the project goes to the caller's personal org. The caller becomes its admin and an API key is minted, which this answer does not carry: `POST /api/projects/:id/api-key/rotate` is the one route that serves it.",
   responses: {
-    201: json(createdProjectSchema, 'The new project, with its API key'),
+    201: json(createdProjectSchema, 'The new project'),
     403: fail('FORBIDDEN', 'the caller is not a member of the org named by `orgId`'),
     404: fail('NOT_FOUND', 'the org named by `orgId` does not exist'),
     409: fail('SLUG_TAKEN', 'another project has this slug'),
@@ -188,7 +182,7 @@ export const createNewProject = describeOperation({
 export const getProject = describeOperation({
   summary: 'Read one project with its members, labels and runner devices',
   description:
-    '`releaseModel`, `liveBranch` and `releaseStrategy` are derived from `releaseChain` and answered for readers that have not moved to it. `apiKey` is null for a viewer.',
+    '`releaseModel`, `liveBranch` and `releaseStrategy` are derived from `releaseChain` and answered for readers that have not moved to it. Neither the API key nor the webhook secret is answered: the key is served by `POST /api/projects/:id/api-key/rotate` alone.',
   responses: {
     200: json(projectDetailSchema, 'The project'),
     403: NOT_A_MEMBER,
@@ -198,6 +192,8 @@ export const getProject = describeOperation({
 
 export const rotateProjectApiKey = describeOperation({
   summary: "Replace the project's API key",
+  description:
+    'The one route that serves the key, to a project admin: no list, read, create, patch or archive answer carries it.',
   responses: {
     200: json(rotatedApiKeySchema, 'The new key'),
     403: fail('FORBIDDEN', 'the caller is not a project admin'),

@@ -22,6 +22,7 @@ import {
 } from '../db/schema.js';
 import { visibleProjectsWhere } from '../lib/authz.js';
 import { isUniqueViolation, pgConstraintName } from '../lib/db-errors.js';
+import { CREATED_PROJECT } from './projections.js';
 import type { ReleaseChain } from './release-chain.js';
 
 /** The project's id, or `null` when no project carries that slug. */
@@ -105,15 +106,7 @@ export async function createProject(input: NewProject) {
           ...(input.kind !== undefined ? { kind: input.kind } : {}),
           ...(input.repoPath !== undefined ? { repoPath: input.repoPath } : {}),
         })
-        .returning({
-          id: projects.id,
-          slug: projects.slug,
-          name: projects.name,
-          orgId: projects.orgId,
-          createdBy: projects.createdBy,
-          apiKey: projects.apiKey,
-          createdAt: projects.createdAt,
-        });
+        .returning(CREATED_PROJECT);
       if (!project) throw new Error('projects: insert returned no row');
 
       await tx.insert(projectMembers).values({
