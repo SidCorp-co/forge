@@ -3,8 +3,8 @@
 // loaded ahead as the peek opens, and Enter opens it from the list row a click left focused.
 
 import { act, fireEvent, render, renderHook, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { PeekHead, PeekPanel, usePeek, usePeekKeys } from "./peek-panel";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { PeekExcerpt, PeekHead, PeekPanel, usePeek, usePeekKeys } from "./peek-panel";
 
 const push = vi.fn();
 const preload = vi.fn();
@@ -155,5 +155,34 @@ describe("PeekPanel", () => {
     render(<Harness />);
     fireEvent.keyDown(window, { key: "j", metaKey: true });
     expect(screen.getByTestId("peek-position")).toHaveTextContent("1 of 3");
+  });
+});
+
+describe("PeekExcerpt", () => {
+  // jsdom lays nothing out: the text's height and the clamp's are set here, as a browser would measure them
+  const measured = (scroll: number, client: number) => {
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(scroll);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(client);
+  };
+  afterEach(() => vi.restoreAllMocks());
+
+  it("holds a long text to its clamp and opens the rest in place", () => {
+    measured(900, 240);
+    render(<PeekExcerpt>long text</PeekExcerpt>);
+    const toggle = screen.getByRole("button", { name: "Show all" });
+    expect(screen.getByText("long text")).toHaveAttribute("data-clamped", "1");
+    expect(screen.getByText("long text")).toHaveClass("max-h-60", "overflow-hidden");
+    fireEvent.click(toggle);
+    expect(screen.getByText("long text")).not.toHaveAttribute("data-clamped");
+    expect(screen.getByText("long text")).not.toHaveClass("max-h-60");
+    expect(screen.getByRole("button", { name: "Show less" })).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Show less" }));
+    expect(screen.getByText("long text")).toHaveAttribute("data-clamped", "1");
+  });
+
+  it("shows a text that fits whole and offers nothing", () => {
+    measured(120, 120);
+    render(<PeekExcerpt>short text</PeekExcerpt>);
+    expect(screen.queryByTestId("peek-excerpt-toggle")).toBeNull();
   });
 });

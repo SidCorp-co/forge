@@ -8,7 +8,7 @@ Every piece on this page is rendered at `/dev/design`.
 
 | Template | Use it for | Slots | Blocks that fill them |
 |---|---|---|---|
-| `ListPage` + `useListPage` | records to scan and open | `title` `titleAfter` `actions` `lead` `toolbar` `peek` `children` | `ListSearch` `ToolbarSelect` `FilterChip` · `GroupedList` or `RowList` · `PeekPanel` + `PeekHead`; `useListPage` holds the search, filters, groups, fold and peek in the URL |
+| `ListPage` + `useListPage` | records to scan and open | `title` `titleAfter` `actions` `lead` `toolbar` `peek` `children` | `ListSearch` `ToolbarSelect` `FilterChip` · `GroupedList` or `RowList` · `PeekPanel` + `PeekHead` + `PeekExcerpt`; `useListPage` holds the search, filters, groups, fold and peek in the URL |
 | `DetailPage` | one record | `header` `rail` `lead` `tabs` `label` `children` | `DetailHeader` · `FactsRail` `FactsGroup` `Fact` · `DetailTabs` + `useUrlTab` · `Section` `PropertyList` `RowList` |
 | `SettingsPage` | configuration | `title` `actions` `nav` `children` | `SettingsGroup` `SettingRow` `FormActions` · `Field` + `placeRefusals` |
 | `BoardPage` | work by stage | `title` `actions` `toolbar` `children` | `KanbanColumn` `KanbanCard` |
@@ -20,7 +20,7 @@ A page that fits none of the five is a design question, not a sixth layout. Ask 
 
 | Overlay | Use it for |
 |---|---|
-| `PeekPanel` | a list row's summary beside the list (j/k, Enter, Esc) |
+| `PeekPanel` | a list row's summary beside the list: what it says, then its facts; its full page a link (j/k, Enter, Esc) |
 | `Dialog` | one decision or a short form that blocks the page |
 | `ConfirmDialog` | a destructive or irreversible confirm |
 | `SlideOver` | a longer side task that keeps the page in view |
@@ -45,7 +45,7 @@ A page that fits none of the five is a design question, not a sixth layout. Ask 
 | `EmptyState` / `LoadingState` / `ErrorState` | the three non-content states of any section |
 | `StatusBadge` | a state family's value in its legend tone (`family="run"` for an agent run) |
 | `EnumBadge` | a non-state enum (priority, kind), neutral |
-| `ResizablePanelGroup` / `ResizablePanel` / `ResizableHandle` | a split the reader drags |
+| `ResizablePanelGroup` / `ResizablePanel` / `ResizableHandle` + `useRememberedSplit` | a split the reader drags, kept at the width they left it |
 | `RailButton` | an act at the foot of the navigation rail: icon, name, a dot while something is owed |
 | `fixedHeight(size, at)` | a scrolling region's viewport height by name: `pane`, `page`, `sticky`, `sheet`, `popup`, optionally from one width |
 | `focusOnMount` | the ref callback for a field an act opens ready to type in, in place of `autoFocus` |

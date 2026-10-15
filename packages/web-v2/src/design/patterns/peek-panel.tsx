@@ -7,7 +7,7 @@
 // stays live; below that it is a full-screen sheet named after the list.
 
 import type { ReactNode } from "react";
-import { createContext, use, useCallback, useEffect } from "react";
+import { createContext, use, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, usePreload, useRouter } from "@/lib/navigation/router";
 import { cn } from "@/lib/utils/cn";
 import { buttonVariants } from "@/components/ui/button";
@@ -173,6 +173,36 @@ export function PeekHead({ noun, itemKey, badge, title, action }: PeekHeadProps)
         </FullPageLink>
       </h2>
       {action ? <div className="mt-2.5 flex flex-wrap gap-2 empty:hidden">{action}</div> : null}
+    </div>
+  );
+}
+
+/** What the item says, held to about a dozen lines with "Show all" opening the rest in place, so
+ *  reading it does not take the full page. Text that fits shows whole and offers nothing. */
+export function PeekExcerpt({ children, testId }: { children: ReactNode; testId?: string }) {
+  const t = useCopy();
+  const ref = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || open) return;
+    const measure = () => setOverflows(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    const watch = new ResizeObserver(measure);
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, [open]);
+  return (
+    <div data-testid={testId ?? "peek-excerpt"}>
+      <div ref={ref} className={cn("min-w-0 text-13-5", !open && "max-h-60 overflow-hidden")} data-clamped={open ? undefined : "1"}>
+        {children}
+      </div>
+      {overflows ? (
+        <button type="button" className="mt-1.5 text-13 font-medium text-link hover:underline" aria-expanded={open} onClick={() => setOpen((v) => !v)} data-testid="peek-excerpt-toggle">
+          {open ? t("common.peekShowLess") : t("common.peekShowAll")}
+        </button>
+      ) : null}
     </div>
   );
 }

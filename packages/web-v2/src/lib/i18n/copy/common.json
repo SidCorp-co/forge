@@ -250,6 +250,8 @@
     "common.peekClose": "Close (Esc)",
     "common.peekCloseWord": "close",
     "common.peekFullPage": "full page",
+    "common.peekShowAll": "Show all",
+    "common.peekShowLess": "Show less",
     "common.peekMove": "move",
     "common.peekNext": "Next {noun} (j)",
     "common.peekPosition": "{at} of {of}",

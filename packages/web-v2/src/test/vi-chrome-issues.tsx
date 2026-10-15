@@ -91,7 +91,7 @@ const srow = (n: number, over: Partial<IssueStandingRow["standing"]> = {}, statu
     standing: standing({ state: status as never, ...over }),
   }) as IssueStandingRow;
 
-const STANDING_ROWS: IssueStandingRow[] = [
+export const STANDING_ROWS: IssueStandingRow[] = [
   srow(1),
   srow(2, { attentionGroup: "needs_you", tone: "you", waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("issues.standing.act.answer"), rule: RULE }), wave: 1, blockedBy: [{ key: "ISS-1", title: "Muc", status: "in_progress", group: "moving", landed: false, designHold: null }] }, "needs_info"),
   srow(3, { attentionGroup: "stuck", tone: "blocked", waitingOn: waitingOn("issue", { who: say("standing.who.named", { name: "ISS-1" }), act: say("issues.standing.act.landedWaitsJudge"), rule: RULE }, { ref: "ISS-1" }), wave: 2, module: null }, "open"),
@@ -100,7 +100,7 @@ const STANDING_ROWS: IssueStandingRow[] = [
   srow(6, { attentionGroup: "done", tone: "done", waitingOn: waitingOn("none", { who: say("standing.who.nobody"), act: say("issues.standing.act.shipped"), rule: RULE }), wave: null }, "closed"),
 ];
 
-const STANDING_LIST = {
+export const STANDING_LIST = {
   issues: STANDING_ROWS,
   counts: { open: 5, closed: 1, all: 6, needsYou: 1, blocked: 1, blocking: 1 },
   returned: 6,
@@ -312,7 +312,7 @@ export const SCREENS = [
   { name: "Issues board · attention", render: board("attention") },
   { name: "Issues board · module", render: board("module") },
   { name: "Issues board · waves", render: board("waves") },
-  { name: "Issue peek", render: () => wrap([], <IssuePeek slug="hop" row={STANDING_ROWS[0]} clock={clock} peek={peek} full={{ href: "/projects/hop", origin: null }} />) },
+  { name: "Issue peek", render: () => wrap([], <IssuePeek projectId={P} slug="hop" row={STANDING_ROWS[0]} clock={clock} peek={peek} full={{ href: "/projects/hop", origin: null }} />) },
   { name: "Issue detail", render: () => wrap(detailQueries(), <IssueDetailScreen projectId={P} slug="hop" id="i1" />) },
   { name: "Issue detail · actions menu", render: () => wrap(detailQueries(), <IssueDetailScreen projectId={P} slug="hop" id="i1" />), act: click(labelled("issues.actions.menu")) },
   {

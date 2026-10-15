@@ -3,7 +3,7 @@
 // top bar through PageTitle and TopBarActions): the filter bar, and the split that sets a peek beside
 // the list. The list itself is GroupedList for entities that stand somewhere, RowList for the rest.
 // The peek opens at two fifths of the width, and a width the reader drags it to is the one every
-// peek opens at after, in this browser.
+// peek opens at after, in this browser. Beside a peek the list lays out in the width it is left.
 
 import type { ReactNode } from "react";
 import { useMediaQuery } from "../hooks/use-media-query";
@@ -39,7 +39,11 @@ export function ListLayout({ children, peek, testId }: { children: ReactNode; pe
   return (
     <ResizablePanelGroup id="list-peek" orientation="horizontal" className="items-start" data-testid={testId} {...split}>
       <ResizablePanel id="list" minSize="40%">
-        <div className="min-w-0">{children}</div>
+        {/* the list is the `page` its breakpoints read while the peek stands beside it, as the page column is
+            beside the Ask Agent panel: its columns step down to the width the peek leaves, not the window's */}
+        <div className="min-w-0 [container:page_column_/_inline-size]" data-testid="list-pane">
+          {children}
+        </div>
       </ResizablePanel>
       <ResizableHandle />
       <ResizablePanel id="peek" defaultSize="40%" minSize="360px" maxSize="60%">

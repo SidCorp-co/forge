@@ -56,7 +56,7 @@ export { PageContainer } from "./patterns/page-container";
 export { Pagination } from "./primitives/pagination";
 export { Disclosure } from "./primitives/disclosure";
 export { Dialog } from "./primitives/dialog";
-export { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "./primitives/resizable";
+export { ResizablePanelGroup, ResizablePanel, ResizableHandle, useRememberedSplit } from "./primitives/resizable";
 export { Table, THead, TBody, TR, TH, TD, SortableTH, useReactTable, getCoreRowModel, type ColumnDef, type SortingState } from "./primitives/table";
 export { HelpButton } from "./primitives/help-button";
 
@@ -95,7 +95,7 @@ export { ListSearch } from "./patterns/list-search";
 export { FilterChip } from "./patterns/filter-chip";
 export { SignalsStrip, Signal } from "./patterns/signals-strip";
 export { NotAvailable } from "./patterns/not-available";
-export { PeekPanel, PeekHead, usePeek, usePeekKeys, useOpenFullPage, type FullPage, type PeekState } from "./patterns/peek-panel";
+export { PeekPanel, PeekHead, PeekExcerpt, usePeek, usePeekKeys, useOpenFullPage, type FullPage, type PeekState } from "./patterns/peek-panel";
 export { DetailHeader, DetailMobileTitle, rememberListOrigin, useListOrigin } from "./patterns/detail-header";
 export {
   FactsRail, FactsGroup, Fact, FactsEmpty, CoverageBar, MarkStrip, StepBar,

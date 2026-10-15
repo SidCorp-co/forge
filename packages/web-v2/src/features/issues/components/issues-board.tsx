@@ -384,7 +384,7 @@ export function IssuesBoard({ scope: project, mode, toolbarLead }: { scope: { pr
       <ListLayout
         peek={
           openRow ? (
-            <IssuePeek key={openRow.key} slug={project.slug} row={openRow} forecast={forecasts.get(openRow.key)} clock={clock} peek={peek} full={fullOf(openRow.key)} />
+            <IssuePeek key={openRow.key} projectId={project.projectId} slug={project.slug} row={openRow} forecast={forecasts.get(openRow.key)} clock={clock} peek={peek} full={fullOf(openRow.key)} />
           ) : undefined
         }
       >
