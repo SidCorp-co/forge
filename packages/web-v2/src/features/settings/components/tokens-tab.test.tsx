@@ -42,11 +42,13 @@ let tokens: PatToken[] = [];
 let projects: { id: string; name: string; slug: string }[] = [];
 const createMutate = vi.fn();
 const revokeMutate = vi.fn();
+const toastSpy = vi.fn();
+const dismissSpy = vi.fn();
 
 vi.mock("@/features/projects/hooks", () => ({
   useProjects: () => ({ data: projects, isLoading: false, isError: false }),
 }));
-vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
+vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: toastSpy, dismiss: dismissSpy }) }));
 vi.mock("@/providers/auth-provider", () => ({
   useAuth: () => ({ user: { hasPassword: true, oauthProviders: [] } }),
 }));
@@ -72,6 +74,8 @@ beforeEach(() => {
   projects = [];
   createMutate.mockClear();
   revokeMutate.mockClear();
+  toastSpy.mockClear();
+  dismissSpy.mockClear();
 });
 afterEach(cleanup);
 
@@ -373,5 +377,76 @@ describe("TokensTab — the re-auth prompt opens where the reader is looking", (
     expect(scroll).toHaveBeenCalledTimes(1);
     expect(scroll.mock.contexts[0]).toContainElement(password);
     expect(password).toHaveFocus();
+  });
+});
+
+// ISS-1289 — the toast lane sits top right, over the right-hand drawer, so a toast confirming the copy
+// covered the Token created panel's first line at 1280. The panel says its own result, and the form's
+// notices, which can still be showing when a quick create opens the panel, are dismissed as it opens.
+describe("TokensTab — the Token created panel says its own copy result", () => {
+  const created = { ...aToken({ name: "ci" }), plaintext: "forge_pat_abc" };
+
+  async function openPanel() {
+    createMutate.mockImplementationOnce((_input, opts: { onSuccess: (t: unknown) => void }) => opts.onSuccess(created));
+    render(<TokensTab />);
+    fireEvent.change(nameField(), { target: { value: "ci" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Full access/ }));
+    fireEvent.click(createButton());
+    return screen.getByRole("dialog");
+  }
+
+  function clipboard(writeText: (text: string) => Promise<void>) {
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+  }
+
+  it("dismisses the form's notices as the panel opens", async () => {
+    await openPanel();
+    expect(dismissSpy).toHaveBeenCalledWith("token-form");
+  });
+
+  it("puts every notice the form raises in that one slot", async () => {
+    const { ApiError } = await import("@/lib/api/client");
+    createMutate.mockImplementationOnce((_input, opts: { onError: (e: unknown) => void }) =>
+      opts.onError(new ApiError(403, "fresh auth", "FRESH_AUTH_REQUIRED")),
+    );
+    createMutate.mockImplementationOnce((_input, opts: { onError: (e: unknown) => void }) =>
+      opts.onError(new ApiError(500, "boom", "INTERNAL")),
+    );
+    render(<TokensTab />);
+    fireEvent.change(nameField(), { target: { value: "ci" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Full access/ }));
+    fireEvent.click(createButton());
+    cleanup();
+    render(<TokensTab />);
+    fireEvent.change(nameField(), { target: { value: "ci" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Full access/ }));
+    fireEvent.click(createButton());
+    expect(toastSpy).toHaveBeenCalledTimes(2);
+    for (const [notice] of toastSpy.mock.calls) expect(notice).toMatchObject({ slot: "token-form" });
+  });
+
+  it("turns Copy to clipboard into Copied ✓ and raises no toast", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    clipboard(writeText);
+    const panel = await openPanel();
+    toastSpy.mockClear();
+
+    await act(async () => fireEvent.click(within(panel).getByRole("button", { name: "Copy to clipboard" })));
+
+    expect(writeText).toHaveBeenCalledWith("forge_pat_abc");
+    expect(within(panel).getByRole("button", { name: "Copied ✓" })).toBeInTheDocument();
+    expect(toastSpy).not.toHaveBeenCalled();
+  });
+
+  it("says a refused copy inside the panel, and raises no toast", async () => {
+    clipboard(vi.fn().mockRejectedValue(new Error("denied")));
+    const panel = await openPanel();
+    toastSpy.mockClear();
+
+    await act(async () => fireEvent.click(within(panel).getByRole("button", { name: "Copy to clipboard" })));
+
+    expect(within(panel).getByRole("alert")).toHaveTextContent("Copy failed. Select the token above and copy it by hand.");
+    expect(within(panel).getByRole("button", { name: "Copy to clipboard" })).toBeInTheDocument();
+    expect(toastSpy).not.toHaveBeenCalled();
   });
 });

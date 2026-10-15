@@ -22,6 +22,9 @@ export interface ToastInput extends ToastView {
 
 interface ToastApi {
   toast: (t: ToastInput) => void;
+  /** Removes the visible toasts holding `slot`, and no other: a notice about a screen that has just
+   *  given way to the next one, which would otherwise sit over it for the rest of its time. */
+  dismiss: (slot: string) => void;
 }
 
 interface ToastLaneApi {
@@ -114,13 +117,17 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     [remove],
   );
 
+  const dismiss = useCallback<ToastApi["dismiss"]>((slot) => {
+    setItems((xs) => xs.filter((x) => x.slot !== slot));
+  }, []);
+
   const registerLane = useCallback(() => {
     setLanes((n) => n + 1);
     return () => setLanes((n) => n - 1);
   }, []);
 
   return (
-    <ToastContext.Provider value={{ toast }}>
+    <ToastContext.Provider value={{ toast, dismiss }}>
       <ToastLaneContext.Provider value={{ items, remove, registerLane }}>
         {children}
         {lanes === 0 && items.length > 0 ? (
