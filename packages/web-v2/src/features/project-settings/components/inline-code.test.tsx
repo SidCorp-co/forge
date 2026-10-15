@@ -229,7 +229,13 @@ describe("a code span keeps a short token on one line", () => {
 		}
 	});
 
-	it("lets a long span or one holding spaces wrap, so a narrow screen never scrolls sideways", () => {
+	it("keeps a span of 32 characters on one line and lets one of 33 wrap", () => {
+		const [at, over] = spans(`\`${"a".repeat(32)}\` and \`${"a".repeat(33)}\``);
+		expect(at).toContain("whitespace-nowrap");
+		expect(over).not.toContain("whitespace-nowrap");
+	});
+
+	it("gives a long span or one holding spaces no nowrap class", () => {
 		const [url, phrase] = spans(
 			"read `https://forge-beta-api.sidcorp.co/api/projects/sid-desk/release-readiness` or `the whole sentence here`",
 		);
