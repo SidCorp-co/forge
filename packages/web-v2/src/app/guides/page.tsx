@@ -28,9 +28,13 @@ const readIndex = cache(async () => {
   return fetched && { corpus: buildCorpus(HELP_DOCS, fetched[0]), scope: fetched[1] };
 });
 
-/** Whether a view is built from the bundled help pages alone, and so served while core is down. */
+/** Whether a view can be built from the bundled help pages alone, and so served while core is down. */
 function bundled(asked: PublicRequest): boolean {
-  return asked.kind === "page" || (asked.kind === "door" && BUNDLED_AUDIENCES.includes(asked.audience));
+  return (
+    asked.kind === "landing" ||
+    asked.kind === "page" ||
+    (asked.kind === "door" && BUNDLED_AUDIENCES.includes(asked.audience))
+  );
 }
 
 export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
@@ -50,21 +54,26 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
 export default async function GuidesPage({ searchParams }: Props) {
   const asked = readPublicRequest(toSearchParams(await searchParams), HELP_SLUGS);
   const reached = await readIndex();
-  if (!reached && asked.kind !== "landing" && asked.kind !== "refused" && bundled(asked)) {
+  if (!reached && bundled(asked)) {
+    const corpus = buildCorpus(HELP_DOCS, []);
     return (
-      <GuideShell>
-        <PublicReader
-          scope={null}
-          corpus={buildCorpus(HELP_DOCS, [])}
-          view={asked.kind === "page" ? { kind: "page", href: helpPageHref(asked.slug) } : asked}
-        />
+      <GuideShell indexDown>
+        {asked.kind === "landing" ? (
+          <PublicLanding corpus={corpus} placeholder={searchPlaceholder(corpus, BUNDLED_AUDIENCES)} scope={null} />
+        ) : (
+          <PublicReader
+            scope={null}
+            corpus={corpus}
+            view={asked.kind === "page" ? { kind: "page", href: helpPageHref(asked.slug) } : asked}
+          />
+        )}
       </GuideShell>
     );
   }
   if (!reached) {
     // The refusal and the bundled doors need no index; the search does, and the page says it is missing.
     return (
-      <GuideShell>
+      <GuideShell indexDown>
         <PublicRefusal refusal={asked.kind === "refused" ? asked.refusal : GUIDES_UNAVAILABLE} />
       </GuideShell>
     );

@@ -16,10 +16,10 @@ type Params = { params: Promise<{ slug: string }> };
  *  answer could not be read. */
 const readGuide = cache((slug: string) =>
   orUnreadable(async () => {
+    const scope = await fetchGuideScope();
     const guide = await fetchGuide(slug);
     if (!guide) return { guide: null };
-    const [guides, scope] = await Promise.all([fetchGuideCorpus(), fetchGuideScope()]);
-    return { guide, corpus: buildCorpus(HELP_DOCS, guides), scope };
+    return { guide, corpus: buildCorpus(HELP_DOCS, await fetchGuideCorpus()), scope };
   }),
 );
 
@@ -36,7 +36,7 @@ export default async function GuidePage({ params }: Params) {
   const read = await readGuide((await params).slug);
   if (!read) {
     return (
-      <GuideShell>
+      <GuideShell indexDown>
         <PublicRefusal refusal={GUIDES_UNAVAILABLE} />
       </GuideShell>
     );

@@ -124,10 +124,11 @@ describe("a plain request for a refused /guides address", () => {
   });
 });
 
-/** Built from core's guide index: the landing, the agents' door and an agent guide. */
-const FROM_CORE = ["/guides?for=agent", "/guides", "/guides/issue-dependencies"];
-/** Built from the help pages bundled into the web: a help page and the doors they fill. */
-const BUNDLED = ["/guides?for=user", "/guides?for=assistant-setup", "/guides?path=getting-started"];
+/** Built from core's guide index: the agents' door and an agent guide. */
+const FROM_CORE = ["/guides?for=agent", "/guides/issue-dependencies"];
+/** Built from the help pages bundled into the web while core is down: the landing, a help page and
+ *  the doors they fill. */
+const BUNDLED = ["/guides", "/guides?for=user", "/guides?for=assistant-setup", "/guides?path=getting-started"];
 
 describe("a plain request for a real /guides address while core cannot answer for the guides", () => {
 
@@ -140,7 +141,7 @@ describe("a plain request for a real /guides address while core cannot answer fo
     expect(res.headers.get("content-type")).toMatch(/text\/html/);
     const html = await res.text();
     expect(html).toContain("<h1>The guides could not be loaded</h1>");
-    expect(html).toContain('<span class="brand">Forge documentation</span>');
+    expect(html).toContain('<a class="brand" href="/guides">Forge documentation</a>');
     expect(html).toContain(BUNDLED_WAYS_IN);
     for (const door of ["user", "assistant-setup"]) expect(html).toContain(`href="/guides?for=${door}"`);
     expect(html).not.toContain('href="/guides?for=agent"');
@@ -159,7 +160,6 @@ describe("a plain request for a real /guides address while core cannot answer fo
 
   it.each([
     ["/guides?for=agent", 502],
-    ["/guides", 404],
     ["/guides/issue-dependencies", 500],
   ])("answers %s with a 503 when core says %i rather than the guides", async (path, status) => {
     fetchGuide.mockResolvedValueOnce({ status });

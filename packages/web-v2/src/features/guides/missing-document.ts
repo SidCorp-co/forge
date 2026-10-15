@@ -74,9 +74,7 @@ export function refusalDocument(refusal: Refusal, { indexDown = false }: { index
     (a) => `<a href="${doorHref(a)}">${escapeHtml(DOORS[a].label)}</a>`,
   ).join("");
   const landing = indexDown ? "" : `<a href="${INDEX_PATH}">${escapeHtml(ALL_DOORS_LINK_TEXT)}</a>`;
-  const brand = indexDown
-    ? `<span class="brand">${escapeHtml(SITE_NAME)}</span>`
-    : `<a class="brand" href="${INDEX_PATH}">${escapeHtml(SITE_NAME)}</a>`;
+  const brand = `<a class="brand" href="${INDEX_PATH}">${escapeHtml(SITE_NAME)}</a>`;
   return [
     "<!DOCTYPE html>",
     '<html lang="en"><head><meta charset="utf-8">',
@@ -109,7 +107,7 @@ export function missingGuideDocument(slug: string, options: { indexDown?: boolea
 /** How long a reader or a crawler is asked to wait before trying a page core could not answer for. */
 export const RETRY_AFTER_SECONDS = 30;
 
-/** The 503 for the landing, the agents' door or a guide whose guide index core did not answer for:
+/** The 503 for the agents' door or a guide whose guide index core did not answer for:
  *  the doors bundled into the site as the way on, the rest needing that index too. */
 export function unavailableDocument(): string {
   return refusalDocument(GUIDES_UNAVAILABLE, { indexDown: true });

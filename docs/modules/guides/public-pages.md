@@ -115,23 +115,32 @@ of that shape is one extra core request per guide view on the happy path, paid s
 that a reader without JavaScript gets the refusal instead of a blank document. It
 ends when Next server-renders a `notFound()` body.
 
-The same request decides the outage. A help page, and a door whose pages are all help pages
-(`BUNDLED_AUDIENCES` in `packages/web-v2/src/features/guides/audience.ts`), is bundled, so the
-middleware passes it without asking core and the page renders it from `HELP_DOCS` alone while the
-index is unreadable, the sidebar saying its search covers those pages only (`HELP_ONLY_SEARCH`) and
-offering only the doors that still open. A plain request for the landing, the agents' door or a
-guide asks core first (`coreStatus` in the middleware: the index for `/guides`; for `/guides/<slug>`
+The same request decides the outage. The landing, a help page, and a door whose pages are all help
+pages (`BUNDLED_AUDIENCES` in `packages/web-v2/src/features/guides/audience.ts`), are bundled, so the
+middleware passes them without asking core and the page renders them from `HELP_DOCS` alone while the
+index is unreadable: a page or door with the sidebar saying its search covers those pages only
+(`HELP_ONLY_SEARCH`), the landing saying why (`LANDING_WHILE_DOWN`), each offering only the doors that
+still open and without the footer that points at core's markdown. A plain request for the agents'
+door or a guide asks core first (`coreStatus` in the middleware: the index for `/guides`; for `/guides/<slug>`
 the guide, then the index its page is also built from), and where core cannot be reached or answers anything but success (or, for a
 guide, 404) the middleware answers **503** with `Retry-After` and `unavailableDocument`: the same
-header as the 404s, and as the way on only the bundled doors (`BUNDLED_WAYS_IN`), the landing and the
+header as the 404s, and as the way on the landing and the bundled doors (`BUNDLED_WAYS_IN`), the
 agents' door needing the index too. Core unreachable is never a 404: that would tell a reader a guide
-does not exist on no evidence. The price is one core request per plain `/guides` view, and a second per guide view.
+does not exist on no evidence. The price is one core request per plain agents' door view, and a second per guide view.
+
+**The page reads the index live, never from the fetch cache** (`readJson`'s `live` in
+`packages/web-v2/src/features/guides/api.ts`); a guide's body is still cached for 300 seconds. With the
+index cached too, a help page rendered in the five minutes after core dropped was built from the stale
+copy: no outage said, and the agents' door, the landing and three agent guides in its search offered,
+each a 503 on a direct load (measured on a production build with core on a closed port). A guide page
+reads the index before the guide for the same reason. The price is one uncached core request per
+docs page rendered.
 
 A refusal stays a 404 while core is down, but the middleware asks for the index before writing one
 (`refuse` in the middleware), because every address but a bundled one then answers 503. With the
 index unreadable the refusal says `saidWhileDown` (each `Refusal`'s `bodyWhileDown` in place of a
 body that points at the index, then `SEARCH_UNAVAILABLE` and `BUNDLED_WAYS_IN`), links only the
-bundled doors, and leaves the site name in its header unlinked, as `unavailableDocument` does.
+bundled doors; the site name in its header links the landing, which opens while core is down.
 `PublicRefusal` says the same words. The price is one more core request per refused plain request.
 
 A client-side navigation is left alone: the router fetches the same URL for flight data and would
@@ -140,7 +149,7 @@ shell: a door or page as a `refused` view of `PublicReader`, which offers the do
 door in the sidebar a door page has, and
 `packages/web-v2/src/app/guides/[slug]/not-found.tsx` for a guide. The search needs the guide
 index, so with core unreachable `PublicRefusal` keeps the refusal, says there is no search
-(`SEARCH_UNAVAILABLE`) and offers the bundled doors. The landing, the agents' door and a guide are built
+(`SEARCH_UNAVAILABLE`) and offers the bundled doors. The agents' door and a guide are built
 from that index, so on a client-side navigation with it unreadable (`GuideFetchError`, caught by `orUnreadable` in
 `packages/web-v2/src/features/guides/unreadable.ts`) both pages render `PublicRefusal` with
 `GUIDES_UNAVAILABLE` in the docs' shell instead, and log why; any other error is still thrown. Every renderer reads one set of strings

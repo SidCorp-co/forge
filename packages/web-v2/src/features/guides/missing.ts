@@ -35,6 +35,9 @@ export const GUIDES_UNAVAILABLE: Refusal = {
   bodyWhileDown: GUIDES_UNAVAILABLE_BODY,
 };
 
+export const LANDING_WHILE_DOWN =
+  "Forge's guide index did not answer, so the pages for agents could not be loaded. The search and the ways in below cover the pages built into this site, which open without it.";
+
 /** Said, while the guide index is down, above the bundled doors and under a bundled page's search. */
 export const BUNDLED_WAYS_IN = "These ways in are built into this site and open without it:";
 export const HELP_ONLY_SEARCH =
