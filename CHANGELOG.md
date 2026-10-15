@@ -3193,6 +3193,7 @@
 
 ### Fixed
 
+- **An issue's Branch row shows the branch Forge counts as its work.** It printed the issue's key even when moving the issue on said no branch was recorded; it now shows that branch, or None recorded. (ISS-1133)
 - **Every figure that says live counts the sessions the Pipeline page lists.** The rail and projects console no longer count open runs as live, a runner working sessions reads busy, and the operations page calls runs open. (ISS-1228)
 - **The project dashboard counts the sessions the Pipeline page shows.** It no longer reads none live while sessions work. The costliest spend step is drawn again, and a long held reason sits on one line with More. (ISS-1228)
 - **The pipeline help page says what Settings holds, and that a gated draft is dropped, not closed.** It described a per-stage Auto/Manual/Skip setting that does not exist, and told readers to close a draft, which is refused. (ISS-1229)
