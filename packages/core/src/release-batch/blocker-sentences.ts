@@ -127,7 +127,7 @@ const CARRIED_WAYS_OUT =
 
 const REMEDY: Record<ReleaseBlockerCode, string> = {
   NO_RELEASE_GATE:
-    'This project has no release step, so Forge has no release to start or record: here, closing an issue is what ships it. Close these issues to ship them. To release through Forge instead, declare a release chain under Settings → Shape & release and give it a live deploy binding under Settings → Integrations.',
+    'This project has no release step, so Forge has no release to start or record: here, closing an issue is what ships it. To release through Forge instead, declare a release chain under Settings → Shape & release and give it a live deploy binding under Settings → Integrations.',
   RELEASE_TARGET_UNDECLARED:
     'This project declares a release chain and has no active deploy binding carrying the `live` stage, so there is nowhere for a release to land. Add one on the integrations screen, or, if this project ships nothing, choose "Repository, no release" under Shape & release in its settings.',
   CLAIM_CONFLICT:
