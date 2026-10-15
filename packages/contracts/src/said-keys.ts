@@ -85,7 +85,7 @@ export const SAID = {
 		vars: { provider: "name" },
 	},
 	"integrations.detail.unreachedBind": {
-		en: "no source host binding reaches {host}: bind a connection serving {host}",
+		en: "Not connected to {host} yet",
 		vars: { host: "name" },
 	},
 	"integrations.detail.unreachedConnect": {
