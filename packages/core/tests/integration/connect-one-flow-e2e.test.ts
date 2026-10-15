@@ -33,8 +33,8 @@ import {
 
 let owner = '';
 let session = '';
-let first = { id: '', slug: '' };
-let second = { id: '', slug: '' };
+let first = { id: '', slug: '', orgId: '' };
+let second = { id: '', slug: '', orgId: '' };
 
 beforeAll(() => {
   testEnv();
@@ -259,6 +259,17 @@ function stubGitHub(answer: 'ok' | 'gone' = 'ok') {
   const conversions: string[] = [];
   vi.stubGlobal('fetch', async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input instanceof Request ? input.url : input);
+    // the install's OAuth return: GitHub lists installation 77 of App 4242 for the installer
+    if (url.startsWith('https://github.com/login/oauth/access_token')) {
+      return Response.json({ access_token: 'ghu_installer' });
+    }
+    if (url.includes('/user/installations')) {
+      return Response.json({
+        installations: [
+          { id: 77, app_id: 4242, account: { login: 'SidCorp-co', type: 'Organization' } },
+        ],
+      });
+    }
     if (url.includes('/app-manifests/')) {
       conversions.push(url);
       if (answer === 'gone') return new Response('{"message":"Not Found"}', { status: 404 });
@@ -267,6 +278,8 @@ function stubGitHub(answer: 'ok' | 'gone' = 'ok') {
         slug: 'forge-test-app',
         pem: '-----BEGIN RSA PRIVATE KEY-----\nnot-a-key\n-----END RSA PRIVATE KEY-----',
         webhook_secret: 'whsec-test',
+        client_id: 'Iv1.test',
+        client_secret: 'client-secret-test',
         html_url: 'https://github.com/apps/forge-test-app',
         owner: { login: 'SidCorp-co', type: 'Organization' },
       });
@@ -305,6 +318,7 @@ describe('GitHub’s return lands on Integrations, never on a JSON page (FB-128)
     const state = signConnectState(SECRET(), {
       projectId: first.id,
       userId: owner,
+      orgId: first.orgId,
       returnTo: 'integrations',
     });
 
@@ -321,7 +335,7 @@ describe('GitHub’s return lands on Integrations, never on a JSON page (FB-128)
     const installed = await api(
       session,
       'GET',
-      `/api/integrations/github/installed?installation_id=77&state=${encodeURIComponent(install.searchParams.get('state') as string)}`,
+      `/api/integrations/github/installed?installation_id=77&code=oauth&state=${encodeURIComponent(install.searchParams.get('state') as string)}`,
     );
     const back = landing(installed);
     expect(back.pathname).toBe('/integrations');

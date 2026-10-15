@@ -2475,19 +2475,19 @@ export const SAID = {
 		en: "no owner/repo configured for this binding",
 	},
 	"integrations.health.github.installationGone": {
-		en: "the App was removed from {account} on GitHub, so this binding reaches nothing: install it on {account} again through Connect GitHub",
+		en: "The App was removed from {account}; reinstall it through Connect GitHub",
 		vars: { account: "name" },
 	},
 	"integrations.health.github.installationSuspended": {
-		en: "the App's installation on {account} is suspended on GitHub, so this binding reaches nothing until {account} unsuspends it",
+		en: "{account} suspended the App's installation, so this binding reaches nothing",
 		vars: { account: "name" },
 	},
 	"integrations.health.github.repositoryRemoved": {
-		en: "{repository} was taken off the App's installation on {account}: add it back on GitHub",
+		en: "{repository} was taken off the installation on {account}; add it back",
 		vars: { repository: "text", account: "name" },
 	},
 	"integrations.health.github.installationUnrecorded": {
-		en: "installation {installation} is not recorded for any Forge organisation: install the App through Connect GitHub",
+		en: "Installation {installation} is unrecorded; install the App through Connect GitHub",
 		vars: { installation: "code" },
 	},
 	"integrations.health.github.notPermitted": {

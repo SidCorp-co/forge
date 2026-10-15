@@ -10,7 +10,6 @@
 
 import type { IntegrationRefusalCode } from '@forge/contracts/integrations';
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import {
   adapterOrRefuse,
@@ -139,11 +138,10 @@ integrationsRoutes.patch(
       (mergedConfig !== undefined || patch.secrets !== undefined) &&
       !(await isPlatformAdmin(userId))
     ) {
-      throw new HTTPException(403, {
-        message:
-          "this binding's connection is the Forge instance's own, and only a Forge operator changes its config or secrets",
-        cause: { code: 'GITHUB_APP_OPERATOR_ONLY' },
-      });
+      throw refuse(
+        'GITHUB_APP_OPERATOR_ONLY',
+        "this binding's connection is the Forge instance's own, and only a Forge operator changes its config or secrets",
+      );
     }
 
     let mergedSecrets: Record<string, unknown> | undefined;
@@ -244,11 +242,10 @@ integrationsRoutes.post('/:projectId/integrations/:id/rotate-secret', async (c) 
   const existing = await projectBinding(projectId, id, c.get('userId'), 'admin');
   // the instance App's secret is pasted into its settings on GitHub, which only its operator reaches
   if (existing.connection.ownerType === 'instance' && !(await isPlatformAdmin(c.get('userId')))) {
-    throw new HTTPException(403, {
-      message:
-        "this binding's connection is the Forge instance's own, and only a Forge operator rotates its webhook secret",
-      cause: { code: 'GITHUB_APP_OPERATOR_ONLY' },
-    });
+    throw refuse(
+      'GITHUB_APP_OPERATOR_ONLY',
+      "this binding's connection is the Forge instance's own, and only a Forge operator rotates its webhook secret",
+    );
   }
 
   // A provider-held secret is the connection's, so every binding of it takes the new one and the

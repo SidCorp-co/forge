@@ -1,3 +1,4 @@
+import type { IntegrationRefusalCode } from '@forge/contracts/integrations';
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { say } from '@forge/contracts/said';
 import { Hono } from 'hono';
@@ -37,7 +38,7 @@ import {
 } from '../integrations/index.js';
 import { SourceHostCallError } from '../integrations/source-host/index.js';
 import { loadOrgRole, loadVisibleProjectIds } from '../lib/authz.js';
-import { refused } from '../lib/refusal.js';
+import { refused, refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { isPlatformAdmin } from '../middleware/require-admin.js';
 import { badRequest } from '../middleware/route-errors.js';
@@ -62,11 +63,10 @@ async function loadConnection(
   if (!connection) throw notFound('connection');
   if (connection.ownerType === 'instance') {
     if (intent === 'manage' && !(await isPlatformAdmin(userId))) {
-      throw new HTTPException(403, {
-        message:
-          "this connection is the Forge instance's own, and only a Forge operator changes or removes it",
-        cause: { code: 'GITHUB_APP_OPERATOR_ONLY' },
-      });
+      throw refuse(
+        'GITHUB_APP_OPERATOR_ONLY',
+        "this connection is the Forge instance's own, and only a Forge operator changes or removes it",
+      );
     }
     return connection;
   }
@@ -102,6 +102,8 @@ async function usageVisibleTo<B extends { projectId: string }>(
   }
   return out;
 }
+
+const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
 
 export const integrationConnectionsRoutes = new Hono<{ Variables: AuthVars }>();
 integrationConnectionsRoutes.use('*', requireAuth(), assertEmailVerified());

@@ -261,7 +261,7 @@ describe('a delivery is routed by the installation and repository it names (S4)'
       list.body.items as Array<{ id: string; lastHealthStatus: string; lastHealthDetail: string }>
     ).find((i) => i.id === binding);
     expect(item?.lastHealthStatus).toBe('degraded');
-    expect(item?.lastHealthDetail).toContain('the App was removed from SidCorp-co on GitHub');
+    expect(item?.lastHealthDetail).toContain('The App was removed from SidCorp-co');
   });
 
   it('suspends and unsuspends, and a repository taken off the installation reads degraded naming it', async () => {
