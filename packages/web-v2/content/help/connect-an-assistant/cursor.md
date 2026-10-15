@@ -79,8 +79,7 @@ settings Forge writes for you, and paste them into Cursor.
 
 12. Choose **Copy to clipboard**. Forge shows the code only this once.
 
-    **Check:** a notice reading **Copied to clipboard** appears near the top of the
-    screen, over the panel.
+    **Check:** the button changes to **Copied ✓**.
 
 13. Paste the code into your note.
 

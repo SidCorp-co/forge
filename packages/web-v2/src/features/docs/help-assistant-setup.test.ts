@@ -269,6 +269,58 @@ function disagreeingReturns(markdown: string): string[] {
   return out;
 }
 
+/** What a reader types or sees by name: each `code` span and **label**, the quote marks round it set aside. */
+function literalsIn(text: string): string[] {
+  return [...text.matchAll(/`([^`\n]+)`|\*\*([^*\n]+)\*\*/g)].map((m) => (m[1] ?? m[2]).replace(/^"(.*)"$/, "$1"));
+}
+
+/** A literal standing as a whole name in `text`: `forge` in `"forge": {`, not in `forge_pat_`. */
+function namesLiteral(text: string, literal: string): boolean {
+  const escaped = literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<![\\w-])${escaped}(?![\\w-])`).test(text);
+}
+
+const SENDS = /follow \*\*(.+?)\*\* at the end of this page\. You (?:come back|go on) to step (\d+)/;
+
+/**
+ * Every path a section opens, and what it leaves out. A step sending the reader to a section stands in a
+ * run of "If …" steps the reader picks one of, so the path skips the rest of that run, and every step
+ * between the sender and the step the section returns to. A Check after the return that names something
+ * only a skipped step typed or showed relies on a step this reader never took, unless the section, or a
+ * step before the run, gives it to them too.
+ */
+function pathsMissingAStep(markdown: string): string[] {
+  const steps = mainSteps(markdown);
+  const conditional = (i: number) => /^If\b/.test(instructionsOf(steps[i] ?? ""));
+  const out: string[] = [];
+  steps.forEach((step, sender) => {
+    const sent = SENDS.exec(instructionsOf(step).replace(/\s+/g, " "));
+    if (!sent) return;
+    const [, title, back] = sent;
+    const returnTo = Number(back) - 1;
+    let first = sender;
+    while (first > 0 && conditional(first - 1)) first--;
+    let last = sender;
+    while (last + 1 < steps.length && conditional(last + 1)) last++;
+    const skipped = new Set<number>();
+    for (let i = first; i <= Math.max(last, returnTo - 1); i++) if (i !== sender && i < returnTo) skipped.add(i);
+    const heading = markdown.split("\n").find((l) => l === `## ${title}`);
+    const section = heading ? markdown.slice(markdown.indexOf(heading)).split(/^## /m)[1] ?? "" : "";
+    const given = [section, ...steps.slice(0, first)].join("\n");
+    const onlySkipped = new Set([...skipped].flatMap((i) => literalsIn(prose(steps[i]))));
+    for (let i = returnTo; i < steps.length; i++) {
+      const paragraphs = steps[i].split(/\n\s*\n/).map((p) => p.trim());
+      const check = paragraphs.at(-1) ?? "";
+      for (const literal of literalsIn(check)) {
+        if (!onlySkipped.has(literal) || namesLiteral(given, literal)) continue;
+        if (steps.slice(returnTo, i).some((s) => namesLiteral(s, literal))) continue;
+        out.push(`${title}: step ${i + 1}'s Check names ${literal}, which only a step it skips gives`);
+      }
+    }
+  });
+  return [...new Set(out)];
+}
+
 /** "MCP" outside the page that explains it, and not quoting a label the reader's screen shows. */
 function unquotedMcp(markdown: string): string[] {
   const outsideQuotes = prose(markdown).replace(/\*\*[^*\n]+\*\*/g, "").replace(/`[^`\n]+`/g, "");
@@ -404,6 +456,10 @@ describe("one action to a step, on the four setup pages", () => {
     expect(disagreeingReturns(body(page))).toEqual([]);
   });
 
+  it.each(SETUP_PAGES)("%s gives every path through a section what the Checks after it name", (page) => {
+    expect(pathsMissingAStep(body(page))).toEqual([]);
+  });
+
   it("reads each reference form on some page, so none of them is a rule nothing exercises", () => {
     const unused = REFERENCE_FORMS.filter((form) => !SETUP_PAGES.some((page) => form.says.test(flat(body(page)))));
     expect(unused.map((form) => form.says.source)).toEqual([]);
@@ -518,6 +574,45 @@ describe("the one-action rule, each against the step it would let through", () =
     ].join("\n");
     expect(disagreeingReturns(page)).toEqual(["If it is missing: the step says 3, the section says 1"]);
     expect(disagreeingReturns(page.replace("step 3 when", "step 1 when"))).toEqual([]);
+  });
+
+  it("refuses a section path that skips the step naming what a later Check looks for", () => {
+    const page = [
+      "## Steps",
+      "",
+      "1. Choose to add a service.",
+      "",
+      "   **Check:** the app asks for a name.",
+      "",
+      "2. If your app only starts programs, follow **If it starts programs** at the end of this page. You go on to step 4 when you have finished it.",
+      "",
+      "   **Check:** if you followed it, the app shows your settings.",
+      "",
+      "3. For the name, type `forge`.",
+      "",
+      "   **Check:** the name box shows `forge`.",
+      "",
+      "4. Save.",
+      "",
+      "   **Check:** **forge** is listed.",
+      "",
+      "## If it starts programs",
+      "",
+      "1. In the command box, type `npx`.",
+      "",
+      "   **Check:** the command box shows `npx`.",
+      "",
+      "Now go on to step 4.",
+    ].join("\n");
+    expect(pathsMissingAStep(page)).toEqual([
+      "If it starts programs: step 4's Check names forge, which only a step it skips gives",
+    ]);
+    const named = page.replace(
+      "Now go on to step 4.",
+      "2. For the name, type `forge`.\n\n   **Check:** the name box shows `forge`.\n\nNow go on to step 4.",
+    );
+    expect(pathsMissingAStep(named)).toEqual([]);
+    expect(pathsMissingAStep(page.replace("go on to step 4 when", "go on to step 3 when"))).toEqual([]);
   });
 
   it("reads a step number, a pair of them and a range, and ignores prose that has none", () => {

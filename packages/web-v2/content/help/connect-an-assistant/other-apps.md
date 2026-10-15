@@ -91,8 +91,7 @@ pieces are.
 
 12. Choose **Copy to clipboard**. Forge shows the code only this once.
 
-    **Check:** a notice reading **Copied to clipboard** appears near the top of the
-    screen, over the panel.
+    **Check:** the button changes to **Copied ✓**.
 
 13. Paste the code into your note.
 
@@ -383,129 +382,133 @@ one at a time.
 11. In your app, choose the kind of connection that starts a program — often
     **Command**, **stdio** or **Local**.
 
-    **Check:** the app asks for a command and for its arguments.
+    **Check:** the app asks for a name, a command and its arguments.
 
-12. In the command box, type `npx`.
+12. For the name, type `forge`.
+
+    **Check:** the name box shows `forge`.
+
+13. In the command box, type `npx`.
 
     **Check:** the command box shows `npx`.
 
-13. Type `-y` as the first argument.
+14. Type `-y` as the first argument.
 
     **Check:** the first argument reads exactly `-y`.
 
-14. Start the next argument — with Enter where the app takes one argument per line,
+15. Start the next argument — with Enter where the app takes one argument per line,
     or with the app's button that adds one.
 
     **Check:** an empty place for the second argument is ready.
 
-15. Type `mcp-remote@0.14.3` as the second argument.
+16. Type `mcp-remote@0.14.3` as the second argument.
 
     **Check:** the second argument reads exactly `mcp-remote@0.14.3`.
 
-16. Start the next argument — with Enter where the app takes one argument per line,
+17. Start the next argument — with Enter where the app takes one argument per line,
     or with the app's button that adds one.
 
     **Check:** an empty place for the third argument is ready.
 
-17. In your note, drag across the address to highlight it.
+18. In your note, drag across the address to highlight it.
 
     **Check:** the whole address is highlighted, from `https://` to `/mcp`.
 
-18. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the address.
+19. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the address.
 
     **Check:** the address is still highlighted. A copy changes nothing on the
     screen; the next paste shows it worked.
 
-19. Paste the address as the third argument.
+20. Paste the address as the third argument.
 
     **Check:** the third argument is the address, ending in `/mcp`.
 
-20. Start the next argument — with Enter where the app takes one argument per line,
+21. Start the next argument — with Enter where the app takes one argument per line,
     or with the app's button that adds one.
 
     **Check:** an empty place for the fourth argument is ready.
 
-21. Type `--header` as the fourth argument.
+22. Type `--header` as the fourth argument.
 
     **Check:** the fourth argument reads exactly `--header`.
 
-22. Start the next argument — with Enter where the app takes one argument per line,
+23. Start the next argument — with Enter where the app takes one argument per line,
     or with the app's button that adds one.
 
     **Check:** an empty place for the fifth argument is ready.
 
-23. Type `Authorization:${AUTH_HEADER}` as the fifth argument.
+24. Type `Authorization:${AUTH_HEADER}` as the fifth argument.
 
     **Check:** the fifth argument reads exactly `Authorization:${AUTH_HEADER}`, with
     no space after the colon.
 
-24. Start the next argument — with Enter where the app takes one argument per line,
+25. Start the next argument — with Enter where the app takes one argument per line,
     or with the app's button that adds one.
 
     **Check:** an empty place for the sixth argument is ready.
 
-25. Type `--header` as the sixth argument.
+26. Type `--header` as the sixth argument.
 
     **Check:** the sixth argument reads exactly `--header`.
 
-26. Start the next argument — with Enter where the app takes one argument per line,
+27. Start the next argument — with Enter where the app takes one argument per line,
     or with the app's button that adds one.
 
     **Check:** an empty place for the seventh argument is ready.
 
-27. Type `X-Forge-Project-Slug:${FORGE_PROJECT}` as the seventh argument.
+28. Type `X-Forge-Project-Slug:${FORGE_PROJECT}` as the seventh argument.
 
     **Check:** seven arguments are listed, in this order: `-y`, `mcp-remote@0.14.3`,
     your address, `--header`, `Authorization:${AUTH_HEADER}`, `--header`,
     `X-Forge-Project-Slug:${FORGE_PROJECT}`.
 
-28. Add an environment variable. Apps label it **Env**, **Environment** or a **+**
+29. Add an environment variable. Apps label it **Env**, **Environment** or a **+**
     beside one of those.
 
     **Check:** the app shows an empty box for the variable's name and one for its
     value.
 
-29. In the variable's name box, type `AUTH_HEADER`.
+30. In the variable's name box, type `AUTH_HEADER`.
 
     **Check:** the name box shows `AUTH_HEADER`.
 
-30. In the variable's value box, type `Bearer` followed by one space.
+31. In the variable's value box, type `Bearer` followed by one space.
 
     **Check:** the value box shows `Bearer`, with the cursor one space after it.
 
-31. In your note, drag across the code to highlight it.
+32. In your note, drag across the code to highlight it.
 
     **Check:** the whole code is highlighted, from `forge_pat_` to its last
     character.
 
-32. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the code.
+33. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the code.
 
     **Check:** the code is still highlighted. A copy changes nothing on the screen;
     the next paste shows it worked.
 
-33. Paste the code into the value box, after the space.
+34. Paste the code into the value box, after the space.
 
     **Check:** the value reads `Bearer forge_pat_…`, with your token where the dots
     are.
 
-34. Add a second environment variable.
+35. Add a second environment variable.
 
     **Check:** a second pair of empty boxes appears, for a name and a value.
 
-35. In the new variable's name box, type `FORGE_PROJECT`.
+36. In the new variable's name box, type `FORGE_PROJECT`.
 
     **Check:** the name box shows `FORGE_PROJECT`.
 
-36. In your note, drag across the short name to highlight it.
+37. In your note, drag across the short name to highlight it.
 
     **Check:** the whole short name is highlighted.
 
-37. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the short name.
+38. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the short name.
 
     **Check:** the short name is still highlighted. A copy changes nothing on the
     screen; the next paste shows it worked.
 
-38. Paste the short name into the new variable's value box.
+39. Paste the short name into the new variable's value box.
 
     **Check:** two variables are listed, `AUTH_HEADER` and `FORGE_PROJECT`, each
     with its value.
@@ -516,7 +519,8 @@ Now go on to step 43.
 
 1. In Forge, choose the **Generic** tab above the snippet on the **MCP** tab.
 
-   **Check:** the snippet is a block of settings that holds `<YOUR_TOKEN_HERE>`.
+   **Check:** the snippet is a block of settings that names the connection `"forge"`
+   and holds `<YOUR_TOKEN_HERE>`.
 
 2. Choose **Copy**.
 

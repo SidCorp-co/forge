@@ -46,6 +46,8 @@ const RETURN_PATH = "/settings?tab=tokens";
 
 // Form draft persisted across the SSO reauth full-page redirect.
 const DRAFT_KEY = "forge.settings.token-draft";
+/** The form's own notices share one slot, dismissed when the Token created panel replaces the form. */
+const FORM_NOTICE = "token-form";
 
 const PROVIDER_LABELS: Record<string, string> = {
   github: "GitHub",
@@ -64,7 +66,7 @@ export function TokensTab() {
   const create = useCreateToken();
   const revoke = useRevokeToken();
   const reauth = useReauth();
-  const { toast } = useToast();
+  const { toast, dismiss } = useToast();
   const { user } = useAuth();
 
   // Default to the password prompt while /auth/me is still resolving — a
@@ -102,6 +104,8 @@ export function TokensTab() {
 
   // One-time plaintext reveal.
   const [revealed, setRevealed] = useState<PatTokenCreated | null>(null);
+  // The panel says its own copy result: a toast sits top right, over the drawer it would confirm.
+  const [copyResult, setCopyResult] = useState<"copied" | "failed" | null>(null);
 
   // Fresh-auth re-prompt.
   const [needsReauth, setNeedsReauth] = useState(false);
@@ -167,12 +171,14 @@ export function TokensTab() {
         title: "Re-authenticated",
         description: "You're verified for the next few minutes — create your token now.",
         tone: "success",
+        slot: FORM_NOTICE,
       });
     } else if (errCode) {
       toast({
         title: "Re-authentication failed",
         description: REAUTH_ERROR_MESSAGES[errCode] ?? errCode,
         tone: "error",
+        slot: FORM_NOTICE,
       });
     }
   }, [toast]);
@@ -234,6 +240,8 @@ export function TokensTab() {
   function runCreate(input: CreatePatInput) {
     create.mutate(input, {
       onSuccess: (token) => {
+        dismiss(FORM_NOTICE);
+        setCopyResult(null);
         setRevealed(token);
         setNeedsReauth(false);
         setPassword("");
@@ -248,9 +256,10 @@ export function TokensTab() {
               ? "Confirm your password to create a token."
               : "Confirm with your sign-in provider to create a token.",
             tone: "info",
+            slot: FORM_NOTICE,
           });
         } else {
-          toast({ title: "Couldn't create token", description: formatApiError(err), tone: "error" });
+          toast({ title: "Couldn't create token", description: formatApiError(err), tone: "error", slot: FORM_NOTICE });
         }
       },
     });
@@ -267,7 +276,7 @@ export function TokensTab() {
     reauth.mutate(password, {
       onSuccess: () => runCreate(input),
       onError: (err) =>
-        toast({ title: "Re-authentication failed", description: formatApiError(err), tone: "error" }),
+        toast({ title: "Re-authentication failed", description: formatApiError(err), tone: "error", slot: FORM_NOTICE }),
     });
   }
 
@@ -275,9 +284,9 @@ export function TokensTab() {
     if (!revealed) return;
     try {
       await navigator.clipboard.writeText(revealed.plaintext);
-      toast({ title: "Copied to clipboard", tone: "success" });
+      setCopyResult("copied");
     } catch {
-      toast({ title: "Copy failed", description: "Select and copy the token manually.", tone: "error" });
+      setCopyResult("failed");
     }
   }
 
@@ -471,13 +480,18 @@ export function TokensTab() {
               </code>
             </div>
             <div className="flex gap-3">
-              <Button variant="primary" icon="check" onClick={copyPlaintext} className="min-h-11">
-                Copy to clipboard
+              <Button variant="primary" onClick={copyPlaintext} className="min-h-11">
+                {copyResult === "copied" ? "Copied ✓" : "Copy to clipboard"}
               </Button>
               <Button variant="secondary" onClick={() => setRevealed(null)} className="min-h-11">
                 Done
               </Button>
             </div>
+            {copyResult === "failed" && (
+              <p role="alert" className="fg-body-sm fg-danger">
+                Copy failed. Select the token above and copy it by hand.
+              </p>
+            )}
           </div>
         )}
       </SlideOver>

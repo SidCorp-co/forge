@@ -15,8 +15,9 @@ import { MAX_VISIBLE_TOASTS, ToastLane, ToastProvider, useToast, type ToastInput
 expect.extend(matchers);
 
 let fire: (t: ToastInput) => void = () => {};
+let dismiss: (slot: string) => void = () => {};
 function Trigger() {
-  fire = useToast().toast;
+  ({ toast: fire, dismiss } = useToast());
   return null;
 }
 
@@ -50,13 +51,13 @@ describe("inside a frame, toasts go to the lane", () => {
     expect(screen.queryByTestId("toast-corner")).not.toBeInTheDocument();
   });
 
-  // ISS-1289 — the Copied to clipboard notice rendered under the Token created panel: the lane sat
-  // inside the frame while the panel is a portal on <body>. Both on <body>, z-index alone orders them.
+  // A toast raised while a drawer is open is seen, not painted under the drawer's scrim (ISS-1289):
+  // the drawer is a portal on <body>, so the lane is one too, and z-index alone orders them.
   it("shows above an open slide-over: both on <body>, the lane at the higher tier", () => {
     render(
       <ToastProvider>
         <Trigger />
-        <SlideOver open onClose={() => {}} title="Token created">
+        <SlideOver open onClose={() => {}} title="A drawer">
           <p>panel</p>
         </SlideOver>
         <div data-testid="column">
@@ -64,7 +65,7 @@ describe("inside a frame, toasts go to the lane", () => {
         </div>
       </ToastProvider>,
     );
-    act(() => fire({ title: "Copied to clipboard" }));
+    act(() => fire({ title: "Saved" }));
 
     const lane = screen.getByTestId("toast-lane");
     const dialogLayer = screen.getByRole("dialog").parentElement as HTMLElement;
@@ -198,5 +199,19 @@ describe("how many toasts show", () => {
 
     act(() => vi.advanceTimersByTime(4000));
     expect(screen.queryByText("Brief")).not.toBeInTheDocument();
+  });
+
+  it("dismisses the toasts holding a slot, and keeps every other one", () => {
+    render(<Frame />);
+    act(() => {
+      fire({ title: "Re-authenticate to continue", slot: "token-form", duration: 0 });
+      fire({ title: "Copied", duration: 0 });
+      fire({ title: "Background", slot: "notification", duration: 0 });
+    });
+
+    act(() => dismiss("token-form"));
+    expect(screen.queryByText("Re-authenticate to continue")).not.toBeInTheDocument();
+    expect(screen.getByText("Copied")).toBeInTheDocument();
+    expect(screen.getByText("Background")).toBeInTheDocument();
   });
 });
