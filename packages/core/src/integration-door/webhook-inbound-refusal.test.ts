@@ -34,6 +34,14 @@ vi.mock('../integrations/index.js', () => ({
   previousHeldInboundSecret: () => null,
   recordTurnedAwayInboundCall: async () => {},
 }));
+// the slug door hands an instance App's delivery to the App router; this binding's connection is
+// no instance App, so neither is reached
+vi.mock('../integrations/github/index.js', () => ({
+  findInstanceGithubApp: async () => null,
+  routeAppDelivery: async () => {
+    throw new Error('a delivery of no instance App was routed as one');
+  },
+}));
 vi.mock('../lib/hmac.js', () => ({
   verifyHmacSignature: () => true,
   verifySharedToken: () => true,

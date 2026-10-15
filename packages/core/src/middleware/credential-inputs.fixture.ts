@@ -257,7 +257,7 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
   'an outbound URL, header set or module URL core builds, never a request to core': lines`
     assistant/identity/link-url.ts URLSearchParams.toString in speakerLinkUrl
     integrations/autoflow/refresh.ts URLSearchParams.toString in requestRefresh
-    integration-door/github-connect-routes.ts URLSearchParams.toString in strandedAt
+    integration-door/github-connect-shared.ts URLSearchParams.toString in strandedAt
     integrations/deploy/coolify/client.ts URLSearchParams.toString in CoolifyClient
     integrations/deploy/coolify/health-probe.ts URL handed to @types/node:fetchImpl in probeHealth
     integrations/deploy/kept-probe-request.ts Headers handed to @types/node:fetchImpl in sendKeptProbeRequest
@@ -331,7 +331,7 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     middleware/route-refs.ts Request.url in resolveRouteRefs
     devices/install-routes.ts HonoRequest.url in module code
     guides/routes.ts HonoRequest.url in module code
-    integration-door/github-connect-routes.ts HonoRequest.url in reachedOrigin
+    integration-door/github-connect-shared.ts HonoRequest.url in reachedOrigin
     requirements/route-kit.ts HonoRequest.param() in draftPictureFits
     workflows/template-routes.ts HonoRequest.param() in module code
     questions/routes.ts HonoRequest.param(…) handed to questionId as { param: (k: string) => string; } in module code`,
