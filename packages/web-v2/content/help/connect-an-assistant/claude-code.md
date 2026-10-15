@@ -14,7 +14,7 @@ and run it in a terminal.
 ## Before you start
 
 - Claude Code is installed and you have signed in to it at least once. To check,
-  open a terminal (steps 21 to 23 below say how) and type `claude --version`, then
+  open a terminal (steps 24 to 26 below say how) and type `claude --version`, then
   press Enter: it prints a version number.
 - You can open the Forge project you want to ask about.
 - Open a blank note to paste into as you go — **Notes** or **TextEdit** on a
@@ -118,77 +118,92 @@ and run it in a terminal.
     **Check:** your note holds the code and, below it, the line starting
     `claude mcp add`.
 
-20. In the line, replace `<YOUR_TOKEN_HERE>` — angle brackets included — with the
-    code from step 13, keeping the word `Bearer` and the space after it.
+20. In your note, drag across the code, from `forge_pat_` to its last character, to
+    highlight it.
+
+    **Check:** the whole code is highlighted, and nothing in the line below it is.
+
+21. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the code.
+
+    **Check:** the code is still highlighted. A copy changes nothing on the screen;
+    the next paste shows it worked.
+
+22. In the line below, drag across `<YOUR_TOKEN_HERE>`, from `<` to `>`, to
+    highlight it.
+
+    **Check:** `<YOUR_TOKEN_HERE>` is highlighted with both angle brackets, and the
+    word `Bearer` and the space before it are not.
+
+23. Press **Cmd+V** on a Mac, or **Ctrl+V** on Windows, to paste the code over it.
 
     **Check:** the part in quotes reads `"Authorization: Bearer forge_pat_…"`, with
     your code where the dots are, and no `<` or `>` is left anywhere in the line.
 
-21. To open a terminal, first open your computer's search. On a Mac, press
+24. To open a terminal, first open your computer's search. On a Mac, press
     **Cmd+Space**. On Windows, press the **Windows** key.
 
     **Check:** on a Mac, a search box opens; on Windows, the **Start** menu opens.
     Either one is waiting for you to type.
 
-22. Type `Terminal` on a Mac, or `PowerShell` on Windows.
+25. Type `Terminal` on a Mac, or `PowerShell` on Windows.
 
     **Check:** the top result is **Terminal** on a Mac, or **Windows PowerShell** on
     Windows.
 
-23. Press Enter to open the terminal.
+26. Press Enter to open the terminal.
 
     **Check:** a terminal window opens, with a line waiting for you to type.
 
-24. In your note, drag from `claude` at the start of the line to the closing quote
+27. In your note, drag from `claude` at the start of the line to the closing quote
     at its end.
 
     **Check:** the whole line is highlighted, from `claude` to the closing quote.
 
-25. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the line.
+28. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the line.
 
     **Check:** the line is still highlighted. A copy changes nothing on the screen;
     the next paste shows it worked.
 
-26. Paste the line into the terminal.
+29. Paste the line into the terminal.
 
     **Check:** the terminal shows the line, with the cursor after it. It has not run
     yet.
 
-27. Press Enter.
+30. Press Enter.
 
     **Check:** the terminal prints `Added HTTP MCP server forge with URL:` followed
     by the Endpoint from step 15 and `to user config`.
 
-28. Type `claude mcp list`.
+31. Type `claude mcp list`.
 
     **Check:** the terminal shows `claude mcp list` after the prompt. It has not run
     yet.
 
-29. Press Enter.
+32. Press Enter.
 
     **Check:** a line starts with `forge:` and ends with `✔ Connected`.
 
-30. Type `claude`.
+33. Type `claude`.
 
     **Check:** the terminal shows `claude` after the prompt. It has not run yet.
 
-31. Press Enter.
+34. Press Enter.
 
     **Check:** Claude Code starts and waits for your question.
 
-32. Type: *"What issues are open in Forge right now?"*
+35. Type: *"What issues are open in Forge right now?"*
 
     **Check:** your question shows where you type, and it has not been sent yet.
 
-33. Press Enter to send it.
+36. Press Enter to send it.
 
     **Check:** Claude Code asks your permission to use a tool from `forge`.
 
-34. Allow it.
+37. Allow it.
 
     **Check:** Claude Code answers with issues from your project.
 
-35. Delete the note. The token now lives in Claude Code's own settings, and you will
+38. Delete the note. The token now lives in Claude Code's own settings, and you will
     not need the copy again.
 
     **Check:** the note is gone from your notes app.
@@ -235,6 +250,6 @@ has twenty examples. The connection works from any folder you start Claude Code
 in, and it lasts until you remove it with `claude mcp remove forge -s user` or
 revoke the token on the **API Tokens** tab.
 
-If step 29 shows `✘ Failed to connect`, see
+If step 32 shows `✘ Failed to connect`, see
 [When it does not work](?path=connect-an-assistant/when-it-does-not-work) — the
 words after it say which of the five problems it is.
