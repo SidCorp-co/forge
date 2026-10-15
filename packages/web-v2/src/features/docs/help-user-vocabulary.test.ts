@@ -43,12 +43,12 @@ const RULES: Array<{ rule: string; offends: RegExp }> = [
   {
     rule: "a walk through the retired stages",
     offends:
-      /\b(?:triage|clarify|plan|code|review|test|staging|release|fix)\s*(?:→|->|&rarr;)\s*(?:triage|clarify|plan|code|review|test|staging|release|fix)\b/i,
+      /\b(?:triage|clarify|plan|code|review|test|staging|release|fix)[*_`]*\s*(?:→|->|&rarr;)\s*[*_`]*(?:triage|clarify|plan|code|review|test|staging|release|fix)\b/i,
   },
   {
     rule: "a retired stage as a step an issue moves through",
     offends:
-      /\b(?:triage|clarify|plan|code|review|test|staging|release|fix)\s+(?:step|stage)s?\b|\bmov(?:e|es|ed|ing)\b[^.]*\bthrough\b[^.]*\b(?:triage|clarify|plan|code|review|test|staging|fix)\b/i,
+      /\b(?:triage|clarify|plan|code|review|test|staging|release|fix)[*_`]*\s+(?:step|stage)s?\b|\bmov(?:e|es|ed|ing)\b[^.]*\bthrough\b[^.]*\b(?:triage|clarify|plan|code|review|test|staging|fix)\b/i,
   },
   // A draft with nothing merged cannot be closed, so the way to turn one down is to drop it.
   {
@@ -98,6 +98,9 @@ describe("that guard, against one planted sentence per rule", () => {
     ["The code step opens a pull request.", "a retired stage as a step an issue moves through"],
     ["A failed check sends it back to the review stage.", "a retired stage as a step an issue moves through"],
     ["Agents move it through triage, then review.", "a retired stage as a step an issue moves through"],
+    ["The **Code** stage opens a pull request.", "a retired stage as a step an issue moves through"],
+    ["It returns to the `review` step.", "a retired stage as a step an issue moves through"],
+    ["It runs **Triage** → **Plan**.", "a walk through the retired stages"],
     ["Approve one by moving it to **Open**;\nturn it down by closing it.", "a draft turned down by closing it"],
     ["Reject a gated draft by closing it.", "a draft turned down by closing it"],
   ])("rejects %s", (sentence, rule) => {
