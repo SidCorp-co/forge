@@ -134,9 +134,12 @@ export function pick(select: HTMLSelectElement, value: string): void {
 
 export const settle = (ms = 150) => new Promise((ok) => setTimeout(ok, ms));
 
+/** The window's own width: a phone's layout viewport widens to whatever overflows it, so `innerWidth` cannot see the overflow. */
+export const windowWidth = () => window.visualViewport?.width ?? window.innerWidth;
+
 export function sideways(): string[] {
-  return document.documentElement.scrollWidth > window.innerWidth
-    ? [`the page scrolls sideways: ${document.documentElement.scrollWidth} px in ${window.innerWidth}`]
+  return document.documentElement.scrollWidth > windowWidth()
+    ? [`the page scrolls sideways: ${document.documentElement.scrollWidth} px in ${windowWidth()}`]
     : [];
 }
 

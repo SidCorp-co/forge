@@ -1,0 +1,1 @@
+**The Ecosystem page says who uses what from whom**: one sentence, a map of labelled arrows, what needs attention, one Connections row per consumer and contract, and a declared use with no call found said in words.

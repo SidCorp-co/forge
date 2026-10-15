@@ -84,7 +84,9 @@ const overlaps = (a: DOMRect, b: DOMRect) => a.left < b.right - 0.5 && b.left < 
 const px = (r: DOMRect) => `${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}×${Math.round(r.height)}`;
 
 function sideways(): string[] {
-  return document.documentElement.scrollWidth > window.innerWidth ? [`the page scrolls sideways: ${document.documentElement.scrollWidth} px in a ${window.innerWidth} px window`] : [];
+  // a phone's layout viewport widens to whatever overflows it, so the window is the visual viewport
+  const width = window.visualViewport?.width ?? window.innerWidth;
+  return document.documentElement.scrollWidth > width ? [`the page scrolls sideways: ${document.documentElement.scrollWidth} px in a ${width} px window`] : [];
 }
 
 const button = (named: string) => [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.trim() === named || b.getAttribute("aria-label") === named);

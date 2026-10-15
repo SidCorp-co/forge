@@ -1,28 +1,21 @@
 
 import { Link } from "@/lib/navigation/router";
 import { useMemo, useState } from "react";
-import { Badge, Button, Icon, Input, MonoTag, PageTitle, SegmentedControl, Tooltip } from "@/design";
+import { Badge, Button, Icon, Input, MonoTag, PageTitle } from "@/design";
 import { useProjects } from "@/features/projects";
 import { readingOf, refusalsOf } from "@/lib/api/refusals";
 import { useCopy } from "@/lib/i18n/interface-language";
-import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import { cn } from "@/lib/utils/cn";
 import { ecosystemApi } from "../api";
-import { type Bus, busRows, stateMeaning, type Tone } from "../bus";
+import type { Bus } from "../bus";
+import { attentionOf, connectionsOf, summaryOf } from "../connections";
 import { useBus, useChannelWrite, useMyEcosystems } from "../hooks";
 import { ecosystemRoutes } from "../routes";
-import { BusDiagram, type Lens, type Selection } from "./bus-diagram";
-import { BusDetail } from "./bus-detail";
+import { EcosystemMap } from "./ecosystem-map";
+import { ConnectionsTable, NeedsAttention } from "./ecosystem-overview";
+import { MemberProjects } from "./project-technical";
 import { Loading, RefusalNotice, UnreadNotice } from "./notices";
 import type { WorkspaceEcosystem } from "../types";
-
-const LEGEND: { tone: Tone; label: ProductCopyKey; tip: (t: Copy) => string }[] = [
-  { tone: "ok", label: "ecosystem.legend.current", tip: (t) => t("ecosystem.legend.currentTip") },
-  { tone: "warn", label: "ecosystem.legend.behind", tip: (t) => stateMeaning("behind", t) },
-  { tone: "bad", label: "ecosystem.legend.breaking", tip: (t) => stateMeaning("breaking", t) },
-  { tone: "pend", label: "ecosystem.legend.building", tip: (t) => t("ecosystem.legend.buildingTip") },
-  { tone: "own", label: "ecosystem.legend.provides", tip: (t) => t("ecosystem.legend.providesTip") },
-];
 
 function AddProject({ ecosystemId, bus }: { ecosystemId: string; bus: Bus }) {
   const t = useCopy();
@@ -82,54 +75,6 @@ function AddProject({ ecosystemId, bus }: { ecosystemId: string; bus: Bus }) {
   );
 }
 
-function LensBar({ lens, onLens }: { lens: Lens; onLens: (l: Lens) => void }) {
-  const t = useCopy();
-  return (
-    <SegmentedControl<Lens>
-      value={lens}
-      onChange={onLens}
-      options={[
-        {
-          value: "live",
-          label: t("ecosystem.screen.live"),
-          icon: "activity",
-        },
-        {
-          value: "impact",
-          label: t("ecosystem.bus.impact"),
-        },
-      ]}
-    />
-  );
-}
-
-function Legend() {
-  const t = useCopy();
-  return (
-    <div className="flex flex-wrap items-center gap-3.5 text-12 text-muted">
-      {LEGEND.map((k) => (
-        <Tooltip key={k.tone} label={k.tip(t)} multiline>
-          <span>
-            <i className="eco-key" data-tone={k.tone} />
-            {t(k.label)}
-          </span>
-        </Tooltip>
-      ))}
-      <Tooltip label={t("ecosystem.legend.outsideTip")}>
-        <span className="inline-flex items-center gap-1.5">
-          <i className="inline-block h-2 w-2 rounded-full" style={{ background: "var(--amberw-500)" }} />
-          {t("ecosystem.legend.outside")}
-        </span>
-      </Tooltip>
-    </div>
-  );
-}
-
-function defaultSelection(bus: Bus, readers: ReadonlySet<string>): Selection | null {
-  const p = bus.projects.find((x) => readers.has(x.id)) ?? bus.projects[0];
-  return p ? { kind: "project", id: p.id } : null;
-}
-
 const GUTTER = "px-4 sm:px-7";
 
 function EcosystemHeader({ eco, bus }: { eco: WorkspaceEcosystem | undefined; bus: Bus | null }) {
@@ -162,26 +107,13 @@ function EcosystemHeader({ eco, bus }: { eco: WorkspaceEcosystem | undefined; bu
 
 export function EcosystemScreen({ ecosystemId }: { ecosystemId: string }) {
   const t = useCopy();
-  const [lens, setLens] = useState<Lens>("live");
-  const [picked, setPicked] = useState<Selection | null>(null);
   const mine = useMyEcosystems().data;
   const eco = mine?.ecosystems.find((e) => e.id === ecosystemId);
-  const readers = useMemo(() => new Set(eco?.members ?? []), [eco]);
-  const reading = readingOf(useBus(ecosystemId, lens === "live"));
+  const reading = readingOf(useBus(ecosystemId, true));
   const bus = reading.kind === "read" ? reading.value : null;
-  const rows = useMemo(() => (bus ? busRows(bus) : []), [bus]);
-  const sel = picked ?? (bus ? defaultSelection(bus, readers) : null);
-  const onSelect = (s: Selection) => {
-    if (s.kind === "contract") setLens("impact");
-    setPicked(s);
-  };
-  const onLens = (l: Lens) => {
-    setLens(l);
-    if (l === "impact" && sel?.kind !== "contract") {
-      const first = rows.find((r) => r.links.length > 0) ?? rows[0];
-      if (first) setPicked({ kind: "contract", key: first.key });
-    }
-  };
+  const connections = useMemo(() => (bus ? connectionsOf(bus) : []), [bus]);
+  const attention = useMemo(() => (bus ? attentionOf(bus, connections) : []), [bus, connections]);
+  const readers = new Set(eco?.members ?? []);
   const slugs = new Map((mine?.projects ?? []).filter((p) => readers.has(p.id)).map((p) => [p.id, p.slug]));
   return (
     <div className="flex min-h-full min-w-0 flex-col">
@@ -197,20 +129,19 @@ export function EcosystemScreen({ ecosystemId }: { ecosystemId: string }) {
         </div>
       ) : null}
       {bus ? (
-        <>
-          <div className={cn("flex min-w-0 flex-wrap items-center justify-between gap-4 pb-1 pt-2", GUTTER)}>
-            <Legend />
-            <LensBar lens={lens} onLens={onLens} />
+        bus.projects.length === 0 ? (
+          <p className={cn("fg-caption py-4", GUTTER)}>{t("ecosystem.screen.noMembers")}</p>
+        ) : (
+          <div className={cn("grid min-w-0 max-w-6xl grid-cols-1 gap-7 pb-10 pt-3", GUTTER)}>
+            <p className="text-15 text-fg" data-testid="ecosystem-summary">
+              {summaryOf(bus, connections, attention, t)}
+            </p>
+            <EcosystemMap bus={bus} connections={connections} />
+            <NeedsAttention bus={bus} attention={attention} mine={slugs} />
+            <ConnectionsTable bus={bus} connections={connections} />
+            <MemberProjects bus={bus} mine={slugs} />
           </div>
-          {sel ? (
-            <>
-              <BusDiagram bus={bus} rows={rows} lens={lens} sel={sel} readers={readers} onSelect={onSelect} />
-              <BusDetail bus={bus} rows={rows} sel={sel} mine={slugs} onSelect={onSelect} />
-            </>
-          ) : (
-            <p className={cn("fg-caption py-4", GUTTER)}>{t("ecosystem.screen.noMembers")}</p>
-          )}
-        </>
+        )
       ) : null}
     </div>
   );

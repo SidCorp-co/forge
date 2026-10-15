@@ -7,6 +7,7 @@ import { stepsStale } from './builder-run-rules.js';
 import { type LinkImpact, linkImpact } from './contract/impact.js';
 import { currentVersion, type StoredVersion, versionsOf } from './contract/store.js';
 import { loadGraph } from './graph.js';
+import { splitContractRef } from './interface-rules.js';
 import { heldInterface } from './interface-service.js';
 import type { EdgeRow } from './interface-store.js';
 import { readInterfaces } from './interface-store.js';
@@ -173,8 +174,21 @@ export async function readBus(userId: string, ecosystemId: string) {
       members.has(l.providerProjectId) &&
       (steward || edgeVisible(graph, asEdge(l, ecosystemId), mine)),
   );
+  // what members' interfaces declare they consume here, linked or not: an unlinked one is said on the
+  // page with its builder's evidence, never left to read as "no links"
+  const declared = graph.edges.filter(
+    (e) =>
+      e.ecosystemId === ecosystemId &&
+      members.has(e.consumerProjectId) &&
+      members.has(e.providerProjectId) &&
+      (steward || edgeVisible(graph, e, mine)),
+  );
   const shown = [
-    ...new Set([...seen, ...links.flatMap((l) => [l.projectId, l.providerProjectId])]),
+    ...new Set([
+      ...seen,
+      ...links.flatMap((l) => [l.projectId, l.providerProjectId]),
+      ...declared.flatMap((e) => [e.consumerProjectId, e.providerProjectId]),
+    ]),
   ];
   const [projects, interfaces, versions, runs, linked] = await Promise.all([
     projectsWhere(db, { ids: shown }),
@@ -201,6 +215,21 @@ export async function readBus(userId: string, ecosystemId: string) {
         currentVersion: latest.get(`${provider}/${slug}`) ?? null,
       })),
   );
+  const slugOf = new Map(projects.map((p) => [p.id, p.slug]));
+  const usedByOf = (e: EdgeRow) => {
+    const stored = interfaces.get(e.consumerProjectId);
+    const use = stored
+      ? heldInterface(stored, e.consumerProjectId).document.consumes.find((c) => {
+          const { provider, contract } = splitContractRef(c.contract);
+          return (
+            c.ecosystem === ecosystemId &&
+            provider === slugOf.get(e.providerProjectId) &&
+            contract === e.contractSlug
+          );
+        })
+      : undefined;
+    return use?.usedBy ?? [];
+  };
   const doc = eco.document;
   return {
     ecosystem: { id: eco.id, slug: doc.ecosystem.slug, name: doc.ecosystem.name },
@@ -220,6 +249,18 @@ export async function readBus(userId: string, ecosystemId: string) {
       outsideContract: storedLink(l).outsideContract.length,
       impact: impacts.get(l.id) ?? null,
       updatedAt: l.updatedAt.toISOString(),
+    })),
+    declared: declared.map((e) => ({
+      consumer: e.consumerProjectId,
+      contract: { provider: e.providerProjectId, slug: e.contractSlug },
+      builtAgainst: e.builtAgainst,
+      usedBy: usedByOf(e),
+      linked: links.some(
+        (l) =>
+          l.projectId === e.consumerProjectId &&
+          l.providerProjectId === e.providerProjectId &&
+          l.contractSlug === e.contractSlug,
+      ),
     })),
   };
 }

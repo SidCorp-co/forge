@@ -1,3 +1,5 @@
+// @direct-test-of packages/core/src/ecosystem/link-read.ts
+
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
@@ -244,6 +246,32 @@ describe('the read shapes', () => {
     });
     const store = ok(await say('store', 'GET', `/api/ecosystems/${w.eco}/bus`));
     expect(store.links).toEqual([]);
+  });
+
+  it('carries every declared consumption, saying which no link backs, so none reads as "no links"', async () => {
+    const bus = ok(await say('platform', 'GET', `/api/ecosystems/${w.eco}/bus`));
+    const declared = (consumer: string, provider: string, slug: string) =>
+      bus.declared.find(
+        (d: Doc) =>
+          d.consumer === consumer && d.contract.provider === provider && d.contract.slug === slug,
+      );
+    expect(declared(w.project.plugin, w.project.forge, 'forge-api')).toEqual({
+      consumer: w.project.plugin,
+      contract: { provider: w.project.forge, slug: 'forge-api' },
+      builtAgainst: '2026-09-20',
+      usedBy: ['forge-cli'],
+      linked: true,
+    });
+    expect(declared(w.project.plugin, w.project.forge, 'forge-mcp')).toMatchObject({
+      usedBy: ['claude-plugin'],
+      linked: false,
+    });
+    expect(declared(w.project.forge, w.project.plugin, 'driver-skill')).toMatchObject({
+      builtAgainst: '2026-09-28',
+      usedBy: ['runner'],
+      linked: false,
+    });
+    expect(bus.declared).toHaveLength(3);
   });
 });
 

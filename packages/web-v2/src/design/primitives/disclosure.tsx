@@ -31,13 +31,15 @@ export function Disclosure({ title, count, summary, children, defaultOpen = fals
       data-testid={testId}
       data-highlight={highlight}
     >
-      <CollapsibleTrigger className="flex h-row w-full min-w-0 items-center gap-3 text-left focus-visible:outline-none focus-visible:shadow-focus">
-        <Icon name="chevronRight" size={16} className="flex-none text-subtle transition-transform duration-150 group-data-[open]/fold:rotate-90" />
+      {/* the chevron reads its own trigger's state: a fold's open state would turn every fold nested in it */}
+      <CollapsibleTrigger className="group/trigger flex h-row w-full min-w-0 items-center gap-3 text-left focus-visible:outline-none focus-visible:shadow-focus">
+        <Icon name="chevronRight" size={16} className="flex-none text-subtle transition-transform duration-150 group-data-[panel-open]/trigger:rotate-90" />
         <span className="flex-none text-14 font-medium text-fg">
           {title}
           {count !== undefined ? <span className="ml-1.5 text-12 font-medium text-muted">{count}</span> : null}
         </span>
-        {summary ? <span className="min-w-0 flex-1 truncate text-13 text-muted">{summary}</span> : null}
+        {/* width 0, then grown: a one-line summary is cut to the row, never widens the page it sits in */}
+        {summary ? <span className="w-0 min-w-0 flex-1 truncate text-13 text-muted">{summary}</span> : null}
       </CollapsibleTrigger>
       <CollapsibleContent className="pb-4 pl-7">{children}</CollapsibleContent>
     </Collapsible>
