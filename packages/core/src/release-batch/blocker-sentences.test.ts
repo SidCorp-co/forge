@@ -176,13 +176,20 @@ describe('RELEASE_ROSTER_EMPTY', () => {
   // statuses as code beside a link naming one of them by its label. One short sentence, in labels.
   it('counts what stands one move short of the gate, in one sentence naming each status by its label', () => {
     expect(releaseBlockerSentence('RELEASE_ROSTER_EMPTY', { nearGate: 11 })).toBe(
-      'Nothing is ready to release: 11 issues are at Testing or Tested, and none has reached Awaiting release.',
+      'Nothing is ready to release: 11 issues are at Testing or Tested, and each moves to Awaiting release once it records where its change now runs.',
     );
   });
 
   it('says so where nothing stands one move short either', () => {
     expect(releaseBlockerSentence('RELEASE_ROSTER_EMPTY', { nearGate: 0 })).toBe(
       'Nothing is ready to release: no issue is at Testing, Tested or Awaiting release.',
+    );
+  });
+
+  // The consult on r5: an API caller gets no link beside this, so the sentence names the act.
+  it('names the act that moves an issue to the gate, for a caller with no link beside it', () => {
+    expect(releaseBlockerSentence('RELEASE_ROSTER_EMPTY', { nearGate: 2 })).toContain(
+      'once it records where its change now runs',
     );
   });
 

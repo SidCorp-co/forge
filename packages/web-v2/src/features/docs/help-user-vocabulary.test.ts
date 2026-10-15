@@ -190,7 +190,7 @@ describe("the screens judge-15 read, against the same rules", () => {
   // The blocker sentence is core's (release-batch/blocker-sentences.ts); this is the screen's half:
   // what Shape & release draws from it. The core test holds every sentence to the same rule.
   it.each([
-    ["now", "Nothing is ready to release: 2 issues are at Testing or Tested, and none has reached Awaiting release.", []],
+    ["now", "Nothing is ready to release: 2 issues are at Testing or Tested, and each moves to Awaiting release once it records where its change now runs.", []],
     [
       "before ISS-1229 r5",
       "Nothing is waiting at the release gate, and nothing stands one move short of it: no issue on this project is at `testing` or at `tested`. An issue reaches the gate at `awaiting_release`.",

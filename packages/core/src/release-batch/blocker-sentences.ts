@@ -272,7 +272,7 @@ function nearGateSentence(nearGate: number): string {
     return `Nothing is ready to release: no issue is at ${TESTING}, ${TESTED} or ${AWAITING_RELEASE}.`;
   }
   const issues = nearGate === 1 ? '1 issue is' : `${nearGate} issues are`;
-  return `Nothing is ready to release: ${issues} at ${TESTING} or ${TESTED}, and none has reached ${AWAITING_RELEASE}.`;
+  return `Nothing is ready to release: ${issues} at ${TESTING} or ${TESTED}, and each moves to ${AWAITING_RELEASE} once it records where its change now runs.`;
 }
 
 /**
