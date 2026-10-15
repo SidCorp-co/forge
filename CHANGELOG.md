@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.246] - 2026-10-15
+
+A bound GitHub repository no longer exhausts its rate limit
+
+### Fixed
+
+- **A GitHub rate limit stops the reads instead of feeding them**: each compare between two commits is asked once, the release sweep pages files only for diverged commits, and a limited installation answers 424 with its reset until then.
+
 ## [0.4.0-dev.245] - 2026-10-15
 
 One GitHub App serves the instance: connecting GitHub is a single button
