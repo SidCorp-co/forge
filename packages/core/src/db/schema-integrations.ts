@@ -2,6 +2,7 @@ import type { Said } from '@forge/contracts/said';
 import { relations, sql } from 'drizzle-orm';
 import {
   boolean,
+  check,
   customType,
   index,
   integer,
@@ -14,6 +15,8 @@ import {
 } from 'drizzle-orm/pg-core';
 import * as ints from './schema-integration-types.js';
 import { integrationBindings } from './schema-project-config.js';
+
+const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '));
 
 // secrets_enc columns hold the AES-256-GCM ciphertext produced by src/integrations/vault.ts.
 const bytea = customType<{ data: Buffer; driverData: Buffer }>({
@@ -69,8 +72,8 @@ export const integrationConnections = pgTable(
   'integration_connections',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    // Generic principal. ownerType discriminates the namespace of ownerId so we
-    // can add 'org' later without re-keying rows; no FK because it is polymorphic.
+    // Generic principal: ownerType says whose namespace ownerId is in — a user, an org, or the
+    // instance itself (the nil uuid, `INSTANCE_OWNER_ID`); no FK because it is polymorphic.
     ownerType: text('owner_type', { enum: ints.integrationOwnerTypes }).notNull().default('user'),
     ownerId: uuid('owner_id').notNull(),
     provider: text('provider').notNull(),
@@ -102,6 +105,18 @@ export const integrationConnections = pgTable(
     activeProviderIdx: index('integration_connections_active_provider_idx')
       .on(t.provider, t.active)
       .where(sql`active = true`),
+    ownerTypeChk: check(
+      'integration_connections_owner_type_chk',
+      sql`${t.ownerType} IN (${inList(ints.integrationOwnerTypes)})`,
+    ),
+    instanceOwnerChk: check(
+      'integration_connections_instance_owner_chk',
+      sql`${t.ownerType} <> 'instance' OR ${t.ownerId} = ${sql.raw(`'${ints.INSTANCE_OWNER_ID}'`)}`,
+    ),
+    // one App serves the instance: a second is never created while one is switched on
+    oneInstanceProviderUq: uniqueIndex('integration_connections_one_instance_provider_uq')
+      .on(t.provider)
+      .where(sql`owner_type = 'instance' AND active = true`),
   }),
 );
 

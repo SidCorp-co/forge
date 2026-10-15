@@ -3,11 +3,10 @@
  *
  * The operator's browser POSTs a manifest to GitHub, GitHub creates the App
  * and redirects back with a short-lived code, and converting that code yields
- * the App's id, private key and webhook secret: nothing is typed by hand.
+ * the App's id, private key, webhook secret and OAuth client: nothing is typed by hand.
  */
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { inboundWebhookUrl } from '../index.js';
 import { APP_EVENTS, APP_PERMISSIONS } from './app-permissions.js';
 import { anonymousOctokit, responseOf } from './octokit.js';
 
@@ -19,11 +18,11 @@ import { anonymousOctokit, responseOf } from './octokit.js';
 export const STATE_TTL_MS = 60 * 60_000;
 
 export interface ConnectState {
-  projectId: string;
   userId: string;
-  /** Org that will own the credential, when the operator chose an org-owned
-   *  App. Absent = personal. The choice is made at connect time but spent in
-   *  the callback, which sees nothing but this state. */
+  /** The project the flow began on, where it began on one: its return lands back there. */
+  projectId?: string;
+  /** The Forge org an installation made in this flow is recorded for. Chosen when Connect is
+   *  pressed and spent on the return, which sees nothing but this state. */
   orgId?: string;
   /** Where the flow began, so the install lands back there: the workspace Integrations page, or
    *  the project's settings when absent. */
@@ -68,10 +67,10 @@ export function readConnectState(
   } catch {
     return invalid;
   }
-  if (typeof parsed.exp !== 'number' || !parsed.projectId || !parsed.userId) return invalid;
+  if (typeof parsed.exp !== 'number' || !parsed.userId) return invalid;
   const state: ConnectState = {
-    projectId: parsed.projectId,
     userId: parsed.userId,
+    ...(parsed.projectId ? { projectId: parsed.projectId } : {}),
     ...(parsed.orgId ? { orgId: parsed.orgId } : {}),
     ...(parsed.returnTo === 'integrations' ? { returnTo: 'integrations' as const } : {}),
     ...(parsed.connectionId ? { connectionId: parsed.connectionId } : {}),
@@ -79,45 +78,51 @@ export function readConnectState(
   return parsed.exp < nowMs ? { ok: false, why: 'expired', state } : { ok: true, state };
 }
 
+/** The App-wide door every installation's deliveries arrive at, built on the API's public origin. */
+export function appWebhookUrl(apiBaseUrl: string): string {
+  return `${apiBaseUrl.replace(/\/+$/, '')}/api/webhooks/github/app`;
+}
+
 /**
- * The manifest GitHub renders as the App it is about to create. `redirect_url` receives the
- * conversion code and `setup_url` the installation, both in the person's browser, so they are built
- * on `returnBaseUrl`, the origin that carries their session; `hook_attributes.url` is where GitHub's
- * servers deliver, built on the API's public origin.
+ * The manifest GitHub renders as the instance's App. It is public, so any account can install it,
+ * and it asks the installer for OAuth on install, so the return carries a code that proves which
+ * installations they can reach: GitHub then sends the browser to `callback_urls`, not to
+ * `setup_url`. `redirect_url` receives the conversion code. Both are built on `returnBaseUrl`, the
+ * origin that carries the person's session; `hook_attributes.url` is where GitHub's servers deliver.
  */
 export function buildAppManifest(args: {
   appName: string;
   webBaseUrl: string;
   apiBaseUrl: string;
   returnBaseUrl: string;
-  projectSlug: string;
 }): Record<string, unknown> {
   const web = args.webBaseUrl.replace(/\/+$/, '');
-  const api = args.apiBaseUrl.replace(/\/+$/, '');
   const back = args.returnBaseUrl.replace(/\/+$/, '');
+  const installed = `${back}/api/integrations/github/installed`;
   return {
     name: args.appName,
     url: web,
-    hook_attributes: { url: inboundWebhookUrl(api, args.projectSlug), active: true },
+    hook_attributes: { url: appWebhookUrl(args.apiBaseUrl), active: true },
     redirect_url: `${back}/api/integrations/github/manifest-callback`,
-    setup_url: `${back}/api/integrations/github/installed`,
+    callback_urls: [installed],
+    request_oauth_on_install: true,
+    setup_url: installed,
     setup_on_update: true,
-    public: false,
+    public: true,
     default_permissions: APP_PERMISSIONS,
     default_events: APP_EVENTS,
   };
 }
 
-export function manifestPostUrl(owner?: string | null): string {
-  return owner
-    ? `https://github.com/organizations/${encodeURIComponent(owner)}/settings/apps/new`
-    : 'https://github.com/settings/apps/new';
-}
+/** Where the manifest is posted: the operator's own account owns the instance's App. */
+export const MANIFEST_POST_URL = 'https://github.com/settings/apps/new';
 
 export interface ConvertedApp {
   appId: string;
   privateKey: string;
   webhookSecret: string;
+  clientId?: string;
+  clientSecret?: string;
   slug?: string;
   htmlUrl?: string;
   /** Who owns the App on GitHub: where its settings page lives. */
@@ -134,6 +139,8 @@ export async function convertManifestCode(args: {
     id?: number;
     pem?: string;
     webhook_secret?: string;
+    client_id?: string;
+    client_secret?: string;
     slug?: string;
     html_url?: string;
     owner?: { login?: string; type?: string };
@@ -157,6 +164,8 @@ export async function convertManifestCode(args: {
     appId: String(body.id),
     privateKey: body.pem,
     webhookSecret: body.webhook_secret,
+    ...(body.client_id ? { clientId: body.client_id } : {}),
+    ...(body.client_secret ? { clientSecret: body.client_secret } : {}),
     ...(body.slug ? { slug: body.slug } : {}),
     ...(body.html_url ? { htmlUrl: body.html_url } : {}),
     ...(body.owner?.login

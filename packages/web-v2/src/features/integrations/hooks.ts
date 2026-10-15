@@ -100,12 +100,12 @@ export function useProbeRocketchatRooms(projectId: string | undefined) {
   });
 }
 
-/** Start the GitHub App manifest flow. Deliberately NOT invalidating anything
- *  on success: no connection exists until GitHub redirects back through the
- *  callback, so a refetch here would only re-read the same empty list. */
+/** Start connecting GitHub through the instance's App. Deliberately NOT invalidating anything
+ *  on success: nothing is recorded until GitHub redirects back through the
+ *  callback, so a refetch here would only re-read the same list. */
 export function useGitHubConnect(projectId: string | undefined) {
   return useMutation({
-    mutationFn: (params: { org?: string; orgId?: string; returnTo?: "integrations" }) =>
+    mutationFn: (params: { returnTo?: "integrations" }) =>
       integrationsApi.githubConnect(projectId as string, params),
   });
 }

@@ -4,6 +4,7 @@ import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import {
   type BindingRole,
+  INSTANCE_OWNER_ID,
   type IntegrationOwnerType,
   integrationBindings,
   integrationConnections,
@@ -239,6 +240,29 @@ export async function updateConnection(
   return row ?? null;
 }
 
+/**
+ * Hand a connection to the instance: from here it is the one App every org installs, managed only
+ * by a platform admin. Its config and secrets are written in the same statement, so a row is never
+ * instance-owned without what makes it one.
+ */
+export async function makeConnectionInstanceOwned(
+  id: string,
+  patch: { config: Record<string, unknown>; secrets: Record<string, unknown> },
+): Promise<IntegrationConnectionRow | null> {
+  const [row] = await db
+    .update(integrationConnections)
+    .set({
+      ownerType: 'instance',
+      ownerId: INSTANCE_OWNER_ID,
+      config: patch.config,
+      secretsEnc: encryptJson(patch.secrets),
+      updatedAt: new Date(),
+    })
+    .where(eq(integrationConnections.id, id))
+    .returning();
+  return row ?? null;
+}
+
 export async function softDeleteConnection(id: string): Promise<void> {
   await db
     .update(integrationConnections)
@@ -313,9 +337,10 @@ export async function listBindingsForConnection(
 }
 
 /**
- * Connections visible to a user: their own (ownerType=user) plus org-owned
+ * Connections visible to a user: their own (ownerType=user), org-owned
  * connections of every org they belong to (any role — managing them is
- * gated separately at the route layer). Returns ALL active states — the
+ * gated separately at the route layer), and the instance's own, which every
+ * org installs and binds from. Returns ALL active states — the
  * directory must show a disabled connection as Disabled (and allow
  * re-enabling it) rather than silently dropping it (ISS-429);
  * share-eligibility filtering (`active && hasSecrets`) happens client-side.
@@ -343,6 +368,7 @@ export async function listConnectionsForPrincipalUser(
               inArray(integrationConnections.ownerId, orgIds),
             )
           : sql`false`,
+        eq(integrationConnections.ownerType, 'instance'),
       ),
     )
     .orderBy(desc(integrationConnections.createdAt));

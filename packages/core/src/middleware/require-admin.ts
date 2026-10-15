@@ -1,5 +1,8 @@
+import { and, inArray, isNotNull, sql } from 'drizzle-orm';
 import type { Context, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { db } from '../db/client.js';
+import { users } from '../db/schema.js';
 import { env } from '../lib/env.js';
 import { type AuthVars, authUserRow, readAuthUser } from './auth.js';
 import { declareGate } from './declared-gate.js';
@@ -29,6 +32,21 @@ export function onAdminList(email: string): boolean {
 export async function isPlatformAdmin(userId: string): Promise<boolean> {
   const row = await readAuthUser(userId);
   return row !== null && row.emailVerifiedAt !== null && onAdminList(row.email);
+}
+
+/**
+ * The platform admins by the name each goes by, or their address where they set none: who a person
+ * is told to ask for what only an operator of this Forge may do.
+ */
+export async function platformAdminNames(): Promise<string[]> {
+  const allowed = parseAdminList();
+  if (allowed.length === 0) return [];
+  const rows = await db
+    .select({ displayName: users.displayName, email: users.email })
+    .from(users)
+    .where(and(inArray(sql`lower(${users.email})`, allowed), isNotNull(users.emailVerifiedAt)))
+    .orderBy(users.email);
+  return rows.map((r) => r.displayName?.trim() || r.email);
 }
 
 export async function assertPlatformAdmin(c: Context<{ Variables: AuthVars }>): Promise<void> {

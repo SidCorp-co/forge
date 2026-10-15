@@ -475,6 +475,7 @@
     "integrations/github": {
       "kind": "adapter",
       "context": "adapters",
+      "owns": ["githubAppInstallations"],
       "serves": ["github-merge-sequence#p-github", "github-merge-sequence#m-project", "REQ-25"]
     },
     "integrations/gitlab": {

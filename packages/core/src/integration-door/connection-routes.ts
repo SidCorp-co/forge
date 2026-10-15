@@ -29,7 +29,6 @@ import {
   raceWithTimeout,
   reportedBindingIdentities,
   softDeleteConnection,
-  summarizeBinding,
   summarizeConnection,
   summarizeConnectionWithUsage,
   TEST_PROBE_TIMEOUT_MS,
@@ -40,16 +39,19 @@ import { SourceHostCallError } from '../integrations/source-host/index.js';
 import { loadOrgRole } from '../lib/authz.js';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { isPlatformAdmin } from '../middleware/require-admin.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireOrgHeld } from '../permissions/index.js';
 import { readDeployMap } from '../project-config/index.js';
+import { summarizeBindings } from './binding-standing.js';
 import { bindConnectionInto } from './connect-and-bind.js';
+import { instanceInstallationsFor } from './github-reach.js';
 
 /**
  * Reading a connection, as opposed to managing it. Every principal the list
- * route shows a connection to can also read it; only WRITING is gated on
- * org admin.
+ * route shows a connection to can also read it; only WRITING is gated, on org
+ * admin for an org's, and on a platform admin for the instance's own.
  */
 async function loadConnection(
   id: string,
@@ -58,6 +60,16 @@ async function loadConnection(
 ): Promise<IntegrationConnectionRow> {
   const connection = await findConnectionById(id);
   if (!connection) throw notFound('connection');
+  if (connection.ownerType === 'instance') {
+    if (intent === 'manage' && !(await isPlatformAdmin(userId))) {
+      throw new HTTPException(403, {
+        message:
+          "this connection is the Forge instance's own, and only a Forge operator changes or removes it",
+        cause: { code: 'GITHUB_APP_OPERATOR_ONLY' },
+      });
+    }
+    return connection;
+  }
   if (connection.ownerType === 'user') {
     if (connection.ownerId !== userId) throw notFound('connection');
     return connection;
@@ -175,7 +187,14 @@ integrationConnectionsRoutes.get('/:id/targets', async (c) => {
   );
   if (!appId || !privateKey) throw badRequest({ id: 'the App was never converted' });
   try {
-    const listed = await listInstallationRepositories({ appId, privateKey });
+    const listed = await listInstallationRepositories({
+      appId,
+      privateKey,
+      // the instance's App lists only what was recorded for the caller's orgs or is bound already
+      ...(connection.ownerType === 'instance'
+        ? { installations: await instanceInstallationsFor(c.get('userId'), connection.id) }
+        : {}),
+    });
     return c.json({
       targets: listed.repositories.map((r) => ({
         provider: 'github' as const,
@@ -199,7 +218,7 @@ integrationConnectionsRoutes.get('/:id/bindings', async (c) => {
   const userId = c.get('userId');
   await loadConnection(id, userId, 'read');
   const pairs = await listBindingsForConnection(id);
-  const bindings = pairs.map(summarizeBinding);
+  const bindings = await summarizeBindings(pairs);
   return c.json({ items: bindings });
 });
 

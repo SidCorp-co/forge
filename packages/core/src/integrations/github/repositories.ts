@@ -72,31 +72,42 @@ async function reposForInstallation(
 }
 
 /**
- * Every repository reachable through every installation of this App, tagged
- * with the installation that reaches it — a binding needs both, because the
- * installation is what mints the token and the repository is what the project
- * points at.
+ * Every repository reachable through the installations of this App, tagged with the installation
+ * that reaches it — a binding needs both, because the installation is what mints the token and the
+ * repository is what the project points at.
+ *
+ * `installations` is the list to read, and the instance App always passes it: what Forge recorded
+ * for the caller's orgs. Absent, an App a person or org owns reads its own `/app/installations`,
+ * which for a private App is the owner's alone.
  */
 export async function listInstallationRepositories(args: {
   appId: string;
   privateKey: string;
+  installations?: ReadonlyArray<{ id: number; account: string }>;
   fetchImpl?: typeof fetch;
 }): Promise<{
   repositories: InstallationRepo[];
   truncated: boolean;
   failedInstallations: Array<{ installationId: number; account: string; reason: string }>;
 }> {
-  const installations = await githubJson<Array<{ id?: number; account?: { login?: string } }>>(
-    appOctokit(args),
-    '/app/installations',
-  );
+  const installations: Array<{ id?: number; account?: { login?: string } }> = args.installations
+    ? args.installations.map((i) => ({ id: i.id, account: { login: i.account } }))
+    : await githubJson<Array<{ id?: number; account?: { login?: string } }>>(
+        appOctokit(args),
+        '/app/installations',
+      );
   const out: InstallationRepo[] = [];
   const failedInstallations: Array<{ installationId: number; account: string; reason: string }> =
     [];
   let truncated = false;
   for (const inst of installations) {
     if (typeof inst.id !== 'number') continue;
-    const cred = { ...args, installationId: inst.id };
+    const cred = {
+      appId: args.appId,
+      privateKey: args.privateKey,
+      ...(args.fetchImpl ? { fetchImpl: args.fetchImpl } : {}),
+      installationId: inst.id,
+    };
     try {
       await mintInstallationToken(cred);
     } catch (err) {

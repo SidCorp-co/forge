@@ -86,13 +86,8 @@ export const integrationsApi = {
 
 
 
-  githubConnect: (
-    projectId: string,
-    params: { org?: string; orgId?: string; returnTo?: "integrations" },
-  ) => {
+  githubConnect: (projectId: string, params: { returnTo?: "integrations" }) => {
     const qs = new URLSearchParams();
-    if (params.org) qs.set("org", params.org);
-    if (params.orgId) qs.set("orgId", params.orgId);
     if (params.returnTo) qs.set("returnTo", params.returnTo);
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
     return apiClient<GitHubConnectStart>(

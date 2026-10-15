@@ -1,13 +1,22 @@
+import type { Context } from 'hono';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import {
+  type AppDeliveryOutcome,
+  findInstanceGithubApp,
+  routeAppDelivery,
+} from '../integrations/github/index.js';
 import {
   type BindingWithConnection,
   bindingInboundSecret,
   buildContextFromBinding,
   dropPreviousHeldInboundSecret,
   getAdapter,
+  heldInboundSecret,
+  type IntegrationConnectionRow,
   type IntegrationProvider,
   listActiveBindingsForProjectProvider,
+  listBindingsForConnection,
   listIntegrations,
   previousHeldInboundSecret,
   recordTurnedAwayInboundCall,
@@ -90,6 +99,84 @@ function providerHeaderMap(): ProviderRoute[] {
 
 export const webhookInboundRoutes = new Hono();
 
+/** What a routed App delivery answers: 200 with what became of it, 500 when a handler threw. */
+async function answerAppDelivery(
+  c: Context,
+  connection: IntegrationConnectionRow,
+  raw: string,
+  payload: unknown,
+): Promise<Response> {
+  const outcome: AppDeliveryOutcome = await routeAppDelivery({
+    connection,
+    input: {
+      headers: Object.fromEntries(c.req.raw.headers),
+      rawBody: raw,
+      payload,
+      emitFacts: emitEvents,
+    },
+  });
+  if (outcome.kind === 'routed' && outcome.failed > 0) {
+    throw new HTTPException(500, { message: 'handler failed', cause: { code: 'HANDLER_FAILED' } });
+  }
+  return c.json({ accepted: true, handler: 'github', ...outcome });
+}
+
+const GITHUB_SIGNATURE = 'x-hub-signature-256';
+
+/**
+ * The instance App's own door: every installation's deliveries arrive here, signed with the App's
+ * one webhook secret. A delivery that does not verify against it is refused before anything routes,
+ * and leaves its record on the App's live bindings, as a project's door does.
+ */
+webhookInboundRoutes.post(
+  '/github/app',
+  rawBody(
+    'application/json',
+    "The instance GitHub App's webhook payload, read as the exact bytes x-hub-signature-256 signs and parsed as JSON only after it verifies.",
+  ),
+  async (c) => {
+    const app = await findInstanceGithubApp();
+    if (!app) {
+      throw new HTTPException(404, {
+        message:
+          'this Forge has no GitHub App of its own, so nothing here receives an App-wide delivery: a Forge operator connects GitHub first.',
+        cause: { code: 'GITHUB_APP_NOT_CONNECTED' },
+      });
+    }
+    const raw = await c.req.raw.clone().text();
+    const live = async () =>
+      (await listBindingsForConnection(app.id)).filter(
+        (pair) => pair.binding.active && pair.binding.provider === 'github',
+      );
+    const signature = c.req.header(GITHUB_SIGNATURE);
+    if (!signature) {
+      await noteTurnedAway(await live(), 'MISSING_SIGNATURE', {
+        slug: '(app)',
+        provider: 'github',
+      });
+      throw unauthorized('MISSING_SIGNATURE');
+    }
+    const verifies = (secret: string | null) =>
+      secret !== null && secret.length > 0 && verifyHmacSignature(secret, raw, signature);
+    if (verifies(heldInboundSecret(app))) {
+      if (previousHeldInboundSecret(app)) await dropPreviousHeldInboundSecret(app.id);
+    } else if (!verifies(previousHeldInboundSecret(app))) {
+      await noteTurnedAway(await live(), 'INVALID_SIGNATURE', {
+        slug: '(app)',
+        provider: 'github',
+      });
+      throw unauthorized('INVALID_SIGNATURE');
+    }
+    let parsed: unknown;
+    try {
+      parsed = raw.length > 0 ? JSON.parse(raw) : {};
+    } catch {
+      throw badRequest({ body: 'invalid json' });
+    }
+    return answerAppDelivery(c, app, raw, parsed);
+  },
+);
+
 webhookInboundRoutes.post(
   '/in/:slug',
   rawBody(
@@ -150,6 +237,11 @@ webhookInboundRoutes.post(
       parsed = raw.length > 0 ? JSON.parse(raw) : {};
     } catch {
       throw badRequest({ body: 'invalid json' });
+    }
+    // the instance's App serves every project, so what its delivery names picks the bindings, not
+    // the slug its hook happens to point at
+    if (pair.connection.ownerType === 'instance' && map.provider === 'github') {
+      return answerAppDelivery(c, pair.connection, raw, parsed);
     }
     const ctx = buildContextFromBinding(pair);
     try {

@@ -62,6 +62,7 @@ import { projectHealthRoutes, publicHealthRoutes } from './health/routes.js';
 import { intakeRoutes } from './intake/routes.js';
 import {
   deviceGitCredentialRoutes,
+  githubAppRoutes,
   githubCallbackRoutes,
   githubConnectRoutes,
   integrationConnectionsRoutes,
@@ -263,6 +264,8 @@ function mountProjectAndOrgRoutes(app: Hono<{ Variables: RequestIdVars }>): void
   app.route('/api/projects', integrationsRoutes);
   app.route('/api/projects', githubConnectRoutes);
   app.route('/api', githubCallbackRoutes);
+  // before the connections router, whose `/:id` routes would read `github` as an id
+  app.route('/api/integration-connections', githubAppRoutes);
   app.route('/api/integration-connections', integrationConnectionsRoutes);
   app.route('/api/projects', memberRoutes);
   app.route('/api/projects', skillStudioRoutes);

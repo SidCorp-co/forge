@@ -14,6 +14,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { integrationBindings, integrationConnections } from '../../db/schema.js';
 import { type IntegrationConnectionRow, listConnectionsForPrincipalUser } from '../index.js';
+import { listInstallationsForOrgs, listInstallationsOf } from './installations.js';
 
 /** The caller, and the projects the door found it may administer. */
 export interface InstallCandidateScope {
@@ -54,4 +55,44 @@ export async function listGithubAppsReachableBy(
   const byId = new Map<string, IntegrationConnectionRow>();
   for (const connection of [...mine, ...administered]) byId.set(connection.id, connection);
   return [...byId.values()];
+}
+
+/**
+ * The installations of the instance's App a caller may list and bind from: the active ones
+ * recorded for an org they act in, and any one a project they administer already binds. Never
+ * GitHub's own list of the App's installations, which is every account's.
+ */
+export async function installationsReachableBy(args: {
+  connectionId: string;
+  orgIds: readonly string[];
+  administeredProjectIds: readonly string[];
+}): Promise<Array<{ id: number; account: string }>> {
+  const recorded = (await listInstallationsForOrgs(args.connectionId, args.orgIds)).filter(
+    (row) => row.state === 'active',
+  );
+  const out = new Map<number, string>(
+    recorded.map((row) => [row.installationId, row.accountLogin]),
+  );
+  if (args.administeredProjectIds.length > 0) {
+    const bound = await db
+      .select({ config: integrationBindings.config })
+      .from(integrationBindings)
+      .where(
+        and(
+          eq(integrationBindings.connectionId, args.connectionId),
+          eq(integrationBindings.active, true),
+          inArray(integrationBindings.projectId, [...args.administeredProjectIds]),
+        ),
+      );
+    const heldIds = bound
+      .map((row) => (row.config as { installationId?: unknown }).installationId)
+      .filter((id): id is number => typeof id === 'number' && !out.has(id));
+    const held = await listInstallationsOf(args.connectionId, heldIds);
+    for (const id of heldIds) {
+      const row = held.find((h) => h.installationId === id);
+      if (row && row.state !== 'active') continue;
+      out.set(id, row?.accountLogin ?? '');
+    }
+  }
+  return [...out.entries()].map(([id, account]) => ({ id, account }));
 }

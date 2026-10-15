@@ -41,11 +41,10 @@ export interface GitHubRepositoriesResponse {
   truncated: boolean;
 }
 
-export interface GitHubConnectStart {
-  postUrl: string;
-  state: string;
-  manifest: Record<string, unknown>;
-}
+/** Where Connect GitHub sends the browser: the instance App's install page, or the manifest that makes it. */
+export type GitHubConnectStart =
+  | { kind: "install"; installUrl: string }
+  | { kind: "manifest"; postUrl: string; state: string; manifest: Record<string, unknown> };
 
 /**
  * Result of the test-connection (`POST .../test`) call. Bases the cutover-

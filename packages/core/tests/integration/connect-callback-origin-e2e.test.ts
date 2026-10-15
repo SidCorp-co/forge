@@ -12,6 +12,8 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.hoisted(() => {
   process.env.PUBLIC_API_BASE_URL = 'https://api.forge.test';
   process.env.APP_BASE_URL = 'https://web.forge.test';
+  // with no App yet, only an operator is handed the manifest
+  process.env.ADMIN_EMAILS = 'operator@callback-origin.test';
 });
 
 import { api, userToken } from '../helpers/api.js';
@@ -32,7 +34,8 @@ beforeAll(() => {
 
 beforeEach(async () => {
   await truncateAll();
-  const owner = (await createTestUser({ verified: true })).id;
+  const owner = (await createTestUser({ verified: true, email: 'operator@callback-origin.test' }))
+    .id;
   project = await createTestProject(owner);
   await addProjectMember(project.id, owner, 'owner');
   session = await userToken(owner);
@@ -47,6 +50,7 @@ const connectAt = (host: string) =>
 type Manifest = {
   redirect_url: string;
   setup_url: string;
+  callback_urls: string[];
   hook_attributes: { url: string };
 };
 
@@ -60,9 +64,10 @@ describe('the GitHub manifest names the origin the connect request came from', (
       'https://web.forge.test/api/integrations/github/manifest-callback',
     );
     expect(manifest.setup_url).toBe('https://web.forge.test/api/integrations/github/installed');
-    expect(manifest.hook_attributes.url).toBe(
-      `https://api.forge.test/api/webhooks/in/${project.slug}`,
-    );
+    expect(manifest.callback_urls).toEqual([
+      'https://web.forge.test/api/integrations/github/installed',
+    ]);
+    expect(manifest.hook_attributes.url).toBe('https://api.forge.test/api/webhooks/github/app');
   });
 
   it('sends the browser back to the API origin when the request went there', async () => {

@@ -18,6 +18,7 @@ import {
 } from '../index.js';
 import { sourceHostMismatch } from '../source-host/index.js';
 import { compareBoundRepository } from './bind-effects.js';
+import { installationRefusals } from './binding-installation.js';
 import { githubGitCredential } from './git-credential.js';
 import { readAppHookConfig } from './hook-config.js';
 import { checkInstallationGrant } from './installation-permissions.js';
@@ -28,7 +29,12 @@ import {
   responseOf,
 } from './octokit.js';
 import { type GitHubEventPayload, handleGitHubEvent } from './projection-events.js';
-import { GITHUB_BINDING_CONFIG_KEYS, githubConfigBase, githubSecretsSchema } from './schemas.js';
+import {
+  GITHUB_BINDING_CONFIG_KEYS,
+  githubConfigBase,
+  githubConnectionConfig,
+  githubSecretsSchema,
+} from './schemas.js';
 import { githubHostOf, githubSourceHost } from './source-host.js';
 import type { GitHubConfig, GitHubSecrets } from './types.js';
 
@@ -132,12 +138,14 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
   inboundSecretField: 'webhookSecret',
   inboundSecretHome:
     "the GitHub App's settings (Developer settings → GitHub Apps → the App → Webhook), as its Webhook secret",
-  verifyBindingTarget: ({ projectId, connection, config }) =>
-    sourceHostMismatch({
+  verifyBindingTarget: async ({ projectId, connection, config, held }) => [
+    ...(await sourceHostMismatch({
       projectId,
       provider: 'github',
       host: githubHostOf({ ...((connection.config ?? {}) as Record<string, unknown>), ...config }),
-    }),
+    })),
+    ...(await installationRefusals({ projectId, connection, config, held })),
+  ],
   onBindingCreated: async ({ projectId, role, config }) => ({
     repository: await compareBoundRepository({
       projectId,
@@ -307,8 +315,8 @@ export const githubIntegration = declareIntegration<GitHubConfig, GitHubSecrets>
     agentPath: { kind: 'core-mediated', tools: ['forge_source'] },
   },
   schemas: {
-    connectionConfig: githubConfigBase,
-    connectionPatchConfig: githubConfigBase.partial(),
+    connectionConfig: githubConnectionConfig,
+    connectionPatchConfig: githubConnectionConfig.partial(),
     bindingConfig: githubConfigBase,
     patchConfig: githubConfigBase.partial(),
     secrets: githubSecretsSchema,

@@ -1,3 +1,4 @@
+import { sayEn } from '@forge/contracts/said';
 import { scrubLogText } from '@forge/observability';
 import {
   type BindingWithConnection,
@@ -15,7 +16,9 @@ import {
   resolveApiBaseUrl,
 } from '../index.js';
 import { SourceHostCallError } from '../source-host/index.js';
+import { installationStandings } from './binding-installation.js';
 import { buildRepoClient } from './client.js';
+import { appWebhookUrl } from './connect.js';
 import {
   GitHubAuthError,
   installationOctokit,
@@ -100,6 +103,21 @@ const GITHUB_DELIVERY_LOG =
   "the App's own Recent Deliveries tab on github.com, under Settings, Developer settings, GitHub Apps, this App, Advanced";
 
 /**
+ * Where the instance's App must deliver for a binding of it to receive: its App-wide door, or any
+ * project's slug door on this core, since both route an App delivery by installation and
+ * repository rather than by the slug. The App made before the instance had one still points at a
+ * slug door, and that is not a wrong address.
+ */
+function instanceDoorFor(apiBase: string | null, observedUrl: string | null): string | null {
+  if (!apiBase) return null;
+  const appDoor = appWebhookUrl(apiBase);
+  const slugDoors = inboundWebhookUrl(apiBase, '');
+  return observedUrl?.startsWith(slugDoors) && observedUrl.length > slugDoors.length
+    ? observedUrl
+    : appDoor;
+}
+
+/**
  * Contacts GitHub NOT AT ALL, which is what makes this the place to find out why another action
  * was refused. The probe stored where GitHub says it is addressed; the comparison happens per
  * binding, because that URL carries a project slug and a connection may serve several.
@@ -111,16 +129,22 @@ export async function githubAgentBindings(projectId: string): Promise<GitHubAgen
 
   const slug = await forgeReads().projectSlug(projectId);
   const apiBase = resolveApiBaseUrl();
-  const expectedUrl = apiBase && slug ? inboundWebhookUrl(apiBase, slug) : null;
+  const projectDoor = apiBase && slug ? inboundWebhookUrl(apiBase, slug) : null;
   const inboundUnprompted = decl?.capabilities.inboundUnprompted ?? false;
+  const standings = await installationStandings(pairs);
 
   return Promise.all(
     pairs.map(async (pair) => {
       const config = effectiveConfig<GitHubConfig>(pair);
       const traffic = await readInboundDoorTraffic(pair.binding.id);
       const observed = pair.connection.inboundEndpointObserved ?? null;
+      const expectedUrl =
+        pair.connection.ownerType === 'instance'
+          ? instanceDoorFor(apiBase, observed?.url ?? null)
+          : projectDoor;
       const state = inboundDoorState({ inboundUnprompted, expectedUrl, observed, traffic });
-      const stored = pair.connection.lastHealthStatus ?? null;
+      const standing = standings.get(pair.binding.id) ?? null;
+      const stored = standing ? 'degraded' : (pair.connection.lastHealthStatus ?? null);
       return {
         bindingId: pair.binding.id,
         repository: config.owner && config.repo ? `${config.owner}/${config.repo}` : null,
@@ -130,7 +154,7 @@ export async function githubAgentBindings(projectId: string): Promise<GitHubAgen
         agentGranted: grantHolds(decl, pair.binding),
         lastHealthStatus: healthWithInboundDoor(stored, state),
         connectionProbeStatus: stored,
-        healthDetail: pair.connection.lastHealthDetail ?? null,
+        healthDetail: standing ? sayEn(standing) : (pair.connection.lastHealthDetail ?? null),
         inboundDoor: state,
         inboundReading: describeInboundDoor({
           state,

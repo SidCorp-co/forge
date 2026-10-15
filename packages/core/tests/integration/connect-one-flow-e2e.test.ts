@@ -10,9 +10,16 @@ import { randomUUID } from 'node:crypto';
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { sql } from 'drizzle-orm';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const OPERATOR = 'operator@connect-one-flow.test';
+// env is read once, on first use: the operator list is set before anything imports it; only an
+// operator makes the instance's GitHub App, so the owner here is one
+vi.hoisted(() => {
+  process.env.ADMIN_EMAILS = 'operator@connect-one-flow.test';
+});
+
 import { mintPat } from '../../src/credentials/pat.js';
 import { PAT_GRANT_EPOCH } from '../../src/credentials/pat-permissions.js';
-import { db } from '../../src/db/client.js';
 import { readConnectState, signConnectState } from '../../src/integrations/github/index.js';
 import { api, userToken } from '../helpers/api.js';
 import { testEnv } from '../helpers/ecosystem-world.js';
@@ -35,7 +42,7 @@ beforeAll(() => {
 
 beforeEach(async () => {
   await truncateAll();
-  owner = (await createTestUser({ verified: true })).id;
+  owner = (await createTestUser({ verified: true, email: OPERATOR })).id;
   first = await createTestProject(owner);
   second = await createTestProject(owner);
   await addProjectMember(first.id, owner, 'owner');
@@ -377,15 +384,14 @@ describe('GitHub’s return lands on Integrations, never on a JSON page (FB-128)
       expect(await connections()).toEqual([]);
     });
 
-    it('a project the person no longer administers', async () => {
+    it('a person who is no operator of this Forge', async () => {
       const conversions = stubGitHub();
-      await db.execute(sql`DELETE FROM project_members WHERE project_id = ${first.id}`);
-      await db.execute(sql`DELETE FROM organization_members WHERE user_id = ${owner}`);
-      const state = signConnectState(SECRET(), { projectId: first.id, userId: owner });
+      const member = (await createTestUser({ verified: true })).id;
+      const state = signConnectState(SECRET(), { projectId: first.id, userId: member });
 
-      const where = landing(await callback(session, state));
+      const where = landing(await callback(await userToken(member), state));
 
-      expect(where.searchParams.get('connect')).toBe('not_admin');
+      expect(where.searchParams.get('connect')).toBe('not_operator');
       expect(where.searchParams.get('app')).toBe('forge-test-app');
       expect(conversions.length).toBe(1);
       expect(await connections()).toEqual([]);
