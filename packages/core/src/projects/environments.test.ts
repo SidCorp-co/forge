@@ -279,7 +279,9 @@ describe('credentialFaults — a credential a write may not store', () => {
     expect(faults).toEqual([
       expect.objectContaining({ path: 'testCredentials.1.label', rule: 'duplicate-label' }),
     ]);
-    expect(faults[0]?.message).toMatch(/testCredentials\[0\]/);
+    expect(faults[0]?.message).toMatch(
+      /^testCredentials\[1\] \('qa'\) has the label testCredentials\[0\] \('QA'\) already has/,
+    );
   });
 
   it('names one login listed twice under two labels', () => {
@@ -289,7 +291,13 @@ describe('credentialFaults — a credential a write may not store', () => {
         row('Owner', 'QA@example.com', 's3cret'),
       ]),
     ).toEqual([
-      expect.objectContaining({ path: 'testCredentials.1.username', rule: 'duplicate-login' }),
+      expect.objectContaining({
+        path: 'testCredentials.1.username',
+        rule: 'duplicate-login',
+        message: expect.stringMatching(
+          /^testCredentials\[1\] \('Owner'\) is the same username and password as testCredentials\[0\] \('Admin'\)/,
+        ),
+      }),
     ]);
   });
 

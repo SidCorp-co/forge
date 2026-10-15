@@ -391,16 +391,28 @@ export function formatSettingsWriteError(err: unknown, saved = NOTHING_SAVED): s
   return `${text} ${wasOrWere(count)} changed by someone else while this page was open. ${saved.replace(/\.$/, '')} — your edits are still here.`;
 }
 
+/** A credential row an environments refusal names: what the page calls it, and whether that is its label. */
+interface NamedRow {
+  name: string;
+  labelled: boolean;
+}
+
 /** What an environments refusal says each credential rule is, in the words the Test access rows use. */
-const CREDENTIAL_RULES: Record<string, (row: string) => string> = {
-  'password-required': (row) => `${row} has no password. Type its password, or remove the row.`,
-  'duplicate-label': (row) => `${row} has a label another credential already has. Rename it, or remove it.`,
-  'duplicate-login': (row) => `${row} is the same login as another credential. Remove one of them.`,
+const CREDENTIAL_RULES: Record<string, (row: NamedRow, other: NamedRow | null) => string> = {
+  'password-required': (row) => `${row.name} has no password. Type its password, or remove the row.`,
+  'duplicate-label': (row) =>
+    row.labelled
+      ? `Two credentials are labelled ${row.name}. Rename one of them, or remove it.`
+      : `${row.name} has a label another credential already has. Rename one of them, or remove it.`,
+  'duplicate-login': (row, other) =>
+    `${row.name} is the same login as ${other?.name ?? 'another credential'}. Remove one of them.`,
 };
 
 interface InvalidAt {
   path: string;
   rule?: string;
+  /** The earlier row a repeat repeats, where the server named one. */
+  sameAs?: number;
 }
 
 function invalidAt(err: ApiError): InvalidAt[] {
@@ -411,13 +423,18 @@ function invalidAt(err: ApiError): InvalidAt[] {
   );
 }
 
-/** `testCredentials.0.password` → "Test credential 1 (QA)", the label read off what the page holds. */
-function credentialRow(path: string, labels: readonly string[]): string | null {
+/** A credential row as the Test access rows name it: by the label the page holds, by its number only where it has none. */
+function credentialName(index: number, labels: readonly string[]): NamedRow {
+  const label = labels[index]?.trim();
+  return label ? { name: label, labelled: true } : { name: `Credential ${index + 1}`, labelled: false };
+}
+
+/** `testCredentials.0.password` → the row it names; null for a path outside the credentials. */
+function credentialRow(path: string, labels: readonly string[]): NamedRow | null {
   const [key, at] = parsePath(path);
   const index = Number(at);
   if (key !== 'testCredentials' || at === undefined || !Number.isInteger(index)) return null;
-  const label = labels[index]?.trim();
-  return `Test credential ${index + 1}${label ? ` (${label})` : ''}`;
+  return credentialName(index, labels);
 }
 
 /** One sentence per setting an `ENVIRONMENTS_INVALID` names, in the screen's names; never the server's paths. */
@@ -425,9 +442,10 @@ function environmentsInvalidSentence(err: ApiError, labels: readonly string[]): 
   const said = invalidAt(err).map((at) => {
     const row = credentialRow(at.path, labels);
     const rule = at.rule ? CREDENTIAL_RULES[at.rule] : undefined;
-    if (row && rule) return rule(row);
+    const other = Number.isInteger(at.sameAs) ? credentialName(at.sameAs as number, labels) : null;
+    if (row && rule) return rule(row, other);
     const field = FIELD_LABELS[at.path];
-    const section = row ?? settingLabel(at.path);
+    const section = row?.name ?? settingLabel(at.path);
     return `${field ? `${section} (${field})` : section} is not a value this page can store. Correct it, then save again.`;
   });
   return said.length > 0

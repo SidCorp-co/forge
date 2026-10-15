@@ -320,14 +320,29 @@ describe('formatEnvironmentsWriteError (ISS-1171 r6)', () => {
 
   it('names each credential rule by the row the page shows, never the document path', () => {
     const err = invalid([
-      { path: 'testCredentials.1.label', rule: 'duplicate-label' },
-      { path: 'testCredentials.2.username', rule: 'duplicate-login' },
+      { path: 'testCredentials.1.label', rule: 'duplicate-label', sameAs: 0 },
+      { path: 'testCredentials.2.username', rule: 'duplicate-login', sameAs: 0 },
     ]);
-    const said = formatEnvironmentsWriteError(err, ['QA', 'qa', '']);
+    const said = formatEnvironmentsWriteError(err, ['QA', 'qa', 'Owner']);
     expect(said).toBe(
-      'Test credential 2 (qa) has a label another credential already has. Rename it, or remove it. Test credential 3 is the same login as another credential. Remove one of them.',
+      'Two credentials are labelled qa. Rename one of them, or remove it. Owner is the same login as QA. Remove one of them.',
     );
     expect(said).not.toMatch(/testCredentials|\[\d\]/);
+  });
+
+  it('names every row one way, by its label, and by its number only where the page holds none', () => {
+    const said = formatEnvironmentsWriteError(
+      invalid([
+        { path: 'testCredentials.1.password', rule: 'password-required' },
+        { path: 'testCredentials.2.username', rule: 'duplicate-login', sameAs: 1 },
+        { path: 'testCredentials.3.label', rule: 'duplicate-label' },
+      ]),
+      ['QA one', '', 'QA two'],
+    );
+    expect(said).toBe(
+      'Credential 2 has no password. Type its password, or remove the row. QA two is the same login as Credential 2. Remove one of them. Credential 4 has a label another credential already has. Rename one of them, or remove it.',
+    );
+    expect(said).not.toMatch(/Test credential|\(\w/);
   });
 
   it('names a setting the server refused for its own schema by its screen name', () => {
