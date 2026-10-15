@@ -233,11 +233,9 @@ function transitionRunClosed(
 }
 
 /**
- * Close a run `cancelled` once no job of it is live, so cancelling its only job ends it at once
- * rather than at the concluded-run reaper's quiet hour. The run row is locked `FOR UPDATE` first:
- * a job insert takes `FOR KEY SHARE` on it for its foreign key, so a job being admitted either
- * commits before the no-live-job test reads, keeping the run open, or is held until this commits.
- * Nothing live is left to cascade to, so this close cancels no job.
+ * Close a run `cancelled` once no job of it is live, not at the concluded-run reaper's quiet hour.
+ * The run row is locked `FOR UPDATE` first: a job insert's foreign key takes `FOR KEY SHARE` on it,
+ * so an admission commits before the no-live-job test reads, or waits; this close cancels no job.
  */
 export async function closeRunOnceJobsEnd(runId: string): Promise<void> {
   const rows = await db.transaction(async (tx) => {
