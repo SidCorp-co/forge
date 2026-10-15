@@ -62,6 +62,7 @@ const READS: Record<string, 'person' | 'caller'> = {
   'issues/merged-at.ts': 'caller',
   'issues/park-question.ts': 'caller',
   'issues/park-view.ts': 'person',
+  'issues/release-gate-hold.ts': 'person',
   'issues/release-record-required.ts': 'caller',
   'issues/release-tag-close.ts': 'caller',
   'issues/transition-evidence.ts': 'caller',
@@ -71,6 +72,7 @@ const READS: Record<string, 'person' | 'caller'> = {
   'pipeline/autonomous-dispatch.ts': 'caller',
   'pipeline/autonomous-rescue-comment.ts': 'person',
   'pipeline/idle-issues.ts': 'person',
+  'pipeline/release-hold.ts': 'person',
   'pipeline/wedge-lease.ts': 'person',
   'pm/dispatch-service.ts': 'caller',
   'projects/stranded-work.ts': 'caller',
@@ -95,29 +97,59 @@ type Kept = Array<[string, RegExp, string]>;
  *  both read takes the pair. */
 const PERSON_LINES: Kept = [];
 
+/** The lines of the one message a line belongs to: the strings `+` joins up to it. */
+function message(lines: string[], i: number): string {
+  let start = i;
+  while (start > 0 && (lines[start - 1] ?? '').trimEnd().endsWith('+')) start -= 1;
+  return lines.slice(start, i + 1).join('\n');
+}
+
 /** A caller's file that names a status by its label alone: the value to send back is gone. A label
- *  written again after its pair, as in "Closed (closed), and Closed means", is the same status. */
+ *  written again after its pair in the same message, as in "Closed (closed), and Closed means", is
+ *  the same status. */
 function callerOffences(
   file: string,
   source: string,
   kept: Kept = [...KEPT_LINES, ...PERSON_LINES],
 ): string[] {
-  const bare = (line: string) => {
+  const lines = source.split('\n');
+  const bare = (line: string, i: number) => {
     const label = BARE_LABEL.exec(line)?.[1];
-    return label !== undefined && !source.includes(`${label} (`);
+    return label !== undefined && !message(lines, i).includes(`${label} (`);
   };
-  return source
-    .split('\n')
-    .map((line, i) => ({ line, n: i + 1 }))
+  return lines
+    .map((line, i) => ({ line, i, n: i + 1 }))
     .filter(({ line }) => !isComment(line) && !/^\s*import\b|\bfrom '/.test(line))
     .filter(({ line }) => !kept.some(([f, re]) => f === file && re.test(line)))
-    .filter(({ line }) => LABEL_ONLY.test(line) || bare(line))
+    .filter(({ line, i }) => LABEL_ONLY.test(line) || bare(line, i))
     .map(({ line, n }) => `${file}:${n}: ${line.trim().slice(0, 120)}`);
+}
+
+/** A label where a status stands in a sentence: "is at Waiting", "a Closed issue". */
+const STATUS_WORD = new RegExp(
+  `['\`"][^'\`"]*\\b(?:at|is|are|to|from|reach|reaches|off|not|nor|a|an|into|of)\\s+(?:${LABELS})\\b`,
+);
+/** A file that builds a refusal or an answer a caller reads. */
+const REFUSES = /new \w*Error\(|\bdetail:|\brefused\b|code: '[A-Z_]+'/;
+
+type Source = { file: string; source: string };
+
+/** A file that names a status, by a helper or by a label where a status stands, and says nothing
+ *  of who reads it. */
+function unplaced(sources: Source[]): string[] {
+  const names = ({ source }: Source) =>
+    HELPER.test(source) ||
+    (REFUSES.test(source) &&
+      source.split('\n').some((line) => !isComment(line) && STATUS_WORD.test(line)));
+  return sources
+    .filter(names)
+    .map(({ file }) => file)
+    .filter((file) => !(file in READS));
 }
 
 /** A stored value written out in a string a person reads, outside a "Label (value)" pair. */
 const STORED_IN_PROSE =
-  /['`"][^'`"]*(?<![.(\w])(?:in_progress|awaiting_release|on_hold|needs_info)\b(?!\))/;
+  /['`"][^'`"]*\w\s(?:in_progress|awaiting_release|on_hold|needs_info)\b(?!\))/;
 
 function personOffences(file: string, source: string): string[] {
   return source
@@ -174,12 +206,23 @@ describe('a status a person reads is named by its label (ISS-1229)', () => {
       .filter((file) => !CONTRACTS.some(([re]) => re.test(file)))
       .map((file) => ({ file, source: readFileSync(join(SRC, file), 'utf8') }));
 
-  it('says who reads every file that names a status through a helper', () => {
-    const unplaced = sources()
-      .filter(({ source }) => HELPER.test(source))
-      .map(({ file }) => file)
-      .filter((file) => !(file in READS));
-    expect(unplaced).toEqual([]);
+  it('says who reads every file that names a status', () => {
+    expect(unplaced(sources())).toEqual([]);
+  });
+
+  // Codex consult on 84d464f: a new refusal naming a label as a literal, with no helper.
+  it('refuses a new refusal that names a status by a literal label and says nothing of who reads it', () => {
+    const fresh = {
+      file: 'issues/new-refusal.ts',
+      source:
+        "throw new TransitionError('WAITING_KIND', 400, 'a Waiting park must say which kind it is');",
+    };
+    expect(unplaced([fresh])).toEqual(['issues/new-refusal.ts']);
+    const verb = {
+      file: 'x/chat.ts',
+      source: "throw new Error('No client. Open the desktop app.');",
+    };
+    expect(unplaced([verb])).toEqual([]);
   });
 
   it('names the value a caller sends back wherever a caller reads the sentence', () => {
@@ -224,6 +267,13 @@ describe('a status a person reads is named by its label (ISS-1229)', () => {
     expect(
       callerOffences('x.ts', "detail: 'a Waiting (waiting) park must say which kind',"),
     ).toEqual([]);
+    const two = ["one: 'a Waiting (waiting) park asks',", "two: 'a Waiting park says',"].join('\n');
+    expect(callerOffences('x.ts', two)).toHaveLength(1);
+    const joined = [
+      "'this issue is Closed (closed), and ' +",
+      "'Closed means the work shipped'",
+    ].join('\n');
+    expect(callerOffences('x.ts', joined)).toEqual([]);
   });
 
   it('gives a caller the label and the value it sends', () => {
