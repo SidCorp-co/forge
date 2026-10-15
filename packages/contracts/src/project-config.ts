@@ -67,6 +67,7 @@ const BINDING_TARGET_REFUSAL_CODES = [
 	"COOLIFY_UNREACHABLE",
 	"SOURCE_HOST_MISMATCH",
 	"SOURCE_REPOSITORY_LOCAL",
+	"GITHUB_INSTALLATION_NOT_RECORDED",
 ] as const;
 
 /** Every code a project-config document write answers with. */

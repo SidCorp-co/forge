@@ -1,15 +1,35 @@
 export { githubIntegration } from './adapter.js';
+export { type AppDeliveryOutcome, routeAppDelivery } from './app-deliveries.js';
+export { installationStandings } from './binding-installation.js';
 export {
   appSettingsUrl,
+  appWebhookUrl,
   buildAppManifest,
   type ConnectState,
   type ConvertedApp,
   convertManifestCode,
-  manifestPostUrl,
+  MANIFEST_POST_URL,
   readConnectState,
   signConnectState,
 } from './connect.js';
+export { installationsReachableBy } from './install-candidates.js';
 export { findConnectionOwningInstallation } from './install-resolve.js';
+export {
+  findInstallation,
+  type GithubAppInstallationRow,
+  listInstallationsForOrgs,
+  recordInstallation,
+} from './installations.js';
+export {
+  clientSecretHolds,
+  findInstanceGithubApp,
+  INSTANCE_OWNER_ID,
+  installUrl,
+  instanceAppGap,
+  proveInstallation,
+  readAppIdentity,
+  readInstallation,
+} from './instance-app.js';
 export {
   cmpVersion,
   refetchRunnerRelease,

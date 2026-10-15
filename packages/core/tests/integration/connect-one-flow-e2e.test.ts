@@ -10,9 +10,16 @@ import { randomUUID } from 'node:crypto';
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { sql } from 'drizzle-orm';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const OPERATOR = 'operator@connect-one-flow.test';
+// env is read once, on first use: the operator list is set before anything imports it; only an
+// operator makes the instance's GitHub App, so the owner here is one
+vi.hoisted(() => {
+  process.env.ADMIN_EMAILS = 'operator@connect-one-flow.test';
+});
+
 import { mintPat } from '../../src/credentials/pat.js';
 import { PAT_GRANT_EPOCH } from '../../src/credentials/pat-permissions.js';
-import { db } from '../../src/db/client.js';
 import { readConnectState, signConnectState } from '../../src/integrations/github/index.js';
 import { api, userToken } from '../helpers/api.js';
 import { testEnv } from '../helpers/ecosystem-world.js';
@@ -26,8 +33,8 @@ import {
 
 let owner = '';
 let session = '';
-let first = { id: '', slug: '' };
-let second = { id: '', slug: '' };
+let first = { id: '', slug: '', orgId: '' };
+let second = { id: '', slug: '', orgId: '' };
 
 beforeAll(() => {
   testEnv();
@@ -35,7 +42,7 @@ beforeAll(() => {
 
 beforeEach(async () => {
   await truncateAll();
-  owner = (await createTestUser({ verified: true })).id;
+  owner = (await createTestUser({ verified: true, email: OPERATOR })).id;
   first = await createTestProject(owner);
   second = await createTestProject(owner);
   await addProjectMember(first.id, owner, 'owner');
@@ -252,6 +259,17 @@ function stubGitHub(answer: 'ok' | 'gone' = 'ok') {
   const conversions: string[] = [];
   vi.stubGlobal('fetch', async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input instanceof Request ? input.url : input);
+    // the install's OAuth return: GitHub lists installation 77 of App 4242 for the installer
+    if (url.startsWith('https://github.com/login/oauth/access_token')) {
+      return Response.json({ access_token: 'ghu_installer' });
+    }
+    if (url.includes('/user/installations')) {
+      return Response.json({
+        installations: [
+          { id: 77, app_id: 4242, account: { login: 'SidCorp-co', type: 'Organization' } },
+        ],
+      });
+    }
     if (url.includes('/app-manifests/')) {
       conversions.push(url);
       if (answer === 'gone') return new Response('{"message":"Not Found"}', { status: 404 });
@@ -260,6 +278,8 @@ function stubGitHub(answer: 'ok' | 'gone' = 'ok') {
         slug: 'forge-test-app',
         pem: '-----BEGIN RSA PRIVATE KEY-----\nnot-a-key\n-----END RSA PRIVATE KEY-----',
         webhook_secret: 'whsec-test',
+        client_id: 'Iv1.test',
+        client_secret: 'client-secret-test',
         html_url: 'https://github.com/apps/forge-test-app',
         owner: { login: 'SidCorp-co', type: 'Organization' },
       });
@@ -298,6 +318,7 @@ describe('GitHub’s return lands on Integrations, never on a JSON page (FB-128)
     const state = signConnectState(SECRET(), {
       projectId: first.id,
       userId: owner,
+      orgId: first.orgId,
       returnTo: 'integrations',
     });
 
@@ -314,7 +335,7 @@ describe('GitHub’s return lands on Integrations, never on a JSON page (FB-128)
     const installed = await api(
       session,
       'GET',
-      `/api/integrations/github/installed?installation_id=77&state=${encodeURIComponent(install.searchParams.get('state') as string)}`,
+      `/api/integrations/github/installed?installation_id=77&code=oauth&state=${encodeURIComponent(install.searchParams.get('state') as string)}`,
     );
     const back = landing(installed);
     expect(back.pathname).toBe('/integrations');
@@ -377,15 +398,14 @@ describe('GitHub’s return lands on Integrations, never on a JSON page (FB-128)
       expect(await connections()).toEqual([]);
     });
 
-    it('a project the person no longer administers', async () => {
+    it('a person who is no operator of this Forge', async () => {
       const conversions = stubGitHub();
-      await db.execute(sql`DELETE FROM project_members WHERE project_id = ${first.id}`);
-      await db.execute(sql`DELETE FROM organization_members WHERE user_id = ${owner}`);
-      const state = signConnectState(SECRET(), { projectId: first.id, userId: owner });
+      const member = (await createTestUser({ verified: true })).id;
+      const state = signConnectState(SECRET(), { projectId: first.id, userId: member });
 
-      const where = landing(await callback(session, state));
+      const where = landing(await callback(await userToken(member), state));
 
-      expect(where.searchParams.get('connect')).toBe('not_admin');
+      expect(where.searchParams.get('connect')).toBe('not_operator');
       expect(where.searchParams.get('app')).toBe('forge-test-app');
       expect(conversions.length).toBe(1);
       expect(await connections()).toEqual([]);

@@ -2,6 +2,7 @@ import { type Said, say, sayEn, verbatim } from '@forge/contracts/said';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
+import { installationStandings } from '../integrations/github/index.js';
 import {
   type BindingWithConnection,
   bindingNames,
@@ -184,6 +185,7 @@ function providerServing(host: string): { provider: string; label: string } | nu
 function repositoryCard(
   pairs: readonly BindingWithConnection[],
   source: Pick<Awaited<ReturnType<typeof readDeclaredSource>>, 'repository' | 'defaultBranch'>,
+  standings: ReadonlyMap<string, Said> = new Map(),
 ): StatusCard {
   const { repository } = source;
   const host = hostOfRepository(repository);
@@ -236,19 +238,22 @@ function repositoryCard(
   }
   const { binding, connection } = reached.pair;
   const active = binding.active && connection.active;
+  const standing = standings.get(binding.id) ?? null;
   return {
     key: `${binding.provider}:repository`,
     label: `${reached.label} repository`,
-    status: healthToStatus(connection.lastHealthStatus, active),
+    status: healthToStatus(standing ? 'degraded' : connection.lastHealthStatus, active),
     ...detailOf(
       !active
         ? say('integrations.detail.switchedOff', { provider: reached.label })
-        : connection.lastHealthStatus
-          ? say('integrations.detail.readThrough', {
-              provider: reached.label,
-              status: connection.lastHealthStatus,
-            })
-          : say('integrations.detail.readThroughNever', { provider: reached.label }),
+        : standing
+          ? standing
+          : connection.lastHealthStatus
+            ? say('integrations.detail.readThrough', {
+                provider: reached.label,
+                status: connection.lastHealthStatus,
+              })
+            : say('integrations.detail.readThroughNever', { provider: reached.label }),
     ),
     lastSyncAt: toIso(connection.lastHealthAt),
     configured: true,
@@ -263,6 +268,7 @@ function repositoryCard(
 async function providerCards(
   pairs: readonly BindingWithConnection[],
   deployMap: Awaited<ReturnType<typeof readDeployMap>>,
+  standings: ReadonlyMap<string, Said>,
 ): Promise<StatusCard[]> {
   const named = pairs.map((pair) => ({
     id: pair.binding.id,
@@ -276,16 +282,19 @@ async function providerCards(
     named.map((row, i) => ({ ...row, connection: (pairs[i] as BindingWithConnection).connection })),
   );
   const names = bindingNames(named, reported);
-  const rows: ProviderRow[] = pairs.map((pair, i) => ({
-    ...(named[i] as (typeof named)[number]),
-    name: names.get(pair.binding.id) ?? '',
-    active: pair.binding.active && pair.connection.active,
-    lastHealthStatus: pair.connection.lastHealthStatus,
-    lastHealthDetail: pair.connection.lastHealthDetail,
-    lastHealthSays: pair.connection.lastHealthSays,
-    lastHealthAt: pair.connection.lastHealthAt,
-    breakerOpenedAt: pair.connection.breakerOpenedAt,
-  }));
+  const rows: ProviderRow[] = pairs.map((pair, i) => {
+    const standing = standings.get(pair.binding.id) ?? null;
+    return {
+      ...(named[i] as (typeof named)[number]),
+      name: names.get(pair.binding.id) ?? '',
+      active: pair.binding.active && pair.connection.active,
+      lastHealthStatus: standing ? 'degraded' : pair.connection.lastHealthStatus,
+      lastHealthDetail: standing ? sayEn(standing) : pair.connection.lastHealthDetail,
+      lastHealthSays: standing ?? pair.connection.lastHealthSays,
+      lastHealthAt: pair.connection.lastHealthAt,
+      breakerOpenedAt: pair.connection.breakerOpenedAt,
+    };
+  });
   return listIntegrations().flatMap((decl) => {
     const presentation = decl.presentation;
     if (!presentation) return [];
@@ -320,5 +329,9 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
     readDeployMap(projectId),
     readDeclaredSource(projectId),
   ]);
-  return [repositoryCard(pairs, source), ...(await providerCards(pairs, deployMap))];
+  const standings = await installationStandings(pairs);
+  return [
+    repositoryCard(pairs, source, standings),
+    ...(await providerCards(pairs, deployMap, standings)),
+  ];
 }

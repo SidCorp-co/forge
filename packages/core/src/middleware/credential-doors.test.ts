@@ -123,7 +123,7 @@ const SECRET_DOORS: Readonly<Record<string, string>> = {
   'lib/hmac.ts':
     'checks a provider’s body signature or shared webhook token; a chat credential is neither',
   'integration-door/webhook-inbound-routes.ts':
-    'a webhook verified against its binding’s secret; a chat credential in that header verifies as nothing',
+    'a webhook verified against its binding’s secret, or the instance App’s; a chat credential in that header verifies as nothing',
   'integrations/github/connect.ts':
     'readConnectState checks an HMAC-signed connect state, which a PAT never is',
   'integration-door/github-connect-routes.ts':

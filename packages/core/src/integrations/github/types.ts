@@ -3,6 +3,10 @@ export interface GitHubConfig extends Record<string, unknown> {
   owner?: string;
   repo?: string;
   apiBaseUrl?: string;
+  /** The instance App's own name and owner on GitHub, on its connection. */
+  appSlug?: string;
+  appOwner?: string;
+  appOwnerIsOrg?: boolean;
 }
 
 export interface GitHubSecrets extends Record<string, unknown> {
@@ -14,6 +18,9 @@ export interface GitHubSecrets extends Record<string, unknown> {
   webhookSecret?: string;
   /** The webhook secret a rotation replaced; it verifies until a delivery verifies with the new one. */
   previousWebhookSecret?: string;
+  /** The App's OAuth client, spent to prove an installation is the installer's own. */
+  clientId?: string;
+  clientSecret?: string;
 }
 
 export const GITHUB_API_BASE = 'https://api.github.com';

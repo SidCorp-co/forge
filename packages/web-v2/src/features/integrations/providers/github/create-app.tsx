@@ -1,13 +1,12 @@
 
-import { Banner, Button, PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle, Field, Input } from "@/design";
+import { Banner, Button, PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle } from "@/design";
 import { useProjects } from "@/features/projects";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { useState } from "react";
 import { useGitHubConnect } from "../../hooks";
 import type { GitHubConnectStart } from "../../types";
 
-function submitManifest(start: GitHubConnectStart): void {
+function submitManifest(start: Extract<GitHubConnectStart, { kind: "manifest" }>): void {
   const form = document.createElement("form");
   form.method = "POST";
   form.action = `${start.postUrl}?state=${encodeURIComponent(start.state)}`;
@@ -27,31 +26,10 @@ function permissionRows(manifest: Record<string, unknown>): [string, string][] {
 }
 
 /**
- * Who the App will belong to, stated rather than asked. This App is bound to
- * one project and used by its runners, so its owner follows that project's
- * org; a picker offering "Personal (only me)" would be a choice the server
- * does not honour, and personal ownership is what left a project's App
- * reachable by one person (ISS-1115). A project whose only org is a personal
- * one has no second principal, so it stays the operator's.
- */
-function AppOwner({ projectId }: { projectId: string }) {
-  const projectsQ = useProjects();
-  const project = projectsQ.data?.find((p) => p.id === projectId);
-  const t = useCopy();
-  if (!project) return null;
-  return (
-    <p className="fg-body-sm text-muted">
-      {project.orgIsPersonal
-        ? t("integrations.github.ownerYou")
-        : t("integrations.github.ownerOrg", { org: project.orgName })}
-    </p>
-  );
-}
-
-/**
- * Start the manifest flow for `projectId`, whose name the App takes and whose org owns it. Begun
- * from the workspace Integrations page (`returnTo`), the install step lands back there, where the
- * new App is bound into its projects.
+ * Connect GitHub for `projectId`'s org: the instance App's install page, or, where this Forge has no
+ * App yet and the caller is its operator, the manifest that makes it. Begun from the workspace
+ * Integrations page (`returnTo`), the install step lands back there, where the App is bound into
+ * its projects.
  */
 export function CreateApp({
   projectId,
@@ -63,15 +41,12 @@ export function CreateApp({
   returnTo?: "integrations";
 }) {
   const connect = useGitHubConnect(projectId);
-  const [org, setOrg] = useState("");
   const t = useCopy();
 
   const start = async () => {
-    const res = await connect.mutateAsync({
-      ...(org.trim() ? { org: org.trim() } : {}),
-      ...(returnTo ? { returnTo } : {}),
-    });
-    submitManifest(res);
+    const res = await connect.mutateAsync(returnTo ? { returnTo } : {});
+    if (res.kind === "install") window.location.assign(res.installUrl);
+    else submitManifest(res);
   };
 
   return (
@@ -80,16 +55,7 @@ export function CreateApp({
         <PageSectionTitle>{t("integrations.github.createTitle")}</PageSectionTitle>
       </PageSectionHeader>
       <PageSectionBody className="flex flex-col gap-4">
-        <AppOwner projectId={projectId} />
-
-        <Field label={t("integrations.github.org")}>
-          <Input
-            value={org}
-            onChange={(e) => setOrg(e.target.value)}
-            placeholder="SidCorp-co"
-            aria-label={t("integrations.github.org")}
-          />
-        </Field>
+        <p className="fg-body-sm text-muted">{t("integrations.github.ownerInstance")}</p>
 
         {connect.isError && <Banner tone="danger">{formatApiError(connect.error)}</Banner>}
 
@@ -104,7 +70,7 @@ export function CreateApp({
           )}
         </div>
 
-        {connect.data && (
+        {connect.data?.kind === "manifest" && (
           <div className="flex flex-col gap-1">
             <span className="fg-body-sm font-semibold">{t("integrations.github.permissions")}</span>
             {permissionRows(connect.data.manifest).map(([name, level]) => (
@@ -121,8 +87,8 @@ export function CreateApp({
 
 
 /**
- * GitHub's step on the workspace Integrations page (FB-128): the App takes the first ticked project's
- * name, and its install step lands back there, where each project picks its repository.
+ * GitHub's step on the workspace Integrations page (FB-128): the install is recorded for the first
+ * ticked project's org, and lands back there, where each project picks its repository.
  */
 export function WorkspaceCreateApp({ projectId }: { projectId: string }) {
   const project = useProjects().data?.find((p) => p.id === projectId);

@@ -1,0 +1,1 @@
+**One public GitHub App serves the whole instance.** Connect GitHub goes straight to its install page; an installation reaches an org's projects only once GitHub proves it is the installer's, and its deliveries route by installation and repository.

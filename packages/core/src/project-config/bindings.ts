@@ -97,7 +97,7 @@ async function connectionRefusals(
     {
       code: 'CONNECTION_NOT_FOUND',
       path: '/connection',
-      detail: `connection ${doc.connection} ${why}; bind a connection you own, or one of this project's organisation that you administer.`,
+      detail: `connection ${doc.connection} ${why}; bind a connection you own, one of this project's organisation that you administer, or this Forge's own App.`,
     },
   ];
   if (!connection) return notFound('does not exist');
@@ -106,6 +106,8 @@ async function connectionRefusals(
   if (connection.ownerType === 'user' && connection.ownerId !== userId && !alreadyHeld) {
     return notFound("is another person's");
   }
+  // the instance's own App is any project's to bind; which installation it binds is the provider's
+  // check (`verifyBindingTarget`), against what was recorded for this project's org
   if (connection.ownerType === 'org') {
     const orgId = await store.projectOrgId(projectId);
     if (orgId !== connection.ownerId)

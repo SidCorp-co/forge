@@ -28,7 +28,6 @@ import {
   notifyConnectionChanged,
   rotateHeldInboundSecret,
   splitProviderConfig,
-  summarizeBinding,
   updateConnection,
   updateSchema,
   withdrawNulls,
@@ -37,10 +36,12 @@ import { fetchBotRooms, rocketChatBindingOfProject } from '../integrations/rocke
 import { loadProjectAccess } from '../lib/authz.js';
 import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { isPlatformAdmin } from '../middleware/require-admin.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan, requireOrgHeld } from '../permissions/index.js';
 import { announceIntegrationChanged, setBindingInboundSecret } from '../project-config/index.js';
+import { summarizeBindings, summarizeOneBinding } from './binding-standing.js';
 import { registerCoolifyDeployRoutes } from './coolify-routes.js';
 import { buildMcpPreview } from './mcp-preview-service.js';
 import { buildIntegrationsStatusCards } from './status-service.js';
@@ -80,7 +81,7 @@ integrationsRoutes.get('/:projectId/integrations', async (c) => {
   await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
 
   const pairs = await listBindingsForProject(projectId);
-  return c.json({ items: pairs.map(summarizeBinding) });
+  return c.json({ items: await summarizeBindings(pairs) });
 });
 
 integrationsRoutes.patch(
@@ -131,6 +132,17 @@ integrationsRoutes.patch(
       const access = await loadProjectAccess(projectId, userId);
       requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
     }
+    // and the instance's own App at the instance tier: every org's projects share it
+    if (
+      connection.ownerType === 'instance' &&
+      (mergedConfig !== undefined || patch.secrets !== undefined) &&
+      !(await isPlatformAdmin(userId))
+    ) {
+      throw refuse(
+        'GITHUB_APP_OPERATOR_ONLY',
+        "this binding's connection is the Forge instance's own, and only a Forge operator changes its config or secrets",
+      );
+    }
 
     let mergedSecrets: Record<string, unknown> | undefined;
     if (patch.secrets) {
@@ -155,7 +167,7 @@ integrationsRoutes.patch(
     if (!refreshed) throw notFound();
     await announceIntegrationChanged(projectId, { bindingId: id, connectionId: connection.id });
     notifyConnectionChanged(binding.provider, connection.id);
-    return c.json({ integration: summarizeBinding(refreshed) });
+    return c.json({ integration: await summarizeOneBinding(refreshed) });
   },
 );
 
@@ -228,6 +240,13 @@ integrationsRoutes.post('/:projectId/integrations/:id/rotate-secret', async (c) 
   const projectId = c.req.param('projectId');
   const id = c.req.param('id');
   const existing = await projectBinding(projectId, id, c.get('userId'), 'admin');
+  // the instance App's secret is pasted into its settings on GitHub, which only its operator reaches
+  if (existing.connection.ownerType === 'instance' && !(await isPlatformAdmin(c.get('userId')))) {
+    throw refuse(
+      'GITHUB_APP_OPERATOR_ONLY',
+      "this binding's connection is the Forge instance's own, and only a Forge operator rotates its webhook secret",
+    );
+  }
 
   // A provider-held secret is the connection's, so every binding of it takes the new one and the
   // old keeps verifying until the first delivery signed with the new. A minted one is this binding's.
@@ -244,7 +263,7 @@ integrationsRoutes.post('/:projectId/integrations/:id/rotate-secret', async (c) 
   const refreshed = await findBindingWithConnectionById(id);
   if (!refreshed) throw notFound();
   return c.json({
-    integration: summarizeBinding(refreshed),
+    integration: await summarizeOneBinding(refreshed),
     integrationSecret: newSecret,
     pasteInto: getAdapter(existing.binding.provider)?.inboundSecretHome ?? null,
   });
@@ -278,6 +297,7 @@ integrationsRoutes.get('/:projectId/integrations/mcp-preview', async (c) => {
 });
 
 export { deviceGitCredentialRoutes } from './git-credential-routes.js';
+export { githubAppRoutes } from './github-app-routes.js';
 export { githubCallbackRoutes, githubConnectRoutes } from './github-connect-routes.js';
 export { issueMergePullRequestRoutes } from './issue-merge-routes.js';
 export { webhookInboundRoutes } from './webhook-inbound-routes.js';

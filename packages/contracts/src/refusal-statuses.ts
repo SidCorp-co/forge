@@ -10,6 +10,7 @@ import { DEVICE_REFUSAL_STATUSES } from "./devices.js";
 import { ECOSYSTEM_REFUSAL_STATUSES } from "./ecosystem.js";
 import { FAST_LANE_REFUSAL_STATUSES } from "./fast-lane.js";
 import { INTAKE_REFUSAL_STATUSES } from "./intake-drafts.js";
+import { INTEGRATION_REFUSAL_STATUSES } from "./integrations.js";
 import { ISSUE_DESIGN_REFUSAL_STATUSES } from "./issue-design.js";
 import { ISSUE_TRANSITION_REFUSAL_STATUSES } from "./issue-machine.js";
 import {
@@ -59,6 +60,7 @@ const DECLARED: ReadonlyArray<
 	ECOSYSTEM_REFUSAL_STATUSES,
 	FAST_LANE_REFUSAL_STATUSES,
 	INTAKE_REFUSAL_STATUSES,
+	INTEGRATION_REFUSAL_STATUSES,
 	ISSUE_TRANSITION_REFUSAL_STATUSES,
 	ISSUE_CREATE_REFUSAL_STATUSES,
 	ISSUE_TAKE_REFUSAL_STATUSES,

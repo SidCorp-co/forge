@@ -92,6 +92,8 @@ export const CREDENTIAL_INPUTS: Readonly<Record<string, string>> = {
   'field:query:token': 'an email verification token',
   'field:query:code': 'an OAuth authorization code; /pair passes a pairing code on',
   'field:query:state': 'an OAuth or GitHub connect state, checked against its cookie or HMAC',
+  'header:x-hub-signature-256':
+    'the instance GitHub App’s body signature, verified against its webhook secret before routing',
   'field:param:uploadId': 'an upload ticket: holding it is the right to write one file',
   'field:param:ticketId': 'a download ticket: holding it is the right to read one file',
 };
@@ -129,7 +131,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:param:workflow field:param:workflowId
     field:query:assignee field:query:assigneeId field:query:connectionId field:query:createdBy
     field:query:deviceId field:query:installation_id field:query:integrationId field:query:issue
-    field:query:issueId field:query:memoryId field:query:org field:query:orgId
+    field:query:issueId field:query:memoryId field:query:orgId
     field:query:pipelineRunId field:query:projectId field:query:requirement
     field:query:resourceUuid field:query:rootIssueId field:query:runId field:query:sessionId
     field:query:sourceRef field:query:feedback field:query:workflow field:query:ref
@@ -201,7 +203,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:device_hostname field:json:device_label field:json:device_platform
     field:json:machine_id`,
   'a third party’s token core stores or forwards to that service; it checks no caller': words`
-    field:json:apiToken field:json:authToken field:json:secrets`,
+    field:json:apiToken field:json:authToken field:json:clientSecret field:json:secrets`,
   'an address: a mailbox, a service URL, a git host, where to go after sign-in': words`
     field:json:baseUrl field:json:serverUrl field:json:host field:json:protocol
     field:json:email field:query:email field:query:redirect`,
@@ -255,7 +257,7 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
   'an outbound URL, header set or module URL core builds, never a request to core': lines`
     assistant/identity/link-url.ts URLSearchParams.toString in speakerLinkUrl
     integrations/autoflow/refresh.ts URLSearchParams.toString in requestRefresh
-    integration-door/github-connect-routes.ts URLSearchParams.toString in strandedAt
+    integration-door/github-connect-shared.ts URLSearchParams.toString in strandedAt
     integrations/deploy/coolify/client.ts URLSearchParams.toString in CoolifyClient
     integrations/deploy/coolify/health-probe.ts URL handed to @types/node:fetchImpl in probeHealth
     integrations/deploy/kept-probe-request.ts Headers handed to @types/node:fetchImpl in sendKeptProbeRequest
@@ -329,7 +331,7 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     middleware/route-refs.ts Request.url in resolveRouteRefs
     devices/install-routes.ts HonoRequest.url in module code
     guides/routes.ts HonoRequest.url in module code
-    integration-door/github-connect-routes.ts HonoRequest.url in reachedOrigin
+    integration-door/github-connect-shared.ts HonoRequest.url in reachedOrigin
     requirements/route-kit.ts HonoRequest.param() in draftPictureFits
     workflows/template-routes.ts HonoRequest.param() in module code
     questions/routes.ts HonoRequest.param(…) handed to questionId as { param: (k: string) => string; } in module code`,
@@ -346,6 +348,7 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     comments/routes.ts HonoRequest.header(…) handed to clientCapabilities as Pick<HonoRequest<"/", {}>, "header"> in registerIssueCommentRoutes`,
   'a webhook’s event headers and body, read once its signature verified': lines`
     integration-door/webhook-inbound-routes.ts HonoRequest.header(m.header) in module code
+    integration-door/webhook-inbound-routes.ts Headers handed to lib:fromEntries in answerAppDelivery
     integration-door/webhook-inbound-routes.ts Headers handed to lib:fromEntries in module code
     integration-door/webhook-inbound-routes.ts Request.text in module code`,
   'the /mcp request requirePat admitted: the SDK verifies nothing, the class reads the tool': lines`

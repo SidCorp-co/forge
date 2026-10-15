@@ -9707,6 +9707,53 @@
         ]
       }
     },
+    "/api/integration-connections/github/connect": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "orgId": {
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "type": "string"
+                  },
+                  "returnTo": {
+                    "const": "integrations",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "orgId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "json"
+        ]
+      }
+    },
     "/api/integration-connections/{id}": {
       "delete": {
         "parameters": [
@@ -9925,6 +9972,59 @@
         ]
       }
     },
+    "/api/integration-connections/{id}/github-app/complete": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "clientSecret": {
+                    "maxLength": 500,
+                    "minLength": 8,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "clientSecret"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "json"
+        ]
+      }
+    },
     "/api/integration-connections/{id}/targets": {
       "get": {
         "parameters": [
@@ -9991,6 +10091,14 @@
           {
             "in": "query",
             "name": "installation_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "code",
             "required": false,
             "schema": {
               "type": "string"
@@ -39361,22 +39469,6 @@
           },
           {
             "in": "query",
-            "name": "org",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "orgId",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
             "name": "returnTo",
             "required": false,
             "schema": {
@@ -43727,6 +43819,32 @@
         },
         "x-forge-auth": [],
         "x-forge-input": "none",
+        "x-forge-validated": []
+      }
+    },
+    "/api/webhooks/github/app": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "description": "The instance GitHub App's webhook payload, read as the exact bytes x-hub-signature-256 signs and parsed as JSON only after it verifies.",
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [],
         "x-forge-validated": []
       }
     },

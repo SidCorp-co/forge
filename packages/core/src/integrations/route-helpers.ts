@@ -1,4 +1,5 @@
 import type { ConnectionDirectoryStatus } from '@forge/contracts/integrations';
+import { type Said, sayEn } from '@forge/contracts/said';
 import { HTTPException } from 'hono/http-exception';
 import type { BindingRole } from '../db/schema.js';
 import type { AgentAccess } from './agent-access.js';
@@ -53,7 +54,12 @@ export function notifyConnectionChanged(provider: string, connectionId: string):
   getAdapter(provider)?.onConnectionChanged?.(connectionId);
 }
 
-export function summarizeBinding(pair: BindingWithConnection) {
+/**
+ * A binding as a project reads it. `standing` is why it cannot work though its connection reads
+ * healthy — the instance App's installation behind it was removed, suspended, or lost the
+ * repository — and makes it read degraded naming that, never a connection-wide verdict.
+ */
+export function summarizeBinding(pair: BindingWithConnection, standing: Said | null = null) {
   const { binding, connection } = pair;
   return {
     id: binding.id,
@@ -67,9 +73,9 @@ export function summarizeBinding(pair: BindingWithConnection) {
     active: binding.active && connection.active,
     bindingActive: binding.active,
     connectionActive: connection.active,
-    lastHealthStatus: connection.lastHealthStatus,
-    lastHealthDetail: connection.lastHealthDetail,
-    lastHealthSays: connection.lastHealthSays,
+    lastHealthStatus: standing ? 'degraded' : connection.lastHealthStatus,
+    lastHealthDetail: standing ? sayEn(standing) : connection.lastHealthDetail,
+    lastHealthSays: standing ?? connection.lastHealthSays,
     lastHealthAt: connection.lastHealthAt,
     breakerOpenedAt: connection.breakerOpenedAt,
     hasSecrets: connection.secretsEnc !== null,

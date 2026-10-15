@@ -11,10 +11,23 @@ export const githubConfigBase = z.object({
   ...releaseChannelFields,
 });
 
+/**
+ * The connection-tier config of the instance's App: where its settings and install pages live,
+ * read off GitHub when the App was made or completed, never typed.
+ */
+export const githubConnectionConfig = githubConfigBase.extend({
+  appSlug: z.string().min(1).max(100).optional(),
+  appOwner: z.string().min(1).max(100).optional(),
+  appOwnerIsOrg: z.boolean().optional(),
+});
+
 export const githubSecretsSchema = z.object({
   appId: z.string().min(1).max(50),
   privateKey: z.string().min(100).max(20000),
   webhookSecret: z.string().min(8).max(500),
+  // The App's OAuth pair, which proves an installation is the installer's own (`instance-app.ts`).
+  clientId: z.string().min(1).max(100).optional(),
+  clientSecret: z.string().min(8).max(500).optional(),
 });
 
 export const GITHUB_BINDING_CONFIG_KEYS = [

@@ -1,22 +1,27 @@
+import type {
+	AgentPathKind,
+	IntegrationProvider,
+	schema,
+} from "@forge/core/public";
+import type { RefusalStatuses } from "./refusal.js";
 /** Re-exported, never re-declared — `INTEGRATION_PROVIDERS` in core is the list. */
-import type { Said } from './said.js';
-import type { AgentPathKind, IntegrationProvider, schema } from '@forge/core/public';
+import type { Said } from "./said.js";
 
 export type {
-  AgentPathKind,
-  IntegrationCapabilities,
-  IntegrationProvider,
-} from '@forge/core/public';
+	AgentPathKind,
+	IntegrationCapabilities,
+	IntegrationProvider,
+} from "@forge/core/public";
 
 /**
  * ISS-1071 — whether an agent working a project may use one of its integrations. Two values and
  * no more: this is a binary grant, and per-tool scoping within a provider is a different question
  * that this deliberately cannot express.
  */
-export const AGENT_ACCESS_VALUES = ['none', 'all'] as const;
+export const AGENT_ACCESS_VALUES = ["none", "all"] as const;
 export type AgentAccess = (typeof AGENT_ACCESS_VALUES)[number];
 
-/** `'user' | 'org'` — the connection owner namespace. */
+/** `'user' | 'org' | 'instance'` — the connection owner namespace. */
 export type IntegrationOwnerType = schema.IntegrationOwnerType;
 /** `'deploy' | 'service' | 'source'` — what a binding is FOR. */
 export type BindingRole = schema.BindingRole;
@@ -31,37 +36,37 @@ export type IntegrationDeliveryStatus = schema.IntegrationDeliveryStatus;
  */
 /** A connection's health bucketed for display, computed by core (`integrations/route-helpers.ts:connectionHealthStatus`). */
 export type ConnectionDirectoryStatus =
-  | 'connected'
-  | 'degraded'
-  | 'error'
-  | 'not_connected'
-  | 'needs_reauth'
-  | 'needs_scope'
-  | 'disabled'
-  | 'unverified';
+	| "connected"
+	| "degraded"
+	| "error"
+	| "not_connected"
+	| "needs_reauth"
+	| "needs_scope"
+	| "disabled"
+	| "unverified";
 
 export interface ConnectionSummary {
-  id: string;
-  ownerType: IntegrationOwnerType;
-  ownerId: string;
-  provider: IntegrationProvider;
-  displayName: string | null;
-  /** Connection-scoped non-secret config (e.g. coolify baseUrl). */
-  config: Record<string, unknown>;
-  active: boolean;
-  lastHealthStatus: string | null;
-  /** The sentence behind a non-ok status, where the adapter recorded one (never secret bytes). */
-  lastHealthDetail?: string | null;
-  /** `lastHealthDetail` as said; null on a row recorded before it was kept. */
-  lastHealthSays?: Said | null;
-  lastHealthAt: string | null;
-  breakerOpenedAt: string | null;
-  /** The health above, bucketed by core's one rule; readers show this rather than re-deriving it. */
-  directoryStatus: ConnectionDirectoryStatus;
-  /** True when an encrypted credential is stored — the bytes are never returned. */
-  hasSecrets: boolean;
-  createdAt: string;
-  updatedAt: string;
+	id: string;
+	ownerType: IntegrationOwnerType;
+	ownerId: string;
+	provider: IntegrationProvider;
+	displayName: string | null;
+	/** Connection-scoped non-secret config (e.g. coolify baseUrl). */
+	config: Record<string, unknown>;
+	active: boolean;
+	lastHealthStatus: string | null;
+	/** The sentence behind a non-ok status, where the adapter recorded one (never secret bytes). */
+	lastHealthDetail?: string | null;
+	/** `lastHealthDetail` as said; null on a row recorded before it was kept. */
+	lastHealthSays?: Said | null;
+	lastHealthAt: string | null;
+	breakerOpenedAt: string | null;
+	/** The health above, bucketed by core's one rule; readers show this rather than re-deriving it. */
+	directoryStatus: ConnectionDirectoryStatus;
+	/** True when an encrypted credential is stored — the bytes are never returned. */
+	hasSecrets: boolean;
+	createdAt: string;
+	updatedAt: string;
 }
 
 /**
@@ -71,78 +76,78 @@ export interface ConnectionSummary {
  * `config` is the effective overlay (connection.config + binding overrides).
  */
 export interface BindingSummary {
-  id: string;
-  connectionId: string;
-  projectId: string;
-  provider: IntegrationProvider;
-  role: BindingRole;
-  config: Record<string, unknown>;
-  /** Raw binding-tier overrides (e.g. coolify resourceUuid/branch) — `config`
-   *  is the merged connection+binding view; this distinguishes a per-project
-   *  value from one inherited off the shared connection. */
-  bindingConfig: Record<string, unknown>;
-  /** ISS-558 — binding label. Empty string = default/unlabeled; non-empty = a named
-   *  extra binding of a provider declaring `multiBinding` (a second storefront, say). */
-  label: string;
-  /** Both tiers must be on for the integration to resolve. Kept as the AND so
-   *  every existing reader ("is this live?") is unchanged; the two flags below
-   *  say WHICH tier is off, which a single collapsed boolean cannot. */
-  active: boolean;
-  /** Project tier — does THIS project opt in. Written by the binding document's
-   *  `active` (and switched off by DELETE), which a project admin may do. */
-  bindingActive: boolean;
-  /** Credential tier — is the org-shared connection enabled at all. False here
-   *  means no project can use it, and only an org owner/admin can flip it (via
-   *  the connection route, not a binding PATCH). */
-  connectionActive: boolean;
-  lastHealthStatus: string | null;
-  lastHealthDetail?: string | null;
-  /** `lastHealthDetail` as said; null on a row recorded before it was kept. */
-  lastHealthSays?: Said | null;
-  lastHealthAt: string | null;
-  breakerOpenedAt: string | null;
-  /** True when the connection stores an encrypted credential. */
-  hasSecrets: boolean;
-  /** True when the binding carries an inbound-webhook HMAC secret. */
-  integrationSecretSet: boolean;
-  agentAccess: AgentAccess;
-  /**
-   * The declared risk class of this provider's agent path, so a screen can say what the grant
-   * means without knowing the provider: `none` renders no control at all, `core-mediated` means
-   * Forge stays in the call path, `direct-mcp` means the credential is handed to the runner box.
-   */
-  agentPathKind: AgentPathKind;
-  /** The binding row's revision: what `DELETE /api/projects/:id/bindings/:bindingId` is sent as
-   *  `baseRevision`, so a binding is disconnected whether or not it has a binding-v1 document. */
-  revision: number;
-  createdAt: string;
-  updatedAt: string;
+	id: string;
+	connectionId: string;
+	projectId: string;
+	provider: IntegrationProvider;
+	role: BindingRole;
+	config: Record<string, unknown>;
+	/** Raw binding-tier overrides (e.g. coolify resourceUuid/branch) — `config`
+	 *  is the merged connection+binding view; this distinguishes a per-project
+	 *  value from one inherited off the shared connection. */
+	bindingConfig: Record<string, unknown>;
+	/** ISS-558 — binding label. Empty string = default/unlabeled; non-empty = a named
+	 *  extra binding of a provider declaring `multiBinding` (a second storefront, say). */
+	label: string;
+	/** Both tiers must be on for the integration to resolve. Kept as the AND so
+	 *  every existing reader ("is this live?") is unchanged; the two flags below
+	 *  say WHICH tier is off, which a single collapsed boolean cannot. */
+	active: boolean;
+	/** Project tier — does THIS project opt in. Written by the binding document's
+	 *  `active` (and switched off by DELETE), which a project admin may do. */
+	bindingActive: boolean;
+	/** Credential tier — is the org-shared connection enabled at all. False here
+	 *  means no project can use it, and only an org owner/admin can flip it (via
+	 *  the connection route, not a binding PATCH). */
+	connectionActive: boolean;
+	lastHealthStatus: string | null;
+	lastHealthDetail?: string | null;
+	/** `lastHealthDetail` as said; null on a row recorded before it was kept. */
+	lastHealthSays?: Said | null;
+	lastHealthAt: string | null;
+	breakerOpenedAt: string | null;
+	/** True when the connection stores an encrypted credential. */
+	hasSecrets: boolean;
+	/** True when the binding carries an inbound-webhook HMAC secret. */
+	integrationSecretSet: boolean;
+	agentAccess: AgentAccess;
+	/**
+	 * The declared risk class of this provider's agent path, so a screen can say what the grant
+	 * means without knowing the provider: `none` renders no control at all, `core-mediated` means
+	 * Forge stays in the call path, `direct-mcp` means the credential is handed to the runner box.
+	 */
+	agentPathKind: AgentPathKind;
+	/** The binding row's revision: what `DELETE /api/projects/:id/bindings/:bindingId` is sent as
+	 *  `baseRevision`, so a binding is disconnected whether or not it has a binding-v1 document. */
+	revision: number;
+	createdAt: string;
+	updatedAt: string;
 }
 
 export type IntegrationCardStatus =
-  | 'connected'
-  | 'attention'
-  | 'error'
-  | 'not_configured'
-  | 'disabled'
-  | 'unverified';
+	| "connected"
+	| "attention"
+	| "error"
+	| "not_configured"
+	| "disabled"
+	| "unverified";
 
 /** One card in the composed integrations-status read model (`GET .../integrations/status`). */
 export interface IntegrationStatusCard {
-  key: string;
-  label: string;
-  status: IntegrationCardStatus;
-  detail: string;
-  /** `detail` as said (`said.ts`). */
-  says: { detail: Said };
-  /** ISO timestamp of the last real sync/health-check, or null when none exists. */
-  lastSyncAt: string | null;
-  configured: boolean;
-  meta?: Record<string, unknown>;
+	key: string;
+	label: string;
+	status: IntegrationCardStatus;
+	detail: string;
+	/** `detail` as said (`said.ts`). */
+	says: { detail: Said };
+	/** ISO timestamp of the last real sync/health-check, or null when none exists. */
+	lastSyncAt: string | null;
+	configured: boolean;
+	meta?: Record<string, unknown>;
 }
 
 export interface IntegrationsStatus {
-  cards: IntegrationStatusCard[];
+	cards: IntegrationStatusCard[];
 }
 
 /**
@@ -151,45 +156,45 @@ export interface IntegrationsStatus {
  * Scoped by `bindingId` since the ISS-410 retirement of project_integrations.
  */
 export interface IntegrationDeliveryRow {
-  id: string;
-  bindingId: string | null;
-  direction: IntegrationDeliveryDirection;
-  eventName: string;
-  status: IntegrationDeliveryStatus;
-  requestId: string | null;
-  payload: Record<string, unknown>;
-  response: Record<string, unknown> | null;
-  errorMessage: string | null;
-  durationMs: number | null;
-  createdAt: string;
-  completedAt: string | null;
+	id: string;
+	bindingId: string | null;
+	direction: IntegrationDeliveryDirection;
+	eventName: string;
+	status: IntegrationDeliveryStatus;
+	requestId: string | null;
+	payload: Record<string, unknown>;
+	response: Record<string, unknown> | null;
+	errorMessage: string | null;
+	durationMs: number | null;
+	createdAt: string;
+	completedAt: string | null;
 }
 
 export interface IntegrationHealthResult {
-  status: 'ok' | 'degraded' | 'error' | 'needs_reauth' | 'needs_scope';
-  /** `says` in English. */
-  message?: string;
-  /** `message` as said: the adapter's own sentence by key, a provider's verbatim. */
-  says?: { message: Said };
-  /** Free-form provider diagnostics surfaced to operators in the test-connection UI. */
-  diagnostics?: Record<string, unknown>;
+	status: "ok" | "degraded" | "error" | "needs_reauth" | "needs_scope";
+	/** `says` in English. */
+	message?: string;
+	/** `message` as said: the adapter's own sentence by key, a provider's verbatim. */
+	says?: { message: Said };
+	/** Free-form provider diagnostics surfaced to operators in the test-connection UI. */
+	diagnostics?: Record<string, unknown>;
 }
 
 /** Result of `POST .../confirm-prod-deploy`. `integrationId` stays the binding id. */
 export interface ConfirmProdDeployResult {
-  confirmed: boolean;
-  runId: string | null;
-  integrationId: string;
+	confirmed: boolean;
+	runId: string | null;
+	integrationId: string;
 }
 
 /** One Coolify deploy target (a single application UUID). `id` is server-assigned
  *  when omitted; a write replaces the whole `targets` array. */
 export interface CoolifyTargetInput {
-  id?: string;
-  label: string;
-  resourceUuid: string;
-  /** Absolute URL of this application's health endpoint; absent = no post-deploy health gate. */
-  healthUrl?: string;
+	id?: string;
+	label: string;
+	resourceUuid: string;
+	/** Absolute URL of this application's health endpoint; absent = no post-deploy health gate. */
+	healthUrl?: string;
 }
 
 /**
@@ -198,11 +203,11 @@ export interface CoolifyTargetInput {
  * (e.g. a split backend + frontend) that deploy together.
  */
 export type CoolifyConfigInput = {
-  baseUrl: string;
-  targets: CoolifyTargetInput[];
+	baseUrl: string;
+	targets: CoolifyTargetInput[];
 };
 export type CoolifySecretsInput = {
-  apiToken: string;
+	apiToken: string;
 };
 
 /**
@@ -211,30 +216,30 @@ export type CoolifySecretsInput = {
  * is optional — the operator only supplies the `crmk_` key as the secret.
  */
 export type EpodsystemConfigInput = {
-  storeSlug?: string;
-  storeName?: string;
-  themeId?: string;
-  draftThemeId?: string;
-  commerceEnabled?: boolean;
+	storeSlug?: string;
+	storeName?: string;
+	themeId?: string;
+	draftThemeId?: string;
+	commerceEnabled?: boolean;
 };
 export type EpodsystemSecretsInput = {
-  apiKey: string;
+	apiKey: string;
 };
 
 interface SentryTargetInput {
-  label: string;
-  organizationSlug?: string;
-  projectSlug?: string;
-  environment?: string;
-  notes?: string;
+	label: string;
+	organizationSlug?: string;
+	projectSlug?: string;
+	environment?: string;
+	notes?: string;
 }
 
 export type SentryConfigInput = {
-  host: string;
-  targets?: SentryTargetInput[];
+	host: string;
+	targets?: SentryTargetInput[];
 };
 export type SentrySecretsInput = {
-  authToken: string;
+	authToken: string;
 };
 
 /**
@@ -244,12 +249,12 @@ export type SentrySecretsInput = {
  * The bot credential is a personal-access token + its user id (both secrets).
  */
 export type RocketchatConfigInput = {
-  serverUrl: string;
-  rids?: string[];
+	serverUrl: string;
+	rids?: string[];
 };
 export type RocketchatSecretsInput = {
-  authToken: string;
-  userId: string;
+	authToken: string;
+	userId: string;
 };
 /**
  * Body for `PATCH /:projectId/integrations/:id` — the connection tier (config, secrets) and the
@@ -257,8 +262,8 @@ export type RocketchatSecretsInput = {
  * document's (`PUT /api/projects/:projectId/bindings/:bindingId`), and refused here by name.
  */
 export interface IntegrationBindingUpdateInput {
-  config?: Record<string, unknown>;
-  secrets?: Record<string, unknown>;
+	config?: Record<string, unknown>;
+	secrets?: Record<string, unknown>;
 }
 
 /**
@@ -267,52 +272,52 @@ export interface IntegrationBindingUpdateInput {
  * choose itself (its id, connection and revision are the call's).
  */
 export interface ConnectionBindingItem {
-  projectId: string;
-  role: BindingRole;
-  /** A binding-v1 target, `provider` included. */
-  target: Record<string, unknown>;
-  agentAccess?: AgentAccess;
-  instructions?: string;
+	projectId: string;
+	role: BindingRole;
+	/** A binding-v1 target, `provider` included. */
+	target: Record<string, unknown>;
+	agentAccess?: AgentAccess;
+	instructions?: string;
 }
 
 /** A binding one of those calls wrote. */
 export interface ConnectionBindingWritten {
-  projectId: string;
-  bindingId: string;
-  revision: number;
-  /** False where the project's switched-off binding for the same slot was written again. */
-  created: boolean;
-  /** That switched-off binding, as it stood before this write took it over; null when the slot was free. */
-  rewroteSwitchedOff: { revision: number; connection: string } | null;
-  effects: Record<string, unknown>;
+	projectId: string;
+	bindingId: string;
+	revision: number;
+	/** False where the project's switched-off binding for the same slot was written again. */
+	created: boolean;
+	/** That switched-off binding, as it stood before this write took it over; null when the slot was free. */
+	rewroteSwitchedOff: { revision: number; connection: string } | null;
+	effects: Record<string, unknown>;
 }
 
 export interface ConnectionCreateInput {
-  provider: IntegrationProvider;
-  displayName?: string;
-  config: Record<string, unknown>;
-  secrets?: Record<string, unknown>;
-  /** Present = org-owned connection (requires org admin); absent = personal. */
-  orgId?: string;
-  /** The projects bound in the same call; one refusal writes nothing, the connection included. */
-  bindings?: ConnectionBindingItem[];
+	provider: IntegrationProvider;
+	displayName?: string;
+	config: Record<string, unknown>;
+	secrets?: Record<string, unknown>;
+	/** Present = org-owned connection (requires org admin); absent = personal. */
+	orgId?: string;
+	/** The projects bound in the same call; one refusal writes nothing, the connection included. */
+	bindings?: ConnectionBindingItem[];
 }
 
 export interface ConnectionUpdateInput {
-  displayName?: string;
-  config?: Record<string, unknown>;
-  secrets?: Record<string, unknown>;
-  active?: boolean;
+	displayName?: string;
+	config?: Record<string, unknown>;
+	secrets?: Record<string, unknown>;
+	active?: boolean;
 }
 
 /** `{ connection }` — connection list items, create (201) + update. */
 export interface ConnectionResponse {
-  connection: ConnectionSummary;
+	connection: ConnectionSummary;
 }
 
 /** `POST /integration-connections`: the connection, and the bindings written with it. */
 export interface ConnectionCreateResponse extends ConnectionResponse {
-  bindings: ConnectionBindingWritten[];
+	bindings: ConnectionBindingWritten[];
 }
 
 /**
@@ -322,83 +327,93 @@ export interface ConnectionCreateResponse extends ConnectionResponse {
  * each other apart without a query per card.
  */
 export interface ConnectionUsage {
-  bindings: Array<{
-    id: string;
-    projectId: string;
-    role: BindingRole;
-    label: string;
-    /** What tells this binding apart from the connection's others on its project: the environment
-     *  that deploys through it, its label, what it points at, else its role. Never the same text twice. */
-    name: string;
-    active: boolean;
-  }>;
+	bindings: Array<{
+		id: string;
+		projectId: string;
+		role: BindingRole;
+		label: string;
+		/** What tells this binding apart from the connection's others on its project: the environment
+		 *  that deploys through it, its label, what it points at, else its role. Never the same text twice. */
+		name: string;
+		active: boolean;
+	}>;
 }
 
 /** A connection as the workspace directory reads it: the credential plus where it is used. */
 export interface ConnectionDirectoryItem extends ConnectionSummary {
-  usage: ConnectionUsage;
+	usage: ConnectionUsage;
 }
 
 /** List envelope for connections (`GET /integration-connections`). */
 export interface ConnectionListResponse {
-  items: ConnectionDirectoryItem[];
+	items: ConnectionDirectoryItem[];
 }
 /** List envelope for project bindings (`GET /:projectId/integrations`), shaped as its siblings are. */
 export interface BindingListResponse {
-  items: BindingSummary[];
+	items: BindingSummary[];
 }
 
 /** A connection's bindings (`GET /integration-connections/:id/bindings`). */
 export interface ConnectionBindingsResponse {
-  items: BindingSummary[];
+	items: BindingSummary[];
 }
 
 export type McpServerPreviewReason =
-  | 'ok'
-  | 'not_configured'
-  | 'disabled'
-  | 'no_credential'
-  | 'shadowed'
-  | 'not_granted'
-  | 'not_resolved';
+	| "ok"
+	| "not_configured"
+	| "disabled"
+	| "no_credential"
+	| "shadowed"
+	| "not_granted"
+	| "not_resolved";
 
 export interface McpServerPreviewEntry {
-  provider: IntegrationProvider;
-  serverName: string;
-  /** Binding id backing this entry — null for the synthetic not_configured one. */
-  bindingId: string | null;
-  role: BindingRole | null;
-  configured: boolean;
-  active: boolean;
-  willInject: boolean;
-  reason: McpServerPreviewReason;
-  url: string | null;
-  headers: Record<string, string> | null;
-  lastHealthStatus: string | null;
-  lastHealthAt: string | null;
+	provider: IntegrationProvider;
+	serverName: string;
+	/** Binding id backing this entry — null for the synthetic not_configured one. */
+	bindingId: string | null;
+	role: BindingRole | null;
+	configured: boolean;
+	active: boolean;
+	willInject: boolean;
+	reason: McpServerPreviewReason;
+	url: string | null;
+	headers: Record<string, string> | null;
+	lastHealthStatus: string | null;
+	lastHealthAt: string | null;
 }
 
 /** Envelope for `GET /:projectId/integrations/mcp-preview`. */
 export interface McpPreviewResponse {
-  servers: McpServerPreviewEntry[];
+	servers: McpServerPreviewEntry[];
 }
 
 /** The codes an integration route refuses under. */
 export const INTEGRATION_REFUSAL_CODES = [
-  'INTEGRATION_REFUSED',
-  'MISSING_CREDENTIALS',
-  'NOT_RETRYABLE',
-  'BINDING_INACTIVE',
-  'HOST_UNAVAILABLE',
-  'ORG_MISMATCH',
-  'MCP_PREVIEW_UNCLAIMED',
-  'WEBHOOK_EVENT_MISSING',
-  'WEBHOOK_FOREIGN_REPOSITORY',
-  'INTEGRATION_RELAY_FORBIDDEN',
-  'INTEGRATION_RELAY_NO_CREDENTIAL',
+	"INTEGRATION_REFUSED",
+	"MISSING_CREDENTIALS",
+	"NOT_RETRYABLE",
+	"BINDING_INACTIVE",
+	"HOST_UNAVAILABLE",
+	"GITHUB_APP_NOT_CONNECTED",
+	"GITHUB_APP_INCOMPLETE",
+	"GITHUB_APP_OPERATOR_ONLY",
+	"GITHUB_APP_NOT_INSTANCE",
+	"MCP_PREVIEW_UNCLAIMED",
+	"WEBHOOK_EVENT_MISSING",
+	"WEBHOOK_FOREIGN_REPOSITORY",
+	"INTEGRATION_RELAY_FORBIDDEN",
+	"INTEGRATION_RELAY_NO_CREDENTIAL",
 ] as const;
 
 export type IntegrationRefusalCode = (typeof INTEGRATION_REFUSAL_CODES)[number];
+
+/** The instance's GitHub App is a platform admin's to create, complete and change; nobody else's. */
+export const INTEGRATION_REFUSAL_STATUSES = {
+	GITHUB_APP_OPERATOR_ONLY: 403,
+	GITHUB_APP_NOT_CONNECTED: 409,
+	GITHUB_APP_INCOMPLETE: 409,
+} as const satisfies RefusalStatuses<IntegrationRefusalCode>;
 
 /**
  * Why a browser GitHub sent back could not finish connecting, carried to the web Integrations page
@@ -407,37 +422,49 @@ export type IntegrationRefusalCode = (typeof INTEGRATION_REFUSAL_CODES)[number];
  * are the person's own return, and name the App wherever its code could be spent to learn it.
  */
 export const GITHUB_CONNECT_STRANDS = [
-  'no_session',
-  'email_unverified',
-  'code_missing',
-  'state_missing',
-  'state_invalid',
-  'state_other_user',
-  'state_expired',
-  'not_admin',
-  'vault_missing',
-  'conversion_failed',
-  'save_failed',
-  'install_missing',
-  'install_unmatched',
+	"no_session",
+	"email_unverified",
+	"code_missing",
+	"state_missing",
+	"state_invalid",
+	"state_other_user",
+	"state_expired",
+	"not_admin",
+	"vault_missing",
+	"conversion_failed",
+	"save_failed",
+	"install_missing",
+	"install_unmatched",
+	"install_unproven",
+	"install_claimed_elsewhere",
+	"app_exists",
+	"not_operator",
 ] as const;
 export type GitHubConnectStrand = (typeof GITHUB_CONNECT_STRANDS)[number];
 /** The codes a verified inbound delivery is refused with, once its refused row is recorded. */
-export type InboundRefusalCode = Extract<IntegrationRefusalCode, `WEBHOOK_${string}`>;
+export type InboundRefusalCode = Extract<
+	IntegrationRefusalCode,
+	`WEBHOOK_${string}`
+>;
 
 /** The rules the Coolify commands refuse by name, in the one refusal envelope. */
 export const COOLIFY_REFUSAL_CODES = [
-  'COOLIFY_REFUSED',
-  'COOLIFY_ROLLBACK_IMAGE_UNLISTED',
-  'COOLIFY_INTEGRATION_UNRESOLVED',
-  'COOLIFY_TARGET_UNRESOLVED',
-  'COOLIFY_DEPLOYMENT_UNNAMED',
-  'COOLIFY_CONTROL_FAILED',
-  'MISSING_CREDENTIALS',
+	"COOLIFY_REFUSED",
+	"COOLIFY_ROLLBACK_IMAGE_UNLISTED",
+	"COOLIFY_INTEGRATION_UNRESOLVED",
+	"COOLIFY_TARGET_UNRESOLVED",
+	"COOLIFY_DEPLOYMENT_UNNAMED",
+	"COOLIFY_CONTROL_FAILED",
+	"MISSING_CREDENTIALS",
 ] as const;
 export type CoolifyRefusalCode = (typeof COOLIFY_REFUSAL_CODES)[number];
 
 // Refusal codes a runner release answers in the one envelope.
 /** The issue statuses an agent may filter a Sentry read by. */
-export const SENTRY_AGENT_STATUSES = ['unresolved', 'resolved', 'ignored', 'any'] as const;
+export const SENTRY_AGENT_STATUSES = [
+	"unresolved",
+	"resolved",
+	"ignored",
+	"any",
+] as const;
 export type SentryAgentStatus = (typeof SENTRY_AGENT_STATUSES)[number];

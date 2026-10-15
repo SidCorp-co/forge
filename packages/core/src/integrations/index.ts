@@ -120,6 +120,7 @@ export {
   listBindingsForConnection,
   listBindingsForProject,
   listConnectionsForPrincipalUser,
+  makeConnectionInstanceOwned,
   pendingConnectionRow,
   softDeleteConnection,
   updateConnection,

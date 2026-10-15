@@ -377,14 +377,15 @@ export interface BindingTargetRefusal {
     | 'COOLIFY_APPLICATION_UNKNOWN'
     | 'COOLIFY_UNREACHABLE'
     | 'SOURCE_HOST_MISMATCH'
-    | 'SOURCE_REPOSITORY_LOCAL';
+    | 'SOURCE_REPOSITORY_LOCAL'
+    | 'GITHUB_INSTALLATION_NOT_RECORDED';
   path: string;
   detail: string;
 }
 
 export interface VerifyBindingTargetArgs {
   projectId: string;
-  connection: IntegrationConnectionLike & { config: unknown };
+  connection: IntegrationConnectionLike & { id: string; ownerType: string; config: unknown };
   /** The binding-tier config the document encodes to. */
   config: Record<string, unknown>;
   /** What the row already holds on this same connection, which was verified when written. */

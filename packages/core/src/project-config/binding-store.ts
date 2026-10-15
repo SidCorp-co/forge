@@ -1,7 +1,11 @@
 import { and, eq, isNotNull } from 'drizzle-orm';
 import { db, type TxOnly } from '../db/client.js';
 import type { AgentAccess, BindingRole } from '../db/release-axes.js';
-import { integrationBindings, integrationConnections } from '../db/schema.js';
+import {
+  type IntegrationOwnerType,
+  integrationBindings,
+  integrationConnections,
+} from '../db/schema.js';
 import { encryptSecret, isVaultConfigured } from '../integrations/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { projectOrgOf } from '../lib/authz.js';
@@ -25,7 +29,7 @@ export interface StoredBinding {
 export interface ConnectionFacts {
   id: string;
   provider: string;
-  ownerType: 'user' | 'org';
+  ownerType: IntegrationOwnerType;
   ownerId: string;
   active: boolean;
 }

@@ -1,35 +1,37 @@
 /**
- * Routes for the GitHub App connect flow.
+ * Routes for connecting GitHub through the one App this Forge instance owns, begun on a project or
+ * returning from GitHub. The instance App's own routes are `github-app-routes.ts`.
  *
- *   POST /:projectId/integrations/github/connect  → the manifest to POST to GitHub
- *   GET  /integrations/github/manifest-callback   → GitHub returns the code here
- *   GET  /integrations/github/installed           → GitHub returns installation_id here
+ *   POST /projects/:projectId/integrations/github/connect  → Connect GitHub, for the project's org
+ *   GET  /projects/:projectId/integrations/github/repositories → what its picker may list
+ *   GET  /integrations/github/manifest-callback            → GitHub returns the code here
+ *   GET  /integrations/github/installed                    → GitHub returns the installation here
  *
- * The two GETs are browser redirects from GitHub, so they carry the operator's
- * own session cookie and admit whom requireAuth admits. Everything they cannot
- * finish lands on the web Integrations page naming why (`?connect=<cause>`),
- * never as JSON on the API's origin: by the first callback GitHub has already
- * made the App, and a refusal nobody reads leaves it stranded there (FB-128).
+ * The two GETs are browser redirects from GitHub, so they carry the person's own session cookie and
+ * admit whom requireAuth admits. Everything they cannot finish lands on the web Integrations page
+ * naming why (`?connect=<cause>`), never as JSON on the API's origin: by the first callback GitHub
+ * has already made the App, and a refusal nobody reads leaves it stranded there (FB-128).
  */
 
-import type { GitHubConnectStrand, IntegrationRefusalCode } from '@forge/contracts/integrations';
 import type { Context, MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import {
-  buildAppManifest,
   type ConnectState,
   type ConvertedApp,
   convertManifestCode,
   findConnectionOwningInstallation,
+  findInstanceGithubApp,
+  INSTANCE_OWNER_ID,
+  installUrl,
   listInstallationRepositories,
-  manifestPostUrl,
+  proveInstallation,
   readConnectState,
+  recordInstallation,
   signConnectState,
 } from '../integrations/github/index.js';
 import {
-  assertVaultConfigured,
   createConnection,
   decryptConnectionSecrets,
   type IntegrationConnectionRow,
@@ -37,47 +39,27 @@ import {
   listBindingsForProject,
   listConnectionsForPrincipalUser,
   notFound,
-  resolveApiBaseUrl,
 } from '../integrations/index.js';
 import { SourceHostCallError } from '../integrations/source-host/index.js';
-import { loadVisibleProjectIds } from '../lib/authz.js';
+import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../lib/logger.js';
-import { refuser } from '../lib/refusal.js';
 import {
   type AuthVars,
   assertEmailVerified,
   requireAuth,
   requireAuthOrLand,
 } from '../middleware/auth.js';
+import { isPlatformAdmin } from '../middleware/require-admin.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import {
-  actorFor,
-  can,
-  orgResource,
-  projectResource,
-  requireCan,
-  requireOrgCan,
-} from '../permissions/index.js';
+import { actorFor, can, orgResource, projectResource, requireCan } from '../permissions/index.js';
 import { projectOrgHead } from '../projects/index.js';
+import { beginConnect } from './github-app-routes.js';
+import { finishedAt, nameStrandedApp, stateSecret, strandedAt } from './github-connect-shared.js';
+import { instanceInstallationsFor, projectsAdministeredBy } from './github-reach.js';
 
-const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
-
-/** The projects the caller may administer, asked of can() one by one: the scope an install may resolve in. */
-async function projectsAdministeredBy(userId: string): Promise<string[]> {
-  const actor = actorFor(userId);
-  const visible = await loadVisibleProjectIds(userId);
-  const held = await Promise.all(
-    visible.map((id) => can(actor, 'project.admin', projectResource(id))),
-  );
-  return visible.filter((_, i) => held[i]);
-}
-
-const connectQuerySchema = z.object({
-  org: z.string().optional(),
-  orgId: z.string().optional(),
-  returnTo: z.literal('integrations').optional(),
-});
+const returnToSchema = z.literal('integrations').optional();
+const projectConnectQuerySchema = z.strictObject({ returnTo: returnToSchema });
 const repositoriesQuerySchema = z.object({ connectionId: z.string().optional() });
 // GitHub redirects to both and adds keys of its own (setup_action on an install)
 const manifestCallbackQuerySchema = z.looseObject({
@@ -86,51 +68,9 @@ const manifestCallbackQuerySchema = z.looseObject({
 });
 const installedQuerySchema = z.looseObject({
   installation_id: z.string().optional(),
+  code: z.string().optional(),
   state: z.string().optional(),
 });
-
-/** What a stranded App can be named by: its slug and owner, read when its code was spent. */
-type StrandedApp = Pick<ConvertedApp, 'slug' | 'owner'>;
-
-/**
- * The web Integrations page, naming why GitHub's return could not finish and, where it is known,
- * the App GitHub made: `?connect=<cause>&app=<slug>&appOwner=<login>&appOrg=1`.
- */
-function strandedAt(c: Context, cause: GitHubConnectStrand, app?: StrandedApp | null): Response {
-  const q = new URLSearchParams({ connect: cause });
-  if (app?.slug) q.set('app', app.slug);
-  if (app?.owner) {
-    q.set('appOwner', app.owner.login);
-    if (app.owner.isOrg) q.set('appOrg', '1');
-  }
-  return c.redirect(`${webBaseUrl()}/integrations?${q.toString()}`);
-}
-
-/**
- * Spend a genuine, own return's code only to learn which App GitHub made, and drop the key it
- * comes with: the person it was made for may delete it or mint it a new key, but Forge was never
- * allowed to keep this one. Null when GitHub will not convert it.
- */
-async function nameStrandedApp(code: string): Promise<StrandedApp | null> {
-  try {
-    const { slug, owner } = await convertManifestCode({ code });
-    logger.info({ slug }, 'github: named a stranded App; its key was not kept');
-    return { ...(slug ? { slug } : {}), ...(owner ? { owner } : {}) };
-  } catch (err) {
-    logger.warn({ err }, 'github: a stranded App could not be named');
-    return null;
-  }
-}
-
-/** Where a finished connect lands: the page it began on. */
-function finishedAt(
-  state: { returnTo?: ConnectState['returnTo'] | undefined; projectId: string },
-  connectionId: string,
-) {
-  return state.returnTo === 'integrations'
-    ? `${webBaseUrl()}/integrations?bind=${encodeURIComponent(connectionId)}`
-    : `${webBaseUrl()}/projects/${state.projectId}/settings/integrations`;
-}
 
 // the admin check runs before the query is read, so a non-admin learns nothing from a 400
 const projectAdmin: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next) => {
@@ -144,7 +84,6 @@ const projectAdmin: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next)
 
 export const githubConnectRoutes = new Hono<{ Variables: AuthVars }>();
 githubConnectRoutes.use('*', requireAuth(), assertEmailVerified());
-
 export const githubCallbackRoutes = new Hono<{ Variables: AuthVars }>();
 // no session, or another person's, is not provably the person the App was made for: the return
 // lands naming why and spends no code (`no_session` and `email_unverified` are of that group)
@@ -153,125 +92,20 @@ githubCallbackRoutes.use(
   requireAuthOrLand((c, why) => strandedAt(c, why)),
 );
 
-function stateSecret(): string {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) throw new HTTPException(500, { message: 'JWT_SECRET is not configured' });
-  return secret;
-}
-
-function webBaseUrl(): string {
-  const base = process.env.APP_BASE_URL;
-  if (!base) throw new HTTPException(500, { message: 'APP_BASE_URL is not configured' });
-  return base;
-}
-
-function apiBaseUrl(): string {
-  const base = resolveApiBaseUrl();
-  if (!base) throw new HTTPException(500, { message: 'APP_BASE_URL is not configured' });
-  return base;
-}
-
-/** The public origin this request reached core at, as the proxy in front of core reports it. */
-function reachedOrigin(c: Context): string {
-  const url = new URL(c.req.url);
-  const proto = c.req.header('x-forwarded-proto')?.split(',')[0]?.trim();
-  if (proto === 'https' || proto === 'http') url.protocol = `${proto}:`;
-  const forwardedHost = c.req.header('x-forwarded-host')?.split(',')[0]?.trim();
-  if (forwardedHost) url.host = forwardedHost;
-  return url.origin;
-}
-
 /**
- * Where GitHub sends the browser back after creating and installing the App: the origin this
- * request reached core at, when it is one this core is configured to answer on — the API's own
- * (PUBLIC_API_BASE_URL) or the web's (APP_BASE_URL, where the web serves `/api` in front of core).
- * This request proves that origin routes `/api` to core, and it is the origin the person's session
- * rides on, so the return carries the session the callbacks admit. Insisting on the API's origin
- * refused every connect begun on a web that proxies `/api`, which is how forge-dev is served.
+ * The same connect, begun on a project: the installation is recorded for the project's org, and
+ * the return lands back on the project.
  */
-function browserReturnOrigin(c: Context, api: string): string {
-  const reached = reachedOrigin(c);
-  const configured = [api, process.env.APP_BASE_URL]
-    .filter((u): u is string => typeof u === 'string' && u.length > 0)
-    .map((u) => new URL(u).origin);
-  if (configured.includes(reached)) return reached;
-  throw new HTTPException(500, {
-    message:
-      `This request reached core at ${reached}, which is not an origin this core is configured to answer on ` +
-      `(${configured.join(', ')}). GitHub sends the browser back to the origin the request came from, so open ` +
-      'Forge at one of those, or set PUBLIC_API_BASE_URL to the origin this core is served at.',
-  });
-}
-
-/**
- * Which principal the App this flow is about to create will belong to.
- *
- * The App is named after the project, bound to it and used by its runners, so
- * an org project's App belongs to that org rather than to whoever pressed
- * Connect (ISS-1115). The refusal is taken HERE and not in the callback,
- * where a real App already exists on github.com and refusing would strand it.
- */
-async function ownerOrgForProjectApp(args: {
-  projectOrgId: string | null;
-  asked: string | null;
-  userId: string;
-}): Promise<string | undefined> {
-  if (args.asked && args.asked !== args.projectOrgId) {
-    throw refuse(
-      'ORG_MISMATCH',
-      "org connection must belong to the project's own org — this project belongs to " +
-        `${args.projectOrgId ?? 'no shared org'}, and the request named ${args.asked}.`,
-    );
-  }
-  if (!args.projectOrgId) return undefined;
-  // A GitHub App created here is owned by the project's org and reachable by every admin of the
-  // project, so creating one takes org.admin there.
-  await requireOrgCan(actorFor(args.userId), 'org.admin', orgResource(args.projectOrgId));
-  return args.projectOrgId;
-}
-
 githubConnectRoutes.post(
   '/:projectId/integrations/github/connect',
   projectAdmin,
-  zValidator('query', connectQuerySchema),
+  zValidator('query', projectConnectQuerySchema),
   async (c) => {
     const projectId = c.req.param('projectId');
-    const userId = c.get('userId');
-    assertVaultConfigured();
-
     const project = await projectOrgHead(projectId);
     if (!project) throw notFound('project');
-
-    const query = c.req.valid('query');
-    const org = query.org ?? null;
-    const orgId = await ownerOrgForProjectApp({
-      // A solo operator's org row is their PERSONAL one, and the connections
-      // directory scopes such an org to `ownerType:'user'` — an App owned by it
-      // would be invisible to its only admin. So: no shared owner.
-      projectOrgId: project.orgIsPersonal ? null : project.orgId,
-      asked: query.orgId ?? null,
-      userId,
-    });
-
-    const api = apiBaseUrl();
-    const returnTo = browserReturnOrigin(c, api);
-
-    return c.json({
-      postUrl: manifestPostUrl(org),
-      state: signConnectState(stateSecret(), {
-        projectId,
-        userId,
-        ...(orgId ? { orgId } : {}),
-        ...(query.returnTo ? { returnTo: query.returnTo } : {}),
-      }),
-      manifest: buildAppManifest({
-        appName: `Forge — ${project.name}`,
-        webBaseUrl: webBaseUrl(),
-        apiBaseUrl: api,
-        returnBaseUrl: returnTo,
-        projectSlug: project.slug,
-      }),
-    });
+    const { returnTo } = c.req.valid('query');
+    return beginConnect(c, { orgId: project.orgId, projectId, ...(returnTo ? { returnTo } : {}) });
   },
 );
 
@@ -325,7 +159,15 @@ githubConnectRoutes.get(
     if (!appId || !privateKey) throw badRequest({ connectionId: 'the App was never converted' });
 
     try {
-      return c.json(await listInstallationRepositories({ appId, privateKey }));
+      return c.json(
+        await listInstallationRepositories({
+          appId,
+          privateKey,
+          ...(connection.ownerType === 'instance'
+            ? { installations: await instanceInstallationsFor(userId, connection.id) }
+            : {}),
+        }),
+      );
     } catch (err) {
       if (!(err instanceof SourceHostCallError)) throw err;
       throw new HTTPException(502, {
@@ -353,54 +195,67 @@ githubCallbackRoutes.get(
     // name the App it strands. Above, it may not: a forged or foreign return would make Forge
     // spend somebody else's App code.
     if (!read.ok) return strandedAt(c, 'state_expired', await nameStrandedApp(code));
-    if (!(await can(actorFor(userId), 'project.admin', projectResource(state.projectId)))) {
-      return strandedAt(c, 'not_admin', await nameStrandedApp(code));
+    if (!(await isPlatformAdmin(userId))) {
+      return strandedAt(c, 'not_operator', await nameStrandedApp(code));
     }
     if (!isVaultConfigured()) return strandedAt(c, 'vault_missing', await nameStrandedApp(code));
+    if (await findInstanceGithubApp()) {
+      return strandedAt(c, 'app_exists', await nameStrandedApp(code));
+    }
 
     let app: ConvertedApp;
     try {
       app = await convertManifestCode({ code });
     } catch (err) {
-      logger.warn({ err, projectId: state.projectId }, 'github: the manifest code did not convert');
+      logger.warn({ err, userId }, 'github: the manifest code did not convert');
       return strandedAt(c, 'conversion_failed');
     }
 
     let connection: IntegrationConnectionRow;
     try {
       connection = await createConnection({
-        ownerType: state.orgId ? 'org' : 'user',
-        ownerId: state.orgId ?? userId,
+        ownerType: 'instance',
+        ownerId: INSTANCE_OWNER_ID,
         provider: 'github',
         displayName: app.slug ? `GitHub App ${app.slug}` : 'GitHub App',
-        config: {},
+        config: {
+          ...(app.slug ? { appSlug: app.slug } : {}),
+          ...(app.owner ? { appOwner: app.owner.login, appOwnerIsOrg: app.owner.isOrg } : {}),
+        },
         secrets: {
           appId: app.appId,
           privateKey: app.privateKey,
           webhookSecret: app.webhookSecret,
+          ...(app.clientId ? { clientId: app.clientId } : {}),
+          ...(app.clientSecret ? { clientSecret: app.clientSecret } : {}),
         },
       });
     } catch (err) {
-      logger.error(
-        { err, projectId: state.projectId, appId: app.appId },
-        'github: saving the App failed',
-      );
+      if (isUniqueViolation(err)) return strandedAt(c, 'app_exists', app);
+      logger.error({ err, appId: app.appId }, 'github: saving the App failed');
       return strandedAt(c, 'save_failed', app);
     }
 
     logger.info(
-      { projectId: state.projectId, appId: app.appId, connectionId: connection.id },
-      'github: app created from manifest',
+      { appId: app.appId, connectionId: connection.id },
+      "github: the instance's App created from manifest",
     );
 
-    if (!app.htmlUrl) return c.redirect(finishedAt(state, connection.id));
-    // the install step carries the state on, so the return after it knows this connection and
-    // the page the flow began on without guessing from the installation
+    if (!app.slug) return c.redirect(finishedAt(state, connection.id));
+    // the install step carries the state on, so the return after it knows the org the
+    // installation is recorded for and the page the flow began on without guessing
     const onward = signConnectState(stateSecret(), { ...state, connectionId: connection.id });
-    return c.redirect(`${app.htmlUrl}/installations/new?state=${encodeURIComponent(onward)}`);
+    return c.redirect(installUrl(app.slug, onward));
   },
 );
 
+/**
+ * GitHub's return from an install. The instance's App asks for OAuth on install, so its return
+ * carries a `code`: the installation is recorded only once GitHub's answer to that person lists it,
+ * for the org the signed state names, and a forged `installation_id` records nothing. A return with
+ * no code is from an App a person or org owns, made before the instance had one, and resolves as it
+ * always has.
+ */
 githubCallbackRoutes.get(
   '/integrations/github/installed',
   zValidator('query', installedQuerySchema),
@@ -415,10 +270,14 @@ githubCallbackRoutes.get(
     }
     const read = rawState ? readConnectState(stateSecret(), rawState) : null;
     if (read && !read.ok && read.why === 'invalid') return strandedAt(c, 'state_invalid');
-    // an expired state still names the connection this person's flow created; the install itself
-    // spends nothing, so it is read as theirs once the user matches
     const state = read ? read.state : null;
     if (state && state.userId !== userId) return strandedAt(c, 'state_other_user');
+
+    if (query.code) {
+      if (!state || !read) return strandedAt(c, 'state_missing');
+      if (!read.ok) return strandedAt(c, 'state_expired');
+      return recordProvenInstall(c, { state, code: query.code, installationId });
+    }
 
     const owner = state?.connectionId
       ? null
@@ -428,14 +287,94 @@ githubCallbackRoutes.get(
         });
     const connectionId = state?.connectionId ?? owner?.connection.id ?? null;
     if (!connectionId) return strandedAt(c, 'install_unmatched');
-    const projectId = state?.projectId ?? owner?.projectId ?? null;
-    if (!projectId) {
-      return c.redirect(finishedAt({ returnTo: 'integrations', projectId: '' }, connectionId));
+    // the instance's App proves an install only by the OAuth code its return carries; one with
+    // none came from an App not asking for OAuth on install, and records nothing
+    if ((await findInstanceGithubApp())?.id === connectionId) {
+      logger.warn(
+        { connectionId, installationId },
+        "github: the instance App's install returned no OAuth code; turn on 'Request user authorization (OAuth) during installation' on its GitHub settings",
+      );
+      return strandedAt(c, 'install_unproven');
     }
+    const projectId = state?.projectId ?? owner?.projectId ?? null;
+    if (!projectId) return c.redirect(finishedAt({ returnTo: 'integrations' }, connectionId));
     if (!(await can(actorFor(userId), 'project.admin', projectResource(projectId)))) {
       return strandedAt(c, 'not_admin');
     }
-
-    return c.redirect(finishedAt({ returnTo: state?.returnTo, projectId }, connectionId));
+    return c.redirect(
+      finishedAt(
+        { projectId, ...(state?.returnTo ? { returnTo: state.returnTo } : {}) },
+        connectionId,
+      ),
+    );
   },
 );
+
+async function recordProvenInstall(
+  c: Context<{ Variables: AuthVars }>,
+  args: { state: ConnectState; code: string; installationId: number },
+): Promise<Response> {
+  const { state, code, installationId } = args;
+  const userId = state.userId;
+  if (!state.orgId) return strandedAt(c, 'state_missing');
+  if (!(await can(actorFor(userId), 'org.admin', orgResource(state.orgId)))) {
+    return strandedAt(c, 'not_admin');
+  }
+  const app = await findInstanceGithubApp();
+  if (!app) return strandedAt(c, 'install_unmatched');
+  const secrets = decryptConnectionSecrets<{
+    appId?: string;
+    clientId?: string;
+    clientSecret?: string;
+  }>(app);
+  if (!secrets.appId || !secrets.clientId || !secrets.clientSecret) {
+    logger.warn(
+      { connectionId: app.id, installationId },
+      "github: the instance's App holds no OAuth client, so the install cannot be proven",
+    );
+    return strandedAt(c, 'install_unproven');
+  }
+
+  let proof: Awaited<ReturnType<typeof proveInstallation>>;
+  try {
+    proof = await proveInstallation({
+      code,
+      installationId,
+      appId: secrets.appId,
+      clientId: secrets.clientId,
+      clientSecret: secrets.clientSecret,
+    });
+  } catch (err) {
+    logger.warn({ err, installationId }, 'github: asking GitHub to prove the install failed');
+    proof = { ok: false, reason: 'GitHub could not be asked' };
+  }
+  if (!proof.ok) {
+    logger.warn(
+      { connectionId: app.id, installationId, userId, reason: proof.reason },
+      'github: install not proven; nothing recorded',
+    );
+    return strandedAt(c, 'install_unproven');
+  }
+
+  const outcome = await recordInstallation({
+    connectionId: app.id,
+    installationId,
+    accountLogin: proof.account.login,
+    accountType: proof.account.type,
+    orgId: state.orgId,
+    recordedBy: userId,
+    proof: 'oauth',
+  });
+  if (!outcome.ok) {
+    logger.warn(
+      { connectionId: app.id, installationId, orgId: state.orgId, claimedBy: outcome.claimedBy },
+      'github: install already recorded for another org; not moved',
+    );
+    return strandedAt(c, 'install_claimed_elsewhere');
+  }
+  logger.info(
+    { connectionId: app.id, installationId, orgId: state.orgId, account: proof.account.login },
+    'github: installation recorded',
+  );
+  return c.redirect(finishedAt(state, app.id));
+}
