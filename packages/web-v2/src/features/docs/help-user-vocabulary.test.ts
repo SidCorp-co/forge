@@ -39,6 +39,17 @@ const RULES: Array<{ rule: string; offends: RegExp }> = [
     offends:
       /\*\*(?:Auto|Manual|Skip)\*\*|\bstages?\b[^.]*\b(?:turned off|skipped|waits? for your click|per your settings)/i,
   },
+  // ISS-1229: the staged pipeline is retired, so no page walks an issue through its stages.
+  {
+    rule: "a walk through the retired stages",
+    offends:
+      /\b(?:triage|clarify|plan|code|review|test|staging|release|fix)[*_`]*\s*(?:→|->|&rarr;)\s*[*_`]*(?:triage|clarify|plan|code|review|test|staging|release|fix)\b/i,
+  },
+  {
+    rule: "a retired stage as a step an issue moves through",
+    offends:
+      /\b(?:triage|clarify|plan|code|review|test|staging|release|fix)[*_`]*\s+(?:step|stage)s?\b|\bmov(?:e|es|ed|ing)\b[^.]*\bthrough\b[^.]*\b(?:triage|clarify|plan|code|review|test|staging|fix)\b/i,
+  },
   // A draft with nothing merged cannot be closed, so the way to turn one down is to drop it.
   {
     rule: "a draft turned down by closing it",
@@ -59,7 +70,7 @@ describe("the pages written for a person, in the screen's own words", () => {
     expect(USER_PAGES.length).toBeGreaterThan(PERSON_PAGES.length);
   });
 
-  it.each(USER_PAGES)("%s names no path, table, tool, stored status, timing promise, stage setting or closed draft", (slug) => {
+  it.each(USER_PAGES)("%s names no path, table, tool, stored status, timing promise, stage setting, retired stage or closed draft", (slug) => {
     const body = HELP_DOCS.find((d) => d.slug === slug)?.body ?? "";
     expect(offences(body)).toEqual([]);
   });
@@ -80,6 +91,16 @@ describe("that guard, against one planted sentence per rule", () => {
     ["Set the **Code** stage to **Manual**.", "a per-stage setting Settings does not have"],
     ["A stage can be turned off for the project.", "a per-stage setting Settings does not have"],
     ["Each stage runs an agent or\n  waits for your click, per your settings.", "a per-stage setting Settings does not have"],
+    ["Agents move it through triage → plan → code → review → release.", "a walk through the retired stages"],
+    ["It runs triage -> clarify -> plan.", "a walk through the retired stages"],
+    ["A failed review goes review → fix.", "a walk through the retired stages"],
+    ["It loops fix -> code.", "a walk through the retired stages"],
+    ["The code step opens a pull request.", "a retired stage as a step an issue moves through"],
+    ["A failed check sends it back to the review stage.", "a retired stage as a step an issue moves through"],
+    ["Agents move it through triage, then review.", "a retired stage as a step an issue moves through"],
+    ["The **Code** stage opens a pull request.", "a retired stage as a step an issue moves through"],
+    ["It returns to the `review` step.", "a retired stage as a step an issue moves through"],
+    ["It runs **Triage** → **Plan**.", "a walk through the retired stages"],
     ["Approve one by moving it to **Open**;\nturn it down by closing it.", "a draft turned down by closing it"],
     ["Reject a gated draft by closing it.", "a draft turned down by closing it"],
   ])("rejects %s", (sentence, rule) => {

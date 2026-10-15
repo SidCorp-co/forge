@@ -19,6 +19,13 @@ describe('the public guide surface', () => {
     expect(body).toContain('/api/guides/what-is-an-issue.md');
   });
 
+  it('describes the pipeline without walking the retired staged stages (ISS-1229)', async () => {
+    const body = await (await app.request('/api/llms.txt')).text();
+    expect(body).not.toMatch(
+      /\b(?:triage|clarify|plan|code|review|test|staging|release|fix)\s*(?:→|->)\s*(?:triage|clarify|plan|code|review|test|staging|release|fix)\b/i,
+    );
+  });
+
   it('tells a caller who asked for an unknown slug where the readable index is', async () => {
     const res = await app.request('/api/guides/no-such-guide');
     expect(res.status).toBe(404);
