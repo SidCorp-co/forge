@@ -32,13 +32,21 @@ const row = {
 
 vi.mock('../../db/client.js', () => ({ db: {} }));
 
-const createProject = vi.fn(async (..._args: unknown[]) => row);
-const readProjectSummary = vi.fn(async (..._args: unknown[]) => row);
 vi.mock('../../projects/service.js', () => ({
-  createProject: (...args: unknown[]) => createProject(...args),
-  readProjectSummary: (...args: unknown[]) => readProjectSummary(...args),
-  updateProject: vi.fn(),
+  createProject: vi.fn(async () => row),
+  readProjectSummary: vi.fn(async () => row),
+  updateProject: vi.fn(async () => row),
   ProjectSlugTakenError: class extends Error {},
+}));
+
+vi.mock('../../projects/release-chain.js', async (importActual) => ({
+  ...(await importActual<typeof import('../../projects/release-chain.js')>()),
+  releaseChainGapFor: vi.fn(async () => null),
+}));
+vi.mock('../../projects/stranded-work.js', () => ({ strandedWorkFor: vi.fn(async () => null) }));
+const writeEnvironmentsLimits = vi.fn(async (..._args: unknown[]) => undefined);
+vi.mock('../../projects/environments-service.js', () => ({
+  writeEnvironmentsLimits: (...args: unknown[]) => writeEnvironmentsLimits(...args),
 }));
 
 vi.mock('../../lib/authz.js', async (importActual) => ({
@@ -54,9 +62,12 @@ vi.mock('./lib.js', async (importActual) => ({
   ]),
 }));
 
-const { forgeProjectsCreateTool, forgeProjectsGetTool, forgeProjectsListTool } = await import(
-  './forge-projects.js'
-);
+const {
+  forgeProjectsCreateTool,
+  forgeProjectsGetTool,
+  forgeProjectsListTool,
+  forgeProjectsUpdateTool,
+} = await import('./forge-projects.js');
 
 const ctx = { principal: { kind: 'user', userId: 'u-1' } } as never;
 
@@ -86,6 +97,25 @@ describe('forge_projects answers carry no secret a planted row holds', () => {
   it('create', async () => {
     const answer = await forgeProjectsCreateTool(ctx).handler({ slug: 'p-one', name: 'P One' });
     expect(answer).toMatchObject({ project: { id: PROJECT, slug: 'p-one' } });
+    expect(secretsIn(answer)).toEqual([]);
+  });
+
+  it('update, writing a setting', async () => {
+    const answer = await forgeProjectsUpdateTool(ctx).handler({
+      projectId: PROJECT,
+      patch: { name: 'P Two' },
+    });
+    expect(answer).toMatchObject({ project: { id: PROJECT, slug: 'p-one' } });
+    expect(secretsIn(answer)).toEqual([]);
+  });
+
+  it('update, writing only the limits', async () => {
+    const answer = await forgeProjectsUpdateTool(ctx).handler({
+      projectId: PROJECT,
+      patch: { environmentsLimits: { base: null, value: 'no billing screen' } },
+    });
+    expect(writeEnvironmentsLimits).toHaveBeenCalledTimes(1);
+    expect(answer).toMatchObject({ project: { id: PROJECT, environments: null } });
     expect(secretsIn(answer)).toEqual([]);
   });
 

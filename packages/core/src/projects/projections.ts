@@ -24,6 +24,38 @@ export const CREATED_PROJECT = {
   createdAt: projects.createdAt,
 } as const;
 
+/** `forge_projects.get`, and the answer of an update that wrote only `environments.limits`. */
+export const PROJECT_SUMMARY = {
+  id: projects.id,
+  slug: projects.slug,
+  name: projects.name,
+  description: projects.description,
+  orgId: projects.orgId,
+  createdBy: projects.createdBy,
+  kind: projects.kind,
+  repoPath: projects.repoPath,
+  workspaceSetup: projects.workspaceSetup,
+  baseBranch: projects.baseBranch,
+  releaseChain: projects.releaseChain,
+  defaultDeviceId: projects.defaultDeviceId,
+  environments: projects.environments,
+  createdAt: projects.createdAt,
+} as const;
+
+/** `forge_projects.update`. */
+export const UPDATED_PROJECT = {
+  id: projects.id,
+  slug: projects.slug,
+  name: projects.name,
+  orgId: projects.orgId,
+  description: projects.description,
+  repoPath: projects.repoPath,
+  workspaceSetup: projects.workspaceSetup,
+  baseBranch: projects.baseBranch,
+  releaseChain: projects.releaseChain,
+  kind: projects.kind,
+} as const;
+
 export const PATCHED_PROJECT = {
   id: projects.id,
   slug: projects.slug,

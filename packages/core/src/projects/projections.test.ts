@@ -90,6 +90,8 @@ describe('projects projections name no secret', () => {
       'PATCHED_PROJECT',
       'PROJECT_DETAIL',
       'PROJECT_LIST',
+      'PROJECT_SUMMARY',
+      'UPDATED_PROJECT',
     ]);
   });
 

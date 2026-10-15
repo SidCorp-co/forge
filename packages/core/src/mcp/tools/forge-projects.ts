@@ -13,6 +13,7 @@ import {
   RETIRED_PREVIEW_DEPLOY_NOTES_MESSAGE,
 } from '../../projects/environments.js';
 import { writeEnvironmentsLimits } from '../../projects/environments-service.js';
+import { CREATED_PROJECT, PROJECT_SUMMARY, UPDATED_PROJECT } from '../../projects/projections.js';
 import {
   RETIRED_RELEASE_AXIS_MESSAGE,
   releaseChainGapFor,
@@ -41,6 +42,11 @@ import {
  */
 
 const inputSchema = z.object({}).strict();
+
+/** The fields a projection names, read off a row: a column the row grew reaches no agent. */
+function projected(row: Record<string, unknown>, projection: object): Record<string, unknown> {
+  return Object.fromEntries(Object.keys(projection).map((key) => [key, row[key]]));
+}
 
 type ListedProject = {
   id: string;
@@ -135,9 +141,7 @@ export const forgeProjectsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
         baseBranch: input.baseBranch,
         releaseChain: input.releaseChain,
       });
-      // Field by field, so a column the service grows reaches no agent until it is named here.
-      const { id, slug, name, createdBy, createdAt } = created;
-      return { project: { id, slug, name, orgId: created.orgId, createdBy, createdAt } };
+      return { project: projected(created, CREATED_PROJECT) };
     } catch (err) {
       if (err instanceof ProjectSlugTakenError) {
         throw new Error('BAD_REQUEST: SLUG_TAKEN: slug already in use');
@@ -292,11 +296,11 @@ export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
     if (Object.keys(updates).length === 0) {
       const summary = await readProjectSummary(input.projectId);
       if (!summary) throw new Error('NOT_FOUND: project not found');
-      return { project: summary };
+      return { project: projected(summary, PROJECT_SUMMARY) };
     }
     const project = await updateProject(input.projectId, updates);
     if (!project) throw new Error('NOT_FOUND: project not found');
-    return { project };
+    return { project: projected(project, UPDATED_PROJECT) };
   },
 });
 

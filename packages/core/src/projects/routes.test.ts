@@ -97,9 +97,12 @@ const dbSelectDistinctOn = vi.fn((_on: unknown, _projection: Record<string, unkn
   from: distinctFrom,
 }));
 
-/** The keys of every projection a read or a `returning` handed the database, one per call. */
+/** The keys of the projection each read or `returning` handed the database; null where it named none. */
 const projectionsAsked = (fn: { mock: { calls: unknown[][] } }, at: number) =>
-  fn.mock.calls.map((call) => Object.keys((call[at] as Record<string, unknown>) ?? {}));
+  fn.mock.calls.map((call) => {
+    const projection = call[at] as Record<string, unknown> | undefined;
+    return projection ? Object.keys(projection) : null;
+  });
 
 vi.mock('../db/client.js', () => ({
   db: {
@@ -500,9 +503,13 @@ describe('GET /api/projects/:id', () => {
 
     const res = await req('/11111111-1111-4111-8111-111111111111', { token });
     expect(res.status).toBe(200);
-    for (const asked of projectionsAsked(dbSelect, 0)) {
-      expect(asked).not.toContain('apiKey');
-      expect(asked).not.toContain('webhookSecret');
+    // A read that names no projection is every column, so it counts as asking for both.
+    const asked = projectionsAsked(dbSelect, 0);
+    expect(asked).not.toContain(null);
+    expect(asked.some((keys) => keys?.includes('releaseChain'))).toBe(true);
+    for (const keys of asked) {
+      expect(keys).not.toContain('apiKey');
+      expect(keys).not.toContain('webhookSecret');
     }
     const body = (await res.json()) as Record<string, unknown>;
     expect(body).not.toHaveProperty('apiKey');
