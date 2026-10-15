@@ -4,6 +4,7 @@ import {
   describeSettings,
   formatApiError,
   formatApiReason,
+  formatEnvironmentsWriteError,
   formatPipelineConfigError,
   formatSettingsWriteError,
   isRetryableApiError,
@@ -310,6 +311,34 @@ describe('a server error that carries only its HTTP status text', () => {
   it('never prints a bare number, for a failure that carries no message at all', () => {
     expect(formatApiError(new ApiError(500, ''))).not.toMatch(/\d{3}/);
     expect(formatApiError(new ApiError(422, ''))).not.toMatch(/\d{3}/);
+  });
+});
+
+describe('formatEnvironmentsWriteError (ISS-1171 r6)', () => {
+  const invalid = (conflicts: unknown[]) =>
+    new ApiError(400, "testCredentials[1] ('Admin') has no password.", 'ENVIRONMENTS_INVALID', { conflicts });
+
+  it('names each credential rule by the row the page shows, never the document path', () => {
+    const err = invalid([
+      { path: 'testCredentials.1.label', rule: 'duplicate-label' },
+      { path: 'testCredentials.2.username', rule: 'duplicate-login' },
+    ]);
+    const said = formatEnvironmentsWriteError(err, ['QA', 'qa', '']);
+    expect(said).toBe(
+      'Test credential 2 (qa) has a label another credential already has. Rename it, or remove it. Test credential 3 is the same login as another credential. Remove one of them.',
+    );
+    expect(said).not.toMatch(/testCredentials|\[\d\]/);
+  });
+
+  it('names a setting the server refused for its own schema by its screen name', () => {
+    expect(formatEnvironmentsWriteError(invalid([{ path: 'live.url', message: 'Invalid url' }]))).toBe(
+      'Live (URL) is not a value this page can store. Correct it, then save again.',
+    );
+  });
+
+  it('says a server failure as what happened and what to do, whatever its message', () => {
+    const said = formatEnvironmentsWriteError(new ApiError(503, 'Planted: pool exhausted', 'SERVER_ERROR'));
+    expect(said).toBe('The server is unavailable right now. Try again in a moment. Your edits are still here.');
   });
 });
 

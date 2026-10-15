@@ -42,6 +42,10 @@
       "types": "./src/work-state.ts",
       "default": "./src/work-state.ts"
     },
+    "./test-credentials": {
+      "types": "./src/test-credentials.ts",
+      "default": "./src/test-credentials.ts"
+    },
     "./document-patch": {
       "types": "./dist/document-patch.d.ts",
       "default": "./dist/document-patch.js"

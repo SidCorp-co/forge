@@ -26,6 +26,7 @@ type ReleaseChannelRead = NonNullable<
 >[number];
 interface ProjectRow {
   repoPath: string | null;
+  baseBranch: string | null;
   repoUrl: string | null;
   releaseChain: ReleaseChain;
   environments: unknown;
@@ -91,6 +92,7 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
     const [found] = await db
       .select({
         repoPath: projects.repoPath,
+        baseBranch: projects.baseBranch,
         repoUrl: projects.repoUrl,
         releaseChain: projects.releaseChain,
         environments: projects.environments,
@@ -117,7 +119,7 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
     hasReleaseGate: decl?.kind === 'gated',
     releaseChain: decl?.releaseChain ?? [],
     ...retiredReleaseAxes(decl?.releaseChain ?? []),
-    baseBranch: !decl || decl.kind === 'undeclared-target' ? '' : decl.baseBranch,
+    baseBranch: row?.baseBranch ?? '',
     targetUndeclared: decl?.kind === 'undeclared-target',
     providers: channels.map((c) => c.provider),
     releaseRunnerLabel,
