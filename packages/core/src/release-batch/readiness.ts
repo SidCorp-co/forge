@@ -26,6 +26,7 @@ type ReleaseChannelRead = NonNullable<
 >[number];
 interface ProjectRow {
   repoPath: string | null;
+  baseBranch: string | null;
   repoUrl: string | null;
   releaseChain: ReleaseChain;
   environments: unknown;
@@ -38,6 +39,7 @@ export interface ReleaseReadiness {
   /** ISS-1311 — derived from `releaseChain` for `forge-plugin`; see `retiredReleaseAxes`. */
   releaseModel: 'none' | 'promote' | 'publish';
   releaseStrategy: ReleaseCrossing | null;
+  /** The stored base branch, read off the row and never off the declaration; `''` where none is stored or the row could not be read. */
   baseBranch: string;
   /** Non-null only where the chain has two or more entries. */
   liveBranch: string | null;
@@ -91,6 +93,7 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
     const [found] = await db
       .select({
         repoPath: projects.repoPath,
+        baseBranch: projects.baseBranch,
         repoUrl: projects.repoUrl,
         releaseChain: projects.releaseChain,
         environments: projects.environments,
@@ -117,7 +120,7 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
     hasReleaseGate: decl?.kind === 'gated',
     releaseChain: decl?.releaseChain ?? [],
     ...retiredReleaseAxes(decl?.releaseChain ?? []),
-    baseBranch: !decl || decl.kind === 'undeclared-target' ? '' : decl.baseBranch,
+    baseBranch: row?.baseBranch ?? '',
     targetUndeclared: decl?.kind === 'undeclared-target',
     providers: channels.map((c) => c.provider),
     releaseRunnerLabel,

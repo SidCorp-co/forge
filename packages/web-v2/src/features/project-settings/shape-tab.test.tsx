@@ -610,7 +610,7 @@ describe("a save that would strand work", () => {
 		save();
 		await waitFor(() => expect(sent).toHaveLength(1));
 		expect(
-			await screen.findByText("Nothing was saved. The server ran into a problem and could not finish the request."),
+			await screen.findByText("Nothing was saved. The server ran into a problem and could not finish the request. Your edits are still here: save again in a moment."),
 		).toBeInTheDocument();
 	});
 
@@ -623,7 +623,7 @@ describe("a save that would strand work", () => {
 		await waitFor(() => expect(sent).toHaveLength(1));
 		expect(
 			await screen.findByText(
-				"The shape and repository were saved; the environments were not. The server ran into a problem and could not finish the request.",
+				"The shape and repository were saved; the environments were not. The server ran into a problem and could not finish the request. Your edits are still here: save again in a moment.",
 			),
 		).toBeInTheDocument();
 		expect(screen.queryByText(/Nothing was saved/)).toBeNull();
@@ -663,5 +663,101 @@ describe("one save for the whole page", () => {
 		await waitFor(() => expect(sent).toHaveLength(1));
 		expect(projectSent).toEqual([{ workspaceSetup: "pnpm i" }]);
 		expect(stored.limits).toBe("none");
+	});
+});
+
+describe("judge-15's five findings (ISS-1171 r6)", () => {
+	it("marks the emptied base branch field itself and says what it needs", async () => {
+		await mount(project());
+		clear("Base branch");
+		await waitFor(() => expect(screen.getByLabelText("Base branch")).toHaveAttribute("aria-invalid", "true"));
+		const field = screen.getByLabelText("Base branch");
+		const said = document.getElementById(field.getAttribute("aria-describedby") ?? "");
+		expect(said).toHaveTextContent("A release starts at the base branch. Name it, for example main, or pick a shape with no release.");
+		expect(screen.getByText("Fix what is marked above before saving.")).toBeInTheDocument();
+	});
+
+	it("says a failed environments save in words of its own, never the server's message", async () => {
+		envFailure = new ApiError(500, "Planted.", "SERVER_ERROR");
+		await mount();
+		clear(/preview url/i);
+		save();
+		await waitFor(() => expect(sent).toHaveLength(1));
+		expect(
+			await screen.findByText(
+				"Nothing was saved. The server ran into a problem and could not finish the request. Your edits are still here: save again in a moment.",
+			),
+		).toBeInTheDocument();
+		expect(screen.queryByText(/Planted/)).toBeNull();
+	});
+
+	it("names the credential an environments refusal is about, in the page's own words", async () => {
+		envFailure = new ApiError(400, "testCredentials[0] ('QA') has no password.", "ENVIRONMENTS_INVALID", {
+			conflicts: [{ path: "testCredentials.0.password", rule: "password-required", message: "x" }],
+		});
+		await mount();
+		fireEvent.change(screen.getByLabelText("Environment limits"), { target: { value: "No mailbox." } });
+		save();
+		await waitFor(() => expect(sent).toHaveLength(1));
+		expect(
+			await screen.findByText("Nothing was saved. Test credential 1 (QA) has no password. Type its password, or remove the row."),
+		).toBeInTheDocument();
+		expect(screen.queryByText(/testCredentials/)).toBeNull();
+	});
+
+	it("refuses a credential with no password by name, at its password, and sends nothing", async () => {
+		await mount();
+		fireEvent.click(screen.getByRole("button", { name: "Add credential" }));
+		fireEvent.change(screen.getByLabelText("Credential 2 label"), { target: { value: "Admin" } });
+		fireEvent.change(screen.getByLabelText("Credential 2 username"), { target: { value: "admin@example.com" } });
+		await screen.findByText("Admin has no password. Type its password, or remove the row.");
+		expect(screen.getByLabelText("Credential 2 password")).toHaveAttribute("aria-invalid", "true");
+		expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+		fireEvent.click(screen.getByRole("button", { name: "Save" }));
+		expect(sent).toEqual([]);
+	});
+
+	it("refuses a second credential with a label already listed, and one login listed twice", async () => {
+		await mount();
+		fireEvent.click(screen.getByRole("button", { name: "Add credential" }));
+		fireEvent.change(screen.getByLabelText("Credential 2 label"), { target: { value: " qa " } });
+		fireEvent.change(screen.getByLabelText("Credential 2 username"), { target: { value: "other@example.com" } });
+		fireEvent.change(screen.getByLabelText("Credential 2 password"), { target: { value: "x" } });
+		await screen.findByText("Credential 1 is already labelled QA. Rename this one, or remove it.");
+		expect(screen.getByLabelText("Credential 2 label")).toHaveAttribute("aria-invalid", "true");
+
+		fireEvent.change(screen.getByLabelText("Credential 2 label"), { target: { value: "QA again" } });
+		fireEvent.change(screen.getByLabelText("Credential 2 username"), { target: { value: "qa@example.com" } });
+		fireEvent.change(screen.getByLabelText("Credential 2 password"), { target: { value: "s3cret" } });
+		await screen.findByText("This is the same login as credential 1. Remove one of them.");
+		expect(screen.getByLabelText("Credential 2 username")).toHaveAttribute("aria-invalid", "true");
+		expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+		expect(sent).toEqual([]);
+	});
+
+	it("keeps the shape the person picked in view below the top bar when a save is refused", async () => {
+		projectRefusal = new ApiError(409, "PROJECT_KIND_STRANDS_WORK: a mark would stop counting.", "PROJECT_KIND_STRANDS_WORK", {
+			issues: ["ISS-4"],
+			total: 1,
+			from: "standard",
+			to: "website",
+			landingShape: "git",
+		});
+		const scrolled: Element[] = [];
+		const was = Element.prototype.scrollIntoView;
+		Element.prototype.scrollIntoView = function (this: Element) {
+			scrolled.push(this);
+		};
+		try {
+			await mount(project());
+			fireEvent.click(within(await pick(/no repository/i)).getByRole("button", { name: "Change the shape" }));
+			await screen.findByTestId("project-refusal");
+			await waitFor(() => expect(scrolled.length).toBeGreaterThan(0));
+			const last = scrolled[scrolled.length - 1] as HTMLElement;
+			expect(within(last).getByRole("radio")).toBe(radio(/no repository/i));
+			expect(last.style.scrollMarginTop).toMatch(/px$/);
+		} finally {
+			Element.prototype.scrollIntoView = was;
+		}
 	});
 });

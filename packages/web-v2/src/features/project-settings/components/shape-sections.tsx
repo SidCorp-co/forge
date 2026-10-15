@@ -5,7 +5,7 @@
 
 import { ISSUE_STATUS_LABELS } from "@forge/contracts/issue-vocabulary";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import {
   Banner,
   Button,
@@ -64,7 +64,7 @@ export function ShapeChoice({
         className="gap-0 divide-y divide-line border-y border-line"
       >
         {SHAPES.map((s) => (
-          <div key={s.value} className="py-3">
+          <div key={s.value} className="py-3" data-shape-row={s.value}>
             <Radio value={s.value} label={<b>{s.label}</b>} disabled={!canEdit} />
             <p className="fg-caption mt-1 pl-7 text-muted">{s.hint}</p>
           </div>
@@ -114,7 +114,11 @@ export function RepositoryFields({
             maxLength={500}
           />
         </Field>
-        <Field label="Base branch" hint="Where ISS-* branches are cut from and land, e.g. main.">
+        <Field
+          label="Base branch"
+          hint="Where ISS-* branches are cut from and land, e.g. main."
+          error={form.errorAt("baseBranch")}
+        >
           <Input
             value={d.baseBranch}
             onChange={(e) => set({ baseBranch: e.target.value })}
@@ -269,9 +273,27 @@ function strandedKeys(err: unknown): string[] {
   return Array.isArray(issues) ? issues.filter((k): k is string => typeof k === "string") : [];
 }
 
+/** The gap left between the page's sticky top bar and the shape row brought up under it. */
+const BELOW_TOP_BAR_PX = 12;
+
+/**
+ * Bring the chosen shape up to just under the page's sticky top bar, with the refusal that follows
+ * it below. Centring the refusal instead scrolled the choice it refuses under that bar at 390 px.
+ */
+export function keepChosenShapeInView(): void {
+  const chosen = document.querySelector('#shape [role="radio"][aria-checked="true"]');
+  const row = chosen?.closest<HTMLElement>("[data-shape-row]");
+  if (!row) return;
+  const covered = [...document.querySelectorAll("header")]
+    .filter((h) => ["sticky", "fixed"].includes(getComputedStyle(h).position))
+    .reduce((bottom, h) => Math.max(bottom, h.getBoundingClientRect().bottom), 0);
+  row.style.scrollMarginTop = `${Math.round(covered) + BELOW_TOP_BAR_PX}px`;
+  row.scrollIntoView?.({ block: "start", behavior: "smooth" });
+}
+
 /** A refused project save, said whole, with the issues it names one click away. It sits in the
  *  page under the shape it refuses rather than in the sticky save bar, where it would cover that
- *  choice, and is scrolled into view when it appears. */
+ *  choice; the page brings that choice into view with it ({@link keepChosenShapeInView}). */
 export function ProjectRefusal({
   error,
   slug,
@@ -281,16 +303,12 @@ export function ProjectRefusal({
   slug?: string;
   onDismiss: () => void;
 }) {
-  const shown = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (error) shown.current?.scrollIntoView?.({ block: "center", behavior: "smooth" });
-  }, [error]);
   if (!error) return null;
   const keys = strandedKeys(error);
   const chain = error instanceof ApiError && error.code === "RELEASE_CHAIN_STRANDS_WORK";
   return (
     <Banner tone="danger" onDismiss={onDismiss}>
-      <div ref={shown} className="space-y-2" data-testid="project-refusal">
+      <div className="space-y-2" data-testid="project-refusal">
         <p>Nothing was saved. {formatApiError(error)}</p>
         {keys.length > 0 && slug && (
           <p className="flex flex-wrap gap-x-3 gap-y-1">

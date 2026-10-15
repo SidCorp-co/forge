@@ -173,13 +173,53 @@ const urlRow = z.looseObject({ label: z.string(), url: z.string() }).superRefine
   else if (!isValidUrl(url)) ctx.addIssue({ code: "custom", message: URL_MESSAGE });
 });
 
+/** The name two labels are compared by: what a run reads when it picks a login. */
+const labelKey = (label: string) => label.trim().toLowerCase();
+
 const credentialRow = z
   .looseObject({ label: z.string(), username: z.string(), password: z.string() })
   .superRefine((row, ctx) => {
-    if (row.label.trim() === "" && (row.username !== "" || row.password !== "")) {
-      ctx.addIssue({ code: "custom", message: "Label is required." });
+    const label = row.label.trim();
+    if (label === "" && (row.username !== "" || row.password !== "")) {
+      ctx.addIssue({ code: "custom", path: ["label"], message: "Label is required." });
+    } else if (label !== "" && row.password.trim() === "") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["password"],
+        message: `${label} has no password. Type its password, or remove the row.`,
+      });
     }
   });
+
+/** A second row for a label or a login already listed: the server refuses both (ISS-1171 r6). */
+const credentialRows = z.array(credentialRow).superRefine((rows, ctx) => {
+  const labels = new Map<string, number>();
+  const logins = new Map<string, number>();
+  rows.forEach((row, i) => {
+    const label = row.label.trim();
+    if (label === "") return;
+    const sameLabel = labels.get(labelKey(label));
+    if (sameLabel !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: [i, "label"],
+        message: `Credential ${sameLabel + 1} is already labelled ${rows[sameLabel]?.label.trim()}. Rename this one, or remove it.`,
+      });
+      return;
+    }
+    labels.set(labelKey(label), i);
+    if (row.password.trim() === "") return;
+    const login = `${row.username.trim().toLowerCase()}\0${row.password}`;
+    const sameLogin = logins.get(login);
+    if (sameLogin !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: [i, "username"],
+        message: `This is the same login as credential ${sameLogin + 1}. Remove one of them.`,
+      });
+    } else logins.set(login, i);
+  });
+});
 
 export const environmentsSchema = z.object({
   liveUrl: optionalUrl,
@@ -188,7 +228,7 @@ export const environmentsSchema = z.object({
   previewUrl: optionalUrl,
   previewApiUrl: optionalUrl,
   previewUrls: z.array(urlRow),
-  testCredentials: z.array(credentialRow),
+  testCredentials: credentialRows,
   limits: z.string(),
 }) as unknown as z.ZodType<EnvironmentsDraft, EnvironmentsDraft>;
 

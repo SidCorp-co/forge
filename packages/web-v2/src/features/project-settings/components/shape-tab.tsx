@@ -5,7 +5,7 @@
 // what a release runs with. One save bar writes the project row and the environments document.
 
 import { ISSUE_STATUS_LABELS } from "@forge/contracts/issue-vocabulary";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Banner,
   Button,
@@ -48,6 +48,7 @@ import { EnvironmentBlocks } from "./environment-blocks";
 import { ReleaseAnswer, ReleaseDetails } from "./release-section";
 import { SaveRefusedBanner } from "./save-refused-banner";
 import {
+  keepChosenShapeInView,
   ProjectRefusal,
   ReleasePath,
   RepositoryFields,
@@ -157,6 +158,10 @@ function ShapePage({
   const [refusal, setRefusal] = useState<unknown>(null);
   /** The project half of the last save landed and the environments half did not. */
   const [halfSaved, setHalfSaved] = useState(false);
+
+  useEffect(() => {
+    if (refusal) keepChosenShapeInView();
+  }, [refusal]);
 
   const byStatus = countsQ.data?.extra?.buckets?.byStatus;
   const inFlight = byStatus ? IN_FLIGHT.reduce((n, s) => n + (byStatus[s] ?? 0), 0) : null;
@@ -294,6 +299,7 @@ function ShapePage({
             }}
             document="environments"
             draft={envForm}
+            credentialLabels={envForm.draft.testCredentials.map((c) => c.label)}
             saved={halfSaved ? "The shape and repository were saved; the environments were not." : undefined}
           />
         </SettingsFormBar>

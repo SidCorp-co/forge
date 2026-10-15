@@ -373,3 +373,65 @@ export function formatSettingsWriteError(err: unknown, saved = NOTHING_SAVED): s
   const { text, count } = describeSettings(conflicts.map((c) => c.path));
   return `${text} ${wasOrWere(count)} changed by someone else while this page was open. ${saved.replace(/\.$/, '')} — your edits are still here.`;
 }
+
+/** What an environments refusal says each credential rule is, in the words the Test access rows use. */
+const CREDENTIAL_RULES: Record<string, (row: string) => string> = {
+  'password-required': (row) => `${row} has no password. Type its password, or remove the row.`,
+  'duplicate-label': (row) => `${row} has a label another credential already has. Rename it, or remove it.`,
+  'duplicate-login': (row) => `${row} is the same login as another credential. Remove one of them.`,
+};
+
+interface InvalidAt {
+  path: string;
+  rule?: string;
+}
+
+function invalidAt(err: ApiError): InvalidAt[] {
+  const rows = (err.details as { conflicts?: unknown } | undefined)?.conflicts;
+  if (!Array.isArray(rows)) return [];
+  return rows.filter(
+    (row): row is InvalidAt => typeof row === 'object' && row !== null && typeof (row as InvalidAt).path === 'string',
+  );
+}
+
+/** `testCredentials.0.password` → "Test credential 1 (QA)", the label read off what the page holds. */
+function credentialRow(path: string, labels: readonly string[]): string | null {
+  const [key, at] = parsePath(path);
+  const index = Number(at);
+  if (key !== 'testCredentials' || at === undefined || !Number.isInteger(index)) return null;
+  const label = labels[index]?.trim();
+  return `Test credential ${index + 1}${label ? ` (${label})` : ''}`;
+}
+
+/** One sentence per setting an `ENVIRONMENTS_INVALID` names, in the screen's names; never the server's paths. */
+function environmentsInvalidSentence(err: ApiError, labels: readonly string[]): string {
+  const said = invalidAt(err).map((at) => {
+    const row = credentialRow(at.path, labels);
+    const rule = at.rule ? CREDENTIAL_RULES[at.rule] : undefined;
+    if (row && rule) return rule(row);
+    const field = FIELD_LABELS[at.path];
+    const section = row ?? settingLabel(at.path);
+    return `${field ? `${section} (${field})` : section} is not a value this page can store. Correct it, then save again.`;
+  });
+  return said.length > 0
+    ? [...new Set(said)].join(' ')
+    : 'Something on this page is not a value it can store. Correct what is marked, then save again.';
+}
+
+/**
+ * A refused environments save in the page's own words (ISS-1171 r6). The server's sentence is
+ * written for agents, with document paths; and a 5xx's message is about the server, not about
+ * anything the person typed, so it is said as what happened and what to do, never repeated.
+ */
+export function formatEnvironmentsWriteError(err: unknown, credentialLabels: readonly string[] = []): string {
+  if (!(err instanceof ApiError)) return formatApiError(err);
+  if (writeConflicts(err).length > 0) return formatSettingsWriteError(err);
+  if (err.code === 'ENVIRONMENTS_INVALID') return environmentsInvalidSentence(err, credentialLabels);
+  if (err.status >= 500) {
+    const happened = asSentence(unsaidFailure(err.status));
+    return /try again/i.test(happened)
+      ? `${happened} Your edits are still here.`
+      : `${happened} Your edits are still here: save again in a moment.`;
+  }
+  return formatApiError(err);
+}

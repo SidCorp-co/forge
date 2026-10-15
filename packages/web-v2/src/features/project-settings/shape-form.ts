@@ -173,7 +173,7 @@ export function shapeMoved(held: ShapeDraft, project: ProjectDetail): boolean {
 
 export const SHAPE_MESSAGES = {
 	noShape: "Pick the shape this project has before saving.",
-	noBase: "A release starts at the base branch, and this project names none. Fill in the base branch first.",
+	noBase: "A release starts at the base branch. Name it, for example main, or pick a shape with no release.",
 	noHop: "Promote needs at least one branch after the base branch. Add one, or pick Publish.",
 	repeated:
 		"The same branch appears twice, so the release would cross into a branch it has already left. Rename one of them, or remove it.",
@@ -196,7 +196,7 @@ export function shapeSchema(project: ProjectDetail): z.ZodType<ShapeDraft, Shape
 			// person edits something else on top of it, which `shapePatch` would then send.
 			if (d.shape === null) return;
 			if ((d.shape === "publish" || d.shape === "promote") && norm(d.baseBranch) === null) {
-				ctx.addIssue({ code: "custom", path: ["shape"], message: SHAPE_MESSAGES.noBase });
+				ctx.addIssue({ code: "custom", path: ["baseBranch"], message: SHAPE_MESSAGES.noBase });
 			}
 			if (d.shape === "promote" && d.hops.every((h) => h.branch.trim() === "")) {
 				ctx.addIssue({ code: "custom", path: ["hops"], message: SHAPE_MESSAGES.noHop });

@@ -335,7 +335,13 @@ export function EnvironmentBlocks({
         ) : (
           <ul className="divide-y divide-line">
             {form.testCredentials.map((row, i) => {
-              const err = held.errorAt(`testCredentials.${i}`);
+              const at = (field: "label" | "username" | "password") =>
+                held.errorAt(`testCredentials.${i}.${field}`);
+              const errLabel = at("label");
+              const errUser = at("username");
+              const errPass = at("password");
+              const err = errLabel ?? errUser ?? errPass;
+              const errId = `credential-${i}-error`;
               return (
                 // biome-ignore lint/suspicious/noArrayIndexKey: position is the identity
                 <li key={i} className="py-3">
@@ -348,7 +354,8 @@ export function EnvironmentBlocks({
                         placeholder="Label (e.g. Admin)"
                         maxLength={LABEL_MAX}
                         aria-label={`Credential ${i + 1} label`}
-                        aria-invalid={err ? true : undefined}
+                        aria-invalid={errLabel ? true : undefined}
+                        aria-describedby={errLabel ? errId : undefined}
                       />
                       <Input
                         value={row.username}
@@ -358,6 +365,8 @@ export function EnvironmentBlocks({
                         maxLength={USERNAME_MAX}
                         autoComplete="off"
                         aria-label={`Credential ${i + 1} username`}
+                        aria-invalid={errUser ? true : undefined}
+                        aria-describedby={errUser ? errId : undefined}
                       />
                       <div className="flex items-center gap-2">
                         <Input
@@ -369,6 +378,8 @@ export function EnvironmentBlocks({
                           maxLength={PASSWORD_MAX}
                           autoComplete="off"
                           aria-label={`Credential ${i + 1} password`}
+                          aria-invalid={errPass ? true : undefined}
+                          aria-describedby={errPass ? errId : undefined}
                           className="flex-1"
                         />
                         <Button
@@ -391,7 +402,7 @@ export function EnvironmentBlocks({
                     )}
                   </div>
                   {err && (
-                    <p role="alert" className="fg-caption mt-2" style={FIELD_ERROR}>
+                    <p id={errId} role="alert" className="fg-caption mt-2" style={FIELD_ERROR}>
                       {err}
                     </p>
                   )}

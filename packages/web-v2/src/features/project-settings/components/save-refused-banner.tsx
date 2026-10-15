@@ -14,6 +14,7 @@ import { Banner, Button, type SettingsForm } from "@/design";
 import {
 	asSentence,
 	describeSettings,
+	formatEnvironmentsWriteError,
 	formatPipelineConfigError,
 	formatSettingsWriteError,
 	NOTHING_SAVED,
@@ -29,6 +30,7 @@ export function SaveRefusedBanner({
 	document = "pipeline-config",
 	draft,
 	saved = NOTHING_SAVED,
+	credentialLabels = [],
 }: {
 	projectId: string;
 	/** The refusal, or null where the last save was not refused. */
@@ -43,6 +45,8 @@ export function SaveRefusedBanner({
 	/** The sentence the refusal opens with: what of the save was written, which is nothing unless
 	 *  the page wrote another part of it first. */
 	saved?: string;
+	/** The test credentials' labels as the page holds them, so a refusal about a row names it. */
+	credentialLabels?: readonly string[];
 }) {
 	const qc = useQueryClient();
 	const conflicts = writeConflicts(error);
@@ -83,7 +87,9 @@ export function SaveRefusedBanner({
 					{conflicts.length > 0
 						? formatSettingsWriteError(error, saved)
 						: `${saved} ${asSentence(
-								document === "environments" ? formatSettingsWriteError(error) : formatPipelineConfigError(error),
+								document === "environments"
+									? formatEnvironmentsWriteError(error, credentialLabels)
+									: formatPipelineConfigError(error),
 							)}`}
 				</p>
 				{conflicts.length > 0 && (

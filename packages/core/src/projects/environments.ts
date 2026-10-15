@@ -15,6 +15,61 @@ export const testCredentialSchema = z
   })
   .catchall(z.unknown());
 
+/** Why a written credential is refused: no password to log in with, or a second row for a login already listed. */
+export type CredentialRule = 'password-required' | 'duplicate-label' | 'duplicate-login';
+
+export interface CredentialFault {
+  /** The document path of the field at fault, e.g. `testCredentials.1.password`. */
+  path: string;
+  rule: CredentialRule;
+  message: string;
+}
+
+const fold = (value: unknown) => (typeof value === 'string' ? value.trim().toLowerCase() : '');
+
+/**
+ * The credential rows a write may not store. A row is a login QA uses, so it carries a password;
+ * its label is the name a run picks it by, so no two share one; and the same username and password
+ * twice is one login listed twice. Each later row is the one named, so the first stays as it is.
+ */
+export function credentialFaults(rows: unknown): CredentialFault[] {
+  if (!Array.isArray(rows)) return [];
+  const faults: CredentialFault[] = [];
+  const labels = new Map<string, number>();
+  const logins = new Map<string, number>();
+  rows.forEach((raw, i) => {
+    if (typeof raw !== 'object' || raw === null) return;
+    const row = raw as Record<string, unknown>;
+    const label = typeof row.label === 'string' ? row.label.trim() : '';
+    const password = typeof row.password === 'string' ? row.password : '';
+    if (password.trim() === '') {
+      faults.push({
+        path: `testCredentials.${i}.password`,
+        rule: 'password-required',
+        message: `testCredentials[${i}] ('${label}') has no password, so nobody can log in with it. Give it the password, or remove the row.`,
+      });
+    }
+    const sameLabel = labels.get(fold(label));
+    if (label !== '' && sameLabel !== undefined) {
+      faults.push({
+        path: `testCredentials.${i}.label`,
+        rule: 'duplicate-label',
+        message: `testCredentials[${i}] is labelled '${label}', as testCredentials[${sameLabel}] is, and a run picks a login by its label. Rename one of them, or remove the repeat.`,
+      });
+    } else if (label !== '') labels.set(fold(label), i);
+    const login = `${fold(row.username)}\0${password}`;
+    const sameLogin = logins.get(login);
+    if (password.trim() !== '' && sameLogin !== undefined && sameLabel === undefined) {
+      faults.push({
+        path: `testCredentials.${i}.username`,
+        rule: 'duplicate-login',
+        message: `testCredentials[${i}] ('${label}') is the same username and password as testCredentials[${sameLogin}], so it lists one login twice. Remove the repeat.`,
+      });
+    } else if (password.trim() !== '' && sameLogin === undefined) logins.set(login, i);
+  });
+  return faults;
+}
+
 export type TestingUrl = z.infer<typeof testingUrlSchema>;
 export type TestCredential = z.infer<typeof testCredentialSchema>;
 
