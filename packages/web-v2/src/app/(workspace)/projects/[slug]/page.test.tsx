@@ -39,6 +39,8 @@ let blockers: unknown[];
 let work: Record<string, number>;
 let runs: unknown[] | undefined;
 let runsError: unknown;
+let sessions: unknown[] | undefined;
+let sessionsError: unknown;
 let parked: Record<string, unknown>;
 let throughputRows: unknown[];
 type Read = "ok" | "pending" | "failed" | "stale";
@@ -64,6 +66,8 @@ function reset() {
   work = QUIET_WORK;
   runs = [];
   runsError = null;
+  sessions = [];
+  sessionsError = null;
   parked = { data: { items: [], totalCount: 0 }, ...settled, isPlaceholderData: false };
   throughputRows = WEEK;
   projectRunnerRows = [];
@@ -105,6 +109,14 @@ vi.mock("@/features/runs/hooks", () => ({
         ? failedQuery("throughput down")
         : { data: throughputRows, ...settled }),
     refetch: vi.fn(),
+  }),
+}));
+vi.mock("@/features/pipeline/hooks", () => ({
+  useSessionsAndHolds: () => ({
+    data: sessions === undefined ? undefined : { sessions, holds: [], readAt: new Date(NOW).toISOString() },
+    isLoading: false,
+    isError: sessionsError !== null,
+    error: sessionsError,
   }),
 }));
 vi.mock("@/features/issues/hooks", async (importOriginal) => ({
@@ -181,6 +193,23 @@ const run = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+const liveSession = (over: Record<string, unknown> = {}) => ({
+  id: "s1",
+  kind: "run_session",
+  title: null,
+  status: "running",
+  runtimeState: null,
+  deviceId: "dv1",
+  deviceName: "box-1",
+  parentSessionId: null,
+  startedAt: ago(600),
+  lastHeartbeatAt: ago(4),
+  createdAt: ago(600),
+  issues: [{ issueId: "i1", displayId: "ISS-1", title: "An issue" }],
+  report: null,
+  ...over,
+});
+
 function mount() {
   return render(
     <QueryClientProvider client={new QueryClient()}>
@@ -212,7 +241,7 @@ describe("a quiet project", () => {
   it("collapses every secondary panel with nothing in it to one line, without a card's border, rounding or shadow", () => {
     const { container } = mount();
     for (const title of [
-      "Live runs",
+      "Live sessions",
       "Awaiting release",
       "Open work by state",
       "7-day spend",
@@ -244,14 +273,15 @@ describe("a quiet project", () => {
 describe("a working project", () => {
   it("opens on a sentence counting what is live and what needs a person, over a figures row with a comparison each", () => {
     runs = [run(), run({ id: "r2", issueRef: "ISS-2" })];
+    sessions = [liveSession(), liveSession({ id: "s2" })];
     attentionView = view({ pair: { needsReview: 0, awaitingInput: 1, awaitingOutsideBlockers: 0, failedJobs: 0 } }, {
       awaitingInput: [attentionItem(7, ago(2 * 3600))],
     });
     work = { ...BUSY_WORK, blocked_on_person: 1 };
     const { container } = mount();
     expect(shape(container)).toBe("working");
-    expect(headline()).toHaveTextContent("2 runs are live and 1 item needs a person.");
-    expect(figure("Runs live").getByText(/runners busy/)).toBeInTheDocument();
+    expect(headline()).toHaveTextContent("2 sessions are live and 1 item needs a person.");
+    expect(figure("Sessions live").getByText(/runners busy/)).toBeInTheDocument();
     expect(figure("Needs you").getByText(/oldest 2h/)).toBeInTheDocument();
   });
 
@@ -309,8 +339,8 @@ describe("a degraded project", () => {
   it("is degraded by a run stuck with no job, and offers the pipeline", () => {
     runs = [run({ liveJobs: 0, startedAt: ago(5 * 3600), lastSessionBeatAt: null })];
     mount();
-    expect(screen.getByTestId("degraded-band")).toHaveTextContent("1 run stuck with no job running");
-    expect(within(screen.getByTestId("degraded-band")).getByRole("link")).toHaveAttribute("href", "/projects/pair/pipeline");
+    expect(screen.getByTestId("degraded-band")).toHaveTextContent("1 run stuck, nothing heard for an hour");
+    expect(within(screen.getByTestId("degraded-band")).getByRole("link")).toHaveAttribute("href", "/projects/pair/agents");
   });
 
   it("does not degrade on a parked issue aged only from its last write, though its chip shows the 112 days", () => {
@@ -348,8 +378,25 @@ describe("a project whose reads have not all arrived", () => {
     expect(shape(container)).toBe("unread");
     expect(headline()).toHaveTextContent("Reading what is going on…");
     expect(screen.getByTestId("headline-unread")).toHaveTextContent("The project's runs are still being read.");
-    expect(figure("Runs live").queryByText("0")).toBeNull();
+    expect(figure("Sessions live").getByText(/runs not read/)).toBeInTheDocument();
     expect(screen.queryByText(/Nothing needs anyone/)).toBeNull();
+  });
+
+  it("is unread while the live sessions read is out, and states no session count", () => {
+    sessions = undefined;
+    const { container } = mount();
+    expect(shape(container)).toBe("unread");
+    expect(screen.getByTestId("headline-unread")).toHaveTextContent("The project's live sessions are still being read.");
+    expect(figure("Sessions live").getByText("…")).toBeInTheDocument();
+    expect(figure("Sessions live").queryByText("0")).toBeNull();
+  });
+
+  it("names the live sessions read that failed, and why", () => {
+    sessions = undefined;
+    sessionsError = new Error("Bad Gateway");
+    mount();
+    expect(headline()).toHaveTextContent("Part of this page could not be read.");
+    expect(screen.getByTestId("headline-unread")).toHaveTextContent("The project's live sessions could not be read: Bad Gateway");
   });
 
   it("names the runs read that failed, and why", () => {
@@ -396,21 +443,19 @@ describe("a project whose reads have not all arrived", () => {
 // ISS-1159 round 2 — a section drawn from a read that has not arrived names the read; it never states
 // the zero ("none live", "nothing waiting", "none bound", "none recorded") the missing answer would be.
 describe("a section whose own read has not arrived", () => {
-  const RUNS_ZEROS = ["none live right now", "nothing waiting on a release decision"];
+  const RUNS_ZEROS = ["nothing waiting on a release decision"];
 
   it.each([
     ["pending", "The project's runs are still being read."],
     ["failed", "The project's runs could not be read: Gateway Timeout"],
-  ] as const)("names the runs read in Live runs and Awaiting release while it is %s, stating no zero", (read, statement) => {
+  ] as const)("names the runs read in Awaiting release while it is %s, stating no zero and no idle count", (read, statement) => {
     runs = undefined;
     if (read === "failed") runsError = new Error("Gateway Timeout");
     mount();
-    for (const title of ["Live runs", "Awaiting release"]) {
-      const section = screen.getByRole("region", { name: title });
-      expect(section, title).toHaveTextContent(statement);
-      expect(section, title).not.toHaveTextContent(/none live|nothing waiting|no release run/);
-    }
-    expect(screen.queryByText(/run (has|have) no job running|runs have no job running/)).toBeNull();
+    const section = screen.getByRole("region", { name: "Awaiting release" });
+    expect(section).toHaveTextContent(statement);
+    expect(section).not.toHaveTextContent(/nothing waiting|no release run/);
+    expect(screen.queryByText(/nothing working/)).toBeNull();
     for (const zero of RUNS_ZEROS) expect(screen.queryByText(zero), zero).toBeNull();
   });
 
@@ -453,7 +498,8 @@ describe("a section whose own read has not arrived", () => {
     type Case = { read: string; sections: string[]; set: (r: Read) => void };
     const READS: Case[] = [
       { read: "attention", sections: ["Needs your attention"], set: () => {} },
-      { read: "runs", sections: ["Needs your attention", "Live runs", "Awaiting release"], set: () => {} },
+      { read: "runs", sections: ["Needs your attention", "Awaiting release"], set: () => {} },
+      { read: "live sessions", sections: ["Needs your attention", "Live sessions"], set: () => {} },
       { read: "parked ages", sections: ["Needs your attention"], set: (r) => (parkedRead = r) },
       { read: "step durations", sections: ["7-day spend", "Where time goes"], set: (r) => (durationsRead = r) },
       { read: "throughput", sections: ["Throughput"], set: (r) => (throughputRead = r) },
@@ -475,6 +521,10 @@ describe("a section whose own read has not arrived", () => {
         runs = undefined;
         if (state === "failed") runsError = new Error("runs down");
       }
+      if (c.read === "live sessions") {
+        sessions = undefined;
+        if (state === "failed") sessionsError = new Error("sessions down");
+      }
       // An online runner, so a runners-side read that is out shows in the section rather than behind "none bound".
       projectRunnerRows = [{ runnerId: "rn1", deviceId: "dv1", deviceName: "box-1", deviceStatus: "online", runnerStatus: "enabled", platform: "linux" }];
     }
@@ -492,12 +542,12 @@ describe("a section whose own read has not arrived", () => {
           // A refusal may quote the phrase it refuses to say; only a bare one is the claim.
           const said = (section.textContent ?? "").replace(/"[^"]*"/gu, "");
           expect(said, `${title} under ${c.read} ${state}`).not.toMatch(EMPTY_CLAIM);
-          if (title !== "Needs your attention" || c.read === "attention" || c.read === "runs") {
+          if (title !== "Needs your attention" || ["attention", "runs", "live sessions"].includes(c.read)) {
             expect(section, `${title} under ${c.read} ${state}`).toHaveTextContent(UNREAD);
           }
         }
         // The page never opens on an all clear while a read the shape stands on is out.
-        if (["attention", "runs", "parked ages"].includes(c.read)) {
+        if (["attention", "runs", "live sessions", "parked ages"].includes(c.read)) {
           expect(shape(container)).toBe("unread");
           expect(headline()).not.toHaveTextContent(/Nothing needs anyone/);
           expect(screen.getByTestId("headline-unread")).toBeInTheDocument();
@@ -518,13 +568,13 @@ describe("a section whose own read has not arrived", () => {
     expect(screen.queryByText("none recorded")).toBeNull();
   });
 
-  it("names the runners read in Runners and in the Runs live caption, not 'none bound' or '0 of 0 runners busy'", () => {
+  it("names the runners read in Runners and in the Sessions live caption, not 'none bound' or '0 of 0 runners busy'", () => {
     runnersRead = "pending";
-    runs = [run()];
+    sessions = [liveSession()];
     mount();
     expect(screen.getByRole("region", { name: "Runners" })).toHaveTextContent("The project's runners are still being read.");
     expect(screen.queryByText("none bound")).toBeNull();
-    expect(figure("Runs live").getByText("runners not read")).toBeInTheDocument();
+    expect(figure("Sessions live").getByText("runners not read")).toBeInTheDocument();
     expect(screen.queryByText(/0 of 0 runners busy/)).toBeNull();
   });
 
@@ -535,15 +585,15 @@ describe("a section whose own read has not arrived", () => {
     runnersRead = "ok";
     if (which === "queueRead") queueRead = read;
     else activeRead = read;
-    runs = [run()];
+    sessions = [liveSession()];
     projectRunnerRows = [{ runnerId: "rn1", deviceId: "dv1", deviceName: "box-1", deviceStatus: "online", runnerStatus: "enabled", platform: "linux" }];
     mount();
     const section = screen.getByRole("region", { name: "Runners" });
     expect(section).toHaveTextContent(statement);
     expect(section).toHaveTextContent("activity not read");
     expect(section).not.toHaveTextContent(/\bidle\b|\bbusy\b/);
-    expect(figure("Runs live").getByText("1 runner online · activity not read")).toBeInTheDocument();
-    expect(figure("Runs live").queryByText(/0 of 1 runners busy/)).toBeNull();
+    expect(figure("Sessions live").getByText("1 runner online · activity not read")).toBeInTheDocument();
+    expect(figure("Sessions live").queryByText(/0 of 1 runners busy/)).toBeNull();
   });
 
   it("shows no execution claim from an earlier active-runner answer once a refetch has failed", () => {
@@ -566,7 +616,7 @@ describe("a section whose own read has not arrived", () => {
 
   it("still states the zero once the read is in", () => {
     mount();
-    expect(screen.getByRole("region", { name: "Live runs" })).toHaveTextContent("none live right now");
+    expect(screen.getByRole("region", { name: "Live sessions" })).toHaveTextContent("none live right now");
     expect(screen.getByRole("region", { name: "Awaiting release" })).toHaveTextContent("nothing waiting on a release decision");
   });
 });
@@ -582,21 +632,45 @@ describe("a page whose figures sit beside other counts of the same things", () =
     expect(list).toHaveTextContent("What is wrong is named above");
   });
 
-  it("says how many runs are open where the figure counts only those with a job, as the navigation rail counts them", () => {
+  it("counts the sessions the Pipeline page lists, and says how many runs are open as the navigation rail counts them", () => {
     runs = [
       run(),
       run({ id: "r2", liveJobs: 0, startedAt: ago(600), lastSessionBeatAt: ago(30) }),
       run({ id: "r3", currentStep: "tested", liveJobs: 0 }),
     ];
+    sessions = [liveSession()];
     mount();
-    expect(figure("Runs live").getByText("1")).toBeInTheDocument();
-    expect(figure("Runs live").getByText(/3 runs open in all/)).toBeInTheDocument();
+    expect(figure("Sessions live").getByText("1")).toBeInTheDocument();
+    expect(figure("Sessions live").getByText(/3 runs open$/)).toBeInTheDocument();
   });
 
-  it("says nothing of open runs where every one has a job", () => {
-    runs = [run(), run({ id: "r2" })];
+  it("says nothing of open runs where none is open", () => {
+    sessions = [liveSession()];
     mount();
-    expect(figure("Runs live").queryByText(/open in all/)).toBeNull();
+    expect(figure("Sessions live").queryByText(/runs? open/)).toBeNull();
+  });
+
+  // A driver run holds no job: its session is what works it. A count of jobs read three Working
+  // sessions as "none live" with "3 runs have no job running" beside them.
+  it("reads a run its session works, with no job on it, as live and not idle or stuck", () => {
+    runs = [run({ issueId: null, issueRef: null, currentStep: null, liveJobs: 0, startedAt: ago(5 * 3600), lastSessionBeatAt: ago(4) })];
+    sessions = [liveSession({ runtimeState: "working" })];
+    const { container } = mount();
+    expect(screen.queryByText("none live right now")).toBeNull();
+    expect(screen.queryByText(/no job running|nothing working/)).toBeNull();
+    expect(screen.queryByTestId("degraded-band")).toBeNull();
+    expect(shape(container)).toBe("working");
+    expect(headline()).toHaveTextContent("1 session is live.");
+    const live = screen.getByRole("region", { name: "Live sessions" });
+    expect(within(live).getByText("Working")).toBeInTheDocument();
+    expect(within(live).getByRole("link", { name: "ISS-1" })).toHaveAttribute("href", "/projects/pair/issues/i1");
+    expect(figure("Sessions live").getByText("1")).toBeInTheDocument();
+  });
+
+  it("counts an open run with no job and no session as one nothing works", () => {
+    runs = [run({ liveJobs: 0, startedAt: ago(600), lastSessionBeatAt: null })];
+    mount();
+    expect(screen.getByRole("button", { name: /1 open run has nothing working it/ })).toBeInTheDocument();
   });
 
   it("does not count fewer people than Open work counts blocked on one: 2 listed, 5 blocked is 'at least 5'", () => {
@@ -705,7 +779,7 @@ describe("the project dashboard's Needs you", () => {
     });
 
     it("still says All caught up once the answer is read and holds nothing for this project", () => {
-      runs = [run()];
+      sessions = [liveSession()];
       mount();
       expect(screen.getByRole("region", { name: "Needs your attention" })).toHaveTextContent("All caught up");
       expect(figure("Needs you").getByText("0")).toBeInTheDocument();

@@ -58,12 +58,13 @@ export type ProjectShape = "quiet" | "working" | "degraded" | "unread";
 export interface ShapeInput {
   attention: ReadState;
   runs: ReadState;
+  sessions: ReadState;
   /** `ok` where the page asks for no parked ages, because the health row lists no parked issue. */
   parked: ReadState;
   items: readonly DashboardAttentionItem[];
   cut: AttentionCut | null;
   slug: string;
-  liveRuns: number;
+  liveSessions: number;
   stuckRuns: readonly PipelineRunListItem[];
   /** Failed jobs the attention response counts for this project, listed or not: the list is capped. */
   failedJobs: number;
@@ -113,6 +114,7 @@ function unreadLines(input: ShapeInput): string[] {
   return [
     unreadStatement("What needs you", input.attention),
     unreadStatement("The project's runs", input.runs, true),
+    unreadStatement("The project's live sessions", input.sessions, true),
     unreadStatement("How long parked issues have waited", input.parked),
   ].filter((line): line is string => line !== null);
 }
@@ -142,7 +144,7 @@ function degradedBand(input: ShapeInput, quals: readonly Qualifier[], stuck: rea
   const overdue = quals.filter((q) => q.kind === "overdue").length;
   const parts: string[] = [];
   if (failed > 0) parts.push(plural(failed, "failed job", "failed jobs"));
-  if (stuck.length > 0) parts.push(`${plural(stuck.length, "run", "runs")} stuck with no job running`);
+  if (stuck.length > 0) parts.push(`${plural(stuck.length, "run", "runs")} stuck, nothing heard for an hour`);
   if (overdue > 0) {
     parts.push(`${plural(overdue, "item", "items")} waiting on a person for over ${OVERDUE_WAIT_SECONDS / DAY} days`);
   }
@@ -165,7 +167,7 @@ function degradedBand(input: ShapeInput, quals: readonly Qualifier[], stuck: rea
   } else if (quals[0]) {
     entry = { label: "Action needed — open the first failed job", href: quals[0].item.link };
   } else if (stuck.length > 0 || failed > 0) {
-    entry = { label: "Action needed — open the pipeline", href: `/projects/${input.slug}/pipeline` };
+    entry = { label: "Action needed — open the runs", href: `/projects/${input.slug}/agents` };
   }
   return { text: `${lead} — ${parts.join(" · ")}`, entry };
 }
@@ -189,7 +191,7 @@ export function projectShape(input: ShapeInput): ProjectReading {
   }
 
   if (unread.length > 0) {
-    const failed = [input.attention, input.runs, input.parked].some((s) => s.read === "failed");
+    const failed = [input.attention, input.runs, input.sessions, input.parked].some((s) => s.read === "failed");
     return {
       shape: "unread",
       headline: failed ? "Part of this page could not be read." : "Reading what is going on…",
@@ -200,7 +202,7 @@ export function projectShape(input: ShapeInput): ProjectReading {
   }
 
   const parts: string[] = [];
-  if (input.liveRuns > 0) parts.push(`${plural(input.liveRuns, "run is", "runs are")} live`);
+  if (input.liveSessions > 0) parts.push(`${plural(input.liveSessions, "session is", "sessions are")} live`);
   if (input.items.length > 0 || input.cut) {
     parts.push(
       input.cut
@@ -219,7 +221,7 @@ export function projectShape(input: ShapeInput): ProjectReading {
   return {
     shape: "quiet",
     headline: "Nothing needs anyone.",
-    detail: "No run is live, no run waits on a release, and nothing is waiting on a person.",
+    detail: "No session is live, no run waits on a release, and nothing is waiting on a person.",
     band: null,
     unread: [],
   };

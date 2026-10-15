@@ -5,7 +5,7 @@ export type StatusDomain = "issue" | "session";
 
 export interface StatusChipProps {
   status: StatusKey;
-  /** When running, append the active pipeline stage, e.g. `running · code`. */
+  /** When running, append the step the session is on, e.g. `running · implement`. */
   stage?: string;
   size?: "sm" | "md";
   /** Status vocabulary this chip belongs to. Defaults to `issue`. */

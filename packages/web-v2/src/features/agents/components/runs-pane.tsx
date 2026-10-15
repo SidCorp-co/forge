@@ -118,7 +118,7 @@ export function RunsPane({ scope }: RunsPaneProps) {
                   className="fg-caption rounded-md border border-line px-2 py-1 transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] max-md:min-h-[36px]"
                   style={
                     filter === f.value
-                      ? { background: "var(--paper-200)", color: "var(--fg)" }
+                      ? { background: "var(--paper-200)", color: "var(--fg-default)" }
                       : { color: "var(--fg-muted)" }
                   }
                 >

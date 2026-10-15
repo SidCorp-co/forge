@@ -82,7 +82,7 @@ export function conicGradient(segments: DonutSegment[]): string {
  * ------------------------------------------------------------------ */
 
 /** Neutral ink for the three costliest steps, then "other": a step name carries no colour of its own. */
-const SPEND_INK = ["var(--fg)", "var(--fg-muted)", "var(--fg-subtle)"] as const;
+const SPEND_INK = ["var(--fg-default)", "var(--fg-muted)", "var(--fg-subtle)"] as const;
 const OTHER_INK = "var(--border-strong)";
 export const SPEND_OTHER_KEY = "other";
 
@@ -124,7 +124,7 @@ export function spendByStep(rows: StepDurationRow[] | undefined): SpendByStepDat
 }
 
 /* ------------------------------------------------------------------ *
- * Live runs + in-flight spend (AC#3, AC#1)
+ * Open runs + in-flight spend (AC#3, AC#1)
  * ------------------------------------------------------------------ */
 
 const LIVE_RUN_STATUSES = new Set(["running", "paused"]);
@@ -138,17 +138,26 @@ export function liveRuns(runs: PipelineRunListItem[] | undefined): PipelineRunLi
   return (runs ?? []).filter((r) => LIVE_RUN_STATUSES.has(r.status));
 }
 
-export function activeRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {
-  return liveRuns(runs).filter((r) => (r.liveJobs ?? 0) > 0);
+/** Something is working the run: a live job on it, or a session on it that has not ended. */
+function worked(r: PipelineRunListItem): boolean {
+  return (r.liveJobs ?? 0) > 0 || r.lastSessionBeatAt != null;
 }
 
-/** Live runs with no live JOB on them. Split out from `awaitingReleaseRuns`:
- *  that one names the single expected park (the release gate); this one is
- *  everything else, which is the set nobody could see before. */
-export function idleRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {
+/** Live runs something is working. A driver run holds no job, so a job count alone reads it as idle. */
+export function activeRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {
+  return liveRuns(runs).filter(worked);
+}
+
+/** Live runs off the release gate with no live job: the set a run goes stuck from, whatever a session on it last said. */
+export function joblessRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {
   return liveRuns(runs).filter(
     (r) => (r.liveJobs ?? 0) === 0 && r.currentStep !== AWAITING_RELEASE_STEP,
   );
+}
+
+/** Live runs off the release gate that nothing works: no live job, and no session on them that has not ended. */
+export function idleRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {
+  return joblessRuns(runs).filter((r) => !worked(r));
 }
 
 export function awaitingReleaseRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {
