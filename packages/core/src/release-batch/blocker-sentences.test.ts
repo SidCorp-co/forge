@@ -172,13 +172,30 @@ describe('the release runner label', () => {
 });
 
 describe('RELEASE_ROSTER_EMPTY', () => {
-  it('counts what stands one move short of the gate and names the move', () => {
-    const message = releaseBlockerSentence('RELEASE_ROSTER_EMPTY', { nearGate: 11 });
+  // ISS-1229 r5: the dispatcher read this on Shape & release as a paragraph that wrote three
+  // statuses as code beside a link naming one of them by its label. One short sentence, in labels.
+  it('counts what stands one move short of the gate, in one sentence naming each status by its label', () => {
+    expect(releaseBlockerSentence('RELEASE_ROSTER_EMPTY', { nearGate: 11 })).toBe(
+      'Nothing is ready to release: 11 issues are at Testing or Tested, and none has reached Awaiting release.',
+    );
+  });
 
-    expect(message).toContain('11 issues');
-    expect(message).toContain('`testing`');
-    expect(message).toContain('`tested`');
-    expect(message).toContain('`awaiting_release`');
+  it('says so where nothing stands one move short either', () => {
+    expect(releaseBlockerSentence('RELEASE_ROSTER_EMPTY', { nearGate: 0 })).toBe(
+      'Nothing is ready to release: no issue is at Testing, Tested or Awaiting release.',
+    );
+  });
+
+  it('reads as one issue rather than 1 issues', () => {
+    expect(releaseBlockerSentence('RELEASE_ROSTER_EMPTY', { nearGate: 1 })).toContain(
+      '1 issue is at',
+    );
+  });
+
+  it('says the same where the count could not be read', () => {
+    expect(releaseBlockerSentence('RELEASE_ROSTER_EMPTY')).toBe(
+      'Nothing is ready to release: no issue is at Awaiting release.',
+    );
   });
 
   it('no longer says an issue reaches the gate by being merged and marked', () => {
@@ -188,37 +205,46 @@ describe('RELEASE_ROSTER_EMPTY', () => {
       );
     }
   });
+});
 
-  it('says so where nothing stands one move short either', () => {
-    expect(releaseBlockerSentence('RELEASE_ROSTER_EMPTY', { nearGate: 0 })).toContain(
-      'nothing stands one move short',
-    );
+/** A stored status written as a code span: what a reader of Shape & release met (ISS-1229 r5). */
+const STATUS_AS_CODE =
+  /`(?:open|confirmed|clarified|waiting|approved|in_progress|developed|testing|tested|awaiting_release|releasing|closed|reopen|on_hold|needs_info|draft|dropped)`/;
+
+describe('no release sentence writes a status as code (ISS-1229)', () => {
+  const cases: Array<[string, () => string]> = [
+    [
+      'an empty roster with issues near the gate',
+      () => releaseBlockerSentence('RELEASE_ROSTER_EMPTY', { nearGate: 3 }),
+    ],
+    [
+      'an empty roster with none near it',
+      () => releaseBlockerSentence('RELEASE_ROSTER_EMPTY', { nearGate: 0 }),
+    ],
+    ['an empty roster, count unread', () => releaseBlockerSentence('RELEASE_ROSTER_EMPTY')],
+    ['criteria unearned', () => releaseBlockerSentence('RELEASE_CRITERIA_UNEARNED')],
+    [
+      'criteria unread for want of a readable repository',
+      () => releaseBlockerSentence('RELEASE_CRITERIA_UNEARNED', { clears: ['grant the read'] }),
+    ],
+    [
+      'a carried landing',
+      () =>
+        releaseBlockerSentence('RELEASE_CARRIES_UNDECIDED', {
+          carried: [{ displayId: 'ISS-9', status: 'testing' }],
+          start: 'main',
+          cut: 'a'.repeat(40),
+          live: 'production',
+        }),
+    ],
+  ];
+
+  it.each(cases)('%s names its statuses by label', (_name, sentence) => {
+    expect(sentence()).not.toMatch(STATUS_AS_CODE);
   });
 
-  it('reads as one issue rather than 1 issues', () => {
-    expect(releaseBlockerSentence('RELEASE_ROSTER_EMPTY', { nearGate: 1 })).toContain('1 issue ');
-  });
-
-  it('names the act that moves an issue there, not only the status it must reach', () => {
-    for (const details of [{ nearGate: 11 }, { nearGate: 0 }]) {
-      const message = releaseBlockerSentence('RELEASE_ROSTER_EMPTY', details);
-
-      expect(message).toContain('verification');
-      expect(message).not.toContain('is an act of its own');
-    }
-  });
-
-  // It said 'Nothing but the issue's own record moves it' and then 'Its status
-  // control carries the same move', which read cold is the control refusing and
-  // the control doing it. One answer, or the reader picks (ISS-1127).
-  it('gives one account of the move rather than two that read against each other', () => {
-    for (const details of [{ nearGate: 11 }, { nearGate: 0 }]) {
-      const message = releaseBlockerSentence('RELEASE_ROSTER_EMPTY', details);
-
-      expect(message).not.toContain("Nothing but the issue's own record moves it");
-      expect(message).toContain('once its own record earns it');
-      expect(message).toContain('With those written');
-    }
+  it('names a carried issue at the label of its status', () => {
+    expect(cases[5]?.[1]()).toContain('`ISS-9` at Testing');
   });
 });
 

@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { QualitySection } from "@/features/overview/components/quality-section";
 import { JOB_KIND_LABEL } from "@/features/overview/job-kinds";
 import type { PulseQuality } from "@/features/overview/types";
+import { inlineCode } from "@/features/project-settings/components/inline-code";
 import { GAP_TEXT } from "@/features/project-settings/components/release-section";
 import { HELP_DOCS } from "./help-content.generated";
 
@@ -77,6 +78,12 @@ const RULES: Array<{ rule: string; offends: RegExp }> = [
     rule: "a stored knowledge key, or the agent's word fact",
     offends: /\b(?:build|test)-commands\b|\brelease-procedure\b|\b[a-z]+(?:-[a-z]+)+ facts?\b/i,
   },
+  // ISS-1229 r5: Shape & release drew `testing` and `awaiting_release` as code beside a link
+  // reading "Awaiting release". Code marks a value to type; a status is read, by its label.
+  {
+    rule: "a status written as code",
+    offends: new RegExp(`<code[^>]*>\\s*(?:${STORED_STATUSES.join("|")})\\s*</code>`),
+  },
   // A draft with nothing merged cannot be closed, so the way to turn one down is to drop it.
   {
     rule: "a draft turned down by closing it",
@@ -139,6 +146,8 @@ describe("that guard, against one planted sentence per rule", () => {
     ["No build-commands fact — a session has nothing to build with.", "a stored knowledge key, or the agent's word fact"],
     ["Write the release-procedure in Knowledge.", "a stored knowledge key, or the agent's word fact"],
     ["Runner unreachable: runner_unreachable", "a table or column name"],
+    ["no issue is at <code>testing</code> or at <code>tested</code>.", "a status written as code"],
+    ['It reaches the gate at <code class="fg-code">awaiting_release</code>.', "a status written as code"],
   ])("rejects %s", (sentence, rule) => {
     expect(offences(sentence)).toContain(rule);
   });
@@ -148,6 +157,8 @@ describe("that guard, against one planted sentence per rule", () => {
       "No build commands written — an agent has nothing to build with.",
       "It has been parked for 3 days.",
       "Runner unreachable",
+      "Nothing is ready to release: no issue is at Testing, Tested or Awaiting release.",
+      "A <code>cut-below</code> releases only what landed before it.",
       "Choose **Create issue**. You land on the new issue's page.",
       "The status becomes **Needs info** and its question appears on the issue page.",
       "At **Awaiting release** it has not been released yet — the issue page says when it will be.",
@@ -174,6 +185,20 @@ describe("the done page, where it says what Closed means", () => {
 describe("the screens judge-15 read, against the same rules", () => {
   it("Shape & release names every unwritten instruction in the screen's words", () => {
     for (const text of Object.values(GAP_TEXT)) expect([text, offences(text)]).toEqual([text, []]);
+  });
+
+  // The blocker sentence is core's (release-batch/blocker-sentences.ts); this is the screen's half:
+  // what Shape & release draws from it. The core test holds every sentence to the same rule.
+  it.each([
+    ["now", "Nothing is ready to release: 2 issues are at Testing or Tested, and none has reached Awaiting release.", []],
+    [
+      "before ISS-1229 r5",
+      "Nothing is waiting at the release gate, and nothing stands one move short of it: no issue on this project is at `testing` or at `tested`. An issue reaches the gate at `awaiting_release`.",
+      ["a status written as code"],
+    ],
+  ])("Shape & release draws the release blocker as written %s", (_when, sentence, found) => {
+    const { container } = render(createElement("p", null, inlineCode(sentence)));
+    expect(offences(container.innerHTML).filter((r) => r === "a status written as code")).toEqual(found);
   });
 
   it("every kind of work the Overview counts is named in the screen's words", () => {

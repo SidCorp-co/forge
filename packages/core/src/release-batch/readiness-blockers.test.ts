@@ -229,7 +229,7 @@ describe('what readiness says about an empty roster', () => {
     const answer = await loadReleaseReadiness(PROJECT_ID);
     const empty = answer?.blockers.find((b) => b.code === 'RELEASE_ROSTER_EMPTY');
 
-    expect(empty?.message).toContain('`awaiting_release`');
+    expect(empty?.message).toMatch(/^[^`]*Awaiting release[^`]*$/);
     expect(empty?.message).not.toContain('merged and marked');
   });
 });

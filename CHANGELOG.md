@@ -3205,6 +3205,7 @@
 - **Getting started no longer walks an issue through stages that are gone.** It now says one agent carries an issue from filed to shipped, as the public guide index does. (ISS-1229)
 - **The overview names each kind of work and each session failure in plain words.** Its work table no longer says Stage or links one kind to the next, and a failure reads "Runner unreachable". (ISS-1229)
 - **Release settings say "No build commands written"** rather than naming a stored fact. (ISS-1229)
+- **Shape & release says in one sentence why nothing can release yet,** naming Testing, Tested and Awaiting release as the screen does rather than as code. (ISS-1229)
 - **A stuck-issue notice names its project and says how long,** with the status as the screen shows it, instead of a database timestamp. (ISS-1229)
 - **Shape & release refuses a test credential with no password, or one listed twice, by name.** The row is marked where it is wrong and nothing is saved; an agent writing the same is refused too. (ISS-1171)
 - **Shape & release marks an emptied base branch at its field, and keeps your chosen shape in view when a save is refused.** A failed environments save says what happened and what to do. (ISS-1171)

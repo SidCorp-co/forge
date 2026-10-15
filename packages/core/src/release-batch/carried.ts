@@ -14,7 +14,9 @@
 import { sql } from 'drizzle-orm';
 import { postSystemComments } from '../comments/system-write.js';
 import { db } from '../db/client.js';
+import type { IssueStatus } from '../db/schema.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
+import { ISSUE_STATUS_LABELS } from '../issues/status-sets.js';
 import type { RangeCommit } from '../projects/repository-reader.js';
 import { readProjectBranches } from '../projects/service.js';
 import { type CutRangeDeps, type ReadRange, readRangeTo } from './cut-range.js';
@@ -312,7 +314,7 @@ export async function noteShipUnverified(args: {
       authorId: userId,
       body:
         `Release ${version} (run ${runId}) ships this issue's landing ${short(i.landing)} ` +
-        `while it stands at \`${i.status}\` and off the release's roster. ${decider} decided, ` +
+        `while it stands at ${ISSUE_STATUS_LABELS[i.status as IssueStatus] ?? i.status} and off the release's roster. ${decider} decided, ` +
         `when pressing the release, to ship it unverified: ${i.why ?? ''}`,
     })),
   );

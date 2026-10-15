@@ -496,7 +496,7 @@ describe('a reason names the state it was read from and the act that clears it',
     const empty = (await readiness(w)).body.blockers.find((b) => b.code === 'RELEASE_ROSTER_EMPTY');
 
     expect(empty?.message).toContain('2 issues');
-    expect(empty?.message).toContain('`awaiting_release`');
+    expect(empty?.message).toMatch(/^[^`]*Awaiting release[^`]*$/);
     expect(empty?.message).not.toContain('merged and marked');
   });
 });

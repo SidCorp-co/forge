@@ -3,7 +3,9 @@
  * explains it. Every door reads these, so none carries its own copy (ISS-1127).
  */
 
+import type { IssueStatus } from '../db/schema.js';
 import { RELEASE_RECORD_REMEDY } from '../issues/release-record-required.js';
+import { ISSUE_STATUS_LABELS } from '../issues/status-sets.js';
 import type { RunnerHold } from '../runners/ineligible.js';
 import type { CarriedCheck, CarriedDecision, CarriedReading } from './carried.js';
 import { claimConflictSentence, readClaimConflictDetails } from './claim-conflicts.js';
@@ -129,8 +131,7 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
     'This project declares a release chain and has no active deploy binding carrying the `live` stage, so there is nowhere for a release to land. Add one on the integrations screen, or, if this project ships nothing, choose "Repository, no release" under Shape & release in its settings.',
   CLAIM_CONFLICT:
     '{n} issue(s) named here are not at the release gate, are not on this project, or are already claimed by a batch. Read the roster and send the issues it lists.',
-  RELEASE_ROSTER_EMPTY:
-    'Nothing is waiting at the release gate, so there is no release to cut. An issue reaches it by moving to `awaiting_release`, which is an act of its own.',
+  RELEASE_ROSTER_EMPTY: `Nothing is ready to release: no issue is at ${ISSUE_STATUS_LABELS.awaiting_release}.`,
   RELEASE_ROSTER_OVERSIZE: `More issues are waiting than one release may carry. A release names at most ${RELEASE_ROSTER_LIMIT} issues, so cut this roster in parts, oldest merge first.`,
   RELEASE_RECORD_MISSING:
     '{n} issue(s) named here have no release note, and closing them would claim a ship ' +
@@ -149,8 +150,7 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
     'This project has runners registered and none of them could be handed a release, and the reading of why could not be taken. Open Settings \u2192 Runners and check each box\'s "Takes jobs from the pool" switch and when it was last seen.',
   BATCH_IN_FLIGHT:
     'A release is already running for this project, and a second one would claim the same issues. Let it finish, or abort it with what you found.',
-  RELEASE_CRITERIA_UNEARNED:
-    'This project releases without a person acting, and the sweep that cuts its releases is holding back every issue waiting at the gate: each still owes a judging run on an acceptance criterion. Record a verdict for each criterion named below, or move the issue out of `awaiting_release` if it is not to ship.',
+  RELEASE_CRITERIA_UNEARNED: `This project releases without a person acting, and the sweep that cuts its releases is holding back every issue waiting at the gate: each still owes a judging run on an acceptance criterion. Record a verdict for each criterion named below, or move the issue out of ${ISSUE_STATUS_LABELS.awaiting_release} if it is not to ship.`,
   RELEASE_RUNTIME_UNROUTED:
     'This project releases without a person acting, only an issue whose every acceptance criterion is earned at what it is serving, and nothing here can read what it is serving — so no verdict a run records can earn one, and every issue waiting at the gate is held on that one reason. Give it a way to be read, and the next sweep weighs every waiting issue again.',
   RELEASE_CARRIES_UNDECIDED: `This release promotes a range that carries the landing of issues this batch does not name. ${CARRIED_WAYS_OUT}`,
@@ -246,7 +246,7 @@ function readableFirst(clears: readonly string[], subject: 'this' | 'that'): str
 }
 
 function criteriaUnreadSentence(clears: readonly string[]): string {
-  return `This project releases without a person acting, and the sweep that cuts its releases is holding back every issue waiting at the gate: each still owes an acceptance criterion, and at least one could not be weighed because the repository could not be read. ${readableFirst(clears, 'this')} Otherwise, record a verdict for each criterion named below, or move the issue out of \`awaiting_release\` if it is not to ship.`;
+  return `This project releases without a person acting, and the sweep that cuts its releases is holding back every issue waiting at the gate: each still owes an acceptance criterion, and at least one could not be weighed because the repository could not be read. ${readableFirst(clears, 'this')} Otherwise, record a verdict for each criterion named below, or move the issue out of ${ISSUE_STATUS_LABELS.awaiting_release} if it is not to ship.`;
 }
 
 function heldIssuesSentence(remedy: string, held: HeldIssueRef[]): string {
@@ -256,17 +256,23 @@ function heldIssuesSentence(remedy: string, held: HeldIssueRef[]): string {
   return `${remedy} ${each}.`;
 }
 
-const NEAR_GATE_ACT =
-  'An issue moves there once its own record earns it: the verification naming where the ' +
-  'change now runs, at which commit and on what evidence, plus the release note where one ' +
-  "is owed. With those written, the issue's own status control makes the move.";
+/** A status as the screen names it; a stored value this build does not know is shown as stored. */
+function statusLabel(status: string): string {
+  return ISSUE_STATUS_LABELS[status as IssueStatus] ?? status;
+}
+
+const {
+  testing: TESTING,
+  tested: TESTED,
+  awaiting_release: AWAITING_RELEASE,
+} = ISSUE_STATUS_LABELS;
 
 function nearGateSentence(nearGate: number): string {
   if (nearGate === 0) {
-    return `Nothing is waiting at the release gate, and nothing stands one move short of it: no issue on this project is at \`testing\` or at \`tested\`. An issue reaches the gate at \`awaiting_release\`. ${NEAR_GATE_ACT}`;
+    return `Nothing is ready to release: no issue is at ${TESTING}, ${TESTED} or ${AWAITING_RELEASE}.`;
   }
-  const issues = `${nearGate} issue${nearGate === 1 ? '' : 's'}`;
-  return `Nothing is waiting at the release gate, so there is no release to cut. ${issues} on this project stand one move short of it, at \`testing\` or at \`tested\`: a release carries an issue only once its status is \`awaiting_release\`. ${NEAR_GATE_ACT}`;
+  const issues = nearGate === 1 ? '1 issue is' : `${nearGate} issues are`;
+  return `Nothing is ready to release: ${issues} at ${TESTING} or ${TESTED}, and none has reached ${AWAITING_RELEASE}.`;
 }
 
 /**
@@ -355,7 +361,7 @@ function carriedSentence(
   const short = (sha: unknown) => `\`${String(sha).slice(0, 12)}\``;
   if (code === 'RELEASE_CARRIES_UNDECIDED' && Array.isArray(details?.carried)) {
     const carried = details.carried as Array<{ displayId: string; status: string }>;
-    const each = carried.map((i) => `\`${i.displayId}\` at \`${i.status}\``).join(', ');
+    const each = carried.map((i) => `\`${i.displayId}\` at ${statusLabel(i.status)}`).join(', ');
     return `This release promotes \`${String(details.start)}\` at ${short(details.cut)} onto \`${String(details.live)}\`, and that range carries the landing of ${carried.length} issue(s) this batch does not name: ${each}. ${CARRIED_WAYS_OUT}`;
   }
   if (code === 'RELEASE_CARRIED_DECISION_REFUSED' && Array.isArray(details?.refused)) {
