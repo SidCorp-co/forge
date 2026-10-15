@@ -177,7 +177,7 @@ function ScheduleRunItem({
       <span className="fg-caption font-mono text-subtle">{fmtDuration(run.durationSeconds)}</span>
       {kind === "prompt" && run.failureReason && (
         <Tooltip label={run.failureReason}>
-          <span className="fg-caption text-danger underline decoration-dotted">why?</span>
+          <span className="fg-caption fg-danger underline decoration-dotted">why?</span>
         </Tooltip>
       )}
       {kind === "prompt" && slug && (
@@ -213,7 +213,7 @@ function ScheduleRunItem({
           {run.output}
         </pre>
       )}
-      {run.error && <p className="fg-caption break-words text-danger">{run.error}</p>}
+      {run.error && <p className="fg-caption break-words fg-danger">{run.error}</p>}
     </div>
   );
 
@@ -271,7 +271,7 @@ function ScheduleHistory({ row, slug }: { row: ScheduleRow; slug: string | undef
           </span>
         )}
         {runsQ.isError && (
-          <span className="fg-caption text-danger">
+          <span className="fg-caption fg-danger">
             Couldn&apos;t load run history — {formatApiError(runsQ.error)}
           </span>
         )}

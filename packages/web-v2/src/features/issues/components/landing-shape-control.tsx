@@ -54,7 +54,7 @@ export function LandingShapeControl({
         className="w-44"
       />
       {refusal && (
-        <p role="alert" className="max-w-64 text-left text-[12px] leading-[1.35] text-danger" data-testid="landing-shape-refusal">
+        <p role="alert" className="fg-caption fg-danger max-w-64 text-left" data-testid="landing-shape-refusal">
           {refusal}
         </p>
       )}
