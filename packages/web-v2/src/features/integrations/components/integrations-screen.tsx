@@ -188,7 +188,16 @@ export function IntegrationsScreen() {
             mascot={false}
           />
         )}
-        <AddConnection projects={projectsHere} scopeName={scopeName} />
+        {projectsQ.isError ? (
+          <p className="pb-10 text-center text-sm text-muted" data-testid="add-connection">
+            The projects in {scopeName} could not be read, so none is offered to add a connection in.{" "}
+            <button type="button" className={ADD_LINK} onClick={() => projectsQ.refetch()}>
+              Read them again
+            </button>
+          </p>
+        ) : projectsQ.data ? (
+          <AddConnection projects={projectsHere} scopeName={scopeName} />
+        ) : null}
       </>
     );
   }

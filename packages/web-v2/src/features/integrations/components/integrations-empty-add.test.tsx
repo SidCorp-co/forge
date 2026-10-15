@@ -17,6 +17,9 @@ type ProjectRow = { id: string; slug: string; name: string; orgId: string; archi
 
 let connections: ConnectionDirectoryItem[] = [];
 let projects: ProjectRow[] = [];
+/** How the projects read stands, where a case plants one that has not landed or failed. */
+let projectsRead: "done" | "pending" | "failed" = "done";
+const refetchProjects = vi.fn();
 
 vi.mock("../hooks", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../hooks")>()),
@@ -33,7 +36,11 @@ vi.mock("@/features/orgs/active-org", () => ({
 }));
 vi.mock("@/features/orgs/hooks", () => ({ useOrgs: () => ({ data: [TEAM, OTHER] }) }));
 vi.mock("@/features/projects/hooks", () => ({
-  useProjectsIncludingArchived: () => ({ data: projects }),
+  useProjectsIncludingArchived: () => ({
+    data: projectsRead === "done" ? projects : undefined,
+    isError: projectsRead === "failed",
+    refetch: refetchProjects,
+  }),
 }));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 
@@ -62,6 +69,8 @@ function mount() {
 beforeEach(() => {
   connections = [];
   projects = [];
+  projectsRead = "done";
+  refetchProjects.mockClear();
 });
 afterEach(cleanup);
 
@@ -122,5 +131,22 @@ describe("an empty Connections directory", () => {
     const empty = mount();
     expect(empty.getByText("No connections in Acme QA Org")).toBeInTheDocument();
     expect(empty.getByRole("link", { name: "Add a connection in Desk" })).toBeInTheDocument();
+  });
+
+  it("says nothing of projects while their read has not landed", () => {
+    projectsRead = "pending";
+    const empty = mount();
+    expect(empty.queryByTestId("add-connection")).toBeNull();
+    expect(empty.queryByText(/no project yet/)).toBeNull();
+  });
+
+  it("says a failed projects read failed, never that the space has no project, and reads again on request", () => {
+    projectsRead = "failed";
+    const empty = mount();
+    expect(empty.queryByText(/no project yet/)).toBeNull();
+    expect(empty.queryByRole("link", { name: "Create a project" })).toBeNull();
+    expect(empty.getByText(/The projects in Acme QA Org could not be read/)).toBeInTheDocument();
+    fireEvent.click(empty.getByRole("button", { name: "Read them again" }));
+    expect(refetchProjects).toHaveBeenCalledTimes(1);
   });
 });
