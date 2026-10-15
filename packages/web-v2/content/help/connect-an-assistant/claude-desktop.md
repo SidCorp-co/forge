@@ -268,26 +268,70 @@ installed. The steps below install it.
 
     **Check:** the file has `"forge": {` in it.
 
-43. Replace `<ENDPOINT>` — angle brackets included — with the address from your
-    note, keeping the quote marks around it.
+43. In your note, drag across the address, from `https` to `/mcp`, to highlight it.
 
-    **Check:** that line reads `"https://…/mcp",` with your address in it.
+    **Check:** the whole address is highlighted, from `https://` to `/mcp`.
 
-44. Replace `<YOUR_TOKEN_HERE>` with the code from step 23, keeping the word
-    `Bearer` and the space after it.
+44. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the address.
 
-    **Check:** that line reads `"AUTH_HEADER": "Bearer forge_pat_…"` with your token
+    **Check:** the address is still highlighted. A copy changes nothing on the
+    screen; the next paste shows it worked.
+
+45. In the file, drag across `<ENDPOINT>`, from `<` to `>`, to highlight it.
+
+    **Check:** `<ENDPOINT>` is highlighted with both angle brackets, and the quote
+    marks around it are not.
+
+46. Press **Cmd+V** on a Mac, or **Ctrl+V** on Windows, to paste the address over it.
+
+    **Check:** where `<ENDPOINT>` was, the file reads `"https://…/mcp"`, with your
+    address in the quote marks.
+
+47. In your note, drag across the code, from `forge_pat_` to its last character, to
+    highlight it.
+
+    **Check:** the whole code is highlighted, and nothing else in the note is.
+
+48. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the code.
+
+    **Check:** the code is still highlighted. A copy changes nothing on the screen;
+    the next paste shows it worked.
+
+49. In the file, drag across `<YOUR_TOKEN_HERE>`, from `<` to `>`, to highlight it.
+
+    **Check:** `<YOUR_TOKEN_HERE>` is highlighted with both angle brackets, and the
+    word `Bearer` and the space before it are not.
+
+50. Press **Cmd+V** on a Mac, or **Ctrl+V** on Windows, to paste the code over it.
+
+    **Check:** the file reads `"AUTH_HEADER": "Bearer forge_pat_…"`, with your code
     where the dots are.
 
-45. Replace `<PROJECT>` with the project's short name from your note.
+51. In your note, drag across the short name to highlight it.
 
-    **Check:** no `<` or `>` is left anywhere in the file.
+    **Check:** the whole short name is highlighted, and nothing else in the note is.
 
-46. Save the file — **Cmd+S** on a Mac, **Ctrl+S** on Windows.
+52. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the short name.
+
+    **Check:** the short name is still highlighted. A copy changes nothing on the
+    screen; the next paste shows it worked.
+
+53. In the file, drag across `<PROJECT>`, from `<` to `>`, to highlight it.
+
+    **Check:** `<PROJECT>` is highlighted with both angle brackets, and the quote
+    marks around it are not.
+
+54. Press **Cmd+V** on a Mac, or **Ctrl+V** on Windows, to paste the short name over
+    it.
+
+    **Check:** the file reads `"FORGE_PROJECT": "…"` with your short name in the
+    quote marks, and no `<` or `>` is left anywhere in the file.
+
+55. Save the file — **Cmd+S** on a Mac, **Ctrl+S** on Windows.
 
     **Check:** the window's title no longer marks the file as edited.
 
-47. Quit Claude Desktop completely — closing its window is not enough. On a Mac,
+56. Quit Claude Desktop completely — closing its window is not enough. On a Mac,
     choose **Claude** › **Quit Claude** in the menu bar. On Windows, choose **Quit**
     from the right-click menu of the Claude icon near the clock at the bottom right
     of the screen.
@@ -295,39 +339,39 @@ installed. The steps below install it.
     **Check:** the Claude icon is gone from the Dock (Mac) or from beside the clock
     (Windows).
 
-48. Open Claude Desktop again.
+57. Open Claude Desktop again.
 
     **Check:** the Claude window opens.
 
-49. Open Claude Desktop's settings again, the same way as in step 33.
+58. Open Claude Desktop's settings again, the same way as in step 33.
 
     **Check:** the Settings window opens.
 
-50. Choose **Developer** in the list on the left.
+59. Choose **Developer** in the list on the left.
 
     **Check:** **forge** is listed there and marked **running**.
 
-51. Close Settings.
+60. Close Settings.
 
     **Check:** only Claude's chat window is open.
 
-52. Start a new chat.
+61. Start a new chat.
 
     **Check:** the new chat is empty and waiting for your question.
 
-53. Type: *"What issues are open in Forge right now?"*
+62. Type: *"What issues are open in Forge right now?"*
 
     **Check:** your question shows where you type, and it has not been sent yet.
 
-54. Press Enter to send it.
+63. Press Enter to send it.
 
     **Check:** Claude asks your permission to use a tool from `forge`.
 
-55. Allow it.
+64. Allow it.
 
     **Check:** Claude answers with issues from your project.
 
-56. Delete the note. The token now lives in Claude Desktop's settings file, and you
+65. Delete the note. The token now lives in Claude Desktop's settings file, and you
     will not need the copy again.
 
     **Check:** the note is gone from your notes app.
@@ -522,5 +566,5 @@ Ask in your own words — [What you can ask](?path=connect-an-assistant/what-you
 has twenty examples. The connection lasts until you remove the `forge` block
 from the file or revoke the token on Forge's **API Tokens** tab.
 
-If step 50 does not show **forge** as running, see
+If step 59 does not show **forge** as running, see
 [When it does not work](?path=connect-an-assistant/when-it-does-not-work).

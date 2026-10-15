@@ -243,29 +243,37 @@ pieces are.
 
     **Check:** **forge** is listed, or your app asks you to restart it.
 
-44. If your app asks you to restart, restart it.
+44. If your app asked you to restart it, quit it completely.
+
+    **Check:** if you did, none of your app's windows is open.
+
+45. If you quit your app, open it again.
+
+    **Check:** if you did, your app's window opens.
+
+46. Open the place where your app lists connected services, as in step 23.
 
     **Check:** **forge** is listed as connected, and your app shows its tools or a
     count of them.
 
-45. Start a new chat.
+47. Start a new chat.
 
     **Check:** the new chat is empty and waiting for your question.
 
-46. Type: *"What issues are open in Forge right now?"*
+48. Type: *"What issues are open in Forge right now?"*
 
     **Check:** your question shows where you type, and it has not been sent yet.
 
-47. Send the question. Most apps send it when you press Enter.
+49. Send the question. Most apps send it when you press Enter.
 
     **Check:** your app asks permission to use a tool from `forge`, or goes straight
     to an answer.
 
-48. If your app asked permission, allow it.
+50. If your app asked permission, allow it.
 
     **Check:** the answer names issues from your project.
 
-49. Delete the note. The token now lives in your app's settings, and you will not
+51. Delete the note. The token now lives in your app's settings, and you will not
     need the copy again.
 
     **Check:** the note is gone from your notes app.
@@ -308,8 +316,8 @@ If you see a **Continue with** button:
 ## If your app only starts programs
 
 Some apps can only connect by starting a program on your computer. For those, use
-the same small helper Claude Desktop uses. It needs **Node.js**, and your app
-gives it these settings:
+the same small helper Claude Desktop uses. It needs **Node.js**, which the first
+steps below install, and your app gives it these settings:
 
 | Setting | Value |
 |---|---|
@@ -319,139 +327,185 @@ gives it these settings:
 | Environment variable `FORGE_PROJECT` | the project's short name |
 
 The helper fills in `${AUTH_HEADER}` and `${FORGE_PROJECT}` from the two
-environment variables. The steps below give your app those settings one at a time.
+environment variables. After Node.js, the steps below give your app those settings
+one at a time.
 
-1. Install **Node.js** by following steps 1 to 10 of [Connect Claude
-   Desktop](?path=connect-an-assistant/claude-desktop).
+1. In your web browser, go to `https://nodejs.org`.
 
-   **Check:** the Node.js installer's last screen says the installation is complete.
+   **Check:** the page offers downloads, one of them marked **LTS**.
 
-2. In your app, choose the kind of connection that starts a program — often
-   **Command**, **stdio** or **Local**.
+2. Choose the download marked **LTS**.
 
-   **Check:** the app asks for a command and for its arguments.
+   **Check:** the installer file is in your **Downloads** folder.
 
-3. In the command box, type `npx`.
+3. Open the installer.
 
-   **Check:** the command box shows `npx`.
+   **Check:** the installer's first screen opens.
 
-4. Type `-y` as the first argument.
+4. On each installer screen, choose the button that moves forward — **Next**,
+   **Continue** or **Agree** — and leave every other choice as it is. Stop when the
+   forward button reads **Install**, or when a screen will not let you move forward
+   until you tick a box that accepts its license.
 
-   **Check:** the first argument reads exactly `-y`.
+   **Check:** the forward button reads **Install**; or, on Windows, the screen shows
+   the license with a box reading **I accept the terms in the License Agreement**,
+   and **Next** is greyed out.
 
-5. Start the next argument — with Enter where the app takes one argument per line,
-   or with the app's button that adds one.
+5. If the screen shows a box reading
+   **I accept the terms in the License Agreement**, tick it.
 
-   **Check:** an empty place for the second argument is ready.
+   **Check:** if there was one, it is ticked and **Next** is no longer greyed out.
 
-6. Type `mcp-remote@0.14.3` as the second argument.
+6. If the forward button does not read **Install** yet, go on choosing it on each
+   screen until it does.
 
-   **Check:** the second argument reads exactly `mcp-remote@0.14.3`.
+   **Check:** the forward button reads **Install**.
 
-7. Start the next argument — with Enter where the app takes one argument per line,
-   or with the app's button that adds one.
+7. Choose **Install**.
 
-   **Check:** an empty place for the third argument is ready.
+   **Check:** the installer shows a progress bar, or your computer asks for
+   permission to install.
 
-8. In your note, drag across the address to highlight it.
+8. If your Mac asks for your password to allow the install, type the password you
+   sign in to your computer with.
 
-   **Check:** the whole address is highlighted, from `https://` to `/mcp`.
+   **Check:** if it asked, the box shows dots, one for each character you typed.
 
-9. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the address.
+9. If you typed your password, choose **Install Software**.
 
-   **Check:** the address is still highlighted. A copy changes nothing on the
-   screen; the next paste shows it worked.
+   **Check:** if you did, the password box closes and the installer shows its
+   progress bar.
 
-10. Paste the address as the third argument.
+10. If Windows asks whether to let the installer make changes, choose **Yes**.
+
+    **Check:** the installer's last screen says the installation is complete.
+
+11. In your app, choose the kind of connection that starts a program — often
+    **Command**, **stdio** or **Local**.
+
+    **Check:** the app asks for a command and for its arguments.
+
+12. In the command box, type `npx`.
+
+    **Check:** the command box shows `npx`.
+
+13. Type `-y` as the first argument.
+
+    **Check:** the first argument reads exactly `-y`.
+
+14. Start the next argument — with Enter where the app takes one argument per line,
+    or with the app's button that adds one.
+
+    **Check:** an empty place for the second argument is ready.
+
+15. Type `mcp-remote@0.14.3` as the second argument.
+
+    **Check:** the second argument reads exactly `mcp-remote@0.14.3`.
+
+16. Start the next argument — with Enter where the app takes one argument per line,
+    or with the app's button that adds one.
+
+    **Check:** an empty place for the third argument is ready.
+
+17. In your note, drag across the address to highlight it.
+
+    **Check:** the whole address is highlighted, from `https://` to `/mcp`.
+
+18. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the address.
+
+    **Check:** the address is still highlighted. A copy changes nothing on the
+    screen; the next paste shows it worked.
+
+19. Paste the address as the third argument.
 
     **Check:** the third argument is the address, ending in `/mcp`.
 
-11. Start the next argument — with Enter where the app takes one argument per line,
+20. Start the next argument — with Enter where the app takes one argument per line,
     or with the app's button that adds one.
 
     **Check:** an empty place for the fourth argument is ready.
 
-12. Type `--header` as the fourth argument.
+21. Type `--header` as the fourth argument.
 
     **Check:** the fourth argument reads exactly `--header`.
 
-13. Start the next argument — with Enter where the app takes one argument per line,
+22. Start the next argument — with Enter where the app takes one argument per line,
     or with the app's button that adds one.
 
     **Check:** an empty place for the fifth argument is ready.
 
-14. Type `Authorization:${AUTH_HEADER}` as the fifth argument.
+23. Type `Authorization:${AUTH_HEADER}` as the fifth argument.
 
     **Check:** the fifth argument reads exactly `Authorization:${AUTH_HEADER}`, with
     no space after the colon.
 
-15. Start the next argument — with Enter where the app takes one argument per line,
+24. Start the next argument — with Enter where the app takes one argument per line,
     or with the app's button that adds one.
 
     **Check:** an empty place for the sixth argument is ready.
 
-16. Type `--header` as the sixth argument.
+25. Type `--header` as the sixth argument.
 
     **Check:** the sixth argument reads exactly `--header`.
 
-17. Start the next argument — with Enter where the app takes one argument per line,
+26. Start the next argument — with Enter where the app takes one argument per line,
     or with the app's button that adds one.
 
     **Check:** an empty place for the seventh argument is ready.
 
-18. Type `X-Forge-Project-Slug:${FORGE_PROJECT}` as the seventh argument.
+27. Type `X-Forge-Project-Slug:${FORGE_PROJECT}` as the seventh argument.
 
     **Check:** seven arguments are listed, in this order: `-y`, `mcp-remote@0.14.3`,
     your address, `--header`, `Authorization:${AUTH_HEADER}`, `--header`,
     `X-Forge-Project-Slug:${FORGE_PROJECT}`.
 
-19. Add an environment variable. Apps label it **Env**, **Environment** or a **+**
+28. Add an environment variable. Apps label it **Env**, **Environment** or a **+**
     beside one of those.
 
     **Check:** the app shows an empty box for the variable's name and one for its
     value.
 
-20. In the variable's name box, type `AUTH_HEADER`.
+29. In the variable's name box, type `AUTH_HEADER`.
 
     **Check:** the name box shows `AUTH_HEADER`.
 
-21. In the variable's value box, type `Bearer` followed by one space.
+30. In the variable's value box, type `Bearer` followed by one space.
 
     **Check:** the value box shows `Bearer`, with the cursor one space after it.
 
-22. In your note, drag across the code to highlight it.
+31. In your note, drag across the code to highlight it.
 
     **Check:** the whole code is highlighted, from `forge_pat_` to its last
     character.
 
-23. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the code.
+32. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the code.
 
     **Check:** the code is still highlighted. A copy changes nothing on the screen;
     the next paste shows it worked.
 
-24. Paste the code into the value box, after the space.
+33. Paste the code into the value box, after the space.
 
     **Check:** the value reads `Bearer forge_pat_…`, with your token where the dots
     are.
 
-25. Add a second environment variable.
+34. Add a second environment variable.
 
     **Check:** a second pair of empty boxes appears, for a name and a value.
 
-26. In the new variable's name box, type `FORGE_PROJECT`.
+35. In the new variable's name box, type `FORGE_PROJECT`.
 
     **Check:** the name box shows `FORGE_PROJECT`.
 
-27. In your note, drag across the short name to highlight it.
+36. In your note, drag across the short name to highlight it.
 
     **Check:** the whole short name is highlighted.
 
-28. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the short name.
+37. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the short name.
 
     **Check:** the short name is still highlighted. A copy changes nothing on the
     screen; the next paste shows it worked.
 
-29. Paste the short name into the new variable's value box.
+38. Paste the short name into the new variable's value box.
 
     **Check:** two variables are listed, `AUTH_HEADER` and `FORGE_PROJECT`, each
     with its value.
@@ -472,10 +526,26 @@ Now go on to step 43.
 
    **Check:** the box shows the block.
 
-4. In the block, replace `<YOUR_TOKEN_HERE>` with your token, keeping the word
-   `Bearer` and the space after it.
+4. In your note, drag across the code, from `forge_pat_` to its last character, to
+   highlight it.
 
-   **Check:** no `<` or `>` is left in the block.
+   **Check:** the whole code is highlighted, and nothing else in the note is.
+
+5. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the code.
+
+   **Check:** the code is still highlighted. A copy changes nothing on the screen;
+   the next paste shows it worked.
+
+6. In your app's box, drag across `<YOUR_TOKEN_HERE>`, from `<` to `>`, to
+   highlight it.
+
+   **Check:** `<YOUR_TOKEN_HERE>` is highlighted with both angle brackets, and the
+   word `Bearer` and the space before it are not.
+
+7. Press **Cmd+V** on a Mac, or **Ctrl+V** on Windows, to paste the code over it.
+
+   **Check:** the block reads `"Authorization": "Bearer forge_pat_…"`, with your
+   code where the dots are, and no `<` or `>` is left in the block.
 
 ## If something goes wrong
 

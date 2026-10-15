@@ -115,87 +115,101 @@ settings Forge writes for you, and paste them into Cursor.
     **Check:** your note holds the code and, below it, a block that starts with `{`
     and contains `"mcpServers"`.
 
-20. In the block, replace `<YOUR_TOKEN_HERE>` — angle brackets included — with the
-    code from step 13, keeping the word `Bearer` and the space after it.
+20. In your note, drag across the code, from `forge_pat_` to its last character, to
+    highlight it.
+
+    **Check:** the whole code is highlighted, and nothing in the block below it is.
+
+21. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the code.
+
+    **Check:** the code is still highlighted. A copy changes nothing on the screen;
+    the next paste shows it worked.
+
+22. In the block, drag across `<YOUR_TOKEN_HERE>`, from `<` to `>`, to highlight it.
+
+    **Check:** `<YOUR_TOKEN_HERE>` is highlighted with both angle brackets, and the
+    word `Bearer` and the space before it are not.
+
+23. Press **Cmd+V** on a Mac, or **Ctrl+V** on Windows, to paste the code over it.
 
     **Check:** the line reads `"Authorization": "Bearer forge_pat_…"` with your code
     where the dots are, and no `<` or `>` is left in the block.
 
-21. Open Cursor's settings. On a Mac, press **Cmd+Shift+J**. On Windows, press
+24. Open Cursor's settings. On a Mac, press **Cmd+Shift+J**. On Windows, press
     **Ctrl+Shift+J**.
 
     **Check:** a page titled **Cursor Settings** opens.
 
-22. Choose the section named **MCP** in the list on the left — in some versions it
+25. Choose the section named **MCP** in the list on the left — in some versions it
     is called **Tools & MCP**.
 
     **Check:** the page lists connected services, or says there are none yet.
 
-23. Choose the button that adds a new server — **Add Custom MCP** or
+26. Choose the button that adds a new server — **Add Custom MCP** or
     **New MCP Server**, depending on your version.
 
     **Check:** Cursor opens a file called `mcp.json` in an editor tab. It is
     `~/.cursor/mcp.json`: on a Mac, the `.cursor` folder inside your home folder; on
     Windows, `C:\Users\<your name>\.cursor\mcp.json`.
 
-24. In your note, drag from the block's first `{` to its last `}` to highlight the
+27. In your note, drag from the block's first `{` to its last `}` to highlight the
     whole block.
 
     **Check:** the whole block is highlighted, from its first `{` to its last `}`.
 
-25. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the block.
+28. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the block.
 
     **Check:** the block is still highlighted. A copy changes nothing on the screen;
     the next paste shows it worked.
 
-26. If the file in Cursor holds only `{}`, or `"mcpServers": {}` with nothing
+29. If the file in Cursor holds only `{}`, or `"mcpServers": {}` with nothing
     between those last braces, select everything in it — **Cmd+A** on a Mac,
     **Ctrl+A** on Windows.
 
     **Check:** if you did, all the text in the editor tab is highlighted.
 
-27. If the file was empty or you selected everything in it, paste the block you
-    copied in step 25 — **Cmd+V** on a Mac, **Ctrl+V** on Windows.
+30. If the file was empty or you selected everything in it, paste the block you
+    copied in step 28 — **Cmd+V** on a Mac, **Ctrl+V** on Windows.
 
     **Check:** if you did, the file holds `"forge"` inside `"mcpServers"`, with your
     token in it.
 
-28. If the file already listed other servers under `"mcpServers"` when Cursor opened
+31. If the file already listed other servers under `"mcpServers"` when Cursor opened
     it, follow **If the file already lists other servers** at the end of this page.
-    You go on to step 29 when you have finished it.
+    You go on to step 32 when you have finished it.
 
     **Check:** the file holds `"forge"` inside `"mcpServers"`, with your token in
     it.
 
-29. Save the file — **Cmd+S** on a Mac, **Ctrl+S** on Windows.
+32. Save the file — **Cmd+S** on a Mac, **Ctrl+S** on Windows.
 
     **Check:** the editor tab no longer marks the file as changed.
 
-30. Go back to the **Cursor Settings** tab.
+33. Go back to the **Cursor Settings** tab.
 
     **Check:** **forge** is listed.
 
-31. If a switch beside **forge** is off, turn it on.
+34. If a switch beside **forge** is off, turn it on.
 
     **Check:** **forge** shows a green dot and a count of its tools.
 
-32. Open Cursor's chat — **Cmd+L** on a Mac, **Ctrl+L** on Windows.
+35. Open Cursor's chat — **Cmd+L** on a Mac, **Ctrl+L** on Windows.
 
     **Check:** a chat panel opens beside the editor.
 
-33. Type: *"What issues are open in Forge right now?"*
+36. Type: *"What issues are open in Forge right now?"*
 
     **Check:** your question shows where you type, and it has not been sent yet.
 
-34. Press Enter to send it.
+37. Press Enter to send it.
 
     **Check:** Cursor asks your permission to run a tool from `forge`.
 
-35. Allow it.
+38. Allow it.
 
     **Check:** Cursor answers with issues from your project.
 
-36. Delete the note. The token now lives in Cursor's settings file, and you will not
+39. Delete the note. The token now lives in Cursor's settings file, and you will not
     need the copy again.
 
     **Check:** the note is gone from your notes app.
@@ -277,5 +291,5 @@ connection works in every folder you open in Cursor. It lasts until you remove
 the `forge` block from `mcp.json` or revoke the token on Forge's **API Tokens**
 tab.
 
-If step 30 shows no **forge**, or step 31 shows a red dot, see
+If step 33 shows no **forge**, or step 34 shows a red dot, see
 [When it does not work](?path=connect-an-assistant/when-it-does-not-work).

@@ -119,9 +119,19 @@ const JOINS_TWO_ACTS =
   /,\s*then\b|\bthen\s+(?:choose|type|paste|copy|open|press|select|tick|save|go|sign|click|replace|delete|follow)\b|\band\s+(?:choose|paste|copy|tick|open|save|select|click|replace|restart|download|install|delete|sign|follow|quit|pick|add|ask|run|close|start|allow|turn|give|press)\b/i;
 
 /**
+ * "Replace X with Y" where Y sits somewhere else is four acts by these pages' own copy rule: highlight Y,
+ * copy it, highlight X, paste. A step asking it in one leaves the most exacting selection with no Check.
+ */
+const REPLACES_FROM_ELSEWHERE = /\breplace\b[^.]*\bwith\b/i;
+const PLACEHOLDER = /`<[A-Z_]+>`/g;
+/** "Steps 1 to 10" inside one step is ten acts the reader does behind that step's single Check. */
+const RUNS_A_RANGE = /\bsteps \d+ (?:to|through|and) \d+\b/i;
+
+/**
  * What makes one numbered step ask for more than one thing. Bounded on purpose: it holds the wordings a
- * bundled step took (a second sentence that starts an act, ", then", "and paste", "and press"). A sentence that
- * begins "On a Mac" or "On Windows" starts no act of its own: the reader does only one of the pair.
+ * bundled step took (a second sentence that starts an act, ", then", "and paste", "and press", a replace
+ * from elsewhere, two placeholders, a range of steps). A sentence that begins "On a Mac" or "On Windows"
+ * starts no act of its own: the reader does only one of the pair.
  */
 function bundledActs(step: string): string[] {
   const reasons: string[] = [];
@@ -131,6 +141,13 @@ function bundledActs(step: string): string[] {
   if (acts.length > 1) reasons.push(`${acts.length} sentences start an act: ${sentences.join(" | ")}`);
   const joined = JOINS_TWO_ACTS.exec(plainWords(text));
   if (joined) reasons.push(`one sentence joins two acts at "${joined[0]}"`);
+  if (REPLACES_FROM_ELSEWHERE.test(plainWords(text))) {
+    reasons.push("a replace from elsewhere is four acts: highlight the value, copy it, highlight the placeholder, paste");
+  }
+  const placeholders = text.match(PLACEHOLDER) ?? [];
+  if (placeholders.length > 1) reasons.push(`${placeholders.length} placeholders in one step: ${placeholders.join(", ")}`);
+  const range = RUNS_A_RANGE.exec(plainWords(text));
+  if (range) reasons.push(`one step runs "${range[0]}"`);
   return reasons;
 }
 
@@ -170,18 +187,16 @@ type SetupPage = (typeof SETUP_PAGES)[number];
 /**
  * Every way these pages name a step, each with what the step it names has to hold. `says` captures
  * the number, and a second number where it names a range, whose last step `end` is read against.
- * `page` is the page the number points into, where that is not the page saying it.
+ * Each points into the page saying it: a step of another page is not a step this reader is on.
  */
 interface ReferenceForm {
   says: RegExp;
   holds: RegExp;
   end?: RegExp;
-  page?: SetupPage;
 }
 
 const REFERENCE_FORMS: ReferenceForm[] = [
   { says: /the project you chose in step (\d+)/, holds: /Bind to a project/ },
-  { says: /the code (?:in your note )?from step (\d+)/, holds: /^\d+\. Paste the code into your note/ },
   { says: /the Endpoint from step (\d+)/, holds: /\*\*Endpoint\*\*/ },
   { says: /\(steps (\d+) to (\d+) below says? how\)/, holds: /open your computer's search/, end: /to open the terminal/ },
   { says: /After step (\d+) you see/, holds: /^\d+\. Choose \*\*Create token\*\*\./ },
@@ -191,7 +206,7 @@ const REFERENCE_FORMS: ReferenceForm[] = [
   { says: /You come back to step (\d+) when the window shows the file/, holds: /^\d+\. Open the file/ },
   { says: /claude_desktop_config\.json`\. Now go back to step (\d+)/, holds: /^\d+\. Open the file/ },
   { says: /when you opened the file in step (\d+)/, holds: /^\d+\. Open the file/ },
-  { says: /You go on to step (\d+) when you have finished it/, holds: /^\d+\. (?:Replace `<ENDPOINT>`|Save)/ },
+  { says: /You go on to step (\d+) when you have finished it/, holds: /^\d+\. (?:In your note, drag across the address|Save)/ },
   { says: /Now go on to step (\d+)\./, holds: /^\d+\. Save\./ },
   { says: /settings again, the same way as in step (\d+)/, holds: /^\d+\. Open Claude Desktop's settings\./ },
   { says: /Open Settings again, as in step (\d+)/, holds: /^\d+\. Open Claude Desktop's settings\./ },
@@ -202,12 +217,7 @@ const REFERENCE_FORMS: ReferenceForm[] = [
   { says: /If step (\d+) does not show forge as running/, holds: /marked \*\*running\*\*/ },
   { says: /If step (\d+) shows no forge/, holds: /\*\*Check:\*\* \*\*forge\*\* is listed\./ },
   { says: /or step (\d+) shows a red dot/, holds: /green dot/ },
-  {
-    says: /steps (\d+) to (\d+) of \[Connect Claude Desktop\]/,
-    page: "claude-desktop",
-    holds: /nodejs\.org/,
-    end: /installation is complete/,
-  },
+  { says: /lists connected services, as in step (\d+)/, holds: /^\d+\. In your app, open the place where it lists connected services/ },
 ];
 
 /**
@@ -220,7 +230,7 @@ function unresolvedReferences(page: SetupPage): { wrong: string[]; unread: strin
   const read = new Set<number>();
   const wrong: string[] = [];
   for (const form of REFERENCE_FORMS) {
-    const steps = mainSteps(body(form.page ?? page));
+    const steps = mainSteps(body(page));
     for (const m of text.matchAll(new RegExp(form.says.source, "g"))) {
       const numbers = m.slice(1).filter((n) => n !== undefined).map(Number);
       numbers.forEach((n, i) => {
@@ -471,7 +481,13 @@ describe("the one-action rule, each against the step it would let through", () =
     ["Press Enter to open the terminal.", false],
     ["Under **Scopes**, tick **write**; **read** is already ticked for you. Read lets the assistant look things up.", false],
     ["Open Claude Desktop's settings. On a Mac, choose **Claude** › **Settings…**. On Windows, choose **☰** › **File** › **Settings…**.", false],
-    ["Replace `<YOUR_TOKEN_HERE>` with the code from step 10, keeping the word `Bearer`.", false],
+    ["Replace `<YOUR_TOKEN_HERE>` with the code from step 10, keeping the word `Bearer`.", true],
+    ["In the block, replace `<YOUR_TOKEN_HERE>` with your token, keeping the word `Bearer`.", true],
+    ["Fill in `<ENDPOINT>` and `<PROJECT>` from your note.", true],
+    ["Install **Node.js** by following steps 1 to 10 of [Connect Claude Desktop](?path=x).", true],
+    ["In your note, drag across the code, from `forge_pat_` to its last character, to highlight it.", false],
+    ["In the line, drag across `<YOUR_TOKEN_HERE>`, from `<` to `>`, to highlight it.", false],
+    ["Press **Cmd+V** on a Mac, or **Ctrl+V** on Windows, to paste the code over it.", false],
     ["If the window is empty, select everything in it.", false],
   ])("%s", (instruction, bundles) => {
     const step = `1. ${instruction}\n\n   **Check:** something shows.`;
