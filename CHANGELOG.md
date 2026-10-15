@@ -6487,6 +6487,7 @@
 
 ### Changed
 
+- **Work evidence is read off the issue itself.** A step handoff's commit no longer lets an agent move an issue to `developed`, and a merge mark naming no commit records none; record the branch or mark the commit. (ISS-1133)
 - **The Pipeline page shows a project's live sessions and what is held.** Each session names its issue, what it is doing and what it waits on; each held issue says who holds it, why and since when. (ISS-1228)
 - **Project settings has eight tabs; Shape & release says what kind of project it is.** Pick one of four shapes, see whether a release can start, edit repository and environments together. A change that strands waiting issues is refused. (ISS-1171)
 

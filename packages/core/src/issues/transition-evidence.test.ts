@@ -68,9 +68,7 @@ describe('checkTransitionEvidence — no_work_evidence rule', () => {
   });
 
   it('blocks a device transition to developed with no recorded evidence', async () => {
-    findMissingWorkEvidenceMock.mockResolvedValueOnce(
-      'no branch, commit or code handoff is recorded',
-    );
+    findMissingWorkEvidenceMock.mockResolvedValueOnce('no branch or commit is recorded');
     const violation = await checkTransitionEvidence({
       issue: ISSUE,
       toStatus: 'developed',
@@ -80,7 +78,7 @@ describe('checkTransitionEvidence — no_work_evidence rule', () => {
     });
     expect(violation).toEqual({
       code: 'NO_WORK_EVIDENCE',
-      detail: 'no branch, commit or code handoff is recorded',
+      detail: 'no branch or commit is recorded',
       details: { issueId: 'iss-1', toStatus: 'developed' },
     });
   });

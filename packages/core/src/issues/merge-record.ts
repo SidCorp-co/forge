@@ -82,8 +82,6 @@ export function describeMergeMark(args: {
   readFrom?: { repository: string; branch: string } | null;
   /** The repository this call found the claimed commit in; it says nothing of whose landing it is. */
   claimHeldBy?: string | null;
-  /** The handoff's commit, which this call kept off the mark because the repository did not resolve it. */
-  leftOut?: { commit: string; why: string } | null;
   /** The commit the mark holds as a claim because the project gives Forge no way to read its
    *  repository (ISS-1409), and the cause with the setting that clears it. */
   unverified?: {
@@ -100,9 +98,6 @@ export function describeMergeMark(args: {
   if (args.kind === 'landed') {
     return `this mark names where the work landed outside git: \`merged_landing\` holds ${args.landing ?? 'the landing it was given'}. It is the word of whoever marked it, not a merge Forge observed`;
   }
-  const left = args.leftOut
-    ? `. The commit ${args.leftOut.commit} this issue's implementation handoff recorded is not recorded on this mark, because ${args.leftOut.why}`
-    : '';
   if (args.kind === 'observed') {
     // Against the COLUMN, not the row this call selected: docs/modules/issues/merge-mark.md.
     const differs =
@@ -114,7 +109,7 @@ export function describeMergeMark(args: {
     const source = args.readFrom
       ? `read from ${args.readFrom.repository} itself, which resolves it, gives it to this issue by its subject and holds it on ${args.readFrom.branch}`
       : "read by Forge itself, from its record of the pull request or from the project's repository";
-    return `this mark is a merge Forge observed: \`merged_commit_sha\` holds ${args.commitSha ?? 'the commit it landed at'}, ${source}, rather than from anybody's word for it${overruled}${left}`;
+    return `this mark is a merge Forge observed: \`merged_commit_sha\` holds ${args.commitSha ?? 'the commit it landed at'}, ${source}, rather than from anybody's word for it${overruled}`;
   }
   if (args.unverified) {
     const notKept = args.unverified.notKept
@@ -133,7 +128,7 @@ export function describeMergeMark(args: {
       `and is NOT verified, ${because}; it did not ` +
       'check that the commit exists, declares this issue or is on the base branch, and ' +
       `\`merged_commit_sha\` stays empty. ${toVerify}, naming the commit or none, and Forge checks ` +
-      `the claim and upgrades this mark to observed, or refuses it by name${notKept}${left}`
+      `the claim and upgrades this mark to observed, or refuses it by name${notKept}`
     );
   }
   const claim = args.claimedCommit
@@ -143,7 +138,7 @@ export function describeMergeMark(args: {
     args.claimedCommit && args.claimHeldBy
       ? `. ${args.claimHeldBy} holds commit ${args.claimedCommit}: Forge read that much there, and not whether it is this issue's landing`
       : '';
-  return `this mark is a CLAIM Forge did not observe, not a merge it witnessed: ${claim}, because that column holds only a merge Forge has its own record of. Forge holds no merged pull request for this issue${held}${left}`;
+  return `this mark is a CLAIM Forge did not observe, not a merge it witnessed: ${claim}, because that column holds only a merge Forge has its own record of. Forge holds no merged pull request for this issue${held}`;
 }
 
 async function readBack(

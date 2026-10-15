@@ -59,7 +59,7 @@ refusal by name and writes nothing: `COMMIT_NOT_IN_REPOSITORY`, `COMMIT_NOT_THIS
 `COMMIT_NOT_LANDED`. Where Forge cannot tell (the project declares no way to read its repository,
 the reader it has fails, or no base branch is named) the agent's commit is kept as a claim instead
 (below, ISS-1409), and `COMMIT_UNVERIFIED` is what a person's mark, or an agent's on an issue that
-already holds a branch or handoff, meets there. On the git route the cause is one of five. The first is that the name of the
+already holds a branch, meets there. On the git route the cause is one of five. The first is that the name of the
 host the URL names did not resolve, which is found before any connection is made
 (`packages/core/src/git/bounded-fetch.ts:unresolvedHostRefusal`). The other four are read from
 what the host said (`packages/core/src/git/bounded-fetch.ts:hostRefusal`) and quoted in its words
@@ -118,7 +118,7 @@ whether it is `noReader`); a repository that was read and says no never carries 
 - **Only "cannot verify" is softened.** A repository that was READ and says no (the commit absent,
   another issue's, not on the base or live branch) is refused as before, by name, and nothing is
   written. A person's mark naming a commit, and an agent's naming one on an issue that already
-  holds a branch or handoff, still go through `resolveMarkCommit` and are refused
+  holds a branch, still go through `resolveMarkCommit` and are refused
   `COMMIT_UNVERIFIED` where nothing can read.
 - **It is verified later by a repeat mark.** With a claim standing, `agentEvidence` reads the
   repository for the commit the repeat names, or the claim, before it takes the claim as evidence.
@@ -157,7 +157,7 @@ else behind it, because the landing IS the trace such work leaves. The refusal o
 the landing route and never `data.commit`. Its price is below.
 
 The `work_evidence` entry criterion runs the same check and holds a person as well, so its refusal
-is the `criterion` door's (`EvidenceDoor`): it names the branch and handoff routes, says a person's mark
+is the `criterion` door's (`EvidenceDoor`): it names the branch route, says a person's mark
 naming a commit is checked only for the repository holding it, not read as this issue's landing, so
 it does not clear it, and names `statusEntryCriteria` as the
 declaration to change where the project's work leaves none of these.
@@ -179,7 +179,7 @@ like any other repeat.
 ## Every `git` mark's commit is one the repository holds
 
 A claim is still checked (ISS-1350). On a `git` project every commit a mark records — a person's,
-an agent's on an issue that has a branch or handoff, one beside a merged pull request — is first
+an agent's on an issue that has a branch, one beside a merged pull request — is first
 resolved by the project's repository (`packages/core/src/issues/commit-landing.ts:resolveMarkCommit`, the same commit
 read `readCommitLanding` takes). The repository holding no such commit refuses the mark
 `COMMIT_NOT_IN_REPOSITORY`; a repository that cannot be read refuses it `COMMIT_UNVERIFIED`, naming
@@ -189,10 +189,9 @@ the repository holds it, not that it is this issue's landing, so `merged_commit_
 from it and the answer says which of the two Forge read. The one commit not read is the merged pull
 request's own merge sha, which Forge already holds.
 
-Where the caller names no commit, the mark falls back to the commit the issue's implementation
-handoff recorded. That commit is resolved the same way, and where the repository does not hold it
-or cannot be read it is left off the mark — the caller never sent it, so it is not refused — and the
-answer and the audit comment name it and why.
+Where the caller names no commit, the mark records none. No step handoff is read for one: the
+work-evidence gate reads the issue's own row and nothing else (`packages/core/src/pipeline/work-evidence.ts:collectWorkEvidence`),
+so a commit a handoff recorded is neither evidence nor a mark's commit.
 
 What this replaced: sid-desk ISS-578's mark carried a real commit's first eight characters and a
 fabricated tail, and nothing read it before it was recorded. That mark, like every mark that
