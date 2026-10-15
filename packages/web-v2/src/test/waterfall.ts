@@ -11,9 +11,13 @@ export interface Sent {
 
 /**
  * Stands in for core with a fixed round trip, recording when each request left and returned, so a
- * test reads a page's waterfall the way devtools draws it: which reads waited on which.
+ * test reads a page's waterfall the way devtools draws it: which reads waited on which. A round trip
+ * given per path fixes which answer lands first, where a loaded machine would otherwise choose.
  */
-export function slowCore(reply: (method: string, path: string) => unknown, roundTripMs = 40) {
+export function slowCore(
+  reply: (method: string, path: string) => unknown,
+  roundTrip: number | ((path: string) => number) = 40,
+) {
   const sent: Sent[] = [];
   const t0 = performance.now();
   vi.stubGlobal(
@@ -24,7 +28,7 @@ export function slowCore(reply: (method: string, path: string) => unknown, round
       const path = `${url.pathname.replace(/^\/api/, "")}${url.search}`;
       const row: Sent = { method, path, start: performance.now() - t0, end: null, status: null };
       sent.push(row);
-      await new Promise((r) => setTimeout(r, roundTripMs));
+      await new Promise((r) => setTimeout(r, typeof roundTrip === "number" ? roundTrip : roundTrip(path)));
       const body = reply(method, path);
       row.end = performance.now() - t0;
       row.status = body === undefined ? 404 : 200;

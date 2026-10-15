@@ -2,6 +2,7 @@
 // takes both in place of the uuids, so a page's reads leave at once instead of waiting a round trip
 // for the projects list (or the issue) to say which uuid to ask about, and switching to the uuid
 // once it is known sends none of them twice. Drawn the way devtools draws a page load.
+// @direct-test-of packages/web-v2/src/test/waterfall.ts
 
 import { act, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -27,7 +28,7 @@ function reply(method: string, path: string): unknown {
   if (method !== "GET") return {};
   if (path === "/projects") return [project];
   if (/^\/issues\/(ISS-7|[0-9a-f-]{36})\?/.test(path)) return issue;
-  if (path.endsWith("/comments") || path.includes("/comments?")) return [];
+  if (path.endsWith("/comments") || path.includes("/comments?")) return { items: [], total: 0, nextCursor: null };
   if (path.includes("/activity")) return { items: [], nextCursor: null };
   if (path.includes("/attachments")) return [];
   if (path.includes("/dependencies")) return { incoming: [], outgoing: [] };
@@ -53,8 +54,13 @@ function reply(method: string, path: string): unknown {
  *  fake core does not serve fails and is fairly read again; one it answered must never be sent twice. */
 const scoped = (s: Sent) => s.method === "GET" && /^\/(projects\/[^/?]+\/|issues\/|questions\?)/.test(s.path);
 
-async function load(route: { options: { component?: unknown } }, pathname: string, pattern: string) {
-  const sent = slowCore(reply);
+async function load(
+  route: { options: { component?: unknown } },
+  pathname: string,
+  pattern: string,
+  roundTrip?: (path: string) => number,
+) {
+  const sent = slowCore(reply, roundTrip);
   await renderRoute({ at: pathname, pattern, page: componentOf(route, pattern), layout: WorkspaceLayout }, createQueryClient());
   await act(async () => {
     await new Promise((r) => setTimeout(r, 600));
@@ -99,8 +105,14 @@ describe("a project page's first reads", () => {
     expect(waterfall.sentTwice).toEqual([]);
   });
 
-  it("leave with the page on an issue, the issue's own reads included, and none goes twice", async () => {
-    const { reads, waterfall } = await load(IssueRoute, "/projects/forge/issues/ISS-7", "/projects/$slug/issues/$id");
+  // Which switch comes first is the machine's to choose: on a loaded CI runner the projects list
+  // answered before the issue, so the project's switch handed the issue's reads over first. A read the
+  // fake core answered in a shape the client refuses failed, was rightly not handed over, and went twice.
+  it.each([
+    ["the issue answers first", undefined],
+    ["the projects list answers first", (path: string) => (/^\/issues\/ISS-7(\?|\/comments)/.test(path) ? 140 : 40)],
+  ] as const)("leave with the page on an issue (%s), the issue's own reads included, and none goes twice", async (_order, roundTrip) => {
+    const { reads, waterfall } = await load(IssueRoute, "/projects/forge/issues/ISS-7", "/projects/$slug/issues/$id", roundTrip);
     const firstWave = reads.filter((s) => depthOf(reads, s) === 1).map((s) => s.path.split("?")[0]);
     expect(waterfall.sentBeforeTheList).toBeGreaterThanOrEqual(15);
     expect(firstWave).toEqual(
