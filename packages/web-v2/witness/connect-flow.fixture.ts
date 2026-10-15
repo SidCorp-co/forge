@@ -82,8 +82,8 @@ const CARDS = [
     key: "repository",
     label: "Repository",
     status: "not_configured",
-    detail: "no source host binding reaches github.com: connect GitHub",
-    says: { detail: { key: "integrations.detail.unreachedConnect", vars: { host: "github.com", provider: "GitHub" } } },
+    detail: "Not connected to GitHub yet",
+    says: { detail: { key: "integrations.detail.unreachedConnect", vars: { provider: "GitHub" } } },
     lastSyncAt: null,
     configured: true,
     meta: { repository: "github.com/SidCorp-co/autoflow", remoteUrl: "https://github.com/SidCorp-co/autoflow", host: "github.com", provider: null, connectProvider: "github" },
@@ -143,4 +143,31 @@ export function sideways(): string[] {
 /** A button by its visible text, inside `within`. */
 export function buttonNamed(within: ParentNode, text: string): HTMLButtonElement | undefined {
   return [...within.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.trim() === text);
+}
+
+/**
+ * Where a laid-out text wraps: one entry per line after the first, naming the character a line starts
+ * with and the one before it, read off the boxes Chrome drew for each character.
+ */
+export function lineStarts(el: Element): { before: string; at: string }[] {
+  const chars: { node: Text; i: number }[] = [];
+  const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+    const text = n as Text;
+    for (let i = 0; i < text.data.length; i += 1) chars.push({ node: text, i });
+  }
+  const starts: { before: string; at: string }[] = [];
+  let lastTop: number | null = null;
+  chars.forEach(({ node, i }, k) => {
+    const range = document.createRange();
+    range.setStart(node, i);
+    range.setEnd(node, i + 1);
+    const top = range.getBoundingClientRect().top;
+    if (lastTop !== null && top > lastTop + 2) {
+      const prev = chars[k - 1];
+      starts.push({ before: prev ? prev.node.data[prev.i] ?? "" : "", at: node.data[i] ?? "" });
+    }
+    lastTop = top;
+  });
+  return starts;
 }

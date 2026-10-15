@@ -67,6 +67,14 @@ async function complete(): Promise<string[]> {
   const wrong = sideways();
   if (!box.textContent?.includes("Complete this App first")) wrong.push("the step does not say to complete the App first");
   if (!box.querySelector("input[type=password]")) wrong.push("the step has no client secret field");
+  // flat: a heading under a hairline, never a card
+  const style = getComputedStyle(box);
+  if (!box.querySelector("h2, h3, h4")) wrong.push("the step has no heading");
+  if (style.borderTopWidth === "0px") wrong.push("the step has no hairline above it");
+  for (const side of ["Right", "Bottom", "Left"] as const) {
+    if (style[`border${side}Width`] !== "0px") wrong.push(`the step is boxed: border-${side.toLowerCase()} ${style[`border${side}Width`]}`);
+  }
+  if (style.backgroundColor !== "rgba(0, 0, 0, 0)") wrong.push(`the step is filled: ${style.backgroundColor}`);
   return wrong;
 }
 

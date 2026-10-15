@@ -7,7 +7,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
 import { ProjectIntegrations } from "@/features/integrations";
-import { buttonNamed, settle, sideways, stubCore } from "./connect-flow.fixture";
+import { buttonNamed, lineStarts, settle, sideways, stubCore } from "./connect-flow.fixture";
 import "./entry";
 import { InRouter } from "./router";
 
@@ -27,7 +27,21 @@ createRoot(root).render(
 
 function row(): string[] {
   const connect = buttonNamed(document, "Connect repository");
-  return connect ? sideways() : ["the GitHub row offers no Connect repository"];
+  if (!connect) return ["the GitHub row offers no Connect repository"];
+  const wrong = sideways();
+  const repository = connect.closest("tbody")?.querySelector("tr");
+  if (!repository) return [...wrong, "there is no repository row"];
+  if (!repository.textContent?.includes("Not connected to GitHub yet")) wrong.push("the repository row does not say it is not connected to GitHub yet");
+  if (repository.textContent?.includes("source host")) wrong.push("the repository row speaks of a source host binding");
+  // every drawn copy of the path, the folded one at phone width and the column at desktop
+  const paths = [...repository.querySelectorAll<HTMLElement>(".font-mono")].filter((el) => el.offsetParent !== null);
+  if (paths.length === 0) wrong.push("the repository's path is not drawn");
+  for (const path of paths) {
+    for (const { before, at } of lineStarts(path)) {
+      if (before !== "/") wrong.push(`the path breaks between "${before}" and "${at}", not after a slash`);
+    }
+  }
+  return wrong;
 }
 
 async function opened(): Promise<string[]> {

@@ -30,8 +30,8 @@ function CompleteApp({ start, onDone }: { start: CompleteStart; onDone: () => vo
   const [secret, setSecret] = useState("");
   const t = useCopy();
   return (
-    <div className="flex flex-col gap-3 rounded-md border border-line p-3" data-testid="github-complete-app">
-      <span className="fg-label">{t("integrations.github.completeTitle")}</span>
+    <section className="flex flex-col gap-3 border-t border-line-subtle pt-4" data-testid="github-complete-app">
+      <h3 className="fg-label">{t("integrations.github.completeTitle")}</h3>
       <p className="fg-body-sm text-muted">{t("integrations.github.completeBody", { app: start.displayName })}</p>
       <Field label={t("integrations.github.clientSecret")}>
         <Input
@@ -51,7 +51,7 @@ function CompleteApp({ start, onDone }: { start: CompleteStart; onDone: () => vo
           {complete.isPending ? t("integrations.github.completing") : t("integrations.github.complete")}
         </Button>
       </div>
-    </div>
+    </section>
   );
 }
 
