@@ -1,1 +1,0 @@
-**Connecting GitHub works where the web serves `/api`.** Connect was refused on forge-dev because the request reached core through the web's address; GitHub now returns to the address you are signed in on, and webhooks still go to the API.

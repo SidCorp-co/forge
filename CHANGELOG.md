@@ -9,6 +9,19 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.244] - 2026-10-15
+
+Connecting GitHub from forge-dev's web returns to the origin you are signed in on
+
+### Changed
+
+- **A peek says what the item is, and its full page opens at once.** Issue, requirement and feedback peeks show their own words and criteria; peeks open wider, keep a dragged width, and "Open full page" is a preloaded link.
+
+### Fixed
+
+- **Connecting GitHub works where the web serves `/api`.** Connect was refused on forge-dev because the request reached core through the web's address; GitHub now returns to the address you are signed in on, and webhooks still go to the API.
+- **A screenshot that does not load names its file.** Feedback evidence, the peek's tiles, attachment lists and the lightbox draw "Couldn't load <file>" instead of a broken image; the lightbox header reads white in the light theme too.
+
 ## [0.4.0-dev.243] - 2026-10-14
 
 Connect an outside system in one flow, and draw a short criterion hollow

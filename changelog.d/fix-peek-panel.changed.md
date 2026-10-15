@@ -1,1 +1,0 @@
-**A peek says what the item is, and its full page opens at once.** Issue, requirement and feedback peeks show their own words and criteria; peeks open wider, keep a dragged width, and "Open full page" is a preloaded link.
