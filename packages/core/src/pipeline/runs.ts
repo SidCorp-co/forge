@@ -10,6 +10,7 @@
 import { and, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { jobs, type PipelineRunKind, type PipelineRunStatus, pipelineRuns } from '../db/schema.js';
+import { LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { markCloseDeferred, readDeployHolds, resolveDeployGate } from './deploy-confirmations.js';
@@ -215,6 +216,38 @@ export async function closeRun(
   if (cascade) await requestKillsForCascade(cascade.killableJobs, reasonForOutcome(resolved));
   await emitCloseHook(rows, resolved, cascade?.cancelledJobIds ?? []);
   return 'settled';
+}
+
+/**
+ * Close a run `cancelled` once no job of it is live, so cancelling its only job ends it at once
+ * rather than at the concluded-run reaper's quiet hour. The no-live-job test sits in the UPDATE's
+ * own WHERE, so a run that gained a job stays open and the cascade never reaches that job.
+ */
+export async function closeRunOnceJobsEnd(runId: string): Promise<void> {
+  const { rows, cascade } = await db.transaction(async (tx) => {
+    const updated = await applyKernelTransition(tx, {
+      entity: 'run',
+      to: 'cancelled',
+      set: { finishedAt: new Date(), updatedAt: new Date() },
+      where: and(
+        eq(pipelineRuns.id, runId),
+        inArray(pipelineRuns.status, ['running', 'paused']),
+        sql`NOT EXISTS (SELECT 1 FROM ${jobs} WHERE ${jobs.pipelineRunId} = ${runId}
+              AND ${inArray(jobs.status, [...LIVE_JOB_STATUSES])})`,
+      ),
+      fromStatus: 'open',
+      reason: reasonForOutcome('cancelled'),
+      actor: { type: 'system' },
+      source: 'runs',
+    });
+    const c =
+      updated.length > 0
+        ? await cascadeCancelChildJobs(tx, runId, reasonForOutcome('cancelled'))
+        : null;
+    return { rows: updated, cascade: c };
+  });
+  if (cascade) await requestKillsForCascade(cascade.killableJobs, reasonForOutcome('cancelled'));
+  await emitCloseHook(rows, 'cancelled', cascade?.cancelledJobIds ?? []);
 }
 
 /**
