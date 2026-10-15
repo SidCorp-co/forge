@@ -3196,7 +3196,7 @@
 - **Every figure that says live counts the sessions the Pipeline page lists.** The rail and projects console no longer count open runs as live, a runner working sessions reads busy, and the operations page calls runs open. (ISS-1228)
 - **The project dashboard counts the sessions the Pipeline page shows.** It no longer reads none live while sessions work, and the costliest spend step is drawn again. (ISS-1228)
 - **A session page left open says what the Pipeline page says.** It no longer flags a working session a minute after opening, and the sessions list re-reads itself too. (ISS-1228)
-- **A session that has gone silent reads Quiet on every screen.** The session page, the sessions list, the runner strip and the Agents runs tab said Stalled or Zombie where the Pipeline page said Quiet. (ISS-1228)
+- **A session that has gone silent reads Quiet, in amber, on every screen.** The session page, sessions list, runner strip and Agents runs tab said Stalled or Zombie, some in red. Silent is not failed. (ISS-1228)
 - **Needs you lists an issue waiting on a person whoever filed it.** The headline no longer counts a waiting issue the list leaves out. (ISS-1228)
 - **A held reason of a sentence or two is shown whole.** More appears only past three lines. (ISS-1228)
 - **When the Pipeline page cannot read, it says why in plain words.** The server's own message sits under Technical details. (ISS-1228)
