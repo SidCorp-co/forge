@@ -2,7 +2,7 @@
 //
 // The session page judges a running session's silence on the check-in the Pipeline page reads, not
 // on the row it fetched when it opened: a heartbeat moves no event, so a row read once and judged
-// against a moving clock reads Stalled for a session the Pipeline page shows checking in.
+// against a moving clock reads Quiet for a session the Pipeline page shows checking in.
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
@@ -88,7 +88,7 @@ describe("the session page's reading of a running session", () => {
     await waitFor(() => expect(deriveSessionDisplayStatus(result.current as SessionRow, clock)).toBe("running"));
   });
 
-  it("reads Stalled once the box stops checking in, on the same one-minute line as the Pipeline page", async () => {
+  it("reads Quiet once the box stops checking in, on the same one-minute line as the Pipeline page", async () => {
     reads.mockImplementation(async () => ({ ...beatingNow(), sessions: [{ ...beatingNow().sessions[0], lastHeartbeatAt: row.lastHeartbeatAt }] }));
     const { result } = renderHook(() => useLiveSessionRow(row), { wrapper });
     await act(async () => {});

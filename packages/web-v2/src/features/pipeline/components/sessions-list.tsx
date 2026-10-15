@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { MonoTag } from "@/design";
+import { MonoTag, SILENCE_WORD } from "@/design";
 import { TONE_META } from "@/design/status";
 import {
   checkInOf,
@@ -91,7 +91,7 @@ function SessionRow({
         <Label>Last check-in</Label>
         {checkIn.quiet ? (
           <span className="font-semibold" style={{ color: TONE_META.attention.fg }}>
-            Quiet · {checkIn.text}
+            {SILENCE_WORD} · {checkIn.text}
           </span>
         ) : (
           checkIn.text

@@ -23,6 +23,7 @@ import {
   PageTitle,
   SegmentedControl,
   SessionRowSkeleton,
+  SILENCE_WORD,
   StatusChip,
   Table,
   TBody,
@@ -333,7 +334,7 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
             <StatPill label="Active" value={String(stats.active)} />
             <StatPill label="Queued" value={String(stats.queued)} />
             <StatPill
-              label="Zombie jobs"
+              label={SILENCE_WORD}
               value={String(stats.zombies)}
               tone={stats.zombies > 0 ? "alert" : "default"}
             />

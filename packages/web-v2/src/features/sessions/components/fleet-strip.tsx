@@ -13,7 +13,7 @@
 // useQueueStats(projectId) (per-device queued/running). Liveness is the shared
 // deriveLiveness threshold so the strip, list, and detail never diverge.
 import { useMemo } from "react";
-import { Banner, HealthDot, Icon, MonoTag, Tooltip } from "@/design";
+import { Banner, HealthDot, Icon, MonoTag, SILENCE_WORD, Tooltip } from "@/design";
 import { useProject } from "@/features/projects/hooks";
 import { deviceHealth } from "@/features/runners/types";
 import { useQueueStats } from "../hooks";
@@ -156,7 +156,7 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
                     )}
                     {stale && (
                       <span className="fg-caption" style={{ color: "var(--amberw-600)" }}>
-                        stalled
+                        {SILENCE_WORD}
                       </span>
                     )}
                   </div>

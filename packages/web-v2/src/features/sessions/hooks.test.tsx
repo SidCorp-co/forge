@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // The sessions list re-reads itself while it shows a running session, on the period the Pipeline
-// page polls: a heartbeat moves no event, so a list read once reads every running session as Stalled
+// page polls: a heartbeat moves no event, so a list read once reads every running session as Quiet
 // a minute later.
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";

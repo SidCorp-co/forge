@@ -35,6 +35,9 @@ export const TONE_META: Record<SemanticTone, ColorMeta> = {
   infra: { label: "Infra", fg: "var(--slate-600)", bg: "var(--slate-50)", dot: "var(--slate-500)" },
 };
 
+/** The one word for a running session silent past the line `sessionSilence` draws, on every screen. */
+export const SILENCE_WORD = "Quiet";
+
 export type StatusKey =
   | "running"
   | "queued"
@@ -92,7 +95,7 @@ export const STATUS_KEY_LABEL: Record<StatusKey, string> = {
   shipped: "Released",
   archived: "Closed",
   review: "In review",
-  zombie: "Zombie",
+  zombie: SILENCE_WORD,
   swept: "Swept",
 };
 

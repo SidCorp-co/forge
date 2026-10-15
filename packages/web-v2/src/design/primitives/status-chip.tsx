@@ -14,11 +14,10 @@ export interface StatusChipProps {
 }
 
 /** Execution-vocabulary overrides for the `session` domain so an agent run reads
- *  as "Completed / Stalled / Idle" rather than the issue-lifecycle "Done /
- *  Zombie / Paused". Keys not listed fall back to the shared `STATUS_META`. */
+ *  as "Completed / Idle" rather than the issue-lifecycle "Done / Paused". Keys not
+ *  listed fall back to the shared `STATUS_META`. */
 const SESSION_LABELS: Partial<Record<StatusKey, string>> = {
   done: "Completed",
-  zombie: "Stalled",
   paused: "Idle",
   passed: "Verified",
   waiting: "Waiting for me",
