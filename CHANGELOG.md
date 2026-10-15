@@ -3214,6 +3214,7 @@
 - **Every Check on the assistant setup pages is one you can see.** The password box opens in view, help code blocks have a Copy button, and every copy is a step. (ISS-1289)
 - **Filling in a placeholder on the assistant setup pages is four steps you can check.** Highlight the value in your note, copy it, highlight the placeholder, paste; Another app installs Node.js in its own steps. (ISS-1289)
 - **The Token created panel says Copied ✓ on its own button, and nothing covers it.** A failed copy is said inside the panel. On Another app, a program-starting connection is named forge before a step looks for it. (ISS-1289)
+- **A token name already in use is refused where you can see it.** The Name box comes into view, highlighted, with the refusal under it; each assistant setup page says to pick another name or revoke the old token. (ISS-1289)
 
 - **A notification names its subject and opens it.** A runner, session, step, schedule or project in the title; a sweep is one row expanding to its issues. A resolved row is no longer unread; filter by type and unread. (ISS-1168)
 - **An orphan-assertion notice resolves when its cause ends.** Putting the issue on hold, or a run owning it again, closes it; it kept firing. Opening a group in the bell no longer reads it. (ISS-1168)

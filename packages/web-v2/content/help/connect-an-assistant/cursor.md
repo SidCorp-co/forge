@@ -68,10 +68,13 @@ settings Forge writes for you, and paste them into Cursor.
 
     **Check:** a panel titled **Token created** appears; or, if Forge wants to
     confirm it is you first, a **Confirm password** box with the cursor in it, or a
-    **Continue with** button, comes into view instead.
+    **Continue with** button, comes into view instead; or, if a token you made
+    before has this name, the words
+    **An active token already uses this name.** show under **Name**, with the
+    name highlighted.
 
 11. If the **Token created** panel has not appeared, follow
-    **If Forge asks you to confirm it is you** at the end of this page. You come
+    **If the Token created panel does not appear** at the end of this page. You come
     back to step 12 when the panel is showing.
 
     **Check:** the panel titled **Token created** shows a long code that starts with
@@ -213,13 +216,14 @@ settings Forge writes for you, and paste them into Cursor.
 
     **Check:** the note is gone from your notes app.
 
-## If Forge asks you to confirm it is you
+## If the Token created panel does not appear
 
-Forge sometimes checks that it is really you before it makes a token. After
-step 10 you see either a **Confirm password** box or a **Continue with** button
-instead of the **Token created** panel. Do the part below that matches what you
-see. Either way you finish with the **Token created** panel, and then you go on
-to step 12.
+After step 10 you see one of three things instead of the **Token created** panel:
+a **Confirm password** box or a **Continue with** button, when Forge checks that it
+is really you before it makes a token, or the words
+**An active token already uses this name.** under **Name**. Do the part below
+that matches what you see. You finish with the **Token created** panel, and then
+you go on to step 12.
 
 If you see a **Confirm password** box:
 
@@ -247,6 +251,26 @@ If you see a **Continue with** button:
 
    **Check:** a panel titled **Token created** shows a long code that starts with
    `forge_pat_`.
+
+If you see **An active token already uses this name.** under **Name**:
+
+A token you made before already has this name, for another project or from a
+time you lost its code, and this one needs a name of its own. You could revoke
+the old token under **Your tokens** instead, but anything still using it would
+stop working, so a new name is the safer way on.
+
+1. Type a name none of your tokens has, such as `Cursor 2`. The old name in
+   **Name** is highlighted, so what you type replaces it.
+
+   **Check:** **Name** shows the new name.
+
+2. Choose **Create token**.
+
+   **Check:** a panel titled **Token created** appears; or a **Confirm password**
+   box or a **Continue with** button comes into view.
+
+If the **Confirm password** box or the **Continue with** button came into view,
+do the part above that matches it.
 
 ## If the file already lists other servers
 
