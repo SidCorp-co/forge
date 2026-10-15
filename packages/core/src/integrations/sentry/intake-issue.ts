@@ -324,7 +324,7 @@ async function reopenOnRegression(
   if (existing.status === 'dropped') {
     return {
       kind: 'refused',
-      reason: `Sentry reports ${shortId} has regressed, and the Forge issue holding it stands at Dropped — a person decided not to fix this, so it is left where it is rather than reopened. Its counts were still refreshed.`,
+      reason: `Sentry reports ${shortId} has regressed, and the Forge issue holding it stands at Dropped (dropped) — a person decided not to fix this, so it is left where it is rather than reopened. Its counts were still refreshed.`,
     };
   }
   if (existing.status !== 'closed') return null;
@@ -358,7 +358,7 @@ async function reopenOnRegression(
     // collapse in `actorAgency` (ISS-1137).
     { type: 'user', id: ctx.createdById, agency: 'agent' },
     {
-      transitionReason: `Sentry reports ${shortId} has regressed: this error is happening again after this issue was closed. Reopened rather than filed a second time — an error coming back is the same work, and the detector key holds at most one live issue for it.`,
+      transitionReason: `Sentry reports ${shortId} has regressed: this error is happening again after this issue was closed. It is reopened rather than filed a second time — an error coming back is the same work, and the detector key holds at most one live issue for it.`,
     },
   ).catch((err: unknown) => {
     if (err instanceof TransitionError && err.code === 'ISSUE_ARCHIVED') return err;

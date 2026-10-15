@@ -5,7 +5,7 @@ import { personOwesAnAnswer } from '../questions/issue-coupling.js';
 import { askParkQuestion } from '../questions/write.js';
 import { actorAgency, type TransitionActor } from './actor-agency.js';
 import type { DrizzleTx } from './dependency-executor.js';
-import { statusLabel } from './status-sets.js';
+import { statusForCaller } from './status-sets.js';
 
 export const NEED_NOT_STATED =
   'the run did not say what would settle this — answer with whatever it needs to carry on';
@@ -56,7 +56,7 @@ export async function mintParkQuestion(input: MintParkQuestionInput, tx: Drizzle
 export function parkQuestionNotMinted(input: MintParkQuestionInput): string | null {
   if (!input.options.needs?.trim()) return null;
   if (!mintsAt(input.toStatus, input.options.needs.trim())) {
-    return `\`needs\` was sent with ${statusLabel(input.toStatus)}, which mints no question — only ${statusLabel(AUTONOMOUS_QUESTION_STATUS)} and ${statusLabel(ASKS_WITH_NEEDS)} do. What you sent is on no record; put it in \`reason\`, or park at one of those instead.`;
+    return `\`needs\` was sent with ${statusForCaller(input.toStatus)}, which mints no question — only ${statusForCaller(AUTONOMOUS_QUESTION_STATUS)} and ${statusForCaller(ASKS_WITH_NEEDS)} do. What you sent is on no record; put it in \`reason\`, or park at one of those instead.`;
   }
   if (actorAgency(input.actor) !== 'agent') {
     return `\`needs\` was sent on a credential owned by a person, which mints no question — a person parking their own work owns their own resume. Nobody has been asked anything. If an agent made this call, it is running on the wrong credential: it wants an agent account or a paired device.`;

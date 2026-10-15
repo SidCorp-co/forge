@@ -29,7 +29,7 @@ import { publishPipelineHealthChanged } from './pipeline-health.js';
 import { postReleaseGateHoldComment, resolveAgentCloseTarget } from './release-gate-hold.js';
 import { refuseUnrecordedClose } from './release-record-required.js';
 import { holdReleaseTagClose } from './release-tag-close.js';
-import { ISSUE_TERMINAL_STATUSES, statusLabel } from './status-sets.js';
+import { ISSUE_TERMINAL_STATUSES, statusForCaller } from './status-sets.js';
 import { TransitionError, type TransitionErrorCode } from './transition-error.js';
 import { checkTransitionEvidence } from './transition-evidence.js';
 import {
@@ -187,7 +187,7 @@ async function assertIssueNeverEnteredPipeline(
   const counts = await countRunsAndJobs(issueId);
   if (!counts) {
     return refuse(
-      'Draft is reachable only while the issue has never entered the pipeline, and that could not be checked just now. Retry, or use On hold to pause active work.',
+      'Draft (draft) is reachable only while the issue has never entered the pipeline, and that could not be checked just now. Retry, or use On hold (on_hold) to pause active work.',
       { checkFailed: true },
     );
   }
@@ -195,7 +195,7 @@ async function assertIssueNeverEnteredPipeline(
   const { runCount, jobCount } = counts;
   if (runCount === 0 && jobCount === 0) return;
   return refuse(
-    `Draft is reachable only while the issue has never entered the pipeline; this one has ${runCount} pipeline run(s) and ${jobCount} job(s). Use On hold to pause active work, or Dropped to abandon it.`,
+    `Draft (draft) is reachable only while the issue has never entered the pipeline; this one has ${runCount} pipeline run(s) and ${jobCount} job(s). Use On hold (on_hold) to pause active work, or Dropped (dropped) to abandon it.`,
     { runCount, jobCount },
   );
 }
@@ -215,20 +215,20 @@ async function explainDraftRace(
   if (row && row.status !== fromStatus) {
     return new TransitionError(
       'STALE_TRANSITION',
-      `issue status changed concurrently — it left ${statusLabel(fromStatus)} for ${statusLabel(row.status)} while this transition was being applied`,
+      `issue status changed concurrently — it left ${statusForCaller(fromStatus)} for ${statusForCaller(row.status)} while this transition was being applied`,
       { ...details, observedStatus: row.status },
     );
   }
   if (counts && (counts.runCount > 0 || counts.jobCount > 0)) {
     return new TransitionError(
       'ILLEGAL_TRANSITION',
-      `Draft is reachable only while the issue has never entered the pipeline, and it acquired ${counts.runCount} pipeline run(s) and ${counts.jobCount} job(s) while this transition was being applied. Use On hold to pause active work.`,
+      `Draft (draft) is reachable only while the issue has never entered the pipeline, and it acquired ${counts.runCount} pipeline run(s) and ${counts.jobCount} job(s) while this transition was being applied. Use On hold (on_hold) to pause active work.`,
       { ...details, runCount: counts.runCount, jobCount: counts.jobCount },
     );
   }
   return new TransitionError(
     'ILLEGAL_TRANSITION',
-    `the Draft transition from ${statusLabel(fromStatus)} did not apply, and re-reading found neither a status change nor a pipeline run/job to attribute it to. Retry; if it refuses again, use On hold to pause active work.`,
+    `the Draft (draft) transition from ${statusForCaller(fromStatus)} did not apply, and re-reading found neither a status change nor a pipeline run/job to attribute it to. Retry; if it refuses again, use On hold (on_hold) to pause active work.`,
     { ...details, attributable: false },
   );
 }
@@ -265,7 +265,7 @@ export async function transitionIssueStatus(
     if (replacement) {
       throw new TransitionError(
         'ILLEGAL_TRANSITION',
-        `${statusLabel(requestedStatus)} is a retired rung: nothing dispatches at it, so an issue written there is stranded until a person moves it by hand. Write ${statusLabel(replacement)} instead — it is the rung that took its place.`,
+        `${statusForCaller(requestedStatus)} is a retired rung: nothing dispatches at it, so an issue written there is stranded until a person moves it by hand. Write ${statusForCaller(replacement)} instead — it is the rung that took its place.`,
         { from: fromStatus, to: requestedStatus, replacedBy: replacement },
       );
     }
@@ -274,7 +274,7 @@ export async function transitionIssueStatus(
     } else {
       throw new TransitionError(
         'ILLEGAL_TRANSITION',
-        `a Draft issue may only move to ${DRAFT_EXIT_TARGETS.map(statusLabel).join(', ')}. ${statusLabel(requestedStatus)} is a legal target from every other status, but not from Draft — promote it to Open first, or use Dropped to discard it.`,
+        `a Draft (draft) issue may only move to ${DRAFT_EXIT_TARGETS.map(statusForCaller).join(', ')}. ${statusForCaller(requestedStatus)} is a legal target from every other status, but not from Draft (draft) — promote it to Open (open) first, or use Dropped (dropped) to discard it.`,
         { from: fromStatus, to: requestedStatus, allowedFromDraft: [...DRAFT_EXIT_TARGETS] },
       );
     }
@@ -283,7 +283,7 @@ export async function transitionIssueStatus(
   if (options.waitingKind && requestedStatus !== 'waiting') {
     throw new TransitionError(
       'WAITING_KIND_NOT_APPLICABLE',
-      `\`waitingKind\` is stored only for a Waiting park, and ${statusLabel(requestedStatus)} cannot hold it. Say what the issue is waiting for in \`reason\` instead — that is posted as a comment before the status flips and is kept.`,
+      `\`waitingKind\` is stored only for a Waiting (waiting) park, and ${statusForCaller(requestedStatus)} cannot hold it. Say what the issue is waiting for in \`reason\` instead — that is posted as a comment before the status flips and is kept.`,
       { from: fromStatus, to: requestedStatus, waitingKind: options.waitingKind },
     );
   }

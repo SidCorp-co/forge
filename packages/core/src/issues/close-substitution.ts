@@ -5,7 +5,7 @@
 // is the release gate's rewrite and equality is the driver's (ISS-1129).
 
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
-import { statusLabel } from './status-sets.js';
+import { statusForCaller } from './status-sets.js';
 
 export type RewriteRule = 'autonomous_driver' | 'release_gate';
 
@@ -47,7 +47,7 @@ export function describeRewrite(
     stored: final,
     rule,
     waitingKind: { sent: sentKind, stored: storedKind },
-    detail: `${statusLabel(requested)} was stored as ${statusLabel(final)} ${RULE_CLAUSE[rule]}.${keptKind(sentKind, storedKind)}`,
+    detail: `${statusForCaller(requested)} was stored as ${statusForCaller(final)} ${RULE_CLAUSE[rule]}.${keptKind(sentKind, storedKind)}`,
   };
 }
 
@@ -71,12 +71,12 @@ export function noOpSentence(input: NoOpSentenceInput): string {
   if (!rule) return `issue already in status ${final}`;
 
   const said =
-    `${statusLabel(requested)} was rewritten to ${statusLabel(final)} ${RULE_CLAUSE[rule]}. ` +
-    `The issue is already in status ${statusLabel(final)}, which is not the status you asked for.`;
+    `${statusForCaller(requested)} was rewritten to ${statusForCaller(final)} ${RULE_CLAUSE[rule]}. ` +
+    `The issue is already in status ${statusForCaller(final)}, which is not the status you asked for.`;
   if (rule === 'autonomous_driver') return said;
 
   return (
-    `${said} Two things reach Closed from here. Run the release: ` +
+    `${said} Two things reach Closed (closed) from here. Run the release: ` +
     `POST /api/projects/${projectId}/release-batches. Or, where the release has already ` +
     `happened and no batch could be created, record it: ` +
     `POST /api/projects/${projectId}/release-records with the whole 40-character sha of the ` +

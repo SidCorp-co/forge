@@ -46,13 +46,13 @@ export function chainStrandsWork(waiting: string[]): StrandedWork {
     code: RELEASE_CHAIN_STRANDS_WORK,
     message:
       `${RELEASE_CHAIN_STRANDS_WORK}: this write empties the release chain, so the project would ship nothing, ` +
-      `while ${n} of its issues wait${n === 1 ? 's' : ''} at Awaiting release for a release: ${named(waiting)}. ` +
+      `while ${n} of its issues wait${n === 1 ? 's' : ''} at Awaiting release (awaiting_release) for a release: ${named(waiting)}. ` +
       (n === 1
         ? 'With an empty chain no release is ever cut for it, so it would wait for good. ' +
-          'Release it first, or return it to Developed, and then empty the chain. ' +
+          'Release it first, or return it to Developed (developed), and then empty the chain. ' +
           'Closing it is not a way out: a close records the work as shipped and unblocks every issue that depends on it.'
         : 'With an empty chain no release is ever cut for them, so they would wait for good. ' +
-          'Release them first, or return each one to Developed, and then empty the chain. ' +
+          'Release them first, or return each one to Developed (developed), and then empty the chain. ' +
           'Closing them is not a way out: a close records the work as shipped and unblocks every issue that depends on it.'),
     details: { issues: waiting, total: n, status: 'awaiting_release' },
   };

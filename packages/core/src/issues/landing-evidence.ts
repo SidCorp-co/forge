@@ -270,7 +270,7 @@ export function landingShapeMarkStandsDetail(args: {
     `this issue carries a merged mark (\`${args.mark}\`), made ${madeUnder}, and a mark is judged ` +
     `on the lane it was made under, so ${refused} and nothing was written. \`unmark\` it first ` +
     '(`forge_issues` `unmark`, or Unmark on the rail), change `landingShape`, then mark it again ' +
-    'on the new lane; a Closed issue is reopened before it can be unmarked.'
+    'on the new lane; a Closed (closed) issue is reopened before it can be unmarked.'
   );
 }
 

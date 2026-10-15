@@ -8,7 +8,7 @@ import { type IssueStatus, issues, projects } from '../db/schema.js';
 import { chainReleaseTag } from '../projects/release-chain.js';
 import { withRepository } from '../projects/repository-access.js';
 import { saying, type TagContainment } from '../projects/repository-reader.js';
-import { statusLabel } from './status-sets.js';
+import { statusForCaller } from './status-sets.js';
 import { TransitionError } from './transition-error.js';
 
 /** Where a tag-released issue rests until a tag that contains it is cut. */
@@ -45,14 +45,14 @@ async function landingCommitOf(issueId: string, executor: Pick<Db, 'select'> = d
 }
 
 const DROPPED_FOR_NON_WORK =
-  'Use Dropped for work that turned out not to be work: a note, a question, a duplicate, something already done.';
+  'Use Dropped (dropped) for work that turned out not to be work: a note, a question, a duplicate, something already done.';
 
 function noLandingRefusal(pattern: string): ReleaseTagRefusal {
   return {
     code: 'CLOSE_REQUIRES_RELEASE_TAG',
     detail:
-      `this project ships by version tag, so Closed means a tag matching \`${pattern}\` contains the commit the work landed as, and this issue carries no landing commit to look for in one. ` +
-      'Mark it merged naming the commit it landed at (`forge_issues` `mark_merged`, `data.commit`); it rests at Awaiting release until a tag contains that commit. ' +
+      `this project ships by version tag, so Closed (closed) means a tag matching \`${pattern}\` contains the commit the work landed as, and this issue carries no landing commit to look for in one. ` +
+      'Mark it merged naming the commit it landed at (`forge_issues` `mark_merged`, `data.commit`); it rests at Awaiting release (awaiting_release) until a tag contains that commit. ' +
       DROPPED_FOR_NON_WORK,
     details: {
       requires: 'releaseTag',
@@ -68,7 +68,7 @@ function unreadRefusal(pattern: string, landing: string, why: string): ReleaseTa
   return {
     code: 'RELEASE_TAG_UNREAD',
     detail:
-      `this project ships by version tag, so Closed means a tag matching \`${pattern}\` contains the landing commit ${landing}, and the tags could not be read: ${why}. ` +
+      `this project ships by version tag, so Closed (closed) means a tag matching \`${pattern}\` contains the landing commit ${landing}, and the tags could not be read: ${why}. ` +
       'Nothing was closed, and a tag list that could not be read is not read as one holding no tag. ' +
       'Fix what let the read fail (a GitHub binding whose installation can read the repository, or the deploy key attached under Git access), then close again.',
     details: { requires: 'releaseTag', pattern, landing, read: 'unread', why },
@@ -84,8 +84,8 @@ function notContainedRefusal(pattern: string, read: Extract<TagContainment, { co
   const refusal: ReleaseTagRefusal = {
     code: 'CLOSE_REQUIRES_RELEASE_TAG',
     detail:
-      `this project ships by version tag, so Closed means a tag matching \`${pattern}\` contains the landing commit ${read.commit}, and ${standing}. ` +
-      `The issue rests at ${statusLabel(RELEASE_TAG_RESTING_STATUS)} until a tag that contains it is cut and deployed; once one is, close it again and nothing else needs editing. ` +
+      `this project ships by version tag, so Closed (closed) means a tag matching \`${pattern}\` contains the landing commit ${read.commit}, and ${standing}. ` +
+      `The issue rests at ${statusForCaller(RELEASE_TAG_RESTING_STATUS)} until a tag that contains it is cut and deployed; once one is, close it again and nothing else needs editing. ` +
       DROPPED_FOR_NON_WORK,
     details: {
       requires: 'releaseTag',

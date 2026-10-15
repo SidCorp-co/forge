@@ -179,7 +179,9 @@ describe('finishRefusal — what the abort did to this batch', () => {
   });
 
   it('says a held promoted roster stays at releasing, claimed, with the routes to settle it', () => {
-    expect(said('held')).toMatch(/kept its claims\. Its issues stay at Releasing, still claimed/);
+    expect(said('held')).toMatch(
+      /kept its claims\. Its issues stay at Releasing \(releasing\), still claimed/,
+    );
     expect(said('held')).toContain('POST /api/projects/proj-7/release-records');
     expect(said('held')).toContain('"return-to-gate"');
     expect(said('held')).not.toMatch(/claims were released/);
@@ -267,7 +269,7 @@ describe('finishRefusal — what the abort did to this batch', () => {
   });
 
   it('names no destination for a roster when no abort recorded one', () => {
-    expect(said('unrecorded')).not.toMatch(/released|Releasing|closed|gate/);
+    expect(said('unrecorded')).not.toMatch(/released|Releasing (releasing)|closed|gate/);
     expect(said('unrecorded')).toMatch(/each issue’s own status and notes are the account/);
   });
 });

@@ -213,8 +213,8 @@ describe('POST /api/issues/:id/transition — the answer says what a rule stored
     });
 
     const detail = ((await res.json()) as { rewritten: Rewritten | null }).rewritten?.detail ?? '';
-    expect(detail).toContain('Waiting');
-    expect(detail).toContain('Needs info');
+    expect(detail).toContain('Waiting (waiting)');
+    expect(detail).toContain('Needs info (needs_info)');
     expect(detail).toContain('autonomous driver');
   });
 
@@ -269,8 +269,8 @@ describe('the refusals stay as they were', () => {
       details: Record<string, unknown>;
     };
     expect(body.code).toBe('NO_OP');
-    expect(body.message).toContain('Waiting');
-    expect(body.message).toContain('Needs info');
+    expect(body.message).toContain('Waiting (waiting)');
+    expect(body.message).toContain('Needs info (needs_info)');
     expect(body.details).toEqual({
       status: 'needs_info',
       requested: 'waiting',

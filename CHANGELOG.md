@@ -3210,7 +3210,7 @@
 - **Release settings say "No build commands written"** rather than naming a stored fact. (ISS-1229)
 - **Shape & release says in one sentence why nothing can release yet,** naming Testing, Tested and Awaiting release as the screen does rather than as code. (ISS-1229)
 - **A stuck-issue notice names its project and says how long,** with the status as the screen shows it, instead of a database timestamp. (ISS-1229)
-- **Refusals and notices name a status as the screen does,** "Awaiting release" rather than code. The release criteria hold is one sentence, writes runs of criteria as ranges, and keeps an issue key on one line. (ISS-1229)
+- **Notices name a status as the screen does, and a refusal adds the value to send:** "Awaiting release (awaiting_release)", never code. The release criteria hold is one sentence, with criteria as ranges and an issue key on one line. (ISS-1229)
 - **Shape & release refuses a test credential with no password, or one listed twice, by name.** The row is marked where it is wrong and nothing is saved; an agent writing the same is refused too. (ISS-1171)
 - **Shape & release marks an emptied base branch at its field, and keeps your chosen shape in view when a save is refused.** A failed environments save says what happened and what to do. (ISS-1171)
 - **A project's release readiness names its base branch.** It answered none for a project whose release has no live target yet. (ISS-1171)

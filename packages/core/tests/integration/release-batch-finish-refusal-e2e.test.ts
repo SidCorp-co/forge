@@ -203,7 +203,7 @@ describe('a release finish that cannot close an issue', () => {
       'What clears it: answer each open question in its "Decision waiting" card',
     );
     expect(said).toContain(`shipped as version ${version}`);
-    expect(said).toContain('stay at Releasing');
+    expect(said).toContain('stay at Releasing and stay claimed');
     expect(said).toContain(`/release-batches/${runId}/abort`);
   });
 
