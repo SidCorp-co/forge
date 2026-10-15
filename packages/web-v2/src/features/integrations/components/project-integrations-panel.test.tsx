@@ -76,6 +76,19 @@ describe("ProjectIntegrations", () => {
     expect(link.getAttribute("href")).toBe("#integration-github");
   });
 
+  it("says a repository on a host no provider serves is not connected to that host, in plain words", async () => {
+    const elsewhere: StatusCard = {
+      ...UNREACHED_REPOSITORY,
+      ...cardDetail(say("integrations.detail.unreachedBind", { host: "git.example.org" })),
+      meta: { ...UNREACHED_REPOSITORY.meta, repository: "git.example.org/team/app", remoteUrl: "https://git.example.org/team/app", host: "git.example.org", connectProvider: null },
+    };
+    serve([elsewhere]);
+    renderWithQuery(<ProjectIntegrations projectId="p1" />);
+    const row = (await screen.findAllByText("Repository"))[0]?.closest("tr") as HTMLElement;
+    expect(within(row).getAllByText("Not connected to git.example.org yet").length).toBeGreaterThan(0);
+    expect(row.textContent).not.toMatch(/source host|binding/);
+  });
+
   it("offers connecting GitHub in one place only: the GitHub row owns the act, the repository row links to it", async () => {
     serve([UNREACHED_REPOSITORY, GITHUB_OPEN]);
     renderWithQuery(<ProjectIntegrations projectId="p1" />);
