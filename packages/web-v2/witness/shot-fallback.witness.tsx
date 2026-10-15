@@ -2,7 +2,8 @@
 // tile, an attachment list, and the lightbox opened on it. The page is file:// and reaches no core, so
 // every attachment here fails to load as a missing file would. Light at 1440, dark at 390 (the peek
 // is the full-screen sheet there). Each stage reads that every failed image is the box naming its
-// file, and that no broken <img> is left standing; the lightbox's header reads white in either theme.
+// file, and that no broken <img> is left standing; in the lightbox that box is opaque and the header
+// reads white in either theme.
 //
 //   pnpm --filter web-v2 witness witness/shot-fallback.witness.tsx --out <dir>
 
@@ -149,6 +150,11 @@ window.__witness = {
         const dialog = q("[role=dialog]");
         if (!dialog) return ["the lightbox did not open"];
         const wrong = failedImages(dialog, "the lightbox", ["checkout-step-2.png", "cart-total-wrong.png"]);
+        // the box the failed image leaves is opaque: the page behind the backdrop does not show through it
+        for (const box of dialog.querySelectorAll<HTMLElement>("[data-testid=attached-image-failed]")) {
+          const alpha = Number(/\/\s*([\d.]+)\)$|rgba\([^)]*,\s*([\d.]+)\)$/.exec(getComputedStyle(box).backgroundColor)?.slice(1).find(Boolean) ?? 1);
+          if (alpha < 1) wrong.push(`the lightbox's failed box for "${box.getAttribute("aria-label")}" lets ${Math.round((1 - alpha) * 100)}% of the page show through`);
+        }
         // the header is drawn over the dark backdrop in either theme: its name and acts read white
         for (const el of dialog.querySelectorAll<HTMLElement>("header span[title], header button")) {
           const [r, g, b] = rgbOf(getComputedStyle(el).color);
