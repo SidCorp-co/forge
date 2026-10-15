@@ -7,7 +7,7 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { StepDurationRow } from "@/features/pipeline/types";
+import type { StepDurationRow } from "@/features/runs/types";
 import { StepTimes } from "./step-times";
 
 expect.extend(matchers);

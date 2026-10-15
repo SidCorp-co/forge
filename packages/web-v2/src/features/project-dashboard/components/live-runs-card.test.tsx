@@ -6,7 +6,7 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { PipelineRunListItem } from "@/features/pipeline/types";
+import type { PipelineRunListItem } from "@/features/runs/types";
 import { LiveRunsCard } from "./live-runs-card";
 
 expect.extend(matchers);

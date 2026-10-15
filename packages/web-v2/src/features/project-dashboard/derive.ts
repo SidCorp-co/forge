@@ -1,11 +1,9 @@
 
-import { type StageKey, stageColor } from "@/design/stages";
 import { TONE_META, type SemanticTone } from "@/design/status";
 import type { AttentionView } from "@/features/attention/types";
 import { statusLabel } from "@/features/issues/derive";
 import type { IssueStatus } from "@/features/issues/types";
-import { jobTypeToStage } from "@/features/pipeline/derive";
-import type { PipelineRunListItem, StepDurationRow } from "@/features/pipeline/types";
+import type { PipelineRunListItem, StepDurationRow } from "@/features/runs/types";
 import type { ProjectHealthRow } from "@/features/projects/types";
 import {
   type ActiveRunner,
@@ -80,52 +78,48 @@ export function conicGradient(segments: DonutSegment[]): string {
 }
 
 /* ------------------------------------------------------------------ *
- * 7-day spend by stage (AC#4)
+ * 7-day spend by step (AC#4)
  * ------------------------------------------------------------------ */
 
-export type SpendGroupKey = "test" | "code" | "plan" | "other";
-
-const SPEND_GROUPS: ReadonlyArray<{ key: SpendGroupKey; label: string; color: string }> = [
-  { key: "test", label: "test", color: stageColor("test") },
-  { key: "code", label: "code", color: stageColor("code") },
-  { key: "plan", label: "plan", color: stageColor("plan") },
-  { key: "other", label: "other", color: "var(--ink-400)" },
-];
-
-/** Fold a pipeline stage into one of the four spend groups. `fix` already folds onto `code` via
- *  `jobTypeToStage`; triage/clarify/review/release, and any job type outside the seven staged
- *  names (`drive`, `pm`, `custom`) for which `jobTypeToStage` answers `null`, go to `other`. */
-function stageToSpendGroup(stage: StageKey | null): SpendGroupKey {
-  if (stage === "test") return "test";
-  if (stage === "code") return "code";
-  if (stage === "plan") return "plan";
-  return "other";
-}
+/** Neutral ink for the three costliest steps, then "other": a step name carries no colour of its own. */
+const SPEND_INK = ["var(--fg)", "var(--fg-muted)", "var(--fg-subtle)"] as const;
+const OTHER_INK = "var(--border-strong)";
+export const SPEND_OTHER_KEY = "other";
 
 export interface SpendSegment {
-  key: SpendGroupKey;
+  /** The step exactly as the rows name it, or `other` for everything past the three costliest. */
+  key: string;
   label: string;
   color: string;
   cost: number;
   pct: number;
 }
 
-export interface SpendByStageData {
+export interface SpendByStepData {
   segments: SpendSegment[];
   total: number;
 }
 
-export function spendByStage(rows: StepDurationRow[] | undefined): SpendByStageData {
-  const byGroup = new Map<SpendGroupKey, number>(SPEND_GROUPS.map((g) => [g.key, 0]));
-  for (const r of rows ?? []) {
-    const g = stageToSpendGroup(jobTypeToStage(r.step));
-    byGroup.set(g, (byGroup.get(g) ?? 0) + (r.costUsd ?? 0));
+/** The window's spend split by the step names its rows carry: the three costliest, then the rest as `other`. */
+export function spendByStep(rows: StepDurationRow[] | undefined): SpendByStepData {
+  const byStep = new Map<string, number>();
+  for (const r of rows ?? []) byStep.set(r.step, (byStep.get(r.step) ?? 0) + (r.costUsd ?? 0));
+  const ranked = [...byStep.entries()]
+    .filter(([, cost]) => cost > 0)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const total = ranked.reduce((a, [, cost]) => a + cost, 0);
+  const pct = (cost: number) => (total > 0 ? (cost / total) * 100 : 0);
+  const segments: SpendSegment[] = ranked.slice(0, SPEND_INK.length).map(([step, cost], i) => ({
+    key: step,
+    label: step,
+    color: SPEND_INK[i] as string,
+    cost,
+    pct: pct(cost),
+  }));
+  const rest = ranked.slice(SPEND_INK.length).reduce((a, [, cost]) => a + cost, 0);
+  if (rest > 0) {
+    segments.push({ key: SPEND_OTHER_KEY, label: "other", color: OTHER_INK, cost: rest, pct: pct(rest) });
   }
-  const total = [...byGroup.values()].reduce((a, b) => a + b, 0);
-  const segments = SPEND_GROUPS.map((g) => {
-    const cost = byGroup.get(g.key) ?? 0;
-    return { key: g.key, label: g.label, color: g.color, cost, pct: total > 0 ? (cost / total) * 100 : 0 };
-  }).filter((s) => s.cost > 0);
   return { segments, total };
 }
 

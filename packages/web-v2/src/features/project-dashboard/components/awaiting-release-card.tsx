@@ -13,8 +13,8 @@ import Link from "next/link";
 import { WORK_STATE_LABELS } from "@forge/contracts/work-state";
 import { Button, type DataTableModelColumn, Checkbox, Icon, StatusChip, useDataTableRows } from "@/design";
 import { BatchReleaseDialog, type BatchReleaseIssue } from "@/features/issues/components/batch-release-dialog";
-import { formatUsd } from "@/features/pipeline/derive";
-import type { PipelineRunListItem } from "@/features/pipeline/types";
+import { formatUsd } from "@/lib/utils/format";
+import type { PipelineRunListItem } from "@/features/runs/types";
 import { plural, type ReadState } from "../shape";
 import { DashboardSection, EmptyLine, RowList, unreadSection } from "./dashboard-section";
 

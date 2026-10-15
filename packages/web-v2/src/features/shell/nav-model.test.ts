@@ -3,7 +3,7 @@
 // badge: a failure drawn as nothing owed is the silence this repairs.
 
 import { describe, expect, it } from "vitest";
-import { bottomTabItems, compactWorkspaceRailItems, OPEN_WORK_COUNTS, openWorkFigure, projectRailItems, workspaceNavItems } from "./nav-model";
+import { bottomTabItems, buildActiveKey, buildCrumbs, compactWorkspaceRailItems, OPEN_WORK_COUNTS, openWorkFigure, projectRailItems, workspaceNavItems } from "./nav-model";
 
 const OPEN_WORK_29 = { badge: 29, badgeCounts: OPEN_WORK_COUNTS };
 
@@ -80,5 +80,21 @@ describe("openWorkFigure", () => {
   it("says failed over a held count and pending before the read lands, never the attention words", () => {
     expect(openWorkFigure(["read", "failed"], 29)).toEqual({ badgeRead: "failed", badgeCounts: "in open work" });
     expect(openWorkFigure(["pending", "read"], 29)).toEqual({ badgeRead: "pending", badgeCounts: "in open work" });
+  });
+});
+
+describe("the project breadcrumb", () => {
+  const crumbAt = (pathname: string) =>
+    buildCrumbs({ pathname, slug: "shop", activeKey: buildActiveKey(pathname, "shop"), projectName: "Shop" }).at(-1)?.label;
+
+  it("names an off-rail page rather than the Dashboard the rail lights for it", () => {
+    expect(crumbAt("/projects/shop/pipeline")).toBe("Pipeline");
+    expect(crumbAt("/projects/shop/releases")).toBe("Releases");
+    expect(crumbAt("/projects/shop/settings/members")).toBe("Settings");
+  });
+
+  it("keeps the rail's label for a rail page and Dashboard for the project root", () => {
+    expect(crumbAt("/projects/shop/issues/abc")).toBe("Issues");
+    expect(crumbAt("/projects/shop")).toBe("Dashboard");
   });
 });

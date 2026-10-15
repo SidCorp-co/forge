@@ -16,31 +16,6 @@ export function BoardRowSkeleton() {
   );
 }
 
-export function KanbanCardSkeleton() {
-  return (
-    <div className="flex flex-col gap-2.5 rounded-md border border-line bg-surface p-3">
-      <div className="flex items-center justify-between">
-        <Skeleton className="h-4 w-14" />
-        <Skeleton variant="circle" className="size-5" />
-      </div>
-      <Skeleton variant="text" className="w-full" />
-      <Skeleton variant="text" className="w-2/3" />
-      <Skeleton className="mt-1 h-3 w-full" />
-    </div>
-  );
-}
-
-export function KanbanColumnSkeleton({ cards = 3 }: { cards?: number }) {
-  return (
-    <div className="flex w-full flex-col gap-3">
-      <Skeleton className="h-4 w-20" />
-      {Array.from({ length: cards }).map((_, i) => (
-        <KanbanCardSkeleton key={i} />
-      ))}
-    </div>
-  );
-}
-
 export function SessionRowSkeleton() {
   return (
     <div className="flex items-center gap-3 border-b border-line-subtle px-4 py-3 last:border-0">

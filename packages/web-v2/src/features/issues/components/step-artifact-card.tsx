@@ -3,7 +3,6 @@
 
 import { useState } from "react";
 import { Icon } from "@/design";
-import { stageColor } from "@/design/stages";
 import type { StepOutcome, StepState } from "../derive";
 
 interface StepArtifactCardProps {
@@ -104,7 +103,7 @@ export function StepArtifactCard({ outcome, open, onToggle }: StepArtifactCardPr
         <span
           aria-hidden
           className="inline-block h-3 w-0.5 flex-none rounded-pill"
-          style={{ background: stageColor(outcome.step) }}
+          style={{ background: "var(--border-strong)" }}
         />
         <span className="fg-label min-w-0 truncate font-mono">{outcome.step}</span>
         <span className="fg-caption text-muted">{meta.label}</span>

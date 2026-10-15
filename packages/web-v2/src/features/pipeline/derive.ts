@@ -1,409 +1,182 @@
-import {
-  AUTONOMOUS_LABELS,
-  type AutonomousLabel,
-  toAutonomousLabel,
-} from "@forge/contracts/issue-vocabulary";
-import { REGISTRY_ISSUE_STATUSES } from "@forge/contracts/pipeline-registry";
-import { deriveQueuedStep, hasLiveAgentSession, queuedChipStatus } from "@/features/issues/waiting";
-import { LABEL_VIEW, NO_CHECK_IN_CHIP, statusLabel, statusToChip } from "@/features/issues/derive";
-import type { QueryRead } from "@/design/patterns/badge-read";
-import { type SemanticTone, type StatusKey, TONE_META } from "@/design/status";
-import type { IssueStatus } from "@/features/issues/types";
-import { type StageKey, stageColor } from "@/design/stages";
-import { gateReasonLine } from "@/features/runners/types";
+import type { SemanticTone } from "@/design/status";
+import { STALLED_THRESHOLD_MS } from "@/features/sessions/types";
 import { formatElapsed } from "@/lib/utils/format";
-import {
-  LABEL_WORK_STATE,
-  OPEN_WORK_STATES,
-  WORK_STATE_LABELS,
-  WORK_STATES,
-  type WorkState,
-} from "@forge/contracts/work-state";
-import {
-  BOARD_EXCLUDED_STATUSES,
-  BOARD_LEFT_OUT_STATES,
-  type PipelineIssueRow,
-  type PipelineRunListItem,
-  type PipelineRunStatus,
-  type PipelineRunSummary,
-  type RunGate,
-  type StepDurationRow,
-} from "./types";
+import type { HeldIssue, Holder, LiveSession, PersonOwes } from "./types";
 
-export function jobTypeToStage(jobType: string | null | undefined): StageKey | null {
-  switch (jobType) {
-    case "triage":
-    case "clarify":
-    case "plan":
-    case "code":
-    case "review":
-    case "test":
-    case "release":
-      return jobType;
-    case "fix":
-      return "code";
-    default:
-      return null;
-  }
+/** A running session silent past this reads as quiet, the same threshold the sessions list uses. */
+export const QUIET_AFTER_MS = STALLED_THRESHOLD_MS;
+
+const KIND_LABEL: Record<string, string> = {
+  master: "Master",
+  run_session: "Agent",
+  pipeline: "Pool agent",
+  pm: "PM",
+};
+
+/** What kind of session this is, in a person's word; an unknown kind is printed as core sent it. */
+export function sessionKindLabel(kind: string): string {
+  return KIND_LABEL[kind] ?? kind;
 }
 
-/** Map a run status to the design-kit `StatusKey` vocabulary (chip + card). */
-export function runStatusToStatusKey(status: PipelineRunStatus): StatusKey {
-  switch (status) {
-    case "running":
-      return "running";
-    case "paused":
-      return "paused";
-    case "completed":
-      return "done";
-    case "failed":
-      return "failed";
-    case "cancelled":
-      return "blocked";
-  }
+/** The session's name: its title where it has one, else its kind. */
+export function sessionName(session: Pick<LiveSession, "kind" | "title">): string {
+  return session.title?.trim() || sessionKindLabel(session.kind);
 }
 
-/** What a run's own summary says its agent is doing: a session beat or a started job is running, only unclaimed jobs is queued, no live job is null. */
-export function runSummaryReading(
-  run: Pick<PipelineRunSummary, "attempts" | "lastSessionBeatAt">,
-): "running" | "queued" | null {
-  if (run.lastSessionBeatAt !== null) return "running";
-  let queued = false;
-  for (const a of run.attempts) {
-    if (a.status === "running" || a.status === "dispatched") return "running";
-    if (a.status === "queued") queued = true;
-  }
-  return queued ? "queued" : null;
-}
-
-/** The drawer header's chip, one reading on every screen: a running run reads its summary, the issue row only where the summary names no live job. */
-export function drawerRunChip(
-  run: Pick<PipelineRunSummary, "status" | "attempts" | "lastSessionBeatAt">,
-  issueRun: StatusKey | null,
-): StatusKey {
-  if (run.status !== "running") return runStatusToStatusKey(run.status);
-  const reading = runSummaryReading(run);
-  if (reading !== null) return reading;
-  return issueRun === "running" || issueRun === "queued" ? issueRun : "running";
-}
-
-/** Format an estimated cost in USD. `$X.XX`, with small-value and zero cases. */
-export function formatUsd(usd: number | null | undefined): string {
-  if (usd == null) return "—";
-  if (usd === 0) return "$0";
-  if (usd < 0.01) return "<$0.01";
-  return `$${usd.toFixed(2)}`;
-}
-
-/** Human duration from milliseconds: `820ms` · `4.2s` · `3m 12s` · `1h 04m`. */
-export function formatDurationMs(ms: number | null | undefined): string {
-  if (ms == null) return "—";
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  const s = ms / 1000;
-  if (s < 60) return `${s.toFixed(1)}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ${String(Math.floor(s % 60)).padStart(2, "0")}s`;
-  const h = Math.floor(m / 60);
-  return `${h}h ${String(m % 60).padStart(2, "0")}m`;
-}
-
-/** Human duration from seconds (step-durations view). */
-export function formatDurationSec(sec: number | null | undefined): string {
-  if (sec == null) return "—";
-  return formatDurationMs(sec * 1000);
-}
-
-/**
- * Index the per-project runs list by `issueId`, keeping the most recent run per
- * issue. The list arrives ordered by `startedAt` desc, so the first run seen
- * for an issue is the latest — later ones are dropped.
- */
-export function runsByIssue(
-  runs: PipelineRunListItem[] | undefined,
-): Map<string, PipelineRunListItem> {
-  const map = new Map<string, PipelineRunListItem>();
-  for (const run of runs ?? []) {
-    if (run.issueId && !map.has(run.issueId)) map.set(run.issueId, run);
-  }
-  return map;
-}
-
-/** One column of the board: a lane label, the word and colour it reads in, and its issues. */
-export interface LabelGroup {
-  label: AutonomousLabel;
-  title: string;
-  color: string;
-  issues: PipelineIssueRow[];
-}
-
-/**
- * The board's columns: the lane labels of the statuses its query can return, one work state's
- * columns together in `WORK_STATES` order. Derived forward from the returnable statuses, never by
- * subtracting the excluded ones' labels: `toAutonomousLabel` is many-to-one, so subtraction
- * deletes a column full of live issues once an excluded status shares a label with an included one.
- */
-export function boardColumns(
-  excluded: readonly string[] = BOARD_EXCLUDED_STATUSES,
-): AutonomousLabel[] {
-  const reachable = new Set<AutonomousLabel>();
-  for (const status of REGISTRY_ISSUE_STATUSES) {
-    if (excluded.includes(status)) continue;
-    reachable.add(toAutonomousLabel(status, true));
-    reachable.add(toAutonomousLabel(status, false));
-  }
-  const stateOf = (l: AutonomousLabel) => WORK_STATES.indexOf(LABEL_WORK_STATE[l]);
-  return AUTONOMOUS_LABELS.filter((l) => reachable.has(l)).sort((a, b) => stateOf(a) - stateOf(b));
-}
-
-/** A work state the board does not draw. */
-export interface LeftOutState {
-  state: WorkState;
+export interface Doing {
   label: string;
-  /** Undefined until the project's counts are read: the figure is never invented, nor taken from rows held after a refetch failed. */
-  count: number | undefined;
-  /** What the counts' read answered, so a count that is not there says whether it is on its way or failed. */
-  read: QueryRead;
+  tone: SemanticTone;
 }
 
-/** The states the board leaves out, with core's count of each where the health read came in. */
-export function boardLeftOut(
-  work: Partial<Record<WorkState, number>> | undefined,
-  read: QueryRead,
-): LeftOutState[] {
-  return BOARD_LEFT_OUT_STATES.map((state) => ({
-    state,
-    label: WORK_STATE_LABELS[state],
-    count: read === 'read' ? work?.[state] : undefined,
-    read,
-  }));
+const RUNTIME_DOING: Record<string, Doing> = {
+  starting: { label: "Starting", tone: "neutral" },
+  working: { label: "Working", tone: "active" },
+  awaiting_input: { label: "Waiting for input", tone: "attention" },
+  checkpointing: { label: "Checkpointing", tone: "neutral" },
+  closed: { label: "Closing", tone: "neutral" },
+};
+
+/** What the session is doing, from its status first and its runtime state second. */
+export function doingOf(session: Pick<LiveSession, "status" | "runtimeState">): Doing {
+  if (session.status === "queued") return { label: "Waiting for a box", tone: "neutral" };
+  if (session.status === "idle") return { label: "Not started", tone: "neutral" };
+  const runtime = session.runtimeState ? RUNTIME_DOING[session.runtimeState] : undefined;
+  return runtime ?? { label: "Working", tone: "active" };
 }
 
-/** One state the board draws: the search's count of it, and the cards its columns hold. */
-export interface StateFigure {
-  state: WorkState;
-  label: string;
-  total: number;
-  drawn: number;
+const BLOCKER: Record<string, string> = {
+  human: "A person",
+  machine: "A machine",
+  master_or_peer: "Another agent",
+  nobody: "Nobody — it stopped with a reason",
+};
+
+/** Who can end the wait and what it waits on, where the box reports the session blocked. */
+export function waitingOnOf(session: Pick<LiveSession, "report">): string | null {
+  const report = session.report;
+  if (report?.work !== "blocked") return null;
+  const who = report.blockerKind ? (BLOCKER[report.blockerKind] ?? report.blockerKind) : "Unnamed";
+  return report.waitingOn ? `${who} — ${report.waitingOn}` : who;
 }
 
-/** A column head counts cards and a state can span columns, so the count the search gives meets the cards drawn here. */
-export function boardStateFigures(
-  groups: readonly LabelGroup[],
-  byWorkState: Readonly<Record<WorkState, number>>,
-): StateFigure[] {
-  const drawn = new Map<WorkState, number>();
-  for (const g of groups) {
-    const state = LABEL_WORK_STATE[g.label];
-    drawn.set(state, (drawn.get(state) ?? 0) + g.issues.length);
+export interface CheckIn {
+  text: string;
+  quiet: boolean;
+}
+
+/** How long ago the session last checked in, and whether a running one has gone quiet. */
+export function checkInOf(
+  session: Pick<LiveSession, "status" | "lastHeartbeatAt">,
+  now: number,
+): CheckIn {
+  const at = session.lastHeartbeatAt ? Date.parse(session.lastHeartbeatAt) : Number.NaN;
+  if (Number.isNaN(at)) {
+    return { text: "No check-in yet", quiet: session.status === "running" };
   }
-  return OPEN_WORK_STATES.map((state) => ({
-    state,
-    label: WORK_STATE_LABELS[state],
-    total: byWorkState[state],
-    drawn: drawn.get(state) ?? 0,
-  }));
+  const since = Math.max(0, now - at);
+  const quiet = session.status === "running" && since > QUIET_AFTER_MS;
+  return { text: `${formatElapsed(since)} ago`, quiet };
 }
 
-/** The colour a lane label reads in — the same `SemanticTone` its status chip resolves through. */
-export function labelTone(label: AutonomousLabel): SemanticTone {
-  return LABEL_VIEW[label].tone;
+export interface OrderedSession {
+  session: LiveSession;
+  /** 1 for a session listed under the master that owns it. */
+  depth: 0 | 1;
 }
 
-/** The lane label a board row reads: its status, whether anything holds it, and whether a person owes it an answer. */
-export function rowLabel(issue: PipelineIssueRow): AutonomousLabel {
-  return toAutonomousLabel(
-    issue.status as (typeof REGISTRY_ISSUE_STATUSES)[number],
-    issue.held,
-    issue.waitingOnPersonSince != null,
+/** Masters first, each followed by the sessions it owns; then every other session, oldest first. */
+export function orderSessions(sessions: readonly LiveSession[]): OrderedSession[] {
+  const byAge = [...sessions].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const masters = byAge.filter((s) => s.kind === "master");
+  const masterIds = new Set(masters.map((m) => m.id));
+  const out: OrderedSession[] = [];
+  for (const m of masters) {
+    out.push({ session: m, depth: 0 });
+    for (const child of byAge) {
+      if (child.parentSessionId === m.id) out.push({ session: child, depth: 1 });
+    }
+  }
+  for (const s of byAge) {
+    if (s.kind !== "master" && !(s.parentSessionId && masterIds.has(s.parentSessionId))) {
+      out.push({ session: s, depth: 0 });
+    }
+  }
+  return out;
+}
+
+export interface HolderLine {
+  who: string;
+  why: string;
+  since: string;
+}
+
+const OWES: Record<PersonOwes, string> = {
+  information: "A person owes information",
+  decision: "A person owes a decision",
+  resource: "A person owes a resource",
+};
+
+function ago(iso: string | null, now: number): string | null {
+  if (!iso) return null;
+  const at = Date.parse(iso);
+  return Number.isNaN(at) ? null : `${formatElapsed(Math.max(0, now - at))} ago`;
+}
+
+function clock(iso: string | null): string | null {
+  if (!iso) return null;
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return null;
+  return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
+}
+
+/** One holder of an issue, as three short lines: who holds it, why, and since when. */
+export function holderLine(holder: Holder, now: number): HolderLine {
+  switch (holder.by) {
+    case "session":
+      return {
+        who: `${holder.sessionTitle?.trim() || sessionKindLabel(holder.sessionKind)} on ${holder.deviceName ?? "an unnamed box"}`,
+        why: "A live session is working it",
+        since: ago(holder.since, now) ?? "Start not recorded",
+      };
+    case "claim": {
+      const until = clock(holder.expiresAt);
+      return {
+        who: until ? `Claim by ${holder.holder} until ${until}` : `Claim by ${holder.holder}`,
+        why: holder.next ?? "No next step was recorded",
+        since: holder.renewedAt ? `Renewed ${ago(holder.renewedAt, now) ?? "at an unreadable time"}` : "Renewal not recorded",
+      };
+    }
+    case "person":
+      return {
+        who:
+          holder.status === "on_hold"
+            ? "Paused by a person"
+            : holder.owes
+              ? OWES[holder.owes]
+              : "A person — what is owed was not recorded",
+        why: holder.why ?? "No reason was recorded",
+        since: ago(holder.since, now) ?? "Start not recorded",
+      };
+  }
+}
+
+/** When the hold began, for ordering; a claim's renewal stands in for a start it never recorded. */
+function startOf(holder: Holder): number {
+  const iso = holder.by === "claim" ? holder.renewedAt : holder.since;
+  const at = iso ? Date.parse(iso) : Number.NaN;
+  return Number.isNaN(at) ? Number.POSITIVE_INFINITY : at;
+}
+
+/** Issues a person holds first — they wait on someone — then the longest held first. */
+export function orderHolds(holds: readonly HeldIssue[]): HeldIssue[] {
+  const byPerson = (h: HeldIssue) => (h.holders.some((x) => x.by === "person") ? 0 : 1);
+  const oldest = (h: HeldIssue) => Math.min(...h.holders.map(startOf));
+  return [...holds].sort(
+    (a, b) => byPerson(a) - byPerson(b) || oldest(a) - oldest(b) || a.displayId.localeCompare(b.displayId),
   );
 }
 
-/** Group issues into the board's columns by the label each row reads as. */
-export function groupIssuesByLabel(issues: PipelineIssueRow[] | undefined): LabelGroup[] {
-  const columns = boardColumns();
-  const buckets = new Map<AutonomousLabel, PipelineIssueRow[]>(columns.map((l) => [l, []]));
-  for (const issue of issues ?? []) {
-    const label = rowLabel(issue);
-    const bucket = buckets.get(label);
-    if (bucket) bucket.push(issue);
-    else buckets.set(label, [issue]);
-  }
-  return [...buckets.entries()].map(([label, list]) => ({
-    label,
-    title: LABEL_VIEW[label].label,
-    color: TONE_META[LABEL_VIEW[label].tone].dot,
-    issues: list,
-  }));
-}
-
-/** Median of a numeric list (`null` for an empty list). Used by the dashboard's
- *  where-time-goes aggregate. */
-export function median(values: number[]): number | null {
-  if (values.length === 0) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-}
-
-/** One row of the dashboard's "Where time goes" — a REAL job type over the window. */
-export interface StepCost {
-  /** The job type exactly as the `step_durations` rows carry it. */
-  step: string;
-  /** The seven-name colour when this job type is one of them, a neutral token when it is not. */
-  color: string;
-  medianSec: number;
-  cost: number;
-  samples: number;
-}
-
-/**
- * Fold the `step-durations` window onto the job types it actually contains, slowest median first.
- */
-export function aggregateStepCosts(durations: StepDurationRow[] | undefined): StepCost[] {
-  const byStep = new Map<string, { secs: number[]; cost: number }>();
-  for (const r of durations ?? []) {
-    const cur = byStep.get(r.step) ?? { secs: [], cost: 0 };
-    cur.secs.push(r.durationSeconds);
-    cur.cost += r.costUsd;
-    byStep.set(r.step, cur);
-  }
-  return [...byStep.entries()]
-    .map(([step, agg]) => ({
-      step,
-      color: stageColor(step),
-      medianSec: median(agg.secs) ?? 0,
-      cost: agg.cost,
-      samples: agg.secs.length,
-    }))
-    .sort((a, b) => b.medianSec - a.medianSec || a.step.localeCompare(b.step));
-}
-
-/** Everything a kanban card's status chip needs, from the three signals that
- *  can claim it: a queued step, the issue's live run, and the issue's own
- *  lifecycle status. */
-export interface CardStatusView {
-  status: StatusKey;
-  /** Undefined lets `StatusChip` use the run vocabulary's own label. */
-  label: string | undefined;
-  domain: "session" | "issue";
-  /** The gate sentence, for the card's tooltip + aria-label; "" when none. */
-  waitingReason: string;
-  /** A line the card shows under its title; "" when none. */
-  note: string;
-}
-
-/**
- * What the board can say about a row nothing holds: when anything last spoke for it. Core cannot
- * tell a quiet run from a gone one, so the card gives the time and leaves the gap to the reader.
- */
-export function checkInLine(lastCheckInAt: string | null, now: number): string {
-  if (lastCheckInAt === null) return "No check-in on record";
-  const at = new Date(lastCheckInAt);
-  const clock = `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
-  return `Last check-in ${clock} · ${formatElapsed(now - at.getTime())} ago`;
-}
-
-/** ISS-1192 — what a reviewer opening a run session is told about the box's
- *  gate. `none` and `clear` are different facts and never share a picture. */
-export interface RunGateNote {
-  verdict: "none" | "clear" | "marked" | "failing_open" | "unreadable";
-  headline: string;
-  detail: string;
-  reason: string | null;
-}
-
-/** The run could not be fetched: the condition is unknown, which is not "none". */
-export function runGateUnfetched(message: string): RunGateNote {
-  return {
-    verdict: "unreadable",
-    headline: "This run's record could not be read, so its gate condition is unknown",
-    detail: message,
-    reason: null,
-  };
-}
-
-/** `undefined` is a response that did not carry the field, and says nothing. */
-export function runGateNote(gate: RunGate | null | undefined): RunGateNote | null {
-  if (gate === undefined) return null;
-  if (gate === null) {
-    return {
-      verdict: "none",
-      headline: "The box reported no gate condition when this run opened",
-      detail: "Its runner sent none, so this record cannot say whether the gate was deciding.",
-      reason: null,
-    };
-  }
-  if (gate.read === "unreadable") {
-    return {
-      verdict: "unreadable",
-      headline: "This run recorded a gate condition that cannot be read",
-      detail: `${gate.reason} — the run was not opened with no condition, so this is not "the gate was deciding".`,
-      reason: null,
-    };
-  }
-  const c = gate.condition;
-  if (c.verdict === "clear") {
-    return {
-      verdict: "clear",
-      headline: "This box's gate was deciding when this run opened",
-      detail: "No dispatch on record had gone through without a decision.",
-      reason: null,
-    };
-  }
-  const rate = c.perDay === null ? "at an unstated rate" : `${Math.round(c.perDay)}/day`;
-  const window = c.windowMs === null ? "an unknown span" : formatDurationMs(c.windowMs);
-  return {
-    verdict: c.verdict,
-    headline:
-      c.verdict === "failing_open"
-        ? "This box's gate was failing open when this run opened"
-        : "This box's gate had admitted undecided dispatches when this run opened",
-    detail: `${c.count} dispatch(es) admitted without a decision, ${rate} over ${window}`,
-    reason: gateReasonLine(c.byReason, c.count),
-  };
-}
-
-export function cardStatus(
-  issue: PipelineIssueRow,
-  run: { status: PipelineRunStatus } | undefined,
-  now: number = Date.now(),
-): CardStatusView {
-  const label = rowLabel(issue);
-  // Nothing holds the row, so a run or a queued step the board kept for it is history, not what
-  // the card is now: a queued job would have made the row held.
-  if (label === "unheld") {
-    return {
-      status: LABEL_VIEW.unheld.status,
-      label: NO_CHECK_IN_CHIP,
-      domain: "issue",
-      waitingReason: "",
-      note: checkInLine(issue.lastCheckInAt, now),
-    };
-  }
-  const queued = deriveQueuedStep(issue.pipelineHealth, hasLiveAgentSession(issue.agentStatus));
-  if (queued) {
-    return {
-      status: queuedChipStatus(queued),
-      label: queued.gate?.short ?? "Queued",
-      domain: "session",
-      waitingReason: queued.gate?.detail ?? "",
-      note: "",
-    };
-  }
-  if (run) {
-    return {
-      status: runStatusToStatusKey(run.status),
-      label: undefined,
-      domain: "session",
-      waitingReason: "",
-      note: "",
-    };
-  }
-  return {
-    status: statusToChip(issue.status as IssueStatus),
-    label: statusLabel(issue.status as IssueStatus),
-    domain: "issue",
-    waitingReason: "",
-    note: "",
-  };
+/** The clock time a reading was taken, for the line a failed refresh shows. */
+export function readAtLine(readAt: string): string {
+  return `Could not refresh — showing what was read at ${clock(readAt) ?? readAt}.`;
 }

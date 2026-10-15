@@ -169,6 +169,13 @@ export function bottomTabItems(
   ];
 }
 
+/** Project pages the rail does not list; the rail lights Dashboard for them, the crumb names them. */
+const OFF_RAIL_PAGES: Record<string, string> = {
+  pipeline: "Pipeline",
+  releases: "Releases",
+  settings: "Settings",
+};
+
 export function buildCrumbs(opts: {
   pathname: string;
   slug: string | null;
@@ -181,10 +188,12 @@ export function buildCrumbs(opts: {
 
   if (slug) {
     const page = PROJECT_ITEMS.find((it) => it.key === activeKey);
+    const segment = pathname.split("/")[3] ?? "";
+    const offRail = OFF_RAIL_PAGES[segment];
     return [
       { label: "Projects", href: "/projects" },
       { label: projectName ?? slug, href: `/projects/${slug}` },
-      { label: page?.label ?? "Dashboard" },
+      { label: offRail ?? page?.label ?? "Dashboard" },
     ];
   }
 

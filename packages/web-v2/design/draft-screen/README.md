@@ -9,7 +9,7 @@ reference for incremental web-v2 improvements — not tied to a single issue.
 | File | Screen | Maps to | Net-new vs web-v2 |
 |---|---|---|---|
 | `01 Dashboard.html` | Project dashboard | `/projects/[slug]` | needs-attention queue, View chain |
-| `02 Issues.html` | Issues (Board/List/Insights) | `/projects/[slug]/issues` + `/pipeline` | merges kanban into Issues tabs; Cost/Throughput columns |
+| `02 Issues.html` | Issues (Board/List/Insights) | `/projects/[slug]/issues` | the board's states live in the Issues list; `/pipeline` now shows live sessions and holds (ISS-1228); Cost/Throughput columns |
 | `03 Issue detail.html` | Issue detail | `/projects/[slug]/issues/[id]` | inline run history + per-agent activity |
 | `04 Agents.html` | Agents ops console | `/sessions` + `/projects/[slug]/agents` | zombie jobs, median wait metrics |
 | `05 Agent run.html` | Agent run detail | `/projects/[slug]/agents/[sessionId]` | **Take over**, Files changed, Tasks |

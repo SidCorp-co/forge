@@ -1,6 +1,7 @@
 import { OPEN_WORK_STATES, WORK_STATE_LABELS } from "@forge/contracts/work-state";
 import { describe, expect, it } from "vitest";
 import {
+  spendByStep,
   type AttentionActionKind,
   attentionCaption,
   attentionCut,
@@ -330,5 +331,44 @@ describe("attentionCut (ISS-1156)", () => {
   it("names an empty list that is cut as nothing listed rather than nothing to act on", () => {
     const cut = attentionCut([], viewWith({ awaitingInput: 3 }), "sable", 0);
     expect(attentionCaption([], cut)).toBe("nothing listed to act on — 0 of at least 3");
+  });
+});
+
+describe("spendByStep — the steps the rows name, no stage fold (ISS-1228)", () => {
+  const row = (step: string, costUsd: number) => ({
+    runId: "r",
+    issueId: null,
+    projectId: "p",
+    step,
+    startedAt: "2026-10-01T00:00:00Z",
+    finishedAt: "2026-10-01T00:01:00Z",
+    durationSeconds: 60,
+    costUsd,
+  });
+
+  it("keeps each step under its own name, costliest first, in neutral ink", () => {
+    const out = spendByStep([row("drive", 1), row("drive", 2), row("pm", 1)]);
+    expect(out.total).toBe(4);
+    expect(out.segments.map((s) => [s.label, s.cost, s.color])).toEqual([
+      ["drive", 3, "var(--fg)"],
+      ["pm", 1, "var(--fg-muted)"],
+    ]);
+  });
+
+  it("folds everything past the three costliest into other", () => {
+    const out = spendByStep([row("a", 4), row("b", 3), row("c", 2), row("d", 1), row("e", 0.5)]);
+    expect(out.segments.map((s) => s.label)).toEqual(["a", "b", "c", "other"]);
+    expect(out.segments[3]?.cost).toBe(1.5);
+  });
+
+  it("names no stage: a staged job type is a step like any other", () => {
+    const out = spendByStep([row("code", 1), row("fix", 1)]);
+    expect(out.segments.map((s) => s.label).sort()).toEqual(["code", "fix"]);
+    expect(out.segments.every((s) => !s.color.includes("stage"))).toBe(true);
+  });
+
+  it("returns no segment and a zero total for an empty or zero-cost window", () => {
+    expect(spendByStep(undefined)).toEqual({ segments: [], total: 0 });
+    expect(spendByStep([row("drive", 0)])).toEqual({ segments: [], total: 0 });
   });
 });

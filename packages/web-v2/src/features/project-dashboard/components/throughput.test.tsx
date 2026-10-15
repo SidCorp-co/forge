@@ -9,7 +9,7 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ThroughputRow } from "@/features/pipeline/types";
+import type { ThroughputRow } from "@/features/runs/types";
 import { Throughput, ThroughputChart } from "./throughput";
 
 expect.extend(matchers);

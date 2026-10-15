@@ -27,8 +27,8 @@ nothing inline (each one read in the source, none on screen):
   `Request failed` and stays open.
 - `features/settings/components/tokens-tab.tsx` — the Token created drawer's `copyPlaintext` toasts
   `Copy failed`, and `Copied to clipboard`, both beneath it. Token creation is not in a drawer.
-- `features/pipeline/components/run-detail.tsx` — Pause, Resume and Stop fail through
-  `pipeline/hooks.ts:useRunControl`'s `Run control failed` toast; `copyLink` toasts its own failure.
+- `features/runs/components/run-detail.tsx` — Pause, Resume and Stop fail through
+  `runs/hooks.ts:useRunControl`'s `Run control failed` toast; `copyLink` toasts its own failure.
 - `features/session/components/session-screen.tsx` — rendered inside
   `sessions/components/session-reply-panel.tsx`'s drawer (`embedded`), every mutation it runs
   fails through `useToastError` (send, regenerate, fork, edit, cancel, rerun).

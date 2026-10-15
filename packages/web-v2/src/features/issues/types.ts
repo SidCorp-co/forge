@@ -6,7 +6,6 @@ import {
   REGISTRY_ISSUE_STATUSES,
 } from "@forge/contracts/pipeline-registry";
 import type { WorkState } from "@forge/contracts/work-state";
-import type { StageKey } from "@/design/stages";
 import type { StatusKey } from "@/design/status";
 
 /** Lifecycle status enum — derived from `@forge/contracts`, which is
@@ -437,7 +436,7 @@ export type CommentKind =
   | "blocked"
   | "comment";
 
-export type { StageKey, StatusKey };
+export type { StatusKey };
 
 export interface LiveReachCommit {
   sha: string;

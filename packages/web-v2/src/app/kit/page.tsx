@@ -6,27 +6,25 @@ import {
   Avatar, Badge, Banner, BoardRowSkeleton, Breadcrumb, Button, Card, CardContent,
   CardHeader, CardTitle, Checkbox, Collapsible, CommandPalette, DataTable, Divider, EmptyState,
   ErrorState, Field, Highlight, HealthDot, Icon, IconButton, Input,
-  KanbanBoard, KanbanCardSkeleton, KanbanColumn, KanbanColumnSkeleton, Kicker, KanbanCard, LiveDot, Menu,
+  Kicker, LiveDot, Menu,
   MonoTag, NavRail, NotificationsMenu, Pagination, ProgressBar,
   NativeSelect, ProjectCardSkeleton, ProjectMark, Radio, RadioGroup,
   SegmentedControl, Select, SessionRowSkeleton, Skeleton, SlideOver, Spinner,
-  STAGES, Stat, StatusChip,
+  Stat, StatusChip,
   StreamingText, Table, TBody, TD, TH, THead, TR, Tabs, Textarea, Toggle, Tooltip,
   TopBar, HelpButton, PinnedTabBar, VirtualList, useAnimatedNumber, useElapsed,
   type Command, type DataTableColumn, type NotificationItem, type PinnedTab,
-  type StageKey, type StatusKey, type TopBarDensity,
+  type StatusKey, type TopBarDensity,
 } from "@/design";
 import {
   ForgeMascot, ProjectLoader, ColdBoot, AgentWorking, ReconnectingBanner,
 } from "@/design";
-import { TONE_META } from "@/design/status";
 import {
   NavRailCompact, PROJECT_ITEMS, WORKSPACE_ITEMS,
   type RailItem, type SwitcherProject,
 } from "@/features/shell";
 import { useToast } from "@/providers/toast-provider";
 import { PageTitle, SectionTitle } from "@/design/primitives/heading";
-import { WORK_STATE_LABELS } from "@forge/contracts/work-state";
 
 function Section({ id, title, hint, children }: { id: string; title: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -91,18 +89,9 @@ const NOTES: NotificationItem[] = [
   { id: "FRG-230", label: "STATUS", text: "Release agent opened PR #1284", sub: "ready to merge", time: "1h", unread: false, hue: "green" },
 ];
 
-/** The kit's own sample columns — the work states' words and their tones, which is what a real
- *  board draws (`features/pipeline/derive.ts:boardColumns`). */
-const KANBAN_COLUMNS: { title: string; color: string }[] = [
-  { title: WORK_STATE_LABELS.open, color: TONE_META.neutral.dot },
-  { title: WORK_STATE_LABELS.in_flight, color: TONE_META.active.dot },
-  { title: WORK_STATE_LABELS.blocked_on_person, color: TONE_META.attention.dot },
-  { title: WORK_STATE_LABELS.awaiting_release, color: TONE_META.shipped.dot },
-];
-
 const NAV_ANCHORS = [
   "tokens", "type", "buttons", "status", "avatars", "tags", "forms", "cards",
-  "pipeline", "kanban", "navrail", "topbar", "shell", "overlays", "states",
+  "navrail", "topbar", "shell", "overlays", "states",
   "mascot", "skeletons", "progress", "feedback", "realtime",
   "formcontrols", "display", "disclosure", "data", "datatable", "virtuallist", "overlays2", "pageload",
 ];
@@ -242,7 +231,7 @@ function AnimatedStatDemo() {
 
 function HighlightDemo() {
   const [tick, setTick] = useState(0);
-  const [stage, setStage] = useState<StageKey>("code");
+  const [stage, setStage] = useState("code");
   const [status, setStatus] = useState<StatusKey>("running");
   return (
     <div className="flex max-w-xl flex-col gap-3">
@@ -535,22 +524,13 @@ export default function KitPage() {
             </div>
           </header>
 
-          <Section id="tokens" title="Color tokens" hint="Semantic layer (components reference these) + the 7 pipeline-stage hues.">
+          <Section id="tokens" title="Color tokens" hint="Semantic layer (components reference these).">
             <Row>
               {SEMANTIC_TOKENS.map(([token, label]) => (
                 <div key={token} className="flex flex-col items-center gap-1.5">
                   <span className="size-14 rounded-md border border-line" style={{ background: `var(${token})` }} />
                   <span className="fg-caption">{label}</span>
                   <span className="font-mono text-10 text-subtle">{token}</span>
-                </div>
-              ))}
-            </Row>
-            <div className="my-5 h-px bg-[var(--border-subtle)]" />
-            <Row>
-              {STAGES.map((s) => (
-                <div key={s.key} className="flex flex-col items-center gap-1.5">
-                  <span className="size-9 rounded-pill" style={{ background: s.color }} />
-                  <span className="font-mono text-11 text-muted">{s.label}</span>
                 </div>
               ))}
             </Row>
@@ -692,37 +672,6 @@ export default function KitPage() {
             </div>
           </Section>
 
-          <Section id="kanban" title="Kanban card">
-            <div className="grid max-w-3xl gap-3 sm:grid-cols-3">
-              <KanbanCard id="FRG-241" title="Sweep orphaned runner jobs on reconnect" status="running" cost="$0.42" assignee={{ initials: "SK", hue: "cobalt" }} />
-              <KanbanCard id="FRG-229" title="Retry policy for failed test stage handoff" status="blocked" cost="$0.39" assignee={{ initials: "MJ", hue: "green" }} />
-              <KanbanCard id="FRG-230" title="Per-step cost analytics on the run timeline" status="done" cost="$2.14" assignee={{ initials: "AR", hue: "flame" }} />
-            </div>
-          </Section>
-
-          <Section id="kanban-board" title="Kanban board" hint="One column per state, in no order. Horizontal snap-scroll when narrow.">
-            <div className="flex h-[320px]">
-              <KanbanBoard>
-                {KANBAN_COLUMNS.map((c) => (
-                  <KanbanColumn
-                    key={c.title}
-                    title={c.title}
-                    color={c.color}
-                    count={c.title === WORK_STATE_LABELS.in_flight ? 2 : 0}
-                    emptyHint={`No issues are ${c.title.toLowerCase()}.`}
-                  >
-                    {c.title === WORK_STATE_LABELS.in_flight && (
-                      <>
-                        <KanbanCard id="FRG-241" title="Sweep orphaned runner jobs on reconnect" status="running" cost="$0.42" assignee={{ initials: "SK", hue: "cobalt" }} />
-                        <KanbanCard id="FRG-229" title="Retry policy for failed test stage handoff" status="blocked" cost="$0.39" assignee={{ initials: "MJ", hue: "green" }} />
-                      </>
-                    )}
-                  </KanbanColumn>
-                ))}
-              </KanbanBoard>
-            </div>
-          </Section>
-
           <Section id="navrail" title="Nav rail" hint="Concept C, two modes. Default: the compact 88px icon Rail — the workspace tier, a hover project switcher, then the flat project tier (both tiers come from the shared nav model the shell renders). Active row = flame tint + a 3px accent bar; badged rows carry count pills. Brand expands it to the labeled 232px rail.">
             <div className="flex gap-6">
               {/* Default: compact 88px rail. Hover the project mark for the switcher. */}
@@ -841,11 +790,6 @@ export default function KitPage() {
                 <BoardRowSkeleton />
                 <BoardRowSkeleton />
                 <BoardRowSkeleton />
-              </div>
-              <div className="grid max-w-3xl grid-cols-3 gap-4">
-                <KanbanColumnSkeleton cards={2} />
-                <KanbanColumnSkeleton cards={1} />
-                <KanbanCardSkeleton />
               </div>
               <div className="rounded-md border border-line bg-surface">
                 <SessionRowSkeleton />

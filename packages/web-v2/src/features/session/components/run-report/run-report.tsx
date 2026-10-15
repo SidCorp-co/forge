@@ -12,8 +12,8 @@
 
 import { useMemo, useState } from "react";
 import { Button, Card, CardContent, CardHeader, CardTitle, EmptyState } from "@/design";
-import { formatDurationMs, formatUsd } from "@/features/pipeline/derive";
-import { useRun } from "@/features/pipeline/hooks";
+import { formatDurationMs, formatUsd } from "@/lib/utils/format";
+import { useRun } from "@/features/runs/hooks";
 import { useSessionCost } from "@/features/sessions/hooks";
 import type { SessionRow } from "@/features/sessions/types";
 import {

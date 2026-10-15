@@ -4,7 +4,7 @@
 
 import { useMemo } from "react";
 import { ErrorState } from "@/design";
-import type { ThroughputRow } from "@/features/pipeline/types";
+import type { ThroughputRow } from "@/features/runs/types";
 import { formatApiError } from "@/lib/api/error";
 import { throughputComparison } from "../shape";
 import { DashboardSection, EmptyLine, unreadSection } from "./dashboard-section";
@@ -105,7 +105,7 @@ export function ThroughputChart({ rows }: { rows: ThroughputRow[] | undefined })
             </span>
             <div className="relative w-full min-h-0 flex-1">
               <span
-                className="absolute inset-x-0 bottom-0 block rounded-t bg-[var(--stage-release)]"
+                className="absolute inset-x-0 bottom-0 block rounded-t bg-[var(--fg-muted)]"
                 style={{ height: r.count === 0 ? "0%" : `${Math.max(4, (r.count / max) * 100)}%` }}
                 title={`${r.count} shipped on ${r.date}`}
               />

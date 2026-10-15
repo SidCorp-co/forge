@@ -37,7 +37,7 @@ import {
   awaitingReleaseRuns,
   projectAttention,
   runnersSummary,
-  spendByStage,
+  spendByStep,
   statusDonut,
 } from "@/features/project-dashboard/derive";
 import {
@@ -51,7 +51,7 @@ import {
 import { useAttention } from "@/features/attention/hooks";
 import { useIssues } from "@/features/issues/hooks";
 import { formatElapsed } from "@/features/overview/derive";
-import { useProjectRuns, useStepDurations, useThroughput } from "@/features/pipeline/hooks";
+import { useProjectRuns, useStepDurations, useThroughput } from "@/features/runs/hooks";
 import { useProjectHealth, useProjects } from "@/features/projects/hooks";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import { useActiveRunners, useProjectRunners } from "@/features/runners/hooks";
@@ -205,7 +205,7 @@ export default function ProjectOverviewPage() {
   );
   const donut = statusDonut(health?.work);
   const awaitingReleaseIssues = health?.work.awaiting_release ?? 0;
-  const spend = spendByStage(durationsQ.data);
+  const spend = spendByStep(durationsQ.data);
   const schedules = schedulesQ.data ?? [];
 
   const reading = projectShape({

@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { IssueRow } from "@/features/issues/types";
-import type { PipelineRunListItem } from "@/features/pipeline/types";
+import type { PipelineRunListItem } from "@/features/runs/types";
 import type { DashboardAttentionItem } from "./derive";
 import {
   STUCK_RUN_SECONDS,

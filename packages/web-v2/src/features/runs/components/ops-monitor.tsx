@@ -38,7 +38,7 @@ import type { ProjectHealthRow } from "@/features/projects/types";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import { formatDurationSec, formatUsd } from "../derive";
+import { formatDurationSec, formatUsd } from "@/lib/utils/format";
 import { useStepDurations, useThroughput } from "../hooks";
 import type { StepDurationRow, ThroughputRow } from "../types";
 import { RunDetail } from "./run-detail";
@@ -171,7 +171,7 @@ export function OpsMonitor() {
         )}
       </div>
 
-      <RunDetail open={!!runId} onClose={() => setRunId(null)} issue={null} runId={runId} />
+      <RunDetail open={!!runId} onClose={() => setRunId(null)} runId={runId} />
     </PageContainer>
   );
 }
@@ -399,10 +399,10 @@ function RunsTab({
     <>
       {/* Mobile: stacked cards */}
       <div className="flex flex-col gap-2.5 sm:hidden">
-        {rows.map((r, i) => (
+        {rows.map((r) => (
           <button
             type="button"
-            key={`${r.runId}-${r.step}-${i}`}
+            key={`${r.runId}-${r.step}-${r.startedAt}`}
             onClick={() => onOpen(r.runId)}
             className="flex flex-col gap-1.5 rounded-md border border-line bg-surface p-3 text-left hover:bg-hover"
           >
@@ -432,9 +432,9 @@ function RunsTab({
             </TR>
           </THead>
           <TBody>
-            {rows.map((r, i) => (
+            {rows.map((r) => (
               <TR
-                key={`${r.runId}-${r.step}-${i}`}
+                key={`${r.runId}-${r.step}-${r.startedAt}`}
                 className="cursor-pointer"
                 onClick={() => onOpen(r.runId)}
               >

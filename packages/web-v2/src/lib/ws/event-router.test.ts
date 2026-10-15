@@ -290,3 +290,19 @@ describe("an accepted message is filed under the token its tab minted (ISS-1078)
     expect(c.invalidated(["conversations", "c1"])).toBe(true);
   });
 });
+
+describe("the pipeline page's sessions and holds follow the events that move them (ISS-1228)", () => {
+  it.each([
+    ["agent-session.created", { sessionId: "s1" }],
+    ["agent-session.status", { sessionId: "s1" }],
+    ["agent-session.deleted", { sessionId: "s1" }],
+    ["issue.statusChanged", { issueId: "i1" }],
+    ["issue.updated", { issueId: "i1" }],
+  ])("%s refreshes it", (event, data) => {
+    expect(send(event, data).has(["sessions-and-holds"])).toBe(true);
+  });
+
+  it("a comment, which moves neither, does not", () => {
+    expect(send("comment.created", { issueId: "i1" }).has(["sessions-and-holds"])).toBe(false);
+  });
+});

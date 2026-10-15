@@ -1,7 +1,7 @@
-// 7-day spend-by-stage (ISS-379, AC#4). Pure-CSS stacked bar (test / code / plan / other) + per-stage
+// 7-day spend by step (ISS-379, AC#4). Pure-CSS stacked bar of the three costliest steps + other, a
 // legend, `+$X in flight` where runs are still spending, and the figure against its own normal.
-import { formatUsd } from "@/features/pipeline/derive";
-import type { SpendByStageData } from "../derive";
+import { formatUsd } from "@/lib/utils/format";
+import type { SpendByStepData } from "../derive";
 import type { ReadState } from "../shape";
 import { DashboardSection, EmptyLine, unreadSection } from "./dashboard-section";
 
@@ -10,7 +10,7 @@ export function SpendCard({
   inFlightUsd,
   read,
 }: {
-  data: SpendByStageData;
+  data: SpendByStepData;
   inFlightUsd: number;
   /** The step-durations read the spend is summed from; until it is in, "none recorded" is not said. */
   read?: ReadState;

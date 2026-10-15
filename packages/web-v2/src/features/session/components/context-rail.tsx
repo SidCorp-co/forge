@@ -32,8 +32,8 @@ import {
 } from "@/features/sessions/types";
 import { useSessionCost, useSessions } from "@/features/sessions/hooks";
 import { isJobDriven, sessionKind } from "@/features/sessions/types";
-import { type RunGateNote, runGateNote, runGateUnfetched } from "@/features/pipeline/derive";
-import { useRun } from "@/features/pipeline/hooks";
+import { type RunGateNote, runGateNote, runGateUnfetched } from "@/features/runs/derive";
+import { useRun } from "@/features/runs/hooks";
 import { useDevices } from "@/features/runners/hooks";
 import { deviceHealth, deviceVersionLabel } from "@/features/runners/types";
 import { deriveAgentTasks, deriveFilesChanged, type ConversationItem } from "../types";
