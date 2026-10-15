@@ -3193,6 +3193,7 @@
 
 ### Fixed
 
+- **The pipeline help page says what Settings holds, and that a gated draft is dropped, not closed.** It described a per-stage Auto/Manual/Skip setting that does not exist, and told readers to close a draft, which is refused. (ISS-1229)
 - **A shape change lists each status as one item.** Developed issues are counted as waiting to be tested, so a list of several statuses no longer reads one of them as two. (ISS-1171)
 - **Shape & release names issues by what they are doing, and its refusal no longer covers the shape it refuses.** The confirmation counts those in progress and waiting for release; a failed save opens with what was saved. (ISS-1171)
 - **An empty Connections page offers a way to add one.** It links a project's Integrations settings, or creating a project where there is none. The Mark merged panel no longer shows backticks. (ISS-1171)

@@ -35,8 +35,8 @@ is off, no agent is sent any work for this project.
 Under **Intake gate** on the same tab, turn on **Require human approval for new
 issues**. Every new issue — whoever or whatever filed it — then waits at
 **Draft** with the **intake** label. Approve one by moving it to **Open**;
-turn it down by closing it. **Notify the project owner on each gated issue**
-tells the owner each time one arrives.
+turn it down by moving it to **Dropped**. **Notify the project owner on each
+gated issue** tells the owner each time one arrives.
 
 ## Approve a release
 
