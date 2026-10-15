@@ -50,7 +50,7 @@ function Screenshots({ images }: { images: LightboxImage[] }) {
   return (
     <div className="grid min-w-0 gap-2" data-testid="feedback-screenshots">
       <button type="button" onClick={() => setOpen(0)} className={`${frame} w-fit max-w-full`}>
-        <AttachedImage src={lead.href} alt={lead.alt ?? lead.name} name={lead.name} className="block h-auto max-h-90 w-auto max-w-full object-contain max-md:max-h-65" />
+        <AttachedImage src={lead.href} alt={lead.alt ?? lead.name} name={lead.name} large className="block h-auto max-h-90 w-auto max-w-full object-contain max-md:max-h-65" />
       </button>
       {rest.length > 0 ? (
         <ul className="flex flex-wrap gap-2">

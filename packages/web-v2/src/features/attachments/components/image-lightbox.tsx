@@ -191,11 +191,11 @@ function LightboxHeader({
   return (
     <header className="flex flex-none items-center justify-between gap-2 px-3 py-2 text-white sm:px-4 sm:py-3">
       <div className="flex min-w-0 items-center gap-2">
-        <span className="fg-body-sm truncate" title={image.name}>
+        <span className="truncate text-13" title={image.name}>
           {image.name}
         </span>
         {count > 1 && (
-          <span className="fg-caption flex-none text-white/60">
+          <span className="flex-none text-12 font-medium text-white/60">
             {index + 1} / {count}
           </span>
         )}
@@ -215,7 +215,7 @@ function LightboxHeader({
           type="button"
           onClick={resetZoom}
           aria-label={t("issues.image.resetZoom")}
-          className="fg-caption min-w-11 rounded-md px-1 py-1.5 tabular-nums text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:shadow-focus"
+          className="min-w-11 rounded-md text-12 font-medium px-1 py-1.5 tabular-nums text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:shadow-focus"
         >
           {Math.round(scale * 100)}%
         </button>
@@ -232,7 +232,7 @@ function LightboxHeader({
           href={image.href}
           target="_blank"
           rel="noreferrer noopener"
-          className="fg-caption ml-1 hidden rounded-md px-2 py-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white sm:inline-flex"
+          className="ml-1 hidden rounded-md text-12 font-medium px-2 py-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white sm:inline-flex"
         >
           {t("attachments.openOriginal")}
         </a>
@@ -262,7 +262,7 @@ function Thumbnails({ images, index, onPick }: { images: LightboxImage[]; index:
           aria-current={i === index}
           className={cn("flex-none overflow-hidden rounded-md border-2 transition-colors", i === index ? "border-info-8" : "border-transparent opacity-60 hover:opacity-100")}
         >
-          <AttachedImage src={img.href} alt={img.alt ?? img.name} name={img.name} width={56} height={56} className="size-11 object-cover sm:size-14" />
+          <AttachedImage src={img.href} alt={img.alt ?? img.name} name={img.name} onDark width={56} height={56} className="size-11 object-cover sm:size-14" />
         </button>
       ))}
     </div>
@@ -330,6 +330,8 @@ export function ImageLightbox({
             src={current.href}
             alt={current.alt ?? current.name}
             name={current.name}
+            large
+            onDark
             draggable={false}
             className="absolute inset-0 size-full object-contain will-change-transform"
             style={{

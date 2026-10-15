@@ -17,6 +17,15 @@ describe("AttachedImage", () => {
     expect(failed).toHaveTextContent("Couldn't load");
   });
 
+  it("reads the file's name in a box large enough for it, and only the short word on a thumbnail", () => {
+    const { container, rerender } = render(<AttachedImage src="/files/a.png" alt="" name="checkout-step-2.png" large />);
+    fireEvent.error(container.querySelector("img") as HTMLImageElement);
+    expect(screen.getByTestId("attached-image-failed")).toHaveTextContent("Couldn't load checkout-step-2.png");
+    rerender(<AttachedImage src="/files/b.png" alt="" name="cart.png" />);
+    fireEvent.error(container.querySelector("img") as HTMLImageElement);
+    expect(screen.getByTestId("attached-image-failed")).toHaveTextContent(/^Couldn't load$/);
+  });
+
   it("tries a new source again after the last one failed", () => {
     const { container, rerender } = render(<AttachedImage src="/files/a.png" alt="first" name="a.png" />);
     fireEvent.error(container.querySelector("img") as HTMLImageElement);
