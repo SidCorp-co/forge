@@ -74,7 +74,7 @@ beforeEach(async () => {
 
 async function handoffRows(): Promise<number> {
   const rows = (await harness.db.execute(
-    sql`SELECT count(*)::int AS n FROM issue_step_contexts WHERE issue_id = ${issueId}`,
+    sql`SELECT count(*)::int AS n FROM run_journal WHERE issue_id = ${issueId} AND handoff IS NOT NULL`,
   )) as unknown as Array<{ n: number }>;
   return Number(rows[0]?.n ?? 0);
 }

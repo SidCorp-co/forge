@@ -5,7 +5,7 @@
 // exactly those, so a query keyed anything else here stops updating and nothing reports it.
 //
 // The sections this file draws are flat, with no Card: after the banners, the main column reads the
-// release note, Description, Steps, Acceptance criteria, Agent plan, then the Comments / Activity region,
+// release note, Description, Runs, Acceptance criteria, Agent plan, then the Comments / Activity region,
 // each ruled off from the one above by a hairline. The Properties rail sits beside it behind a
 // hairline at `lg` and under it as a disclosure below.
 
@@ -13,7 +13,6 @@ import {
   Button,
   Checkbox,
   Collapsible,
-  EmptyPanelLine,
   ErrorState,
   HelpButton,
   IconButton,
@@ -43,9 +42,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   canonicalIssueId,
   deriveBlockerState,
-  deriveStepOutcomes,
+  deriveRunView,
   isLiveRun,
-  runningStepOf,
   issueQueryKey,
   parseChecklist,
   runStatusChip,
@@ -60,8 +58,7 @@ import {
   useComments,
   useCreateComment,
   useIssue,
-  useStepDurations,
-  useStepHandoffs,
+  useRunJournal,
 } from "../detail-hooks";
 import {
   useIssueCost,
@@ -82,11 +79,7 @@ import { ReleaseNoteSection } from "./release-note-section";
 import { type LiveAgentState, LiveAgentPanel } from "./live-agent-panel";
 import { ModulePicker } from "./module-picker";
 import { PropertiesRail } from "./properties-rail";
-import { SessionGroupTimeline } from "./session-group-timeline";
-import { StepArtifactCard } from "./step-artifact-card";
-
-/** An empty or unread Steps line drawn flush: a hairline above in place of the card's border. */
-const FLAT_PANEL_LINE = "rounded-none border-0 border-t border-line-subtle bg-transparent px-0 shadow-none";
+import { RunJournalSection } from "./run-journal-section";
 
 interface IssueDetailScreenProps {
   projectId: string;
@@ -103,7 +96,6 @@ export function IssueDetailScreen({
   const { toast } = useToast();
   const { push: pushRecent } = useRecents();
   const [tab, setTab] = useState("comments");
-  const [expandedStep, setExpandedStep] = useState<string | null>(null);
 
   useRoom(projectRoom(projectId));
 
@@ -123,8 +115,7 @@ export function IssueDetailScreen({
   const depsQ = useIssueDeps(canonicalId, true, projectId);
   const costQ = useIssueCost(canonicalId, true, projectId);
   const membersQ = useProjectMembers(projectId);
-  const handoffsQ = useStepHandoffs(projectId, canonicalId);
-  const durationsQ = useStepDurations(projectId, canonicalId);
+  const journalQ = useRunJournal(projectId, canonicalId);
 
   const patch = usePatchIssue();
   const {
@@ -212,10 +203,8 @@ export function IssueDetailScreen({
 
   const blocker = deriveBlockerState(issue, issue.pipelineHealth, depsQ.data, park);
   const liveStep = issue.pipelineHealth?.activeSession?.skill ?? null;
-  const stepOutcomes = deriveStepOutcomes(handoffsQ.data, durationsQ.data, {
-    activeStep: runningStepOf(issue.pipelineHealth),
-    failedStep: issue.failureInfo?.failedStep ?? null,
-  });
+  // A group run names its members by the canonical key, never the project prefix (ISS-992).
+  const runs = deriveRunView(journalQ.data, issue.agentSessions, `ISS-${issue.issSeq}`);
   const liveSession = pickActiveSession(issue.agentSessions);
   const queuedStep = deriveQueuedStep(issue.pipelineHealth, !!liveSession);
   const agentState: LiveAgentState | null = liveSession
@@ -435,42 +424,12 @@ export function IssueDetailScreen({
             canWrite={canWrite}
           />
 
-          {/* Session-group continuity (ISS-376) — resumed/fresh per step. Self-
-              hides when no session carries group metadata. */}
-          <SessionGroupTimeline sessions={issue.agentSessions ?? []} />
-
-          {handoffsQ.isLoading || durationsQ.isLoading ? (
-            <EmptyPanelLine title="Steps" status="Loading…" className={FLAT_PANEL_LINE} />
-          ) : handoffsQ.isError || durationsQ.isError ? (
-            <EmptyPanelLine
-              title="Steps"
-              status="Couldn't load"
-              detail={formatApiError(handoffsQ.isError ? handoffsQ.error : durationsQ.error)}
-              className={FLAT_PANEL_LINE}
-            />
-          ) : stepOutcomes.length === 0 ? (
-            <EmptyPanelLine
-              title="Steps"
-              status="None yet"
-              detail="Steps appear here as agents record them."
-              className={FLAT_PANEL_LINE}
-            />
-          ) : (
-            <FlatSection title="Steps">
-              <div className="space-y-2">
-                {stepOutcomes.map((outcome) => (
-                  <StepArtifactCard
-                    key={outcome.step}
-                    outcome={outcome}
-                    open={expandedStep === outcome.step}
-                    onToggle={() =>
-                      setExpandedStep((cur) => (cur === outcome.step ? null : outcome.step))
-                    }
-                  />
-                ))}
-              </div>
-            </FlatSection>
-          )}
+          <RunJournalSection
+            runs={runs}
+            loading={journalQ.isLoading}
+            error={journalQ.isError ? journalQ.error : null}
+            onRetry={() => journalQ.refetch()}
+          />
 
           {checklist.length > 0 && (
             <FlatSection title="Acceptance criteria">

@@ -13,7 +13,7 @@ const nullableIso = z.string().nullable();
 
 const runStepSchema = z.union([
   z.object({ source: z.literal('run_column'), step: z.string(), detail: z.null() }),
-  z.object({ source: z.literal('phase_journal'), step: z.string(), detail: z.null() }),
+  z.object({ source: z.literal('run_journal'), step: z.string(), detail: z.null() }),
   z.object({ source: z.literal('none'), step: z.null(), detail: z.string() }),
 ]);
 

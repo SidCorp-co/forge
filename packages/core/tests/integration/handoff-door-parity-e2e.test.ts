@@ -80,13 +80,15 @@ beforeEach(async () => {
     VALUES (${runId}, ${projectId}, 'interactive', 'running'),
            (${foreignRun}, ${otherProject}, 'interactive', 'running')`);
   await harness.db.execute(sql`
-    INSERT INTO issue_step_contexts (project_id, issue_id, pipeline_run_id, kind, step, attempt, payload)
-    VALUES (${otherProject}, ${foreignIssue}, ${foreignRun}, 'handoff', 'triage', 1, ${JSON.stringify(OLD)}::jsonb)`);
+    INSERT INTO run_journal (project_id, issue_id, run_id, phase, attempt, source, outcome,
+                             handoff, handoff_at, ended_at)
+    VALUES (${otherProject}, ${foreignIssue}, ${foreignRun}, 'triage', 1, 'agent', 'ok',
+            ${JSON.stringify(OLD)}::jsonb, now(), now())`);
 });
 
 async function victimPayload(): Promise<unknown> {
   const rows = (await harness.db.execute(
-    sql`SELECT payload FROM issue_step_contexts WHERE issue_id = ${foreignIssue}`,
+    sql`SELECT handoff AS payload FROM run_journal WHERE issue_id = ${foreignIssue}`,
   )) as unknown as Array<{ payload: unknown }>;
   return rows[0]?.payload;
 }
@@ -140,7 +142,7 @@ describe('a phase started without naming an issue', () => {
 
   async function journalIssue(): Promise<string | null | undefined> {
     const rows = (await harness.db.execute(
-      sql`SELECT issue_id FROM phase_journal WHERE run_id = ${run}`,
+      sql`SELECT issue_id FROM run_journal WHERE run_id = ${run}`,
     )) as unknown as Array<{ issue_id: string | null }>;
     return rows[0] ? rows[0].issue_id : undefined;
   }

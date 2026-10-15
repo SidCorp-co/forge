@@ -60,7 +60,7 @@ An issue is a unit of WORK with a named deliverable and an owner, whose completi
 | Ordering between issues | Blocker known **at create time** → \`forge_issues.create { data.relations:[{ kind:'blocks', dependsOnId }] }\` (edge committed BEFORE \`issueCreated\`/dispatch — atomic). Both issues already exist → \`forge_issues.update { data.relations:[{ kind:'blocks', dependsOnId }] }\` (any credential; retract by re-sending with \`validUntil\` in the past), or \`forge_project_pm action=set_dependency kind:blocks\` (\`from\` = the blocker; the same token, no paired device; every door that writes an edge needs the project member role or above, and a viewer is refused naming the role it holds). Verify with \`forge_issues.get\` → \`relations\`. | Prose instead of an edge (only a \`blocks\` edge gates dispatch) · setting a blocks edge AFTER an \`open\` create — the new issue can dispatch before the edge lands (race); use \`data.relations\` or create at \`draft\` first |
 | To record a note, learning, or decision | \`forge_memory.write\` (durable business logic → repo \`docs/\`) | Filing it as an issue — \`draft\` or not, nobody browses the issue list for notes |
 | To queue work that must actually happen LATER | create an issue at \`draft\` | Creating it at \`open\` — that auto-triages and spawns a pipeline run |
-| To report an issue | fill \`title\`, \`description\`, \`priority\`, \`category\` | Pre-filling \`plan\`/\`acceptanceCriteria\` — on a staged project those are written by the clarify/plan steps, on an autonomous one by the driver's own phases |
+| To report an issue | fill \`title\`, \`description\`, \`priority\`, \`category\` | Pre-filling \`plan\`/\`acceptanceCriteria\` — the driver writes them in its own clarifying and planning phases |
 | To change project config (\`pipelineConfig.states\`, …) | \`forge_config\` \`get\` first, then \`update\` with \`pipelineConfig\` naming ONLY the keys you changed (\`null\` deletes one) and \`pipelineConfigBase\` holding what \`get\` answered | Sending the whole document — refused by name — or a patch with no base; a key whose stored value moved since your read is refused \`CONFIG_STALE\` rather than silently winning (ISS-1170) |
 | To write or change the project's own prose (build commands, a rule, a guide) | \`forge_knowledge\` action \`write\`, one entry per slug, \`injection\` deciding whether it reaches every prompt or is fetched on demand | Sending it to \`forge_config\` as \`projectFacts\` — that key was retired in ISS-1048 and the call is refused by name |
 | Before you design / fix | \`forge_memory.search\` for prior conventions, gotchas, decisions | Skipping recall and rediscovering (or contradicting) settled work |
@@ -90,8 +90,8 @@ const PIPELINE_RULES_TEXT = `## Pipeline Rules
 - **Branch discipline.** Create the ISS-* branch in this issue's OWN worktree, cut from \`baseBranch\` — \`git worktree add .claude/worktrees/iss-XX-short-title -b ISS-XX-short-title origin/<baseBranch>\`, reusing the worktree if it already exists. NEVER \`git checkout\`/\`stash\`/\`reset\`/\`clean\` in the shared root checkout: other agents are working in it right now and their uncommitted changes are unrecoverable once you clobber them. Never switch branches mid-work. Full protocol: the \`## Worktree isolation\` section.
 - **Never merge or roll back a shared branch to rescue an environment.** Merging into \`baseBranch\`/\`liveBranch\` belongs to the ONE step your skill says owns it; no other step may merge there, and NO step may \`git revert\`, \`reset --hard\` or force-push a shared branch — not even to "restore" a deploy you think you broke. From inside a single step you cannot tell your own change from a pre-existing outage (an API that has been down for hours reads exactly like one you just broke), and a rollback deletes reviewed work while the outage survives it. When the environment you need is broken, or is missing code a previous step claimed was merged: post the evidence as a comment and set \`waiting\`. Reverting is a human decision.
 - **A stale clone is not evidence of absence.** The runner's checkout can be many commits behind the remote. Before concluding that code, a column, a symbol or a commit does NOT exist — and especially before bouncing an issue on that basis — run \`git fetch origin\` and read \`origin/<baseBranch>\`, not your local HEAD (\`git log origin/<base> -- <path>\`, \`git grep <symbol> origin/<base>\`). A MISSING \`ISS-XX-*\` BRANCH proves nothing: branches are pruned after merge, so its absence is the normal post-merge state, and even a live \`git ls-remote\` cannot tell "never existed" from "already merged and cleaned up". If Forge says an issue merged and your working copy disagrees, fetch before you trust your copy.
-- **ISS-* branch is source of truth.** Kept alive through the pipeline. Where the project's \`releaseChain\` names two or more branches it squash-merges to the last one at release; where it names one, the release is an act on a live binding and no branch moves; where it is empty there is no release step.
-- **Check in first.** The prompt does NOT inline the issue body, comments, attachments, or handoffs — it carries only the title + a pointer. Begin every step by calling \`forge_step_start\` (\`{ projectId, issueId, stage }\`) — it marks the issue in-flight when the step defines a working status (code/fix → \`in_progress\`) and returns your working bundle: the issue (full body when small; a lean manifest with \`bodyTruncated:true\` + \`bodyManifest\` field-sizes when heavy fields exceed the threshold — pull fields you need via \`forge_issues.get { documentId, fields: ['plan', ...] }\`), comments (each with \`attachments[]\`), prior step handoffs, resolved \`branchConfig\`. Never assume data from the prompt. To read an attached image/file's CONTENT, call \`forge_uploads\` action=fetch (images come back viewable). If the tool errors, fall back to \`forge_issues.get\` + \`forge_comments.list\` and set the working status yourself.
+- **ISS-* branch is source of truth.** Kept alive through the pipeline. Where the project's \`releaseChain\` names two or more branches it squash-merges to the last one at release; where it names one, the release is an act on a live binding and no branch moves; where it is empty there is nothing to release.
+- **Check in first.** The prompt does NOT inline the issue body, comments, attachments, or handoffs — it carries only the title + a pointer. Begin every step by calling \`forge_step_start\` (\`{ projectId, issueId, stage }\`) — it never moves the issue, so set the working status yourself, and it returns your working bundle: the issue (full body when small; a lean manifest with \`bodyTruncated:true\` + \`bodyManifest\` field-sizes when heavy fields exceed the threshold — pull fields you need via \`forge_issues.get { documentId, fields: ['plan', ...] }\`), comments (each with \`attachments[]\`), prior step handoffs, resolved \`branchConfig\`. Never assume data from the prompt. To read an attached image/file's CONTENT, call \`forge_uploads\` action=fetch (images come back viewable). If the tool errors, fall back to \`forge_issues.get\` + \`forge_comments.list\`.
 - **Never speak for a human.** An automated step must NEVER post a comment framed as a human/owner decision or an owner approval. You post on a credential that belongs to a person, and Forge records the comment under that person's identity — nothing on the comment says an agent wrote it, so such a comment is not distinguishable from the owner having typed it. That is a forgery, not a shortcut. If a human decided something, QUOTE that human's comment id — do not restate it as your own authority. Once a human has answered a \`needs_info\`, you may not silently override it: if you disagree or have new evidence, raise a NEW \`needs_info\` that quotes their answer — never contradict-in-place.
 
 ## Capture Learnings
@@ -100,12 +100,12 @@ Only when you hit a reusable lesson — a project convention, a non-obvious gotc
 2. If nothing comes back scoring > 0.8, write it: \`forge_memory.write({ projectId, source: 'knowledge', sourceRef: '<stable-kebab-slug>', textContent, metadata: { category: 'convention' | 'gotcha' | 'fix-pattern' } })\`. Reusing the same \`sourceRef\` upserts (refines) the existing note instead of duplicating.
 \`projectId\` comes from \`forge_issues.get\`. Keep \`textContent\` tight — one lesson, no issue-specific detail.
 
-## Session Context (coding / fix / review tasks)
+## Session Context
 Before your final status update, update \`issues.sessionContext\` via \`forge_issues.update\`:
 \`{ currentState, decisions, filesModified, errorsResolved, reviewFeedback, sessionCount, lastUpdated }\`
 Merge with existing: increment sessionCount, append to arrays (skip duplicates), replace currentState. Cap arrays at 20.
 
-**On a review or test step that rejects (sets \`reopen\`), also append one \`churn\` entry:** \`churn[] = { round, progressed, whatChanged, verdict }\` — \`round\` = the issue's \`reopenCount\` after your write, \`progressed\` = true/false for whether THIS round moved anything at all, \`whatChanged\` = one line naming it (or what stayed identical), \`verdict\` = your one-line rejection reason. Nothing reads this to gate you. Two \`noProgressRounds\` alerts point a human straight at it — one counting total reopens, one counting consecutive review rejections — and neither reads this field: they rest on runner-written records, because an agent that is not progressing is the least reliable narrator of that fact. What only you can supply is WHY, which no verdict carries, so write \`whatChanged\` as the thing a reader could not reconstruct from the diff.
+**When your own check of the work fails and you send the issue back (set \`reopen\`), also append one \`churn\` entry:** \`churn[] = { round, progressed, whatChanged, verdict }\` — \`round\` = the issue's \`reopenCount\` after your write, \`progressed\` = true/false for whether THIS round moved anything at all, \`whatChanged\` = one line naming it (or what stayed identical), \`verdict\` = your one-line reason for sending it back. Nothing reads this to gate you. Two \`noProgressRounds\` alerts point a human straight at it — one counting total reopens, one counting consecutive review rejections — and neither reads this field: they rest on runner-written records, because an agent that is not progressing is the least reliable narrator of that fact. What only you can supply is WHY, which no verdict carries, so write \`whatChanged\` as the thing a reader could not reconstruct from the diff.
 
 ## Output Rules
 - Zero narration. Tool calls are self-documenting.
@@ -139,7 +139,7 @@ export const CANONICAL_LADDER: readonly IssueStatus[] = [
 ];
 
 const HANDOFF_KEYS: Partial<Record<JobType, string>> = {
-  drive: 'outcome, summary, workDone[], openQuestions[], commitSha',
+  drive: 'outcome, summary, workDone[], openQuestions[]',
 };
 
 const HANDOFF_UNIVERSAL_KEYS = 'step, schema_version: 1';
@@ -152,7 +152,7 @@ export const FORGE_FACTS: readonly ForgeFact[] = [
     tier: 'mandatory',
     scope: 'global',
     namespace: 'forge',
-    version: 10,
+    version: 11,
     render: () => PIPELINE_RULES_TEXT,
   },
   {
@@ -196,7 +196,7 @@ ${
     scope: 'global',
     namespace: 'forge',
     appliesTo: Object.keys(HANDOFF_KEYS) as JobType[],
-    version: 3,
+    version: 4,
     render: (ctx) => {
       const stage = ctx?.stage ?? null;
       const keys = stage ? HANDOFF_KEYS[stage] : undefined;
@@ -206,10 +206,10 @@ ${
           : '`forge_step_handoff.write`';
       const body = keys
         ? `For the \`${stage}\` step, call ${call} with \`payload\`: \`${HANDOFF_UNIVERSAL_KEYS}, ${keys}\`.`
-        : `Call ${call} with the structured payload for your step (triage/clarify/plan/code/review/test/fix each have a schema). Every one of them carries \`${HANDOFF_UNIVERSAL_KEYS}\` inside \`payload\` alongside its own fields.`;
+        : `Call ${call} with the structured payload for your step. It carries \`${HANDOFF_UNIVERSAL_KEYS}\` inside \`payload\` alongside its own fields.`;
       const tail =
         stage === 'drive'
-          ? 'Nothing dispatches after you, so this is not context for a next step — it is the summary of the turn a human reads on the issue.'
+          ? 'Nothing dispatches after you, so this is not context for a next step — it is the summary of the turn a human reads on the issue. It is written once per attempt, and it is not evidence that work landed: that is the branch on `sessionContext` or the commit a merged mark names.'
           : 'Handoff is best-effort context for the next step; it never replaces the mandatory status advance. Finish by replying `DONE` on its own line as your final assistant text.';
       return `## Step handoff (best-effort)
 ${body}
@@ -225,11 +225,11 @@ ${tail}`;
     scope: 'global',
     namespace: 'forge',
     appliesTo: ['drive'],
-    version: 4,
+    version: 5,
     render: () => `## Worktree isolation
 Implement on the ISS-* branch inside a dedicated git worktree under \`.claude/worktrees/iss-XX-short-title/\` — never check out branches in the main tree.
-- Create on first entry; REUSE the existing worktree if it's already present (fix re-enters the one code created).
-- Resolve collisions by reusing rather than recreating. Do NOT delete it when you finish — on a staged project \`fix\` and \`review\` re-enter this same worktree. Removal is asked for in exactly one place, the \`worktree-cleanup\` block: at the release step when a project has one, and at your own ship phase when you are the driver.
+- Create on first entry; REUSE the existing worktree if it's already present (a later attempt on this issue re-enters the one an earlier attempt created).
+- Resolve collisions by reusing rather than recreating. Do NOT delete it when you finish a phase — a later attempt on this issue re-enters this same worktree. Removal is asked for in exactly one place, the \`worktree-cleanup\` block, at your own ship phase.
 - The root checkout is SHARED with other agents running right now. Never \`git checkout\`, \`git stash\`, \`git reset\` or \`git clean\` there. Uncommitted changes you find are very likely someone else's in-flight work; clobbering them is silent, and they cannot get it back.
 - Resolve every path against your WORKTREE root, not the repo root — including "quick" edits to packages your issue only touches incidentally. An absolute repo-root path writes into whatever branch the shared tree happens to be on.
 - Uncommitted changes already in your worktree that you did not make mean a prior attempt was interrupted. Inspect them and adopt or discard deliberately; never assume they are yours.
@@ -243,11 +243,11 @@ Implement on the ISS-* branch inside a dedicated git worktree under \`.claude/wo
     scope: 'global',
     namespace: 'forge',
     appliesTo: ['drive'],
-    version: 2,
+    version: 3,
     render: () => `## Remove this issue's worktree
 The branch you just merged leaves a worktree behind at \`.claude/worktrees/iss-XX-short-title/\`, carrying its own \`node_modules\` and build cache — routinely 0.8-3 GB each. Nothing else ever removes it, so releasing without this step is how a runner box fills up and every project on it starts failing.
 
-Remove ONLY this issue's worktree, once its branch has merged — that is the release step on a staged project, and your ship phase when you are the driver. Only after checking it:
+Remove ONLY this issue's worktree, once its branch has merged — at your ship phase. Only after checking it:
 1. \`git -C <worktree> status --porcelain\` — if any TRACKED file is modified, STOP. Do not remove it, and say so in your handoff: uncommitted work you did not author is someone's interrupted attempt, and it is unrecoverable once deleted. Untracked files (\`??\`) are build output and do not block removal.
 2. \`git worktree remove .claude/worktrees/iss-XX-short-title --force\` from the repo root. \`--force\` is required (untracked build output) and is safe only because step 1 already cleared it.
 3. \`git worktree prune\` — drops the stale admin entry so \`git worktree list\` stops naming a directory that is gone.

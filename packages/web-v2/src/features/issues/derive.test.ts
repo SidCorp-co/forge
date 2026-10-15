@@ -29,8 +29,7 @@ import {
 	deriveBlockerState,
 	deriveCommentKind,
 	filterCount,
-	deriveStepOutcomes,
-	runningStepOf,
+	deriveRunView,
 	filterToQueryParams,
 	groupRows,
 	groupedTransitions,
@@ -61,8 +60,8 @@ import type {
 	IssueDetail,
 	IssueRow,
 	PipelineHealth,
-	StepDurationRow,
-	StepHandoffRow,
+	JournalAttempt,
+	JournalRun,
 } from "./types";
 import { ISSUE_COMPLEXITIES, ISSUE_PRIORITIES, ISSUE_STATUSES } from "./types";
 
@@ -1224,153 +1223,151 @@ describe("deriveBlockerState", () => {
 	});
 });
 
-describe("deriveStepOutcomes — the steps an issue actually ran (ISS-999)", () => {
-	const handoff = (
-		step: string,
-		attempt: number,
-		payload: Record<string, unknown>,
-		over: Partial<StepHandoffRow> = {},
-	): StepHandoffRow => ({
-		id: `${step}-${attempt}`,
-		projectId: "p1",
-		issueId: "me",
-		pipelineRunId: "run-1",
-		kind: "handoff",
-		step,
-		attempt,
-		payload,
-		createdAt: "2026-01-01T00:00:00.000Z",
-		updatedAt: "2026-01-01T00:00:00.000Z",
+describe("deriveRunView — one view of what each run did (ISS-1133)", () => {
+	const attempt = (
+		phase: string,
+		n: number,
+		over: Partial<JournalAttempt> = {},
+	): JournalAttempt => ({
+		phase,
+		attempt: n,
+		source: "agent",
+		outcome: "ok",
+		startedAt: "2026-10-15T07:00:00.000Z",
+		endedAt: "2026-10-15T07:01:00.000Z",
+		durationSeconds: 60,
+		artifact: null,
+		handoff: null,
+		handoffAt: null,
 		...over,
 	});
-	const dur = (
-		step: string,
-		durationSeconds: number,
-		costUsd: number,
-		runId = "run-1",
-		finishedAt = "2026-01-01T00:05:00.000Z",
-	): StepDurationRow => ({
+	const run = (runId: string, over: Partial<JournalRun> = {}): JournalRun => ({
 		runId,
-		issueId: "me",
-		projectId: "p1",
-		step,
-		startedAt: "2026-01-01T00:00:00.000Z",
-		finishedAt,
-		durationSeconds,
-		costUsd,
+		ordinal: 1,
+		kind: "issue",
+		status: "completed",
+		group: null,
+		startedAt: "2026-10-15T07:00:00.000Z",
+		finishedAt: "2026-10-15T07:30:00.000Z",
+		costUsd: null,
+		attempts: [],
+		...over,
 	});
 
-	it("lists only the steps that have a row, and never one that has not run", () => {
-		const out = deriveStepOutcomes([handoff("plan", 1, { summary: "s" })], [dur("code", 10, 1)]);
-		expect(out.map((o) => o.step).sort()).toEqual(["code", "plan"]);
+	it("answers nothing for an issue that never ran, or before the read lands", () => {
+		expect(deriveRunView([], [])).toEqual([]);
+		expect(deriveRunView(undefined, undefined)).toEqual([]);
 	});
 
-	it("returns nothing at all for an issue with no handoffs and no durations", () => {
-		expect(deriveStepOutcomes([], [])).toEqual([]);
-		expect(deriveStepOutcomes(undefined, undefined)).toEqual([]);
-	});
-
-	it("keeps a job type outside the seven staged names under its own name", () => {
-		const out = deriveStepOutcomes([handoff("drive", 1, { outcome: "shipped it" })], []);
-		expect(out.map((o) => o.step)).toEqual(["drive"]);
-		expect(out[0].outcomeLabel).toBe("shipped it");
-	});
-
-	it("gives `fix` a row of its own rather than folding it onto `code`", () => {
-		const out = deriveStepOutcomes(
-			[handoff("code", 1, { summary: "wrote it" }), handoff("fix", 1, { summary: "patched" })],
+	it("keeps the number the server gave each run, so a run past the page keeps its own", () => {
+		const out = deriveRunView(
+			[run("r52", { ordinal: 52 }), run("r51", { ordinal: 51 })],
 			[],
 		);
-		expect(out.map((o) => o.step).sort()).toEqual(["code", "fix"]);
-		expect(out.find((o) => o.step === "fix")?.outcomeLabel).toBe("patched");
+		expect(out.map((r) => [r.runId, r.ordinal])).toEqual([
+			["r52", 52],
+			["r51", 51],
+		]);
 	});
 
-	it("orders by when a step last ran, not by any stage order", () => {
-		const out = deriveStepOutcomes(
+	it("names the other issues a group run was opened over, never this one", () => {
+		const [grouped, alone] = deriveRunView(
+			[run("g", { group: ["ISS-7", "ISS-9"] }), run("r")],
 			[],
+			"ISS-7",
+		);
+		expect(grouped?.alongside).toEqual(["ISS-9"]);
+		expect(alone?.alongside).toEqual([]);
+	});
+
+	it("keeps a phase's own name, and numbers an attempt only where the run made more than one", () => {
+		const [out] = deriveRunView(
+			[run("r1", { attempts: [attempt("plan", 1), attempt("drive", 1), attempt("drive", 2)] })],
+			[],
+		);
+		expect(out?.attempts.map((a) => [a.key, a.numbered])).toEqual([
+			["plan#1", false],
+			["drive#1", true],
+			["drive#2", true],
+		]);
+	});
+
+	it("reads an open attempt as running only while its run is live, and as left open once it ended", () => {
+		const open = attempt("drive", 1, { outcome: null, endedAt: null, durationSeconds: null });
+		const states = (status: JournalRun["status"]) =>
+			deriveRunView([run("r1", { status, attempts: [open] })], [])[0]?.attempts[0]?.state;
+		expect(states("running")).toBe("running");
+		expect(states("paused")).toBe("running");
+		expect(states("failed")).toBe("left-open");
+		expect(states("completed")).toBe("left-open");
+	});
+
+	it("reads each ended attempt by the outcome the journal holds", () => {
+		const [out] = deriveRunView(
 			[
-				dur("release", 1, 0, "r1", "2026-01-03T00:00:00.000Z"),
-				dur("triage", 1, 0, "r1", "2026-01-01T00:00:00.000Z"),
-				dur("code", 1, 0, "r1", "2026-01-02T00:00:00.000Z"),
+				run("r1", {
+					status: "running",
+					attempts: [
+						attempt("plan", 1),
+						attempt("code", 1, { outcome: "failed" }),
+						attempt("code", 2, { outcome: "abandoned" }),
+					],
+				}),
 			],
-		);
-		expect(out.map((o) => o.step)).toEqual(["triage", "code", "release"]);
-	});
-
-	it("reads `running` from the active step's own name and from nothing else", () => {
-		const rows = [handoff("plan", 1, {}), handoff("code", 1, {})];
-		const out = deriveStepOutcomes(rows, [], { activeStep: "code" });
-		expect(out.find((o) => o.step === "code")?.state).toBe("running");
-		expect(out.find((o) => o.step === "plan")?.state).toBe("done");
-	});
-
-	it("reads `failed` from the failed step's own name, and it outranks running", () => {
-		const out = deriveStepOutcomes([handoff("test", 1, {})], [], {
-			activeStep: "test",
-			failedStep: "test",
-		});
-		expect(out[0].state).toBe("failed");
-	});
-
-	it("leaves every step `done` when neither field names one", () => {
-		const out = deriveStepOutcomes([handoff("plan", 1, {}), handoff("code", 1, {})], [], {
-			activeStep: null,
-			failedStep: null,
-		});
-		expect(out.map((o) => o.state)).toEqual(["done", "done"]);
-	});
-
-	it("pulls a short outcome label and sums duration/cost across a run's attempts", () => {
-		const out = deriveStepOutcomes(
-			[handoff("plan", 1, { summary: "wrote the plan" })],
-			[dur("plan", 120, 0.25), dur("plan", 60, 0.1)],
-		);
-		expect(out[0].outcomeLabel).toBe("wrote the plan");
-		expect(out[0].durationSeconds).toBe(180);
-		expect(out[0].costUsd).toBeCloseTo(0.35);
-		expect(out[0].handoff?.step).toBe("plan");
-	});
-
-	it("keeps the latest attempt and never throws on an empty/odd payload", () => {
-		const out = deriveStepOutcomes(
-			[handoff("plan", 1, {}), handoff("plan", 2, { outcome: "v2" })],
-			undefined,
-		);
-		expect(out[0].handoff?.attempt).toBe(2);
-		expect(out[0].outcomeLabel).toBe("v2");
-		expect(deriveStepOutcomes([handoff("plan", 1, {})], [])[0].outcomeLabel).toBeUndefined();
-	});
-
-	it("uses a newer run's handoff instead of a prior attempt", () => {
-		const old = handoff("test", 2, { result: "blocked_fixture" });
-		const current = handoff("test", 1, { result: "pass" }, {
-			pipelineRunId: "run-2",
-			updatedAt: "2026-02-01T00:00:00.000Z",
-		});
-		const out = deriveStepOutcomes([old, current], []);
-		expect(out[0].handoff?.pipelineRunId).toBe("run-2");
-		expect(out[0].outcomeLabel).toBe("pass");
-	});
-
-	it("uses only the most-recent run's duration/cost (no double-count on reopen)", () => {
-		const out = deriveStepOutcomes(
 			[],
+		);
+		expect(out?.attempts.map((a) => a.state)).toEqual(["done", "failed", "abandoned"]);
+	});
+
+	it("summarises an attempt by its handoff first, then by the artifact it ended with", () => {
+		const [out] = deriveRunView(
 			[
-				dur("plan", 100, 1.0, "run-old", "2026-01-01T00:05:00.000Z"),
-				dur("plan", 200, 2.0, "run-new", "2026-02-01T00:05:00.000Z"),
+				run("r1", {
+					attempts: [
+						attempt("drive", 1, {
+							handoff: { step: "drive", outcome: "advanced", summary: "pushed the branch" },
+							artifact: { kind: "note", text: "not this" },
+						}),
+						attempt("code", 1, {
+							artifact: { kind: "commit", sha: "abcdef1234567890", message: "fix it" },
+						}),
+						attempt("review", 1, { artifact: { kind: "note", text: "looked fine" } }),
+						attempt("test", 1),
+					],
+				}),
 			],
-		);
-		expect(out[0].durationSeconds).toBe(200);
-		expect(out[0].costUsd).toBeCloseTo(2.0);
-	});
-
-	it("keeps a special test outcome as handoff evidence without it becoming a state", () => {
-		const out = deriveStepOutcomes(
-			[handoff("test", 1, { result: "blocked_fixture", resultReason: "no fixture" })],
 			[],
 		);
-		expect(out[0].outcomeLabel).toBe("blocked_fixture");
-		expect(out[0].state).toBe("done");
+		expect(out?.attempts.map((a) => a.summary)).toEqual([
+			"pushed the branch",
+			"abcdef123 fix it",
+			"looked fine",
+			null,
+		]);
+	});
+
+	it("puts each session under the run it served, and leaves out a session that served none", () => {
+		const session = (id: string, pipelineRunId: string | null, jobType: string) =>
+			({
+				id,
+				status: "completed",
+				metadata: { jobType, sessionGroup: "build" },
+				createdAt: "2026-10-15T07:00:00.000Z",
+				updatedAt: "2026-10-15T07:00:00.000Z",
+				startedAt: `2026-10-15T07:0${id.length}:00.000Z`,
+				title: null,
+				pipelineRunId,
+				claudeSessionId: "c1",
+			}) as const;
+		const out = deriveRunView(
+			[run("r2"), run("r1")],
+			[session("s1", "r1", "plan"), session("s22", "r1", "code"), session("chat", null, "chat")],
+		);
+		expect(out[0]?.sessions).toEqual([]);
+		expect(out[1]?.sessions.map((s) => [s.jobType, s.continuity])).toEqual([
+			["plan", "fresh"],
+			["code", "resumed"],
+		]);
 	});
 });
 
@@ -1502,61 +1499,6 @@ describe("statusFilterFromParams", () => {
 			statuses: ["open", "closed"],
 			unknown: [],
 		});
-	});
-});
-
-describe("runningStepOf — a queued session names no running step (ISS-999)", () => {
-	const row = (step: string): StepHandoffRow => ({
-		id: `${step}-1`,
-		projectId: "p1",
-		issueId: "me",
-		pipelineRunId: "run-1",
-		kind: "handoff",
-		step,
-		attempt: 1,
-		payload: { summary: "first attempt" },
-		createdAt: "2026-01-01T00:00:00.000Z",
-		updatedAt: "2026-01-01T00:00:00.000Z",
-	});
-	const health = (
-		session?: { status: "queued" | "running"; skill: string },
-	): PipelineHealth =>
-		({
-			stage: "code",
-			...(session ? { activeSession: { id: "s1", ...session } } : {}),
-		}) as PipelineHealth;
-
-	it("names the skill of a session the kernel calls running", () => {
-		expect(runningStepOf(health({ status: "running", skill: "drive" }))).toBe(
-			"drive",
-		);
-	});
-
-	it("names nothing for a session the kernel calls queued", () => {
-		expect(runningStepOf(health({ status: "queued", skill: "drive" }))).toBeNull();
-	});
-
-	it("names nothing when there is no session, and survives a missing health", () => {
-		expect(runningStepOf(health())).toBeNull();
-		expect(runningStepOf(undefined)).toBeNull();
-		expect(runningStepOf(null)).toBeNull();
-	});
-
-	it("keeps a queued step out of the outcomes the card renders", () => {
-		const queued = health({ status: "queued", skill: "drive" });
-		const out = deriveStepOutcomes(
-			[row("drive")],
-			undefined,
-			{ activeStep: runningStepOf(queued), failedStep: null },
-		);
-		expect(out.map((o) => [o.step, o.state])).toEqual([["drive", "done"]]);
-		const running = health({ status: "running", skill: "drive" });
-		const live = deriveStepOutcomes(
-			[row("drive")],
-			undefined,
-			{ activeStep: runningStepOf(running), failedStep: null },
-		);
-		expect(live.map((o) => [o.step, o.state])).toEqual([["drive", "running"]]);
 	});
 });
 

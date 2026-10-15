@@ -7,8 +7,7 @@ import type {
   CommentNode,
   IssueDetail,
   IssueParkResponse,
-  StepDurationRow,
-  StepHandoffRow,
+  JournalRun,
 } from "./types";
 
 interface ActivityEnvelope {
@@ -54,11 +53,8 @@ export const issueDetailApi = {
   listAttachments: (id: string, projectId?: string) =>
     apiClient<AttachmentRow[]>(withProject(`/issues/${id}/attachments`, projectId)),
 
-  listHandoffs: (projectId: string, id: string) =>
-    apiClient<{ rows: StepHandoffRow[] }>(
-      `/issue-step-contexts?projectId=${projectId}&issueId=${id}&orderDir=asc&limit=200`,
+  runJournal: (projectId: string, id: string) =>
+    apiClient<{ runs: JournalRun[] }>(
+      `/run-journal?projectId=${encodeURIComponent(projectId)}&issueId=${encodeURIComponent(id)}`,
     ),
-
-  stepDurations: (projectId: string) =>
-    apiClient<StepDurationRow[]>(`/pipeline/step-durations?projectId=${projectId}&days=90`),
 };

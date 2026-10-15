@@ -45,8 +45,8 @@ import type {
 	IssueStatus,
 	ParkOwes,
 	PipelineHealth,
-	StepDurationRow,
-	StepHandoffRow,
+	JournalAttempt,
+	JournalRun,
 } from "./types";
 
 export const STATUS_LABELS: Record<IssueStatus, string> = ISSUE_STATUS_LABELS;
@@ -841,36 +841,21 @@ export function deriveBlockerState(
 	return null;
 }
 
-export type StepState = "done" | "running" | "failed";
-
-/** One step an issue ACTUALLY ran, rolled up for the detail screen's steps card. */
-export interface StepOutcome {
-	/** The job type exactly as the kernel recorded it — never folded onto another name. */
-	step: string;
-	state: StepState;
-	outcomeLabel?: string;
-	durationSeconds?: number;
-	costUsd?: number;
-	handoff?: StepHandoffRow;
-	/** When this step last ran, for ordering. */
-	ranAt: string;
-}
-
 function truncate(s: string, max: number): string {
 	const t = s.replace(/\s+/g, " ").trim();
 	return t.length > max ? `${t.slice(0, max - 1)}…` : t;
 }
 
 /** Pull a short, human one-liner from a free-form handoff payload. Tries the
- *  stable fields first, then any string field; never throws on a missing/odd
- *  shape (AC#4 graceful fallback). */
+ *  stable fields first — the summary sentence ahead of a one-word outcome —
+ *  then any string field; never throws on a missing/odd shape. */
 export function handoffOutcomeLabel(
 	payload: Record<string, unknown> | null | undefined,
 ): string | undefined {
 	if (!payload || typeof payload !== "object") return undefined;
 	const preferred = [
-		"outcome",
 		"summary",
+		"outcome",
 		"verdict",
 		"result",
 		"planSummary",
@@ -886,91 +871,109 @@ export function handoffOutcomeLabel(
 	return undefined;
 }
 
-/**
- * The step an issue is RUNNING right now, read off the kernel's own active session — or `null`.
- *
- * A session the kernel calls `queued` names a step nobody has started, so it names no running step.
- */
-export function runningStepOf(
-	health: PipelineHealth | null | undefined,
-): string | null {
-	const session = health?.activeSession;
-	return session?.status === "running" ? session.skill : null;
+/** Where an attempt stands: how it ended, or — while it is open — whether its run still is. */
+export type AttemptState = "done" | "failed" | "abandoned" | "running" | "left-open";
+
+/** One attempt of the run view, with what a person reads first already worked out. */
+export interface AttemptView {
+	key: string;
+	phase: string;
+	attempt: number;
+	/** Whether the run made more than one attempt at this phase, so the number tells them apart. */
+	numbered: boolean;
+	state: AttemptState;
+	durationSeconds: number | null;
+	/** One line of what the attempt did: its handoff's own summary, or the artifact it ended with. */
+	summary: string | null;
+	handoff: Record<string, unknown> | null;
+	artifact: Record<string, unknown> | null;
+	startedAt: string;
+	endedAt: string | null;
+	handoffAt: string | null;
+}
+
+/** One run of the issue as the run view draws it. */
+export interface RunView {
+	runId: string;
+	/** 1 for the issue's first run; the view lists the newest first. */
+	ordinal: number;
+	status: JournalRun["status"];
+	/** The other issues a group run was opened over; empty for a run of this issue alone. */
+	alongside: string[];
+	startedAt: string;
+	finishedAt: string | null;
+	costUsd: number | null;
+	attempts: AttemptView[];
+	/** The agent sessions that ran it, oldest first, with whether each resumed or started fresh. */
+	sessions: SessionTimelineEntry[];
+}
+
+const LIVE_RUN = new Set<JournalRun["status"]>(["running", "paused"]);
+
+function attemptState(a: JournalAttempt, run: JournalRun): AttemptState {
+	if (a.outcome === "ok") return "done";
+	if (a.outcome) return a.outcome;
+	return LIVE_RUN.has(run.status) ? "running" : "left-open";
+}
+
+function artifactLine(artifact: Record<string, unknown> | null): string | null {
+	if (!artifact) return null;
+	if (artifact.kind === "commit" && typeof artifact.sha === "string") {
+		const message = typeof artifact.message === "string" ? ` ${artifact.message}` : "";
+		return truncate(`${artifact.sha.slice(0, 9)}${message}`, 90);
+	}
+	if (artifact.kind === "note" && typeof artifact.text === "string") return truncate(artifact.text, 90);
+	return null;
 }
 
 /**
- * The steps this issue ran, from the rows that record them.
- *
- * One entry per job type carried on a `step_handoffs` or `step_durations` row, ordered by when it
- * last ran. A job type outside the seven staged names keeps its own name; `drive` is one, and on an
- * autonomous project it is the only one. Durations and cost are summed across the attempts of the
- * most recent RUN of that step, and the latest attempt's handoff is attached.
+ * The issue's runs as one view: each run with the attempts its journal recorded and the sessions
+ * that ran it. An open attempt reads `running` only while its run is live; on a run that ended it
+ * reads `left-open`, which is what the journal says, and not `done`.
  */
-export function deriveStepOutcomes(
-	handoffs: StepHandoffRow[] | undefined,
-	durations: StepDurationRow[] | undefined,
-	live?: { activeStep?: string | null; failedStep?: string | null },
-): StepOutcome[] {
-	const handoffByStep = new Map<string, StepHandoffRow>();
-	for (const row of handoffs ?? []) {
-		const prev = handoffByStep.get(row.step);
-		if (
-			!prev ||
-			row.updatedAt > prev.updatedAt ||
-			(row.updatedAt === prev.updatedAt && row.attempt > prev.attempt)
-		) {
-			handoffByStep.set(row.step, row);
-		}
+export function deriveRunView(
+	runs: JournalRun[] | undefined,
+	sessions: IssueAgentSession[] | null | undefined,
+	issueKey?: string | null,
+): RunView[] {
+	if (!runs || runs.length === 0) return [];
+	const own = issueKey ?? null;
+	const timeline = deriveSessionTimeline(sessions);
+	const runOf = new Map((sessions ?? []).map((s) => [s.id, s.pipelineRunId ?? null]));
+	const byRun = new Map<string, SessionTimelineEntry[]>();
+	for (const entry of timeline) {
+		const runId = runOf.get(entry.id);
+		if (!runId) continue;
+		byRun.set(runId, [...(byRun.get(runId) ?? []), entry]);
 	}
-
-	const byStepRun = new Map<
-		string,
-		Map<string, { durationSeconds: number; costUsd: number; latest: string }>
-	>();
-	for (const row of durations ?? []) {
-		const runs = byStepRun.get(row.step) ?? new Map();
-		const acc = runs.get(row.runId) ?? {
-			durationSeconds: 0,
-			costUsd: 0,
-			latest: "",
+	return runs.map((run) => {
+		const tries = new Map<string, number>();
+		for (const a of run.attempts) tries.set(a.phase, (tries.get(a.phase) ?? 0) + 1);
+		return {
+			runId: run.runId,
+			ordinal: run.ordinal,
+			status: run.status,
+			alongside: (run.group ?? []).filter((key) => key !== own),
+			startedAt: run.startedAt,
+			finishedAt: run.finishedAt,
+			costUsd: run.costUsd,
+			sessions: byRun.get(run.runId) ?? [],
+			attempts: run.attempts.map((a) => ({
+				key: `${a.phase}#${a.attempt}`,
+				phase: a.phase,
+				attempt: a.attempt,
+				numbered: (tries.get(a.phase) ?? 0) > 1,
+				state: attemptState(a, run),
+				durationSeconds: a.durationSeconds,
+				summary: handoffOutcomeLabel(a.handoff) ?? artifactLine(a.artifact),
+				handoff: a.handoff,
+				artifact: a.artifact,
+				startedAt: a.startedAt,
+				endedAt: a.endedAt,
+				handoffAt: a.handoffAt,
+			})),
 		};
-		acc.durationSeconds += row.durationSeconds ?? 0;
-		acc.costUsd += row.costUsd ?? 0;
-		if ((row.finishedAt ?? row.startedAt ?? "") > acc.latest)
-			acc.latest = row.finishedAt ?? row.startedAt ?? "";
-		runs.set(row.runId, acc);
-		byStepRun.set(row.step, runs);
-	}
-
-	const outcomes: StepOutcome[] = [];
-	for (const step of new Set([...handoffByStep.keys(), ...byStepRun.keys()])) {
-		const handoff = handoffByStep.get(step);
-		let pick:
-			| { durationSeconds: number; costUsd: number; latest: string }
-			| undefined;
-		for (const acc of byStepRun.get(step)?.values() ?? []) {
-			if (!pick || acc.latest > pick.latest) pick = acc;
-		}
-		const state: StepState =
-			live?.failedStep === step
-				? "failed"
-				: live?.activeStep === step
-					? "running"
-					: "done";
-		outcomes.push({
-			step,
-			state,
-			ranAt: pick?.latest || handoff?.updatedAt || "",
-			...(handoff
-				? { handoff, outcomeLabel: handoffOutcomeLabel(handoff.payload) }
-				: {}),
-			...(pick && pick.durationSeconds > 0
-				? { durationSeconds: pick.durationSeconds }
-				: {}),
-			...(pick && pick.costUsd > 0 ? { costUsd: pick.costUsd } : {}),
-		});
-	}
-	return outcomes.sort((a, b) => a.ranAt.localeCompare(b.ranAt));
+	});
 }
 
 /** Known session-group keys → humanized labels. The label set is data-driven:

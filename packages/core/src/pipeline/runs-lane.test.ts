@@ -138,7 +138,7 @@ describe('stepOf', () => {
 
   it('takes the open phase where the column is null on the run-session lane', () => {
     expect(stepOf('run_session', null, 'implement')).toEqual({
-      source: 'phase_journal',
+      source: 'run_journal',
       step: 'implement',
       detail: null,
     });
@@ -160,7 +160,7 @@ describe('stepOf', () => {
 
   it('takes the open phase over a stale column on the run-session lane', () => {
     expect(stepOf('run_session', 'code', 'implement')).toEqual({
-      source: 'phase_journal',
+      source: 'run_journal',
       step: 'implement',
       detail: null,
     });

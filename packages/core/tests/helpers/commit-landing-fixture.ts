@@ -218,8 +218,8 @@ export function useCommitLandingWorld() {
         VALUES (${runId}, ${projectId}, ${issueId}, 'issue', 'running', now())
       `);
       await harness.db.execute(sql`
-        INSERT INTO issue_step_contexts (project_id, issue_id, pipeline_run_id, kind, step, payload)
-        VALUES (${projectId}, ${issueId}, ${runId}, 'handoff', 'code', ${JSON.stringify({ commitSha })}::jsonb)
+        INSERT INTO run_journal (project_id, issue_id, run_id, phase, source, outcome, handoff, handoff_at, ended_at)
+        VALUES (${projectId}, ${issueId}, ${runId}, 'code', 'agent', 'ok', ${JSON.stringify({ commitSha })}::jsonb, now(), now())
       `);
     },
 

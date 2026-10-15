@@ -17,7 +17,22 @@ const resumePoint = vi.fn();
 const listPhases = vi.fn();
 
 vi.mock('./runs.js', () => ({ readPipelineRun }));
-vi.mock('./phase-journal.js', () => ({ startPhase, endPhase, resumePoint, listPhases }));
+class PhaseEndRefused extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+    readonly status: 404 | 409,
+  ) {
+    super(message);
+  }
+}
+vi.mock('./phase-journal.js', () => ({
+  startPhase,
+  endPhase,
+  resumePoint,
+  listPhases,
+  PhaseEndRefused,
+}));
 vi.mock('../lib/authz.js', () => ({
   loadProjectAccess,
   assertProjectRole: (access: { role?: string }, need: 'viewer' | 'member') => {
@@ -56,6 +71,11 @@ beforeEach(() => {
   startPhase.mockResolvedValue({ phase: 'code', attempt: 2, startedAt: new Date(0) });
   resumePoint.mockResolvedValue(null);
   listPhases.mockResolvedValue([]);
+  endPhase.mockImplementation(
+    async (input: { phase: string; attempt: number; outcome: string }) => ({
+      ...input,
+    }),
+  );
 });
 
 describe('POST /:id/phases', () => {
@@ -95,6 +115,21 @@ describe('POST /:id/phases/end', () => {
     expect(endPhase).toHaveBeenCalledWith(
       expect.objectContaining({ runId: RUN, phase: 'code', attempt: 2, outcome: 'ok' }),
     );
+  });
+
+  it('answers the outcome the journal holds, not the one sent', async () => {
+    endPhase.mockResolvedValueOnce({ phase: 'code', attempt: 2, outcome: 'failed' });
+    const res = await json(`/${RUN}/phases/end`, { phase: 'code', attempt: 2, outcome: 'ok' });
+    expect(await res.json()).toEqual({ phase: 'code', attempt: 2, outcome: 'failed' });
+  });
+
+  it('refuses a second end by name, with the status the store chose (ISS-1133 criterion 18)', async () => {
+    endPhase.mockRejectedValueOnce(
+      new PhaseEndRefused('PHASE_ALREADY_ENDED', 'already ended `ok`', 409),
+    );
+    const res = await json(`/${RUN}/phases/end`, { phase: 'code', attempt: 2, outcome: 'failed' });
+    expect(res.status).toBe(409);
+    expect(await res.text()).toContain('already ended `ok`');
   });
 
   it('carries a note as the only artifact shape it will write', async () => {

@@ -91,7 +91,18 @@ describe('the guard, run against the schema the migration leaves', () => {
         sort_order integer NOT NULL DEFAULT 0,
         created_at timestamptz NOT NULL DEFAULT now()
       )`);
-    await harness.db.execute(sql`ALTER TABLE issue_step_contexts ADD COLUMN verdict text`);
+    // ISS-1133 drops the table this block counts; the stand-in holds the columns the block reads.
+    await harness.db.execute(sql`
+      CREATE TABLE issue_step_contexts (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        project_id uuid NOT NULL,
+        issue_id uuid NOT NULL,
+        pipeline_run_id uuid NOT NULL,
+        kind text NOT NULL,
+        step text,
+        payload jsonb NOT NULL,
+        verdict text
+      )`);
     await harness.db.execute(sql`DROP INDEX issue_attributes_single_row_uq`);
   });
 
@@ -99,7 +110,7 @@ describe('the guard, run against the schema the migration leaves', () => {
     await client.end({ timeout: 5 });
     await harness.db.execute(sql`DROP TABLE IF EXISTS tasks`);
     await harness.db.execute(sql`DELETE FROM issue_attributes`);
-    await harness.db.execute(sql`ALTER TABLE issue_step_contexts DROP COLUMN IF EXISTS verdict`);
+    await harness.db.execute(sql`DROP TABLE IF EXISTS issue_step_contexts`);
     await harness.db.execute(sql`
       CREATE UNIQUE INDEX issue_attributes_single_row_uq ON issue_attributes (issue_id, key)
       WHERE key IN ('obligation_owner', 'obligation_carrier', 'delivered', 'delivered_of',

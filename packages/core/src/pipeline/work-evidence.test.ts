@@ -35,7 +35,8 @@ const {
   missingWorkEvidenceStrict,
 } = await import('./work-evidence.js');
 
-const { issueStepContexts, issues, jobs } = await import('../db/schema.js');
+const { issues, jobs } = await import('../db/schema.js');
+const { runJournal } = await import('../db/schema-journal.js');
 
 function setup(...batches: unknown[][]) {
   queue.length = 0;
@@ -55,7 +56,7 @@ describe('collectWorkEvidence', () => {
     ]);
     const evidence = await collectWorkEvidence('iss-1');
     expect(read).toEqual([issues]);
-    expect(read).not.toContain(issueStepContexts);
+    expect(read).not.toContain(runJournal);
     expect(read).not.toContain(jobs);
     expect(evidence).toEqual({
       branch: 'ISS-1-foo',

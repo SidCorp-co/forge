@@ -89,8 +89,8 @@ async function seed(handoffCommit?: string | null) {
       ? { commitSha: handoffCommit, outcome: 'ok' }
       : { outcome: 'ok', summary: 'no code' };
     await harness.db.execute(sql`
-      INSERT INTO issue_step_contexts (project_id, issue_id, pipeline_run_id, kind, step, payload)
-      VALUES (${project.id}, ${id}, ${runId}, 'handoff', 'drive', ${JSON.stringify(payload)}::jsonb)
+      INSERT INTO run_journal (project_id, issue_id, run_id, phase, source, outcome, handoff, handoff_at, ended_at)
+      VALUES (${project.id}, ${id}, ${runId}, 'drive', 'agent', 'ok', ${JSON.stringify(payload)}::jsonb, now(), now())
     `);
   }
   const token = await mods.signUserToken(user.id);

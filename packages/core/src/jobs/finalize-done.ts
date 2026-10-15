@@ -1,6 +1,7 @@
-import { and, eq, gte } from 'drizzle-orm';
+import { and, eq, gte, isNotNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issueStepContexts, jobs } from '../db/schema.js';
+import { jobs } from '../db/schema.js';
+import { runJournal } from '../db/schema-journal.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
@@ -13,18 +14,20 @@ import { deriveSessionFinal } from './session-transcript.js';
 
 type JobRow = typeof jobs.$inferSelect;
 
+/** Whether this job's run recorded the step's handoff since the job was dispatched. The handoff's
+ *  own write time is what is judged, never its attempt's start or end (ISS-1133). */
 export async function hasTerminalHandoffForAttempt(job: JobRow): Promise<boolean> {
   if (!job.pipelineRunId) return false;
   const since = job.dispatchedAt ?? job.queuedAt ?? null;
   const conditions = [
-    eq(issueStepContexts.pipelineRunId, job.pipelineRunId),
-    eq(issueStepContexts.kind, 'handoff'),
-    eq(issueStepContexts.step, job.type),
+    eq(runJournal.runId, job.pipelineRunId),
+    eq(runJournal.phase, job.type),
+    isNotNull(runJournal.handoffAt),
   ];
-  if (since) conditions.push(gte(issueStepContexts.updatedAt, since));
+  if (since) conditions.push(gte(runJournal.handoffAt, since));
   const rows = await db
-    .select({ id: issueStepContexts.id })
-    .from(issueStepContexts)
+    .select({ id: runJournal.id })
+    .from(runJournal)
     .where(and(...conditions))
     .limit(1);
   return rows.length > 0;

@@ -90,8 +90,8 @@ async function driveHandoff(projectId: string, issueId: string, commitSha: strin
     commitSha,
   };
   await harness.db.execute(sql`
-    INSERT INTO issue_step_contexts (project_id, issue_id, pipeline_run_id, kind, step, payload)
-    VALUES (${projectId}, ${issueId}, ${runId}, 'handoff', 'drive', ${JSON.stringify(payload)}::jsonb)
+    INSERT INTO run_journal (project_id, issue_id, run_id, phase, source, outcome, handoff, handoff_at, ended_at)
+    VALUES (${projectId}, ${issueId}, ${runId}, 'drive', 'agent', 'ok', ${JSON.stringify(payload)}::jsonb, now(), now())
   `);
 }
 
@@ -127,7 +127,7 @@ describe('the work-evidence gate reads the issue row (ISS-1133)', () => {
       WHERE id = ${issueId}::uuid
     `);
     const [handoffs] = await harness.db.execute<{ n: number }>(
-      sql`SELECT count(*)::int AS n FROM issue_step_contexts WHERE issue_id = ${issueId}::uuid`,
+      sql`SELECT count(*)::int AS n FROM run_journal WHERE issue_id = ${issueId}::uuid AND handoff IS NOT NULL`,
     );
     expect(handoffs?.n).toBe(0);
 

@@ -40,6 +40,7 @@ export const PAT_PERMISSION_RESOURCES = {
       '/api/pipeline-runs': 1,
       '/api/jobs': 1,
       '/api/issue-step-contexts': 1,
+      '/api/run-journal': 3,
       '/api/agent-sessions': 2,
       '/api/pipeline': 2,
       '/api/usage-records': 2,

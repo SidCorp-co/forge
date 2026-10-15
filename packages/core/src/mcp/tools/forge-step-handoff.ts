@@ -3,6 +3,8 @@ import { stepHandoffSchema } from '../../memory/step-handoff-schema.js';
 import {
   deleteIssueContext,
   getIssueContexts,
+  HandoffDeleteRefused,
+  HandoffRefused,
   IssueNotInProject,
   PipelineRunNotFound,
   writeIssueContext,
@@ -41,14 +43,13 @@ const deleteInputSchema = z.object({
 });
 
 /**
- * `forge_step_handoff.write` — upsert the structured output of a pipeline
- * step. Agents call this at the end of each handoff-emitting state before
- * emitting `DONE`. Upsert is keyed on `(issueId, step, attempt)`.
+ * `forge_step_handoff.write` — the structured output of one run's step attempt, written once onto
+ * that attempt's run journal row.
  */
 export const forgeStepHandoffWriteTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_step_handoff.write',
   description:
-    "Upsert a step handoff (structured pipeline-state output) for an issue. Stores `payload` under `kind='handoff'` keyed on (issueId, step, attempt). Validates payload via the per-step discriminated schema. Requires project membership.",
+    "Write a step handoff (structured pipeline-state output) for one run's step attempt: (pipelineRunId, step, attempt). It is written once; a second handoff for the same attempt is refused naming when the first was written, and a later round is a new attempt. Validates payload via the per-step discriminated schema. Requires project membership.",
   inputSchema: zodToMcpSchema(writeInputSchema),
   handler: async (args) => {
     const input = writeInputSchema.parse(args);
@@ -62,6 +63,7 @@ export const forgeStepHandoffWriteTool: ContextScopedMcpToolFactory = ({ princip
     } catch (err) {
       if (err instanceof IssueNotInProject || err instanceof PipelineRunNotFound)
         throw new Error(`NOT_FOUND: ${err.message}`);
+      if (err instanceof HandoffRefused) throw new Error(`${err.code}: ${err.message}`);
       throw err;
     }
   },
@@ -86,19 +88,22 @@ export const forgeStepHandoffGetTool: ContextScopedMcpToolFactory = ({ principal
 });
 
 /**
- * `forge_step_handoff.delete` — idempotent delete by natural key. Returns
- * `{deleted: boolean}`. Rarely needed by agents; included for parity with
- * the memory tool family and operator manual recovery.
+ * `forge_step_handoff.delete` — refused by name: a handoff is its attempt's record on the run
+ * journal, which keeps every attempt. Kept so an old caller is told why rather than met by nothing.
  */
 export const forgeStepHandoffDeleteTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_step_handoff.delete',
   description:
-    'Delete a step handoff by (issueId, step, attempt). Idempotent — returns {deleted: false} when no row matches. Requires project membership.',
+    "Refused, always: a handoff is the run journal's record of its attempt and the journal keeps every attempt, so nothing is deleted. Answers HANDOFF_IS_JOURNAL.",
   inputSchema: zodToMcpSchema(deleteInputSchema),
   handler: async (args) => {
     const input = deleteInputSchema.parse(args);
     await assertPrincipalIsWriter(principal, input.projectId);
-    const n = await deleteIssueContext({ ...input, kind: 'handoff' });
-    return { deleted: n > 0 };
+    try {
+      return await deleteIssueContext({ ...input, kind: 'handoff' });
+    } catch (err) {
+      if (err instanceof HandoffDeleteRefused) throw new Error(`${err.code}: ${err.message}`);
+      throw err;
+    }
   },
 });

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// ISS-1150 — what the issue says comes first. An empty secondary panel (Steps) is one line, never a
+// ISS-1150 — what the issue says comes first. An empty secondary panel (Runs) is one line, never a
 // card that outranks the description, and the attachments sit inside the description rather than
 // after it.
 
@@ -14,8 +14,7 @@ expect.extend(matchers);
 
 const ok = <T,>(data: T) => ({ data, isLoading: false, isError: false, error: null, refetch: vi.fn() });
 
-let handoffs: ReturnType<typeof ok> | Record<string, unknown> = ok([]);
-let durations: ReturnType<typeof ok> = ok([]);
+let journal: ReturnType<typeof ok> | Record<string, unknown> = ok([]);
 let attachments: ReturnType<typeof ok> = ok([]);
 let pipelineHealth: Record<string, unknown> | undefined;
 let status = "open";
@@ -57,9 +56,6 @@ vi.mock("./use-guarded-transition", () => ({
 vi.mock("./properties-rail", () => ({ PropertiesRail: () => <div>rail</div> }));
 vi.mock("./module-picker", () => ({ ModulePicker: () => null }));
 vi.mock("./comment-thread", () => ({ CommentThread: () => <div>comments</div> }));
-vi.mock("./step-artifact-card", () => ({
-  StepArtifactCard: ({ outcome }: { outcome: { step: string } }) => <div>step {outcome.step}</div>,
-}));
 vi.mock("./html-attachment-card", () => ({
   HtmlAttachmentCard: ({ name }: { name: string }) => <div>preview {name}</div>,
 }));
@@ -71,8 +67,7 @@ vi.mock("../detail-hooks", async (importActual) => ({
   useComments: () => ok({ items: [], totalCount: 0 }),
   useActivity: () => ok({ items: [] }),
   useAttachments: () => attachments,
-  useStepHandoffs: () => handoffs,
-  useStepDurations: () => durations,
+  useRunJournal: () => journal,
   useCreateComment: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 vi.mock("../park", () => ({ useIssuePark: () => park }));
@@ -103,8 +98,7 @@ beforeEach(() => {
   fetchMock.mockReset();
   fetchMock.mockImplementation(async () => new Response("[]", { status: 200, headers: { "content-type": "application/json" } }));
   vi.stubGlobal("fetch", fetchMock);
-  handoffs = ok([]);
-  durations = ok([]);
+  journal = ok([]);
   attachments = ok([]);
   pipelineHealth = undefined;
   status = "open";
@@ -117,42 +111,32 @@ afterEach(() => {
 });
 
 describe("the issue detail's main column", () => {
-  it("draws an empty Steps panel as one line, not a card with an empty state", () => {
+  it("draws an empty Runs panel as one line, not a card with an empty state", () => {
     renderScreen();
-    const steps = screen.getByRole("region", { name: "Steps" });
+    const steps = screen.getByRole("region", { name: "Runs" });
     expect(steps).toHaveTextContent("None yet");
     expect(steps.className).toContain("h-10");
     expect(screen.queryByText("No steps yet")).toBeNull();
   });
 
-  it("puts the description ahead of the Steps panel", () => {
+  it("puts the description ahead of the Runs panel", () => {
     renderScreen();
     const description = screen.getByText("What the issue says.");
-    expect(precedes(description, screen.getByRole("region", { name: "Steps" }))).toBe(true);
+    expect(precedes(description, screen.getByRole("region", { name: "Runs" }))).toBe(true);
   });
 
-  it("keeps a populated Steps card after the description too", () => {
-    durations = ok([
-      { step: "code", runId: "r1", durationSeconds: 12, costUsd: 0, startedAt: "2026-09-21T11:00:00Z", finishedAt: "2026-09-21T11:00:12Z" },
-    ]);
+  it("keeps a populated Runs section after the description too", () => {
+    journal = ok([{ runId: "r1", ordinal: 1, kind: "issue", status: "completed", group: null, startedAt: "2026-09-21T11:00:00Z", finishedAt: "2026-09-21T11:00:12Z", costUsd: null, attempts: [{ phase: "code", attempt: 1, source: "agent", outcome: "ok", startedAt: "2026-09-21T11:00:00Z", endedAt: "2026-09-21T11:00:12Z", durationSeconds: 12, artifact: null, handoff: null, handoffAt: null }] }]);
     renderScreen();
-    expect(precedes(screen.getByText("What the issue says."), screen.getByText("step code"))).toBe(true);
+    expect(precedes(screen.getByText("What the issue says."), screen.getByText("code"))).toBe(true);
   });
 
-  it("says the steps could not be loaded rather than that there are none", () => {
-    handoffs = { data: undefined, isLoading: false, isError: true, error: new Error("boom"), refetch: vi.fn() };
+  it("says the runs could not be loaded rather than that there are none", () => {
+    journal = { data: undefined, isLoading: false, isError: true, error: new Error("boom"), refetch: vi.fn() };
     renderScreen();
-    const steps = screen.getByRole("region", { name: "Steps" });
-    expect(steps).toHaveTextContent("Couldn't load");
-    expect(steps).not.toHaveTextContent("None yet");
-  });
-
-  it("says the steps could not be loaded when only the durations read failed", () => {
-    durations = { data: undefined, isLoading: false, isError: true, error: new Error("boom"), refetch: vi.fn() } as never;
-    renderScreen();
-    const steps = screen.getByRole("region", { name: "Steps" });
-    expect(steps).toHaveTextContent("Couldn't load");
-    expect(steps).not.toHaveTextContent("None yet");
+    const runs = screen.getByRole("region", { name: "Runs" });
+    expect(runs).toHaveTextContent("Couldn't load");
+    expect(runs).not.toHaveTextContent("None yet");
   });
 
   it("shows attachments inside the description, above its text, and no separate Attachments card", () => {
@@ -254,13 +238,11 @@ describe("the issue detail's sections and rail", () => {
     expect(precedes(description, screen.getByRole("region", { name: "Acceptance criteria" }))).toBe(true);
   });
 
-  it("draws Steps, Acceptance criteria and the Agent plan as flat sections in that order", () => {
-    durations = ok([
-      { step: "code", runId: "r1", durationSeconds: 12, costUsd: 0, startedAt: "2026-09-21T11:00:00Z", finishedAt: "2026-09-21T11:00:12Z" },
-    ]);
+  it("draws Runs, Acceptance criteria and the Agent plan as flat sections in that order", () => {
+    journal = ok([{ runId: "r1", ordinal: 1, kind: "issue", status: "completed", group: null, startedAt: "2026-09-21T11:00:00Z", finishedAt: "2026-09-21T11:00:12Z", costUsd: null, attempts: [{ phase: "code", attempt: 1, source: "agent", outcome: "ok", startedAt: "2026-09-21T11:00:00Z", endedAt: "2026-09-21T11:00:12Z", durationSeconds: 12, artifact: null, handoff: null, handoffAt: null }] }]);
     issueOver = { acceptanceCriteria: "- [ ] it works", plan: "the plan" };
     renderScreen();
-    const steps = screen.getByRole("region", { name: "Steps" });
+    const steps = screen.getByRole("region", { name: "Runs" });
     const criteria = screen.getByRole("region", { name: "Acceptance criteria" });
     const plan = screen.getByRole("button", { name: "Agent plan" }).closest("div.border-t") as HTMLElement;
     for (const section of [steps, criteria, plan]) {

@@ -1,7 +1,7 @@
 /**
  * ISS-1273 — a run summary declares the lane it was opened on, its group, and where its step came
  * from, against real Postgres. `pipeline/runs-lane.test.ts` covers the derivation itself; this is
- * the composition, which needs a real `phase_journal` row and a real group run.
+ * the composition, which needs a real `run_journal` row and a real group run.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -83,7 +83,7 @@ describe('ISS-1273 run summary lanes', () => {
     args: { attempt?: number; agoMinutes?: number } = {},
   ): Promise<void> {
     await harness.db.execute(sql`
-      INSERT INTO phase_journal (id, project_id, run_id, phase, attempt, source, started_at)
+      INSERT INTO run_journal (id, project_id, run_id, phase, attempt, source, started_at)
       VALUES (${randomUUID()}, ${projectId}, ${runId}, ${phase}, ${args.attempt ?? 1}, 'agent',
               now() - make_interval(mins => ${args.agoMinutes ?? 0}::int))
     `);
@@ -106,7 +106,7 @@ describe('ISS-1273 run summary lanes', () => {
 
     const summary = await mods.loadPipelineRunSummary(runId);
     expect(summary?.currentStep).toBe('implement');
-    expect(summary?.step).toEqual({ source: 'phase_journal', step: 'implement', detail: null });
+    expect(summary?.step).toEqual({ source: 'run_journal', step: 'implement', detail: null });
   });
 
   it('says why it holds no step where the driver has closed its last phase', async () => {
@@ -114,7 +114,7 @@ describe('ISS-1273 run summary lanes', () => {
     const runId = await groupRun(project.id, ['ISS-1273']);
     await openPhase(project.id, runId, 'implement');
     await harness.db.execute(
-      sql`UPDATE phase_journal SET ended_at = now() WHERE run_id = ${runId}`,
+      sql`UPDATE run_journal SET ended_at = now(), outcome = 'ok' WHERE run_id = ${runId}`,
     );
 
     const summary = await mods.loadPipelineRunSummary(runId);
@@ -142,7 +142,7 @@ describe('ISS-1273 run summary lanes', () => {
     const project = await seed();
     const runId = await groupRun(project.id, ['ISS-1273']);
     await harness.db.execute(sql`
-      INSERT INTO phase_journal (id, project_id, run_id, phase, attempt, source, started_at)
+      INSERT INTO run_journal (id, project_id, run_id, phase, attempt, source, started_at)
       VALUES (${randomUUID()}, ${project.id}, ${runId}, 'implement', 2, 'agent',
               timestamptz '2026-09-27 10:00:00+00'),
              (${randomUUID()}, ${project.id}, ${runId}, 'plan', 1, 'agent',
