@@ -3,6 +3,7 @@ import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { notifications } from '../db/schema.js';
 import { issueWorkInFlightSql } from '../issues/issue-lease.js';
+import { lastWorkedAtSql } from '../issues/status-entered-at.js';
 import { ASSERTS_WORK_IN_PROGRESS, ISSUE_STATUS_LABELS } from '../issues/status-sets.js';
 import { elapsedWords } from '../lib/elapsed-words.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -85,13 +86,13 @@ interface OrphanRow {
   projectName: string;
   status: string;
   title: string;
-  /** When the issue last asserted, as the driver hands it back: Postgres's own text for the time. */
+  /** When the last work on the issue ended, or it entered its status if later: Postgres's own text. */
   since: string;
 }
 
 /**
  * What the project's admins read about one orphan: the issue with its project, the status in the
- * screen's word, and how long it has asserted, never the stored time a raw query hands back.
+ * screen's word, and how long nothing has worked it, never the stored time a raw query hands back.
  */
 export function orphanNotice(args: {
   ref: string;
@@ -104,10 +105,19 @@ export function orphanNotice(args: {
   return {
     title: `${args.ref} says work is in progress with no run behind it — ${args.projectName}`,
     body:
-      `${args.ref} has read ${status} for ${elapsedWords(args.since, args.now)} ` +
-      'and no job, issue run or run session is live for it.',
+      `${args.ref} reads ${status}, and nothing has worked it for ${elapsedWords(args.since, args.now)}: ` +
+      'no job, issue run or run session is live for it.',
   };
 }
+
+/** Counted from the work's end, not the row's last write: a later edit moves `updated_at` (ISS-1229). */
+const ORPHAN_SINCE = lastWorkedAtSql({
+  id: sql`i.id`,
+  status: sql`i.status`,
+  createdAt: sql`i.created_at`,
+  projectId: sql`i.project_id`,
+  issueKey: sql`'ISS-' || i.iss_seq`, // ISS-992:canonical
+});
 
 async function orphanedAssertions(now: Date): Promise<OrphanRow[]> {
   const cutoff = new Date(now.getTime() - ORPHAN_ASSERTION_GRACE_MS).toISOString();
@@ -119,14 +129,17 @@ async function orphanedAssertions(now: Date): Promise<OrphanRow[]> {
            p.name          AS "projectName",
            i.status        AS "status",
            i.title         AS "title",
-           i.updated_at    AS "since"
+           ${ORPHAN_SINCE} AS "since"
       FROM issues i
       JOIN projects p ON p.id = i.project_id
      WHERE i.status IN (${sql.join(
        ASSERTS_WORK_IN_PROGRESS.map((s) => sql`${s}`),
        sql`, `,
      )})
+       -- A write to the row still defers the notice, as it always has: it is the one sign of a
+       -- run the three predicates below cannot see. What the notice counts is ORPHAN_SINCE.
        AND i.updated_at < ${cutoff}
+       AND ${ORPHAN_SINCE} < ${cutoff}
        -- the same predicate the admissible read uses (ISS-1109). This pass and that one
        -- were verbatim twins, and a sweep that drifts from the pool reports as orphaned
        -- exactly the issues a box is working. Matching on issue_prefix here would make a

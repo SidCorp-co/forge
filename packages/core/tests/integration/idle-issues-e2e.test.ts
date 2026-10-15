@@ -577,3 +577,22 @@ describe('An automatic release hold decides what an awaiting_release strand says
     expect(note?.body).not.toContain('..');
   });
 });
+
+// Judge j16 saw a stuck-issue notice count from the row's last write (ISS-1229): any edit to the
+// issue made it read as if it had stood at its status for less time than it had.
+describe('how long an idle notice says the issue has read its status', () => {
+  it('counts from when the issue entered its status, not from a later write to the row', async () => {
+    await addRunner('online');
+    const issueId = await seedIssue({ status: 'open', updatedAt: '2026-09-20T15:00:00.000Z' });
+    await fx.db.execute(sql`
+      INSERT INTO kernel_transitions (entity, entity_id, from_status, to_status, actor_type, source, created_at)
+      VALUES ('issue', ${issueId}, 'draft', 'open', 'user', 'test', '2026-09-18T15:00:00.000Z')
+    `);
+
+    await mods.reconcileIdleIssues(NOW);
+
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]?.body).toMatch(/^ISS-\d+ has read Open for 2 days /);
+    expect((await strandOf(issueId))?.since).toMatch(/^2026-09-18 15:00:00/);
+  });
+});

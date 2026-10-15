@@ -48,7 +48,8 @@ function strand(projectId: string, i: number) {
     issSeq: i,
     title: `strand ${i}`,
     mergedAt: null,
-    updatedAt: new Date('2026-08-01T00:00:00.000Z'),
+    /** When it entered `waiting`, as the read hands it back: Postgres's own text. */
+    parkedAt: '2026-08-01 00:00:00+00',
     cursorTs: `2026-08-01 00:00:0${i}+00`,
     projectName: 'Seed',
   };
@@ -198,7 +199,7 @@ describe('what a stranded notice says, in the words a reader uses (ISS-1229)', (
   });
 
   it('says how many hours, not the bare word, for a park younger than a day', async () => {
-    rows.value = [{ ...strand('p1', 1), updatedAt: new Date('2026-08-03T23:00:00.000Z') }];
+    rows.value = [{ ...strand('p1', 1), parkedAt: '2026-08-03 23:00:00+00' }];
     await detectStrandedIssues(now);
     expect(sent().body).toBe('ISS-1 "strand 1": it has been parked for 7 hours.');
   });

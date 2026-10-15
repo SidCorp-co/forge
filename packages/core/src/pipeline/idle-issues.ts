@@ -16,6 +16,7 @@ import { db } from '../db/client.js';
 import { type IssueStatus, issueStatuses } from '../db/schema.js';
 import { ADMITTED_RUNNER } from '../devices/pool-admission.js';
 import { issueWorkInFlightSql } from '../issues/issue-lease.js';
+import { statusEnteredAtSql } from '../issues/status-entered-at.js';
 import { ISSUE_STATUS_LABELS, statusLabel } from '../issues/status-sets.js';
 import { elapsedWords } from '../lib/elapsed-words.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -94,6 +95,8 @@ interface CandidateRow {
   title: string;
   /** Text, not a `Date`: `db.execute` hands raw SQL results back unparsed. */
   updated_at: string;
+  /** When the row entered its status, which is what its notice counts from; `updated_at` moves on any write. */
+  entered_at: string;
   merged_at: string | null;
   lease: unknown;
   strand: unknown;
@@ -226,7 +229,7 @@ function judge(
     record: {
       at: now.toISOString(),
       status: row.status,
-      since: row.updated_at,
+      since: row.entered_at,
       waitingFor,
       owes,
       reason,
@@ -245,7 +248,7 @@ function unclassifiedRecord(row: CandidateRow, lease: LeaseReading, now: Date): 
   return {
     at: now.toISOString(),
     status: row.status,
-    since: row.updated_at,
+    since: row.entered_at,
     waitingFor: 'not decidable: this status is in no rule this build holds',
     owes: 'human',
     reason: `the status ${statusLabel(row.status)} is not one this build classifies, so no clock and no owner apply to it`,
@@ -278,6 +281,7 @@ async function readCandidates(now: Date, scope: { projectId?: string }): Promise
 
   const rows = (await db.execute(sql`
     SELECT i.id, i.project_id, i.iss_seq, i.status, i.title, i.updated_at, i.merged_at,
+           ${statusEnteredAtSql({ id: sql`i.id`, status: sql`i.status`, createdAt: sql`i.created_at` })}::text AS entered_at,
            p.issue_prefix, p.name AS project_name,
            i.session_context -> 'lease'  AS lease,
            i.session_context -> 'strand' AS strand,
