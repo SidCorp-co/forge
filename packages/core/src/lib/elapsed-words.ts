@@ -6,12 +6,8 @@ function counted(n: number, unit: string): string {
   return `${n} ${unit}${n === 1 ? '' : 's'}`;
 }
 
-/**
- * How long ago `since` was, in the words a notice's reader uses: "40 minutes", "5 hours", "3 days".
- *
- * A notice is read later, in a timezone the server does not know, so it says how long rather than
- * when; and a database timestamp printed whole is a value the reader was never meant to see.
- */
+/** How long ago `since` was, as a notice says it ("5 hours"): the server knows no reader's
+ *  timezone, so a notice says how long rather than printing a stored timestamp. */
 export function elapsedWords(since: Date | string, now: Date): string {
   const at = since instanceof Date ? since.getTime() : Date.parse(since);
   if (Number.isNaN(at)) throw new Error(`elapsedWords: "${String(since)}" is not a time`);

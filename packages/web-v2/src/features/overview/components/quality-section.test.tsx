@@ -64,6 +64,11 @@ describe("QualitySection, in the words a reader uses", () => {
     expect(container.textContent).not.toMatch(/\b(?:drive|release_batch|verify_skill|reconcile)\b/);
   });
 
+  it("names a kind this build does not know as unrecognised, the one place its stored type shows", () => {
+    render(<QualitySection quality={{ ...quality, pipelineFlow: [{ type: "future_kind", count: 1, medianSeconds: 30 }] }} />);
+    expect(screen.getByRole("cell", { name: "Unrecognised work (future_kind)" })).toBeInTheDocument();
+  });
+
   it("names each session failure by its cause, never its stored code", () => {
     const { container } = render(<QualitySection quality={quality} />);
     expect(screen.getByText("Runner unreachable")).toBeInTheDocument();
