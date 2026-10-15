@@ -3198,7 +3198,7 @@
 - **The pipeline help page says what Settings holds, and that a gated draft is dropped, not closed.** It described a per-stage Auto/Manual/Skip setting that does not exist, and told readers to close a draft, which is refused. (ISS-1229)
 - **Getting started no longer walks an issue through stages that are gone.** It now says one agent carries an issue from filed to shipped, as the public guide index does. (ISS-1229)
 - **Shape & release refuses a test credential with no password, or one listed twice, by name.** The row is marked where it is wrong and nothing is saved; an agent writing the same is refused too. (ISS-1171)
-- **Shape & release marks an emptied base branch at the field itself, and keeps the shape you picked in view when a save is refused.** A failed environments save now says what happened and what to do, not the server's own words. (ISS-1171)
+- **Shape & release marks an emptied base branch at its field, and keeps your chosen shape in view when a save is refused.** A failed environments save says what happened and what to do. (ISS-1171)
 - **A project's release readiness names its base branch.** It answered none for a project whose release has no live target yet. (ISS-1171)
 - **A name prints as you typed it.** An empty Connections page no longer opens your organization's name with a capital, and a session listed beside another for the same issue keeps its title's own case. (ISS-1171)
 - **A shape change lists each status as one item.** Developed issues are counted as waiting to be tested, so a list of several statuses no longer reads one of them as two. (ISS-1171)

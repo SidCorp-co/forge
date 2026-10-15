@@ -1,5 +1,5 @@
-// The environments write door holds a written credential to its rules and refuses by name
-// (ISS-1171 r6): a row with no password and a second row for one login used to store in silence.
+// The environments write door holds a written credential to its rules and refuses by name: a row
+// with no password, and a second row for one login.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 

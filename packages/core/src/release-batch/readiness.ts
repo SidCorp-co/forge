@@ -39,7 +39,6 @@ export interface ReleaseReadiness {
   /** ISS-1311 — derived from `releaseChain` for `forge-plugin`; see `retiredReleaseAxes`. */
   releaseModel: 'none' | 'promote' | 'publish';
   releaseStrategy: ReleaseCrossing | null;
-  /** The stored base branch, read off the row and never off the declaration; `''` where none is stored or the row could not be read. */
   baseBranch: string;
   /** Non-null only where the chain has two or more entries. */
   liveBranch: string | null;
