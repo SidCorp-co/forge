@@ -329,7 +329,7 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     middleware/route-refs.ts Request.url in resolveRouteRefs
     devices/install-routes.ts HonoRequest.url in module code
     guides/routes.ts HonoRequest.url in module code
-    integration-door/github-connect-routes.ts HonoRequest.url in assertApiOriginReachable
+    integration-door/github-connect-routes.ts HonoRequest.url in reachedOrigin
     requirements/route-kit.ts HonoRequest.param() in draftPictureFits
     workflows/template-routes.ts HonoRequest.param() in module code
     questions/routes.ts HonoRequest.param(…) handed to questionId as { param: (k: string) => string; } in module code`,

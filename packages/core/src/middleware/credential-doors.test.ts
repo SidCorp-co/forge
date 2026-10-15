@@ -26,6 +26,10 @@
 //   - a field nested inside a validated object: it is classified under its top-level field;
 //   - bytes on an upgraded socket after the handshake (a Duplex is not a carrier);
 //   - code outside core's src, and test and fixture files.
+//
+// The scan reads src by path, not by import, so the doors it guards declare it (ISS-530: a renamed
+// read in github-connect-routes.ts reached dev unselected and went red only in the whole suite).
+// @direct-test-of packages/core/src/integration-door/
 
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
