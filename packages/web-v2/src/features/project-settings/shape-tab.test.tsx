@@ -774,3 +774,21 @@ describe("judge-15's five findings (ISS-1171 r6)", () => {
 		}
 	});
 });
+
+describe("the Live block's deploy connections", () => {
+	it("names a release through the shape picked, not that nothing ships, while the base branch is empty", async () => {
+		await mount(project());
+		clear("Base branch");
+		const live = document.getElementById("environment-live") as HTMLElement;
+		expect(await within(live).findByText("None serves Live, so a release has nowhere to land.")).toBeInTheDocument();
+		expect(within(live).queryByText(/ships nothing/)).toBeNull();
+		expect(within(live).getByText("None yet — name the base branch.")).toBeInTheDocument();
+	});
+
+	it("says a shape with no release needs no live connection, whatever chain is stored", async () => {
+		await mount(project());
+		fireEvent.click(radio(/repository, no release/i));
+		const live = document.getElementById("environment-live") as HTMLElement;
+		expect(await within(live).findByText("None needed: this project ships nothing, so no release lands here.")).toBeInTheDocument();
+	});
+});
