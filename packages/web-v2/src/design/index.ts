@@ -95,7 +95,7 @@ export { ListSearch } from "./patterns/list-search";
 export { FilterChip } from "./patterns/filter-chip";
 export { SignalsStrip, Signal } from "./patterns/signals-strip";
 export { NotAvailable } from "./patterns/not-available";
-export { PeekPanel, PeekHead, usePeek, usePeekKeys, type PeekState } from "./patterns/peek-panel";
+export { PeekPanel, PeekHead, usePeek, usePeekKeys, useOpenFullPage, type FullPage, type PeekState } from "./patterns/peek-panel";
 export { DetailHeader, DetailMobileTitle, rememberListOrigin, useListOrigin } from "./patterns/detail-header";
 export {
   FactsRail, FactsGroup, Fact, FactsEmpty, CoverageBar, MarkStrip, StepBar,

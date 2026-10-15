@@ -120,13 +120,13 @@ export function ModuleLevel({
     // a module's children open from its own page, which is not a list to go back to
     origin: scope ? null : MODULES_LIST,
   });
-  const { peek, openFull: open } = list;
+  const { peek, fullOf } = list;
 
   const read = data.issuesRead;
   const unread = read.open - read.returned;
 
   return (
-    <ListLayout peek={peek.open ? <ModulePeek key={peek.open} projectId={projectId} slug={slug} moduleSlug={peek.open} peek={peek} onOpenFull={() => open(peek.open as string)} /> : null}>
+    <ListLayout peek={peek.open ? <ModulePeek key={peek.open} projectId={projectId} slug={slug} moduleSlug={peek.open} peek={peek} full={fullOf(peek.open)} /> : null}>
         {toolbar}
         {unread > 0 ? (
           <p className="border-b border-line-subtle px-5 py-2 text-13 text-muted" data-testid="modules-truncated">

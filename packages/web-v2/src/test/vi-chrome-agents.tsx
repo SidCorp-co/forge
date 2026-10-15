@@ -197,7 +197,7 @@ export const SCREENS = [
   { name: "Agents · sessions tab", render: () => withUrl("?tab=sessions", <AgentsScreen access={access} />) },
   ...RUNS.filter((_, i) => [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 12].includes(i)).map((r, i) => ({
     name: `Run peek · ${r.state} ${i}`,
-    render: () => wrap(<RunPeek r={r} slug="hop" canWrite peek={peek} onOpenFull={noop} />),
+    render: () => wrap(<RunPeek r={r} slug="hop" canWrite peek={peek} full={{ href: "/projects/hop", origin: null }} />),
   })),
   ...[0, 1, 5, 7, 9, 10, 12].map((i) => ({
     name: `Run page · ${RUNS[i].state} ${i}`,
@@ -211,7 +211,7 @@ export const SCREENS = [
   { name: "Master page · passes", render: () => withUrl("", <MasterItemScreen access={access} />) },
   { name: "Master page · runs", render: () => withUrl("?tab=runs", <MasterItemScreen access={access} />) },
   { name: "Master page · charter", render: () => withUrl("?tab=charter", <MasterItemScreen access={access} />) },
-  { name: "Master peek", render: () => wrap(<MasterPeek m={MASTER} peek={peek} onOpenFull={noop} />) },
-  { name: "Master peek · none", render: () => wrap(<MasterPeek m={MASTERS_IDLE} peek={peek} onOpenFull={noop} />) },
+  { name: "Master peek", render: () => wrap(<MasterPeek m={MASTER} peek={peek} full={{ href: "/projects/hop", origin: null }} />) },
+  { name: "Master peek · none", render: () => wrap(<MasterPeek m={MASTERS_IDLE} peek={peek} full={{ href: "/projects/hop", origin: null }} />) },
   { name: "Issue decisions", render: () => wrap(<IssueQuestions issueId="i1" />) },
 ];

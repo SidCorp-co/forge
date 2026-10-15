@@ -17,7 +17,7 @@ import {
   type ListRowView,
   PeekHead,
   PeekPanel,
-  type PeekState,
+  type FullPage, type PeekState,
   StatusBadge,
   useUrlTab,
   ViewHeading,
@@ -197,17 +197,17 @@ export function FirePeek({
   schedule,
   slug,
   peek,
-  onOpenFull,
+  full,
 }: {
   f: FireStanding;
   schedule: FireDetailResponse["schedule"] | undefined;
   slug: string;
   peek: PeekState;
-  onOpenFull: () => void;
+  full: FullPage;
 }) {
   const t = useCopy();
   return (
-    <PeekPanel peek={peek} listLabel={t("schedules.title")} noun={t("schedules.noun.fire")} onOpenFull={onOpenFull} testId="fire-peek">
+    <PeekPanel peek={peek} listLabel={t("schedules.title")} noun={t("schedules.noun.fire")} full={full} testId="fire-peek">
       <PeekHead noun={t("schedules.noun.fire")} itemKey={`#${shortId(f.id)}`} badge={<StatusBadge family="scheduleRun" value={f.status} />} title={f.scheduleName} />
       <FireBanner f={f} className="px-4.5" />
       <div className="px-4.5 pb-4 pt-4">

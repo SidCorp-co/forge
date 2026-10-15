@@ -88,7 +88,7 @@ export function AutomationScreen({ access }: { access: AutomationAccess }) {
     hrefOf: (id) => hrefOf[tab](id),
     origin: AUTOMATION_LIST,
   });
-  const { peek, openFull } = list;
+  const { peek, fullOf } = list;
 
   const title = <PageTitle>{t("schedules.title")}</PageTitle>;
   return (
@@ -119,7 +119,7 @@ export function AutomationScreen({ access }: { access: AutomationAccess }) {
                 open ? (
                   <>
                     {tab === "schedules" ? (
-                      <SchedulePeek key={open.id} s={open as ScheduleStanding} access={access} peek={peek} onOpenFull={() => openFull(open.id)} />
+                      <SchedulePeek key={open.id} s={open as ScheduleStanding} access={access} peek={peek} full={fullOf(open.id)} />
                     ) : null}
                     {tab === "fires" ? (
                       <FirePeek
@@ -128,7 +128,7 @@ export function AutomationScreen({ access }: { access: AutomationAccess }) {
                         schedule={scheduleOf((open as FireStanding).scheduleId)}
                         slug={slug}
                         peek={peek}
-                        onOpenFull={() => openFull(open.id)}
+                        full={fullOf(open.id)}
                       />
                     ) : null}
                     {tab === "reports" ? (
@@ -139,7 +139,7 @@ export function AutomationScreen({ access }: { access: AutomationAccess }) {
                         slug={slug}
                         canWrite={access.canWrite}
                         peek={peek}
-                        onOpenFull={() => openFull(open.id)}
+                        full={fullOf(open.id)}
                       />
                     ) : null}
                   </>

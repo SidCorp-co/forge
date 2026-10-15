@@ -6,7 +6,7 @@
 import { useRouter } from "@/lib/navigation/router";
 import { rememberListOrigin } from "../patterns/detail-header";
 import { type GroupFold, type ListGroup, useGroupFold, visibleRows } from "../patterns/grouped-list";
-import { type PeekState, usePeek, usePeekKeys } from "../patterns/peek-panel";
+import { type FullPage, type PeekState, usePeek, usePeekKeys } from "../patterns/peek-panel";
 import { useUrlParams } from "./use-url-params";
 
 export interface ListPageSpec<R> {
@@ -41,6 +41,8 @@ export interface ListPageState<R> {
   peek: PeekState;
   /** Opens a row in the peek, or closes it when it is the open one. */
   togglePeek: (key: string) => void;
+  /** A row's full page, for the peek's link to it. */
+  fullOf: (key: string) => FullPage;
   openFull: (key: string) => void;
 }
 
@@ -68,6 +70,7 @@ export function useListPage<R>({ rows: all, keyOf, searchOf, narrow, groupsOf, f
     fold,
     peek,
     togglePeek: (key) => peek.set(key === peek.open ? null : key),
+    fullOf: (key) => ({ href: hrefOf(key), origin }),
     openFull,
   };
 }

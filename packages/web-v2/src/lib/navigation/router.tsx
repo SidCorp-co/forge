@@ -1,6 +1,8 @@
 // The app's navigation over TanStack Router, in the shape the screens use: a Link that takes an
 // in-app href (path, search and hash in one string), and the hooks a screen reads its place with.
-// An href is in-app (no basepath); the router adds the basepath to what the browser shows.
+// An href is in-app (no basepath); the router adds the basepath to what the browser shows. A link
+// loads its page's code as the pointer or the focus reaches it (the router's `defaultPreload:
+// "intent"` reaches only its own Link, and the app draws this one), so the click finds it loaded.
 
 import {
   useLocation,
@@ -8,7 +10,7 @@ import {
   useParams as useRouteParams,
   useRouter as useAppRouter,
 } from "@tanstack/react-router";
-import { type AnchorHTMLAttributes, type MouseEvent, type Ref, useMemo } from "react";
+import { type AnchorHTMLAttributes, type MouseEvent, type Ref, useCallback, useMemo } from "react";
 
 const SCHEME = /^[a-z][a-z\d+.-]*:|^\/\//i;
 
@@ -39,15 +41,38 @@ function opensElsewhere(event: MouseEvent<HTMLAnchorElement>, target: string | u
   );
 }
 
+/** Loads an in-app href's page code ahead of the click; an outside href is not the router's to load. */
+export function usePreload(): (href: string) => void {
+  const router = useAppRouter();
+  return useCallback(
+    (href: string) => {
+      if (SCHEME.test(href)) return;
+      // the router builds the place from `href` and sets `to` from it; its types still ask for a `to`.
+      // A page whose code cannot load now still loads on the click, which shows its own failure.
+      router.preloadRoute({ to: ".", href }).catch(() => undefined);
+    },
+    [router],
+  );
+}
+
 /** A link inside the app, followed by the router; a modified click or an outside href is the browser's. */
-export function Link({ href, replace, scroll, onClick, target, children, ...rest }: LinkProps) {
+export function Link({ href, replace, scroll, onClick, onMouseEnter, onFocus, target, children, ...rest }: LinkProps) {
   const navigate = useNavigate();
+  const preload = usePreload();
   const shown = useBasedHref(href);
   return (
     <a
       {...rest}
       target={target}
       href={shown}
+      onMouseEnter={(event) => {
+        onMouseEnter?.(event);
+        preload(href);
+      }}
+      onFocus={(event) => {
+        onFocus?.(event);
+        preload(href);
+      }}
       onClick={(event) => {
         onClick?.(event);
         if (opensElsewhere(event, target) || SCHEME.test(href)) return;

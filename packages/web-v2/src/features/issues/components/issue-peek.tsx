@@ -1,7 +1,7 @@
 
 import type { Forecast } from "@forge/contracts/forecast";
 import type { IssueStandingRow } from "@forge/contracts/issue-standing";
-import { PeekHead, PeekPanel, type PeekState } from "@/design";
+import { PeekHead, PeekPanel, type FullPage, type PeekState } from "@/design";
 import type { EtaClock } from "@/features/forecast";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { IssueBanner, IssuePeekProperties, IssueStrip, issueBadge } from "./issue-standing-bits";
@@ -13,18 +13,18 @@ export function IssuePeek({
   forecast,
   clock,
   peek,
-  onOpenFull,
+  full,
 }: {
   slug: string;
   row: IssueStandingRow;
   forecast?: Forecast | undefined;
   clock: EtaClock;
   peek: PeekState;
-  onOpenFull: () => void;
+  full: FullPage;
 }) {
   const t = useCopy();
   return (
-    <PeekPanel peek={peek} listLabel={t("issues.screen.title")} noun={t("issues.noun")} onOpenFull={onOpenFull} testId="issue-peek">
+    <PeekPanel peek={peek} listLabel={t("issues.screen.title")} noun={t("issues.noun")} full={full} testId="issue-peek">
       <PeekHead noun={t("issues.noun")} itemKey={row.key} badge={issueBadge(row)} title={<Written text={row.title} lang={row.writtenLang} />} />
       <div className="px-4.5 pb-3">
         <IssueStrip standing={row.standing} />

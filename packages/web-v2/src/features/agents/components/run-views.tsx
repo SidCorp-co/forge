@@ -15,7 +15,7 @@ import {
   type ListRowView,
   PeekHead,
   PeekPanel,
-  type PeekState,
+  type FullPage, type PeekState,
   StatusBadge,
   StepBar,
   type StepView,
@@ -312,18 +312,18 @@ export function RunPeek({
   slug,
   canWrite,
   peek,
-  onOpenFull,
+  full,
 }: {
   r: RunStanding;
   slug: string;
   canWrite: boolean;
   peek: PeekState;
-  onOpenFull: () => void;
+  full: FullPage;
 }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   return (
-    <PeekPanel peek={peek} listLabel={t("agents.title")} noun={t("runs.noun")} onOpenFull={onOpenFull} testId="run-peek">
+    <PeekPanel peek={peek} listLabel={t("agents.title")} noun={t("runs.noun")} full={full} testId="run-peek">
       <PeekHead
         noun={t("runs.noun")}
         itemKey={runKey(r, language)}

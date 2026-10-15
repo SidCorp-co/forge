@@ -312,7 +312,7 @@ export const SCREENS = [
   { name: "Issues board · attention", render: board("attention") },
   { name: "Issues board · module", render: board("module") },
   { name: "Issues board · waves", render: board("waves") },
-  { name: "Issue peek", render: () => wrap([], <IssuePeek slug="hop" row={STANDING_ROWS[0]} clock={clock} peek={peek} onOpenFull={noop} />) },
+  { name: "Issue peek", render: () => wrap([], <IssuePeek slug="hop" row={STANDING_ROWS[0]} clock={clock} peek={peek} full={{ href: "/projects/hop", origin: null }} />) },
   { name: "Issue detail", render: () => wrap(detailQueries(), <IssueDetailScreen projectId={P} slug="hop" id="i1" />) },
   { name: "Issue detail · actions menu", render: () => wrap(detailQueries(), <IssueDetailScreen projectId={P} slug="hop" id="i1" />), act: click(labelled("issues.actions.menu")) },
   {

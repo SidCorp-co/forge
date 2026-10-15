@@ -1,5 +1,5 @@
 
-import { PeekHead, PeekPanel, type PeekState, StatusBadge } from "@/design";
+import { PeekHead, PeekPanel, type FullPage, type PeekState, StatusBadge } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useDraftReleaseForecast } from "@/features/forecast";
@@ -13,18 +13,18 @@ export function ReleasePeek({
   projectId,
   version,
   peek,
-  onOpenFull,
+  full,
 }: {
   projectId: string;
   version: string;
   peek: PeekState;
-  onOpenFull: () => void;
+  full: FullPage;
 }) {
   const t = useCopy();
   const q = useRelease(projectId, version);
   const forecastQ = useDraftReleaseForecast(projectId, q.data?.release.state === "draft");
   return (
-    <PeekPanel peek={peek} listLabel={t("releases.title")} noun={t("releases.noun")} onOpenFull={onOpenFull} testId="release-peek">
+    <PeekPanel peek={peek} listLabel={t("releases.title")} noun={t("releases.noun")} full={full} testId="release-peek">
       <QueryBoundary query={q} loadingLabel={t("releases.loadingOne")}>
         {(data) => {
           const r = data.release;

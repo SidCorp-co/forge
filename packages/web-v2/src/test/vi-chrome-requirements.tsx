@@ -253,7 +253,7 @@ export const SCREENS: ChromeScreen[] = [
     name: "Requirement peek",
     render: () => (
       <Seeded data={reqQueries()}>
-        <RequirementPeek projectId={REQ_PROJECT} slug="hop" reqKey="REQ-1" peek={{ open: "REQ-1", position: { at: 1, of: 2 }, set: () => {}, move: () => {} }} onOpenFull={() => {}} />
+        <RequirementPeek projectId={REQ_PROJECT} slug="hop" reqKey="REQ-1" peek={{ open: "REQ-1", position: { at: 1, of: 2 }, set: () => {}, move: () => {} }} full={{ href: "/projects/hop", origin: null }} />
       </Seeded>
     ),
   },

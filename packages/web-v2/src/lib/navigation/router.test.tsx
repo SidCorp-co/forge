@@ -1,8 +1,9 @@
 // The app's navigation over TanStack Router (router.tsx), under a real router served from a base
 // path: a link shows the browser the based href and is followed in-app, a modified click or an
-// outside href is the browser's, and the hooks read the place without the base path.
+// outside href is the browser's, the hooks read the place without the base path, and a link loads
+// its page ahead as the pointer or the focus reaches it.
 import { fireEvent, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { renderRoute } from "@/test/route-tree";
 import { Link, usePathname, useParams, useRouter, useSearchParams } from "./router";
 
@@ -42,6 +43,32 @@ describe("the app's navigation under a base path", () => {
     expect(fireEvent.click(link, { ctrlKey: true })).toBe(true);
     expect(router.state.location.pathname).toBe("/projects/hop");
     expect(fireEvent.click(link)).toBe(false);
+    await expect.poll(() => router.state.location.href).toBe("/projects/hop/issues?tab=open");
+  });
+
+  it("loads an in-app link's page as the pointer or the focus reaches it, and leaves an outside one alone", async () => {
+    const { router } = await openAtProject();
+    const preload = vi.spyOn(router, "preloadRoute").mockResolvedValue(undefined);
+    fireEvent.mouseEnter(screen.getByRole("link", { name: "Issues" }));
+    expect(preload).toHaveBeenCalledWith(expect.objectContaining({ href: "/projects/hop/issues?tab=open" }));
+    // what it asks to load is the link's place, not the page it stands on
+    const place = router.buildLocation(preload.mock.calls[0]?.[0] as Parameters<typeof router.buildLocation>[0]);
+    expect(`${place.pathname}${place.searchStr}`).toBe("/projects/hop/issues?tab=open");
+    preload.mockClear();
+    fireEvent.focus(screen.getByRole("link", { name: "Issues" }));
+    expect(preload).toHaveBeenCalledTimes(1);
+    preload.mockClear();
+    fireEvent.mouseEnter(screen.getByRole("link", { name: "Guides" }));
+    fireEvent.focus(screen.getByRole("link", { name: "Guides" }));
+    expect(preload).not.toHaveBeenCalled();
+  });
+
+  it("still follows the click when the page could not be loaded ahead", async () => {
+    const { router } = await openAtProject();
+    vi.spyOn(router, "preloadRoute").mockRejectedValue(new Error("chunk failed"));
+    const link = screen.getByRole("link", { name: "Issues" });
+    fireEvent.mouseEnter(link);
+    fireEvent.click(link);
     await expect.poll(() => router.state.location.href).toBe("/projects/hop/issues?tab=open");
   });
 

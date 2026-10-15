@@ -3,7 +3,7 @@
 // key, state, title, the one primary act — and the page's progress strip, over the same facts its
 // sticky rail shows.
 
-import { PeekHead, PeekPanel, type PeekState, rememberListOrigin, StatusBadge } from "@/design";
+import { PeekHead, PeekPanel, type FullPage, type PeekState, rememberListOrigin, StatusBadge } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useRequirement } from "../hooks";
@@ -17,18 +17,18 @@ export function RequirementPeek({
   slug,
   reqKey,
   peek,
-  onOpenFull,
+  full,
 }: {
   projectId: string;
   slug: string;
   reqKey: string;
   peek: PeekState;
-  onOpenFull: () => void;
+  full: FullPage;
 }) {
   const t = useCopy();
   const q = useRequirement(projectId, reqKey);
   return (
-    <PeekPanel peek={peek} listLabel={t("requirements.title")} noun={t("requirements.noun")} onOpenFull={onOpenFull} testId="requirement-peek">
+    <PeekPanel peek={peek} listLabel={t("requirements.title")} noun={t("requirements.noun")} full={full} testId="requirement-peek">
       <QueryBoundary query={q} loadingLabel={t("requirements.loadingOne")}>
         {(d) => {
           const s = d.standing;

@@ -2,10 +2,12 @@
 // The list page's two blocks under its header (the title, view switch and primary action live in the
 // top bar through PageTitle and TopBarActions): the filter bar, and the split that sets a peek beside
 // the list. The list itself is GroupedList for entities that stand somewhere, RowList for the rest.
+// The peek opens at two fifths of the width, and a width the reader drags it to is the one every
+// peek opens at after, in this browser.
 
 import type { ReactNode } from "react";
 import { useMediaQuery } from "../hooks/use-media-query";
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "../primitives/resizable";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup, useRememberedSplit } from "../primitives/resizable";
 import { Select, type SelectOption } from "../primitives/select";
 
 /** The filter bar: search first, then filters and chips, a hairline under it. */
@@ -25,6 +27,7 @@ export function ToolbarSelect({ label, value, onChange, options }: { label: stri
 /** The list and, while one is open, its peek: a draggable split from 1024px, the peek's own sheet below. */
 export function ListLayout({ children, peek, testId }: { children: ReactNode; peek?: ReactNode; testId?: string }) {
   const wide = useMediaQuery("(min-width: 1024px)");
+  const split = useRememberedSplit("list-peek", ["list", "peek"]);
   if (!peek || !wide) {
     return (
       <div data-testid={testId}>
@@ -34,12 +37,12 @@ export function ListLayout({ children, peek, testId }: { children: ReactNode; pe
     );
   }
   return (
-    <ResizablePanelGroup id="list-peek" orientation="horizontal" className="items-start" data-testid={testId}>
+    <ResizablePanelGroup id="list-peek" orientation="horizontal" className="items-start" data-testid={testId} {...split}>
       <ResizablePanel id="list" minSize="40%">
         <div className="min-w-0">{children}</div>
       </ResizablePanel>
       <ResizableHandle />
-      <ResizablePanel id="peek" defaultSize="420px" minSize="340px" maxSize="50%">
+      <ResizablePanel id="peek" defaultSize="40%" minSize="360px" maxSize="60%">
         {peek}
       </ResizablePanel>
     </ResizablePanelGroup>

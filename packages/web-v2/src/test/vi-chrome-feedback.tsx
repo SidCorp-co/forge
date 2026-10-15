@@ -134,7 +134,7 @@ export const feedbackDetail = (over: Partial<FeedbackView> = {}) => (
 
 const feedbackPeek = () => (
   <Seeded>
-    <FeedbackPeek projectId={P} slug="hop" fbKey={ITEM.key} peek={peek} onOpenFull={() => {}} />
+    <FeedbackPeek projectId={P} slug="hop" fbKey={ITEM.key} peek={peek} full={{ href: "/projects/hop", origin: null }} />
   </Seeded>
 );
 
