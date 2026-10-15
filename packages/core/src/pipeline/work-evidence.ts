@@ -13,7 +13,6 @@ import { chainLiveBranch } from '../projects/release-chain.js';
 
 type EvidenceExecutor = Pick<Db, 'select'>;
 
-/** What the gate reads, every field off the issue's own row and its project's (ISS-1133). */
 export interface WorkEvidence {
   branch: string | null;
   /** `issues.merged_commit_sha`: a merge Forge read for itself, from a pull request or the repository. */
@@ -69,9 +68,7 @@ export async function collectWorkEvidence(
   };
 }
 
-/** Whether the issue's row shows work happened: a branch, a merge Forge read, the commit a mark
- *  claims where Forge could not read the repository, or — on an `outside_git` lane — the landing its
- *  mark names. */
+/** Whether any field of the issue's row shows work happened. */
 export function hasCodeEvidence(evidence: WorkEvidence): boolean {
   return (
     Boolean(evidence.branch) ||

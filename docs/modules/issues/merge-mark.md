@@ -190,7 +190,7 @@ from it and the answer says which of the two Forge read. The one commit not read
 request's own merge sha, which Forge already holds.
 
 Where the caller names no commit, the mark records none. No step handoff is read for one: the
-work-evidence gate reads the issue's own row and nothing else (`work-evidence.ts:collectWorkEvidence`),
+work-evidence gate reads the issue's own row and nothing else (`packages/core/src/pipeline/work-evidence.ts:collectWorkEvidence`),
 so a commit a handoff recorded is neither evidence nor a mark's commit.
 
 What this replaced: sid-desk ISS-578's mark carried a real commit's first eight characters and a
