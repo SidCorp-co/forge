@@ -9,7 +9,7 @@ import { HELP_DOCS } from "@/features/docs/help-content.generated";
 import type { Guide, GuideScope } from "../api";
 import { BUNDLED_AUDIENCES, ONE_CORPUS } from "../audience";
 import { buildCorpus, helpPageHref, searchPlaceholder } from "../corpus";
-import { BUNDLED_WAYS_IN, HELP_ONLY_SEARCH, missingDoor, SEARCH_UNAVAILABLE } from "../missing";
+import { BUNDLED_WAYS_IN, HELP_ONLY_SEARCH, missingDoor, missingPage, PAGE_AND_DOOR, SEARCH_UNAVAILABLE } from "../missing";
 
 // The address a client component reads is the window's, as Next's own hook reads it in a browser.
 vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(window.location.search) }));
@@ -244,6 +244,14 @@ describe("a phone reader on a page, before scrolling past it", () => {
     expect(row?.className).toContain("lg:static");
   });
 
+  // jsdom lays nothing out, so the width is held by its cause: a negative margin bleeds the row past
+  // a padding the reader's frame no longer has, and at 390 the page then scrolls sideways.
+  it("keeps the breadcrumb row inside the reader's frame, bleeding into no padding", () => {
+    reader({ kind: "page", href: helpPageHref("getting-started") });
+    const row = screen.getByRole("navigation", { name: "Breadcrumb" }).parentElement;
+    expect(row?.className.split(/\s+/).filter((c) => /^(?:\w+:)*-m[xlrse]-/.test(c))).toEqual([]);
+  });
+
   it("keeps the article ahead of the sidebar it jumps to, below lg", () => {
     reader({ kind: "page", href: helpPageHref("getting-started") });
     const field = screen.getByRole("textbox", { name: "Search every page" });
@@ -308,6 +316,15 @@ describe("a refused address when the guide index cannot be reached", () => {
     expect(screen.queryByRole("textbox")).toBeNull();
     const doors = within(screen.getByRole("navigation", { name: "Ways in" })).getAllByRole("link");
     expect(doors.map((d) => d.getAttribute("href"))).toEqual(["/guides?for=user", "/guides?for=assistant-setup"]);
+  });
+
+  it.each([
+    ["an unknown page", missingPage("no-such-page")],
+    ["a page and a door together", PAGE_AND_DOOR],
+  ])("does not send %s to the index, which is down with the rest", (_name, refusal) => {
+    render(<PublicRefusal refusal={refusal} />);
+    expect(document.body.textContent).not.toMatch(/index lists/);
+    expect(screen.getByText(BUNDLED_WAYS_IN)).toBeInTheDocument();
   });
 
   it("opens without the index exactly the doors every help page sits behind", () => {

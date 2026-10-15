@@ -9,14 +9,7 @@ import {
   SITE_NAME,
 } from "./audience";
 import { assetPath } from "@/lib/asset";
-import {
-  ALL_DOORS_LINK_TEXT,
-  BUNDLED_WAYS_IN,
-  GUIDES_UNAVAILABLE,
-  MISSING_GUIDE_BODY,
-  missingGuideHeading,
-  type Refusal,
-} from "./missing";
+import { ALL_DOORS_LINK_TEXT, GUIDES_UNAVAILABLE, missingGuide, type Refusal, saidWhileDown } from "./missing";
 
 const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
 
@@ -72,34 +65,34 @@ nav{display:flex;flex-direction:column;gap:.25rem}
 /** A self-contained HTML 404 for an address naming nothing, served by the middleware, which can
  *  neither render React nor name the app's hashed stylesheet. It shows what `GuideShell` and
  *  the refusal in `PublicReader` show a client-side navigation, less the search a page without
- *  JavaScript could not run. */
-export function refusalDocument(
-  { heading, body }: Refusal,
-  { notes = [], doors: open = AUDIENCES }: { notes?: readonly string[]; doors?: readonly Audience[] } = {},
-): string {
-  const h = escapeHtml(heading);
+ *  JavaScript could not run; with `indexDown`, what `PublicRefusal` says. */
+export function refusalDocument(refusal: Refusal, { indexDown = false }: { indexDown?: boolean } = {}): string {
+  const h = escapeHtml(refusal.heading);
+  const said = indexDown ? saidWhileDown(refusal) : [refusal.body];
+  const open: readonly Audience[] = indexDown ? BUNDLED_AUDIENCES : AUDIENCES;
   const doors = open.map(
     (a) => `<a href="${doorHref(a)}">${escapeHtml(DOORS[a].label)}</a>`,
   ).join("");
-  // The landing offers every door, so it is a way on only where every door is.
-  const landing = open.length === AUDIENCES.length ? `<a href="${INDEX_PATH}">${escapeHtml(ALL_DOORS_LINK_TEXT)}</a>` : "";
+  const landing = indexDown ? "" : `<a href="${INDEX_PATH}">${escapeHtml(ALL_DOORS_LINK_TEXT)}</a>`;
+  const brand = indexDown
+    ? `<span class="brand">${escapeHtml(SITE_NAME)}</span>`
+    : `<a class="brand" href="${INDEX_PATH}">${escapeHtml(SITE_NAME)}</a>`;
   return [
     "<!DOCTYPE html>",
     '<html lang="en"><head><meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
     `<title>${h} — ${escapeHtml(SITE_NAME)}</title>`,
-    `<meta name="description" content="${escapeHtml(body)}">`,
+    `<meta name="description" content="${escapeHtml(said[0] ?? refusal.heading)}">`,
     '<meta name="robots" content="noindex">',
     `<link rel="preload" href="${FONT_SANS_URL}" as="font" type="font/woff2" crossorigin>`,
     `<style>${STYLE}</style>`,
     "</head><body>",
-    `<header><div class="bar"><a class="brand" href="${INDEX_PATH}">${escapeHtml(SITE_NAME)}</a>`,
+    `<header><div class="bar">${brand}`,
     `<span class="caption">${escapeHtml(SITE_CAPTION)}</span></div></header>`,
     "<main>",
     '<div class="refusal">',
     `<h1>${h}</h1>`,
-    `<p>${escapeHtml(body)}</p>`,
-    ...notes.map((note) => `<p>${escapeHtml(note)}</p>`),
+    ...said.map((p) => `<p>${escapeHtml(p)}</p>`),
     `<nav aria-label="Ways in">${doors}${landing}</nav>`,
     "</div>",
     "</main>",
@@ -109,8 +102,8 @@ export function refusalDocument(
 }
 
 /** The 404 for `/guides/<unknown>`. */
-export function missingGuideDocument(slug: string): string {
-  return refusalDocument({ heading: missingGuideHeading(slug), body: MISSING_GUIDE_BODY });
+export function missingGuideDocument(slug: string, options: { indexDown?: boolean } = {}): string {
+  return refusalDocument(missingGuide(slug), options);
 }
 
 /** How long a reader or a crawler is asked to wait before trying a page core could not answer for. */
@@ -119,5 +112,5 @@ export const RETRY_AFTER_SECONDS = 30;
 /** The 503 for the landing, the agents' door or a guide whose guide index core did not answer for:
  *  the doors bundled into the site as the way on, the rest needing that index too. */
 export function unavailableDocument(): string {
-  return refusalDocument(GUIDES_UNAVAILABLE, { notes: [BUNDLED_WAYS_IN], doors: BUNDLED_AUDIENCES });
+  return refusalDocument(GUIDES_UNAVAILABLE, { indexDown: true });
 }
