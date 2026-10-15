@@ -43,7 +43,7 @@ function Loaded({ src, alt, name, large = false, onDark = false, className, widt
         className={cn(
           className,
           "inline-flex min-h-16 min-w-16 flex-col items-center justify-center gap-1 p-1.5 text-center leading-tight",
-          onDark ? "bg-black/85 text-white/75" : "bg-sunken text-subtle",
+          onDark ? "bg-black text-white/75" : "bg-sunken text-subtle",
           large ? "min-h-40 min-w-60 text-13" : "text-11",
         )}
         data-testid="attached-image-failed"
