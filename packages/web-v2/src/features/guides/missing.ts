@@ -36,14 +36,10 @@ const CLOSED_WHILE_DOWN = AUDIENCES.filter((a) => !BUNDLED_AUDIENCES.includes(a)
 
 export const LANDING_WHILE_DOWN = "Forge's guide index did not answer. The pages built into this site open without it.";
 
-/** What every page says about its search while the guide index is down: the landing's and a bundled
- *  page's search still answer, over the bundled pages alone, and a refusal links the landing's. */
 export const SEARCH_WHILE_DOWN = `Search covers ${pagesOf(BUNDLED_AUDIENCES)} only: ${pagesOf(CLOSED_WHILE_DOWN)} could not be loaded.`;
 
-/** Said, while the guide index is down, above a refusal's ways in. */
 export const BUNDLED_WAYS_IN = "These ways in are built into this site and open without it:";
 
-/** What a refusal says while the guide index does not answer, one paragraph each. */
 export function saidWhileDown(refusal: Refusal): string[] {
   return [refusal.bodyWhileDown, SEARCH_WHILE_DOWN, BUNDLED_WAYS_IN].filter((p): p is string => p !== null);
 }

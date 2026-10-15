@@ -93,8 +93,7 @@ export function missingGuideDocument(slug: string, options: { indexDown?: boolea
 /** How long a reader or a crawler is asked to wait before trying a page core could not answer for. */
 export const RETRY_AFTER_SECONDS = 30;
 
-/** The 503 for the agents' door or a guide whose guide index core did not answer for:
- *  the doors bundled into the site and the landing's search as the way on, the rest needing that index too. */
+/** The 503 for the agents' door or a guide while core's guide index does not answer. */
 export function unavailableDocument(): string {
   return refusalDocument(GUIDES_UNAVAILABLE, { indexDown: true });
 }
