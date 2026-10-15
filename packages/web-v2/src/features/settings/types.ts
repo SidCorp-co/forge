@@ -22,6 +22,7 @@ export interface Preferences {
 
 export type PatScope = "read" | "write" | "admin";
 export const PAT_SCOPES: PatScope[] = ["read", "write", "admin"];
+export const PAT_NAME_IN_USE = "An active token already uses this name.";
 
 export type PatGrant = "legacy" | "full" | "named";
 

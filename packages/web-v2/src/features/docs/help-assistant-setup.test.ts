@@ -6,6 +6,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { PAT_NAME_IN_USE } from "../settings/types";
 import { HELP_DOCS } from "./help-content.generated";
 
 const FOLDER = "connect-an-assistant";
@@ -321,6 +322,12 @@ function pathsMissingAStep(markdown: string): string[] {
   return [...new Set(out)];
 }
 
+/** The section a reader with no Token created panel after Create token is sent to. */
+function noPanelSection(markdown: string): string {
+  expect(markdown).toMatch(/^## If the Token created panel does not appear$/m);
+  return /^## If the Token created panel does not appear\n([\s\S]*?)(?=^## |(?![\s\S]))/m.exec(markdown)?.[1] ?? "";
+}
+
 /** "MCP" outside the page that explains it, and not quoting a label the reader's screen shows. */
 function unquotedMcp(markdown: string): string[] {
   const outsideQuotes = prose(markdown).replace(/\*\*[^*\n]+\*\*/g, "").replace(/`[^`\n]+`/g, "");
@@ -512,15 +519,28 @@ describe("one action to a step, on the four setup pages", () => {
   });
 
   it.each(SETUP_PAGES)("%s gives the password box and the sign-in provider a Check of their own", (page) => {
-    const text = body(page);
-    expect(text).toMatch(/^## If Forge asks you to confirm it is you$/m);
-    const section = /^## If Forge asks you to confirm it is you\n([\s\S]*?)(?=^## |(?![\s\S]))/m.exec(text)?.[1] ?? "";
-    const steps = numberedSteps(section);
-    expect(steps.length).toBeGreaterThanOrEqual(5);
+    const section = noPanelSection(body(page));
+    expect(numberedSteps(section).length).toBeGreaterThanOrEqual(7);
     expect(stepsWithoutACheck(section)).toEqual([]);
     expect(section).toMatch(/\*\*Confirm password\*\*/);
     expect(section).toMatch(/\*\*Confirm & create\*\*/);
     expect(section).toMatch(/\*\*Continue with\*\*/);
+  });
+
+  // Every page gives the reader one fixed name, and says the code shows once and the token works for
+  // one project, so a second project or a lost code types that name again. The form refuses it under
+  // Name (tokens-tab.tsx), and a page that never names the refusal leaves that reader at Create token.
+  it.each(SETUP_PAGES)("%s names the refusal of a name already in use, and gives a way on from it", (page) => {
+    const steps = mainSteps(body(page));
+    const create = steps.find((s) => /^Choose \*\*Create token\*\*\./.test(instructionsOf(s))) ?? "";
+    expect(literalsIn(create.split(/\*\*Check:\*\*/)[1] ?? "")).toContain(PAT_NAME_IN_USE);
+    const section = noPanelSection(body(page));
+    const part = section.slice(section.indexOf(`If you see **${PAT_NAME_IN_USE}** under **Name**:`));
+    expect(part).not.toBe(section);
+    expect(part).toMatch(/revoke\s+the old token under\s+\*\*Your tokens\*\*/);
+    const [rename, again] = numberedSteps(part);
+    expect(instructionsOf(rename ?? "")).toMatch(/^Type a name none of your tokens has\b/);
+    expect(instructionsOf(again ?? "")).toMatch(/^Choose \*\*Create token\*\*\.$/);
   });
 });
 

@@ -9,7 +9,7 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { PatToken } from "../types";
+import { PAT_NAME_IN_USE, type PatToken } from "../types";
 
 expect.extend(matchers);
 Element.prototype.scrollIntoView = vi.fn();
@@ -377,6 +377,83 @@ describe("TokensTab — the re-auth prompt opens where the reader is looking", (
     expect(scroll).toHaveBeenCalledTimes(1);
     expect(scroll.mock.contexts[0]).toContainElement(password);
     expect(password).toHaveFocus();
+  });
+});
+
+// ISS-1289 — Create token sits below the whole form, so a refused field near its top is drawn off
+// screen at 1280x900 and at 390, and a reader repeating a setup page with its fixed name pressed the
+// button and saw nothing change. The first refused field comes into view and takes the cursor.
+describe("TokensTab — a refused create shows the reader the field it refused", () => {
+  const scroll = () => vi.mocked(Element.prototype.scrollIntoView);
+
+  it("brings a name an active token holds into view, highlighted with the cursor in it, and sends nothing", () => {
+    tokens = [aToken({ name: "Claude Code" }), aToken({ id: "2", name: "old", revokedAt: "2026-01-02T00:00:00.000Z" })];
+    scroll().mockClear();
+    render(<TokensTab />);
+    fireEvent.change(nameField(), { target: { value: "Claude Code" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Full access/ }));
+    createButton().focus();
+
+    fireEvent.click(createButton());
+
+    expect(createMutate).not.toHaveBeenCalled();
+    const input = nameField() as HTMLInputElement;
+    expect(input).toHaveFocus();
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, "Claude Code".length]);
+    const refusal = screen.getByRole("alert");
+    expect(refusal).toHaveTextContent(PAT_NAME_IN_USE);
+    expect(scroll()).toHaveBeenCalledTimes(1);
+    expect(scroll().mock.contexts[0]).toContainElement(input);
+    expect(scroll().mock.contexts[0]).toContainElement(refusal);
+    expect(input).toHaveAccessibleDescription(PAT_NAME_IN_USE);
+    expect(input).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("lets a revoked token's name through", () => {
+    tokens = [aToken({ name: "Claude Code", revokedAt: "2026-01-02T00:00:00.000Z" })];
+    render(<TokensTab />);
+    fireEvent.change(nameField(), { target: { value: "Claude Code" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Full access/ }));
+    fireEvent.click(createButton());
+    expect(createMutate).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(PAT_NAME_IN_USE)).toBeNull();
+  });
+
+  it("puts the cursor on the first Scopes box when no scope is ticked", () => {
+    scroll().mockClear();
+    render(<TokensTab />);
+    fireEvent.change(nameField(), { target: { value: "ci" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "read" }));
+    fireEvent.click(screen.getByRole("radio", { name: /Full access/ }));
+    fireEvent.click(createButton());
+    expect(createMutate).not.toHaveBeenCalled();
+    expect(screen.getByRole("checkbox", { name: "read" })).toHaveFocus();
+    expect(scroll().mock.contexts.at(-1)).toContainElement(screen.getByText("Select at least one scope."));
+  });
+
+  it("puts the cursor on the first Permissions choice when none is made", () => {
+    scroll().mockClear();
+    render(<TokensTab />);
+    fireEvent.change(nameField(), { target: { value: "ci" } });
+    fireEvent.click(createButton());
+    expect(createMutate).not.toHaveBeenCalled();
+    expect(screen.getByRole("radio", { name: /Full access/ })).toHaveFocus();
+    expect(scroll().mock.contexts.at(-1)).toContainElement(screen.getByText("Choose what this token may reach."));
+  });
+
+  it("takes the field nearest the top when several are refused, and moves nothing on a create that goes", () => {
+    scroll().mockClear();
+    render(<TokensTab />);
+    fireEvent.click(createButton());
+    expect(nameField()).toHaveFocus();
+    expect(scroll()).toHaveBeenCalledTimes(1);
+
+    scroll().mockClear();
+    fireEvent.change(nameField(), { target: { value: "ci" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Full access/ }));
+    fireEvent.click(createButton());
+    expect(createMutate).toHaveBeenCalledTimes(1);
+    expect(scroll()).not.toHaveBeenCalled();
   });
 });
 

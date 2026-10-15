@@ -33,6 +33,7 @@ import { useAuth } from "@/providers/auth-provider";
 import { useToast } from "@/providers/toast-provider";
 import { useCreateToken, useReauth, useRevokeToken, useTokens } from "../hooks";
 import {
+  PAT_NAME_IN_USE,
   PAT_SCOPES,
   type CreatePatInput,
   type PatScope,
@@ -60,6 +61,14 @@ const REAUTH_ERROR_MESSAGES: Record<string, string> = {
   identity_mismatch: "The provider account doesn't match the one linked to your Forge account.",
 };
 
+interface FormErrors {
+  name?: string;
+  scopes?: string;
+  permissions?: string;
+}
+/** The fields in the order the form draws them, so the first refused is the one nearest the top. */
+const FIELD_ORDER: (keyof FormErrors)[] = ["name", "scopes", "permissions"];
+
 export function TokensTab() {
   const tokensQ = useTokens();
   const projectsQ = useProjects();
@@ -83,11 +92,22 @@ export function TokensTab() {
   const [expiresAt, setExpiresAt] = useState("");
   // ISS-497 — "" = None (user-level); a project id = bind the token to it.
   const [boundProjectId, setBoundProjectId] = useState("");
-  const [errors, setErrors] = useState<{
-    name?: string;
-    scopes?: string;
-    permissions?: string;
-  }>({});
+  const [errors, setErrors] = useState<FormErrors>({});
+  // Create token sits below the whole form, so a refused field near its top is drawn off screen. The
+  // first one refused is brought into view with the cursor in it, after the errors have rendered.
+  const [refused, setRefused] = useState<{ field: keyof FormErrors } | null>(null);
+  const nameRef = useRef<HTMLDivElement>(null);
+  const scopesRef = useRef<HTMLDivElement>(null);
+  const permissionsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!refused) return;
+    const field = { name: nameRef, scopes: scopesRef, permissions: permissionsRef }[refused.field].current;
+    field?.scrollIntoView({ block: "center", behavior: "smooth" });
+    const control = field?.querySelector<HTMLElement>("input, button");
+    control?.focus({ preventScroll: true });
+    // A refused name is highlighted, so what the reader types next replaces it.
+    if (control instanceof HTMLInputElement) control.select();
+  }, [refused]);
 
   const projects = projectsQ.data ?? [];
   const projectsById = new Map(projects.map((p) => [p.id, p]));
@@ -207,17 +227,18 @@ export function TokensTab() {
   }
 
   function buildInput(): CreatePatInput | null {
-    const next: typeof errors = {};
+    const next: FormErrors = {};
     if (!name.trim()) next.name = "Name is required.";
-    else if (tokens.some((t) => t.name === name.trim() && !t.revokedAt))
-      next.name = "An active token already uses this name.";
+    else if (tokens.some((t) => t.name === name.trim() && !t.revokedAt)) next.name = PAT_NAME_IN_USE;
     if (scopes.length === 0) next.scopes = "Select at least one scope.";
     if (!grantMode) next.permissions = "Choose what this token may reach.";
     else if (grantMode === "named" && permissions.length === 0)
       next.permissions = "Pick at least one permission, or choose full access.";
     else if (!menu) next.permissions = "The permission menu hasn't loaded yet.";
     setErrors(next);
-    if (Object.keys(next).length > 0 || !menu) return null;
+    const first = FIELD_ORDER.find((field) => next[field]);
+    if (first) setRefused({ field: first });
+    if (first || !menu) return null;
     return {
       name: name.trim(),
       scopes,
@@ -321,50 +342,52 @@ export function TokensTab() {
         <div>
           <SectionTitle id="create-a-token" className="fg-h3 mb-4">Create a token</SectionTitle>
           <div className="space-y-4">
-            <Field label="Name" required error={errors.name}>
-              <Input
-                value={name}
-                placeholder="e.g. CI deploy token"
-                onChange={(e) => setName(e.target.value)}
-              />
-            </Field>
+            <div ref={nameRef}>
+              <Field label="Name" required error={errors.name}>
+                <Input value={name} placeholder="e.g. CI deploy token" onChange={(e) => setName(e.target.value)} />
+              </Field>
+            </div>
 
-            <Field label="Scopes" required error={errors.scopes} hint="What this token may do.">
-              <div className="flex flex-wrap gap-4 pt-1">
-                {PAT_SCOPES.map((scope) => (
-                  <Checkbox
-                    key={scope}
-                    checked={scopes.includes(scope)}
-                    onChange={() => toggleScope(scope)}
-                    label={scope}
-                  />
-                ))}
-              </div>
-            </Field>
-
-            <Field
-              label="Permissions"
-              required
-              error={errors.permissions}
-              hint="Which of the API this token reaches. Full access covers every permission, including any added later."
-            >
-              <RadioGroup name="pat-grant" value={grantMode} onChange={(v) => setGrantMode(v as "" | "full" | "named")}>
-                <Radio value="full" label="Full access — every permission on the menu" />
-                <Radio value="named" label="Only the permissions I pick" />
-              </RadioGroup>
-              {grantMode === "named" && (
-                <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                  {(menu?.permissions ?? []).map((permission) => (
+            <div ref={scopesRef}>
+              <Field label="Scopes" required error={errors.scopes} hint="What this token may do.">
+                <div className="flex flex-wrap gap-4 pt-1">
+                  {PAT_SCOPES.map((scope) => (
                     <Checkbox
-                      key={permission}
-                      checked={permissions.includes(permission)}
-                      onChange={() => togglePermission(permission)}
-                      label={permission}
+                      key={scope}
+                      checked={scopes.includes(scope)}
+                      onChange={() => toggleScope(scope)}
+                      label={scope}
                     />
                   ))}
                 </div>
-              )}
-            </Field>
+              </Field>
+            </div>
+
+            <div ref={permissionsRef}>
+              <Field
+                label="Permissions"
+                required
+                error={errors.permissions}
+                hint="Which of the API this token reaches. Full access covers every permission, including any added later."
+              >
+                <RadioGroup name="pat-grant" value={grantMode} onChange={(v) => setGrantMode(v as "" | "full" | "named")}>
+                  <Radio value="full" label="Full access — every permission on the menu" />
+                  <Radio value="named" label="Only the permissions I pick" />
+                </RadioGroup>
+                {grantMode === "named" && (
+                  <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                    {(menu?.permissions ?? []).map((permission) => (
+                      <Checkbox
+                        key={permission}
+                        checked={permissions.includes(permission)}
+                        onChange={() => togglePermission(permission)}
+                        label={permission}
+                      />
+                    ))}
+                  </div>
+                )}
+              </Field>
+            </div>
 
             <Field label="Expires" hint="Optional. Leave blank for a non-expiring token.">
               <Input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
