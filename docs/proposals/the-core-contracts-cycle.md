@@ -65,6 +65,16 @@ Whoever takes this reproduces the race before changing anything — the failing 
 `packages/core build` against a mid-emit `packages/contracts dist`, and a fix that cannot be shown
 closing a reproduced failure is a guess with a commit message.
 
+## A rule core holds twice because no compiled entry carries it
+
+`@forge/contracts` `findCredentialFaults` (`src/test-credentials.ts`) is the test-credential rule the
+settings form reads. Core needs the same rule at runtime in `projects/environments.ts:credentialFaults`,
+and the root entry it is served from is TypeScript source core cannot load there, so core holds a
+copy; `packages/core/src/projects/test-credentials-parity.test.ts` holds the two equal on the cases
+it lists. What removes the copy: a `./test-credentials` subpath built to `dist/` the way
+`document-patch` is (`package.json` `exports` and `tsconfig.emit.json` `include`), and core
+importing it. Deferred from ISS-1171 round 6 because both files were held by another lane.
+
 ## Honest costs
 
 | Choice | What it costs whoever adopts it |
