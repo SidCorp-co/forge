@@ -239,6 +239,8 @@ export function PropertiesRail({
   // An empty field renders no row; one whose action this reader holds keeps the action, on the shared `Not set` row.
   const offerModule = !hasModule && onEditModules !== undefined;
   const offerMerge = !issue.mergedAt && canMarkMerged === true;
+  const landingSource =
+    issue.declaredLandingShape === undefined ? undefined : issue.declaredLandingShape === null ? "project" : "issue";
   return (
     <div className="divide-y divide-line-subtle">
       {held && (
@@ -347,6 +349,7 @@ export function PropertiesRail({
                 mergedAt={issue.mergedAt}
                 suggestedTarget={issue.displayId}
                 landingShape={issue.landingShape}
+                landingSource={landingSource}
               />
             )}
           </div>
@@ -389,6 +392,7 @@ export function PropertiesRail({
                 mergedAt={null}
                 suggestedTarget={issue.displayId}
                 landingShape={issue.landingShape}
+                landingSource={landingSource}
               />
             )}
           </div>

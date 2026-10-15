@@ -24,10 +24,10 @@ const BLURB =
   "that. Unmark withdraws a claim made wrongly, and is refused once the issue is closed: " +
   "reopen it first, because a closed issue with no claim is a state nothing here can hold.";
 
-// ISS-1327 — on a project whose work lands outside git there is no branch to name: what landed is
+// ISS-1327 — where an issue's work lands outside git there is no branch to name: what landed is
 // a live page, a CMS entry, a storefront resource, and the close accepts a mark only if it says so.
 const LANDING_BLURB =
-  "This project's work lands outside git, so say where it landed: the live URL, the CMS entry or " +
+  "Say where it landed: the live URL, the CMS entry or " +
   "the storefront resource the work now is. That is what lets the issue close — a mark naming no " +
   "landing is not accepted here. It does not release the issues blocked on this one — a status " +
   "does that. Unmark withdraws a claim made wrongly, and is refused once the issue is closed.";
@@ -38,8 +38,19 @@ interface MergeMarkerControlProps {
   mergedAt: string | null;
   /** Default `target`, offered because the repo's branch convention is `ISS-<seq>`. */
   suggestedTarget: string;
-  /** Core's answer for this issue's project; an older server that sends none reads as `git`. */
+  /** Core's answer for this issue's lane; an older server that sends none reads as `git`. */
   landingShape?: LandingShape | undefined;
+  /** Whose answer `landingShape` is: the issue's own declaration, or its project's shape. Absent
+   *  where the server does not say, and then the panel names no source. */
+  landingSource?: "issue" | "project" | undefined;
+}
+
+/** Where this issue's work lands and who said so, since the two can differ. */
+function landingLine(shape: LandingShape, source: "issue" | "project" | undefined): string {
+  const where = shape === "outside_git" ? "outside git" : "in git";
+  if (source === "issue") return `This issue's work lands ${where}: the issue declares it itself, under Work lands.`;
+  if (source === "project") return `This issue's work lands ${where}: that is its project's shape.`;
+  return `This issue's work lands ${where}.`;
 }
 
 export function MergeMarkerControl({
@@ -47,6 +58,7 @@ export function MergeMarkerControl({
   mergedAt,
   suggestedTarget,
   landingShape,
+  landingSource,
 }: MergeMarkerControlProps) {
   const outsideGit = landingShape === "outside_git";
   const [open, setOpen] = useState(false);
@@ -87,6 +99,9 @@ export function MergeMarkerControl({
       {open && (
         <SlideOver open onClose={() => setOpen(false)} title="Mark this work merged" width={480}>
           <div className="flex h-full flex-col gap-4">
+            <p className="fg-body-sm text-fg" data-testid="landing-line">
+              {landingLine(outsideGit ? "outside_git" : "git", landingSource)}
+            </p>
             <p className="fg-body-sm text-muted">{outsideGit ? LANDING_BLURB : BLURB}</p>
             <Field
               label="Where it landed"
