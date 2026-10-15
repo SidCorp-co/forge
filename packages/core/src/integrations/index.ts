@@ -39,6 +39,7 @@ export {
   readInboundDoorTraffic,
   recordTurnedAwayInboundCall,
   resolveApiBaseUrl,
+  sameEndpoint,
 } from './inbound-door.js';
 export {
   dropPreviousHeldInboundSecret,
