@@ -33,6 +33,12 @@ const RULES: Array<{ rule: string; offends: RegExp }> = [
     offends:
       /\bwithin\s+(?:a|an|\d+)\s+(?:minute|hour|day|week)|\b\d+\s*(?:–|-|to)\s*\d+\s+(?:minutes|hours|days|business days)\b|\bshortly\b|\bin (?:a few|\d+) (?:minutes|hours|days)\b|\bafter a short (?:while|period)\b/i,
   },
+  // ISS-1229: one job drives an issue end to end, so Settings has no per-stage control to set.
+  {
+    rule: "a per-stage setting Settings does not have",
+    offends:
+      /\*\*(?:Auto|Manual|Skip)\*\*|\bstages?\b[^.]*\b(?:turned off|skipped|waits? for your click|per your settings)/i,
+  },
 ];
 
 function offences(body: string): string[] {
@@ -48,7 +54,7 @@ describe("the pages written for a person, in the screen's own words", () => {
     expect(USER_PAGES.length).toBeGreaterThan(PERSON_PAGES.length);
   });
 
-  it.each(USER_PAGES)("%s names no path, table, tool, stored status or timing promise", (slug) => {
+  it.each(USER_PAGES)("%s names no path, table, tool, stored status, timing promise or stage setting", (slug) => {
     const body = HELP_DOCS.find((d) => d.slug === slug)?.body ?? "";
     expect(offences(body)).toEqual([]);
   });
@@ -66,6 +72,9 @@ describe("that guard, against one planted sentence per rule", () => {
     ["It moves to needs_info when a question is asked.", "a status in its stored form"],
     ["Most requests are completed within 2 days.", "a promise of how long anything takes"],
     ["Most requests are completed in 1–3 business days.", "a promise of how long anything takes"],
+    ["Set the **Code** stage to **Manual**.", "a per-stage setting Settings does not have"],
+    ["A stage can be turned off for the project.", "a per-stage setting Settings does not have"],
+    ["Each stage runs an agent or\n  waits for your click, per your settings.", "a per-stage setting Settings does not have"],
   ])("rejects %s", (sentence, rule) => {
     expect(offences(sentence)).toContain(rule);
   });

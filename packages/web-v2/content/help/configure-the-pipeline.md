@@ -7,106 +7,71 @@ audience: user
 
 # Configure the pipeline & approvals
 
-Your project's **pipeline** moves each issue through a series of stages —
-triage, clarify, plan, code, review, test, release. This page shows how to
-choose which stages run on their own, which **pause and wait for your
-approval**, and which are skipped.
-
-You do all of this in **Settings → Pipeline**.
+Your project's **pipeline** takes each issue from filed to shipped. One agent
+picks an issue up and carries it the whole way — it works out what is asked,
+builds it, checks it and hands it on for release. There is no list of stages to
+set one by one: you decide **whether work starts on its own**, **whether new
+issues need your approval first**, and **whether anything waits to be
+released**.
 
 ## Prerequisites
 
-- A project with the pipeline enabled.
-- Admin access to the project (you'll use **Settings → Pipeline**).
+- Admin access to the project. Every setting below is under the project's
+  **Settings**.
 
-## How each stage runs — one setting, three choices
+## Turn the pipeline on or off
 
-Every stage has a single setting with three options:
+In **Settings → Pipeline**, **Pipeline enabled** is the master switch. While it
+is off, no agent is sent any work for this project.
 
-| Setting | What happens |
-|---------|--------------|
-| **Auto** | The stage runs by itself as soon as an issue reaches it. |
-| **Manual** | The stage **waits for you**. The issue parks here until you approve it. It is never skipped automatically. |
-| **Skip** | The stage is bypassed — the issue jumps to the next stage. |
+## Hold issues until someone starts them
 
-That's the whole model: any stage can become an approval gate just by setting
-it to **Manual**.
+**Start queued issues automatically**, on the same tab, decides whether an
+**Open** issue is picked up by itself. Turn it off and every issue stays at
+**Open** until someone starts it. Nothing else about the pipeline changes.
 
-## The default flow and the release gate
+## Approve new issues before work starts
 
-Out of the box, everything runs automatically until the one approval that
-matters — **Awaiting release**:
+Under **Intake gate** on the same tab, turn on **Require human approval for new
+issues**. Every new issue — whoever or whatever filed it — then waits at
+**Draft** with the **intake** label. Approve one by moving it to **Open**;
+turn it down by closing it. **Notify the project owner on each gated issue**
+tells the owner each time one arrives.
 
-```
-Triage → Clarify → Plan → Code → Review → Test → [ Awaiting release ] → Released → Done
-                                                         ⏸
-                                                  waits for a person
-                                                   to approve the
-                                                     release
-```
+## Approve a release
 
-- After the **Test** stage verifies the work, the issue stops at **Awaiting
-  release** and waits.
-- **You** review it and approve — the issue then releases and closes.
+Built and checked work waits at **Awaiting release** only while the project
+declares a release **and** a live deploy target serves it. Both are on
+**Settings → Shape & release**; a project that ships nothing closes each issue
+once its work is done.
 
-This is the recommended setup: the pipeline does all the work, and a person
-makes the final call to ship.
-
-## Make a stage wait for approval
-
-1. Open **Settings → Pipeline** for your project.
-2. Find the stage you want to gate.
-3. Set it to **Manual**.
-4. Save.
-
-From now on, every issue that reaches that stage **parks there** until you
-approve it. Open the issue and use its action button to advance it.
-
-Common gates:
-
-- **Approve the release** (default) — keep the **Test** stage's result gated so
-  nothing ships without you. This is on by default.
-- **Approve the plan before any code** — set the **Code** stage to **Manual**.
-  Each issue then waits right after planning, so you can review the plan first.
-- **Eyeball the code before it's verified** — set the **Review** stage to
-  **Manual**.
-
-## Skip a stage
-
-Set any stage to **Skip** to bypass it. For example, skip **Clarify** for a
-project where issues are already well-described. The issue jumps straight to the
-next stage.
+At **Awaiting release**, the issue page says when it goes out — the next
+scheduled release, or none until a person cuts one. People who can release see
+a **Release now** button there.
 
 ## Pause and resume an issue
 
-Need to stop an issue mid-flight? Put it **on hold** from the issue's menu. It
-stays paused — the pipeline won't touch it — until **you resume it**. Resuming
-is the only thing that restarts the work, so a paused issue never moves on its
-own.
-
-## Recommended setups
-
-| Setup | How to set it | Use when |
-|-------|---------------|----------|
-| **Ship with approval** *(default)* | Everything **Auto**; release stays gated | Most projects — hands-off until the final release approval. |
-| **Fully automatic** | Everything **Auto**, including release | You trust the automated checks and want hands-off shipping. |
-| **Cautious** | **Code** = Manual *and* release gated | Higher-risk work — approve the plan before coding *and* the release before shipping. |
-| **Review-heavy** | **Review** = Manual | You want to read the code before it's verified. |
+Put an issue **On hold** from its menu and the pipeline leaves it alone until
+**you resume it**. A paused issue never moves on its own.
 
 ## Verify it worked
 
-- Open **Settings → Pipeline** and confirm each stage shows the mode you chose.
-- File a test issue. A stage set to **Manual** should **stop and wait** when the
-  issue reaches it; a stage set to **Skip** should be passed over.
-- A gated issue shows an action button you click to approve and continue.
+- **Settings → Pipeline** shows each switch where you set it.
+- With **Start queued issues automatically** off, a new issue stays at **Open**.
+- With the intake gate on, a new issue arrives at **Draft** with the **intake**
+  label.
+- A finished issue in a project that declares a release reads **Awaiting
+  release**, and its page says when it goes out.
 
 ## Troubleshooting
 
-| Symptom | Fix |
-|---------|-----|
-| An issue won't advance past a stage | That stage is probably set to **Manual** — open the issue and click its approve/advance button. |
-| A stage you expected to run was skipped | Check it isn't set to **Skip**, and that a skill is assigned to it in **Settings → Pipeline**. |
-| A paused issue isn't moving | On-hold issues only restart when **you resume** them. Resume it from the issue menu. |
-| Nothing runs automatically at all | Make sure the pipeline is enabled for the project in **Settings → Pipeline**. |
+| Symptom | What is going on |
+|---------|------------------|
+| Nothing is picked up at all | Check **Pipeline enabled**, and that a runner is online for the project. |
+| Issues sit at **Open** | **Start queued issues automatically** is off — start them by hand, or turn it on. |
+| New issues land at **Draft** | The intake gate is on. Move each one to **Open** to approve it. |
+| An issue sits at **Awaiting release** | It waits for a release. Its page says when the next one runs, and **Release now** cuts one. |
+| A paused issue isn't moving | On-hold issues only restart when **you resume** them. |
 
-See also [Troubleshooting](?path=troubleshooting).
+See also [Read an issue's status](?path=issue-statuses) and
+[Troubleshooting](?path=troubleshooting).

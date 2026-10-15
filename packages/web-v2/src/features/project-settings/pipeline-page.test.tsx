@@ -189,6 +189,14 @@ describe("the page's layout", () => {
 			within(screen.getByRole("region", { name: "Where and when work is taken" })).getByText("Runner pools"),
 		).toBeInTheDocument();
 	});
+
+	// ISS-1229: a draft with nothing merged cannot be closed, so the gate's way out is Dropped.
+	it("tells a person to turn an intake issue down by dropping it, never by closing it", async () => {
+		mountPage();
+		await ready();
+		expect(screen.getByText(/reject by dropping it/)).toBeInTheDocument();
+		expect(screen.queryByText(/reject by closing it/)).toBeNull();
+	});
 });
 
 describe("what one Save writes", () => {

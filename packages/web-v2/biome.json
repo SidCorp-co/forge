@@ -28,6 +28,12 @@
     "enabled": true,
     "rules": {
       "preset": "recommended",
+      "a11y": {
+        "noLabelWithoutControl": {
+          "level": "error",
+          "options": { "inputComponents": ["Toggle"] }
+        }
+      },
       "style": {
         "noNonNullAssertion": "warn",
         "noRestrictedImports": {

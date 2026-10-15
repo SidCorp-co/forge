@@ -30,12 +30,15 @@ Common issues and how to clear them.
 Codes are valid for a few minutes. Generate a fresh one and run
 `forge-runner login` again.
 
-## An issue won't advance past a stage
+## An issue isn't moving
 
-- Some stages **wait for your click** rather than running automatically — open
-  the issue and look for the action button.
-- A stage can be turned off for the project in **Project → Settings → Pipeline**.
-- If a stage has no agent configured for it, it's skipped.
+- At **Open**, check **Settings → Pipeline**: **Start queued issues
+  automatically** may be off, or the pipeline itself may be switched off.
+- At **Draft**, the intake gate may be holding it for approval — move it to
+  **Open** to let it in.
+- At **Needs info**, **On hold** or **Awaiting release**, it is waiting on a
+  person. [Read an issue's status](?path=issue-statuses) says what each one
+  needs from you.
 
 ## I can't see a project / I get "not a member"
 
