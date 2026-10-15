@@ -3197,6 +3197,7 @@
 - **The project dashboard counts the sessions the Pipeline page shows.** It no longer reads none live while sessions work. The costliest spend step is drawn again, and a long held reason sits on one line with More. (ISS-1228)
 - **The pipeline help page says what Settings holds, and that a gated draft is dropped, not closed.** It described a per-stage Auto/Manual/Skip setting that does not exist, and told readers to close a draft, which is refused. (ISS-1229)
 - **Getting started no longer walks an issue through stages that are gone.** It now says one agent carries an issue from filed to shipped, as the public guide index does. (ISS-1229)
+- **A name prints as you typed it.** An empty Connections page no longer opens your organization's name with a capital, and a session listed beside another for the same issue keeps its title's own case. (ISS-1171)
 - **A shape change lists each status as one item.** Developed issues are counted as waiting to be tested, so a list of several statuses no longer reads one of them as two. (ISS-1171)
 - **Shape & release names issues by what they are doing, and its refusal no longer covers the shape it refuses.** The confirmation counts those in progress and waiting for release; a failed save opens with what was saved. (ISS-1171)
 - **An empty Connections page offers a way to add one.** It links a project's Integrations settings, or creating a project where there is none. The Mark merged panel no longer shows backticks. (ISS-1171)
