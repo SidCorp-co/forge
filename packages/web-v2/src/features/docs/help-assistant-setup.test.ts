@@ -280,7 +280,6 @@ function namesLiteral(text: string, literal: string): boolean {
   return new RegExp(`(?<![\\w-])${escaped}(?![\\w-])`).test(text);
 }
 
-/** A step that sends the reader to a section, with the step it brings them back to. */
 const SENDS = /follow \*\*(.+?)\*\* at the end of this page\. You (?:come back|go on) to step (\d+)/;
 
 /**
