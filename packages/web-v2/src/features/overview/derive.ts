@@ -321,7 +321,6 @@ export function projectSilenceRows(pulse: PulseResponse, nowMs: number): Project
 export interface QualityRates {
   finishedTotal: number;
   mergedShare: number;
-  reworkRatio: number | null;
   unclassifiedShare: number | null;
   sessionFailureTotal: number;
 }
@@ -330,7 +329,7 @@ export interface QualityRates {
  * The output rates, each over the whole it is a share of.
  */
 export function qualityRates(quality: PulseQuality): QualityRates {
-  const { finished, rework, sessionFailures } = quality;
+  const { finished, sessionFailures } = quality;
   const finishedTotal = finished.merged + finished.closedUnmerged + finished.dropped;
   const sessionFailureTotal = sessionFailures.reduce((n, r) => n + r.count, 0);
   const unclassified =
@@ -338,7 +337,6 @@ export function qualityRates(quality: PulseQuality): QualityRates {
   return {
     finishedTotal,
     mergedShare: finishedTotal > 0 ? finished.merged / finishedTotal : 0,
-    reworkRatio: rework.code > 0 ? rework.fix / rework.code : null,
     unclassifiedShare:
       sessionFailureTotal > 0 ? unclassified / sessionFailureTotal : null,
     sessionFailureTotal,

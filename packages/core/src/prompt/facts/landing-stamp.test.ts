@@ -19,7 +19,7 @@ describe('the stamp the prompt teaches names a landing on a website project', ()
   it.each([
     ['drive rules', mandatoryPreambleBlocks('drive').pipelineRules],
     ['drive tool reference', mandatoryPreambleBlocks('drive').toolReference],
-    ['pipeline rules', mandatoryPreambleBlocks('code').pipelineRules],
+    ['pipeline rules', mandatoryPreambleBlocks('custom').pipelineRules],
   ])('%s', (_surface, text) => {
     const stamps = stampSentences(text);
     expect(stamps).toContain('kind `website`');
@@ -29,7 +29,7 @@ describe('the stamp the prompt teaches names a landing on a website project', ()
   // Owner ruling on ISS-1327: a website project has no commit to check, and none is a false mark.
   it.each([
     ['drive rules', mandatoryPreambleBlocks('drive').pipelineRules],
-    ['pipeline rules', mandatoryPreambleBlocks('code').pipelineRules],
+    ['pipeline rules', mandatoryPreambleBlocks('custom').pipelineRules],
   ])('%s never asks a website agent to check a commit before it stamps', (_surface, text) => {
     const website = text
       .split(/(?<=[.;])\s+/)

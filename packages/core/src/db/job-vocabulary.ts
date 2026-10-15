@@ -10,15 +10,6 @@ export const jobStatuses = [
 export type JobStatus = (typeof jobStatuses)[number];
 
 export const jobTypes = [
-  'triage',
-  'clarify',
-  'plan',
-  'code',
-  'review',
-  'test',
-  'staging',
-  'release',
-  'fix',
   'custom',
   'pm',
   'smoke',
@@ -28,6 +19,23 @@ export const jobTypes = [
   'drive',
 ] as const;
 export type JobType = (typeof jobTypes)[number];
+
+export function isJobType(value: string): value is JobType {
+  return (jobTypes as readonly string[]).includes(value);
+}
+
+/** The staged pipeline's stages, kept only so a request naming one is refused by name (ISS-1229). */
+export const RETIRED_JOB_TYPES = [
+  'triage',
+  'clarify',
+  'plan',
+  'code',
+  'review',
+  'test',
+  'staging',
+  'release',
+  'fix',
+] as const;
 
 export const modelTiers = ['haiku', 'sonnet', 'opus'] as const;
 export type ModelTier = (typeof modelTiers)[number];

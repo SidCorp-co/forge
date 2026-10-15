@@ -55,7 +55,7 @@ function retryJob(over: { target: string | null }): Job {
     id: 'job-child',
     projectId: 'p1',
     issueId: 'iss-1',
-    type: 'code',
+    type: 'custom',
     retryOf: 'job-parent',
     deviceId: null,
     failureAction: null,
@@ -200,7 +200,7 @@ describe('ISS-887 resolveResumePolicy — a start-from-scratch says so, and says
 
   it('records NOTHING when there was no prior session to continue — attempt 1 is not a loss', async () => {
     const out = await resolve({
-      job: { id: 'j1', projectId: 'p1', issueId: 'iss-1', type: 'code', retryOf: null } as Job,
+      job: { id: 'j1', projectId: 'p1', issueId: 'iss-1', type: 'custom', retryOf: null } as Job,
       overrides: NO_OVERRIDES,
       agentConfig: undefined,
     });
@@ -244,7 +244,7 @@ describe('resolveResumePolicy — a first dispatch has nothing to drop', () => {
     id: 'j1',
     projectId: 'p1',
     issueId: 'iss-1',
-    type: 'code',
+    type: 'custom',
     retryOf: null,
     payload: {},
   } as Job;

@@ -25,7 +25,7 @@
 import { redactedMessage } from '@forge/observability';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type JobType, jobs, pmDecisions, projects } from '../db/schema.js';
+import { isJobType, jobs, pmDecisions, projects, RETIRED_JOB_TYPES } from '../db/schema.js';
 import { buildJobPromptString } from '../jobs/prompt-string.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
@@ -170,6 +170,16 @@ async function executeDispatchFallback(
   if (!issueId || !jobType) {
     return { status: 'skipped', reason: 'invalid_dispatch_payload' };
   }
+  if (!isJobType(jobType)) {
+    const retired = (RETIRED_JOB_TYPES as readonly string[]).includes(jobType);
+    logger.warn(
+      { projectId, issueId, jobType },
+      retired
+        ? 'pm-escalation-sweeper: the fallback names a retired staged-pipeline stage (ISS-1229); no job minted'
+        : 'pm-escalation-sweeper: the fallback names no job type; no job minted',
+    );
+    return { status: 'skipped', reason: retired ? 'retired_job_type' : 'unknown_job_type' };
+  }
 
   const creatorId = await loadProjectCreator(projectId);
   if (!creatorId) return { status: 'skipped', reason: 'project_missing' };
@@ -183,7 +193,7 @@ async function executeDispatchFallback(
     skillName: `forge-${jobType}`,
     promptString: buildJobPromptString({
       skillName: `forge-${jobType}`,
-      jobType: jobType as JobType,
+      jobType,
       issueId,
     }),
     dispatchedBy: 'pm-escalation-timeout',
@@ -202,10 +212,10 @@ async function executeDispatchFallback(
         issueId,
         pipelineRunId: run.id,
         createdBy: creatorId,
-        type: jobType as never,
+        type: jobType,
         payload,
         status: 'queued',
-      } as never)
+      })
       .returning({ id: jobs.id });
     insertedId = inserted?.id ?? null;
   } catch (err) {

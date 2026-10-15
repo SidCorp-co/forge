@@ -198,7 +198,7 @@ describe('lanes that carry a prompt are claimed and finished through the pool', 
               ${JSON.stringify([
                 {
                   type: 'escalate',
-                  fallback: { type: 'dispatch', issueId, jobType: 'code', payload: {} },
+                  fallback: { type: 'dispatch', issueId, jobType: 'custom', payload: {} },
                 },
               ])}::jsonb)
     `);

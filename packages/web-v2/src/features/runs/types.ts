@@ -12,14 +12,6 @@ export const PIPELINE_RUN_KINDS = REGISTRY_PIPELINE_RUN_KINDS;
 export type PipelineRunKind = (typeof PIPELINE_RUN_KINDS)[number];
 
 export const PIPELINE_JOB_TYPES = [
-  "triage",
-  "clarify",
-  "plan",
-  "code",
-  "review",
-  "test",
-  "release",
-  "fix",
   "custom",
   "pm",
   "smoke",
@@ -48,8 +40,7 @@ export interface PipelineRunStepSummary {
   agentSessionId: string | null;
 }
 
-/** ISS-411 — one job row of a run's per-attempt timeline (jobs-sourced, so the
- *  `retry_of` chain + device + ISS-407 `_autoRetry` rotation are visible). */
+/** One job row of a run's per-attempt timeline: the `retry_of` chain, its device and its rotation. */
 export interface PipelineRunAttempt {
   jobId: string;
   jobType: string;
@@ -123,8 +114,7 @@ export interface RunGateCondition {
   byReason: Array<{ reason: string; count: number }>;
 }
 
-/** `GET /api/projects/:id/pipeline-runs` list row — the summary minus the heavy
- *  per-step + per-attempt rollups and the gate (the list endpoint omits them). */
+/** `GET /api/projects/:id/pipeline-runs` list row: the summary without its step, attempt and gate rollups. */
 export type PipelineRunListItem = Omit<
   PipelineRunSummary,
   "steps" | "attempts" | "retrySummary" | "gateAtOpen"

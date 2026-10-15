@@ -136,7 +136,6 @@ export interface PulseLane {
 export interface PulseQuality {
   finished: { merged: number; closedUnmerged: number; dropped: number };
   reopened: { issues: number; events: number };
-  rework: { fix: number; code: number };
   runFailure: { pipeline: PulseLane; scheduler: PulseLane; other: PulseLane };
   sessionFailures: Array<{ reason: FailureCause; count: number }>;
   pipelineFlow: Array<{ type: string; count: number; medianSeconds: number | null }>;

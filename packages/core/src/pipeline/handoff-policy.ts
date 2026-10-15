@@ -1,4 +1,3 @@
-import type { JobType } from '../db/schema.js';
 import { type HandoffStep, isHandoffStep } from '../memory/step-handoff-schema.js';
 import type { UserPromptPolicyConfig } from './pipeline-config-schema.js';
 
@@ -8,36 +7,18 @@ export interface ResolvedHandoffsPolicy {
   fallbackToRawIssueFieldIfMissing: boolean;
 }
 
-const DEFAULT_INJECT_BY_STEP: Record<HandoffStep, HandoffStep[]> = {
-  triage: [],
-  clarify: ['triage'],
-  plan: ['triage', 'clarify'],
-  code: ['triage', 'plan'],
-  review: ['triage', 'plan', 'code'],
-  test: ['triage', 'plan', 'code'],
-  fix: ['triage', 'plan', 'code', 'review'],
-  drive: [],
-};
-
-function defaultInjectFromSteps(jobType: JobType): HandoffStep[] {
-  if (!isHandoffStep(jobType)) return [];
-  return DEFAULT_INJECT_BY_STEP[jobType];
-}
-
+/** No live job type inherits a prior step's handoff by default, so only an explicit list injects. */
 export function resolveHandoffsPolicy(
   policy: UserPromptPolicyConfig | null | undefined,
-  jobType: JobType,
 ): ResolvedHandoffsPolicy {
   const explicit = policy?.handoffs;
-  // Narrow explicit `injectFromSteps` (Zod accepts any pipeline step incl.
-  // non-emitting ones like `release`) down to actual handoff steps so
-  // downstream code never has to re-check.
+  // The config schema accepts non-emitting steps such as `release`; only handoff steps survive.
   const explicitInject = explicit?.injectFromSteps?.filter((s): s is HandoffStep =>
-    isHandoffStep(s as JobType),
+    isHandoffStep(s),
   );
   return {
     enabled: explicit?.enabled ?? true,
-    injectFromSteps: explicitInject ?? defaultInjectFromSteps(jobType),
+    injectFromSteps: explicitInject ?? [],
     fallbackToRawIssueFieldIfMissing: explicit?.fallbackToRawIssueFieldIfMissing ?? true,
   };
 }

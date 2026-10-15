@@ -18,6 +18,9 @@ import {
 import { logger } from '../logger.js';
 import { chainLiveBranch } from '../projects/release-chain.js';
 
+/** The job type that implements an issue; the staged `code` and `fix` jobs are retired (ISS-1229). */
+const IMPLEMENTATION_JOB_TYPES = ['drive'] as const;
+/** The handoff steps that record implementation, a vocabulary of `issue_step_contexts` rather than of jobs. */
 const IMPLEMENTATION_STEPS = ['code', 'fix', 'drive'] as const;
 
 const JOB_SCAN_LIMIT = 50;
@@ -50,7 +53,7 @@ export async function collectWorkEvidence(
     executor
       .select({ id: jobs.id })
       .from(jobs)
-      .where(and(eq(jobs.issueId, issueId), inArray(jobs.type, IMPLEMENTATION_STEPS)))
+      .where(and(eq(jobs.issueId, issueId), inArray(jobs.type, IMPLEMENTATION_JOB_TYPES)))
       .limit(JOB_SCAN_LIMIT),
     executor
       .select({ payload: issueStepContexts.payload })

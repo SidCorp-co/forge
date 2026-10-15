@@ -24,7 +24,7 @@ export interface QualitySectionProps {
 /** Section 5 — is the output any good? */
 export function QualitySection({ quality }: QualitySectionProps) {
   const rates = qualityRates(quality);
-  const { finished, reopened, rework, runFailure, sessionFailures, pipelineFlow } = quality;
+  const { finished, reopened, runFailure, sessionFailures, pipelineFlow } = quality;
 
   return (
     <section aria-labelledby="overview-quality" className="flex flex-col gap-4 border-t border-line pt-5">
@@ -70,16 +70,6 @@ export function QualitySection({ quality }: QualitySectionProps) {
           total={rates.finishedTotal}
           valueText={`${reopened.issues} issues · ${reopened.events} reopenings`}
         />
-        <BulletBar
-          label="Fix jobs against code jobs"
-          value={rework.fix}
-          total={rework.code}
-          valueText={
-            rates.reworkRatio === null
-              ? `${rework.fix} fix · no code jobs`
-              : `${rework.fix} fix · ${rework.code} code`
-          }
-        />
         {(["pipeline", "scheduler", "other"] as const).map((lane) => (
           <BulletBar
             key={lane}
@@ -124,7 +114,6 @@ export function QualitySection({ quality }: QualitySectionProps) {
               label: n.type,
               count: n.count,
               medianSeconds: n.medianSeconds,
-              loop: n.type === "fix",
             }))}
             formatDuration={(s) => (s === null ? "—" : formatElapsed(s))}
             label={`Jobs by pipeline stage over 90 days. ${pipelineFlow

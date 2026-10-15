@@ -255,14 +255,14 @@ describe('GET /api/pipeline/step-durations', () => {
     dbExecute.mockResolvedValueOnce([]);
 
     const app = buildApp();
-    const res = await app.fetch(req('/api/pipeline/step-durations?step=code', { token }));
+    const res = await app.fetch(req('/api/pipeline/step-durations?step=reconcile', { token }));
     expect(res.status).toBe(200);
     expect(dbExecute).toHaveBeenCalledTimes(1);
     const queryArg = dbExecute.mock.calls[0]?.[0] as {
       queryChunks?: Array<{ value?: unknown }>;
     };
     const params = JSON.stringify(queryArg?.queryChunks ?? queryArg);
-    expect(params).toContain('code');
+    expect(params).toContain('reconcile');
   });
 });
 
@@ -422,7 +422,7 @@ describe('GET /api/projects/:id/analytics/cost-trend', () => {
 
     const app = buildApp();
     const res = await app.fetch(
-      req(`/api/projects/${PROJECT_UUID}/analytics/cost-trend?step=plan`, { token }),
+      req(`/api/projects/${PROJECT_UUID}/analytics/cost-trend?step=smoke`, { token }),
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
@@ -439,7 +439,7 @@ describe('GET /api/projects/:id/analytics/cost-trend', () => {
     const dailyQuery = dbExecute.mock.calls[0]?.[0] as {
       queryChunks?: Array<{ value?: unknown }>;
     };
-    expect(JSON.stringify(dailyQuery?.queryChunks ?? dailyQuery)).toContain('plan');
+    expect(JSON.stringify(dailyQuery?.queryChunks ?? dailyQuery)).toContain('smoke');
   });
 
   it('200 surfaces activity_log annotations with pipeline_config.updated kind', async () => {

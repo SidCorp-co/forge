@@ -52,9 +52,9 @@ const archivedIssueIds = (projectId: string) =>
   sql`(SELECT ai.id::text FROM issues ai WHERE ai.project_id = ${projectId} AND ai.archived_at IS NOT NULL)`;
 
 /**
- * A memory row that is not the text of an archived issue, nor a fact extracted from one
- * (`memory/extraction.ts` tags those `metadata.issueId`). `NOT IN` over the project's archived
- * ids is a hashed subplan, evaluated once per query rather than once per memory row.
+ * A memory row that is not the text of an archived issue, nor a fact extracted from one (such a
+ * fact carries `metadata.issueId`). `NOT IN` over the project's archived ids is a hashed subplan,
+ * evaluated once per query rather than once per memory row.
  */
 function liveIssueMemory(cols: { source: SQL; sourceRef: SQL; metadata: SQL }, projectId: string) {
   const archived = archivedIssueIds(projectId);

@@ -12,7 +12,6 @@ const SOURCES = {
   constant: 'packages/core/src/pipeline/autonomous-mode.ts',
   schema: 'packages/core/src/db/issue-vocabulary.ts',
   jobs: 'packages/core/src/db/job-vocabulary.ts',
-  steps: 'packages/core/src/pipeline/registry.ts',
 };
 
 const GUIDE_CONTENT_DIR = 'packages/core/src/guides/content';
@@ -60,27 +59,14 @@ function arrayLiterals(src, declRe, rel, what) {
   return out;
 }
 
-const GATE_BYPASSING_JOB_TYPES = ['pm', 'custom'];
-
+/** The staged stages, which `job-vocabulary.ts` keeps by name only to refuse them, then the driver's one step. */
 function stepVocabulary() {
-  const all = arrayLiterals(
+  const retired = arrayLiterals(
     read(SOURCES.jobs),
-    /export const jobTypes = \[([^\]]*)\]/,
+    /export const RETIRED_JOB_TYPES = \[([^\]]*)\]/,
     SOURCES.jobs,
-    'jobTypes',
+    'RETIRED_JOB_TYPES',
   );
-  const caps = read(SOURCES.steps);
-  const m = /'claude-code':\s*\[([^\]]*)\]/.exec(caps);
-  if (m === null)
-    throw new CannotRun(`${SOURCES.steps}: RUNNER_CAPABILITIES claude-code not found`);
-  const claimable = [...m[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]);
-  if (claimable.length === 0) throw new CannotRun(`${SOURCES.steps}: no claimable job types`);
-
-  const retired = all.filter(
-    (t) => !claimable.includes(t) && !GATE_BYPASSING_JOB_TYPES.includes(t),
-  );
-  if (retired.length === 0) throw new CannotRun(`${SOURCES.schema}: no retired job types`);
-
   const drive = /export const AUTONOMOUS_JOB_TYPE[^=]*=\s*'([a-z_]+)'/.exec(read(SOURCES.constant));
   if (drive === null) throw new CannotRun(`${SOURCES.constant}: AUTONOMOUS_JOB_TYPE not found`);
   return [...retired, drive[1]];
