@@ -170,7 +170,9 @@ describe("an unknown door while the guide index is down", () => {
 describe("the guides-unavailable refusal", () => {
   it("keeps its own reason ahead of the search sentence", () => {
     const html = unavailableDocument();
-    expect(html.indexOf(GUIDES_UNAVAILABLE.body)).toBeLessThan(html.indexOf(SEARCH_WHILE_DOWN));
+    const reason = html.indexOf(`<p>${GUIDES_UNAVAILABLE.body}</p>`);
+    expect(reason).toBeGreaterThan(-1);
+    expect(reason).toBeLessThan(html.indexOf(`<p>${SEARCH_WHILE_DOWN}</p>`));
   });
 });
 
