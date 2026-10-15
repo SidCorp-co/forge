@@ -182,17 +182,21 @@ const credentialRow = z
     }
   });
 
+/** A credential row as the page names it everywhere: by its label, and by its number only where it has none. */
+function credentialName(rows: CredRow[], index: number): string {
+  return rows[index]?.label.trim() || `Credential ${index + 1}`;
+}
+
 /** What each credential rule says beside the field it marks; the rules are the server's own. */
 function credentialMessage(rows: CredRow[], f: CredentialFinding): string {
-  const label = rows[f.index]?.label.trim() ?? "";
-  const other = f.sameAs === undefined ? 0 : f.sameAs + 1;
+  const other = f.sameAs === undefined ? "another credential" : credentialName(rows, f.sameAs);
   switch (f.rule) {
     case "password-required":
-      return `${label} has no password. Type its password, or remove the row.`;
+      return `${credentialName(rows, f.index)} has no password. Type its password, or remove the row.`;
     case "duplicate-label":
-      return `Credential ${other} is already labelled ${rows[other - 1]?.label.trim() ?? label}. Rename this one, or remove it.`;
+      return `Another credential is already labelled ${other}. Rename this one, or remove it.`;
     case "duplicate-login":
-      return `This is the same login as credential ${other}. Remove one of them.`;
+      return `This is the same login as ${other}. Remove one of them.`;
   }
 }
 

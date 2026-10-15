@@ -41,6 +41,11 @@ export function credentialFaults(rows: unknown): CredentialFault[] {
   const faults: CredentialFault[] = [];
   const labels = new Map<string, number>();
   const logins = new Map<string, number>();
+  /** Every row a message names, named one way: its path and its label. */
+  const named = (index: number) => {
+    const row = rows[index] as Record<string, unknown> | null;
+    return `testCredentials[${index}] ('${text(row?.label).trim()}')`;
+  };
   const fault = (f: Omit<CredentialFault, 'path'>) =>
     faults.push({ ...f, path: `testCredentials.${f.index}.${f.field}` });
   rows.forEach((raw: unknown, index) => {
@@ -58,7 +63,7 @@ export function credentialFaults(rows: unknown): CredentialFault[] {
         field: 'label',
         rule: 'duplicate-label',
         sameAs: labelled,
-        message: `testCredentials[${index}] is labelled '${shown}', as testCredentials[${labelled}] is, and a run picks a login by its label. Rename one of them, or remove the repeat.`,
+        message: `${named(index)} has the label ${named(labelled)} already has, and a run picks a login by its label. Rename one of them, or remove the repeat.`,
       });
     }
     if (password.trim() === '') {
@@ -66,7 +71,7 @@ export function credentialFaults(rows: unknown): CredentialFault[] {
         index,
         field: 'password',
         rule: 'password-required',
-        message: `testCredentials[${index}] ('${shown}') has no password, so nobody can log in with it. Give it the password, or remove the row.`,
+        message: `${named(index)} has no password, so nobody can log in with it. Give it the password, or remove the row.`,
       });
       return;
     }
@@ -79,7 +84,7 @@ export function credentialFaults(rows: unknown): CredentialFault[] {
         field: 'username',
         rule: 'duplicate-login',
         sameAs: listed,
-        message: `testCredentials[${index}] ('${shown}') is the same username and password as testCredentials[${listed}], so it lists one login twice. Remove the repeat.`,
+        message: `${named(index)} is the same username and password as ${named(listed)}, so it lists one login twice. Remove the repeat.`,
       });
     }
   });

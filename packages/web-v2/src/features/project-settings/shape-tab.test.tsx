@@ -700,7 +700,7 @@ describe("judge-15's five findings (ISS-1171 r6)", () => {
 		save();
 		await waitFor(() => expect(sent).toHaveLength(1));
 		expect(
-			await screen.findByText("Nothing was saved. Test credential 1 (QA) has no password. Type its password, or remove the row."),
+			await screen.findByText("Nothing was saved. QA has no password. Type its password, or remove the row."),
 		).toBeInTheDocument();
 		expect(screen.queryByText(/testCredentials/)).toBeNull();
 	});
@@ -723,13 +723,13 @@ describe("judge-15's five findings (ISS-1171 r6)", () => {
 		fireEvent.change(screen.getByLabelText("Credential 2 label"), { target: { value: " qa " } });
 		fireEvent.change(screen.getByLabelText("Credential 2 username"), { target: { value: "other@example.com" } });
 		fireEvent.change(screen.getByLabelText("Credential 2 password"), { target: { value: "x" } });
-		await screen.findByText("Credential 1 is already labelled QA. Rename this one, or remove it.");
+		await screen.findByText("Another credential is already labelled QA. Rename this one, or remove it.");
 		expect(screen.getByLabelText("Credential 2 label")).toHaveAttribute("aria-invalid", "true");
 
 		fireEvent.change(screen.getByLabelText("Credential 2 label"), { target: { value: "QA again" } });
 		fireEvent.change(screen.getByLabelText("Credential 2 username"), { target: { value: "qa@example.com" } });
 		fireEvent.change(screen.getByLabelText("Credential 2 password"), { target: { value: "s3cret" } });
-		await screen.findByText("This is the same login as credential 1. Remove one of them.");
+		await screen.findByText("This is the same login as QA. Remove one of them.");
 		expect(screen.getByLabelText("Credential 2 username")).toHaveAttribute("aria-invalid", "true");
 		expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
 		expect(sent).toEqual([]);
@@ -743,7 +743,7 @@ describe("judge-15's five findings (ISS-1171 r6)", () => {
 		await screen.findByText("QA has no password. Type its password, or remove the row.");
 		const said = (label: string) =>
 			document.getElementById(screen.getByLabelText(label).getAttribute("aria-describedby") ?? "")?.textContent;
-		expect(said("Credential 2 label")).toBe("Credential 1 is already labelled QA. Rename this one, or remove it.");
+		expect(said("Credential 2 label")).toBe("Another credential is already labelled QA. Rename this one, or remove it.");
 		expect(said("Credential 2 password")).toBe("QA has no password. Type its password, or remove the row.");
 		expect(screen.getByLabelText("Credential 2 username")).not.toHaveAttribute("aria-invalid");
 	});
