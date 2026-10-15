@@ -267,6 +267,23 @@ describe('an installation is recorded only once GitHub shows it is the installer
     expect((await installations())[0]?.org_id).toBe(other.orgId);
   });
 
+  it('PLANT: strands an install of the instance App that came back with no OAuth code, recording nothing', async () => {
+    stubGitHub();
+    const connection = await instanceApp();
+    const state = encodeURIComponent(
+      signConnectState(process.env.JWT_SECRET as string, {
+        userId: admin,
+        orgId: project.orgId,
+        connectionId: connection,
+      }),
+    );
+
+    const where = landing(await installed(session, `installation_id=${OURS}&state=${state}`));
+
+    expect(where.searchParams.get('connect')).toBe('install_unproven');
+    expect(await installations()).toEqual([]);
+  });
+
   it('refuses an OAuth return that carries no state, recording nothing', async () => {
     stubGitHub();
     await instanceApp();

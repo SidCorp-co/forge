@@ -120,6 +120,31 @@ describe('targets and bindings reach only what was recorded for the caller’s o
     expect(JSON.stringify(res.body)).toContain('recorded for another Forge organisation');
   });
 
+  it('PLANT: shows another org none of the App’s bindings in this org, in the directory or its bindings list', async () => {
+    stubGitHub();
+    const connection = await instanceApp();
+    await record(connection, OURS, project.orgId);
+    expect((await bind(session, connection, project.id, OURS)).status).toBe(200);
+
+    const directory = await api(otherSession, 'GET', '/api/integration-connections');
+    const listed = await api(
+      otherSession,
+      'GET',
+      `/api/integration-connections/${connection}/bindings`,
+    );
+    const own = await api(session, 'GET', `/api/integration-connections/${connection}/bindings`);
+
+    type Row = { id: string; usage: { bindings: Array<{ projectId: string }> } };
+    const row = (directory.body.items as Row[]).find((r) => r.id === connection);
+    expect(row, 'every org sees the instance’s App itself').toBeTruthy();
+    expect(row?.usage.bindings).toEqual([]);
+    expect(listed.body.items).toEqual([]);
+    expect((own.body.items as Array<{ projectId: string }>).map((b) => b.projectId)).toEqual([
+      project.id,
+    ]);
+    expect(JSON.stringify(directory.body)).not.toContain(project.id);
+  });
+
   it('lets nobody but an operator change or remove the instance’s App', async () => {
     const connection = await instanceApp();
 

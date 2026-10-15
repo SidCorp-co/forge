@@ -287,6 +287,15 @@ githubCallbackRoutes.get(
         });
     const connectionId = state?.connectionId ?? owner?.connection.id ?? null;
     if (!connectionId) return strandedAt(c, 'install_unmatched');
+    // the instance's App proves an install only by the OAuth code its return carries; one with
+    // none came from an App not asking for OAuth on install, and records nothing
+    if ((await findInstanceGithubApp())?.id === connectionId) {
+      logger.warn(
+        { connectionId, installationId },
+        "github: the instance App's install returned no OAuth code; turn on 'Request user authorization (OAuth) during installation' on its GitHub settings",
+      );
+      return strandedAt(c, 'install_unproven');
+    }
     const projectId = state?.projectId ?? owner?.projectId ?? null;
     if (!projectId) return c.redirect(finishedAt({ returnTo: 'integrations' }, connectionId));
     if (!(await can(actorFor(userId), 'project.admin', projectResource(projectId)))) {

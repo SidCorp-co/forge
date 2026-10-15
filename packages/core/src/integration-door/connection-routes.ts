@@ -36,7 +36,7 @@ import {
   withdrawNulls,
 } from '../integrations/index.js';
 import { SourceHostCallError } from '../integrations/source-host/index.js';
-import { loadOrgRole } from '../lib/authz.js';
+import { loadOrgRole, loadVisibleProjectIds } from '../lib/authz.js';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { isPlatformAdmin } from '../middleware/require-admin.js';
@@ -80,13 +80,40 @@ async function loadConnection(
   return connection;
 }
 
+/**
+ * Where each connection is used, as far as this caller may see. Every org binds the instance's App,
+ * so its bindings are narrowed to the projects the caller sees: another org's projects and the
+ * repositories they bind are not theirs to read.
+ */
+async function usageVisibleTo<B extends { projectId: string }>(
+  userId: string,
+  rows: readonly IntegrationConnectionRow[],
+  bindings: Map<string, B[]>,
+): Promise<Map<string, B[]>> {
+  if (!rows.some((r) => r.ownerType === 'instance')) return bindings;
+  const visible = new Set(await loadVisibleProjectIds(userId));
+  const out = new Map(bindings);
+  for (const row of rows) {
+    if (row.ownerType !== 'instance') continue;
+    out.set(
+      row.id,
+      (bindings.get(row.id) ?? []).filter((b) => visible.has(b.projectId)),
+    );
+  }
+  return out;
+}
+
 export const integrationConnectionsRoutes = new Hono<{ Variables: AuthVars }>();
 integrationConnectionsRoutes.use('*', requireAuth(), assertEmailVerified());
 
 integrationConnectionsRoutes.get('/', async (c) => {
   const userId = c.get('userId');
   const rows = await listConnectionsForPrincipalUser(userId);
-  const bindings = await listBindingsByConnectionIds(rows.map((r) => r.id));
+  const bindings = await usageVisibleTo(
+    userId,
+    rows,
+    await listBindingsByConnectionIds(rows.map((r) => r.id)),
+  );
   const projectIds = [...new Set([...bindings.values()].flat().map((b) => b.projectId))];
   const deployMaps = new Map(
     await Promise.all(projectIds.map(async (id) => [id, await readDeployMap(id)] as const)),
@@ -216,8 +243,12 @@ integrationConnectionsRoutes.get('/:id/targets', async (c) => {
 integrationConnectionsRoutes.get('/:id/bindings', async (c) => {
   const id = c.req.param('id');
   const userId = c.get('userId');
-  await loadConnection(id, userId, 'read');
-  const pairs = await listBindingsForConnection(id);
+  const connection = await loadConnection(id, userId, 'read');
+  const visible =
+    connection.ownerType === 'instance' ? new Set(await loadVisibleProjectIds(userId)) : null;
+  const pairs = (await listBindingsForConnection(id)).filter(
+    (pair) => visible === null || visible.has(pair.binding.projectId),
+  );
   const bindings = await summarizeBindings(pairs);
   return c.json({ items: bindings });
 });
