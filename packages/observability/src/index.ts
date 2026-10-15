@@ -78,6 +78,28 @@ export const ENV_SECRET_ASSIGNMENT_PATTERN =
 
 export const FILTERED = '[Filtered]';
 
+const SENSITIVE_KEY_PARTS = ['forwarded', '-ip', 'remote-', 'via', '-user'];
+
+/**
+ * What a Sentry client collects, set to the restrictive baseline every adapter here was built on.
+ * Sentry 11 collects cookies, bodies, user info and query data when this is left unset, and the
+ * scrub above covers none of the first three.
+ */
+export const SENTRY_DATA_COLLECTION = {
+  userInfo: false,
+  cookies: false,
+  httpHeaders: {
+    request: { deny: SENSITIVE_KEY_PARTS },
+    response: { deny: SENSITIVE_KEY_PARTS },
+  },
+  httpBodies: [] as never[],
+  urlQueryParams: { deny: SENSITIVE_KEY_PARTS },
+  genAI: { inputs: false, outputs: false },
+  databaseQueryData: false,
+  queues: false,
+  graphQL: { document: false, variables: false },
+};
+
 /** Sets a field in place, and says whether it now holds `value`: a fixed field refuses it. */
 function put(target: object, key: string | number, value: unknown): boolean {
   try {

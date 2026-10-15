@@ -32,10 +32,8 @@ export async function runTranscriptIndexSweepOnce(): Promise<string[]> {
 
 export async function registerTranscriptIndexSweeper(): Promise<void> {
   if (registered) return;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(TRANSCRIPT_INDEX_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(TRANSCRIPT_INDEX_QUEUE, async () => {
+  await boss.createQueue(TRANSCRIPT_INDEX_QUEUE);
+  await boss.work(TRANSCRIPT_INDEX_QUEUE, async () => {
     try {
       await runTranscriptIndexSweepOnce();
     } catch (err) {
@@ -43,8 +41,7 @@ export async function registerTranscriptIndexSweeper(): Promise<void> {
       throw err;
     }
   });
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(TRANSCRIPT_INDEX_QUEUE, TRANSCRIPT_INDEX_CRON, {});
+  await boss.schedule(TRANSCRIPT_INDEX_QUEUE, TRANSCRIPT_INDEX_CRON, {});
   registered = true;
 }
 

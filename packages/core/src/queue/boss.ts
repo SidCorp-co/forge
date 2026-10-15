@@ -1,11 +1,21 @@
-import PgBoss from 'pg-boss';
+import { PgBoss } from 'pg-boss';
 import { env } from '../config/env.js';
+import { logger } from '../logger.js';
+import {
+  type BossSchemas,
+  bossSchemas,
+  type Carry,
+  carryV10Jobs,
+  setAsideV10Schema,
+} from './v10-carry.js';
 
 let instance: PgBoss | null = null;
 
 function getBoss(): PgBoss {
   if (!instance) {
     instance = new PgBoss(env.DATABASE_URL);
+    // An `error` event with no listener throws out of the emitter and takes the process with it.
+    instance.on('error', (err) => logger.error({ err }, 'pg-boss: error'));
   }
   return instance;
 }
@@ -28,11 +38,27 @@ export const boss: PgBoss = new Proxy({} as PgBoss, {
   },
 });
 
+/** Starts `queue` on `connectionString`, carrying a pg-boss 10 schema's live jobs into it first. */
+export async function bootBoss(
+  queue: PgBoss,
+  connectionString: string,
+  schemas: BossSchemas = bossSchemas(),
+): Promise<Carry | null> {
+  const setAside = await setAsideV10Schema(connectionString, schemas);
+  if (setAside.action === 'set-aside') {
+    logger.warn({ schema: schemas.schema, to: schemas.setAside }, 'pg-boss: v10 schema set aside');
+  }
+  await queue.start();
+  const carry = await carryV10Jobs(queue, connectionString, schemas);
+  if (carry) logger.warn({ ...carry, from: schemas.setAside }, 'pg-boss: v10 jobs carried');
+  return carry;
+}
+
 let started = false;
 
 export async function startBoss(): Promise<void> {
   if (started) return;
-  await boss.start();
+  await bootBoss(getBoss(), env.DATABASE_URL);
   started = true;
 }
 

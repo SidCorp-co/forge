@@ -51,10 +51,8 @@ export async function runAgentCronTickOnce(now: Date = new Date()): Promise<stri
 
 export async function registerAgentCronTicker(): Promise<void> {
   if (workerId) return;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(AGENT_CRON_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: see schedules/runner.ts
-  const id = (await (boss as any).work(AGENT_CRON_QUEUE, { batchSize: 1 }, async () => {
+  await boss.createQueue(AGENT_CRON_QUEUE);
+  const id = await boss.work(AGENT_CRON_QUEUE, { batchSize: 1 }, async () => {
     try {
       const fired = await runAgentCronTickOnce();
       if (fired.length > 0) logger.info({ agentIds: fired }, 'agent.cron: fired');
@@ -62,10 +60,9 @@ export async function registerAgentCronTicker(): Promise<void> {
       logger.error({ err }, 'agent.cron: tick threw');
       throw err;
     }
-  })) as string;
+  });
   workerId = id;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(AGENT_CRON_QUEUE, AGENT_CRON_CRON, {});
+  await boss.schedule(AGENT_CRON_QUEUE, AGENT_CRON_CRON, {});
 }
 
 export async function unregisterAgentCronTicker(): Promise<void> {
@@ -73,11 +70,9 @@ export async function unregisterAgentCronTicker(): Promise<void> {
   const id = workerId;
   workerId = null;
   try {
-    // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-    await (boss as any).unschedule(AGENT_CRON_QUEUE);
+    await boss.unschedule(AGENT_CRON_QUEUE);
   } catch (err) {
     logger.warn({ err }, 'agent.cron: unschedule failed');
   }
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).offWork(id);
+  await boss.offWork(AGENT_CRON_QUEUE, { id });
 }

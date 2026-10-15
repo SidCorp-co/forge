@@ -291,10 +291,8 @@ let registered = false;
 
 export async function registerPmEscalationSweeper(): Promise<void> {
   if (registered) return;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(PM_ESCALATION_SWEEPER_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(PM_ESCALATION_SWEEPER_QUEUE, async () => {
+  await boss.createQueue(PM_ESCALATION_SWEEPER_QUEUE);
+  await boss.work(PM_ESCALATION_SWEEPER_QUEUE, async () => {
     try {
       const result = await runPmEscalationSweep();
       if (result.executed > 0 || result.errors > 0) {
@@ -305,16 +303,14 @@ export async function registerPmEscalationSweeper(): Promise<void> {
       throw err;
     }
   });
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(PM_ESCALATION_SWEEPER_QUEUE, PM_ESCALATION_SWEEPER_CRON, {});
+  await boss.schedule(PM_ESCALATION_SWEEPER_QUEUE, PM_ESCALATION_SWEEPER_CRON, {});
   registered = true;
 }
 
 export async function unregisterPmEscalationSweeper(): Promise<void> {
   if (!registered) return;
   try {
-    // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-    await (boss as any).unschedule?.(PM_ESCALATION_SWEEPER_QUEUE);
+    await boss.unschedule?.(PM_ESCALATION_SWEEPER_QUEUE);
   } catch {
     // unschedule is best-effort — if the schedule never existed, ignore.
   }

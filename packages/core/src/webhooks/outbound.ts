@@ -27,8 +27,7 @@ export async function enqueueDelivery(
 
   for (const hook of matches) {
     const payload: DeliveryJob = { webhookId: hook.id, event, data };
-    // biome-ignore lint/suspicious/noExplicitAny: pg-boss options types vary across versions
-    await (boss as any).send(WEBHOOK_DELIVERY_QUEUE, payload, {
+    await boss.send(WEBHOOK_DELIVERY_QUEUE, payload, {
       retryLimit: 5,
       retryBackoff: true,
     });
@@ -84,11 +83,8 @@ let registered = false;
 
 export async function registerOutboundDeliveryWorker(): Promise<void> {
   if (registered) return;
-  // pg-boss v10 requires explicit createQueue before work().
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(WEBHOOK_DELIVERY_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(WEBHOOK_DELIVERY_QUEUE, { batchSize: 1 }, async (arg: unknown) => {
+  await boss.createQueue(WEBHOOK_DELIVERY_QUEUE);
+  await boss.work(WEBHOOK_DELIVERY_QUEUE, { batchSize: 1 }, async (arg: unknown) => {
     const entries = Array.isArray(arg) ? arg : [arg];
     for (const entry of entries) {
       const data = (entry as { data?: DeliveryJob })?.data;

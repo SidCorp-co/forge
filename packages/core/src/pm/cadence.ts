@@ -46,10 +46,8 @@ export async function runPmCadenceTickOnce(now: Date = new Date()): Promise<stri
 
 export async function registerPmCadenceTicker(): Promise<void> {
   if (workerId) return;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(PM_CADENCE_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: see schedules/runner.ts
-  const id = (await (boss as any).work(PM_CADENCE_QUEUE, { batchSize: 1 }, async () => {
+  await boss.createQueue(PM_CADENCE_QUEUE);
+  const id = await boss.work(PM_CADENCE_QUEUE, { batchSize: 1 }, async () => {
     try {
       const fired = await runPmCadenceTickOnce();
       if (fired.length > 0) logger.info({ projectIds: fired }, 'pm.cadence: fired');
@@ -57,10 +55,9 @@ export async function registerPmCadenceTicker(): Promise<void> {
       logger.error({ err }, 'pm.cadence: tick threw');
       throw err;
     }
-  })) as string;
+  });
   workerId = id;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(PM_CADENCE_QUEUE, PM_CADENCE_CRON, {});
+  await boss.schedule(PM_CADENCE_QUEUE, PM_CADENCE_CRON, {});
 }
 
 export async function unregisterPmCadenceTicker(): Promise<void> {
@@ -68,13 +65,11 @@ export async function unregisterPmCadenceTicker(): Promise<void> {
   const id = workerId;
   workerId = null;
   try {
-    // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-    await (boss as any).unschedule(PM_CADENCE_QUEUE);
+    await boss.unschedule(PM_CADENCE_QUEUE);
   } catch (err) {
     logger.warn({ err }, 'pm.cadence: unschedule failed');
   }
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).offWork(id);
+  await boss.offWork(PM_CADENCE_QUEUE, { id });
 }
 
 export function _resetPmCadenceCacheForTest(): void {

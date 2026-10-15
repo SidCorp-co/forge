@@ -80,11 +80,8 @@ let registered = false;
 
 export async function registerMemoryDecay(): Promise<void> {
   if (registered) return;
-  // pg-boss v10 requires explicit createQueue before schedule/work can reference it.
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(MEMORY_DECAY_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(MEMORY_DECAY_QUEUE, async () => {
+  await boss.createQueue(MEMORY_DECAY_QUEUE);
+  await boss.work(MEMORY_DECAY_QUEUE, async () => {
     try {
       const result = await runMemoryDecay();
       logger.info(result, 'memory.decay: sweep complete');
@@ -94,8 +91,7 @@ export async function registerMemoryDecay(): Promise<void> {
     }
   });
   // Daily, off-peak. Same cadence as forge-agents' dream poller.
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(MEMORY_DECAY_QUEUE, '30 3 * * *');
+  await boss.schedule(MEMORY_DECAY_QUEUE, '30 3 * * *');
   registered = true;
 }
 

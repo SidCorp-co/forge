@@ -1,5 +1,5 @@
 import * as Sentry from "@sentry/react";
-import { scrubSentryEvent } from "@forge/observability";
+import { SENTRY_DATA_COLLECTION, scrubSentryEvent } from "@forge/observability";
 import { sourceCommit } from "./source-commit";
 
 
@@ -14,7 +14,8 @@ export function initSentry(): boolean {
     release: sourceCommit ?? undefined,
     environment: process.env.NEXT_PUBLIC_SENTRY_ENV ?? "production",
     tracesSampleRate: 0,
-    sendDefaultPii: false,
+    dataCollection: SENTRY_DATA_COLLECTION,
+    attachStacktrace: false,
     beforeSend: scrubSentryEvent,
   });
   initialized = true;

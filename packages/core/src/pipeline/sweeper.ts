@@ -650,10 +650,8 @@ let registered = false;
 
 export async function registerPipelineSweeper(): Promise<void> {
   if (registered) return;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss v10 type drift
-  await (boss as any).createQueue(PIPELINE_SWEEPER_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss v10 type drift
-  await (boss as any).work(PIPELINE_SWEEPER_QUEUE, async () => {
+  await boss.createQueue(PIPELINE_SWEEPER_QUEUE);
+  await boss.work(PIPELINE_SWEEPER_QUEUE, async () => {
     try {
       await runPipelineSweep();
     } catch (err) {
@@ -661,8 +659,7 @@ export async function registerPipelineSweeper(): Promise<void> {
       throw err;
     }
   });
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss v10 type drift
-  await (boss as any).schedule(PIPELINE_SWEEPER_QUEUE, '* * * * *');
+  await boss.schedule(PIPELINE_SWEEPER_QUEUE, '* * * * *');
   registered = true;
 }
 

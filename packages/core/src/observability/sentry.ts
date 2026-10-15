@@ -1,4 +1,4 @@
-import { scrubSentryEvent } from '@forge/observability';
+import { SENTRY_DATA_COLLECTION, scrubSentryEvent } from '@forge/observability';
 import * as Sentry from '@sentry/node';
 import { sourceCommit } from './source-commit.js';
 
@@ -40,7 +40,8 @@ export function initSentry(): boolean {
     release: sourceCommit ?? undefined,
     environment: process.env.NODE_ENV || 'development',
     tracesSampleRate: 0,
-    sendDefaultPii: false,
+    dataCollection: SENTRY_DATA_COLLECTION,
+    attachStacktrace: false,
     beforeSend: scrubAndRestoreHeldTags,
   });
   initialized = true;

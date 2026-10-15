@@ -95,10 +95,8 @@ let registered = false;
 
 export async function registerIntegrationsHealthSweep(): Promise<void> {
   if (registered) return;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(HEALTH_SWEEP_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(HEALTH_SWEEP_QUEUE, async () => {
+  await boss.createQueue(HEALTH_SWEEP_QUEUE);
+  await boss.work(HEALTH_SWEEP_QUEUE, async () => {
     try {
       const result = await runIntegrationsHealthSweep();
       logger.info(result, 'integrations-health-sweep: complete');
@@ -108,8 +106,7 @@ export async function registerIntegrationsHealthSweep(): Promise<void> {
     }
   });
   // Hourly at :17 — offset from the */5 stale sweep and on-the-hour crons.
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(HEALTH_SWEEP_QUEUE, '17 * * * *');
+  await boss.schedule(HEALTH_SWEEP_QUEUE, '17 * * * *');
   registered = true;
 }
 

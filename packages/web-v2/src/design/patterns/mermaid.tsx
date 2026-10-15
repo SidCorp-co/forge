@@ -17,6 +17,9 @@ async function initMermaid() {
     startOnLoad: false,
     securityLevel: "strict",
     theme: "neutral",
+    // Mermaid 12 defaults to the ELK layout and the neo look; these keep diagrams as they were drawn.
+    layout: "dagre",
+    look: "classic",
   });
   mermaidReady = true;
 }

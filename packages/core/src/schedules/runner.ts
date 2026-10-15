@@ -9,10 +9,8 @@ let workerId: string | null = null;
 
 export async function registerScheduleTicker(): Promise<void> {
   if (workerId) return;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(TICK_QUEUE_NAME);
-  // biome-ignore lint/suspicious/noExplicitAny: see registerDispatcher
-  const id = (await (boss as any).work(TICK_QUEUE_NAME, { batchSize: 1 }, async (arg: unknown) => {
+  await boss.createQueue(TICK_QUEUE_NAME);
+  const id = await boss.work(TICK_QUEUE_NAME, { batchSize: 1 }, async (arg: unknown) => {
     const entries = Array.isArray(arg) ? arg : [arg];
     for (const _entry of entries) {
       try {
@@ -25,11 +23,10 @@ export async function registerScheduleTicker(): Promise<void> {
         throw err;
       }
     }
-  })) as string;
+  });
   workerId = id;
   // Schedule the tick to fire every minute.
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(TICK_QUEUE_NAME, TICK_CRON, {});
+  await boss.schedule(TICK_QUEUE_NAME, TICK_CRON, {});
 }
 
 export async function unregisterScheduleTicker(): Promise<void> {
@@ -37,13 +34,11 @@ export async function unregisterScheduleTicker(): Promise<void> {
   const id = workerId;
   workerId = null;
   try {
-    // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-    await (boss as any).unschedule(TICK_QUEUE_NAME);
+    await boss.unschedule(TICK_QUEUE_NAME);
   } catch (err) {
     logger.warn({ err }, 'schedule.tick: unschedule failed');
   }
-  // biome-ignore lint/suspicious/noExplicitAny: see registerDispatcher
-  await (boss as any).offWork(id);
+  await boss.offWork(TICK_QUEUE_NAME, { id });
 }
 
 export function isScheduleTickerRegistered(): boolean {

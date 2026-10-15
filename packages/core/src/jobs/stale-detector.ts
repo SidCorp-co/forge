@@ -61,11 +61,8 @@ let registered = false;
 
 export async function registerStaleDetector(): Promise<void> {
   if (registered) return;
-  // pg-boss v10 requires explicit createQueue before schedule/work can reference it.
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(STALE_DETECTOR_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(STALE_DETECTOR_QUEUE, async () => {
+  await boss.createQueue(STALE_DETECTOR_QUEUE);
+  await boss.work(STALE_DETECTOR_QUEUE, async () => {
     try {
       const result = await runStaleSweep();
       logger.info(result, 'stale-job-detector: sweep complete');
@@ -74,8 +71,7 @@ export async function registerStaleDetector(): Promise<void> {
       throw err;
     }
   });
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(STALE_DETECTOR_QUEUE, '*/5 * * * *');
+  await boss.schedule(STALE_DETECTOR_QUEUE, '*/5 * * * *');
   registered = true;
 }
 
