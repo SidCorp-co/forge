@@ -120,7 +120,11 @@ pages (`BUNDLED_AUDIENCES` in `packages/web-v2/src/features/guides/audience.ts`)
 middleware passes them without asking core and the page renders them from `HELP_DOCS` alone while the
 index is unreadable: a page or door with the sidebar saying its search covers those pages only
 (`HELP_ONLY_SEARCH`), the landing saying why (`LANDING_WHILE_DOWN`), each offering only the doors that
-still open and without the footer that points at core's markdown. A plain request for the agents'
+still open and without the footer that points at core's markdown. Which doors those are is `openDoors` in
+`packages/web-v2/src/features/guides/audience.ts`, and every
+sentence saying what the docs cover is built from it: the header's line (`siteCaption`), the search
+field's name and the sidebar's placeholder (`searchLabel`), and both outage sentences, so a page
+rendered while the index is down never says it searches every page or names agents as a reader. A plain request for the agents'
 door or a guide asks core first (`coreStatus` in the middleware: the index for `/guides`; for `/guides/<slug>`
 the guide, then the index its page is also built from), and where core cannot be reached or answers anything but success (or, for a
 guide, 404) the middleware answers **503** with `Retry-After` and `unavailableDocument`: the same

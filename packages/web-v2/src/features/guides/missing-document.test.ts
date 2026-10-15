@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { AUDIENCES, DOORS, doorHref } from "./audience";
-import { DOCUMENT_TOKENS, FONT_SANS_URL, missingGuideDocument, refusalDocument } from "./missing-document";
+import { DOCUMENT_TOKENS, FONT_SANS_URL, missingGuideDocument, refusalDocument, unavailableDocument } from "./missing-document";
 import { missingDoor, missingPage, PAGE_AND_DOOR } from "./missing";
 import { GUIDE_SLUG, slugFromGuidePath } from "./requested-path";
 
@@ -29,6 +29,17 @@ describe("the HTML the middleware serves for an unknown guide", () => {
 
   it("still refuses when no slug could be read", () => {
     expect(missingGuideDocument("")).toContain("Forge publishes no guide at that address");
+  });
+});
+
+describe("the documents the middleware serves while the guide index is down", () => {
+  it.each([
+    ["the 503", () => unavailableDocument()],
+    ["a refusal", () => refusalDocument(missingPage("x"), { indexDown: true })],
+  ])("%s names only the readers whose pages still open under the site name", (_case, make) => {
+    const html = make();
+    expect(html).toContain('<span class="caption">For people using Forge and people connecting an assistant.</span>');
+    expect(html).not.toContain("and agents.");
   });
 });
 

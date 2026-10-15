@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { coreFileUrl } from "@/lib/utils/core-url";
-import { INDEX_PATH, SITE_CAPTION, SITE_NAME } from "../audience";
+import { INDEX_PATH, openDoors, SITE_NAME, siteCaption } from "../audience";
 
 /** Chrome for the public documentation. Deliberately not the workspace shell:
  *  these routes are read by people with no Forge account and by agents with no
@@ -13,7 +13,7 @@ export function GuideShell({ children, indexDown = false }: { children: React.Re
           <Link href={INDEX_PATH} className="fg-h3 font-semibold text-fg">
             {SITE_NAME}
           </Link>
-          <span className="fg-caption text-subtle">{SITE_CAPTION}</span>
+          <span className="fg-caption text-subtle">{siteCaption(openDoors(indexDown))}</span>
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">{children}</main>

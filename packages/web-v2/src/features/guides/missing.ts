@@ -1,6 +1,6 @@
 // The words for an unknown guide, page or door, said by two renderers: docs/modules/guides/public-pages.md.
 import { coreFileUrl } from "@/lib/utils/core-url";
-import { AUDIENCES, DOORS } from "./audience";
+import { AUDIENCES, BUNDLED_AUDIENCES, DOORS, pagesOf } from "./audience";
 
 export function missingGuideHeading(slug: string): string {
   return slug
@@ -35,13 +35,13 @@ export const GUIDES_UNAVAILABLE: Refusal = {
   bodyWhileDown: GUIDES_UNAVAILABLE_BODY,
 };
 
-export const LANDING_WHILE_DOWN =
-  "Forge's guide index did not answer, so the pages for agents could not be loaded. The search and the ways in below cover the pages built into this site, which open without it.";
+const CLOSED_WHILE_DOWN = AUDIENCES.filter((a) => !BUNDLED_AUDIENCES.includes(a));
+
+export const LANDING_WHILE_DOWN = `Forge's guide index did not answer, so ${pagesOf(CLOSED_WHILE_DOWN)} could not be loaded. The search and the ways in below cover the pages built into this site, which open without it.`;
 
 /** Said, while the guide index is down, above the bundled doors and under a bundled page's search. */
 export const BUNDLED_WAYS_IN = "These ways in are built into this site and open without it:";
-export const HELP_ONLY_SEARCH =
-  "Search covers the pages for people only: the pages for agents could not be loaded.";
+export const HELP_ONLY_SEARCH = `Search covers ${pagesOf(BUNDLED_AUDIENCES)} only: ${pagesOf(CLOSED_WHILE_DOWN)} could not be loaded.`;
 
 /** What a refusal says while the guide index does not answer, one paragraph each. */
 export function saidWhileDown(refusal: Refusal): string[] {

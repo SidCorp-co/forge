@@ -5,7 +5,7 @@ import type { HelpDoc } from "@/features/docs/help-content.generated";
 import { groupSections, HELP_SECTION_ORDER, searchDocs } from "@/features/docs/reader";
 import { coreFileUrl } from "@/lib/utils/core-url";
 import type { Guide } from "./api";
-import { AGENT_SECTION, AUDIENCES, type Audience, INDEX_PATH, SEARCH_EXAMPLES } from "./audience";
+import { AGENT_SECTION, AUDIENCES, type Audience, INDEX_PATH, SEARCH_EXAMPLES, searchLabel } from "./audience";
 
 export interface PublicDoc {
   slug: string;
@@ -107,6 +107,6 @@ export function searchPlaceholder(corpus: readonly PublicDoc[], doors: readonly 
     );
   }
   const ordered = doors.flatMap((a) => working.filter((e) => e.audience === a));
-  if (ordered.length === 0) return "Search every page";
+  if (ordered.length === 0) return searchLabel(doors);
   return `Try ${ordered.map((e) => `“${e.term}”`).join(", ")}`;
 }

@@ -20,14 +20,14 @@ import { deriveToc, matchExcerpt, searchDocs } from "@/features/docs/reader";
 import { coreFileUrl } from "@/lib/utils/core-url";
 import type { GuideScope } from "../api";
 import {
-  AUDIENCES,
   type Audience,
-  BUNDLED_AUDIENCES,
   DOORS,
   doorHref,
   documentTitle,
   INDEX_PATH,
   ONE_CORPUS,
+  openDoors,
+  searchLabel,
 } from "../audience";
 import { type PublicDoc, docsBehind, doorSections } from "../corpus";
 import { ALL_DOORS_LINK_TEXT, HELP_ONLY_SEARCH, LANDING_WHILE_DOWN, type Refusal, saidWhileDown } from "../missing";
@@ -119,7 +119,7 @@ export function PublicLanding({
 }) {
   const { query, setQuery, results } = useSearch(corpus);
   useDocumentTitle(null);
-  const doors = scope ? AUDIENCES : BUNDLED_AUDIENCES;
+  const doors = openDoors(scope === null);
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -131,7 +131,7 @@ export function PublicLanding({
           query={query}
           onQuery={setQuery}
           placeholder={placeholder}
-          label="Search every page"
+          label={searchLabel(doors)}
         />
         {results ? <DocsSearchResults results={results.map((d) => resultItem(d, null, query))} /> : null}
       </div>
@@ -258,10 +258,6 @@ function JumpToSearch() {
   );
 }
 
-/** The sidebar's field is 260px wide, where the landing's teaching placeholder is cut off after
- *  its first word; the examples are taught on the landing, whose field has the width for them. */
-const SIDEBAR_PLACEHOLDER = "Search every page";
-
 /** A door or page served from the pages bundled into the site. `scope` is `null` where core's guide
  *  index could not be read: the corpus is then the bundled pages alone, which the sidebar says, and
  *  only the doors those pages fill are offered as ways on. */
@@ -291,13 +287,17 @@ export function PublicReader({
     : [];
 
   const helpOnly = scope === null;
-  const otherDoors = (helpOnly ? BUNDLED_AUDIENCES : AUDIENCES).filter((a) => a !== audience);
+  const open = openDoors(helpOnly);
+  const otherDoors = open.filter((a) => a !== audience);
+  // The sidebar's field is 260px wide, where the landing's teaching placeholder is cut off after its
+  // first word, so it says what it searches; the examples are taught on the landing.
+  const searchName = searchLabel(open);
   const sidebar = (
     <DocsSidebar
       query={query}
       onQuery={setQuery}
-      placeholder={SIDEBAR_PLACEHOLDER}
-      searchLabel="Search every page"
+      placeholder={searchName}
+      searchLabel={searchName}
       searchId={SEARCH_FIELD_ID}
       results={results ? results.map((d) => resultItem(d, activeHref, query)) : null}
       sections={sections}
@@ -384,7 +384,7 @@ export function PublicRefusal({ refusal }: { refusal: Refusal }) {
         </p>
       ))}
       <nav aria-label="Ways in" className="flex flex-col gap-1">
-        {BUNDLED_AUDIENCES.map((a) => (
+        {openDoors(true).map((a) => (
           <Link key={a} href={doorHref(a)} className={LINK_CLASS}>
             {DOORS[a].label}
           </Link>

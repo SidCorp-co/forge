@@ -77,6 +77,25 @@ describe('the guides core serves, against the folder that holds their bodies', (
   });
 });
 
+/** What a guide teaches about a config write, held to the write `forge_config` and
+ *  `PATCH /projects/:id/pipeline-config` take: a patch naming only the changed keys, beside the
+ *  document it was read against, and `CONFIG_STALE` when that moved (ISS-1170). */
+describe('the config write, as the guides teach it', () => {
+  it('tells no agent to send a complete entry, the whole-document write ISS-1170 retired', () => {
+    const teaching = FORGE_GUIDES.filter((g) => /complete entry/i.test(g.body)).map((g) => g.slug);
+    expect(teaching).toEqual([]);
+  });
+
+  it.each(['project-settings-and-test-credentials', 'agent-setup'])(
+    "teaches %s's config write with its base and the refusal a moved base gets",
+    (slug) => {
+      const body = FORGE_GUIDES.find((g) => g.slug === slug)?.body ?? '';
+      expect(body).toContain('pipelineConfigBase');
+      expect(body).toContain('CONFIG_STALE');
+    },
+  );
+});
+
 describe('the generator, against planted files', () => {
   const made: string[] = [];
   afterEach(() => {
