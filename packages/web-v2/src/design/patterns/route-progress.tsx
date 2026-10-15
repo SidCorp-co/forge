@@ -37,7 +37,6 @@ export function RouteProgress() {
     const start = () => {
       if (hide.current) clearTimeout(hide.current);
       startPath.current = location.pathname;
-      // Next calls pushState from an insertion effect, where React refuses a state update.
       queueMicrotask(() => {
         setVisible(true);
         setWidth(8);
