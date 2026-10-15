@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.245] - 2026-10-15
+
+One GitHub App serves the instance: connecting GitHub is a single button
+
+### Changed
+
+- **One public GitHub App serves the whole instance.** Connect GitHub goes straight to its install page; an installation reaches an org's projects only once GitHub proves it is the installer's, and its deliveries route by installation and repository.
+- **Connect GitHub is one button, and binding opens pre-matched.** Each project is ticked with the repository it declared or is named after, ambiguity named; a project without one connects it from the App's repositories.
+
 ## [0.4.0-dev.244] - 2026-10-15
 
 Connecting GitHub from forge-dev's web returns to the origin you are signed in on
