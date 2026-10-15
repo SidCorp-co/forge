@@ -3,7 +3,7 @@
 // badge: a failure drawn as nothing owed is the silence this repairs.
 
 import { describe, expect, it } from "vitest";
-import { bottomTabItems, buildActiveKey, buildCrumbs, compactWorkspaceRailItems, OPEN_WORK_COUNTS, openWorkFigure, projectRailItems, workspaceNavItems } from "./nav-model";
+import { bottomTabItems, buildActiveKey, buildBottomActiveKey, buildCrumbs, compactWorkspaceRailItems, OPEN_WORK_COUNTS, openWorkFigure, projectRailItems, workspaceNavItems } from "./nav-model";
 
 const OPEN_WORK_29 = { badge: 29, badgeCounts: OPEN_WORK_COUNTS };
 
@@ -87,7 +87,7 @@ describe("the project breadcrumb", () => {
   const crumbAt = (pathname: string) =>
     buildCrumbs({ pathname, slug: "shop", activeKey: buildActiveKey(pathname, "shop"), projectName: "Shop" }).at(-1)?.label;
 
-  it("names an off-rail page rather than the Dashboard the rail lights for it", () => {
+  it("names an off-rail page rather than Dashboard", () => {
     expect(crumbAt("/projects/shop/pipeline")).toBe("Pipeline");
     expect(crumbAt("/projects/shop/releases")).toBe("Releases");
     expect(crumbAt("/projects/shop/settings/members")).toBe("Settings");
@@ -96,5 +96,23 @@ describe("the project breadcrumb", () => {
   it("keeps the rail's label for a rail page and Dashboard for the project root", () => {
     expect(crumbAt("/projects/shop/issues/abc")).toBe("Issues");
     expect(crumbAt("/projects/shop")).toBe("Dashboard");
+  });
+});
+
+describe("the rail row a project page lights", () => {
+  const offRail = ["/projects/shop/pipeline", "/projects/shop/releases", "/projects/shop/settings/members"];
+
+  it("lights no row, rail or bottom tab, on a page the rail does not list, never Dashboard", () => {
+    for (const path of offRail) {
+      expect(buildActiveKey(path, "shop")).toBe("");
+      expect(buildBottomActiveKey(path, "shop")).toBe("");
+    }
+  });
+
+  it("lights Dashboard at the project root only, and the matching row on a rail page", () => {
+    expect(buildActiveKey("/projects/shop", "shop")).toBe("proj-overview");
+    expect(buildBottomActiveKey("/projects/shop", "shop")).toBe("proj-overview");
+    expect(buildActiveKey("/projects/shop/issues/abc", "shop")).toBe("proj-issues");
+    expect(buildActiveKey("/projects/shop/agents", "shop")).toBe("proj-agents");
   });
 });
