@@ -1,1 +1,1 @@
-**A screenshot that does not load names its file.** Feedback evidence, the peek's tiles, attachment lists and the lightbox draw "Couldn't load <file>" in the image's box instead of a broken image.
+**A screenshot that does not load names its file.** Feedback evidence, the peek's tiles, attachment lists and the lightbox draw "Couldn't load <file>" instead of a broken image; the lightbox header reads white in the light theme too.
