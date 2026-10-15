@@ -251,7 +251,7 @@ describe('CLAIM_CONFLICT names what refused each issue, and what frees it', () =
     const answer = await recordRefused([shipped]);
     expect(answer.code).toBe('CLAIM_CONFLICT');
     expect(answer.message).toMatch(
-      new RegExp(`\\b${await keyOf(shipped)} is at \`closed\`: already shipped`),
+      new RegExp(`\\b${await keyOf(shipped)} is at Closed: already shipped`),
     );
     expect(answer.message).not.toMatch(/abort/i);
     expect(answer.details.conflicts).toEqual([
@@ -315,7 +315,7 @@ describe('CLAIM_CONFLICT names what refused each issue, and what frees it', () =
     const answer = await recordRefused([testing, stranger]);
     expect(answer.code).toBe('CLAIM_CONFLICT');
     expect(answer.message).toMatch(
-      new RegExp(`\\b${await keyOf(testing)} is at \`testing\`, not \`awaiting_release\``),
+      new RegExp(`\\b${await keyOf(testing)} is at Testing, not Awaiting release`),
     );
     expect(answer.message).toContain(`${stranger} is no issue on this project`);
     expect(answer.details.conflicts).toEqual([
@@ -346,7 +346,7 @@ describe('an issue id is the same id in either case', () => {
     const answer = await recordRefused([testing.toUpperCase()]);
     expect(answer.code).toBe('CLAIM_CONFLICT');
     expect(answer.message).toMatch(
-      new RegExp(`\\b${await keyOf(testing)} is at \`testing\`, not \`awaiting_release\``),
+      new RegExp(`\\b${await keyOf(testing)} is at Testing, not Awaiting release`),
     );
     expect(answer.message).not.toMatch(/no issues? on this project/);
     expect(answer.details.conflicts).toEqual([
@@ -394,7 +394,7 @@ describe('an issue past the release gate is not told to wait for it', () => {
   it('says an issue at closed has already shipped', async () => {
     const closed = await fx.insertIssue('closed');
     const answer = await recordRefused([closed]);
-    expect(answer.message).toMatch(new RegExp(`\\b${await keyOf(closed)} is at \`closed\``));
+    expect(answer.message).toMatch(new RegExp(`\\b${await keyOf(closed)} is at Closed`));
     expect(answer.message).toContain('already shipped');
     expect(answer.message).not.toContain('only once it reaches the release gate');
   }, 30_000);
@@ -402,7 +402,7 @@ describe('an issue past the release gate is not told to wait for it', () => {
   it('says an issue at dropped was set down as not work', async () => {
     const dropped = await fx.insertIssue('dropped');
     const answer = await recordRefused([dropped]);
-    expect(answer.message).toMatch(new RegExp(`\\b${await keyOf(dropped)} is at \`dropped\``));
+    expect(answer.message).toMatch(new RegExp(`\\b${await keyOf(dropped)} is at Dropped`));
     expect(answer.message).toContain('not work');
     expect(answer.message).not.toContain('only once it reaches the release gate');
   }, 30_000);

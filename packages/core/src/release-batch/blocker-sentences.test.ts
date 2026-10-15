@@ -231,6 +231,13 @@ describe('no release sentence writes a status as code (ISS-1229)', () => {
     ['an empty roster, count unread', () => releaseBlockerSentence('RELEASE_ROSTER_EMPTY')],
     ['criteria unearned', () => releaseBlockerSentence('RELEASE_CRITERIA_UNEARNED')],
     [
+      'criteria unearned, naming what each issue owes',
+      () =>
+        releaseBlockerSentence('RELEASE_CRITERIA_UNEARNED', {
+          held: [{ issueId: 'u', displayId: 'ISS-7', criteria: [1] }],
+        }),
+    ],
+    [
       'criteria unread for want of a readable repository',
       () => releaseBlockerSentence('RELEASE_CRITERIA_UNEARNED', { clears: ['grant the read'] }),
     ],
@@ -251,7 +258,7 @@ describe('no release sentence writes a status as code (ISS-1229)', () => {
   });
 
   it('names a carried issue at the label of its status', () => {
-    expect(cases[5]?.[1]()).toContain('`ISS-9` at Testing');
+    expect(cases[6]?.[1]()).toContain('`ISS-9` at Testing');
   });
 });
 
@@ -273,8 +280,39 @@ describe('the criteria hold', () => {
   it('names each held issue and the criteria it owes', () => {
     const message = releaseBlockerSentence('RELEASE_CRITERIA_UNEARNED', { held });
 
-    expect(message).toContain('ISS-1127` owes criterion 3, 7');
+    expect(message).toContain('ISS-1127` owes criteria 3 and 7');
     expect(message).toContain('ISS-1142` owes criterion 1');
+  });
+
+  // ISS-1229 r5d: sid-desk's Shape & release showed this as a paragraph of two sentences above a
+  // link that opens the same issues. One sentence in the screen's labels; the link carries the rest.
+  it('says it in one sentence, in labels, where no issue is named', () => {
+    expect(releaseBlockerSentence('RELEASE_CRITERIA_UNEARNED')).toBe(
+      'Every issue at Awaiting release still owes a verdict on an acceptance criterion, so the automatic release cuts nothing until each is recorded.',
+    );
+  });
+
+  // A caller with no link beside it still learns which issue owes which criterion.
+  it('keeps what each issue owes inside that one sentence', () => {
+    const message = releaseBlockerSentence('RELEASE_CRITERIA_UNEARNED', { held });
+
+    expect(message).toBe(
+      'Every issue at Awaiting release still owes a verdict on an acceptance criterion, so the automatic release cuts nothing until each is recorded: `ISS-1127` owes criteria 3 and 7; `ISS-1142` owes criterion 1.',
+    );
+    expect(message.split(/\.(?:\s|$)/).filter(Boolean)).toHaveLength(1);
+  });
+
+  it('writes a run of criteria as a range rather than thirty numbers', () => {
+    const run = (criteria: number[]) =>
+      releaseBlockerSentence('RELEASE_CRITERIA_UNEARNED', {
+        held: [{ issueId: 'u', displayId: 'ISS-754', criteria }],
+      });
+
+    expect(run(Array.from({ length: 30 }, (_, i) => i + 1))).toContain(
+      '`ISS-754` owes criteria 1–30.',
+    );
+    expect(run([3, 7, 9, 10, 11, 12])).toContain('owes criteria 3, 7 and 9–12.');
+    expect(run([4, 5])).toContain('owes criteria 4 and 5.');
   });
 
   const served: ServingReading = { kind: 'serving', served: [], unread: [], readAt: 'now' };
@@ -381,7 +419,7 @@ describe('what RELEASE_RUNTIME_UNROUTED tells a project nothing can read', () =>
   });
 
   it('names each held issue by its display id and what it owes, not a count', () => {
-    expect(sentence).toContain('`ISS-51` owes criterion 1, 2; `ISS-52` owes criterion 3.');
+    expect(sentence).toContain('`ISS-51` owes criteria 1 and 2; `ISS-52` owes criterion 3.');
     expect(sentence).not.toContain('Held:');
   });
 });

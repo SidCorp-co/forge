@@ -147,7 +147,7 @@ describe('a release batch names every issue its range carries', () => {
       [closedId, 'closed'],
       [unnamedId, 'awaiting_release'],
     ]);
-    expect(JSON.stringify(res.body)).toContain(`\`${parkedId}\` at \`needs_info\``);
+    expect(JSON.stringify(res.body)).toContain(`\`${parkedId}\` at Needs info`);
     const titled = (res.body.details?.carried ?? []) as Array<{ issueId: string; title?: string }>;
     const titles = await harness.db.execute(sql`SELECT title FROM issues WHERE id = ${parked}`);
     expect(titled.find((i) => i.issueId === parked)?.title).toBe(String(titles[0]?.title));

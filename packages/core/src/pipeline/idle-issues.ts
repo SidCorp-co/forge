@@ -16,7 +16,7 @@ import { db } from '../db/client.js';
 import { type IssueStatus, issueStatuses } from '../db/schema.js';
 import { ADMITTED_RUNNER } from '../devices/pool-admission.js';
 import { issueWorkInFlightSql } from '../issues/issue-lease.js';
-import { ISSUE_STATUS_LABELS } from '../issues/status-sets.js';
+import { ISSUE_STATUS_LABELS, statusLabel } from '../issues/status-sets.js';
 import { elapsedWords } from '../lib/elapsed-words.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
@@ -248,7 +248,7 @@ function unclassifiedRecord(row: CandidateRow, lease: LeaseReading, now: Date): 
     since: row.updated_at,
     waitingFor: 'not decidable: this status is in no rule this build holds',
     owes: 'human',
-    reason: `the status \`${row.status}\` is not one this build classifies, so no clock and no owner apply to it`,
+    reason: `the status ${statusLabel(row.status)} is not one this build classifies, so no clock and no owner apply to it`,
     lease: lease.verdict,
     evidence: {
       merged: row.merged_at !== null,

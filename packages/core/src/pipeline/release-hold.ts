@@ -179,7 +179,7 @@ export function criteriaHold(report: IssueCriteriaReport): ReleaseHold {
   const reasons = reasonsByWhy(report);
   const judge = judgeClause(report.serving, report.runtimes);
   const clears = [...new Set(report.unearned.flatMap((c) => c.clears ?? []))];
-  const others = `${judge}; or, having seen the change running in production, close the issue by hand; or move it out of \`awaiting_release\` if it is not to ship.`;
+  const others = `${judge}; or, having seen the change running in production, close the issue by hand; or move it out of Awaiting release if it is not to ship.`;
   const remedy =
     clears.length === 0
       ? `A person clears this: ${others}`
@@ -291,7 +291,7 @@ export const NO_RELEASE_GATE_HOLD: ReleaseHold = {
   reason:
     'This project declares no release (its `releaseChain` is empty), so there is no release for ' +
     'the automatic sweep to carry this issue into, and nothing will move it from ' +
-    '`awaiting_release`. Either declare a release chain with a live deploy binding, or close the ' +
+    'Awaiting release. Either declare a release chain with a live deploy binding, or close the ' +
     'issue.',
   owes: 'human',
   waitingFor: 'a person to declare a release or close the issue',
@@ -367,7 +367,7 @@ export function releaseHoldComment(
     : 'The same reason is on the issue itself, under `releaseHold`, and is removed once it no ' +
       'longer holds.';
   return [
-    '**The automatic release is holding this issue at `awaiting_release`.**',
+    '**The automatic release is holding this issue at Awaiting release.**',
     '',
     hold.reason,
     '',

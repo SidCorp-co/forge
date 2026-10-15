@@ -29,6 +29,7 @@ import {
 } from './merge-record.js';
 import { refuseUnmarkOnClosed } from './merged-at.js';
 import { findIssueById, type IssueRow } from './read-service.js';
+import { statusLabel } from './status-sets.js';
 
 export type AuditComment = { id: string; body: string; parentId: string | null };
 
@@ -203,8 +204,8 @@ async function unmarkOrRefuse(issueId: string): Promise<void> {
   const refusal = refuseUnmarkOnClosed(still.status);
   if (!refusal) {
     throw new Error(
-      `unmark cleared no row on issue ${issueId}, which is neither missing nor \`closed\` but ` +
-        `\`${still.status}\`. The UPDATE's only other condition is the id, so this is a state ` +
+      `unmark cleared no row on issue ${issueId}, which is neither missing nor Closed but ` +
+        `${statusLabel(still.status)}. The UPDATE's only other condition is the id, so this is a state ` +
         `clearIssueMerge cannot produce and must not be reported as either of them.`,
     );
   }

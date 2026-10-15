@@ -1,11 +1,12 @@
 import type { IssueDependencyHold, IssueDependencyKind, IssueStatus } from '../db/schema.js';
+import { statusLabel } from './status-sets.js';
 
 export const WORK_EVIDENCE_WAIVER_KIND: IssueDependencyKind = 'decomposes';
 
 export const WORK_EVIDENCE_WAIVER_NOTE =
   `It does not gate dispatch, but it is NOT inert: one live \`${WORK_EVIDENCE_WAIVER_KIND}\` edge ` +
   "OUT of an issue waives that issue's work-evidence gate, so it can be marked merged and moved " +
-  'to `developed`/`testing` with no branch and no commit of its own. That ' +
+  'to Developed/Testing with no branch and no commit of its own. That ' +
   'exemption exists for grouping parents whose children carry the code; wiring one onto an issue ' +
   'that is meant to prove its own work removes the check that would have caught a fabricated ' +
   'merge.';
@@ -36,10 +37,10 @@ export const releasingStatusesFor = (hold: IssueDependencyHold): readonly IssueS
 
 export const GATES_DISPATCH_NOTE =
   'B is held out of the admissible set a master reads while a live `blocks` edge points at it ' +
-  `from an A that has not reached \`${BLOCKER_SETTLED_STATUSES[0]}\` — the statuses that release ` +
-  `it are ${BLOCKER_SETTLED_STATUSES.map((s) => `\`${s}\``).join(', ')}. An edge written with ` +
+  `from an A that has not reached ${BLOCKER_SETTLED_STATUSES.map(statusLabel)[0]} — the statuses that release ` +
+  `it are ${BLOCKER_SETTLED_STATUSES.map(statusLabel).join(', ')}. An edge written with ` +
   `\`holdsUntil: "shipped"\` (only on a \`blocks\` edge) holds B until A is ` +
-  `${BLOCKER_SHIPPED_STATUSES.map((s) => `\`${s}\``).join(', ')}, which is how a dependency says ` +
+  `${BLOCKER_SHIPPED_STATUSES.map(statusLabel).join(', ')}, which is how a dependency says ` +
   "'not until this has actually shipped'; omitting `holdsUntil` leaves the edge `settled`, " +
   'exactly the reading above. The forge-plugin CLI (`forge next`, `forge advance`) keeps its own ' +
   'floor and does not yet read `holdsUntil`, so it can still call B eligible while the master and ' +

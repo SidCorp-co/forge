@@ -1,9 +1,9 @@
 /**
- * ISS-1108 — `unmark` on a `closed` issue, refused in the application by name.
+ * ISS-1108 — `unmark` on a Closed issue, refused in the application by name.
  *
- * Clearing the claim writes `merged_at = NULL` and does not touch `status`, so on a `closed` row
+ * Clearing the claim writes `merged_at = NULL` and does not touch `status`, so on a Closed row
  * it produces the one state this issue makes unrepresentable. The database refuses it, but its
- * message is written for a close and says the issue "cannot enter `closed`" — an act nobody
+ * message is written for a close and says the issue "cannot enter Closed" — an act nobody
  * attempted on a row already there — and it arrives as an unhandled Postgres exception, which the
  * route turns into a 500.
  *
@@ -96,9 +96,9 @@ beforeEach(() => {
 describe('the rule itself (ISS-1108)', () => {
   it('refuses an unmark on `closed`, naming the exit `closed` has and the one for non-work', () => {
     const refusal = refuseUnmarkOnClosed('closed');
-    expect(refusal?.detail).toContain('`closed` means the work shipped');
-    expect(refusal?.detail).toContain('reopen');
-    expect(refusal?.detail).toContain('dropped');
+    expect(refusal?.detail).toContain('Closed means the work shipped');
+    expect(refusal?.detail).toContain('Reopened');
+    expect(refusal?.detail).toContain('Dropped');
     expect(refusal?.details).toEqual({
       status: 'closed',
       moveTo: 'reopen',
@@ -124,7 +124,7 @@ describe('unmark, at the door a caller reaches (ISS-1108)', () => {
 
     expect(err).toBeInstanceOf(MergeMarkerError);
     expect((err as InstanceType<typeof MergeMarkerError>).code).toBe('UNMARK_REQUIRES_NOT_CLOSED');
-    expect((err as Error).message).toContain('Move it off `closed` first');
+    expect((err as Error).message).toContain('Move it off Closed first');
   });
 
   it('leaves no audit comment when it refuses', async () => {
@@ -145,7 +145,7 @@ describe('unmark, at the door a caller reaches (ISS-1108)', () => {
     rowNow = { id: ISSUE_ID, status: 'in_progress', mergedAt: AT };
     const err = await unmark().catch((e: unknown) => e);
     expect(err).not.toBeInstanceOf(MergeMarkerError);
-    expect((err as Error).message).toContain('neither missing nor `closed`');
+    expect((err as Error).message).toContain('neither missing nor Closed');
   });
 
   it('still clears the claim on an issue the guard admits', async () => {

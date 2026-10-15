@@ -324,7 +324,7 @@ async function reopenOnRegression(
   if (existing.status === 'dropped') {
     return {
       kind: 'refused',
-      reason: `Sentry reports ${shortId} has regressed, and the Forge issue holding it stands at \`dropped\` — a person decided not to fix this, so it is left where it is rather than reopened. Its counts were still refreshed.`,
+      reason: `Sentry reports ${shortId} has regressed, and the Forge issue holding it stands at Dropped — a person decided not to fix this, so it is left where it is rather than reopened. Its counts were still refreshed.`,
     };
   }
   if (existing.status !== 'closed') return null;

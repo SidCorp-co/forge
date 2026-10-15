@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
+import { statusLabel } from '../issues/status-sets.js';
 import { logger } from '../logger.js';
 import { wakeMastersForProject } from '../ws/master-wake.js';
 import type { Actor } from './activity.js';
@@ -59,7 +60,7 @@ export async function dispatchDriveManual(args: {
 }): Promise<{ released: true }> {
   if (!autonomousStepFor(args.status)) {
     throw new Error(
-      `AUTONOMOUS_NOT_AT_ENTRY: the driver is handed an issue at \`${AUTONOMOUS_ENTRY_STATUS}\`, this one is at \`${args.status}\``,
+      `AUTONOMOUS_NOT_AT_ENTRY: the driver is handed an issue at ${statusLabel(AUTONOMOUS_ENTRY_STATUS)}, this one is at ${statusLabel(args.status)}`,
     );
   }
   await db.execute(sql`

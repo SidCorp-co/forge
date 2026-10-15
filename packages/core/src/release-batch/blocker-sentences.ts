@@ -3,9 +3,8 @@
  * explains it. Every door reads these, so none carries its own copy (ISS-1127).
  */
 
-import type { IssueStatus } from '../db/schema.js';
 import { RELEASE_RECORD_REMEDY } from '../issues/release-record-required.js';
-import { ISSUE_STATUS_LABELS } from '../issues/status-sets.js';
+import { ISSUE_STATUS_LABELS, statusLabel } from '../issues/status-sets.js';
 import type { RunnerHold } from '../runners/ineligible.js';
 import type { CarriedCheck, CarriedDecision, CarriedReading } from './carried.js';
 import { claimConflictSentence, readClaimConflictDetails } from './claim-conflicts.js';
@@ -121,6 +120,8 @@ export function alsoBlocking(err: unknown, thrown: ReleaseBlockerCode): ReleaseB
   return rest;
 }
 
+const CRITERIA_UNEARNED_LEAD = `Every issue at ${ISSUE_STATUS_LABELS.awaiting_release} still owes a verdict on an acceptance criterion, so the automatic release cuts nothing until each is recorded`;
+
 const CARRIED_WAYS_OUT =
   'None of them ships without a decision. Send one per issue with the batch: `ship-unverified` with what is unverified; `revert` once its landing is reverted on the branch being promoted; or `cut-below`, which releases only what landed before it. Or move the issue to the release gate and name it on the roster.';
 
@@ -150,7 +151,7 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
     'This project has runners registered and none of them could be handed a release, and the reading of why could not be taken. Open Settings \u2192 Runners and check each box\'s "Takes jobs from the pool" switch and when it was last seen.',
   BATCH_IN_FLIGHT:
     'A release is already running for this project, and a second one would claim the same issues. Let it finish, or abort it with what you found.',
-  RELEASE_CRITERIA_UNEARNED: `This project releases without a person acting, and the sweep that cuts its releases is holding back every issue waiting at the gate: each still owes a judging run on an acceptance criterion. Record a verdict for each criterion named below, or move the issue out of ${ISSUE_STATUS_LABELS.awaiting_release} if it is not to ship.`,
+  RELEASE_CRITERIA_UNEARNED: `${CRITERIA_UNEARNED_LEAD}.`,
   RELEASE_RUNTIME_UNROUTED:
     'This project releases without a person acting, only an issue whose every acceptance criterion is earned at what it is serving, and nothing here can read what it is serving — so no verdict a run records can earn one, and every issue waiting at the gate is held on that one reason. Give it a way to be read, and the next sweep weighs every waiting issue again.',
   RELEASE_CARRIES_UNDECIDED: `This release promotes a range that carries the landing of issues this batch does not name. ${CARRIED_WAYS_OUT}`,
@@ -245,20 +246,37 @@ function readableFirst(clears: readonly string[], subject: 'this' | 'that'): str
   return `A person clears ${subject} by making the repository readable: ${clears.join('; and ')}. The next sweep then weighs every waiting issue again.`;
 }
 
-function criteriaUnreadSentence(clears: readonly string[]): string {
-  return `This project releases without a person acting, and the sweep that cuts its releases is holding back every issue waiting at the gate: each still owes an acceptance criterion, and at least one could not be weighed because the repository could not be read. ${readableFirst(clears, 'this')} Otherwise, record a verdict for each criterion named below, or move the issue out of ${ISSUE_STATUS_LABELS.awaiting_release} if it is not to ship.`;
+/** One sentence in the screen's words; the link beside it opens the issues. Which issue owes which
+ *  criterion rides along for a caller with no link. A failed repository read leads with its own
+ *  act, because no verdict and no link repairs it (ISS-1398 judge j3). */
+function criteriaUnearnedSentence(held: HeldIssueRef[], clears: readonly string[]): string {
+  const owed = held.length === 0 ? '' : `: ${owesList(held)}`;
+  const unread =
+    clears.length === 0
+      ? ''
+      : `At least one acceptance criterion cannot be weighed until the repository can be read: ${clears.join('; and ')}. `;
+  return `${unread}${CRITERIA_UNEARNED_LEAD}${owed}.`;
+}
+
+/** "criterion 4", "criteria 1–30", "criteria 3, 7 and 9–12". */
+function criteriaPhrase(nums: readonly number[]): string {
+  const runs: string[] = [];
+  for (let i = 0; i < nums.length; ) {
+    let j = i;
+    while (j + 1 < nums.length && nums[j + 1] === (nums[j] as number) + 1) j++;
+    runs.push(j - i >= 2 ? `${nums[i]}–${nums[j]}` : nums.slice(i, j + 1).join(', '));
+    i = j + 1;
+  }
+  const listed = runs.join(', ').replace(/, ([^,]*)$/, ' and $1');
+  return nums.length === 1 ? `criterion ${listed}` : `criteria ${listed}`;
+}
+
+function owesList(held: HeldIssueRef[]): string {
+  return held.map((h) => `\`${h.displayId}\` owes ${criteriaPhrase(h.criteria)}`).join('; ');
 }
 
 function heldIssuesSentence(remedy: string, held: HeldIssueRef[]): string {
-  const each = held
-    .map((h) => `\`${h.displayId}\` owes criterion ${h.criteria.join(', ')}`)
-    .join('; ');
-  return `${remedy} ${each}.`;
-}
-
-/** A status as the screen names it; a stored value this build does not know is shown as stored. */
-function statusLabel(status: string): string {
-  return ISSUE_STATUS_LABELS[status as IssueStatus] ?? status;
+  return `${remedy} ${owesList(held)}.`;
 }
 
 const {
@@ -303,8 +321,7 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   if (code === 'RELEASE_CRITERIA_UNEARNED') {
     const held = (details?.held as HeldIssueRef[] | undefined) ?? [];
     const clears = (details?.clears as string[] | undefined) ?? [];
-    const said = clears.length === 0 ? remedy : criteriaUnreadSentence(clears);
-    return held.length === 0 ? said : heldIssuesSentence(said, held);
+    return criteriaUnearnedSentence(held, clears);
   }
   const carried = carriedSentence(code, details);
   if (carried) return carried;
@@ -446,9 +463,7 @@ function unreadableSentence(remedy: string, details?: Record<string, unknown>): 
 /** The sweep is cutting a release and leaving these behind, which stops nothing. */
 export function uncorroboratedWarningSentence(held: HeldIssueRef[], why: string): string {
   const issues = `${held.length} issue${held.length === 1 ? '' : 's'}`;
-  const each = held
-    .map((h) => `\`${h.displayId}\` on criterion ${h.criteria.join(', ')}`)
-    .join('; ');
+  const each = held.map((h) => `\`${h.displayId}\` on ${criteriaPhrase(h.criteria)}`).join('; ');
   return withCosts(
     'RELEASE_CRITERIA_UNCORROBORATED',
     `${issues} carry a criterion earned at a runtime nothing here could re-read: ${why} Those verdicts count — absence of a reading is not a failure — and they are weaker evidence than a reading would have made them. Whether each issue ships is decided by its own criteria, not by this. ${each}.`,

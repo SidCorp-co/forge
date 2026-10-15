@@ -17,7 +17,7 @@ import {
   type QuestionStep,
 } from '../db/schema-questions.js';
 import type { IssueDependencyExecutor } from '../issues/dependency-executor.js';
-import { ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
+import { ISSUE_TERMINAL_STATUSES, statusLabel } from '../issues/status-sets.js';
 import { hooks } from '../pipeline/hooks.js';
 import { wakeMastersForAnswer } from '../ws/master-wake.js';
 import { resolveAskOrigin } from './origin.js';
@@ -182,7 +182,7 @@ async function refuseFinishedWork(executor: QuestionExecutor, issueId: string | 
   const status = (rows[0] as { status?: IssueStatus } | undefined)?.status;
   if (status && ISSUE_TERMINAL_STATUSES.includes(status)) {
     throw new QuestionRefused(
-      `issue ${issueId} is \`${status}\` — the work this would ask about is finished, so no answer could reach it. Reopen the issue first if the question still stands`,
+      `issue ${issueId} is ${statusLabel(status)} — the work this would ask about is finished, so no answer could reach it. Reopen the issue first if the question still stands`,
       'QUESTION_ISSUE_TERMINAL',
     );
   }

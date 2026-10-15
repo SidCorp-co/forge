@@ -39,8 +39,8 @@ describe('a `needs` that mints nothing says so', () => {
 
   it('names the status when the target mints no question at all', () => {
     const said = asked(AGENT, 'in_progress', 'the signed contract');
-    expect(said).toContain('`in_progress`');
-    expect(said).toContain('needs_info');
+    expect(said).toContain('In progress');
+    expect(said).toContain('Needs info');
     expect(said).toContain('on no record');
   });
 

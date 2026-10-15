@@ -528,7 +528,7 @@ describe('the reason the unattended sweep will not carry an issue', () => {
     const held = answer.body.blockers.find((b) => b.code === 'RELEASE_CRITERIA_UNEARNED');
 
     expect(held).toBeDefined();
-    expect(held?.message).toContain(`\`${await shownAs(issue)}\` owes criterion 1, 2`);
+    expect(held?.message).toContain(`\`${await shownAs(issue)}\` owes criteria 1 and 2`);
     expect(held?.message).not.toContain(issue);
     expect(held?.details?.held).toEqual([
       { issueId: issue, displayId: await shownAs(issue), criteria: [1, 2] },

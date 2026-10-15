@@ -41,9 +41,9 @@ export async function refuseUnrecordedClose(
 
   return {
     detail:
-      '`closed` is what every reader takes as "this shipped", so an issue cannot close with ' +
+      'Closed is what every reader takes as "this shipped", so an issue cannot close with ' +
       `nothing written about what shipped. ${RELEASE_RECORD_REMEDY} ` +
-      'Use `dropped` instead if this turned out not to be work — that closes it without the claim.',
+      'Use Dropped instead if this turned out not to be work — that closes it without the claim.',
     details: { requires: 'releaseNotes' },
   };
 }

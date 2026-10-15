@@ -83,7 +83,7 @@ describe('foldWorkStates', () => {
 
   it('refuses a status the schema does not hold by name, rather than counting it as nothing', () => {
     expect(() => foldWorkStates([{ status: 'parked', owesAnswer: false, n: 1 }])).toThrow(
-      /`parked` is not one of the issue statuses/,
+      /the status parked is not one of the issue statuses/,
     );
   });
 

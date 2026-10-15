@@ -272,7 +272,7 @@ describe('a batch aborted after its finish closed part of the roster', () => {
       expect(answer.message).toMatch(named(await keyOf(id)));
       expect(answer.message).not.toContain(id);
     }
-    expect(answer.message).toMatch(/they stay closed\. Every other issue stays at `releasing`/);
+    expect(answer.message).toMatch(/they stay closed\. Every other issue stays at Releasing/);
   }, 40_000);
 
   it('still names the closed issues after a second abort, whose recovery finds no claim', async () => {

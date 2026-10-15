@@ -256,7 +256,7 @@ describe('a reset the wedge net makes is on the issue (ISS-1317)', () => {
     await reconciler.resetAutonomousWedgesOnce();
     const bodies = await commentsOn(id);
     expect(bodies).toHaveLength(1);
-    expect(bodies[0]).toContain('**Moved by the reconciler: `in_progress` -> `open`**');
+    expect(bodies[0]).toContain('**Moved by the reconciler: In progress -> Open**');
     expect(bodies[0]).toContain('not a person');
     expect(bodies[0]).toMatch(/the lease held by `iss-run-1` lapsed at \d{4}-\d\d-\d\dT/);
   });

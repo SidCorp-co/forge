@@ -263,7 +263,7 @@ describe('two aborts overlapping on one promoted batch', () => {
 
     const said = await refusalMessage(() => accept(runId, PUSHED));
     expect(said).toMatch(/its claims were released/);
-    expect(said).not.toMatch(/stay at `releasing`/);
+    expect(said).not.toMatch(/stay at (`releasing`|Releasing)/);
     for (const id of issueIds) expect((await fx.stored(id)).status).toBe('awaiting_release');
   }, 30_000);
 });
@@ -383,7 +383,7 @@ describe('a batch aborted after its verification went green', () => {
     });
     expect(await shipped(runId)).toBeNull();
     const reason = await storedReason(runId);
-    expect(reason).toMatch(/the abort kept its claims\. Its issues stay at `releasing`/);
+    expect(reason).toMatch(/the abort kept its claims\. Its issues stay at Releasing/);
     expect(reason).not.toMatch(/claims were released/);
     expect(await refusalMessage(() => accept(runId, PUSHED))).toBe(reason);
     for (const [i, id] of issueIds.entries()) {
@@ -472,7 +472,7 @@ describe('a batch aborted while the door is taking its finish', () => {
     // Cancelled by a write that was not an abort, so nothing records where the roster went.
     const said = await refusalMessage(() => accept(runId, PUSHED));
     expect(said).toMatch(/each issue’s own status and notes are the account/);
-    expect(said).not.toMatch(/released|`releasing`|closed|gate/);
+    expect(said).not.toMatch(/released|`releasing`|Releasing|closed|gate/);
   }, 30_000);
 });
 

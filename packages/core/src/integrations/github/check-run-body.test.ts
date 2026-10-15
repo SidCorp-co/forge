@@ -88,7 +88,7 @@ describe('the three answers do not read the same', () => {
       reason: 'no issue row was found',
       computedAt: AT,
     });
-    expect(known.summary).toContain('`testing`');
+    expect(known.summary).toContain('Testing');
     expect(unknown.summary).toContain('an unknown status');
   });
 });

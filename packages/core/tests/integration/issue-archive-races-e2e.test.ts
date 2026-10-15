@@ -255,7 +255,7 @@ describe('an archive retried after a deadlock', () => {
       });
       expect(attempt).toBe(2);
       expect(report.refusals.map((r) => r.message)).toEqual([
-        expect.stringContaining('ISS-3 is `open`'),
+        expect.stringContaining('ISS-3 is Open'),
       ]);
       expect(report.matched).toEqual(['ISS-1', 'ISS-2', 'ISS-3']);
     } finally {

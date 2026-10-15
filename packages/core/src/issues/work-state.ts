@@ -1,4 +1,5 @@
 import type { IssueStatus } from '../db/schema.js';
+import { statusLabel } from './status-sets.js';
 
 /**
  * The state of work, core's copy of `@forge/contracts/work-state`, which core cannot import at
@@ -89,7 +90,7 @@ export interface WorkStateRow {
 function stateOfRow(row: WorkStateRow): WorkState {
   if (!(row.status in STATUS_WORK_STATE)) {
     throw new Error(
-      `work state: the status \`${row.status}\` is not one of the issue statuses (${Object.keys(STATUS_WORK_STATE).join(', ')}), so no state can count it`,
+      `work state: the status ${statusLabel(row.status)} is not one of the issue statuses (${Object.keys(STATUS_WORK_STATE).map(statusLabel).join(', ')}), so no state can count it`,
     );
   }
   return workStateOf(row.status as IssueStatus, row.owesAnswer);

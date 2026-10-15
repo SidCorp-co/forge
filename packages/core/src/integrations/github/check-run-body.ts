@@ -1,3 +1,4 @@
+import { statusLabel } from '../../issues/status-sets.js';
 import { CONTRACT_SOURCE, type ContractAnswer } from './contract-answer.js';
 
 /** The one name this check is published under, on every head, forever. */
@@ -26,7 +27,7 @@ function judged(answer: Extract<ContractAnswer, { kind: 'judged' }>): CheckRunBo
   const lines = [
     `Contract read: ${CONTRACT_SOURCE}.`,
     '',
-    `Status: \`${status}\`, which declares ${answer.declared.length} record(s).`,
+    `Status: ${statusLabel(status)}, which declares ${answer.declared.length} record(s).`,
     '',
   ];
   lines.push(
@@ -43,12 +44,12 @@ function judged(answer: Extract<ContractAnswer, { kind: 'judged' }>): CheckRunBo
     conclusion: unmet.length === 0 ? 'success' : 'failure',
     title:
       unmet.length === 0
-        ? `\`${status}\` is earned: ${met.length} of ${met.length} record(s) present`
-        : `\`${status}\` is not earned: ${unmet.length} of ${answer.declared.length} record(s) missing`,
+        ? `${statusLabel(status)} is earned: ${met.length} of ${met.length} record(s) present`
+        : `${statusLabel(status)} is not earned: ${unmet.length} of ${answer.declared.length} record(s) missing`,
     summary:
       unmet.length === 0
-        ? `Every record \`${status}\` declares is on this issue.`
-        : `${unmet.length} record(s) \`${status}\` declares are not on this issue.`,
+        ? `Every record ${statusLabel(status)} declares is on this issue.`
+        : `${unmet.length} record(s) ${statusLabel(status)} declares are not on this issue.`,
     text: lines.join('\n'),
   };
 }
@@ -57,14 +58,14 @@ function noneDeclared(answer: Extract<ContractAnswer, { kind: 'none-declared' }>
   return {
     name: CHECK_RUN_NAME,
     conclusion: 'neutral',
-    title: `\`${answer.status}\` declares no entry criteria on this project`,
+    title: `${statusLabel(answer.status)} declares no entry criteria on this project`,
     summary:
-      `This project declares no records for \`${answer.status}\`, so there is nothing here for ` +
+      `This project declares no records for ${statusLabel(answer.status)}, so there is nothing here for ` +
       'Forge to hold this issue to. That is a project setting and not a pass.',
     text: [
       `Contract read: ${CONTRACT_SOURCE}.`,
       '',
-      `Nothing is declared for \`${answer.status}\`, so nothing was judged. This is not the same ` +
+      `Nothing is declared for ${statusLabel(answer.status)}, so nothing was judged. This is not the same ` +
         'as every record being present, and it is not the same as the contract being unreadable ' +
         '— each of the three says so in its own words.',
       '',
@@ -76,7 +77,7 @@ function noneDeclared(answer: Extract<ContractAnswer, { kind: 'none-declared' }>
 }
 
 function unreadable(answer: Extract<ContractAnswer, { kind: 'unreadable' }>): CheckRunBody {
-  const where = answer.status ? `\`${answer.status}\`` : 'an unknown status';
+  const where = answer.status ? statusLabel(answer.status) : 'an unknown status';
   return {
     name: CHECK_RUN_NAME,
     conclusion: 'neutral',

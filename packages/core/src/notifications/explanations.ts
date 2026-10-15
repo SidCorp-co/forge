@@ -8,7 +8,7 @@ export const SWEEP_DETECTORS = {
   'owed-close': {
     groupTitle: 'Issues whose code shipped and whose close was never written',
     explanation:
-      'The step that owed the close did not write it. Read the branch, then close the issue — or, if it never landed, clear the mark with `unmark` and move the issue to `dropped`.',
+      'The step that owed the close did not write it. Read the branch, then close the issue — or, if it never landed, clear the mark with `unmark` and move the issue to Dropped.',
   },
   stranded: {
     groupTitle: 'Issues are parked with nothing coming for them',

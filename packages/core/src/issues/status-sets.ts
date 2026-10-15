@@ -44,3 +44,8 @@ export const ISSUE_STATUS_LABELS: Readonly<Record<IssueStatus, string>> = {
   draft: 'Draft',
   dropped: 'Dropped',
 };
+
+/** A status as the screen names it; a stored value this build does not know is shown as stored. */
+export function statusLabel(status: string): string {
+  return ISSUE_STATUS_LABELS[status as IssueStatus] ?? status;
+}
