@@ -141,6 +141,7 @@ import { pipelineRegistryRoutes } from './pipeline/registry-routes.js';
 import { registerRetentionSweeper } from './pipeline/retention/sweep.js';
 import { pipelineRunProjectRoutes, pipelineRunReadRoutes } from './pipeline/runs-read-routes.js';
 import { pipelineRunRoutes } from './pipeline/runs-routes.js';
+import { sessionsAndHoldsRoutes } from './pipeline/sessions-and-holds-routes.js';
 import { stepHandoffRoutes } from './pipeline/step-handoff-routes.js';
 import { registerPipelineSweeper } from './pipeline/sweeper.js';
 import { registerPmCadenceTicker, unregisterPmCadenceTicker } from './pm/cadence.js';
@@ -274,11 +275,9 @@ registerEagerSubscribers(hooks);
 app.use('/mcp', mcpRequestClass(), requirePat());
 app.route('/mcp', mcpRoutes);
 
-app.route('/', describedInstallRoutes());
-app.route('/api', describedInstallRoutes());
+for (const at of ['/', '/api']) app.route(at, describedInstallRoutes());
 
-app.route('/', guideRoutes);
-app.route('/api', guideRoutes);
+for (const at of ['/', '/api']) app.route(at, guideRoutes);
 
 app.route('/api', referenceRoutes(apiReference));
 
@@ -315,6 +314,7 @@ app.route('/api/me', collaboratorsMeRoutes);
 app.route('/api/projects', projectMetricsRoutes);
 app.route('/api/projects', gitCredentialRoutes);
 app.route('/api/projects', runLedgerRoutes);
+app.route('/api/projects', sessionsAndHoldsRoutes);
 app.route('/api/projects', masterCharterRoutes);
 app.route('/api/projects', projectRoutes);
 app.route('/api/projects', assistantWeeklyRoutes);

@@ -27,8 +27,8 @@ Adding dark later = one `[data-theme="dark"] { … }` override of the semantic b
 (the selector already exists, commented, in `tokens.css`) + flip `forcedTheme` in
 `providers/theme-provider.tsx`. Raw scale + every component stay untouched.
 
-> Exception: data-driven color (status / health / stage dots) lives in
-> `src/design/status.ts` + `stages.ts` and references the raw palette on purpose —
+> Exception: data-driven color (status / health dots) lives in
+> `src/design/status.ts` and references the raw palette on purpose —
 > the color *is* the datum.
 
 ## Layout
@@ -42,11 +42,11 @@ src/
 │  └─ kit/page.tsx          # ← component gallery (preview everything)
 ├─ design/                  # presentational, data-agnostic
 │  ├─ icons/icon.tsx        # semantic name → lucide-react
-│  ├─ stages.ts · status.ts # job-type hues + status/health/avatar meta
+│  ├─ status.ts             # status/health/avatar meta
 │  ├─ primitives/           # Button, StatusChip, MonoTag, Avatar, ProjectMark,
 │  │                        #   HealthDot, Stat, Card, Kicker, Spinner, EmptyState,
 │  │                        #   Input, Field, Toggle, SegmentedControl
-│  ├─ patterns/             # KanbanCard, KanbanColumn, NavRail, TopBar,
+│  ├─ patterns/             # NavRail, TopBar,
 │  │                        #   CommandPalette, NotificationsMenu, DataTable
 │  └─ index.ts              # barrel — import from "@/design"
 ├─ features/                # ← every screen lives here, one module per domain

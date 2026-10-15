@@ -1,14 +1,8 @@
 // The pipeline strip, read off the RUN this session belongs to — its own steps,
-// not the seven canonical stages.
-//
-// getcontent's `drive` step is the reason: hard-coding STAGES rendered seven
-// empty boxes for a run whose only step was named something else, on the exact
-// page whose job is to say where in the pipeline this is. STAGES now only
-// supplies the accent colour when a step happens to be one of them.
+// each under the name the run gave it, in one neutral accent.
 
-import { STAGES } from "@/design";
-import { formatDurationMs } from "@/features/pipeline/derive";
-import type { PipelineRunSummary } from "@/features/pipeline/types";
+import { formatDurationMs } from "@/lib/utils/format";
+import type { PipelineRunSummary } from "@/features/runs/types";
 
 const TICK: Record<string, { glyph: string; color: string }> = {
   completed: { glyph: "✓", color: "var(--green-600)" },
@@ -17,10 +11,6 @@ const TICK: Record<string, { glyph: string; color: string }> = {
   cancelled: { glyph: "⊘", color: "var(--fg-subtle)" },
   running: { glyph: "●", color: "var(--pipeline-active)" },
 };
-
-function accentOf(jobType: string): string {
-  return STAGES.find((s) => s.key === jobType)?.color ?? "var(--border-strong)";
-}
 
 export function StepStrip({ run, currentStep }: { run: PipelineRunSummary; currentStep?: string }) {
   if (run.steps.length === 0) return null;
@@ -47,7 +37,7 @@ export function StepStrip({ run, currentStep }: { run: PipelineRunSummary; curre
             </div>
             <div
               className="mt-1.5 h-0.5 rounded-pill"
-              style={{ background: accentOf(step.jobType) }}
+              style={{ background: "var(--border-strong)" }}
             />
           </li>
         );

@@ -6,8 +6,9 @@
 
 import { useMemo } from "react";
 import { ErrorState } from "@/design";
-import { aggregateStepCosts, formatDurationSec, formatUsd } from "@/features/pipeline/derive";
-import type { StepDurationRow } from "@/features/pipeline/types";
+import { aggregateStepCosts } from "@/features/runs/derive";
+import { formatDurationSec, formatUsd } from "@/lib/utils/format";
+import type { StepDurationRow } from "@/features/runs/types";
 import { formatApiError } from "@/lib/api/error";
 import { slowestComparison } from "../shape";
 import { DashboardSection, EmptyLine, unreadSection } from "./dashboard-section";
@@ -66,7 +67,7 @@ export function StepTimes({ durations, windowDays, isLoading, error, onRetry }: 
                 <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-sunken">
                   <span
                     className="block h-full rounded-full"
-                    style={{ width: `${(s.medianSec / maxMedian) * 100}%`, background: s.color }}
+                    style={{ width: `${(s.medianSec / maxMedian) * 100}%`, background: "var(--fg-muted)" }}
                   />
                 </span>
                 <span className="w-14 flex-none text-right font-mono text-12 text-fg">

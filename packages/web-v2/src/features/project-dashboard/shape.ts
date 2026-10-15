@@ -4,7 +4,7 @@
 
 import { formatElapsed } from "@/features/overview/derive";
 import type { IssueRow } from "@/features/issues/types";
-import type { PipelineRunListItem, ThroughputRow } from "@/features/pipeline/types";
+import type { PipelineRunListItem, ThroughputRow } from "@/features/runs/types";
 import type { AttentionCut, DashboardAttentionItem, ParkedAge } from "./derive";
 
 /** A question or an attention item that has waited this long on a person makes the project degraded. */

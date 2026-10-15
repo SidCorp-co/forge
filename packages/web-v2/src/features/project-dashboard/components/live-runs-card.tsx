@@ -2,9 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { Icon, LiveDot, StatusChip } from "@/design";
-import { stageColor } from "@/design/stages";
-import { formatUsd } from "@/features/pipeline/derive";
-import type { PipelineRunKind, PipelineRunListItem } from "@/features/pipeline/types";
+import { formatUsd } from "@/lib/utils/format";
+import type { PipelineRunKind, PipelineRunListItem } from "@/features/runs/types";
 import type { ReadState } from "../shape";
 import { DashboardSection, EmptyLine, RowList, unreadSection } from "./dashboard-section";
 
@@ -73,7 +72,7 @@ export function LiveRunsCard({
               onClick={() => open(run)}
               className="flex w-full items-center gap-2.5 py-2 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
             >
-              <span className="size-2 flex-none rounded-full" style={{ background: stageColor(run.currentStep ?? "") }} />
+              <span className="size-2 flex-none rounded-full" style={{ background: "var(--pipeline-active)" }} />
               <StatusChip
                 status={run.status === "paused" ? "paused" : "running"}
                 stage={run.status === "paused" ? undefined : (run.currentStep ?? undefined)}

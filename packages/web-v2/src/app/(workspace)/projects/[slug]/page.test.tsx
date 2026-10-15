@@ -89,7 +89,7 @@ vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => {} }));
 vi.mock("@/features/attention/hooks", () => ({
   useAttention: () => ({ view: attentionView, read: attentionRead, error: attentionError, refetch }),
 }));
-vi.mock("@/features/pipeline/hooks", () => ({
+vi.mock("@/features/runs/hooks", () => ({
   useProjectRuns: () => ({
     data: runs === undefined ? undefined : { items: runs },
     isLoading: false,

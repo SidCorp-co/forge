@@ -26,6 +26,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "issue.deleted": {
 			scheduleInvalidation(qc, ["issues", "list"]);
 			scheduleInvalidation(qc, ["issues", "search"]);
+			scheduleInvalidation(qc, ["sessions-and-holds"]);
 			scheduleInvalidation(qc, ["attention"]);
 			scheduleInvalidation(qc, ["pulse"]);
 			if (data?.issueId) {
@@ -37,6 +38,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "issue.statusChanged": {
 			scheduleInvalidation(qc, ["issues", "list"]);
 			scheduleInvalidation(qc, ["issues", "search"]);
+			scheduleInvalidation(qc, ["sessions-and-holds"]);
 			scheduleInvalidation(qc, ["projects", "health"]);
 			scheduleInvalidation(qc, ["pulse"]);
 			scheduleInvalidation(qc, ["attention"]);
@@ -119,6 +121,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "agent-session.status":
 		case "agent-session.deleted": {
 			scheduleInvalidation(qc, ["agent-sessions"]);
+			scheduleInvalidation(qc, ["sessions-and-holds"]);
 			scheduleInvalidation(qc, ["pulse"]);
 			if (data?.sessionId) {
 				scheduleInvalidation(qc, ["agent-session", data.sessionId]);

@@ -5,14 +5,14 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { RunGate } from "@/features/pipeline/types";
+import type { RunGate } from "@/features/runs/types";
 import type { SessionRow } from "@/features/sessions/types";
 
 const useRun = vi.fn();
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/features/runners/hooks", () => ({ useDevices: () => ({ data: [] }) }));
-vi.mock("@/features/pipeline/hooks", () => ({ useRun }));
+vi.mock("@/features/runs/hooks", () => ({ useRun }));
 vi.mock("@/features/sessions/hooks", () => ({
 	useSessionCost: () => ({ data: undefined }),
 	useSessions: () => ({ data: { items: [] } }),

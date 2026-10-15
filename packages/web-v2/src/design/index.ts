@@ -2,7 +2,6 @@
    touch data; features wire data into them. Import from "@/design". */
 
 export { Icon, type IconName, type IconProps } from "./icons/icon";
-export { STAGES, stageColor, type StageKey } from "./stages";
 export {
   STATUS_META, HEALTH_META, AVATAR_HUE,
   type StatusKey, type HealthKey, type AvatarHue, type ColorMeta,
@@ -83,9 +82,6 @@ export {
   HelpButton, type HelpButtonProps, type HelpContent, type HelpShortcut,
 } from "./primitives/help-button";
 
-export { KanbanCard, type KanbanCardProps } from "./patterns/kanban-card";
-export { KanbanBoard, type KanbanBoardProps } from "./patterns/kanban-board";
-export { KanbanColumn, type KanbanColumnProps } from "./patterns/kanban-column";
 export { NavRail, type NavRailProps, type NavItem, type NavCluster } from "./patterns/nav-rail";
 export { BottomTabBar, type BottomTabBarProps, type BottomTabItem } from "./patterns/bottom-tab-bar";
 export { TopBar, type TopBarProps, type TopBarDensity } from "./patterns/top-bar";
@@ -109,7 +105,7 @@ export { ForgeMascot, type ForgeMascotProps, STAGE_RING } from "./patterns/forge
 export { ProjectLoader, ColdBoot, AgentWorking, ReconnectingBanner } from "./patterns/mascot-loaders";
 
 export {
-  BoardRowSkeleton, KanbanCardSkeleton, KanbanColumnSkeleton,
+  BoardRowSkeleton,
   SessionRowSkeleton, ProjectCardSkeleton,
 } from "./skeletons";
 

@@ -29,7 +29,7 @@ import {
   type MenuItem,
   type TabItem,
 } from "@/design";
-import { useResumeRun } from "@/features/pipeline/hooks";
+import { useResumeRun } from "@/features/runs/hooks";
 import { useProjects } from "@/features/projects/hooks";
 import { DecisionPanel, focusDecisionPanel } from "@/features/questions/components/decision-panel";
 import { buildShareLink, useRecents } from "@/features/shell";

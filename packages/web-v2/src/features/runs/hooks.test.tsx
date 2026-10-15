@@ -8,14 +8,14 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { pipelineApi } from "./api";
+import { runsApi } from "./api";
 import { useStepDurations, useThroughput } from "./hooks";
 
 vi.mock("./api", async () => {
   const actual = await vi.importActual<typeof import("./api")>("./api");
   return {
     ...actual,
-    pipelineApi: { ...actual.pipelineApi, stepDurations: vi.fn(async () => []), throughput: vi.fn(async () => []) },
+    runsApi: { ...actual.runsApi, stepDurations: vi.fn(async () => []), throughput: vi.fn(async () => []) },
   };
 });
 
@@ -28,8 +28,8 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 beforeEach(() => vi.clearAllMocks());
 
 describe.each([
-  ["useStepDurations", useStepDurations, () => pipelineApi.stepDurations],
-  ["useThroughput", useThroughput, () => pipelineApi.throughput],
+  ["useStepDurations", useStepDurations, () => runsApi.stepDurations],
+  ["useThroughput", useThroughput, () => runsApi.throughput],
 ] as const)("%s", (_name, hook, api) => {
   it("sends no request while its caller says it is waiting", async () => {
     const { result } = renderHook(() => hook({ days: 7, projectId: undefined }, false), { wrapper });

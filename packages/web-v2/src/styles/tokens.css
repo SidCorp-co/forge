@@ -6,7 +6,7 @@
    warm paper-white surfaces · clean grotesk + true monospace.
 
    2-LAYER TOKENS (see docs/proposals/web-v2-redesign.md):
-     Layer 1 — raw palette (--flame-*, --paper-*, --ink-*, --stage-*).
+     Layer 1 — raw palette (--flame-*, --paper-*, --ink-*).
                Theme-independent. Components NEVER reference these directly.
      Layer 2 — semantic (--bg-*, --fg-*, --border-*, --accent, ...).
                Components reference ONLY this layer. Dark mode later =
@@ -100,15 +100,6 @@
 
   --link:          var(--cobalt-500);
   --focus-ring:    var(--cobalt-500);
-
-  /* ===== PIPELINE STAGE ACCENTS (7-step hero motif) ===== */
-  --stage-triage:  #8A6BD1;
-  --stage-clarify: #2D5BD6;
-  --stage-plan:    #1F8FB0;
-  --stage-code:    #F15A2B;
-  --stage-review:  #E8920C;
-  --stage-test:    #1F9D6B;
-  --stage-release: #5A616E;
 
   /* ISS-509 — the pipeline "active" bead / progress fill. Its OWN token (cobalt,
      = the `active` tone) so it stops sharing the flame `--accent` with primary

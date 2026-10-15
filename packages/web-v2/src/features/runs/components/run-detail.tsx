@@ -1,9 +1,8 @@
 "use client";
 
-// RunDetail SlideOver (ISS-295) — an issue's pipeline run opens here rather
-// than navigating away. Reordered for ISS-436 so it reads top-down as a
-// status panel: header (title + issue meta) → run
-// controls → Activity / Timeline / Cost tabs, all driven by
+// RunDetail SlideOver (ISS-295) — the Ops Runs tab opens a pipeline run here
+// rather than navigating away. Reads top-down as a status panel (ISS-436):
+// header (title + run cost) → run controls → Activity / Timeline / Cost tabs, all driven by
 // `GET /api/pipeline-runs/:id` (`useRun`, WS-live via key
 // `['pipeline-run', id]`). Pause/Resume/Cancel hit real endpoints; Rerun/Fork
 // have NO backend (info toast, no phantom call).
@@ -11,11 +10,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Badge,
   Button,
   EmptyState,
   ErrorState,
-  Icon,
   Menu,
   MonoTag,
   ProgressBar,
@@ -31,14 +28,11 @@ import {
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useRecents, buildShareLink } from "@/features/shell";
-import { IssueQuickActions } from "@/features/issues/components/issue-quick-actions";
-import { priorityLabel, runStatusChip, statusLabel, statusToChip } from "@/features/issues/derive";
-import type { IssuePriority, IssueStatus } from "@/features/issues/types";
-import { drawerRunChip, formatDurationMs, formatUsd } from "../derive";
+import { drawerRunChip } from "../derive";
+import { formatDurationMs, formatUsd } from "@/lib/utils/format";
 import { useCancelRun, usePauseRun, useResumeRun, useRun } from "../hooks";
 import { ActivityTab } from "./activity-feed";
 import type {
-  PipelineIssueRow,
   PipelineRunStepSummary,
   PipelineRunSummary,
 } from "../types";
@@ -46,15 +40,12 @@ import type {
 interface RunDetailProps {
   open: boolean;
   onClose: () => void;
-  /** Full issue row when opened from the kanban; null when opened by runId
-   *  alone (e.g. the Ops Runs tab) — the header then falls back to run data. */
-  issue: PipelineIssueRow | null;
   /** Run to inspect (null when the issue has never run). */
   runId: string | null;
   /** Active project slug — enables the "Open issue" cross-link when present. */
   slug?: string;
-  /** False for project viewers (read-only): hides the issue quick-action bar
-   *  and the Pause/Resume/Stop run controls (the server 403s them anyway).
+  /** False for project viewers (read-only): hides the Pause/Resume/Stop run
+   *  controls (the server 403s them anyway).
    *  Optional, defaults true so existing callers keep their behaviour. */
   canWrite?: boolean;
 }
@@ -65,15 +56,7 @@ const TABS = [
   { value: "cost", label: "Cost" },
 ];
 
-const PRIORITY_TONE: Record<string, "red" | "amber" | "neutral"> = {
-  critical: "red",
-  high: "amber",
-  medium: "neutral",
-  low: "neutral",
-  none: "neutral",
-};
-
-export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }: RunDetailProps) {
+export function RunDetail({ open, onClose, runId, slug, canWrite = true }: RunDetailProps) {
   const [tab, setTab] = useState("activity");
   const { toast } = useToast();
   const router = useRouter();
@@ -84,9 +67,8 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
   const cancel = useCancelRun();
 
   const run = runQ.data;
-  const taskIssueId = issue?.id ?? run?.issueId ?? null;
-  // The Ops drawer has no issue row, so the run summary names the issue.
-  const issueRef = issue?.displayId ?? run?.issueRef ?? null;
+  const taskIssueId = run?.issueId ?? null;
+  const issueRef = run?.issueRef ?? null;
 
   // Track the opened run as recently-viewed (surfaces in the ⌘K Recent group).
   useEffect(() => {
@@ -110,14 +92,10 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
   }
   const chipStep = run?.currentStep ?? undefined;
   const label = issueRef ?? (runId ? `run ${runId.slice(0, 8)}` : "run");
-  const title = issue?.title ?? run?.issueTitle ?? "Pipeline run";
-  const branch = issue?.metadata?.branchConfig?.branch ?? null;
-  // A session-styled chip is the run's; the issue's own status is never drawn in it.
-  const issueRun = issue ? runStatusChip(issue) : null;
-  const chipStatus = run ? drawerRunChip(run, issueRun) : issueRun;
+  const title = run?.issueTitle ?? "Pipeline run";
+  const chipStatus = run ? drawerRunChip(run, null) : null;
   // A run reading Queued has nothing started, so there is no step to pause after and no agent to stop.
   const hasStarted = run?.status === "running" && chipStatus !== "queued";
-  const issueStatus = issue ? (issue.status as IssueStatus) : null;
   // Pause is a "finish the in-flight step, then halt" gate (it does NOT abort
   // the running agent — only Cancel does). So a paused run with a step still
   // `running` is transitional ("Pausing…"); once that step clears it is fully
@@ -155,12 +133,8 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
   }
 
   const menuItems: MenuItem[] = [];
-  // Related / Jump-to cross-links (run ↔ issue) + shareable deep-link. When an
-  // issue row is present the quick-action bar already exposes a first-class
-  // "Open issue" control, so the menu only carries it in the run-only context
-  // (e.g. the Ops Runs tab, where there is no issue row + quick bar) — or for
-  // read-only viewers, whose quick bar is hidden.
-  if (slug && taskIssueId && (!issue || !canWrite)) {
+  // Related / Jump-to cross-links (run ↔ issue) + shareable deep-link.
+  if (slug && taskIssueId) {
     menuItems.push({ label: "Open issue", icon: "list", onSelect: openIssue });
   }
   if (runId) {
@@ -181,10 +155,6 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
       title={
         <span className="flex items-center gap-2.5">
           <MonoTag>{label}</MonoTag>
-          {/* Writers read the issue's status off the quick-actions row; a viewer has no such row. */}
-          {issueStatus && !canWrite && (
-            <StatusChip status={statusToChip(issueStatus)} label={statusLabel(issueStatus)} size="sm" />
-          )}
           {/* The session vocabulary reads `paused` as an idle session; a pipeline run that is paused says so. */}
           {chipStatus && (
             <StatusChip
@@ -198,47 +168,15 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
         </span>
       }
     >
-      {!issue && !runId ? (
-        <EmptyState title="No run selected" message="Pick a card to inspect its pipeline run." />
+      {!runId ? (
+        <EmptyState title="No run selected" message="Pick a run to inspect it." />
       ) : (
         <div className="flex flex-col gap-5">
-          {/* Quick-action bar (ISS-390) — pinned at the top of the drawer so the
-              most-used issue mutations (status / priority / assignee) + the
-              full-detail link are reachable in one glance without scrolling.
-              Only when opened from an issue card (the Ops run-only view has no
-              issue row to edit) and for writers — viewers get a read-only
-              drawer ("Open issue" moves into the overflow menu). */}
-          {issue && canWrite && (
-            <div className="sticky -top-4 z-10 -mx-5 -mt-4 border-b border-line bg-surface/95 px-5 pb-3 pt-4 backdrop-blur-sm">
-              <IssueQuickActions
-                issueId={issue.id}
-                status={issue.status as IssueStatus}
-                agentStatus={issue.agentStatus ?? null}
-                pipelineHealth={issue.pipelineHealth}
-                priority={issue.priority as IssuePriority}
-                slug={slug}
-                onOpenIssue={openIssue}
-              />
-            </div>
-          )}
-
-          {/* Header — title + the issue's own meta (priority / assignee /
-              branch / run cost), so the panel answers "what is this and where
-              does it stand" before offering controls (ISS-436). */}
+          {/* Header — title + run cost, so the panel answers "what is this"
+              before offering controls (ISS-436). */}
           <div className="flex flex-col gap-2.5">
             <SectionTitle className="leading-tight">{title}</SectionTitle>
             <div className="flex flex-wrap items-center gap-2.5">
-              {issue && issue.priority !== "none" && (
-                <Badge tone={PRIORITY_TONE[issue.priority] ?? "neutral"}>
-                  {priorityLabel(issue.priority as IssuePriority)}
-                </Badge>
-              )}
-              {branch && (
-                <MonoTag>
-                  <Icon name="branch" size={12} className="mr-1 align-[-1px]" />
-                  {branch}
-                </MonoTag>
-              )}
               {run && <Stat icon="dollar">{formatUsd(run.cost.estimatedCost)} this run</Stat>}
             </div>
           </div>
@@ -368,7 +306,7 @@ function TimelineTab({ run, loading }: { run: PipelineRunSummary | undefined; lo
         const state = stepDot(step.status);
         const isLast = i === run.steps.length - 1;
         return (
-          <div key={`${step.jobType}-${i}`} className="flex gap-3">
+          <div key={step.jobType} className="flex gap-3">
             <div className="flex w-[18px] flex-none flex-col items-center">
               <span
                 className="mt-0.5 size-3.5 flex-none rounded-full"
@@ -450,8 +388,8 @@ function CostTab({ run, loading }: { run: PipelineRunSummary | undefined; loadin
       {steps.length > 0 && (
         <div className="flex flex-col gap-2.5">
           <p className="fg-overline">Step durations</p>
-          {steps.map((s, i) => (
-            <div key={`${s.jobType}-${i}`} className="flex items-center gap-2.5">
+          {steps.map((s) => (
+            <div key={s.jobType} className="flex items-center gap-2.5">
               <span className="w-14 flex-none font-mono text-12 text-muted">{s.jobType}</span>
               <ProgressBar
                 className="flex-1"

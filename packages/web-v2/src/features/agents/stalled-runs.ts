@@ -1,5 +1,5 @@
 
-import type { PipelineRunListItem } from "@/features/pipeline/types";
+import type { PipelineRunListItem } from "@/features/runs/types";
 import { HEARTBEAT_REAP_MS } from "@/features/sessions/types";
 
 const LIVE_RUN_STATUSES: ReadonlySet<string> = new Set(["running", "paused"]);

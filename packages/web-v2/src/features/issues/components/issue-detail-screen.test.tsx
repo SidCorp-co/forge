@@ -42,7 +42,7 @@ const ISSUE = {
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), prefetch: vi.fn() }) }));
 vi.mock("@/features/projects/hooks", () => ({ useProjects: () => ({ data: [{ id: "p1", role: "admin" }] }) }));
-vi.mock("@/features/pipeline/hooks", () => ({ useResumeRun: () => ({ mutate: vi.fn(), isPending: false }) }));
+vi.mock("@/features/runs/hooks", () => ({ useResumeRun: () => ({ mutate: vi.fn(), isPending: false }) }));
 vi.mock("@/features/questions/components/decision-panel", () => ({
   DecisionPanel: () => null,
   focusDecisionPanel: vi.fn(),

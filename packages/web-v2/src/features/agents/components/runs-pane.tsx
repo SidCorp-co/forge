@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { EmptyState, ErrorState, Input, Skeleton } from "@/design";
 import { useNow } from "@/design/hooks/use-now";
-import { useProjectRuns } from "@/features/pipeline/hooks";
+import { useProjectRuns } from "@/features/runs/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { applyFilters, type StateFilter } from "../filter";
 import { useRunSessions } from "../hooks";

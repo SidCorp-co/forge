@@ -9,7 +9,7 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "@/providers/toast-provider";
-import type { PipelineRunListItem } from "@/features/pipeline/types";
+import type { PipelineRunListItem } from "@/features/runs/types";
 import type { ReadState } from "../shape";
 import { AwaitingReleaseCard } from "./awaiting-release-card";
 
