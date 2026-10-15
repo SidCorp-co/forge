@@ -27,7 +27,6 @@ export { Waffle, type WaffleProps, type WaffleCategory } from "./primitives/waff
 export { DotStrip, type DotStripProps, type DotStripItem } from "./primitives/dot-strip";
 export { BulletBar, type BulletBarProps } from "./primitives/bullet-bar";
 export { StreamBand, type StreamBandProps, type StreamWeek } from "./primitives/stream-band";
-export { SankeyFlow, type SankeyFlowProps, type SankeyNode } from "./primitives/sankey-flow";
 export { EmptyState, type EmptyStateProps } from "./primitives/empty-state";
 export { EmptyPanelLine, type EmptyPanelLineProps } from "./primitives/empty-panel-line";
 export { ComingSoon, type ComingSoonProps } from "./primitives/coming-soon";

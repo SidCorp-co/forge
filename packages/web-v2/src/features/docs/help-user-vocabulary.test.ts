@@ -201,8 +201,7 @@ describe("the screens judge-15 read, against the same rules", () => {
     } as unknown as PulseQuality;
     const { container } = render(createElement(QualitySection, { quality }));
     const headers = [...container.querySelectorAll("th")].map((th) => th.textContent ?? "");
-    const label = container.querySelector("svg")?.getAttribute("aria-label") ?? "";
-    for (const text of [container.textContent ?? "", label, ...headers]) {
+    for (const text of [container.textContent ?? "", ...headers]) {
       expect([text, offences(text)]).toEqual([text, []]);
     }
   });

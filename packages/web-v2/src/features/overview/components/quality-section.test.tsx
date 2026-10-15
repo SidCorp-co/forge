@@ -53,7 +53,9 @@ describe("QualitySection, in the words a reader uses", () => {
     render(<QualitySection quality={quality} />);
     expect(screen.getByRole("columnheader", { name: "Work" })).toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "Stage" })).toBeNull();
-    expect(screen.getByRole("img").getAttribute("aria-label")).not.toMatch(/stage/i);
+    const table = screen.getByRole("table", { name: /What the pipeline actually ran/ });
+    expect(table.getAttribute("aria-labelledby")).toBe("overview-ran");
+    expect(screen.getByText(/What the pipeline actually ran/).textContent).not.toMatch(/stage/i);
   });
 
   it("names each kind of work the way a reader says it, never its stored type", () => {
@@ -77,8 +79,11 @@ describe("QualitySection, in the words a reader uses", () => {
     expect(container.textContent).not.toMatch(/runner_unreachable|no_client_ack/);
   });
 
-  it("draws no line joining one kind of work to the next", () => {
-    const { container } = render(<QualitySection quality={quality} />);
-    expect(container.querySelectorAll("svg line")).toHaveLength(0);
+  // The dispatcher's r5 review: with no flow between kinds the bars said nothing the table does not.
+  it("says what the pipeline ran as a table alone, with no chart drawn beside it", () => {
+    render(<QualitySection quality={quality} />);
+    expect(screen.queryByRole("img")).toBeNull();
+    const rows = screen.getAllByRole("row").slice(1).map((r) => r.textContent);
+    expect(rows).toEqual(["Issue work910m", "Skill updates51m", "Releases35m", "Skill checks22m"]);
   });
 });

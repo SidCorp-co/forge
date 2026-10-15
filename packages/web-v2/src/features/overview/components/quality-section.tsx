@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  BulletBar,
-  CardTitle,
-  SankeyFlow,
-  SectionTitle,
-  Waffle,
-} from "@/design";
+import { BulletBar, CardTitle, SectionTitle, Waffle } from "@/design";
 import { TONE_META } from "@/design/status";
 import { failureReasonLabel } from "@/features/sessions/types";
 import { formatElapsed, qualityRates } from "../derive";
@@ -106,22 +100,32 @@ export function QualitySection({ quality }: QualitySectionProps) {
       </div>
 
       <div className="flex flex-col gap-1">
-        <CardTitle className="fg-body-sm text-muted">What the pipeline actually ran</CardTitle>
+        <CardTitle id="overview-ran" className="fg-body-sm text-muted">
+          What the pipeline actually ran — jobs finished in the last 90 days
+        </CardTitle>
         {pipelineFlow.length === 0 ? (
           <p className="fg-body-sm text-muted">No jobs finished in the window.</p>
         ) : (
-          <SankeyFlow
-            nodes={pipelineFlow.map((n) => ({
-              key: n.type,
-              label: jobKindLabel(n.type),
-              count: n.count,
-              medianSeconds: n.medianSeconds,
-            }))}
-            formatDuration={(s) => (s === null ? "—" : formatElapsed(s))}
-            label={`Jobs finished by kind of work over 90 days. ${pipelineFlow
-              .map((n) => `${jobKindLabel(n.type)}: ${n.count}`)
-              .join(", ")}.`}
-          />
+          <table aria-labelledby="overview-ran" className="w-full">
+            <thead>
+              <tr className="fg-body-sm text-subtle">
+                <th scope="col" className="text-left font-normal">Work</th>
+                <th scope="col" className="text-right font-normal">Jobs</th>
+                <th scope="col" className="text-right font-normal">Median</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pipelineFlow.map((n) => (
+                <tr key={n.type} className="fg-body-sm">
+                  <td className="py-0.5 text-left">{jobKindLabel(n.type)}</td>
+                  <td className="py-0.5 text-right tabular-nums">{n.count}</td>
+                  <td className="py-0.5 text-right tabular-nums text-muted">
+                    {n.medianSeconds === null ? "—" : formatElapsed(n.medianSeconds)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
     </section>
