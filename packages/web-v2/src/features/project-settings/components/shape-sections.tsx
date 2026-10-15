@@ -283,14 +283,14 @@ export function ProjectRefusal({
 }) {
   const shown = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (error) shown.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+    if (error) shown.current?.scrollIntoView?.({ block: "center", behavior: "smooth" });
   }, [error]);
   if (!error) return null;
   const keys = strandedKeys(error);
   const chain = error instanceof ApiError && error.code === "RELEASE_CHAIN_STRANDS_WORK";
   return (
     <Banner tone="danger" onDismiss={onDismiss}>
-      <div ref={shown} className="scroll-mb-28 space-y-2" data-testid="project-refusal">
+      <div ref={shown} className="space-y-2" data-testid="project-refusal">
         <p>Nothing was saved. {formatApiError(error)}</p>
         {keys.length > 0 && slug && (
           <p className="flex flex-wrap gap-x-3 gap-y-1">

@@ -274,7 +274,8 @@ export function IntegrationsScreen() {
   );
 }
 
-const ADD_LINK = "fg-body-sm font-semibold text-accent-text hover:underline";
+// No `fg-*` type class here: an unlayered one sets its own colour and would grey the link out.
+const ADD_LINK = "text-sm font-semibold text-accent-text hover:underline";
 
 /** The one act that fills an empty directory: a connection is added from a project's own
  *  Integrations settings, so the way forward is that tab of a project in this space. */
@@ -311,12 +312,14 @@ function AddConnection({
   }
   return (
     <div className="flex flex-wrap items-center justify-center gap-2 pb-10" data-testid="add-connection">
-      <NativeSelect
-        value={slug}
-        onChange={(e) => setChosen(e.target.value)}
-        aria-label="Project to add a connection in"
-        options={projects.map((p) => ({ value: p.slug, label: p.name }))}
-      />
+      <div className="w-full max-w-[320px]">
+        <NativeSelect
+          value={slug}
+          onChange={(e) => setChosen(e.target.value)}
+          aria-label="Project to add a connection in"
+          options={projects.map((p) => ({ value: p.slug, label: p.name }))}
+        />
+      </div>
       <Link href={href(slug)} className={ADD_LINK}>
         Add a connection in this project
       </Link>
