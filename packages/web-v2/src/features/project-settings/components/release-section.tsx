@@ -15,11 +15,12 @@ import type { ReleaseReadiness } from "../types";
 import { inlineCode } from "./inline-code";
 import { LIVE_DEPLOY_TARGET } from "./integrations-tab";
 
-const GAP_TEXT: Record<ReleaseReadiness["gaps"][number], string> = {
-  "build-commands": "No build-commands fact — a session has nothing to build with.",
-  "test-commands": "No test-commands fact — a session has nothing to prove its work with.",
+/** Each gap as the reader of this page says it: what is missing and what that costs, never the key it is stored under. */
+export const GAP_TEXT: Record<ReleaseReadiness["gaps"][number], string> = {
+  "build-commands": "No build commands written — an agent has nothing to build with.",
+  "test-commands": "No test commands written — an agent has nothing to prove its work with.",
   "release-procedure":
-    "No release-procedure fact — the release runs a generic fallback written for another repo.",
+    "No release instructions written — a release follows generic instructions written for another project.",
   "release-runner-ambiguous":
     "Two live bindings name different release runners — a release is refused rather than sent to whichever was created first. Give them the same label, or retire one.",
   "release-target":
@@ -163,7 +164,7 @@ export function ReleaseAnswer({ projectId, slug }: { projectId: string; slug?: s
                 {GAP_TEXT[g] ?? g}{" "}
                 {FACT_GAPS.has(g) && knowledgeHref ? (
                   <Link href={knowledgeHref} className="text-accent-text hover:underline">
-                    Write it in Knowledge rules
+                    Write them in Knowledge rules
                   </Link>
                 ) : g === "live-commit-endpoint" ? (
                   <a href="#environment-live" className="text-accent-text hover:underline">

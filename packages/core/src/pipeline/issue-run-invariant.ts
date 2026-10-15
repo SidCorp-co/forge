@@ -1,8 +1,10 @@
 import { and, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import type { IssueStatus } from '../db/schema.js';
 import { notifications } from '../db/schema.js';
 import { issueWorkInFlightSql } from '../issues/issue-lease.js';
-import { ASSERTS_WORK_IN_PROGRESS } from '../issues/status-sets.js';
+import { ASSERTS_WORK_IN_PROGRESS, ISSUE_STATUS_LABELS } from '../issues/status-sets.js';
+import { elapsedWords } from '../lib/elapsed-words.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { resolveNotifications } from '../notifications/auto-resolve.js';
@@ -80,10 +82,31 @@ interface OrphanRow {
   projectId: string;
   issSeq: number;
   issuePrefix: string | null;
+  projectName: string;
   status: string;
   title: string;
-  /** When the issue last asserted, as the driver hands it back. */
+  /** When the issue last asserted, as the driver hands it back: Postgres's own text for the time. */
   since: string;
+}
+
+/**
+ * What the project's admins read about one orphan: the issue with its project, the status in the
+ * screen's word, and how long it has asserted, never the stored time a raw query hands back.
+ */
+export function orphanNotice(args: {
+  ref: string;
+  projectName: string;
+  status: string;
+  since: string;
+  now: Date;
+}): { title: string; body: string } {
+  const status = ISSUE_STATUS_LABELS[args.status as IssueStatus] ?? args.status;
+  return {
+    title: `${args.ref} says work is in progress with no run behind it — ${args.projectName}`,
+    body:
+      `${args.ref} has read ${status} for ${elapsedWords(args.since, args.now)} ` +
+      'and no job, issue run or run session is live for it.',
+  };
 }
 
 async function orphanedAssertions(now: Date): Promise<OrphanRow[]> {
@@ -93,6 +116,7 @@ async function orphanedAssertions(now: Date): Promise<OrphanRow[]> {
            i.project_id    AS "projectId",
            i.iss_seq       AS "issSeq",
            p.issue_prefix  AS "issuePrefix",
+           p.name          AS "projectName",
            i.status        AS "status",
            i.title         AS "title",
            i.updated_at    AS "since"
@@ -172,10 +196,13 @@ async function emit(
     type: 'issue_stranded',
     resolutionKey,
     ...sweepGroup('orphan-assertion', args.now),
-    title: `${args.ref} says work is in progress with no run behind it`,
-    body:
-      `${args.ref} (${args.row.status}) has asserted work in progress since ` +
-      `${args.row.since} and no job, issue run or run session is live for it.`,
+    ...orphanNotice({
+      ref: args.ref,
+      projectName: args.row.projectName,
+      status: args.row.status,
+      since: args.row.since,
+      now: args.now,
+    }),
   });
 }
 

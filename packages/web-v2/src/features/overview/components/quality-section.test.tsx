@@ -20,10 +20,16 @@ const quality = {
     scheduler: { failed: 0, total: 0 },
     other: { failed: 0, total: 0 },
   },
-  sessionFailures: [],
+  sessionFailures: [
+    { reason: "runner_unreachable", count: 4 },
+    { reason: "no_client_ack", count: 2 },
+    { reason: "unclassified", count: 1 },
+  ],
   pipelineFlow: [
+    { type: "drive", count: 9, medianSeconds: 600 },
     { type: "reconcile", count: 5, medianSeconds: 60 },
-    { type: "fix", count: 2, medianSeconds: 120 },
+    { type: "release_batch", count: 3, medianSeconds: 300 },
+    { type: "verify_skill", count: 2, medianSeconds: 120 },
   ],
 } as unknown as PulseQuality;
 
@@ -35,8 +41,39 @@ describe("QualitySection", () => {
   });
 
   it("marks no pipeline-flow row as looping back, whatever its type", () => {
-    render(<QualitySection quality={quality} />);
-    expect(screen.getByText("fix")).toBeInTheDocument();
+    render(<QualitySection quality={{ ...quality, pipelineFlow: [{ type: "fix", count: 2, medianSeconds: 120 }] }} />);
+    expect(screen.getByText("Unrecognised work (fix)")).toBeInTheDocument();
     expect(screen.queryByText(/loops back/)).toBeNull();
+  });
+});
+
+// ISS-1229 round 5 — judge-15 read this section as a stage table printing stored codes.
+describe("QualitySection, in the words a reader uses", () => {
+  it("heads the work table by kind of work, not by stage", () => {
+    render(<QualitySection quality={quality} />);
+    expect(screen.getByRole("columnheader", { name: "Work" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Stage" })).toBeNull();
+    expect(screen.getByRole("img").getAttribute("aria-label")).not.toMatch(/stage/i);
+  });
+
+  it("names each kind of work the way a reader says it, never its stored type", () => {
+    const { container } = render(<QualitySection quality={quality} />);
+    for (const label of ["Issue work", "Skill updates", "Releases", "Skill checks"]) {
+      expect(screen.getByRole("cell", { name: label })).toBeInTheDocument();
+    }
+    expect(container.textContent).not.toMatch(/\b(?:drive|release_batch|verify_skill|reconcile)\b/);
+  });
+
+  it("names each session failure by its cause, never its stored code", () => {
+    const { container } = render(<QualitySection quality={quality} />);
+    expect(screen.getByText("Runner unreachable")).toBeInTheDocument();
+    expect(screen.getByText("No acknowledgement")).toBeInTheDocument();
+    expect(screen.getByText("Unclassified")).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/runner_unreachable|no_client_ack/);
+  });
+
+  it("draws no line joining one kind of work to the next", () => {
+    const { container } = render(<QualitySection quality={quality} />);
+    expect(container.querySelectorAll("svg line")).toHaveLength(0);
   });
 });

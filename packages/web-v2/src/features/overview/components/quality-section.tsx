@@ -8,7 +8,9 @@ import {
   Waffle,
 } from "@/design";
 import { TONE_META } from "@/design/status";
+import { failureReasonLabel } from "@/features/sessions/types";
 import { formatElapsed, qualityRates } from "../derive";
+import { jobKindLabel } from "../job-kinds";
 import type { PulseQuality } from "../types";
 
 const LANE_LABEL: Record<string, string> = {
@@ -82,7 +84,7 @@ export function QualitySection({ quality }: QualitySectionProps) {
 
       <div className="flex flex-col gap-1">
         <CardTitle className="fg-body-sm text-muted">
-          Why agent sessions failed — {rates.sessionFailureTotal} in 90 days
+          Why agent sessions failed — {rates.sessionFailureTotal} in the last 90 days
           {rates.unclassifiedShare !== null
             ? `, ${Math.round(rates.unclassifiedShare * 100)}% unclassified`
             : ""}
@@ -94,7 +96,7 @@ export function QualitySection({ quality }: QualitySectionProps) {
             {sessionFailures.map((r) => (
               <li key={r.reason} className="fg-body-sm flex justify-between gap-2">
                 <span className={r.reason === "unclassified" ? "text-subtle" : ""}>
-                  {r.reason}
+                  {failureReasonLabel(r.reason)}
                 </span>
                 <span className="tabular-nums text-muted">{r.count}</span>
               </li>
@@ -111,13 +113,13 @@ export function QualitySection({ quality }: QualitySectionProps) {
           <SankeyFlow
             nodes={pipelineFlow.map((n) => ({
               key: n.type,
-              label: n.type,
+              label: jobKindLabel(n.type),
               count: n.count,
               medianSeconds: n.medianSeconds,
             }))}
             formatDuration={(s) => (s === null ? "—" : formatElapsed(s))}
-            label={`Jobs by pipeline stage over 90 days. ${pipelineFlow
-              .map((n) => `${n.type}: ${n.count}`)
+            label={`Jobs finished by kind of work over 90 days. ${pipelineFlow
+              .map((n) => `${jobKindLabel(n.type)}: ${n.count}`)
               .join(", ")}.`}
           />
         )}

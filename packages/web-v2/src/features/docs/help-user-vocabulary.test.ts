@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * ISS-1176, ISS-1178 — every page written for a person using Forge speaks the screen's language.
  * A file path, a table or column name, a tool name or a status in its stored form sends that reader
@@ -6,8 +7,16 @@
  * docs/modules/guides/where-a-page-lives.md.
  */
 
-import { describe, expect, it } from "vitest";
+import { cleanup, render } from "@testing-library/react";
+import { createElement } from "react";
+import { afterEach, describe, expect, it } from "vitest";
+import { QualitySection } from "@/features/overview/components/quality-section";
+import { JOB_KIND_LABEL } from "@/features/overview/job-kinds";
+import type { PulseQuality } from "@/features/overview/types";
+import { GAP_TEXT } from "@/features/project-settings/components/release-section";
 import { HELP_DOCS } from "./help-content.generated";
+
+afterEach(cleanup);
 
 const PERSON_PAGES = ["file-a-request", "what-done-means"] as const;
 const USER_PAGES = HELP_DOCS.filter((d) => d.audience === "user").map((d) => d.slug);
@@ -49,6 +58,24 @@ const RULES: Array<{ rule: string; offends: RegExp }> = [
     rule: "a retired stage as a step an issue moves through",
     offends:
       /\b(?:triage|clarify|plan|code|review|test|staging|release|fix)[*_`]*\s+(?:step|stage)s?\b|\bmov(?:e|es|ed|ing)\b[^.]*\bthrough\b[^.]*\b(?:triage|clarify|plan|code|review|test|staging|fix)\b/i,
+  },
+  // ISS-1229 r5: a notice printed Postgres's own text for a time. The reader is in a timezone the
+  // server does not know, so a time is said as how long ago, never as the stored value.
+  {
+    rule: "a database timestamp",
+    offends:
+      /\b\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}|\b\d{2}:\d{2}:\d{2}\.\d+(?:Z|[+-]\d{2})/,
+  },
+  // ISS-1229 r5: the Overview headed its work table "Stage" and called it "Jobs by pipeline stage".
+  {
+    rule: "a pipeline stage the pipeline does not have",
+    offends: /\bpipeline stages?\b|\b(?:by|per|each) stage\b|^\s*Stage\s*$/im,
+  },
+  // ISS-1229 r5: Shape & release said "No build-commands fact": the key a knowledge entry is
+  // stored under, and the word an agent uses for it.
+  {
+    rule: "a stored knowledge key, or the agent's word fact",
+    offends: /\b(?:build|test)-commands\b|\brelease-procedure\b|\b[a-z]+(?:-[a-z]+)+ facts?\b/i,
   },
   // A draft with nothing merged cannot be closed, so the way to turn one down is to drop it.
   {
@@ -103,12 +130,24 @@ describe("that guard, against one planted sentence per rule", () => {
     ["It runs **Triage** → **Plan**.", "a walk through the retired stages"],
     ["Approve one by moving it to **Open**;\nturn it down by closing it.", "a draft turned down by closing it"],
     ["Reject a gated draft by closing it.", "a draft turned down by closing it"],
+    ["ISS-78 (in progress) has asserted work since 2026-10-15 10:26:16.817935+00.", "a database timestamp"],
+    ["It was last seen at 10:26:16.817935+00.", "a database timestamp"],
+    ["Updated 2026-10-15T10:26:16Z.", "a database timestamp"],
+    ["Jobs by pipeline stage over 90 days.", "a pipeline stage the pipeline does not have"],
+    ["Stage", "a pipeline stage the pipeline does not have"],
+    ["Median time per stage.", "a pipeline stage the pipeline does not have"],
+    ["No build-commands fact — a session has nothing to build with.", "a stored knowledge key, or the agent's word fact"],
+    ["Write the release-procedure in Knowledge.", "a stored knowledge key, or the agent's word fact"],
+    ["Runner unreachable: runner_unreachable", "a table or column name"],
   ])("rejects %s", (sentence, rule) => {
     expect(offences(sentence)).toContain(rule);
   });
 
   it("lets the screen's own words through", () => {
     const shipped = [
+      "No build commands written — an agent has nothing to build with.",
+      "It has been parked for 3 days.",
+      "Runner unreachable",
       "Choose **Create issue**. You land on the new issue's page.",
       "The status becomes **Needs info** and its question appears on the issue page.",
       "At **Awaiting release** it has not been released yet — the issue page says when it will be.",
@@ -127,5 +166,44 @@ describe("the done page, where it says what Closed means", () => {
 
   it("does not say a dropped issue had nothing built", () => {
     expect(done()).not.toMatch(/\*\*Dropped\*\*[^\n]*nothing was built/i);
+  });
+});
+
+// ISS-1229 round 5 — judge-15 read these screens and found the words the rules above refuse. Each
+// is held to the same rules as a help page, so the old wording goes red here as well as beside it.
+describe("the screens judge-15 read, against the same rules", () => {
+  it("Shape & release names every unwritten instruction in the screen's words", () => {
+    for (const text of Object.values(GAP_TEXT)) expect([text, offences(text)]).toEqual([text, []]);
+  });
+
+  it("every kind of work the Overview counts is named in the screen's words", () => {
+    for (const label of Object.values(JOB_KIND_LABEL)) expect([label, offences(label)]).toEqual([label, []]);
+  });
+
+  it("the Overview's quality section, drawn, prints no stage, stored code or stored type", () => {
+    const quality = {
+      finished: { merged: 1, closedUnmerged: 0, dropped: 0 },
+      reopened: { issues: 0, events: 0 },
+      runFailure: {
+        pipeline: { failed: 1, total: 2 },
+        scheduler: { failed: 0, total: 0 },
+        other: { failed: 0, total: 0 },
+      },
+      sessionFailures: [
+        { reason: "runner_unreachable", count: 3 },
+        { reason: "no_client_ack", count: 1 },
+      ],
+      pipelineFlow: [
+        { type: "drive", count: 4, medianSeconds: 600 },
+        { type: "release_batch", count: 1, medianSeconds: 300 },
+        { type: "verify_skill", count: 2, medianSeconds: 60 },
+      ],
+    } as unknown as PulseQuality;
+    const { container } = render(createElement(QualitySection, { quality }));
+    const headers = [...container.querySelectorAll("th")].map((th) => th.textContent ?? "");
+    const label = container.querySelector("svg")?.getAttribute("aria-label") ?? "";
+    for (const text of [container.textContent ?? "", label, ...headers]) {
+      expect([text, offences(text)]).toEqual([text, []]);
+    }
   });
 });

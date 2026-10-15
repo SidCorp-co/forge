@@ -1,6 +1,8 @@
 import { and, asc, eq, isNotNull, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueStatuses, issues, projects } from '../db/schema.js';
+import { ISSUE_STATUS_LABELS } from '../issues/status-sets.js';
+import { elapsedWords } from '../lib/elapsed-words.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
@@ -135,12 +137,10 @@ export async function detectStrandedIssues(
     let unreachable = 0;
     for (const row of rows) {
       const ref = row.issSeq !== null ? formatIssueRef(row.issuePrefix, row.issSeq) : 'An issue';
-      const since = row.mergedAt ?? row.updatedAt;
-      const days = Math.floor((now.getTime() - since.getTime()) / 86_400_000);
-      const age = days >= 1 ? `${days} day${days === 1 ? '' : 's'}` : 'hours';
+      const age = elapsedWords(row.mergedAt ?? row.updatedAt, now);
       const lead = row.mergedAt
         ? `its code merged ${age} ago but the issue is still parked`
-        : `it has been parked ${age}`;
+        : `it has been parked for ${age}`;
 
       const sent = await surfaceOnce({
         now,
@@ -231,8 +231,9 @@ export async function detectOwedCloses(
     let unreachable = 0;
     for (const row of rows) {
       const ref = row.issSeq !== null ? formatIssueRef(row.issuePrefix, row.issSeq) : 'An issue';
-      const days = Math.floor((now.getTime() - (row.mergedAt?.getTime() ?? 0)) / 86_400_000);
-      const age = days >= 1 ? `${days} day${days === 1 ? '' : 's'}` : 'hours';
+      // The query admits only rows carrying a merge mark, so `mergedAt` is never null here.
+      const age = elapsedWords(row.mergedAt as Date, now);
+      const status = ISSUE_STATUS_LABELS[row.status];
       const sent = await surfaceOnce({
         now,
         admins,
@@ -241,7 +242,7 @@ export async function detectOwedCloses(
         issueId: row.id,
         resolutionKey: owedCloseResolutionKey(row.id),
         title: `${ref} shipped but never closed — ${row.projectName}`,
-        body: `${ref} "${row.title}" has carried a merge mark for ${age} while it still reads \`${row.status}\`, with nothing running on it.`,
+        body: `${ref} "${row.title}" has carried a merge mark for ${age} while it still reads ${status}, with nothing running on it.`,
       });
       if (sent < 0) unreachable += 1;
       else notified += sent;

@@ -17,7 +17,9 @@ export interface SankeyFlowProps {
 }
 
 /**
- * The pipeline drawn as what flows through each of its job types.
+ * How much of each kind of work ran, side by side, and how long the middle one took. The kinds are
+ * independent, so nothing joins one bar to the next: a line between them would read as one kind
+ * feeding the next, a sequence of stages the pipeline does not have.
  */
 export function SankeyFlow({ nodes, label, formatDuration, className }: SankeyFlowProps) {
   if (nodes.length === 0) return null;
@@ -45,17 +47,6 @@ export function SankeyFlow({ nodes, label, formatDuration, className }: SankeyFl
             const x = i * slot + (slot - barW) / 2;
             return (
               <g key={n.key}>
-                {i > 0 ? (
-                  <line
-                    x1={(i - 1) * slot + (slot + barW) / 2}
-                    y1={mid}
-                    x2={x}
-                    y2={mid}
-                    stroke="var(--border-default)"
-                    strokeWidth={1}
-                    vectorEffect="non-scaling-stroke"
-                  />
-                ) : null}
                 <rect
                   x={x}
                   y={mid - h / 2}
@@ -73,7 +64,7 @@ export function SankeyFlow({ nodes, label, formatDuration, className }: SankeyFl
         <caption className="sr-only">{label}</caption>
         <thead>
           <tr className="fg-body-sm text-subtle">
-            <th scope="col" className="text-left font-normal">Stage</th>
+            <th scope="col" className="text-left font-normal">Work</th>
             <th scope="col" className="text-right font-normal">Jobs</th>
             <th scope="col" className="text-right font-normal">Median</th>
           </tr>

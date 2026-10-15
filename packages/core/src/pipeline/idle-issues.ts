@@ -13,9 +13,11 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issueStatuses } from '../db/schema.js';
+import { type IssueStatus, issueStatuses } from '../db/schema.js';
 import { ADMITTED_RUNNER } from '../devices/pool-admission.js';
 import { issueWorkInFlightSql } from '../issues/issue-lease.js';
+import { ISSUE_STATUS_LABELS } from '../issues/status-sets.js';
+import { elapsedWords } from '../lib/elapsed-words.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
@@ -71,7 +73,7 @@ export interface IdleIssuesResult {
 }
 
 /** What this pass writes onto the row, at `session_context.strand`. */
-interface StrandRecord {
+export interface StrandRecord {
   at: string;
   status: string;
   since: string;
@@ -488,9 +490,42 @@ function graceSpent(updatedAt: string, graceMs: number, now: Date): boolean {
   return now.getTime() - Date.parse(updatedAt) >= graceMs;
 }
 
-/** A reason closed by one full stop: a release hold's reason already ends in its own. */
+/** A reason as a sentence of its own: opened by a capital, closed by one full stop (a release hold's reason already ends in its own). */
 function asSentence(reason: string): string {
-  return /[.!?]$/.test(reason.trimEnd()) ? reason.trimEnd() : `${reason}.`;
+  const text = reason.trimEnd();
+  const opened = text.charAt(0).toUpperCase() + text.slice(1);
+  return /[.!?]$/.test(opened) ? opened : `${opened}.`;
+}
+
+/**
+ * What a project's admins read about one idle issue: the issue with its project, the status in the
+ * screen's word, and how long it has stood there, never the stored time a raw query hands back.
+ * `shared` and `malformed` are the two readings the classifier refuses to draw a conclusion from,
+ * so the headline may not draw one either: what was established there is that no live work could
+ * be confirmed, which is a different sentence from nobody working it.
+ */
+export function idleNotice(args: {
+  ref: string;
+  projectName: string;
+  record: Pick<StrandRecord, 'status' | 'since' | 'reason' | 'waitingFor' | 'owes' | 'lease'>;
+  now: Date;
+}): { title: string; body: string } {
+  const { ref, projectName, record, now } = args;
+  const status = ISSUE_STATUS_LABELS[record.status as IssueStatus] ?? record.status;
+  const age = elapsedWords(record.since, now);
+  const unconfirmed = record.lease === 'shared' || record.lease === 'malformed';
+  const title = unconfirmed
+    ? `${ref} reads ${status} and no live work could be confirmed — ${projectName}`
+    : `${ref} reads ${status} and nothing is working it — ${projectName}`;
+  const opening = unconfirmed
+    ? `${ref} has read ${status} for ${age} with no live job or run behind it, and a lease that establishes nothing either way.`
+    : `${ref} has read ${status} for ${age} with no live job, run or lease behind it.`;
+  return {
+    title,
+    body:
+      `${opening} ${asSentence(record.reason)} ` +
+      `It is waiting for ${record.waitingFor}, and ${record.owes === 'human' ? 'a person' : 'an agent'} owes the next move.`,
+  };
 }
 
 async function surface(args: {
@@ -503,16 +538,6 @@ async function surface(args: {
   const recipients = admins.get(row.project_id) ?? [];
   if (recipients.length === 0) return 0;
   const ref = formatIssueRef(row.issue_prefix, row.iss_seq);
-  // `shared` and `malformed` are the two readings the classifier refuses to draw a conclusion
-  // from, so the headline may not draw one either: what was established there is that no live work
-  // could be confirmed, which is a different sentence from nobody working it.
-  const unconfirmed = record.lease === 'shared' || record.lease === 'malformed';
-  const headline = unconfirmed
-    ? `${ref} reads \`${record.status}\` and no live work could be confirmed — ${row.project_name}`
-    : `${ref} reads \`${record.status}\` and nothing is working it — ${row.project_name}`;
-  const opening = unconfirmed
-    ? `${ref} has read \`${record.status}\` since ${record.since} with no live job or run behind it, and a lease that establishes nothing either way.`
-    : `${ref} has read \`${record.status}\` since ${record.since} with no live job, run or lease behind it.`;
   const sent = await emitNotification({
     recipients,
     projectId: row.project_id,
@@ -520,10 +545,7 @@ async function surface(args: {
     type: 'issue_stranded',
     resolutionKey: strandResolutionKey(row.id),
     ...sweepGroup('idle-issues', now),
-    title: headline,
-    body:
-      `${opening} ${asSentence(record.reason)} ` +
-      `It is waiting for ${record.waitingFor}, and ${record.owes === 'human' ? 'a person' : 'an agent'} owes the next move.`,
+    ...idleNotice({ ref, projectName: row.project_name, record, now }),
   });
   return sent?.delivered ?? 0;
 }
