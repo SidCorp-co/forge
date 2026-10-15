@@ -8,7 +8,7 @@ import type { ProjectHealthRow, ProjectListItem } from "./types";
 
 const list = (id: string): ProjectListItem => ({
   id, slug: id, name: id, orgId: "o1", orgName: "Org", orgIsPersonal: false, createdBy: "u1",
-  role: "admin", orgRole: "owner", apiKey: null, archivedAt: null, createdAt: "2026-10-01T00:00:00Z",
+  role: "admin", orgRole: "owner", archivedAt: null, createdAt: "2026-10-01T00:00:00Z",
 });
 const row = (id: string, over: Partial<ProjectHealthRow> = {}): ProjectHealthRow =>
   ({

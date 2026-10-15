@@ -390,7 +390,6 @@ export const projects = pgTable(
     agentConfig: jsonb('agent_config'),
     environments: jsonb('environments'),
     webhookSecret: text('webhook_secret'),
-    apiKey: text('api_key'),
     issuePrefix: text('issue_prefix'),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -398,7 +397,6 @@ export const projects = pgTable(
   (t) => ({
     orgIdIdx: index('projects_org_id_idx').on(t.orgId),
     createdByIdx: index('projects_created_by_idx').on(t.createdBy),
-    apiKeyUq: uniqueIndex('projects_api_key_uq').on(t.apiKey).where(sql`api_key IS NOT NULL`),
     defaultDeviceIdx: index('projects_default_device_id_idx').on(t.defaultDeviceId),
     archivedAtIdx: index('projects_archived_at_idx').on(t.archivedAt),
     issuePrefixFk: foreignKey({

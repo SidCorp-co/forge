@@ -8,7 +8,6 @@
  * genuinely different queries and keep their own.
  */
 
-import { randomBytes } from 'node:crypto';
 import { and, count, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
@@ -22,6 +21,7 @@ import {
 } from '../db/schema.js';
 import { visibleProjectsWhere } from '../lib/authz.js';
 import { isUniqueViolation, pgConstraintName } from '../lib/db-errors.js';
+import { CREATED_PROJECT, PROJECT_SUMMARY, UPDATED_PROJECT } from './projections.js';
 import type { ReleaseChain } from './release-chain.js';
 
 /** The project's id, or `null` when no project carries that slug. */
@@ -83,11 +83,6 @@ export type NewProject = {
   releaseChain?: ReleaseChain | undefined;
 };
 
-/** A freshly generated project API key: `fk_` + 192 bits, the shape every validator accepts. */
-export function generateApiKey(): string {
-  return `fk_${randomBytes(24).toString('hex')}`;
-}
-
 export async function createProject(input: NewProject) {
   try {
     return await db.transaction(async (tx) => {
@@ -98,22 +93,13 @@ export async function createProject(input: NewProject) {
           name: input.name,
           orgId: input.orgId,
           createdBy: input.createdBy,
-          apiKey: generateApiKey(),
           baseBranch: input.baseBranch ?? 'main',
           ...(input.releaseChain !== undefined ? { releaseChain: input.releaseChain } : {}),
           ...(input.description !== undefined ? { description: input.description } : {}),
           ...(input.kind !== undefined ? { kind: input.kind } : {}),
           ...(input.repoPath !== undefined ? { repoPath: input.repoPath } : {}),
         })
-        .returning({
-          id: projects.id,
-          slug: projects.slug,
-          name: projects.name,
-          orgId: projects.orgId,
-          createdBy: projects.createdBy,
-          apiKey: projects.apiKey,
-          createdAt: projects.createdAt,
-        });
+        .returning(CREATED_PROJECT);
       if (!project) throw new Error('projects: insert returned no row');
 
       await tx.insert(projectMembers).values({
@@ -179,22 +165,7 @@ export async function listVisibleProjectsWithRole(
 /** The scalar view of one project, without its config blobs. */
 export async function readProjectSummary(projectId: string) {
   const [row] = await db
-    .select({
-      id: projects.id,
-      slug: projects.slug,
-      name: projects.name,
-      description: projects.description,
-      orgId: projects.orgId,
-      createdBy: projects.createdBy,
-      kind: projects.kind,
-      repoPath: projects.repoPath,
-      workspaceSetup: projects.workspaceSetup,
-      baseBranch: projects.baseBranch,
-      releaseChain: projects.releaseChain,
-      defaultDeviceId: projects.defaultDeviceId,
-      environments: projects.environments,
-      createdAt: projects.createdAt,
-    })
+    .select(PROJECT_SUMMARY)
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
@@ -202,18 +173,11 @@ export async function readProjectSummary(projectId: string) {
 }
 
 export async function updateProject(projectId: string, updates: Record<string, unknown>) {
-  const [row] = await db.update(projects).set(updates).where(eq(projects.id, projectId)).returning({
-    id: projects.id,
-    slug: projects.slug,
-    name: projects.name,
-    orgId: projects.orgId,
-    description: projects.description,
-    repoPath: projects.repoPath,
-    workspaceSetup: projects.workspaceSetup,
-    baseBranch: projects.baseBranch,
-    releaseChain: projects.releaseChain,
-    kind: projects.kind,
-  });
+  const [row] = await db
+    .update(projects)
+    .set(updates)
+    .where(eq(projects.id, projectId))
+    .returning(UPDATED_PROJECT);
   return row ?? null;
 }
 
