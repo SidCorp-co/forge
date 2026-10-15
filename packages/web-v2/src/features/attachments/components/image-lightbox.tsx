@@ -1,5 +1,6 @@
 
 
+import { AttachedImage } from "./attached-image";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
@@ -261,7 +262,7 @@ function Thumbnails({ images, index, onPick }: { images: LightboxImage[]; index:
           aria-current={i === index}
           className={cn("flex-none overflow-hidden rounded-md border-2 transition-colors", i === index ? "border-info-8" : "border-transparent opacity-60 hover:opacity-100")}
         >
-          <img src={img.href} alt={img.alt ?? img.name} width={56} height={56} className="size-11 object-cover sm:size-14" />
+          <AttachedImage src={img.href} alt={img.alt ?? img.name} name={img.name} width={56} height={56} className="size-11 object-cover sm:size-14" />
         </button>
       ))}
     </div>
@@ -324,10 +325,11 @@ export function ImageLightbox({
           onWheel={gesture.onWheel}
           onDoubleClick={gesture.toggleZoom}
         >
-          <img
+          <AttachedImage
             sizes="100vw"
             src={current.href}
             alt={current.alt ?? current.name}
+            name={current.name}
             draggable={false}
             className="absolute inset-0 size-full object-contain will-change-transform"
             style={{

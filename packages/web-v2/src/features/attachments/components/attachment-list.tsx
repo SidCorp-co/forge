@@ -1,5 +1,6 @@
 
 
+import { AttachedImage } from "./attached-image";
 import { Icon } from "@/design";
 import { coreFileUrl } from "@/lib/utils/core-url";
 import { useState } from "react";
@@ -49,7 +50,7 @@ export function AttachmentList({ rows }: { rows: AttachmentListItem[] }) {
                   title={`${a.name} · ${formatSize(a.size)}`}
                   className="block overflow-hidden rounded-md border border-line transition-colors hover:border-line-strong focus-visible:outline-none focus-visible:shadow-focus"
                 >
-                  <img src={href} alt={a.name} width={112} height={112} className="size-28 object-cover" />
+                  <AttachedImage src={href} alt={a.name} name={a.name} width={112} height={112} className="size-28 object-cover" />
                 </button>
               ) : (
                 <a
