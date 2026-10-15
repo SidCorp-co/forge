@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils/cn";
+import { diagramMinWidth } from "./mermaid-width";
 
 interface MermaidDiagramProps {
   code: string;
@@ -30,6 +31,14 @@ export function MermaidDiagram({ code, className }: MermaidDiagramProps) {
   const id = `mermaid-${rawId.replace(/:/g, "")}`;
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const box = useRef<HTMLDivElement>(null);
+
+  // Mermaid fits the svg to the column; past the floor it would shrink the labels out of reading.
+  useLayoutEffect(() => {
+    const drawn = svg ? box.current?.querySelector("svg") : null;
+    const floor = drawn ? diagramMinWidth(drawn.getAttribute("viewBox")) : null;
+    if (drawn && floor !== null) drawn.style.minWidth = `${floor}px`;
+  }, [svg]);
 
   useEffect(() => {
     let cancelled = false;
@@ -70,7 +79,8 @@ export function MermaidDiagram({ code, className }: MermaidDiagramProps) {
 
   return (
     <div
-      className={cn("overflow-x-auto", className)}
+      ref={box}
+      className={cn("max-w-full overflow-x-auto", className)}
       // biome-ignore lint/security/noDangerouslySetInnerHtml: mermaid produces sanitized SVG under securityLevel:strict
       dangerouslySetInnerHTML={{ __html: svg }}
     />
