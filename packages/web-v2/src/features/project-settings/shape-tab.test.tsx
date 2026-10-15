@@ -565,6 +565,18 @@ describe("a save that would strand work", () => {
 		expect(dialog.textContent).not.toMatch(/under way/);
 	});
 
+	it("names every in-flight status as one item when the confirmation lists them all", async () => {
+		counts = { in_progress: 1, developed: 2, testing: 3, awaiting_release: 4 };
+		await mount(project());
+		await waitFor(() => expect(screen.getByRole("radio", { name: /no repository/i })).toBeEnabled());
+		const dialog = await pick(/repository, no release/i);
+		const listed = /started and not finished: (.+?)\. The new shape/.exec(dialog.textContent ?? "")?.[1];
+		expect(listed).toBeDefined();
+		const items = (listed ?? "").split(/, | and | or /);
+		expect(items).toHaveLength(4);
+		expect(items.map((item) => item.match(/^\d+ /)?.[0].trim())).toEqual(["1", "2", "3", "4"]);
+	});
+
 	it("says the ordinary confirmation without calling anything under way", async () => {
 		const dialog = await (async () => {
 			await mount(project());
