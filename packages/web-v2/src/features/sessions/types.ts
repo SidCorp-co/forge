@@ -32,6 +32,9 @@ export const STALLED_THRESHOLD_MS = 60_000;
 
 export const HEARTBEAT_REAP_MS = 3 * 60_000;
 
+/** A heartbeat moves no event, so every screen showing a running session re-reads it on this period. */
+export const LIVE_READ_POLL_MS = 20_000;
+
 export type Liveness = "alive" | "stale" | "reaping" | "na";
 
 export interface LivenessResult {
@@ -312,18 +315,22 @@ export function failureReasonAction(reason: string | null | undefined): string |
   );
 }
 
-export function deriveLiveness(
-  session: Pick<
-    SessionRow,
-    "status" | "lastHeartbeatAt" | "startedAt" | "updatedAt" | "metadata"
-  >,
-  nowMs: number = Date.now(),
-): LivenessResult {
-  const naResult: LivenessResult = { state: "na", sinceHeartbeatMs: null, reapInMs: null };
-  if (session.status !== "running") return naResult;
-  if (isInteractiveSession(session)) return naResult;
+/** What a running session's silence is measured on, whichever read the session came from. */
+export interface SilenceInput {
+  status: string;
+  lastHeartbeatAt: string | null;
+  startedAt: string | null;
+  updatedAt?: string | null;
+}
 
-  const lastSignal = session.lastHeartbeatAt ?? session.startedAt ?? session.updatedAt;
+/**
+ * How long a running session has been silent — since its last check-in, else since it started —
+ * and which side of the one-minute line that is. The session page, the sessions list and the
+ * Pipeline page all judge a session quiet or stalled here, so no two of them disagree about one.
+ */
+export function sessionSilence(session: SilenceInput, nowMs: number = Date.now()): LivenessResult {
+  if (session.status !== "running") return { state: "na", sinceHeartbeatMs: null, reapInMs: null };
+  const lastSignal = session.lastHeartbeatAt ?? session.startedAt ?? session.updatedAt ?? null;
   if (!lastSignal) return { state: "alive", sinceHeartbeatMs: null, reapInMs: null };
   const lastMs = new Date(lastSignal).getTime();
   if (Number.isNaN(lastMs)) return { state: "alive", sinceHeartbeatMs: null, reapInMs: null };
@@ -334,6 +341,17 @@ export function deriveLiveness(
     return { state: "stale", sinceHeartbeatMs: since, reapInMs: HEARTBEAT_REAP_MS - since };
   }
   return { state: "reaping", sinceHeartbeatMs: since, reapInMs: 0 };
+}
+
+export function deriveLiveness(
+  session: Pick<
+    SessionRow,
+    "status" | "lastHeartbeatAt" | "startedAt" | "updatedAt" | "metadata"
+  >,
+  nowMs: number = Date.now(),
+): LivenessResult {
+  if (isInteractiveSession(session)) return { state: "na", sinceHeartbeatMs: null, reapInMs: null };
+  return sessionSilence(session, nowMs);
 }
 
 export function deriveSessionDisplayStatus(
