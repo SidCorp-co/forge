@@ -28,6 +28,8 @@ describe("/guides/<slug> while core cannot answer for the guides", () => {
     expect(screen.getByRole("link", { name: "Forge documentation" })).toHaveAttribute("href", "/guides");
     expect(screen.getByRole("heading", { name: GUIDES_UNAVAILABLE.heading })).toBeInTheDocument();
     expect(screen.getByText(BUNDLED_WAYS_IN)).toBeInTheDocument();
+    expect(screen.getByText("For people using Forge and people connecting an assistant.")).toBeInTheDocument();
+    expect(screen.queryByText(/and agents\./)).toBeNull();
     const doors = within(screen.getByRole("navigation", { name: "Ways in" })).getAllByRole("link");
     expect(doors.map((d) => d.getAttribute("href"))).toEqual(["/guides?for=user", "/guides?for=assistant-setup"]);
   });

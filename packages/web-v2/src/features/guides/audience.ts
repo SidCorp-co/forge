@@ -18,6 +18,10 @@ export interface Door {
   blurb: string;
   /** Said at the top of every page written for this reader. */
   notice: string;
+  /** Who comes in by this door, as the header names them. */
+  reader: string;
+  /** Whose pages these are, as a search over them says. */
+  pages: string;
 }
 
 export const DOORS: Record<Audience, Door> = {
@@ -25,17 +29,23 @@ export const DOORS: Record<Audience, Door> = {
     label: "I use Forge",
     blurb: "Ask for a change, read where it stands, and tell when it is done.",
     notice: "Written for people using Forge.",
+    reader: "people using Forge",
+    pages: "people",
   },
   "assistant-setup": {
     label: "I'm connecting an AI assistant",
     blurb: "Ask Forge things in your own words from Claude, Cursor or another app you already use.",
     notice: "Written for people connecting an AI assistant to Forge.",
+    reader: "people connecting an assistant",
+    pages: "people",
   },
   agent: {
     label: "I'm an agent or a script",
     blurb: "The rules Forge's agents are held to, each also served as plain markdown with no credential.",
     notice:
       "Written for agents: a rule Forge's agents are held to, not a how-to for using Forge.",
+    reader: "agents",
+    pages: "agents",
   },
 };
 
@@ -46,7 +56,37 @@ export const SITE_NAME = "Forge documentation";
 export function documentTitle(subject: string | null): string {
   return subject ? `${plainText(subject)} — ${SITE_NAME}` : SITE_NAME;
 }
-export const SITE_CAPTION = "For people using Forge, people connecting an assistant, and agents.";
+
+/** The doors a page offers: every one while core's guide index answers, the bundled ones while it
+ *  does not. The header, the search and the outage sentences each read what they say from it. */
+export function openDoors(indexDown: boolean): readonly Audience[] {
+  return indexDown ? BUNDLED_AUDIENCES : AUDIENCES;
+}
+
+function listed(words: readonly string[]): string {
+  if (words.length < 3) return words.join(" and ");
+  return `${words.slice(0, -1).join(", ")}, and ${words[words.length - 1]}`;
+}
+
+/** Who the doors are for, as one phrase: "people using Forge and people connecting an assistant". */
+export function readersOf(doors: readonly Audience[]): string {
+  return listed(doors.map((a) => DOORS[a].reader));
+}
+
+/** Whose pages the doors hold, each named once: "the pages for people". */
+export function pagesOf(doors: readonly Audience[]): string {
+  return `the pages for ${listed([...new Set(doors.map((a) => DOORS[a].pages))])}`;
+}
+
+/** The line under the site name. */
+export function siteCaption(doors: readonly Audience[]): string {
+  return `For ${readersOf(doors)}.`;
+}
+
+/** What a search field over these doors' pages is called. */
+export function searchLabel(doors: readonly Audience[]): string {
+  return doors.length === AUDIENCES.length ? "Search every page" : `Search ${pagesOf(doors)}`;
+}
 
 export const INDEX_PATH = "/guides";
 

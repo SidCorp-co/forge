@@ -1,13 +1,4 @@
-import {
-  type Audience,
-  AUDIENCES,
-  BUNDLED_AUDIENCES,
-  DOORS,
-  doorHref,
-  INDEX_PATH,
-  SITE_CAPTION,
-  SITE_NAME,
-} from "./audience";
+import { DOORS, doorHref, INDEX_PATH, openDoors, SITE_NAME, siteCaption } from "./audience";
 import { assetPath } from "@/lib/asset";
 import { ALL_DOORS_LINK_TEXT, GUIDES_UNAVAILABLE, missingGuide, type Refusal, saidWhileDown } from "./missing";
 
@@ -69,7 +60,7 @@ nav{display:flex;flex-direction:column;gap:.25rem}
 export function refusalDocument(refusal: Refusal, { indexDown = false }: { indexDown?: boolean } = {}): string {
   const h = escapeHtml(refusal.heading);
   const said = indexDown ? saidWhileDown(refusal) : [refusal.body];
-  const open: readonly Audience[] = indexDown ? BUNDLED_AUDIENCES : AUDIENCES;
+  const open = openDoors(indexDown);
   const doors = open.map(
     (a) => `<a href="${doorHref(a)}">${escapeHtml(DOORS[a].label)}</a>`,
   ).join("");
@@ -86,7 +77,7 @@ export function refusalDocument(refusal: Refusal, { indexDown = false }: { index
     `<style>${STYLE}</style>`,
     "</head><body>",
     `<header><div class="bar">${brand}`,
-    `<span class="caption">${escapeHtml(SITE_CAPTION)}</span></div></header>`,
+    `<span class="caption">${escapeHtml(siteCaption(open))}</span></div></header>`,
     "<main>",
     '<div class="refusal">',
     `<h1>${h}</h1>`,

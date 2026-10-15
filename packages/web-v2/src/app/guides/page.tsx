@@ -3,7 +3,7 @@ import { cache } from "react";
 import { HELP_DOCS } from "@/features/docs/help-content.generated";
 import { HELP_SLUGS } from "@/features/docs/help-slugs.generated";
 import { fetchGuideCorpus, fetchGuideScope } from "@/features/guides/api";
-import { BUNDLED_AUDIENCES, DOORS, documentTitle } from "@/features/guides/audience";
+import { BUNDLED_AUDIENCES, DOORS, documentTitle, openDoors, readersOf } from "@/features/guides/audience";
 import { buildCorpus, helpPageHref, searchPlaceholder } from "@/features/guides/corpus";
 import { GuideShell } from "@/features/guides/components/guide-shell";
 import { PublicLanding, PublicReader, PublicRefusal } from "@/features/guides/components/public-docs";
@@ -17,8 +17,11 @@ export const dynamic = "force-dynamic";
 
 type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
-const DESCRIPTION =
-  "Forge's documentation — for people using Forge, people connecting an AI assistant, and agents.";
+/** What a search result or a link preview says the documentation is, naming only the readers whose
+ *  pages open. */
+function description(indexDown: boolean): string {
+  return `Forge's documentation, for ${readersOf(openDoors(indexDown))}.`;
+}
 
 /** The index every view is built from, read once per request; `null` where core's answer could not
  *  be read, and the page then says so in the docs' own shell or, for a page or door of bundled help
@@ -42,13 +45,13 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
   if (asked.kind !== "refused" && !bundled(asked) && !(await readIndex())) {
     return { title: documentTitle(GUIDES_UNAVAILABLE.heading), robots: { index: false } };
   }
-  if (asked.kind === "door") return { title: documentTitle(DOORS[asked.audience].label), description: DESCRIPTION };
+  if (asked.kind === "door") return { title: documentTitle(DOORS[asked.audience].label), description: description(!(await readIndex())) };
   if (asked.kind === "page") {
     const doc = HELP_DOCS.find((d) => d.slug === asked.slug);
     return { title: documentTitle(doc?.title ?? asked.slug), description: DOORS[doc?.audience ?? "user"].notice };
   }
   if (asked.kind === "refused") return { title: documentTitle(asked.refusal.heading), robots: { index: false } };
-  return { title: documentTitle(null), description: DESCRIPTION };
+  return { title: documentTitle(null), description: description(!(await readIndex())) };
 }
 
 export default async function GuidesPage({ searchParams }: Props) {
