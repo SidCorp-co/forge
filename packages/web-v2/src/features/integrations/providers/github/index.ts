@@ -17,4 +17,5 @@ export const github: ProviderModule = {
   section: () => import("./section").then((m) => ({ default: m.GitHubSettings })),
   connectionSection: null,
   createStep: () => import("./create-app").then((m) => ({ default: m.WorkspaceCreateApp })),
+  rowDetail: () => import("./row-detail").then((m) => ({ default: m.GitHubAppRowDetail })),
 };

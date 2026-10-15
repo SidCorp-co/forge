@@ -76,9 +76,7 @@ describe('the instance App’s row', () => {
 
     expect(res.body.visibility).toBe('private');
     expect(res.body.owner).toBe('an-operator');
-    expect(res.body.makePublicUrl).toBe(
-      'https://github.com/settings/apps/forge-test-app/advanced',
-    );
+    expect(res.body.makePublicUrl).toBe('https://github.com/settings/apps/forge-test-app/advanced');
   });
 
   it('PLANT: an answer GitHub did not give leaves visibility unknown, never guessed private', async () => {

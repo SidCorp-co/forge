@@ -4,13 +4,17 @@
  * of can() and of the recorded installations, never of GitHub's own list of the App's installations.
  */
 
-import { installationsReachableBy } from '../integrations/github/index.js';
+import {
+  installationsReachableBy,
+  type RepositoryTarget,
+  suggestTargets,
+  type TargetSuggestion,
+} from '../integrations/github/index.js';
 import { listBindingsForProject } from '../integrations/index.js';
 import { loadVisibleProjectIds, projectOrgOf } from '../lib/authz.js';
 import { actorFor, can, projectResource } from '../permissions/index.js';
 import { readDeclaredSource } from '../project-config/index.js';
 import { listProjectHeads } from '../projects/index.js';
-import { type RepositoryTarget, suggestTargets, type TargetSuggestion } from './target-suggestions.js';
 
 /** The projects the caller may administer, asked of can() one by one. */
 export async function projectsAdministeredBy(userId: string): Promise<string[]> {
@@ -35,10 +39,11 @@ export async function instanceInstallationsFor(
 
 /**
  * What each project the caller administers is offered pre-ticked among these targets. A project
- * that already has a live GitHub binding is offered nothing: it has its repository.
+ * that already has a live binding of this provider is offered nothing: it has its repository.
  */
 export async function suggestionsFor(
   userId: string,
+  provider: string,
   targets: readonly RepositoryTarget[],
 ): Promise<TargetSuggestion[]> {
   const administered = await projectsAdministeredBy(userId);
@@ -46,7 +51,7 @@ export async function suggestionsFor(
   const unbound: string[] = [];
   for (const id of administered) {
     const pairs = await listBindingsForProject(id);
-    if (!pairs.some((p) => p.binding.provider === 'github' && p.binding.active)) unbound.push(id);
+    if (!pairs.some((p) => p.binding.provider === provider && p.binding.active)) unbound.push(id);
   }
   if (unbound.length === 0) return [];
   const heads = await listProjectHeads(unbound);

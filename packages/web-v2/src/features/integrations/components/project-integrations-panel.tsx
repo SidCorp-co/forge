@@ -189,6 +189,41 @@ function RepositoryAction({
   );
 }
 
+/** A provider row's act: manage what is configured; connect what is not, the repository where this row owns it. */
+function ProviderAction({
+  card,
+  label,
+  canEdit,
+  ownsRepositoryConnect,
+  onOpen,
+}: {
+  card: StatusCard;
+  label: string;
+  canEdit: boolean;
+  ownsRepositoryConnect: boolean;
+  onOpen: (card: StatusCard) => void;
+}) {
+  const t = useCopy();
+  if (!isProviderCard(card.key)) return null;
+  if (card.configured) {
+    return (
+      <Button variant="ghost" size="sm" aria-label={t("integrations.panel.manageLabel", { name: label })} onClick={() => onOpen(card)}>
+        {t("integrations.panel.manage")}
+      </Button>
+    );
+  }
+  if (!canEdit) return null;
+  return ownsRepositoryConnect ? (
+    <Button variant="primary" size="sm" aria-label={t("integrations.panel.connectRepositoryLabel", { provider: label })} onClick={() => onOpen(card)}>
+      {t("integrations.panel.connectRepository")}
+    </Button>
+  ) : (
+    <Button variant="secondary" size="sm" aria-label={t("integrations.mcp.connect", { provider: label })} onClick={() => onOpen(card)}>
+      {t("integrations.panel.connect")}
+    </Button>
+  );
+}
+
 function IntegrationItem({
   row,
   canEdit,
@@ -202,7 +237,6 @@ function IntegrationItem({
   owner: StatusCard | null;
 }) {
   const { card } = row;
-  const t = useCopy();
   const label = row.sub ? `${row.name} ${row.sub}` : row.name;
   const target = row.target ? (
     row.targetHref ? (
@@ -241,20 +275,9 @@ function IntegrationItem({
       <TD className="text-right align-top whitespace-nowrap" data-tour={tourConnect ? "int-connect" : undefined}>
         {isRepositoryCard(card) ? (
           <RepositoryAction card={card} canEdit={canEdit} owner={owner} />
-        ) : !isProviderCard(card.key) ? null : card.configured ? (
-          <Button variant="ghost" size="sm" aria-label={t("integrations.panel.manageLabel", { name: label })} onClick={() => onOpen(card)}>
-            {t("integrations.panel.manage")}
-          </Button>
-        ) : canEdit ? (
-          <Button
-            variant={ownsRepositoryConnect ? "primary" : "secondary"}
-            size="sm"
-            aria-label={t("integrations.mcp.connect", { provider: label })}
-            onClick={() => onOpen(card)}
-          >
-            {t("integrations.panel.connect")}
-          </Button>
-        ) : null}
+        ) : (
+          <ProviderAction card={card} label={label} canEdit={canEdit} ownsRepositoryConnect={ownsRepositoryConnect} onOpen={onOpen} />
+        )}
       </TD>
     </TR>
   );

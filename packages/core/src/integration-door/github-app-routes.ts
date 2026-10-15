@@ -306,7 +306,9 @@ githubAppRoutes.get('/:id/github-app', async (c) => {
       visibility === 'private' && slug && config.appOwner
         ? appAdvancedSettingsUrl(slug, config.appOwner, config.appOwnerIsOrg === true)
         : null,
-    completePath: awaitsCompletion ? `/api/integration-connections/${connection.id}/github-app/complete` : null,
+    completePath: awaitsCompletion
+      ? `/api/integration-connections/${connection.id}/github-app/complete`
+      : null,
     installations: recorded.map((row) => ({
       installationId: row.installationId,
       account: row.accountLogin,

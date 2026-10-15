@@ -18,10 +18,7 @@ const project = (over: Partial<{ slug: string; name: string; repository: string 
 describe('suggestTargets pre-ticks a repository only where one answer exists', () => {
   it('takes the repository the project declared, over a namesake', () => {
     const targets = [repo('someone', 'forge'), repo('SidCorp-co', 'engine')];
-    const [s] = suggestTargets(
-      [project({ repository: 'github.com/sidcorp-co/Engine' })],
-      targets,
-    );
+    const [s] = suggestTargets([project({ repository: 'github.com/sidcorp-co/Engine' })], targets);
     expect(s).toEqual({ projectId: 'p1', by: 'repository', target: targets[1] });
   });
 

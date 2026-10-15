@@ -1,10 +1,12 @@
-
-import { Banner, Button, PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle } from "@/design";
-import { useProjects } from "@/features/projects";
+import { useState } from "react";
+import { Banner, Button, Field, Input, PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useGitHubConnect } from "../../hooks";
 import type { GitHubConnectStart } from "../../types";
+import { useCompleteGitHubApp, useOrgGitHubConnect } from "./app";
+
+type CompleteStart = Extract<GitHubConnectStart, { kind: "complete" }>;
 
 function submitManifest(start: Extract<GitHubConnectStart, { kind: "manifest" }>): void {
   const form = document.createElement("form");
@@ -19,34 +21,58 @@ function submitManifest(start: Extract<GitHubConnectStart, { kind: "manifest" }>
   form.submit();
 }
 
-function permissionRows(manifest: Record<string, unknown>): [string, string][] {
-  const perms = manifest.default_permissions;
-  if (!perms || typeof perms !== "object") return [];
-  return Object.entries(perms as Record<string, unknown>).map(([k, v]) => [k, String(v)]);
+/**
+ * An App made before this Forge had one is completed, never joined by a second: an operator pastes
+ * its client secret, and Connect GitHub then goes on to its install page.
+ */
+function CompleteApp({ start, onDone }: { start: CompleteStart; onDone: () => void }) {
+  const complete = useCompleteGitHubApp();
+  const [secret, setSecret] = useState("");
+  const t = useCopy();
+  return (
+    <div className="flex flex-col gap-3 rounded-md border border-line p-3" data-testid="github-complete-app">
+      <span className="fg-label">{t("integrations.github.completeTitle")}</span>
+      <p className="fg-body-sm text-muted">{t("integrations.github.completeBody", { app: start.displayName })}</p>
+      <Field label={t("integrations.github.clientSecret")}>
+        <Input
+          type="password"
+          autoComplete="off"
+          value={secret}
+          onChange={(e) => setSecret(e.target.value)}
+          aria-label={t("integrations.github.clientSecret")}
+        />
+      </Field>
+      {complete.isError && <Banner tone="danger">{formatApiError(complete.error)}</Banner>}
+      <div>
+        <Button
+          onClick={() => complete.mutate({ connectionId: start.connectionId, clientSecret: secret }, { onSuccess: onDone })}
+          disabled={secret.trim().length < 8 || complete.isPending}
+        >
+          {complete.isPending ? t("integrations.github.completing") : t("integrations.github.complete")}
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 /**
- * Connect GitHub for `projectId`'s org: the instance App's install page, or, where this Forge has no
- * App yet and the caller is its operator, the manifest that makes it. Begun from the workspace
- * Integrations page (`returnTo`), the install step lands back there, where the App is bound into
- * its projects.
+ * Connect GitHub: one button. It goes to the instance App's install page; where this Forge has no
+ * App yet and the caller is its operator, to the manifest that makes it; where an App made before
+ * awaits completion, to completing it. Begun from a project it lands back there; begun for an org
+ * from the workspace Integrations page (`returnTo`), there, where the App is bound into projects.
  */
-export function CreateApp({
-  projectId,
-  onBack,
-  returnTo,
-}: {
-  projectId: string;
-  onBack: (() => void) | null;
-  returnTo?: "integrations";
-}) {
-  const connect = useGitHubConnect(projectId);
+export function CreateApp(props: { projectId: string; returnTo?: "integrations" } | { orgId: string; returnTo: "integrations" }) {
+  const viaProject = useGitHubConnect("projectId" in props ? props.projectId : undefined);
+  const viaOrg = useOrgGitHubConnect("orgId" in props ? props.orgId : undefined);
+  const connect = "projectId" in props ? viaProject : viaOrg;
+  const [completing, setCompleting] = useState<CompleteStart | null>(null);
   const t = useCopy();
 
   const start = async () => {
-    const res = await connect.mutateAsync(returnTo ? { returnTo } : {});
+    const res = await connect.mutateAsync(props.returnTo ? { returnTo: props.returnTo } : {});
     if (res.kind === "install") window.location.assign(res.installUrl);
-    else submitManifest(res);
+    else if (res.kind === "manifest") submitManifest(res);
+    else setCompleting(res);
   };
 
   return (
@@ -59,25 +85,19 @@ export function CreateApp({
 
         {connect.isError && <Banner tone="danger">{formatApiError(connect.error)}</Banner>}
 
-        <div className="flex items-center gap-3">
-          <Button onClick={() => void start()} disabled={connect.isPending}>
-            {connect.isPending ? t("integrations.github.preparing") : t("integrations.github.create")}
-          </Button>
-          {onBack && (
-            <Button variant="ghost" size="sm" onClick={onBack}>
-              {t("integrations.github.useExisting")}
+        {completing ? (
+          <CompleteApp
+            start={completing}
+            onDone={() => {
+              setCompleting(null);
+              void start();
+            }}
+          />
+        ) : (
+          <div>
+            <Button onClick={() => void start()} disabled={connect.isPending} data-testid="github-connect">
+              {connect.isPending ? t("integrations.github.preparing") : t("integrations.github.create")}
             </Button>
-          )}
-        </div>
-
-        {connect.data?.kind === "manifest" && (
-          <div className="flex flex-col gap-1">
-            <span className="fg-body-sm font-semibold">{t("integrations.github.permissions")}</span>
-            {permissionRows(connect.data.manifest).map(([name, level]) => (
-              <span key={name} className="fg-body-sm text-muted">
-                {name}: <span className="font-mono">{level}</span>
-              </span>
-            ))}
           </div>
         )}
       </PageSectionBody>
@@ -85,18 +105,7 @@ export function CreateApp({
   );
 }
 
-
-/**
- * GitHub's step on the workspace Integrations page (FB-128): the install is recorded for the first
- * ticked project's org, and lands back there, where each project picks its repository.
- */
-export function WorkspaceCreateApp({ projectId }: { projectId: string }) {
-  const project = useProjects().data?.find((p) => p.id === projectId);
-  const t = useCopy();
-  return (
-    <div className="flex flex-col gap-3">
-      {project && <p className="fg-body-sm text-muted">{t("integrations.addFlow.githubNamed", { project: project.name })}</p>}
-      <CreateApp projectId={projectId} onBack={null} returnTo="integrations" />
-    </div>
-  );
+/** GitHub's step on the workspace Integrations page: one button for the active org, no form. */
+export function WorkspaceCreateApp({ orgId }: { orgId: string }) {
+  return <CreateApp orgId={orgId} returnTo="integrations" />;
 }

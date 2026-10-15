@@ -30,10 +30,39 @@ interface InstallationRepo {
   fullName: string;
 }
 
+/** A binding-v1 target as `bindings[].target` takes it. */
+export type BindingTarget = Record<string, unknown> & { provider: string };
+
+/** The target a project is offered pre-ticked, or the candidates it is never guessed between. */
+export type TargetSuggestion =
+  | { projectId: string; by: "repository" | "slug" | "name"; target: BindingTarget }
+  | { projectId: string; by: "ambiguous"; candidates: BindingTarget[] };
+
 /** `GET /integration-connections/:id/targets`: binding-v1 targets a `bindings[].target` takes as they stand. */
 export interface ConnectionTargetsResponse {
-  targets: Array<Record<string, unknown> & { provider: string }>;
+  targets: BindingTarget[];
   truncated: boolean;
+  /** Where the provider matches targets to projects: one entry per unbound project the caller administers that matched. */
+  suggestedFor?: TargetSuggestion[];
+}
+
+/** `GET /integration-connections/:id/github-app`: a GitHub App connection as its row reads it. */
+export interface GitHubAppRow {
+  connectionId: string;
+  instance: boolean;
+  slug: string | null;
+  owner: string | null;
+  visibility: "public" | "private" | "unknown";
+  makePublicUrl: string | null;
+  completePath: string | null;
+  installations: Array<{
+    installationId: number;
+    account: string;
+    accountType: string;
+    state: "active" | "suspended" | "gone";
+    used: boolean;
+    settingsUrl: string;
+  }>;
 }
 
 export interface GitHubRepositoriesResponse {
@@ -41,10 +70,12 @@ export interface GitHubRepositoriesResponse {
   truncated: boolean;
 }
 
-/** Where Connect GitHub sends the browser: the instance App's install page, or the manifest that makes it. */
+/** Where Connect GitHub sends the browser: the instance App's install page, the manifest that makes it, or the App to complete. */
 export type GitHubConnectStart =
   | { kind: "install"; installUrl: string }
-  | { kind: "manifest"; postUrl: string; state: string; manifest: Record<string, unknown> };
+  | { kind: "manifest"; postUrl: string; state: string; manifest: Record<string, unknown> }
+  /** An App made before the instance had one: an operator completes it, never makes a second. */
+  | { kind: "complete"; connectionId: string; displayName: string; completePath: string };
 
 /**
  * Result of the test-connection (`POST .../test`) call. Bases the cutover-

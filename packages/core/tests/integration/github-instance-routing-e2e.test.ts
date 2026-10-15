@@ -98,8 +98,14 @@ describe('targets and bindings reach only what was recorded for the caller’s o
       { projectId: project.id, by: 'slug', target: target(OURS) },
     ]);
 
-    const theirs = await api(otherSession, 'GET', `/api/integration-connections/${connection}/targets`);
-    expect(theirs.body.suggestedFor, 'nothing is suggested from what another org recorded').toEqual([]);
+    const theirs = await api(
+      otherSession,
+      'GET',
+      `/api/integration-connections/${connection}/targets`,
+    );
+    expect(theirs.body.suggestedFor, 'nothing is suggested from what another org recorded').toEqual(
+      [],
+    );
 
     expect((await bind(session, connection, project.id, OURS)).status).toBe(200);
     const after = await api(session, 'GET', `/api/integration-connections/${connection}/targets`);

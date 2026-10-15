@@ -6,7 +6,7 @@
  * GitHub repository this App does not see is offered nothing, never a namesake in its place.
  */
 
-import { repositoryIdentity } from '../project-config/index.js';
+import { repositoryIdentity } from '@forge/contracts/git-repository';
 
 export interface SuggestableProject {
   id: string;

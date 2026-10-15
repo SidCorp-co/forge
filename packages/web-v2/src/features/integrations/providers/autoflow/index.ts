@@ -13,4 +13,5 @@ export const autoflow: ProviderModule = {
   section: () => import("./section").then((m) => ({ default: m.AutoflowSettings })),
   connectionSection: null,
   createStep: null,
+  rowDetail: null,
 };

@@ -45,3 +45,9 @@ export {
 export { mainRunnerHead, refreshMainRunnerHead } from './published-releases/main-runner-head.js';
 export { downloadReleaseAsset, releaseDownloadUrl } from './published-releases/public-releases.js';
 export { listInstallationRepositories } from './repositories.js';
+export {
+  type RepositoryTarget,
+  type SuggestableProject,
+  suggestTargets,
+  type TargetSuggestion,
+} from './target-suggestions.js';

@@ -234,7 +234,7 @@ integrationConnectionsRoutes.get('/:id/targets', async (c) => {
     return c.json({
       targets,
       truncated: listed.truncated,
-      suggestedFor: await suggestionsFor(c.get('userId'), targets),
+      suggestedFor: await suggestionsFor(c.get('userId'), connection.provider, targets),
     });
   } catch (err) {
     if (!(err instanceof SourceHostCallError)) throw err;
