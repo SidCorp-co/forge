@@ -43,7 +43,7 @@ const RULES: Array<{ rule: string; offends: RegExp }> = [
   {
     rule: "a walk through the retired stages",
     offends:
-      /\b(?:triage|clarify|plan|code|review|test|staging|release)\s*(?:→|->|&rarr;)\s*(?:triage|clarify|plan|code|review|test|staging|release)\b/i,
+      /\b(?:triage|clarify|plan|code|review|test|staging|release|fix)\s*(?:→|->|&rarr;)\s*(?:triage|clarify|plan|code|review|test|staging|release|fix)\b/i,
   },
   // A draft with nothing merged cannot be closed, so the way to turn one down is to drop it.
   {
@@ -88,6 +88,8 @@ describe("that guard, against one planted sentence per rule", () => {
     ["Each stage runs an agent or\n  waits for your click, per your settings.", "a per-stage setting Settings does not have"],
     ["Agents move it through triage → plan → code → review → release.", "a walk through the retired stages"],
     ["It runs triage -> clarify -> plan.", "a walk through the retired stages"],
+    ["A failed review goes review → fix.", "a walk through the retired stages"],
+    ["It loops fix -> code.", "a walk through the retired stages"],
     ["Approve one by moving it to **Open**;\nturn it down by closing it.", "a draft turned down by closing it"],
     ["Reject a gated draft by closing it.", "a draft turned down by closing it"],
   ])("rejects %s", (sentence, rule) => {

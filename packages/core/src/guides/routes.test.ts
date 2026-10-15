@@ -22,7 +22,7 @@ describe('the public guide surface', () => {
   it('describes the pipeline without walking the retired staged stages (ISS-1229)', async () => {
     const body = await (await app.request('/api/llms.txt')).text();
     expect(body).not.toMatch(
-      /\b(?:triage|clarify|plan|code|review|test|staging|release)\s*(?:→|->)\s*(?:triage|clarify|plan|code|review|test|staging|release)\b/i,
+      /\b(?:triage|clarify|plan|code|review|test|staging|release|fix)\s*(?:→|->)\s*(?:triage|clarify|plan|code|review|test|staging|release|fix)\b/i,
     );
   });
 
