@@ -17,7 +17,7 @@ const UNREACHED_REPOSITORY: StatusCard = {
   key: "repository",
   label: "Repository",
   status: "not_configured",
-  ...cardDetail(say("integrations.detail.unreachedConnect", { host: "github.com", provider: "GitHub" })),
+  ...cardDetail(say("integrations.detail.unreachedConnect", { provider: "GitHub" })),
   lastSyncAt: null,
   configured: true,
   meta: {
@@ -71,7 +71,7 @@ describe("ProjectIntegrations", () => {
     const row = (await screen.findAllByText("Repository"))[0]?.closest("tr") as HTMLElement;
     expect(within(row).getAllByText("Not connected").length).toBeGreaterThan(0);
     expect(within(row).queryByText("Connected")).toBeNull();
-    expect(within(row).getAllByText(/no source host binding reaches github\.com: connect GitHub/).length).toBeGreaterThan(0);
+    expect(within(row).getAllByText("Not connected to GitHub yet").length).toBeGreaterThan(0);
     const link = within(row).getByRole("link", { name: "Connect GitHub on its row below to reach github.com/SidCorp-co/forge" });
     expect(link.getAttribute("href")).toBe("#integration-github");
   });

@@ -228,7 +228,7 @@ function repositoryCard(
       status: 'not_configured',
       ...detailOf(
         serving
-          ? say('integrations.detail.unreachedConnect', { host, provider: serving.label })
+          ? say('integrations.detail.unreachedConnect', { provider: serving.label })
           : say('integrations.detail.unreachedBind', { host }),
       ),
       lastSyncAt: null,

@@ -92,7 +92,7 @@ describe('the integrations status read: a card is connected only where something
     const cards = await buildIntegrationsStatusCards(P);
     const repo = cards.find((c) => c.key === 'repository');
     expect(repo?.status).toBe('not_configured');
-    expect(repo?.detail).toBe('no source host binding reaches github.com: connect GitHub');
+    expect(repo?.detail).toBe('Not connected to GitHub yet');
     expect(repo?.meta?.connectProvider).toBe('github');
   });
 

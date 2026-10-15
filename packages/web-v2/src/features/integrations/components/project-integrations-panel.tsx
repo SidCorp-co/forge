@@ -224,6 +224,25 @@ function ProviderAction({
   );
 }
 
+/**
+ * A path that breaks only at its slashes: each segment is one atomic piece, so `SidCorp-co` never
+ * splits at its hyphen or mid-word, and a segment wider than the cell alone wraps inside itself.
+ */
+function SlashBreaks({ text }: { text: string }) {
+  // each segment keyed by the path up to and including it: unique, and stable for one path
+  const parts = text.split(/(?<=\/)/).map((part, i, all) => ({ part, upTo: all.slice(0, i + 1).join("") }));
+  return (
+    <>
+      {parts.map(({ part, upTo }) => (
+        <span key={upTo} className="inline-block max-w-full wrap-break-word">
+          {part}
+          {upTo !== text && <wbr />}
+        </span>
+      ))}
+    </>
+  );
+}
+
 function IntegrationItem({
   row,
   canEdit,
@@ -241,10 +260,12 @@ function IntegrationItem({
   const target = row.target ? (
     row.targetHref ? (
       <a href={row.targetHref} target="_blank" rel="noreferrer" className="font-mono text-muted hover:underline">
-        {row.target}
+        <SlashBreaks text={row.target} />
       </a>
     ) : (
-      <span className="font-mono text-muted">{row.target}</span>
+      <span className="font-mono text-muted">
+        <SlashBreaks text={row.target} />
+      </span>
     )
   ) : null;
   const ownsRepositoryConnect = owner !== null && owner.key === card.key;
@@ -262,7 +283,7 @@ function IntegrationItem({
             <span className="@3xl/integrations:hidden">
               <StatusPill card={card} />
             </span>
-            {target && <span className="wrap-anywhere @3xl/integrations:hidden">{target}</span>}
+            {target && <span className="min-w-0 @3xl/integrations:hidden">{target}</span>}
             {row.health && <span className="text-subtle @3xl/integrations:hidden">{row.health}</span>}
           </span>
         </span>
@@ -270,7 +291,7 @@ function IntegrationItem({
       <TD className="hidden align-top @3xl/integrations:table-cell">
         <StatusPill card={card} />
       </TD>
-      <TD className="hidden align-top wrap-anywhere @3xl/integrations:table-cell">{target}</TD>
+      <TD className="hidden align-top @3xl/integrations:table-cell">{target}</TD>
       <TD className="hidden max-w-prose align-top text-muted @3xl/integrations:table-cell">{row.health}</TD>
       <TD className="text-right align-top whitespace-nowrap" data-tour={tourConnect ? "int-connect" : undefined}>
         {isRepositoryCard(card) ? (

@@ -65,7 +65,7 @@ const REPOSITORY: StatusCard = {
   key: "repository",
   label: "Repository",
   status: "not_configured",
-  ...cardDetail(say("integrations.detail.unreachedConnect", { host: "github.com", provider: "GitHub" })),
+  ...cardDetail(say("integrations.detail.unreachedConnect", { provider: "GitHub" })),
   lastSyncAt: null,
   configured: true,
   meta: { repository: "github.com/SidCorp-co/forge", remoteUrl: "https://github.com/SidCorp-co/forge", host: "github.com", provider: null, connectProvider: "github" },
