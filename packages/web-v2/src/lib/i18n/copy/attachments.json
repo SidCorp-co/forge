@@ -2,6 +2,8 @@
   "en": {
     "attachments.tooLarge": "too large to preview",
     "attachments.previewFailed": "preview failed",
+    "attachments.imageFailed": "Couldn't load {name}",
+    "attachments.imageFailedShort": "Couldn't load",
     "attachments.openOriginal": "Open original"
   }
 }

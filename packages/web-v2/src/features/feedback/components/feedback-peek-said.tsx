@@ -5,7 +5,7 @@
 
 import { useState } from "react";
 import { FactsGroup, PeekExcerpt } from "@/design";
-import { ImageLightbox, type LightboxImage } from "@/features/attachments";
+import { AttachedImage, ImageLightbox, type LightboxImage } from "@/features/attachments";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { WrittenMark } from "@/lib/i18n/written";
 import { coreFileUrl } from "@/lib/utils/core-url";
@@ -78,7 +78,7 @@ function Thumbnails({ images }: { images: LightboxImage[] }) {
           return (
             <li key={img.id}>
               <button type="button" onClick={() => setOpen(i)} className={frame} aria-label={counts ? t("feedback.peek.moreShots", { alt: img.alt ?? img.name, n: more }) : img.alt}>
-                <img src={img.href} alt="" width={72} height={72} className="size-18 object-cover" />
+                <AttachedImage src={img.href} alt="" name={img.name} width={72} height={72} className="size-18 object-cover" />
                 {counts ? (
                   <span className="absolute inset-0 flex items-center justify-center bg-fg/55 text-14 font-semibold text-surface" data-testid="feedback-peek-more">
                     +{more}

@@ -127,6 +127,15 @@ describe("the feedback peek says what the reporter said and showed", () => {
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 
+  it("names a screenshot whose file does not load, in its tile, instead of a broken image", async () => {
+    await peekAt(view({ attachments: [file("s1", "image/png"), file("s2", "image/png")] }));
+    const tiles = screen.getByTestId("feedback-peek-shots");
+    fireEvent.error(tiles.querySelectorAll("img")[1]);
+    expect(within(tiles).getAllByTestId("attached-image-failed")).toHaveLength(1);
+    expect(within(tiles).getByRole("img", { name: "Couldn't load s2.bin" })).toBeInTheDocument();
+    expect(tiles.querySelectorAll("img")).toHaveLength(1);
+  });
+
   it("counts recordings, uploaded and reproduced, as played on the full page", async () => {
     await peekAt(view({ attachments: [file("v1", "video/webm")] }), 2);
     expect(await screen.findByText("3 recordings, played on the full page")).toBeInTheDocument();
