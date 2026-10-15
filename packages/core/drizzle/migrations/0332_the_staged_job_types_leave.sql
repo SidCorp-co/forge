@@ -25,6 +25,9 @@ DECLARE
   n_journal int;
   n_feedback int;
 BEGIN
+  -- Held to commit: a job written while this runs is either seen by the guard or written after it.
+  LOCK TABLE jobs IN SHARE ROW EXCLUSIVE MODE;
+
   SELECT id, type, status INTO bad FROM jobs
     WHERE type IN ('triage', 'clarify', 'plan', 'code', 'review', 'test', 'staging', 'release', 'fix')
       AND status IN ('queued', 'dispatched', 'running', 'held')

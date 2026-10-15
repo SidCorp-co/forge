@@ -137,6 +137,30 @@ describe('migration 0332', () => {
     },
   );
 
+  it('waits out a retired job another connection is still writing, then aborts naming it', async () => {
+    const s = await aScene();
+    const writer = postgres(harness.url, { max: 1 });
+    try {
+      const open = await writer.reserve();
+      await open`BEGIN`;
+      const rows = await open<Array<{ id: string }>>`
+        INSERT INTO jobs (project_id, issue_id, pipeline_run_id, created_by, type, status, payload)
+        VALUES (${s.projectId}, ${s.issueId}, ${s.runId}, ${s.userId}, 'fix', 'queued',
+                '{"promptString":"x"}'::jsonb)
+        RETURNING id`;
+      const migrating = failureOf();
+      await new Promise((r) => setTimeout(r, 400));
+      await open`COMMIT`;
+      open.release();
+      const failure = await migrating;
+      expect(failure).toContain((rows[0] as { id: string }).id);
+      expect(failure).toContain('retired staged type fix is still queued');
+      expect(await count(sql`SELECT count(*)::int AS n FROM jobs`)).toBe(1);
+    } finally {
+      await writer.end({ timeout: 5 });
+    }
+  });
+
   it('deletes every retired job with its events, unlinks its usage, keeps the live rows, and counts it', async () => {
     const s = await aScene();
     const code = await aJob(s, 'code', 'done');
