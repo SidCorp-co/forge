@@ -24,6 +24,7 @@ let harness: TestDatabase;
 let mods: {
   detectOrphanedRunAssertions: typeof import('../../src/pipeline/issue-run-invariant.js').detectOrphanedRunAssertions;
   openRunSession: typeof import('../../src/devices/run-session.js').openRunSession;
+  releaseIssueLease: typeof import('../../src/devices/run-session.js').releaseIssueLease;
 };
 
 beforeAll(async () => {
@@ -37,6 +38,7 @@ beforeAll(async () => {
   mods = {
     detectOrphanedRunAssertions: invariant.detectOrphanedRunAssertions,
     openRunSession: runSession.openRunSession,
+    releaseIssueLease: runSession.releaseIssueLease,
   };
 });
 
@@ -244,6 +246,49 @@ describe('how long an orphan notice says nothing has worked the issue', () => {
 
     expect(await noticeBodies(issueId)).toEqual([
       'ISS-12 reads In progress, and nothing has worked it for 3 hours: no job, issue run or run session is live for it.',
+    ]);
+  });
+
+  it('counts from when a run session gave the issue back, which leaves no lease row behind', async () => {
+    const user = await createTestUser(harness.db);
+    const project = await createTestProject(harness.db, user.id);
+    const device = await createTestDevice(harness.db, user.id);
+    await bindTestRunner(harness.db, { projectId: project.id, deviceId: device.id });
+    const issueId = await anIssueAt({
+      projectId: project.id,
+      createdById: user.id,
+      issSeq: 14,
+      status: 'in_progress',
+      agoMs: 5 * HOUR,
+    });
+    await enteredAt(issueId, 'in_progress', ago(4 * HOUR));
+    await mods.openRunSession({
+      deviceId: device.id,
+      projectId: project.id,
+      issueKeys: ['ISS-14'],
+      name: 'run-r',
+    });
+    await mods.releaseIssueLease({
+      deviceId: device.id,
+      issueKey: 'ISS-14',
+      projectId: project.id,
+    });
+    await harness.db.execute(
+      sql`UPDATE issues SET updated_at = ${ago(PAST_GRACE)} WHERE id = ${issueId}`,
+    );
+
+    const justReleased = await mods.detectOrphanedRunAssertions();
+    expect(justReleased.detected, 'given back a moment ago is inside the grace').toBe(0);
+
+    await harness.db.execute(sql`
+      UPDATE pipeline_runs
+         SET metadata = jsonb_set(metadata, '{runReleasedAt,ISS-14}', to_jsonb(${ago(2 * HOUR + 60_000)}::text))
+       WHERE project_id = ${project.id}
+    `);
+    await mods.detectOrphanedRunAssertions();
+
+    expect(await noticeBodies(issueId)).toEqual([
+      'ISS-14 reads In progress, and nothing has worked it for 2 hours: no job, issue run or run session is live for it.',
     ]);
   });
 

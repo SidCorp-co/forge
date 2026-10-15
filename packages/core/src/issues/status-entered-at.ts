@@ -1,4 +1,5 @@
 import { type SQL, sql } from 'drizzle-orm';
+import { RUN_GROUP_METADATA_KEY, RUN_RELEASED_METADATA_KEY } from '../devices/run-session-keys.js';
 
 /** When an issue entered its status — never `updated_at`, which any write moves (ISS-1229). Retention
  *  keeps every move of a non-terminal issue; no row means it still holds the status it was created at. */
@@ -10,7 +11,7 @@ export function statusEnteredAtSql(issue: { id: SQL; status: SQL; createdAt: SQL
   )`;
 }
 
-/** When the issue's last job, run or leased run session ended, or it entered its status if later. */
+/** When the issue's last job, run or run session ended or gave it back, or it entered its status. */
 export function lastWorkedAtSql(issue: {
   id: SQL;
   status: SQL;
@@ -26,6 +27,11 @@ export function lastWorkedAtSql(issue: {
        FROM issue_leases ll
        JOIN agent_sessions lls ON lls.id = ll.session_id
        LEFT JOIN pipeline_runs llr ON llr.id = ll.run_id
-      WHERE ll.project_id = ${issue.projectId} AND ll.issue_key = ${issue.issueKey})
+      WHERE ll.project_id = ${issue.projectId} AND ll.issue_key = (${issue.issueKey})),
+    (SELECT max(GREATEST(gr.finished_at,
+                         (gr.metadata -> ${RUN_RELEASED_METADATA_KEY}::text ->> (${issue.issueKey}))::timestamptz))
+       FROM pipeline_runs gr
+      WHERE gr.project_id = ${issue.projectId}
+        AND gr.metadata -> ${RUN_GROUP_METADATA_KEY}::text @> to_jsonb((${issue.issueKey})::text))
   )`;
 }

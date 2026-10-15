@@ -41,6 +41,7 @@ import {
   RUN_GROUP_METADATA_KEY,
   RUN_ISSUE_STATUSES_METADATA_KEY,
   RUN_ISSUES_METADATA_KEY,
+  RUN_RELEASED_METADATA_KEY,
 } from './run-session-keys.js';
 
 export { RUN_SESSION_KIND } from '../jobs/session-kinds.js';
@@ -380,6 +381,10 @@ export async function releaseIssueLease(args: {
                   ) AS k
                  WHERE k <> ${args.issueKey}),
                '[]'::jsonb))
+           || jsonb_build_object(
+                ${RUN_RELEASED_METADATA_KEY}::text,
+                COALESCE(r.metadata -> ${RUN_RELEASED_METADATA_KEY}, '{}'::jsonb)
+                  || jsonb_build_object(${args.issueKey}::text, now()))
       FROM agent_sessions s
      WHERE s.pipeline_run_id = r.id
        AND s.device_id = ${args.deviceId}
