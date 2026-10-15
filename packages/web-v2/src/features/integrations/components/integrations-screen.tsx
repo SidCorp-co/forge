@@ -296,8 +296,10 @@ function AddConnection({
   scopeName: string;
 }) {
   const [chosen, setChosen] = useState(projects[0]?.slug ?? "");
-  const slug = projects.some((p) => p.slug === chosen) ? chosen : (projects[0]?.slug ?? "");
-  const href = (s: string) => `/projects/${s}/settings?tab=integrations`;
+  // The link is built from the project row the choice names, never from the select's own value.
+  const picked = projects.find((p) => p.slug === chosen) ?? projects[0];
+  const slug = picked?.slug ?? "";
+  const href = (s: string) => `/projects/${encodeURIComponent(s)}/settings?tab=integrations`;
   if (projects.length === 0) {
     return (
       <p className="fg-body-sm pb-10 text-center text-muted" data-testid="add-connection">
