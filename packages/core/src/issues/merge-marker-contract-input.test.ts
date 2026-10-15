@@ -35,7 +35,6 @@ vi.mock('../db/client.js', () => ({ db: { update, select, insert } }));
 
 vi.mock('../pipeline/work-evidence.js', () => ({
   findMissingWorkEvidence: async () => null,
-  collectWorkEvidence: async () => ({ handoffCommitSha: null }),
 }));
 
 const ISSUE_ID = '11111111-1111-4111-8111-111111111111';

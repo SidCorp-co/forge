@@ -114,7 +114,6 @@ vi.mock('../../issues/dependency-read.js', () => ({
 vi.mock('../../issues/attributes/read.js', () => ({ loadIssueAttributes: async () => [] }));
 vi.mock('../../pipeline/work-evidence.js', () => ({
   findMissingWorkEvidence: async () => null,
-  collectWorkEvidence: async () => ({ handoffCommitSha: null }),
 }));
 vi.mock('../../pipeline/hooks.js', () => ({ hooks: { emit: async () => undefined } }));
 /** The shape `landing-evidence.ts` reads off the project's kind, set per case. */

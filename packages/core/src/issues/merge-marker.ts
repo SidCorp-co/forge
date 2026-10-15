@@ -4,11 +4,7 @@ import { db } from '../db/client.js';
 import { projectKinds } from '../db/schema.js';
 import type { Actor } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
-import {
-  collectWorkEvidence,
-  findMissingWorkEvidence,
-  readStandingClaim,
-} from '../pipeline/work-evidence.js';
+import { findMissingWorkEvidence, readStandingClaim } from '../pipeline/work-evidence.js';
 import type { ActorAgency } from './actor-agency.js';
 import { type CommitLanding, readCommitLanding, resolveMarkCommit } from './commit-landing.js';
 import {
@@ -50,55 +46,24 @@ export const mergedCommitShaSchema = z
   .regex(/^[0-9a-f]{7,64}$/i, 'commit must be a git sha: 7 to 64 hex characters, nothing else');
 
 /**
- * ISS-959 — the commit this mark records, when the caller named none.
- *
- * `forge guide contract earning-and-unearning` requires that anything the
- * repository knows is written onto the issue at the step that knew it, and
- * says of this one: *"the merged mark, which today takes no commit and carries
- * it in the prose of its note"*. Prose is not a field, so the note's form was
- * part of the contract. This is the field, and the fallback is what makes it
- * arrive without every client learning it first.
- */
-async function resolveRecordedCommit(issueId: string): Promise<string | null> {
-  try {
-    const evidence = await collectWorkEvidence(issueId);
-    return evidence.handoffCommitSha;
-  } catch {
-    return null;
-  }
-}
-
-/** A commit the handoff recorded that the repository did not resolve, kept off the mark. */
-type LeftOut = { commit: string; why: string };
-
-/**
  * ISS-1350 — what a `git` mark names as its commit is the repository's resolution of it, never the
- * caller's spelling. A caller's commit the repository does not hold, or cannot be read for, is
- * refused by name; the handoff's, which the caller never sent, is left off and said to be. A merged
- * pull request's own merge sha is not read again: Forge already holds it.
+ * caller's spelling. A commit the repository does not hold, or cannot be read for, is refused by
+ * name. A merged pull request's own merge sha is not read again: Forge already holds it. A mark
+ * naming no commit records none.
  */
 async function recordedClaim(args: {
   projectId: string;
-  issueId: string;
   commit: string | undefined;
   observedSha: string | null;
-  fallback: boolean;
-}): Promise<{ claim: string | null; repository: string | null; leftOut: LeftOut | null }> {
+}): Promise<{ claim: string | null; repository: string | null }> {
   const { projectId, commit, observedSha } = args;
-  if (commit) {
-    if (observedSha && commit.toLowerCase() === observedSha.toLowerCase()) {
-      return { claim: commit, repository: null, leftOut: null };
-    }
-    const read = await resolveMarkCommit({ projectId, commit });
-    if (!read.ok) throw new MergeMarkerError(read.code, read.detail, read.details);
-    return { claim: read.sha, repository: read.repository, leftOut: null };
+  if (!commit) return { claim: null, repository: null };
+  if (observedSha && commit.toLowerCase() === observedSha.toLowerCase()) {
+    return { claim: commit, repository: null };
   }
-  const recorded = args.fallback ? await resolveRecordedCommit(args.issueId) : null;
-  if (!recorded) return { claim: null, repository: null, leftOut: null };
-  const read = await resolveMarkCommit({ projectId, commit: recorded });
-  if (!read.ok)
-    return { claim: null, repository: null, leftOut: { commit: recorded, why: read.reason } };
-  return { claim: read.sha, repository: read.repository, leftOut: null };
+  const read = await resolveMarkCommit({ projectId, commit });
+  if (!read.ok) throw new MergeMarkerError(read.code, read.detail, read.details);
+  return { claim: read.sha, repository: read.repository };
 }
 
 export async function writeAuditComment(
@@ -267,7 +232,7 @@ export async function applyMergeMarker(args: {
   note?: string | undefined;
   /** The commit the CALLER says this mark was made at. On a `git` project the repository resolves
    *  it before anything is written (`recordedClaim`); the column takes only a commit Forge
-   *  observed. Absent falls back to the recorded handoff sha. */
+   *  observed. Absent, the mark records no commit. */
   commit?: string | undefined;
   /** Where the work landed outside git; whether this project takes one is `landing-evidence.ts`'s. */
   landing?: string | undefined;
@@ -304,7 +269,6 @@ export async function applyMergeMarker(args: {
   let readFrom: Extract<CommitLanding, { ok: true }> | null = null;
   /** The repository that holds the claimed commit, where this call read it there. */
   let claimHeldBy: string | null = null;
-  let leftOut: LeftOut | null = null;
   if (args.op === 'mark') {
     const lane = await markLane(before);
     const shape = lane.shape;
@@ -327,10 +291,8 @@ export async function applyMergeMarker(args: {
       shape === 'git' && !fromRepository && !unverified
         ? await recordedClaim({
             projectId: before.projectId,
-            issueId: before.id,
             commit: args.commit,
             observedSha: observed?.commitSha ?? null,
-            fallback: !observed,
           })
         : null;
     if (observed) {
@@ -381,7 +343,6 @@ export async function applyMergeMarker(args: {
       // Only a `git` lane reaches here: `landingMarkRefusal` holds an `outside_git` mark to a landing.
       claimedCommit = unverified ? null : (recorded?.claim ?? null);
       claimHeldBy = recorded?.claim && recorded.repository ? recorded.repository : null;
-      leftOut = recorded?.leftOut ?? null;
     }
     if (!stampResult.wrote) await refuseMovedLane(before);
     const standing = standingMarkRefusal({
@@ -425,7 +386,6 @@ export async function applyMergeMarker(args: {
     unverified: unverified && keptClaim(unverified, stampResult.claimedCommit),
     ...(readFrom && stampResult.wrote ? { readFrom } : {}),
     claimHeldBy,
-    leftOut,
   });
   const marked = args.op === 'mark' ? `\n${markDetail}` : '';
   const auditComment = await writeAuditComment(

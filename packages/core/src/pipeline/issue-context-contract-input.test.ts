@@ -1,13 +1,7 @@
 /**
- * ISS-1072 — a step handoff moves the `work_evidence` criterion with nothing on
- * the `issues` row changing.
- *
- * `work-evidence.ts` reads a branch, a commit and a file list out of the handoff,
- * so a handoff arriving can turn that criterion from unmet to met, and a handoff
- * deleted can turn it back, without a single field write anywhere an
- * `issueUpdated` subscriber would see. Both directions announce, and the delete
- * is the one that matters most: a check left saying `success` on evidence that
- * has been removed is a green that is now a claim about nothing.
+ * ISS-1133 — a step handoff is no contract input. `work-evidence.ts` reads the issue's own row and
+ * no handoff, so neither a handoff written nor one deleted can move the `work_evidence` criterion,
+ * and announcing either would wake every contract reader for an answer that cannot have changed.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -91,11 +85,10 @@ beforeEach(() => {
 });
 
 describe('writing a handoff', () => {
-  it('announces the write, naming the issue and its project', async () => {
+  it('writes the row and announces no contract input', async () => {
     await writeIssueContext(handoff as never);
-    expect(heard).toEqual([
-      { projectId: PROJECT_ID, issueId: ISSUE_ID, reason: 'step handoff written' },
-    ]);
+    expect(insert).toHaveBeenCalledTimes(1);
+    expect(heard).toEqual([]);
   });
 });
 
@@ -109,7 +102,7 @@ describe('writing a handoff against an issue of another project', () => {
 });
 
 describe('deleting a handoff', () => {
-  it('announces the delete in its own words', async () => {
+  it('removes the row and announces no contract input', async () => {
     const removed = await deleteIssueContext({
       projectId: PROJECT_ID,
       issueId: ISSUE_ID,
@@ -118,9 +111,7 @@ describe('deleting a handoff', () => {
       attempt: 1,
     });
     expect(removed).toBe(1);
-    expect(heard).toEqual([
-      { projectId: PROJECT_ID, issueId: ISSUE_ID, reason: 'step handoff deleted' },
-    ]);
+    expect(heard).toEqual([]);
   });
 
   it('announces nothing when the delete matched no row', async () => {

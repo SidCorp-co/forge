@@ -67,7 +67,6 @@ const insert = vi.fn(() => ({
 vi.mock('../db/client.js', () => ({ db: { update, select, insert } }));
 vi.mock('../pipeline/work-evidence.js', () => ({
   findMissingWorkEvidence: async () => null,
-  collectWorkEvidence: async () => ({ handoffCommitSha: null }),
 }));
 vi.mock('./read-service.js', () => ({ findIssueById: async () => rowNow }));
 

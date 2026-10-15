@@ -210,7 +210,7 @@ export function useCommitLandingWorld() {
       return { id, projectId, mergedAt: null, declaredLandingShape: null };
     },
 
-    /** An implementation handoff recording `commitSha`, the commit a mark naming none falls back to. */
+    /** An implementation handoff recording `commitSha`, which no mark reads. */
     async handoff(issueId: string, commitSha: string): Promise<void> {
       const runId = randomUUID();
       await harness.db.execute(sql`

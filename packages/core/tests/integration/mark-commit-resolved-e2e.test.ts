@@ -106,52 +106,27 @@ describe("ISS-1350 — every git mark's commit is one the repository holds (real
     expect(res.markDetail).toContain(`${repo.fullName} holds commit ${OWN}`);
   });
 
-  it.each([
-    [
-      'the repository does not hold it',
-      null,
-      FABRICATED,
-      'SidCorp-co/specimen does not resolve it',
-    ],
-    ['the repository cannot be read', 'read', OWN, 'the repository could not be read'],
-  ] as const)(
-    'leaves out a handoff commit when %s, and says which and why (criterion 8)',
-    async (_case, down, recorded, why) => {
-      const issue = await seed({ sessionContext: { branch: 'ISS-1350-x' } });
-      await handoff(issue.id, recorded);
-      repo.down = down;
-      const res = await mark(issue, undefined, 'human');
-      expect(res.mark).toBe('asserted');
-      expect(res.markDetail).toContain('no commit is recorded in `merged_commit_sha`');
-      expect(res.markDetail).toContain(
-        `commit ${recorded} this issue's implementation handoff recorded`,
-      );
-      expect(res.markDetail).toContain(why);
-      const audit = (await comments(issue.id)).at(-1) ?? '';
-      expect(audit).not.toContain(`commit=${recorded}`);
-      expect(audit).toContain(why);
-    },
-  );
+  it('records no commit from a handoff on a mark naming none, even one the repository holds (ISS-1133 criterion 5)', async () => {
+    const issue = await seed({ sessionContext: { branch: 'ISS-1350-x' } });
+    await handoff(issue.id, OWN.slice(0, 10));
+    const res = await mark(issue, undefined, 'human');
+    expect(res.mark).toBe('asserted');
+    expect((await row(issue.id)).merged_commit_sha).toBeNull();
+    expect(res.markDetail).toContain('no commit is recorded in `merged_commit_sha`');
+    expect(res.markDetail).not.toContain(OWN.slice(0, 10));
+    expect(repo.reads).toEqual([]);
+    expect((await comments(issue.id)).at(-1)).not.toContain('commit=');
+  });
 
-  it('says a handoff commit was left out on a mark that repeats one Forge observed (criterion 8)', async () => {
+  it('names no handoff commit on a mark that repeats one Forge observed (ISS-1133 criterion 5)', async () => {
     const issue = await seed();
     expect((await mark(issue, OWN)).mark).toBe('observed');
     await handoff(issue.id, FABRICATED);
     const res = await mark(issue, undefined, 'human');
     expect(res.action).toBe('already_merged');
     expect(res.mark).toBe('observed');
-    const why = 'SidCorp-co/specimen does not resolve it';
-    expect(res.markDetail).toContain(`commit ${FABRICATED} this issue's implementation handoff`);
-    expect(res.markDetail).toContain(why);
-    expect((await comments(issue.id)).at(-1)).toContain(why);
-  });
-
-  it('records a handoff commit the repository holds by its full sha (criterion 9)', async () => {
-    const issue = await seed({ sessionContext: { branch: 'ISS-1350-x' } });
-    await handoff(issue.id, OWN.slice(0, 10));
-    const res = await mark(issue, undefined, 'human');
-    expect(res.markDetail).toContain(`commit ${OWN} is recorded here as this call's claim`);
-    expect((await comments(issue.id)).at(-1)).toContain(`commit=${OWN}`);
+    expect(res.markDetail).not.toContain(FABRICATED);
+    expect((await comments(issue.id)).at(-1)).not.toContain(FABRICATED);
   });
 
   it('reads nothing from the repository on an outside_git project (criterion 10)', async () => {

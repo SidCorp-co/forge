@@ -43,7 +43,7 @@ export const STATUS_ASSERTIONS: Record<IssueStatus, StatusAssertion> = {
 export const EVIDENCE_FIELDS = {
   landed: 'issues.merged_at',
   branch: 'issues.session_context.branch',
-  commit: "issue_step_contexts kind='handoff' payload.commitSha",
+  commit: 'issues.merged_commit_sha',
 } as const;
 
 /**
