@@ -233,7 +233,8 @@ describe("where a page matched", () => {
 
   it("starts and ends a cut table row on a cell's words, never on the mark between two cells", () => {
     const runner = HELP_DOCS.find((d) => d.title === "Pair a runner");
-    expect(matchExcerpt(runner!, "status")).toMatchObject({ before: "…Is the agent running (forge-runner " });
+    if (!runner) throw new Error("the bundled help has no page titled Pair a runner");
+    expect(matchExcerpt(runner, "status")).toMatchObject({ before: "…Is the agent running (forge-runner " });
     const long = "x".repeat(60);
     const row = `| ${long} | the token | ${"y".repeat(150)} |`;
     const cut = matchExcerpt(page("T", row), "token");
