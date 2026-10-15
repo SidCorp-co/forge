@@ -488,7 +488,7 @@ export function TokensTab() {
               </Button>
             </div>
             {copyResult === "failed" && (
-              <p role="alert" className="fg-body-sm text-danger">
+              <p role="alert" className="fg-body-sm fg-danger">
                 Copy failed. Select the token above and copy it by hand.
               </p>
             )}
