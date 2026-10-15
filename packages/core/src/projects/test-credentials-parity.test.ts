@@ -1,9 +1,9 @@
-import { findCredentialFaults } from '@forge/contracts';
+import { findCredentialFaults } from '@forge/contracts/test-credentials';
 import { describe, expect, it } from 'vitest';
 import { credentialFaults } from './environments.js';
 
 /**
- * `@forge/contracts` `findCredentialFaults` is the settings form's copy of the rule this write
+ * `@forge/contracts/test-credentials` `findCredentialFaults` is the settings form's copy of the rule this write
  * door holds, and core may not import that entry at runtime. This file is what keeps the two
  * equal: a rule changed on one side alone leaves the form passing what the server refuses.
  */

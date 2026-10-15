@@ -32,7 +32,7 @@ export interface CredentialFault {
 const text = (value: unknown) => (typeof value === 'string' ? value : '');
 
 /**
- * The credential rows a write may not store: core's copy of `@forge/contracts`
+ * The credential rows a write may not store: core's copy of `@forge/contracts/test-credentials`
  * `findCredentialFaults`, which core cannot import at runtime; `test-credentials-parity.test.ts`
  * holds the two equal. Each rule is judged on its own, and the earlier row of a repeat is kept.
  */

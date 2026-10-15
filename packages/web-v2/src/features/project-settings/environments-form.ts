@@ -2,7 +2,7 @@
 // ships to and the preview one QA opens), the test credentials and the limits of either. Written
 // through PATCH /api/projects/:id/environments as the keys the form changed beside the values it
 // read them against (ISS-1170). The Shape & release page renders it; this file holds no markup.
-import { type CredentialFinding, findCredentialFaults } from "@forge/contracts";
+import { type CredentialFinding, findCredentialFaults } from "@forge/contracts/test-credentials";
 import { z } from "zod";
 import type { EnvironmentsConfig, TestCredential, TestingUrl } from "./types";
 

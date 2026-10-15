@@ -67,7 +67,7 @@ closing a reproduced failure is a guess with a commit message.
 
 ## A rule core holds twice: a priced exception
 
-`@forge/contracts` `findCredentialFaults` (`src/test-credentials.ts`) is the test-credential rule the
+`@forge/contracts/test-credentials` `findCredentialFaults` is the test-credential rule the
 settings form reads. Core needs the same rule at runtime, in `projects/environments.ts:credentialFaults`,
 and cannot import it there: the entry that serves it is TypeScript source, and contracts is not a
 production dependency of core. ISS-1171 round 6 landed with the copy, by the dispatcher's decision.
