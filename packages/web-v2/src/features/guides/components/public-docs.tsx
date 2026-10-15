@@ -30,7 +30,7 @@ import {
   searchLabel,
 } from "../audience";
 import { type PublicDoc, docsBehind, doorSections } from "../corpus";
-import { ALL_DOORS_LINK_TEXT, HELP_ONLY_SEARCH, LANDING_WHILE_DOWN, type Refusal, saidWhileDown } from "../missing";
+import { ALL_DOORS_LINK_TEXT, LANDING_WHILE_DOWN, type Refusal, SEARCH_WHILE_DOWN, saidWhileDown, waysIn } from "../missing";
 
 /** What the reader shows: a door's page list, or one page by its href, unique across both homes. */
 export type ReaderView =
@@ -133,6 +133,7 @@ export function PublicLanding({
           placeholder={placeholder}
           label={searchLabel(doors)}
         />
+        {scope ? null : <p className="fg-caption mt-2 text-subtle">{SEARCH_WHILE_DOWN}</p>}
         {results ? <DocsSearchResults results={results.map((d) => resultItem(d, null, query))} /> : null}
       </div>
       <nav aria-label="Ways in" className="flex max-w-[72ch] flex-col divide-y divide-line-subtle border-y border-line-subtle">
@@ -302,7 +303,7 @@ export function PublicReader({
       results={results ? results.map((d) => resultItem(d, activeHref, query)) : null}
       sections={sections}
       navLabel={audience ? DOORS[audience].label : "Documentation"}
-      searchNote={helpOnly ? <p className="fg-caption px-2 text-subtle">{HELP_ONLY_SEARCH}</p> : null}
+      searchNote={helpOnly ? <p className="fg-caption px-2 text-subtle">{SEARCH_WHILE_DOWN}</p> : null}
       footer={
         <nav aria-label="Other ways in" className="mt-2 flex flex-col gap-0.5 border-t border-line-subtle pt-3">
           <span className="fg-overline px-2 py-1 font-mono text-subtle">
@@ -370,8 +371,8 @@ function RefusalCopy({ refusal }: { refusal: Refusal }) {
 }
 
 /** An address the guide index is needed for, or one naming no page or door, while that index could
- *  not be reached: the reason there is no search said rather than left out, and as the way on only
- *  the doors whose pages are bundled into the site, the rest needing the index too. With the index
+ *  not be reached: what the search still covers, and as the way on only the doors whose pages are
+ *  bundled into the site and the landing's search, the rest needing the index too. With the index
  *  in hand a refusal is a `PublicReader` view, which offers the search. */
 export function PublicRefusal({ refusal }: { refusal: Refusal }) {
   useDocumentTitle(refusal.heading);
@@ -384,9 +385,9 @@ export function PublicRefusal({ refusal }: { refusal: Refusal }) {
         </p>
       ))}
       <nav aria-label="Ways in" className="flex flex-col gap-1">
-        {openDoors(true).map((a) => (
-          <Link key={a} href={doorHref(a)} className={LINK_CLASS}>
-            {DOORS[a].label}
+        {waysIn(true).map((w) => (
+          <Link key={w.href} href={w.href} className={LINK_CLASS}>
+            {w.label}
           </Link>
         ))}
       </nav>

@@ -1,6 +1,6 @@
-import { DOORS, doorHref, INDEX_PATH, openDoors, SITE_NAME, siteCaption } from "./audience";
+import { INDEX_PATH, openDoors, SITE_NAME, siteCaption } from "./audience";
 import { assetPath } from "@/lib/asset";
-import { ALL_DOORS_LINK_TEXT, GUIDES_UNAVAILABLE, missingGuide, type Refusal, saidWhileDown } from "./missing";
+import { GUIDES_UNAVAILABLE, missingGuide, type Refusal, saidWhileDown, waysIn } from "./missing";
 
 const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
 
@@ -59,11 +59,7 @@ nav{display:flex;flex-direction:column;gap:.25rem}
 export function refusalDocument(refusal: Refusal, { indexDown = false }: { indexDown?: boolean } = {}): string {
   const h = escapeHtml(refusal.heading);
   const said = indexDown ? saidWhileDown(refusal) : [refusal.body];
-  const open = openDoors(indexDown);
-  const doors = open.map(
-    (a) => `<a href="${doorHref(a)}">${escapeHtml(DOORS[a].label)}</a>`,
-  ).join("");
-  const landing = indexDown ? "" : `<a href="${INDEX_PATH}">${escapeHtml(ALL_DOORS_LINK_TEXT)}</a>`;
+  const ways = waysIn(indexDown).map((w) => `<a href="${w.href}">${escapeHtml(w.label)}</a>`).join("");
   const brand = `<a class="brand" href="${INDEX_PATH}">${escapeHtml(SITE_NAME)}</a>`;
   return [
     "<!DOCTYPE html>",
@@ -76,12 +72,12 @@ export function refusalDocument(refusal: Refusal, { indexDown = false }: { index
     `<style>${STYLE}</style>`,
     "</head><body>",
     `<header><div class="bar">${brand}`,
-    `<span class="caption">${escapeHtml(siteCaption(open))}</span></div></header>`,
+    `<span class="caption">${escapeHtml(siteCaption(openDoors(indexDown)))}</span></div></header>`,
     "<main>",
     '<div class="refusal">',
     `<h1>${h}</h1>`,
     ...said.map((p) => `<p>${escapeHtml(p)}</p>`),
-    `<nav aria-label="Ways in">${doors}${landing}</nav>`,
+    `<nav aria-label="Ways in">${ways}</nav>`,
     "</div>",
     "</main>",
     "</body></html>",
@@ -97,8 +93,7 @@ export function missingGuideDocument(slug: string, options: { indexDown?: boolea
 /** How long a reader or a crawler is asked to wait before trying a page core could not answer for. */
 export const RETRY_AFTER_SECONDS = 30;
 
-/** The 503 for the agents' door or a guide whose guide index core did not answer for:
- *  the doors bundled into the site as the way on, the rest needing that index too. */
+/** The 503 for the agents' door or a guide while core's guide index does not answer. */
 export function unavailableDocument(): string {
   return refusalDocument(GUIDES_UNAVAILABLE, { indexDown: true });
 }

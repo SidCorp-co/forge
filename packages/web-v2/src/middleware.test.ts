@@ -9,7 +9,7 @@ const fetchGuide = vi.fn(async (_url: unknown) => ({ status: 404 }));
 vi.stubGlobal("fetch", fetchGuide);
 
 const { middleware } = await import("./middleware");
-const { BUNDLED_WAYS_IN, MISSING_GUIDE_BODY } = await import("./features/guides/missing");
+const { BUNDLED_WAYS_IN, MISSING_GUIDE_BODY, SEARCH_WHILE_DOWN } = await import("./features/guides/missing");
 
 afterEach(() => {
   fetchGuide.mockReset();
@@ -143,7 +143,9 @@ describe("a plain request for a real /guides address while core cannot answer fo
     expect(html).toContain("<h1>The guides could not be loaded</h1>");
     expect(html).toContain('<a class="brand" href="/guides">Forge documentation</a>');
     expect(html).toContain(BUNDLED_WAYS_IN);
+    expect(html).toContain(SEARCH_WHILE_DOWN);
     for (const door of ["user", "assistant-setup"]) expect(html).toContain(`href="/guides?for=${door}"`);
+    expect(html).toContain('<a href="/guides">Search the pages for people</a>');
     expect(html).not.toContain('href="/guides?for=agent"');
     expect(html).not.toContain("All three ways in");
     expect(html).not.toMatch(/ways in below/);
@@ -223,6 +225,9 @@ describe("a document the middleware writes while core cannot answer for the guid
     expect(html).not.toContain(MISSING_GUIDE_BODY);
     expect(html).not.toContain("All three ways in");
     expect(html).toContain(BUNDLED_WAYS_IN);
+    expect(html).toContain(SEARCH_WHILE_DOWN);
+    expect(html).not.toMatch(/not available|“agent”|agent or a script/);
+    expect(html).toContain('<a href="/guides">Search the pages for people</a>');
   });
 
   it.each(REFUSED)("still offers every door and the landing from %s while core's index answers", async (path) => {

@@ -9,7 +9,7 @@ import { HELP_DOCS } from "@/features/docs/help-content.generated";
 import type { Guide, GuideScope } from "../api";
 import { BUNDLED_AUDIENCES, ONE_CORPUS } from "../audience";
 import { buildCorpus, helpPageHref, searchPlaceholder } from "../corpus";
-import { BUNDLED_WAYS_IN, HELP_ONLY_SEARCH, missingDoor, missingPage, PAGE_AND_DOOR, SEARCH_UNAVAILABLE } from "../missing";
+import { BUNDLED_WAYS_IN, GUIDES_UNAVAILABLE, LANDING_WHILE_DOWN, missingDoor, missingPage, PAGE_AND_DOOR, SEARCH_WHILE_DOWN } from "../missing";
 
 // The address a client component reads is the window's, as Next's own hook reads it in a browser.
 vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(window.location.search) }));
@@ -307,15 +307,19 @@ describe("a refused address, reached by a client navigation", () => {
 });
 
 describe("a refused address when the guide index cannot be reached", () => {
-  it("keeps the refusal, says there is no search and why, and offers only the doors that open without the index", () => {
-    const refusal = missingDoor("users");
+  it.each([
+    ["an unknown door", missingDoor("users")],
+    ["the guides being unavailable", GUIDES_UNAVAILABLE],
+  ])("keeps the refusal for %s, says what the search covers, and offers the doors that open and the landing's search", (_name, refusal) => {
     render(<PublicRefusal refusal={refusal} />);
     expect(screen.getByRole("heading", { name: refusal.heading })).toBeInTheDocument();
-    expect(screen.getByText(SEARCH_UNAVAILABLE)).toBeInTheDocument();
+    expect(screen.getByText(SEARCH_WHILE_DOWN)).toBeInTheDocument();
     expect(screen.getByText(BUNDLED_WAYS_IN)).toBeInTheDocument();
     expect(screen.queryByRole("textbox")).toBeNull();
-    const doors = within(screen.getByRole("navigation", { name: "Ways in" })).getAllByRole("link");
-    expect(doors.map((d) => d.getAttribute("href"))).toEqual(["/guides?for=user", "/guides?for=assistant-setup"]);
+    expect(document.body.textContent).not.toMatch(/not available|“agent”|agent or a script/);
+    const ways = within(screen.getByRole("navigation", { name: "Ways in" })).getAllByRole("link");
+    expect(ways.map((d) => d.getAttribute("href"))).toEqual(["/guides?for=user", "/guides?for=assistant-setup", "/guides"]);
+    expect(ways.at(-1)).toHaveAccessibleName("Search the pages for people");
   });
 
   it.each([
@@ -516,9 +520,26 @@ describe("a help page or door while the guide index cannot be reached", () => {
     render(
       <PublicReader corpus={buildCorpus(HELP_DOCS, [])} view={{ kind: "page", href: helpPageHref("pair-a-runner") }} scope={null} />,
     );
-    expect(screen.getByText(HELP_ONLY_SEARCH)).toBeInTheDocument();
+    expect(screen.getByText(SEARCH_WHILE_DOWN)).toBeInTheDocument();
     const onward = within(screen.getByRole("navigation", { name: "Other ways in" })).getAllByRole("link");
     expect(onward.map((l) => l.getAttribute("href"))).toEqual(["/guides?for=assistant-setup"]);
   });
 });
 
+
+describe("the landing while the guide index cannot be reached", () => {
+  it("says what its search covers in the words a help page's sidebar uses, under the field", () => {
+    const bundled = buildCorpus(HELP_DOCS, []);
+    render(<PublicLanding corpus={bundled} placeholder={searchPlaceholder(bundled, BUNDLED_AUDIENCES)} scope={null} />);
+    expect(screen.getByText(LANDING_WHILE_DOWN)).toBeInTheDocument();
+    expect(screen.getByText(SEARCH_WHILE_DOWN)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/not available|agent or a script/);
+    const doors = within(screen.getByRole("navigation", { name: "Ways in" })).getAllByRole("link");
+    expect(doors.map((l) => l.getAttribute("href"))).toEqual(["/guides?for=user", "/guides?for=assistant-setup"]);
+  });
+
+  it("says nothing about an outage while the index answers", () => {
+    landing();
+    expect(screen.queryByText(SEARCH_WHILE_DOWN)).toBeNull();
+  });
+});

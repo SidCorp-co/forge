@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AUDIENCES, BUNDLED_AUDIENCES, openDoors, searchLabel, siteCaption } from "./audience";
-import { HELP_ONLY_SEARCH, LANDING_WHILE_DOWN } from "./missing";
+import { LANDING_WHILE_DOWN, SEARCH_WHILE_DOWN } from "./missing";
 
 const PEOPLE_ONLY = "For people using Forge and people connecting an assistant.";
 
@@ -28,7 +28,7 @@ describe("what the docs say they cover, from the doors on offer", () => {
   });
 
   it("says the outage in the same words the search and the header use", () => {
-    expect(HELP_ONLY_SEARCH).toBe("Search covers the pages for people only: the pages for agents could not be loaded.");
-    expect(LANDING_WHILE_DOWN).toMatch(/^Forge's guide index did not answer, so the pages for agents could not be loaded\./);
+    expect(SEARCH_WHILE_DOWN).toBe("Search covers the pages for people only: the pages for agents could not be loaded.");
+    expect(LANDING_WHILE_DOWN).toBe("Forge's guide index did not answer. The pages built into this site open without it.");
   });
 });
