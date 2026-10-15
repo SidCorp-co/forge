@@ -9,6 +9,7 @@ import type { IssuePark } from '@forge/contracts';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, terminalAgentSessionStatuses } from '../db/schema.js';
+import { issueArchiveSide } from '../issues/archive.js';
 import { loadIssuePark } from '../issues/park-view.js';
 import { HUMAN_PARK_STATUSES, ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -271,6 +272,9 @@ async function onHoldMove(issueId: string): Promise<{ at: string | null; reason:
   return { at: row ? iso(row.created_at) : null, reason: row?.reason ?? null };
 }
 
+/** An archived issue is neither held nor worked, so no read here answers one. */
+const liveIssue = sql.join(issueArchiveSide(false), sql` AND `);
+
 /** Read one project's sessions and holds. The caller has already checked membership. */
 export async function readSessionsAndHolds(
   projectId: string,
@@ -307,15 +311,16 @@ export async function readSessionsAndHolds(
 
   const leases = (await db.execute(sql`
     SELECT l.session_id, s.title AS session_title, s.kind AS session_kind, d.name AS device_name,
-           l.acquired_at, i.id AS issue_id, i.iss_seq, i.title, i.status
+           l.acquired_at, issues.id AS issue_id, issues.iss_seq, issues.title, issues.status
       FROM issue_leases l
       JOIN agent_sessions s ON s.id = l.session_id
-      JOIN issues i ON i.project_id = l.project_id
-                   AND l.issue_key = 'ISS-' || i.iss_seq -- ISS-992:canonical
+      JOIN issues ON issues.project_id = l.project_id
+                 AND l.issue_key = 'ISS-' || issues.iss_seq -- ISS-992:canonical
       LEFT JOIN devices d ON d.id = l.device_id
      WHERE l.project_id = ${projectId}::uuid
        AND s.status NOT IN (${terminalSessions})
-     ORDER BY i.iss_seq
+       AND ${liveIssue}
+     ORDER BY issues.iss_seq
   `)) as unknown as LeaseRow[];
 
   const claimRows = (await db.execute(sql`
@@ -323,6 +328,7 @@ export async function readSessionsAndHolds(
       FROM issues
      WHERE project_id = ${projectId}::uuid
        AND status NOT IN (${terminalIssues})
+       AND ${liveIssue}
        AND session_context -> 'lease' IS NOT NULL
        AND jsonb_typeof(session_context -> 'lease') <> 'null'
      ORDER BY iss_seq
@@ -342,6 +348,7 @@ export async function readSessionsAndHolds(
       FROM issues
      WHERE project_id = ${projectId}::uuid
        AND status IN (${parkStatuses})
+       AND ${liveIssue}
      ORDER BY iss_seq
   `)) as unknown as IssueRow[];
   const persons = await Promise.all(

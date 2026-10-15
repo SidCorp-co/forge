@@ -140,3 +140,25 @@ describe('readSessionsAndHolds — claims and parks (ISS-1228)', () => {
     expect((await read()).holds).toEqual([]);
   });
 });
+
+describe('readSessionsAndHolds — archived issues (ISS-1228, ISS-1237)', () => {
+  const archive = (id: string) =>
+    fx.db.execute(sql`UPDATE issues SET archived_at = now() WHERE id = ${id}`);
+
+  it('neither holds nor works an archived issue, whatever stands on it', async () => {
+    const leased = await fx.seedIssue({ status: 'in_progress' });
+    await fx.seedIssueLease(fx.lastSeq, 'running');
+    const claimed = await fx.seedIssue({
+      status: 'in_progress',
+      sessionContext: { lease: testLease({ next: 'write the route' }) },
+    });
+    const parked = await fx.seedIssue({ status: 'on_hold' });
+    await moved(parked, 'in_progress', 'on_hold', 'waiting on the vendor');
+    for (const id of [leased, claimed, parked]) await archive(id);
+
+    const out = await read();
+    expect(out.holds).toEqual([]);
+    expect(out.sessions).toHaveLength(1);
+    expect(out.sessions[0]?.issues).toEqual([]);
+  });
+});
