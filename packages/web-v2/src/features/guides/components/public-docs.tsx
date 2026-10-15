@@ -30,7 +30,7 @@ import {
   ONE_CORPUS,
 } from "../audience";
 import { type PublicDoc, docsBehind, doorSections } from "../corpus";
-import { ALL_DOORS_LINK_TEXT, BUNDLED_WAYS_IN, GUIDES_UNAVAILABLE, HELP_ONLY_SEARCH, type Refusal, SEARCH_UNAVAILABLE } from "../missing";
+import { ALL_DOORS_LINK_TEXT, HELP_ONLY_SEARCH, type Refusal, saidWhileDown } from "../missing";
 
 /** What the reader shows: a door's page list, or one page by its href, unique across both homes. */
 export type ReaderView =
@@ -377,9 +377,11 @@ export function PublicRefusal({ refusal }: { refusal: Refusal }) {
   return (
     <div className="mx-auto flex max-w-[72ch] flex-col gap-4 py-8">
       <PageTitle className="fg-h2 text-fg">{refusal.heading}</PageTitle>
-      <p className="fg-body-sm text-muted">{refusal.body}</p>
-      {refusal === GUIDES_UNAVAILABLE ? null : <p className="fg-body-sm text-muted">{SEARCH_UNAVAILABLE}</p>}
-      <p className="fg-body-sm text-muted">{BUNDLED_WAYS_IN}</p>
+      {saidWhileDown(refusal).map((said) => (
+        <p key={said} className="fg-body-sm text-muted">
+          {said}
+        </p>
+      ))}
       <nav aria-label="Ways in" className="flex flex-col gap-1">
         {BUNDLED_AUDIENCES.map((a) => (
           <Link key={a} href={doorHref(a)} className={LINK_CLASS}>

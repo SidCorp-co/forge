@@ -5,11 +5,11 @@
 import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const fetchGuide = vi.fn(async () => ({ status: 404 }));
+const fetchGuide = vi.fn(async (_url: unknown) => ({ status: 404 }));
 vi.stubGlobal("fetch", fetchGuide);
 
 const { middleware } = await import("./middleware");
-const { BUNDLED_WAYS_IN } = await import("./features/guides/missing");
+const { BUNDLED_WAYS_IN, MISSING_GUIDE_BODY } = await import("./features/guides/missing");
 
 afterEach(() => {
   fetchGuide.mockReset();
@@ -32,6 +32,15 @@ const REFUSED = [
 async function ask(path: string, headers: Record<string, string>) {
   return middleware(new NextRequest(`${ORIGIN}${path}`, { headers }));
 }
+
+/** Core answering for its guide index and for nothing else. */
+const indexAnswers = () =>
+  fetchGuide.mockImplementation(async (url: unknown) => ({ status: String(url).endsWith("/guides") ? 200 : 404 }));
+/** Core not answering at all. */
+const down = () => fetchGuide.mockRejectedValue(new TypeError("fetch failed"));
+
+/** Every address a document the middleware wrote links to, as following the link asks for it. */
+const linked = (html: string) => [...html.matchAll(/<a [^>]*href="([^"]*)"/g)].map((m) => m[1].replace(/&amp;/g, "&"));
 
 describe("a client-side navigation to a refused /guides address", () => {
   it.each(REFUSED)("passes %s through to the page, which renders the refusal in the docs shell", async (path) => {
@@ -82,13 +91,14 @@ describe("a plain request for a refused /guides address", () => {
 
     expect(res.status).toBe(404);
     expect(await res.text()).toContain("no-such-guide");
-    expect(fetchGuide).toHaveBeenCalledTimes(1);
+    expect(String(fetchGuide.mock.calls[0]?.[0])).toMatch(/\/guides\/no-such-guide$/);
   });
 
   it.each([
     ...REFUSED.slice(0, 3),
     "/guides/no-such-guide",
   ])("answers %s inside Forge documentation's own header and doors, not a bare document", async (path) => {
+    indexAnswers();
     const html = await (await ask(path, DOCUMENT)).text();
 
     expect(html).toContain('<a class="brand" href="/guides">Forge documentation</a>');
@@ -120,7 +130,6 @@ const FROM_CORE = ["/guides?for=agent", "/guides", "/guides/issue-dependencies"]
 const BUNDLED = ["/guides?for=user", "/guides?for=assistant-setup", "/guides?path=getting-started"];
 
 describe("a plain request for a real /guides address while core cannot answer for the guides", () => {
-  const down = () => fetchGuide.mockRejectedValue(new TypeError("fetch failed"));
 
   it.each(FROM_CORE)("answers %s with a 503 and a Retry-After, in the docs' own header, offering only the doors that still open", async (path) => {
     down();
@@ -131,7 +140,7 @@ describe("a plain request for a real /guides address while core cannot answer fo
     expect(res.headers.get("content-type")).toMatch(/text\/html/);
     const html = await res.text();
     expect(html).toContain("<h1>The guides could not be loaded</h1>");
-    expect(html).toContain('<a class="brand" href="/guides">Forge documentation</a>');
+    expect(html).toContain('<span class="brand">Forge documentation</span>');
     expect(html).toContain(BUNDLED_WAYS_IN);
     for (const door of ["user", "assistant-setup"]) expect(html).toContain(`href="/guides?for=${door}"`);
     expect(html).not.toContain('href="/guides?for=agent"');
@@ -181,5 +190,45 @@ describe("a plain request for a real /guides address while core cannot answer fo
 
     expect(res.headers.get("x-middleware-next")).toBe("1");
     expect(fetchGuide).not.toHaveBeenCalled();
+  });
+});
+
+describe("a document the middleware writes while core cannot answer for the guides", () => {
+  /** Every refusal a plain request can meet, one of them a slug the middleware refuses unasked. */
+  const REFUSED_WHILE_DOWN = [...REFUSED, "/guides/Not_A_Guide"];
+
+  it.each([...REFUSED_WHILE_DOWN, ...FROM_CORE])("links from %s only to addresses that open while core is down", async (path) => {
+    down();
+    const html = await (await ask(path, DOCUMENT)).text();
+    const offered = linked(html);
+
+    expect(offered.length).toBeGreaterThan(0);
+    for (const href of offered) {
+      const followed = await ask(href, DOCUMENT);
+      expect({ href, status: followed.status, opens: followed.headers.get("x-middleware-next") }).toEqual({
+        href,
+        status: 200,
+        opens: "1",
+      });
+    }
+  });
+
+  it.each(REFUSED_WHILE_DOWN)("refuses %s with a 404 that points at neither the index nor core's markdown", async (path) => {
+    down();
+    const res = await ask(path, DOCUMENT);
+    const html = await res.text();
+
+    expect(res.status).toBe(404);
+    expect(html).not.toMatch(/index lists/);
+    expect(html).not.toContain(MISSING_GUIDE_BODY);
+    expect(html).not.toContain("All three ways in");
+    expect(html).toContain(BUNDLED_WAYS_IN);
+  });
+
+  it.each(REFUSED)("still offers every door and the landing from %s while core's index answers", async (path) => {
+    indexAnswers();
+    const offered = linked(await (await ask(path, DOCUMENT)).text());
+
+    expect(offered).toEqual(expect.arrayContaining(["/guides?for=agent", "/guides"]));
   });
 });

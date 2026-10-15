@@ -257,8 +257,9 @@ export function DocsArticle({
           "mb-5 flex items-start justify-between gap-4",
           // Below `lg` a reader partway down a long page keeps the way to search and to the door at
           // the top of the screen; from `lg` up the sidebar is beside the page and this scrolls away.
+          // Column-wide: the frame has no padding a negative margin could bleed into.
           trailing &&
-            "sticky top-0 z-10 -mx-5 border-b border-line-subtle bg-surface px-5 py-2.5 lg:static lg:mx-0 lg:border-b-0 lg:bg-transparent lg:p-0",
+            "sticky top-0 z-10 border-b border-line-subtle bg-app py-2.5 lg:static lg:border-b-0 lg:bg-transparent lg:py-0",
         )}
       >
         <nav aria-label="Breadcrumb" className="fg-caption flex flex-wrap items-center gap-1.5 text-subtle">

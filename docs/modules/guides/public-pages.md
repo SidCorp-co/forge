@@ -101,7 +101,7 @@ a 404 with `missingGuideDocument`, an HTML page naming the slug, with the slug e
 comes off the URL. Both documents
 (`refusalDocument` is the other) are written to look like the pages around them: the header
 `GuideShell` prints, the name `SITE_NAME` gives the surface, the type scale of the refusal the reader shows, and
-every door as the way on. The middleware cannot render React or name the app's hashed stylesheet,
+every door as the way on while the guide index answers. The middleware cannot render React or name the app's hashed stylesheet,
 so the CSS is inline, and the colours it paints with are `DOCUMENT_TOKENS`, each held by
 `packages/web-v2/src/features/guides/missing-document.test.ts` to the value `packages/web-v2/src/styles/tokens.css` resolves it to.
 The font is the app's own, copied to `packages/web-v2/public/fonts/` because the one `next/font`
@@ -122,6 +122,13 @@ guide, 404) the middleware answers **503** with `Retry-After` and `unavailableDo
 header as the 404s, and as the way on only the bundled doors (`BUNDLED_WAYS_IN`), the landing and the
 agents' door needing the index too. Core unreachable is never a 404: that would tell a reader a guide
 does not exist on no evidence. The price is one core request per plain `/guides` view, and a second per guide view.
+
+A refusal stays a 404 while core is down, but the middleware asks for the index before writing one
+(`refuse` in the middleware), because every address but a bundled one then answers 503. With the
+index unreadable the refusal says `saidWhileDown` (each `Refusal`'s `bodyWhileDown` in place of a
+body that points at the index, then `SEARCH_UNAVAILABLE` and `BUNDLED_WAYS_IN`), links only the
+bundled doors, and leaves the site name in its header unlinked, as `unavailableDocument` does.
+`PublicRefusal` says the same words. The price is one more core request per refused plain request.
 
 A client-side navigation is left alone: the router fetches the same URL for flight data and would
 choke on an HTML document, and it has JavaScript by definition, so the page serves it inside the docs

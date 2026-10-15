@@ -2,12 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { HELP_SLUGS } from "@/features/docs/help-slugs.generated";
 import { BUNDLED_AUDIENCES } from "@/features/guides/audience";
 import { FLIGHT_SIGNAL_HEADERS, isFlightRequest } from "@/features/guides/flight-request";
-import {
-  missingGuideDocument,
-  RETRY_AFTER_SECONDS,
-  refusalDocument,
-  unavailableDocument,
-} from "@/features/guides/missing-document";
+import { missingGuide, type Refusal } from "@/features/guides/missing";
+import { RETRY_AFTER_SECONDS, refusalDocument, unavailableDocument } from "@/features/guides/missing-document";
 import { readPublicRequest } from "@/features/guides/requested-page";
 import {
   GUIDE_PATH_HEADER,
@@ -41,8 +37,9 @@ async function guides(request: NextRequest, pathname: string): Promise<NextRespo
   const pass = () => NextResponse.next({ request: { headers } });
 
   if (isFlightRequest(request.headers)) return pass();
-  const notFound = (html: string) =>
-    new NextResponse(html, {
+  const ok = (status: number | null) => status !== null && status >= 200 && status < 300;
+  const refuse = async (refusal: Refusal) =>
+    new NextResponse(refusalDocument(refusal, { indexDown: !ok(await coreStatus("/guides")) }), {
       status: 404,
       headers: { "content-type": "text/html; charset=utf-8", vary: FLIGHT_SIGNAL_HEADERS },
     });
@@ -56,24 +53,21 @@ async function guides(request: NextRequest, pathname: string): Promise<NextRespo
         vary: FLIGHT_SIGNAL_HEADERS,
       },
     });
-  const ok = (status: number | null) => status !== null && status >= 200 && status < 300;
 
   const slug = slugFromGuidePath(pathname);
   if (!slug) {
     const asked = readPublicRequest(request.nextUrl.searchParams, HELP_SLUGS);
-    if (asked.kind === "refused") return notFound(refusalDocument(asked.refusal));
+    if (asked.kind === "refused") return refuse(asked.refusal);
     if (asked.kind === "page" || (asked.kind === "door" && BUNDLED_AUDIENCES.includes(asked.audience))) return pass();
     return ok(await coreStatus("/guides")) ? pass() : unavailable();
   }
 
-  const missing = () => notFound(missingGuideDocument(slug));
-
-  if (!GUIDE_SLUG.test(slug)) return missing();
+  if (!GUIDE_SLUG.test(slug)) return refuse(missingGuide(slug));
 
   // Core unreachable is not evidence that the guide does not exist, so it is a 503 and never a 404.
   // A guide's page is built from the index too, so the index answering is owed as well.
   const status = await coreStatus(`/guides/${encodeURIComponent(slug)}`);
-  if (status === 404) return missing();
+  if (status === 404) return refuse(missingGuide(slug));
   return ok(status) && ok(await coreStatus("/guides")) ? pass() : unavailable();
 }
 
