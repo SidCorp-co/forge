@@ -44,3 +44,21 @@ describe("/guides/<slug> while core cannot answer for the guides", () => {
     await expect(GuidePage({ params: Promise.resolve({ slug: "other" }) })).rejects.toThrow("a defect");
   });
 });
+
+describe("/guides/<slug> naming no guide core publishes", () => {
+  it("names the refusal in the tab, so a client-side navigation onto it does not keep the site's bare name", async () => {
+    fetchGuide.mockResolvedValueOnce(null as never);
+    expect(await generateMetadata({ params: Promise.resolve({ slug: "no-such-guide" }) })).toEqual({
+      title: "Forge publishes no guide called “no-such-guide” — Forge documentation",
+      robots: { index: false },
+    });
+  });
+
+  it("names the address-less refusal where the slug is empty", async () => {
+    fetchGuide.mockResolvedValueOnce(null as never);
+    expect(await generateMetadata({ params: Promise.resolve({ slug: "" }) })).toEqual({
+      title: "Forge publishes no guide at that address — Forge documentation",
+      robots: { index: false },
+    });
+  });
+});

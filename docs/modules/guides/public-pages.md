@@ -51,10 +51,14 @@ render a 404 page but not set a 404 status. Moving it to
 request answer **404**. Anything public added outside that group inherits this,
 so a new boundary goes next to the routes that need one.
 
-**`notFound()` raised in a dynamic route never server-renders its body.** Next
-emits `<html id="__next_error__">` with an empty `<body>` and streams the
-not-found UI as flight data, discarding the page's own `generateMetadata` with
-it — the title and description come from the root layout. A browser renders the
+**`notFound()` raised in a dynamic route never server-renders its body.** On a
+plain request Next emits `<html id="__next_error__">` with an empty `<body>` and
+streams the not-found UI as flight data, discarding the page's own
+`generateMetadata` with it — the title and description come from the root layout.
+A client-side navigation is the other way round: its flight answer carries the
+page's own `generateMetadata` beside the not-found UI, so a guide's names the
+missing-guide refusal rather than returning nothing and leaving the tab at the
+root layout's bare `Forge` (measured on 16.3.8 with `next dev`). A browser renders the
 <!-- doc-citation: unchecked `not-found.tsx` — Next's filename convention, not one file. -->
 page after hydration; curl, a crawler and a link preview get the status and
 nothing else. Three shapes were tried and all three behaved the same: a client

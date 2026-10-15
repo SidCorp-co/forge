@@ -7,7 +7,7 @@ import { DOORS, documentTitle } from "@/features/guides/audience";
 import { buildCorpus, fromGuide } from "@/features/guides/corpus";
 import { GuideShell } from "@/features/guides/components/guide-shell";
 import { PublicReader, PublicRefusal } from "@/features/guides/components/public-docs";
-import { GUIDES_UNAVAILABLE } from "@/features/guides/missing";
+import { GUIDES_UNAVAILABLE, missingGuideHeading } from "@/features/guides/missing";
 import { orUnreadable } from "@/features/guides/unreadable";
 
 type Params = { params: Promise<{ slug: string }> };
@@ -24,10 +24,11 @@ const readGuide = cache((slug: string) =>
 );
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
-  const read = await readGuide((await params).slug);
+  const { slug } = await params;
+  const read = await readGuide(slug);
   if (!read) return { title: documentTitle(GUIDES_UNAVAILABLE.heading), robots: { index: false } };
   const { guide } = read;
-  if (!guide) return {};
+  if (!guide) return { title: documentTitle(missingGuideHeading(slug)), robots: { index: false } };
   return { title: documentTitle(guide.title), description: `${DOORS.agent.notice} ${guide.summary}` };
 }
 

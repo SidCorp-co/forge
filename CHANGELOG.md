@@ -3197,6 +3197,7 @@
 - **Closing a run with a checkpoint that declares another source is refused by name.** It answered a server error; it now answers 400 naming `source` and the one valid value, `reconstructed_from_box`, and leaves the run open to be closed again.
 - **With the guide index down, every docs page says so inside the docs.** Help pages still open; the rest answer 503 with a retry time and, like a wrong address, offer only pages that open. (ISS-1295)
 - **Docs pages no longer scroll sideways on a phone.** (ISS-1295)
+- **A docs link to a guide that no longer exists names it in the browser tab.** The tab read only "Forge". (ISS-1295)
 - **Docs search says where each page matched.** Title matches come first, your words are marked, and a text match shows its sentence and any section. Back returns to your search. The tab title follows the page you open. (ISS-1295)
 - **On a phone, a public docs page keeps Search and its door in view.** The breadcrumb row stays at the top with a Search link and a link to the page's door; the article is still first. (ISS-1294)
 - **A refused public docs address, reached from a docs page, offers the docs' search.** The refusal shows the search box and the doors, and says so when the guide index cannot be reached. (ISS-1415)
