@@ -67,6 +67,23 @@ const BLOCKER_GAP: Record<string, ReleaseReadiness["gaps"][number]> = {
   RELEASE_RUNNER_AMBIGUOUS: "release-runner-ambiguous",
 };
 
+/** Which issues the link beside a blocker opens: the statuses its sentence counts, or none where it
+ *  counts no issue — a link onto an empty list sends a person looking for nothing (ISS-1229 j16). */
+function issuesLinkFor(b: ReleaseReadiness["blockers"][number]): { statuses: string[]; label: string } | null {
+  if (b.code === "RELEASE_ROSTER_EMPTY") {
+    const nearGate = b.details?.nearGate;
+    if (typeof nearGate !== "number" || nearGate === 0) return null;
+    return {
+      statuses: ["testing", "tested"],
+      label: `Open the issues at ${ISSUE_STATUS_LABELS.testing} or ${ISSUE_STATUS_LABELS.tested}`,
+    };
+  }
+  return {
+    statuses: ["awaiting_release"],
+    label: `Open the issues at ${ISSUE_STATUS_LABELS.awaiting_release}`,
+  };
+}
+
 /** One reading is taken per live target that declares a probe, so with several targets the answer is per target. */
 function verifiedBy(r: ReleaseReadiness): string {
   if (r.providers.length > 1) {
@@ -96,7 +113,8 @@ export function ReleaseAnswer({ projectId, slug }: { projectId: string; slug?: s
   const q = useReleaseReadiness(projectId);
   const tab = (t: string, add?: string) =>
     slug ? `/projects/${slug}/settings?tab=${t}${add ? `&add=${add}` : ""}` : undefined;
-  const waitingHref = slug ? `/projects/${slug}/issues?status=awaiting_release` : undefined;
+  const issuesHref = (statuses: string[]) =>
+    slug ? `/projects/${slug}/issues?status=${statuses.join(",")}` : undefined;
   const knowledgeHref = slug ? `/projects/${slug}/library?tab=knowledge&sub=rules` : undefined;
 
   if (q.isLoading) {
@@ -139,7 +157,8 @@ export function ReleaseAnswer({ projectId, slug }: { projectId: string; slug?: s
         <ul className="mt-3 divide-y divide-line border-y border-line" aria-label="What stops a release">
           {r.blockers.map((b) => {
             const at = BLOCKER_TAB[b.code];
-            const href = at ? tab(at.tab, at.add) : waitingHref;
+            const issues = at ? null : issuesLinkFor(b);
+            const href = at ? tab(at.tab, at.add) : issues ? issuesHref(issues.statuses) : undefined;
             // The sentence leads; the code is for whoever greps for it, not for the reader.
             const gap = BLOCKER_GAP[b.code];
             return (
@@ -147,7 +166,7 @@ export function ReleaseAnswer({ projectId, slug }: { projectId: string; slug?: s
                 {gap ? GAP_TEXT[gap] : inlineCode(b.message)}{" "}
                 {href && (
                   <Link href={href} className="text-accent-text hover:underline">
-                    {at ? at.label : `Open the issues at ${ISSUE_STATUS_LABELS.awaiting_release}`}
+                    {at ? at.label : issues?.label}
                   </Link>
                 )}
               </li>
