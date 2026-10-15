@@ -374,7 +374,7 @@
     "integrations.github.stranded.install_unmatched": "GitHub's installation belongs to no App you can reach in Forge.",
     "integrations.github.stranded.install_unproven": "GitHub did not show that installation as yours; nothing was recorded.",
     "integrations.github.stranded.install_claimed_elsewhere": "Another Forge organisation already recorded that installation; it is never moved.",
-    "integrations.github.stranded.app_exists": "This Forge already has its GitHub App; GitHub's new one was not kept.",
+    "integrations.github.stranded.app_exists": "This Forge already has a GitHub App; the new one was dropped.",
     "integrations.github.stranded.not_operator": "Only a Forge operator creates this Forge's GitHub App.",
     "integrations.github.stranded.named": "GitHub already made the App {app}, and Forge kept no key.",
     "integrations.github.stranded.no_session": "You were not signed in to Forge when GitHub sent you back.",
