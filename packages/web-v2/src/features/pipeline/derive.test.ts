@@ -93,9 +93,17 @@ describe("checkInOf — the last check-in, and quiet past the threshold", () => 
     expect(checkInOf(session({ lastHeartbeatAt: at(QUIET_AFTER_MS + 1) }), NOW).quiet).toBe(true);
   });
 
-  it("marks a running session that never checked in as quiet, and a queued one as not", () => {
+  it("marks a running session that never checked in as quiet once it has run past the threshold, and a queued one as not", () => {
     expect(checkInOf(session({ lastHeartbeatAt: null }), NOW)).toEqual({ text: "No check-in yet", quiet: true });
     expect(checkInOf(session({ status: "queued", lastHeartbeatAt: null }), NOW).quiet).toBe(false);
+  });
+
+  it("does not mark quiet a session that started inside the threshold and has not checked in yet", () => {
+    const started = new Date(NOW - 10_000).toISOString();
+    expect(checkInOf(session({ lastHeartbeatAt: null, startedAt: started }), NOW)).toEqual({
+      text: "No check-in yet",
+      quiet: false,
+    });
   });
 });
 

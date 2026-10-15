@@ -6,7 +6,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Icon, LiveDot, MonoTag } from "@/design";
+import { Icon, LiveDot, MonoTag, SILENCE_TONE, SILENCE_WORD } from "@/design";
 import { TONE_META } from "@/design/status";
 import { checkInOf, doingOf, orderSessions, sessionName } from "@/features/pipeline/derive";
 import type { LiveSession } from "@/features/pipeline/types";
@@ -61,9 +61,9 @@ function SessionRow({ session, slug, now }: { session: LiveSession; slug: string
       )}
       <span
         className="fg-caption ml-auto flex-none tabular-nums"
-        style={checkIn.quiet ? { color: TONE_META.attention.fg } : undefined}
+        style={checkIn.quiet ? { color: TONE_META[SILENCE_TONE].fg } : undefined}
       >
-        {checkIn.quiet ? `Quiet · ${checkIn.text}` : checkIn.text}
+        {checkIn.quiet ? `${SILENCE_WORD} · ${checkIn.text}` : checkIn.text}
       </span>
     </li>
   );
