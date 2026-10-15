@@ -69,7 +69,9 @@ export async function unregisterPmCadenceTicker(): Promise<void> {
   } catch (err) {
     logger.warn({ err }, 'pm.cadence: unschedule failed');
   }
-  await boss.offWork(PM_CADENCE_QUEUE, { id });
+  // Passing options replaces pg-boss's default `{ wait: true }`, so it is named: without it this
+  // returns while a fetch in flight still holds the worker.
+  await boss.offWork(PM_CADENCE_QUEUE, { id, wait: true });
 }
 
 export function _resetPmCadenceCacheForTest(): void {

@@ -38,7 +38,9 @@ export async function unregisterScheduleTicker(): Promise<void> {
   } catch (err) {
     logger.warn({ err }, 'schedule.tick: unschedule failed');
   }
-  await boss.offWork(TICK_QUEUE_NAME, { id });
+  // Passing options replaces pg-boss's default `{ wait: true }`, so it is named: without it this
+  // returns while a fetch in flight still holds the worker.
+  await boss.offWork(TICK_QUEUE_NAME, { id, wait: true });
 }
 
 export function isScheduleTickerRegistered(): boolean {
