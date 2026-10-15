@@ -206,7 +206,7 @@ describe('GET /api/projects/health', () => {
     expect(body[0]?.throughput).toBe(0);
   });
 
-  it('200 with additive rollups (liveRuns / runners / spend24h / members / lastActivityAt)', async () => {
+  it('200 with additive rollups (liveRuns / liveSessions / runners / spend24h / members / lastActivityAt)', async () => {
     authVerified();
     queryQueue.push([{ id: PROJECT_A_ID }, { id: PROJECT_B_ID }]); // loadVisibleProjectIds
     queryQueue.push([
@@ -240,6 +240,7 @@ describe('GET /api/projects/health', () => {
     ]); // memberRows
     queryQueue.push([{ projectId: PROJECT_A_ID, lastAt: '2026-05-30T10:00:00.000Z' }]); // issueActivityRows
     queryQueue.push([{ projectId: PROJECT_A_ID, lastAt: '2026-05-31T12:00:00.000Z' }]); // runActivityRows
+    queryQueue.push([{ projectId: PROJECT_A_ID, n: 1 }]); // liveSessionRows
 
     const res = await buildApp().request('/api/projects/health', {
       headers: { authorization: `Bearer ${await token()}` },
@@ -264,14 +265,14 @@ describe('GET /api/projects/health', () => {
     expect(alpha?.id).toBe(PROJECT_A_ID);
     expect(alpha?.description).toBe('Alpha project');
     expect(alpha?.repoPath).toBe('org/alpha');
-    expect(alpha?.liveRuns).toBe(3);
     expect(alpha?.runnerCount).toBe(2);
     expect(alpha?.spend24hUsd).toBeCloseTo(13.38);
     expect(alpha?.memberCount).toBe(2);
     expect(alpha?.members).toEqual(['AD', 'BO']); // email-derived initials
     expect(alpha?.lastActivityAt).toBe('2026-05-31T12:00:00.000Z'); // max(issue, run)
     // Project with no rollup rows falls back to safe defaults.
-    expect(beta?.liveRuns).toBe(0);
+    const counts = body.map((p) => [p.liveRuns, (p as { liveSessions?: number }).liveSessions]);
+    expect(counts.flat()).toEqual([3, 1, 0, 0]); // open runs and live sessions: two counts, never one
     expect(beta?.runnerCount).toBe(0);
     expect(beta?.spend24hUsd).toBe(0);
     expect(beta?.memberCount).toBe(0);

@@ -24,6 +24,7 @@ const projectHealthSchema = z.object({
   pendingEscalations: z.number(),
   avgCycleTimeDays: z.number(),
   liveRuns: z.number(),
+  liveSessions: z.number(),
   runnerCount: z.number(),
   spend24hUsd: z.number(),
   memberCount: z.number(),

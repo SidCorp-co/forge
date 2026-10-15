@@ -106,7 +106,7 @@ function project(name: string): ProjectConsoleItem {
   return {
     id: name, slug: name, name, orgId: "o1", orgName: "Org", orgIsPersonal: false, role: "admin",
     createdAt: "2026-10-01T00:00:00Z", description: "A project", repoPath: `repo/${name}`, healthRead: "read",
-    health: "healthy", liveRuns: 1, openIssues: 3, runnerCount: 1, spend24hUsd: 1, memberCount: 2, members: ["AB", "CD"],
+    health: "healthy", liveSessions: 1, openIssues: 3, runnerCount: 1, spend24hUsd: 1, memberCount: 2, members: ["AB", "CD"],
     lastActivityAt: "2026-10-02T00:00:00Z", pinned: false,
   } as ProjectConsoleItem;
 }

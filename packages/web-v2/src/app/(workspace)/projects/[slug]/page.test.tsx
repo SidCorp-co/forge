@@ -285,6 +285,33 @@ describe("a working project", () => {
     expect(figure("Needs you").getByText(/oldest 2h/)).toBeInTheDocument();
   });
 
+  // ISS-1228 r3 — judge-14 read '0 of 1 runners busy' under 'Sessions live 4': busy counted pool jobs only.
+  it("calls a runner hosting the live sessions busy, from the read the Sessions live figure counts", () => {
+    runs = [run()];
+    sessions = [liveSession(), liveSession({ id: "s2" }), liveSession({ id: "s3", deviceId: "dv-elsewhere" })];
+    projectRunnerRows = [
+      { runnerId: "rn1", deviceId: "dv1", deviceName: "box-1", deviceStatus: "online", runnerStatus: "enabled", platform: "linux" },
+      { runnerId: "rn2", deviceId: "dv2", deviceName: "box-2", deviceStatus: "online", runnerStatus: "enabled", platform: "linux" },
+    ];
+    mount();
+    expect(figure("Sessions live").getByText("3")).toBeInTheDocument();
+    expect(figure("Sessions live").getByText("1 of 2 runners busy · 1 run open")).toBeInTheDocument();
+    const runners = screen.getByRole("region", { name: "Runners" });
+    expect(runners).toHaveTextContent("2 sessions");
+    expect(runners).toHaveTextContent("idle");
+  });
+
+  it("calls no runner busy or idle while the sessions read is out, since a hosted session would make it busy", () => {
+    sessions = undefined;
+    runs = [run()];
+    projectRunnerRows = [{ runnerId: "rn1", deviceId: "dv1", deviceName: "box-1", deviceStatus: "online", runnerStatus: "enabled", platform: "linux" }];
+    mount();
+    const runners = screen.getByRole("region", { name: "Runners" });
+    expect(runners).toHaveTextContent("activity not read");
+    expect(runners).not.toHaveTextContent(/\bidle\b|\bbusy\b/);
+    expect(screen.queryByText(/0 of 1 runners busy/)).toBeNull();
+  });
+
   it("gives each waiting row its age chip and the action that clears it", () => {
     attentionView = view({ pair: { needsReview: 0, awaitingInput: 2, awaitingOutsideBlockers: 0, failedJobs: 0 } }, {
       awaitingInput: [attentionItem(7, ago(2 * 3600)), attentionItem(8, ago(5 * DAY))],

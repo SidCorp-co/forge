@@ -185,18 +185,19 @@ function MonitorTab({
   health: ProjectHealthRow[];
   durations: StepDurationRow[] | undefined;
 }) {
-  const totalLive = health.reduce((a, h) => a + h.liveRuns, 0);
+  const totalOpen = health.reduce((a, h) => a + h.liveRuns, 0);
   const totalSpend = health.reduce((a, h) => a + h.spend24hUsd, 0);
   const totalActive = health.reduce((a, h) => a + h.totalActive, 0);
   const totalRunners = health.reduce((a, h) => a + h.runnerCount, 0);
   const recent = (durations ?? []).length;
 
-  const live = health.filter((h) => h.liveRuns > 0);
+  // A run row at running or paused is open work, not proof anything works it: "live" is said of sessions only.
+  const open = health.filter((h) => h.liveRuns > 0);
 
   return (
     <div className="flex flex-col gap-5">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Tile label="Live runs" value={String(totalLive)} />
+        <Tile label="Open runs" value={String(totalOpen)} />
         <Tile label="Spend · 24h" value={formatUsd(totalSpend)} />
         <Tile label={OPEN_WORK_LABEL} value={String(totalActive)} />
         <Tile label="Online runners" value={String(totalRunners)} />
@@ -204,22 +205,22 @@ function MonitorTab({
 
       <Card>
         <CardHeader>
-          <CardTitle>Live now</CardTitle>
+          <CardTitle>Runs open now</CardTitle>
           <Stat icon="activity" mono={false}>
             {recent} steps · last 7d
           </Stat>
         </CardHeader>
         <CardContent>
-          {live.length === 0 ? (
-            <p className="fg-body-sm text-muted">No runs are active right now.</p>
+          {open.length === 0 ? (
+            <p className="fg-body-sm text-muted">No run is open right now.</p>
           ) : (
             <div className="flex flex-col gap-2.5">
-              {live.map((h) => (
+              {open.map((h) => (
                 <div key={h.id} className="flex items-center gap-3">
                   <span className="fg-body-sm flex-1 truncate font-medium text-fg">
                     {h.projectName}
                   </span>
-                  <Badge tone="accent">{h.liveRuns} live</Badge>
+                  <Badge tone="accent">{h.liveRuns} open</Badge>
                   <Stat icon="dollar">{formatUsd(h.spend24hUsd)}</Stat>
                 </div>
               ))}
@@ -343,7 +344,7 @@ function HealthTab({ health }: { health: ProjectHealthRow[] }) {
           <CardContent>
             <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
               <Metric label={OPEN_WORK_LABEL} value={String(h.totalActive)} />
-              <Metric label="Live runs" value={String(h.liveRuns)} />
+              <Metric label="Open runs" value={String(h.liveRuns)} />
               <Metric label="Runners" value={String(h.runnerCount)} />
               <Metric label="Spend · 24h" value={formatUsd(h.spend24hUsd)} />
               <Metric label="Blockers" value={String(h.blockers?.length ?? 0)} />

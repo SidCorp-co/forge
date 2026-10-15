@@ -41,8 +41,10 @@ interface ProjectHealthRow {
   blockersTotal: number;
   pendingEscalations: number;
   avgCycleTimeDays: number;
-  /** Pipeline runs currently `running` or `paused`. */
+  /** Pipeline runs currently `running` or `paused`: open runs, which is not proof anything works them. */
   liveRuns: number;
+  /** Agent sessions live by `liveSessionWhere`, the count the pipeline surface's session list makes. */
+  liveSessions: number;
   /** Runners in the `online` state. */
   runnerCount: number;
   /** Trailing-24h spend (USD) from the `pipeline_run_step_durations` view. */
@@ -139,6 +141,9 @@ projectHealthRoutes.get('/health', readProjectHealth, async (c) => {
   const liveRunsByProject = new Map<string, number>();
   for (const r of agg.liveRunRows) liveRunsByProject.set(r.projectId, Number(r.n));
 
+  const liveSessionsByProject = new Map<string, number>();
+  for (const r of agg.liveSessionRows) liveSessionsByProject.set(r.projectId, Number(r.n));
+
   const runnersByProject = new Map<string, number>();
   for (const r of agg.runnerRows) runnersByProject.set(r.projectId, Number(r.n));
 
@@ -181,6 +186,7 @@ projectHealthRoutes.get('/health', readProjectHealth, async (c) => {
       pendingEscalations: pendingEscalationsOf(rowsByProject.get(p.id) ?? []),
       avgCycleTimeDays: cycleByProject.get(p.id) ?? 0,
       liveRuns: liveRunsByProject.get(p.id) ?? 0,
+      liveSessions: liveSessionsByProject.get(p.id) ?? 0,
       runnerCount: runnersByProject.get(p.id) ?? 0,
       spend24hUsd: spendByProject.get(p.id) ?? 0,
       memberCount: memberCountByProject.get(p.id) ?? 0,

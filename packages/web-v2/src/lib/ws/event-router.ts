@@ -122,6 +122,8 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "agent-session.deleted": {
 			scheduleInvalidation(qc, ["agent-sessions"]);
 			scheduleInvalidation(qc, ["sessions-and-holds"]);
+			// The rail and the projects console count live sessions off the health rollup.
+			scheduleInvalidation(qc, ["projects", "health"]);
 			scheduleInvalidation(qc, ["pulse"]);
 			if (data?.sessionId) {
 				scheduleInvalidation(qc, ["agent-session", data.sessionId]);
@@ -182,7 +184,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "pipeline_run.status_changed": {
 			scheduleInvalidation(qc, ["pipeline-runs", "list"]);
 			scheduleInvalidation(qc, ["admin", "ops"]);
-			// Projects console (ISS-290): liveRuns / spend roll up from pipeline_runs.
+			// Projects console (ISS-290): spend rolls up from pipeline_runs.
 			scheduleInvalidation(qc, ["projects", "health"]);
 			scheduleInvalidation(qc, ["pulse"]);
 			if (data?.runId) {

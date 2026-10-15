@@ -54,8 +54,10 @@ export interface ProjectHealthRow {
   blockersTotal: number;
   pendingEscalations: number;
   avgCycleTimeDays: number;
-  /** Pipeline runs currently running or paused. */
+  /** Pipeline runs currently running or paused: open runs, not proof anything works them. */
   liveRuns: number;
+  /** Agent sessions live by the condition the Pipeline page lists them by; what "live" counts everywhere. */
+  liveSessions: number;
   /** Runners in the `online` state. */
   runnerCount: number;
   /** Trailing-24h spend (USD). */
@@ -121,7 +123,7 @@ export interface ProjectConsoleItem {
   /** What `GET /api/projects/health` answered; the rollup's figures below are stated only where `read`. */
   healthRead: QueryRead;
   health: HealthKey | null;
-  liveRuns: number | null;
+  liveSessions: number | null;
   openIssues: number | null;
   runnerCount: number | null;
   spend24hUsd: number | null;
@@ -135,7 +137,7 @@ export interface ProjectConsoleItem {
 export interface WorkspaceTotals {
   projects: number;
   healthRead: QueryRead;
-  liveRuns: number | null;
+  liveSessions: number | null;
   openIssues: number | null;
   runners: number | null;
   spend24hUsd: number | null;

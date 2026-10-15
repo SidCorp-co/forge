@@ -3193,6 +3193,7 @@
 
 ### Fixed
 
+- **Every figure that says live counts the sessions the Pipeline page lists.** The rail and projects console no longer count open runs as live, a runner working sessions reads busy, and the operations page calls runs open. (ISS-1228)
 - **The project dashboard counts the sessions the Pipeline page shows.** It no longer reads none live while sessions work. The costliest spend step is drawn again, and a long held reason sits on one line with More. (ISS-1228)
 - **The pipeline help page says what Settings holds, and that a gated draft is dropped, not closed.** It described a per-stage Auto/Manual/Skip setting that does not exist, and told readers to close a draft, which is refused. (ISS-1229)
 - **A shape change lists each status as one item.** Developed issues are counted as waiting to be tested, so a list of several statuses no longer reads one of them as two. (ISS-1171)

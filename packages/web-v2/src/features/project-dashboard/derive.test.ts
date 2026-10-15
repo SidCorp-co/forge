@@ -13,6 +13,7 @@ import {
   conicGradient,
   type DashboardAttentionItem,
   projectAttention,
+  runnersSummary,
   statusDonut,
 } from "./derive";
 import type { AttentionItem, AttentionView } from "@/features/attention/types";
@@ -400,5 +401,43 @@ describe("what works an open run: a live job or a session that has not ended", (
 
   it("keeps a session-worked run among the jobless, which is where a silent one goes stuck from", () => {
     expect(ids(joblessRuns(runs))).toEqual(["session", "nothing"]);
+  });
+});
+
+describe("runnersSummary — a runner hosting a live session is busy (ISS-1228)", () => {
+  const runner = (runnerId: string, deviceId: string, deviceStatus: "online" | "offline" = "online") => ({
+    runnerId,
+    deviceId,
+    deviceName: runnerId,
+    platform: "linux" as const,
+    deviceStatus,
+    runnerStatus: "enabled",
+  });
+  const runners = [runner("rn1", "dv1"), runner("rn2", "dv2"), runner("rn3", "dv3", "offline")] as never;
+  const queue = { devices: [] } as never;
+
+  it("counts the runner whose device hosts sessions, with no pool job on it", () => {
+    const sum = runnersSummary(runners, queue, 0, [], [{ deviceId: "dv1" }, { deviceId: "dv1" }]);
+    expect(sum.busyCount).toBe(1);
+    expect(sum.onlineCount).toBe(2);
+    expect(sum.lines.map((l) => [l.id, l.busy, l.sessions])).toEqual([
+      ["rn1", true, 2],
+      ["rn2", false, 0],
+      ["rn3", false, 0],
+    ]);
+  });
+
+  it("reads idle without the sessions, which is the reading the judge saw", () => {
+    expect(runnersSummary(runners, queue, 0, []).busyCount).toBe(0);
+  });
+
+  it("counts busy only among the online runners the caption divides by", () => {
+    const sum = runnersSummary(runners, queue, 0, [], [{ deviceId: "dv3" }]);
+    expect(sum.lines.find((l) => l.id === "rn3")?.busy).toBe(true);
+    expect(sum.busyCount).toBe(0);
+  });
+
+  it("ignores a session with no device", () => {
+    expect(runnersSummary(runners, queue, 0, [], [{ deviceId: null }]).busyCount).toBe(0);
   });
 });

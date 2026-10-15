@@ -3,13 +3,13 @@ import { db } from '../db/client.js';
 import { issues, pipelineRuns, projectMembers, projects, runners, users } from '../db/schema.js';
 import { readWorkStateRows } from '../issues/work-state-read.js';
 import { createLimiter } from '../lib/bounded-concurrency.js';
+import { readLiveSessionCounts } from '../pipeline/live-session.js';
 import { firstShipped } from '../pipeline/shipped-at.js';
 
 /**
- * The ten independent per-project reads behind `GET /api/projects/health`, and
- * the bound they run under. They were awaited one after another until ISS-1018;
- * the figures are unchanged and the latency is now three waves rather than ten
- * round trips.
+ * The eleven independent per-project reads behind `GET /api/projects/health`, and
+ * the bound they run under, so the latency is a few waves rather than one round
+ * trip per read.
  */
 
 export const HEALTH_READ_CONCURRENCY = 4;
@@ -168,7 +168,7 @@ const readRunActivityRows = (projectIds: string[]) =>
     .groupBy(pipelineRuns.projectId);
 
 /**
- * Run the ten reads concurrently under the module bound.
+ * Run the eleven reads concurrently under the module bound.
  *
  * The array order is load-bearing for the unit test's mock, which answers each
  * awaited query with the next row-set from a queue: the limiter starts parked
@@ -187,6 +187,7 @@ export async function readHealthAggregates(projectIds: string[]) {
     memberRows,
     issueActivityRows,
     runActivityRows,
+    liveSessionRows,
   ] = await Promise.all([
     run(() => readStatusRows(projectIds)),
     run(() => readBlockerRows(projectIds)),
@@ -198,6 +199,7 @@ export async function readHealthAggregates(projectIds: string[]) {
     run(() => readMemberRows(projectIds)),
     run(() => readIssueActivityRows(projectIds)),
     run(() => readRunActivityRows(projectIds)),
+    run(() => readLiveSessionCounts(projectIds)),
   ]);
 
   return {
@@ -211,5 +213,6 @@ export async function readHealthAggregates(projectIds: string[]) {
     memberRows,
     issueActivityRows,
     runActivityRows,
+    liveSessionRows,
   };
 }

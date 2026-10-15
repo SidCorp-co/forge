@@ -86,7 +86,7 @@ export function ProjectList({ items, now, onTogglePin, sort, onSortChange }: Pro
             <ReadFigure value={null} read={p.healthRead} subject="the project's health" />
           ),
       },
-      { id: 'runs', header: 'Runs', cell: (p) => <LiveCount n={p.liveRuns} read={p.healthRead} /> },
+      { id: 'runs', header: 'Live', cell: (p) => <LiveCount n={p.liveSessions} read={p.healthRead} /> },
       {
         id: 'issues',
         header: 'Issues',

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * Every `db.select()` chain and every `db.execute()` resolves only when the test
- * releases it, so the moment all ten reads are outstanding is observable — which
+ * releases it, so the moment all eleven reads are outstanding is observable — which
  * is the whole point: a sequential handler never has two in flight, and a test
  * against an immediately-resolving mock cannot tell the two apart.
  */
@@ -43,6 +43,8 @@ const { readHealthAggregates, healthReadLoad, HEALTH_READ_CONCURRENCY } = await 
   './health-aggregates.js'
 );
 
+/** One request's reads: the ten rollups and the live-session count. */
+const READS = 11;
 const PROJECT_IDS = ['22222222-2222-4222-8222-222222222222'];
 const tick = () => new Promise<void>((r) => setTimeout(r, 0));
 
@@ -59,7 +61,7 @@ describe('readHealthAggregates', () => {
 
     expect(healthReadLoad.inFlight).toBe(HEALTH_READ_CONCURRENCY);
     expect(started).toBe(HEALTH_READ_CONCURRENCY);
-    expect(healthReadLoad.waiting).toBe(10 - HEALTH_READ_CONCURRENCY);
+    expect(healthReadLoad.waiting).toBe(READS - HEALTH_READ_CONCURRENCY);
 
     while (gates.length > 0) {
       gates.shift()?.();
@@ -67,7 +69,7 @@ describe('readHealthAggregates', () => {
       expect(healthReadLoad.inFlight).toBeLessThanOrEqual(HEALTH_READ_CONCURRENCY);
     }
     await done;
-    expect(started).toBe(10);
+    expect(started).toBe(READS);
     expect(healthReadLoad.inFlight).toBe(0);
   });
 
@@ -78,16 +80,16 @@ describe('readHealthAggregates', () => {
 
     expect(healthReadLoad.inFlight).toBe(HEALTH_READ_CONCURRENCY);
     expect(started).toBe(HEALTH_READ_CONCURRENCY);
-    expect(healthReadLoad.waiting).toBe(20 - HEALTH_READ_CONCURRENCY);
+    expect(healthReadLoad.waiting).toBe(2 * READS - HEALTH_READ_CONCURRENCY);
 
     while (gates.length > 0) {
       gates.shift()?.();
       await tick();
       expect(healthReadLoad.inFlight).toBeLessThanOrEqual(HEALTH_READ_CONCURRENCY);
-      expect(started).toBeLessThanOrEqual(20);
+      expect(started).toBeLessThanOrEqual(2 * READS);
     }
     await Promise.all([first, second]);
-    expect(started).toBe(20);
+    expect(started).toBe(2 * READS);
   });
 
   it('computes the cycle figure in one pass, with no correlated subquery per row', async () => {
@@ -104,5 +106,19 @@ describe('readHealthAggregates', () => {
     expect(serialized).toContain('LEFT JOIN work_start');
     expect(serialized).not.toContain('al2');
     expect(serialized).not.toContain('SELECT min(');
+  });
+
+  it('counts live sessions by the condition the pipeline surface lists them by', async () => {
+    const done = readHealthAggregates(PROJECT_IDS);
+    await tick();
+    while (gates.length > 0) {
+      gates.shift()?.();
+      await tick();
+    }
+    await done;
+
+    const serialized = JSON.stringify(executedSql);
+    expect(serialized).toContain('FROM agent_sessions s');
+    expect(serialized).toContain("s.kind <> 'chat' AND s.status NOT IN (");
   });
 });

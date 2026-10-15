@@ -1,6 +1,6 @@
-// A `N live` mono pill with an accent pulse dot when there are active runs.
-// (Kit `LiveDot` reflects WS-connection state, not run count — so this small
-// feature component is the right home for the per-project live-run indicator.)
+// A `N live sessions` mono figure with an accent pulse dot when any session is live.
+// (Kit `LiveDot` reflects WS-connection state, not a count — so this small
+// feature component is the right home for the per-project live-session indicator.)
 import type { QueryRead } from '@/design/patterns/badge-read';
 import { cn } from '@/lib/utils/cn';
 import { ReadFigure } from './read-figure';
@@ -14,7 +14,7 @@ export function LiveCount({ n, read }: LiveCountProps) {
   const live = n !== null && n > 0;
   return (
     <span
-      title="Pipeline runs currently running or paused"
+      title="Agent sessions live now, as the Pipeline page lists them"
       className={cn(
         'inline-flex items-center gap-1.5 font-mono text-12-5',
         live ? 'text-accent-text' : 'text-subtle',
@@ -23,7 +23,7 @@ export function LiveCount({ n, read }: LiveCountProps) {
       {live && (
         <span className="forge-pulse inline-block size-[7px] rounded-pill bg-accent" aria-hidden />
       )}
-      <ReadFigure value={n} read={read} counts="live runs" /> live runs
+      <ReadFigure value={n} read={read} counts="live sessions" /> {n === 1 ? "live session" : "live sessions"}
     </span>
   );
 }

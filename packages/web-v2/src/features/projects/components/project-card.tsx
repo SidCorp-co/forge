@@ -88,7 +88,7 @@ export function ProjectCard({ project, now, onTogglePin }: ProjectCardProps) {
       </p>
 
       <div className="flex items-center gap-3.5 border-t border-line-subtle pt-3">
-        <LiveCount n={project.liveRuns} read={project.healthRead} />
+        <LiveCount n={project.liveSessions} read={project.healthRead} />
         <Stat icon="inbox" title={`${OPEN_WORK_LABEL}: ${OPEN_WORK_DEFINITION}`}>
           <ReadFigure value={project.openIssues} read={project.healthRead} counts={`in ${OPEN_WORK_LABEL.toLowerCase()}`} />
         </Stat>

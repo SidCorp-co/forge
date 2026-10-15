@@ -59,6 +59,21 @@ describe('readSessionsAndHolds — sessions (ISS-1228)', () => {
     expect(out.sessions.map((s) => s.id)).toEqual([live]);
   });
 
+  it('counts for the rail and the console exactly the sessions it lists, not the runs left open', async () => {
+    await session('run_session', 'running');
+    await session('run_session', 'completed');
+    await session('chat', 'running');
+    const { readLiveSessionCounts } = await import('../../src/pipeline/live-session.js');
+    const counts = await readLiveSessionCounts([fx.projectId]);
+    const out = await read();
+    const [openRuns] = (await fx.db.execute(sql`
+      SELECT count(*)::int AS n FROM pipeline_runs WHERE project_id = ${fx.projectId} AND status = 'running'
+    `)) as unknown as Array<{ n: number }>;
+    expect(openRuns?.n).toBe(3);
+    expect(counts).toEqual([{ projectId: fx.projectId, n: out.sessions.length }]);
+    expect(out.sessions).toHaveLength(1);
+  });
+
   it('gives a session the issue its lease names, and that issue a session hold', async () => {
     const issueId = await fx.seedIssue({ status: 'in_progress' });
     await fx.seedIssueLease(fx.lastSeq, 'running');
