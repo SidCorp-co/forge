@@ -231,6 +231,17 @@ describe("where a page matched", () => {
     expect(matchExcerpt(page("T", body), "---")).toMatchObject({ before: "|", match: "---" });
   });
 
+  it("starts and ends a cut table row on a cell's words, never on the mark between two cells", () => {
+    const runner = HELP_DOCS.find((d) => d.title === "Pair a runner");
+    expect(matchExcerpt(runner!, "status")).toMatchObject({ before: "…Is the agent running (forge-runner " });
+    const long = "x".repeat(60);
+    const row = `| ${long} | the token | ${"y".repeat(150)} |`;
+    const cut = matchExcerpt(page("T", row), "token");
+    expect(cut?.before).toBe("…the ");
+    const tailRow = `| the token ${"z ".repeat(57)}| ${"w".repeat(80)} |`;
+    expect(matchExcerpt(page("T", tailRow), "token")?.after).not.toMatch(/·\s*…$/);
+  });
+
   it("drops emphasis marks and keeps an asterisk or underscore that marks nothing", () => {
     const shown = (line: string, q: string) => {
       const e = matchExcerpt(page("T", line), q);

@@ -303,8 +303,8 @@ function bodyText(body: string): string {
 }
 
 function trimmed(span: MatchSpan): MatchSpan {
-  const head = span.before.length > BEFORE ? `…${span.before.slice(-BEFORE).replace(/^\S*\s/, "")}` : span.before;
-  const tail = span.after.length > AFTER ? `${span.after.slice(0, AFTER).replace(/\s\S*$/, "")}…` : span.after;
+  const head = span.before.length > BEFORE ? `…${span.before.slice(-BEFORE).replace(/^\S*\s(?:· )?/, "")}` : span.before;
+  const tail = span.after.length > AFTER ? `${span.after.slice(0, AFTER).replace(/(?: ·)?\s\S*$/, "")}…` : span.after;
   return { before: head, match: span.match, after: tail };
 }
 
