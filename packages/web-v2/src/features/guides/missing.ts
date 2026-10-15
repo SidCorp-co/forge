@@ -1,6 +1,6 @@
 // The words for an unknown guide, page or door, said by two renderers: docs/modules/guides/public-pages.md.
 import { coreFileUrl } from "@/lib/utils/core-url";
-import { AUDIENCES, BUNDLED_AUDIENCES, DOORS, pagesOf } from "./audience";
+import { AUDIENCES, type Audience, BUNDLED_AUDIENCES, DOORS, doorHref, INDEX_PATH, openDoors, pagesOf, searchLabel } from "./audience";
 
 export function missingGuideHeading(slug: string): string {
   return slug
@@ -11,9 +11,6 @@ export function missingGuideHeading(slug: string): string {
 export const MISSING_GUIDE_BODY = `The index lists every guide there is, and each one is also readable as markdown at ${coreFileUrl(
   "/api/guides",
 )}/<slug>.md with no credential.`;
-
-/** Said where a refusal would offer the docs' search and the guide index it searches is down. */
-export const SEARCH_UNAVAILABLE = "Search is not available right now: the guide index could not be reached.";
 
 /** The way back from a refusal that is not one of the three doors themselves. */
 export const ALL_DOORS_LINK_TEXT = "All three ways in";
@@ -37,16 +34,28 @@ export const GUIDES_UNAVAILABLE: Refusal = {
 
 const CLOSED_WHILE_DOWN = AUDIENCES.filter((a) => !BUNDLED_AUDIENCES.includes(a));
 
-export const LANDING_WHILE_DOWN = `Forge's guide index did not answer, so ${pagesOf(CLOSED_WHILE_DOWN)} could not be loaded. The search and the ways in below cover the pages built into this site, which open without it.`;
+export const LANDING_WHILE_DOWN = "Forge's guide index did not answer. The pages built into this site open without it.";
 
-/** Said, while the guide index is down, above the bundled doors and under a bundled page's search. */
+/** What every page says about its search while the guide index is down: the landing's and a bundled
+ *  page's search still answer, over the bundled pages alone, and a refusal links the landing's. */
+export const SEARCH_WHILE_DOWN = `Search covers ${pagesOf(BUNDLED_AUDIENCES)} only: ${pagesOf(CLOSED_WHILE_DOWN)} could not be loaded.`;
+
+/** Said, while the guide index is down, above a refusal's ways in. */
 export const BUNDLED_WAYS_IN = "These ways in are built into this site and open without it:";
-export const HELP_ONLY_SEARCH = `Search covers ${pagesOf(BUNDLED_AUDIENCES)} only: ${pagesOf(CLOSED_WHILE_DOWN)} could not be loaded.`;
 
 /** What a refusal says while the guide index does not answer, one paragraph each. */
 export function saidWhileDown(refusal: Refusal): string[] {
-  const why = refusal === GUIDES_UNAVAILABLE ? null : SEARCH_UNAVAILABLE;
-  return [refusal.bodyWhileDown, why, BUNDLED_WAYS_IN].filter((p): p is string => p !== null);
+  return [refusal.bodyWhileDown, SEARCH_WHILE_DOWN, BUNDLED_WAYS_IN].filter((p): p is string => p !== null);
+}
+
+/** The links a refusal offers as the way on: the doors that open, then the landing — under the name
+ *  of its search while the index is down, since that search still answers and nothing else on it does. */
+export function waysIn(indexDown: boolean): ReadonlyArray<{ href: string; label: string }> {
+  const open = openDoors(indexDown);
+  return [
+    ...open.map((a) => ({ href: doorHref(a), label: DOORS[a].label })),
+    { href: INDEX_PATH, label: indexDown ? searchLabel(open) : ALL_DOORS_LINK_TEXT },
+  ];
 }
 
 const PICK_FROM_INDEX = "The index lists every page behind each of its three doors.";
@@ -63,12 +72,15 @@ export function missingPage(slug: string): Refusal {
   };
 }
 
+function doorNames(doors: readonly Audience[]): string {
+  return doors.map((a) => `“${a}” (${DOORS[a].label})`).join(", ");
+}
+
 export function missingDoor(value: string): Refusal {
-  const body = `A door is one of ${AUDIENCES.map((a) => `“${a}” (${DOORS[a].label})`).join(", ")}.`;
   return {
     heading: value ? `The documentation has no door called “${value}”` : "The link you followed names no door",
-    body,
-    bodyWhileDown: body,
+    body: `A door is one of ${doorNames(AUDIENCES)}.`,
+    bodyWhileDown: `The doors that open now are ${doorNames(openDoors(true))}.`,
   };
 }
 

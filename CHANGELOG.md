@@ -3206,6 +3206,7 @@
 - **Writing a step handoff for a run that does not exist is refused by name.** It answered a server error; it now answers 404 naming `pipelineRunId`, over REST and through the tool. (ISS-1319)
 - **Closing a run with a checkpoint that declares another source is refused by name.** It answered a server error; it now answers 400 naming `source` and the one valid value, `reconstructed_from_box`, and leaves the run open to be closed again.
 - **With the guide index down, every docs page says so at once.** The docs home and help pages still open, their header and search naming only the pages for people; the rest answer 503, offering only pages that open. (ISS-1295)
+- **With the guide index down, a docs page that cannot be shown offers only what opens.** It no longer lists the agents' door or says search is unavailable; it links the docs home's search, which still covers the pages for people. (ISS-1295)
 - **Docs pages no longer scroll sideways on a phone.** (ISS-1295)
 - **A docs link to a guide that no longer exists names it in the browser tab.** The tab read only "Forge". (ISS-1295)
 - **The agent guides teach the settings write Forge takes.** They said to send a whole entry, which is refused; they now say to send only the changed keys with what was read, and name the refusal. (ISS-1295)

@@ -17,7 +17,7 @@ const fetchGuideScope = vi.fn(async (): Promise<unknown> => {
 vi.mock("@/features/guides/api", () => ({ fetchGuideCorpus, fetchGuideScope, GuideFetchError }));
 vi.spyOn(console, "error").mockImplementation(() => {});
 
-const { BUNDLED_WAYS_IN, GUIDES_UNAVAILABLE, HELP_ONLY_SEARCH, LANDING_WHILE_DOWN, SEARCH_UNAVAILABLE } = await import(
+const { BUNDLED_WAYS_IN, GUIDES_UNAVAILABLE, LANDING_WHILE_DOWN, SEARCH_WHILE_DOWN } = await import(
   "@/features/guides/missing"
 );
 const { default: GuidesPage, generateMetadata } = await import("./page");
@@ -26,6 +26,20 @@ const BUNDLED_DOORS = ["/guides?for=user", "/guides?for=assistant-setup"];
 const EVERY_READER = "For people using Forge, people connecting an assistant, and agents.";
 const PEOPLE_ONLY = "For people using Forge and people connecting an assistant.";
 const PEOPLE_SEARCH = "Search the pages for people";
+/** A refusal's way on while the index is down: the doors that open, then the landing's search. */
+const WAYS_ON_WHILE_DOWN = [...BUNDLED_DOORS, "/guides"];
+
+/** What every page says while the index is down: the one search sentence, no closed door, no "not available". */
+function saysTheOutageAsEveryPageDoes() {
+  expect(screen.getByText(SEARCH_WHILE_DOWN)).toBeInTheDocument();
+  expect(document.body.textContent).not.toMatch(/not available|“agent”|agent or a script/);
+}
+
+function offersTheWayOnWhileDown() {
+  const ways = within(screen.getByRole("navigation", { name: "Ways in" })).getAllByRole("link");
+  expect(ways.map((d) => d.getAttribute("href"))).toEqual(WAYS_ON_WHILE_DOWN);
+  expect(ways.at(-1)).toHaveAccessibleName(PEOPLE_SEARCH);
+}
 
 async function open(params: Record<string, string>) {
   render(await GuidesPage({ searchParams: Promise.resolve(params) }));
@@ -66,14 +80,13 @@ describe("/guides refusing an address, with the guide index reachable", () => {
 });
 
 describe("/guides refusing an address, with the guide index down", () => {
-  it.each(REFUSED)("still renders the refusal for %o, says there is no search, and offers the doors that still open", async (params, heading) => {
+  it.each(REFUSED)("still renders the refusal for %o, says what the search covers, and offers the doors that open and the landing's search", async (params, heading) => {
     await open({ ...params });
     expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
-    expect(screen.getByText(SEARCH_UNAVAILABLE)).toBeInTheDocument();
+    saysTheOutageAsEveryPageDoes();
     expect(screen.queryByRole("textbox")).toBeNull();
     expect(screen.getByText(PEOPLE_ONLY)).toBeInTheDocument();
-    const doors = within(screen.getByRole("navigation", { name: "Ways in" })).getAllByRole("link");
-    expect(doors.map((d) => d.getAttribute("href"))).toEqual(BUNDLED_DOORS);
+    offersTheWayOnWhileDown();
   });
 });
 
@@ -84,6 +97,7 @@ describe("/guides naming the landing, with the guide index down", () => {
     expect(screen.queryByRole("heading", { name: GUIDES_UNAVAILABLE.heading })).toBeNull();
     expect(screen.getByRole("heading", { name: "Forge documentation" })).toBeInTheDocument();
     expect(screen.getByText(LANDING_WHILE_DOWN)).toBeInTheDocument();
+    saysTheOutageAsEveryPageDoes();
     expect(screen.getByRole("textbox", { name: PEOPLE_SEARCH })).toHaveAttribute("placeholder", "Try “status”, “Claude”");
     expect(screen.queryByRole("textbox", { name: "Search every page" })).toBeNull();
     expect(screen.getByText(PEOPLE_ONLY)).toBeInTheDocument();
@@ -111,8 +125,8 @@ describe("/guides naming the agents' door, with the guide index down", () => {
       expect(GUIDES_UNAVAILABLE.body).not.toMatch(/ways in below/);
       expect(screen.getByText(BUNDLED_WAYS_IN)).toBeInTheDocument();
       expect(screen.getByText(PEOPLE_ONLY)).toBeInTheDocument();
-      const doors = within(screen.getByRole("navigation", { name: "Ways in" })).getAllByRole("link");
-      expect(doors.map((d) => d.getAttribute("href"))).toEqual(BUNDLED_DOORS);
+      saysTheOutageAsEveryPageDoes();
+      offersTheWayOnWhileDown();
     },
   );
 });
@@ -124,7 +138,7 @@ describe("/guides naming a help page or a door of help pages, with the guide ind
     expect(screen.getByRole("heading", { level: 1, name: "Getting started with Forge" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: PEOPLE_SEARCH })).toHaveAttribute("placeholder", PEOPLE_SEARCH);
     expect(screen.queryByPlaceholderText("Search every page")).toBeNull();
-    expect(screen.getByText(HELP_ONLY_SEARCH)).toBeInTheDocument();
+    saysTheOutageAsEveryPageDoes();
     expect(screen.getByText(PEOPLE_ONLY)).toBeInTheDocument();
     expect(screen.queryByText(EVERY_READER)).toBeNull();
     const onward = within(screen.getByRole("navigation", { name: "Other ways in" })).getAllByRole("link");
@@ -138,7 +152,7 @@ describe("/guides naming a help page or a door of help pages, with the guide ind
   ])("renders the %s door from the bundle", async (door, label) => {
     await open({ for: door });
     expect(screen.getByRole("heading", { name: label })).toBeInTheDocument();
-    expect(screen.getByText(HELP_ONLY_SEARCH)).toBeInTheDocument();
+    saysTheOutageAsEveryPageDoes();
     expect(screen.getByRole("textbox", { name: PEOPLE_SEARCH })).toHaveAttribute("placeholder", PEOPLE_SEARCH);
     expect(screen.getByText(PEOPLE_ONLY)).toBeInTheDocument();
     expect(within(screen.getByRole("list", { name: "Pages" })).getAllByRole("link").length).toBeGreaterThan(0);

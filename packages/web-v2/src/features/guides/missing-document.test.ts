@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { AUDIENCES, DOORS, doorHref } from "./audience";
 import { DOCUMENT_TOKENS, FONT_SANS_URL, missingGuideDocument, refusalDocument, unavailableDocument } from "./missing-document";
-import { missingDoor, missingPage, PAGE_AND_DOOR } from "./missing";
+import { BUNDLED_WAYS_IN, GUIDES_UNAVAILABLE, missingDoor, missingPage, PAGE_AND_DOOR, SEARCH_WHILE_DOWN } from "./missing";
 import { GUIDE_SLUG, slugFromGuidePath } from "./requested-path";
 
 describe("the HTML the middleware serves for an unknown guide", () => {
@@ -114,6 +114,63 @@ describe.each(REFUSALS)("the 404 document for %s looks like Forge documentation"
       expect(html).toContain(`<a href="${doorHref(a)}">${DOORS[a].label}</a>`);
     }
     expect(html).toContain('<a href="/guides">All three ways in</a>');
+  });
+});
+
+const WHILE_DOWN = [
+  ["an unknown guide", () => missingGuideDocument("no-such-guide", { indexDown: true })],
+  ["an unknown door", () => refusalDocument(missingDoor("bogus-door"), { indexDown: true })],
+  ["an unknown page", () => refusalDocument(missingPage("no-such-page"), { indexDown: true })],
+  ["a page and a door together", () => refusalDocument(PAGE_AND_DOOR, { indexDown: true })],
+  ["the guides being unavailable (503)", () => unavailableDocument()],
+] as const;
+
+/** The anchors a document links from its refusal, in order, as `[href, text]`. */
+function waysOffered(html: string): string[][] {
+  const nav = /<nav aria-label="Ways in">(.*?)<\/nav>/.exec(html)?.[1] ?? "";
+  return [...nav.matchAll(/<a href="([^"]+)">([^<]+)<\/a>/g)].map((m) => [m[1], m[2]]);
+}
+
+describe.each(WHILE_DOWN)("the document for %s while the guide index is down", (_case, make) => {
+  it("offers only the doors that open, then the landing's search, which still answers", () => {
+    expect(waysOffered(make())).toEqual([
+      ["/guides?for=user", DOORS.user.label],
+      ["/guides?for=assistant-setup", DOORS["assistant-setup"].label],
+      ["/guides", "Search the pages for people"],
+    ]);
+  });
+
+  it("names no door that cannot open, in its links or its words", () => {
+    const html = make();
+    expect(html).not.toContain(DOORS.agent.label);
+    expect(html).not.toContain("“agent”");
+  });
+
+  it("says what the search covers in the words every core-down page uses, never that there is none", () => {
+    const html = make();
+    expect(html).toContain(`<p>${SEARCH_WHILE_DOWN}</p>`);
+    expect(html).toContain(`<p>${BUNDLED_WAYS_IN}</p>`);
+    expect(html).not.toMatch(/not available/);
+  });
+});
+
+describe("an unknown door while the guide index is down", () => {
+  it("lists the doors that open now, not every door there is", () => {
+    expect(missingDoor("x").bodyWhileDown).toBe(
+      "The doors that open now are “user” (I use Forge), “assistant-setup” (I'm connecting an AI assistant).",
+    );
+    expect(refusalDocument(missingDoor("x"), { indexDown: true })).toContain(missingDoor("x").bodyWhileDown);
+  });
+
+  it("still lists every door while the index answers", () => {
+    expect(refusalDocument(missingDoor("x"))).toContain("“agent” (I'm an agent or a script)");
+  });
+});
+
+describe("the guides-unavailable refusal", () => {
+  it("keeps its own reason ahead of the search sentence", () => {
+    const html = unavailableDocument();
+    expect(html.indexOf(GUIDES_UNAVAILABLE.body)).toBeLessThan(html.indexOf(SEARCH_WHILE_DOWN));
   });
 });
 
