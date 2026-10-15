@@ -213,7 +213,9 @@ describe('how long an orphan notice says nothing has worked the issue', () => {
     });
     await enteredAt(issueId, 'in_progress', ago(4 * HOUR));
     await runEndedAt(project.id, issueId, ago(2 * HOUR + 60_000));
-    await harness.db.execute(sql`UPDATE issues SET updated_at = ${ago(PAST_GRACE)} WHERE id = ${issueId}`);
+    await harness.db.execute(
+      sql`UPDATE issues SET updated_at = ${ago(PAST_GRACE)} WHERE id = ${issueId}`,
+    );
 
     const result = await mods.detectOrphanedRunAssertions();
 
@@ -234,7 +236,9 @@ describe('how long an orphan notice says nothing has worked the issue', () => {
       agoMs: 30 * HOUR,
     });
     await enteredAt(issueId, 'in_progress', ago(3 * HOUR + 60_000));
-    await harness.db.execute(sql`UPDATE issues SET updated_at = ${ago(PAST_GRACE)} WHERE id = ${issueId}`);
+    await harness.db.execute(
+      sql`UPDATE issues SET updated_at = ${ago(PAST_GRACE)} WHERE id = ${issueId}`,
+    );
 
     await mods.detectOrphanedRunAssertions();
 

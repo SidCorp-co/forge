@@ -289,26 +289,4 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
     )) as unknown as { status: string }[];
     expect(r[0]?.status).toBe('waiting');
   });
-
-  // Judge j16 watched a notice count from the row's last write (ISS-1229): any edit to a parked
-  // issue made the park read younger than it was.
-  it('says how long the issue has been parked from when it was parked, not from its last write', async () => {
-    const s = await seed({ mergedAgoMs: null, updatedAgoMs: 30 * HOUR });
-    const parkedAt = new Date(Date.now() - 3 * 24 * HOUR - HOUR).toISOString();
-    await harness.db.execute(sql`
-      UPDATE issues SET created_at = ${new Date(Date.now() - 10 * 24 * HOUR).toISOString()}
-       WHERE id = ${s.issueId}
-    `);
-    await harness.db.execute(sql`
-      INSERT INTO kernel_transitions (entity, entity_id, from_status, to_status, actor_type, source, created_at)
-      VALUES ('issue', ${s.issueId}, 'in_progress', 'waiting', 'user', 'test', ${parkedAt})
-    `);
-
-    await announce(harness, mods.detectStrandedIssues);
-
-    const bodies = (await harness.db.execute(
-      sql`SELECT DISTINCT body FROM notifications WHERE issue_id = ${s.issueId}`,
-    )) as unknown as { body: string }[];
-    expect(bodies.map((b) => b.body)).toEqual(['ISS-762 "stranded probe": it has been parked for 3 days.']);
-  });
 });

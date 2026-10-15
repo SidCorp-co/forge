@@ -1,15 +1,7 @@
 import { type SQL, sql } from 'drizzle-orm';
 
-/**
- * When an issue entered the status it holds: the newest transition into it, or the issue's creation
- * where none was recorded, which is an issue still at the status it was created at.
- *
- * `updated_at` is not this. Every write to the row moves it — a field edit, a lease renewal, a
- * strand finding — so a notice counting from it says an issue has stood somewhere for less time
- * than it has (ISS-1229 judge j16). `kernel_transitions` keeps every issue move while the issue is
- * not terminal (retention's `ENTITY_IS_TERMINAL`), so the row this reads is there for any issue a
- * sweep still watches.
- */
+/** When an issue entered its status — never `updated_at`, which any write moves (ISS-1229). Retention
+ *  keeps every move of a non-terminal issue; no row means it still holds the status it was created at. */
 export function statusEnteredAtSql(issue: { id: SQL; status: SQL; createdAt: SQL }): SQL {
   return sql`COALESCE(
     (SELECT max(et.created_at) FROM kernel_transitions et
@@ -18,11 +10,7 @@ export function statusEnteredAtSql(issue: { id: SQL; status: SQL; createdAt: SQL
   )`;
 }
 
-/**
- * When the last thing that worked an issue stopped, or when it entered its status if that is later:
- * the end of its newest job, of its newest pipeline run, and of the run session behind its lease.
- * Read only where nothing is live on the issue, so every one of them has ended.
- */
+/** When the issue's last job, run or leased run session ended, or it entered its status if later. */
 export function lastWorkedAtSql(issue: {
   id: SQL;
   status: SQL;
