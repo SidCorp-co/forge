@@ -7,9 +7,9 @@ audience: user
 
 # Getting started with Forge
 
-Forge runs your work as an automated pipeline: you file an issue, and agents
-move it through triage → plan → code → review → release on a machine you
-control. This page is the shortest path from zero to a running pipeline.
+Forge runs your work as an automated pipeline: you file an issue, and an agent
+carries it from filed to shipped on a machine you control. This page is the
+shortest path from zero to a running pipeline.
 
 ## The four pieces
 
