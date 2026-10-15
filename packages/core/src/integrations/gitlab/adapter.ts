@@ -16,6 +16,7 @@ import {
   recordRefusedInbound,
   refusedInbound,
   resolveApiBaseUrl,
+  sameEndpoint,
   thrownSaid,
   updateConnection,
 } from '../index.js';
@@ -61,9 +62,13 @@ async function expectedHookUrl(projectId: string): Promise<string | null> {
 }
 
 /**
- * Where the project's GitLab hooks call, stored as the answer and judged per binding at read time.
- * The observation is the connection's column; a project access token reaches one project, which is
- * the connection shape this integration is built for.
+ * Whether the project's GitLab hooks hold Forge's own, stored as the answer and judged per binding at
+ * read time. The observation is the connection's column; a project access token reaches one project,
+ * which is the connection shape this integration is built for.
+ *
+ * Only the hook calling this project's own inbound URL is Forge's. Any other hook on the list belongs
+ * to someone else (a deploy hook with its secret in the query, a chat notifier) and is never judged,
+ * stored or said: with no hook of Forge's the answer is that it is missing, naming where it must call.
  */
 async function observeHooks(
   ctx: AdapterContext<GitLabConfig, GitLabSecrets>,
@@ -84,21 +89,25 @@ async function observeHooks(
   }
   const list = Array.isArray(hooks.body) ? (hooks.body as HookBody[]) : [];
   const expected = await expectedHookUrl(ctx.projectId);
-  const hook = list.find((h) => expected !== null && h.url === expected) ?? list[0] ?? null;
+  const hook =
+    expected === null
+      ? null
+      : (list.find((h) => typeof h.url === 'string' && sameEndpoint(h.url, expected)) ?? null);
   await updateConnection(ctx.connectionId, {
-    inboundEndpointObserved: { url: hook?.url ?? null, active: hook ? true : null, observedAt },
+    inboundEndpointObserved: {
+      url: hook ? expected : null,
+      active: hook ? true : null,
+      observedAt,
+    },
   });
-  if (!hook) {
+  if (!hook || expected === null) {
     return say('integrations.health.gitlab.noHook', {
       url: expected === null ? say('integrations.health.gitlab.hookPath') : verbatim(expected),
     });
   }
   const missing = NEEDED_HOOK_EVENTS.filter((e) => hook[e] !== true);
   return missing.length > 0
-    ? say('integrations.health.gitlab.hookMissing', {
-        url: String(hook.url),
-        events: missing.join(', '),
-      })
+    ? say('integrations.health.gitlab.hookMissing', { url: expected, events: missing.join(', ') })
     : null;
 }
 

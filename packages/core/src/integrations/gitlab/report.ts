@@ -10,8 +10,25 @@ import {
   listBindingsForProject,
   readInboundDoorTraffic,
   resolveApiBaseUrl,
+  sameEndpoint,
 } from '../index.js';
 import { type GitLabConfig, gitlabHostOf } from './types.js';
+
+type Observed = NonNullable<Parameters<typeof inboundDoorState>[0]['observed']>;
+
+/**
+ * The stored observation as far as it is about Forge's own hook. A connection checked before the
+ * health check judged only Forge's hook can hold another service's hook address, secret and all; that
+ * address is never read back out, and reads as no hook of Forge's found.
+ */
+export function ownObservation(
+  observed: Observed | null,
+  expectedUrl: string | null,
+): Observed | null {
+  if (!observed?.url) return observed;
+  if (expectedUrl !== null && sameEndpoint(observed.url, expectedUrl)) return observed;
+  return { ...observed, url: null, active: null };
+}
 
 const GITLAB_DELIVERY_LOG =
   "the project's own webhook page on GitLab, under Settings, Webhooks, this hook, Recent events";
@@ -32,7 +49,7 @@ export async function gitlabBindingReports(
     pairs.map(async (pair) => {
       const config = effectiveConfig<GitLabConfig>(pair);
       const traffic = await readInboundDoorTraffic(pair.binding.id);
-      const observed = pair.connection.inboundEndpointObserved ?? null;
+      const observed = ownObservation(pair.connection.inboundEndpointObserved ?? null, expectedUrl);
       const state = inboundDoorState({
         inboundUnprompted: decl?.capabilities.inboundUnprompted ?? false,
         expectedUrl,

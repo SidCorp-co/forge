@@ -144,7 +144,7 @@ export function inboundDoorState(args: {
  * A trailing slash and a change of case in the host are the same URL to every HTTP client, and
  * calling a binding broken over one would be a false alarm. Anything else is a different door.
  */
-function sameEndpoint(a: string, b: string): boolean {
+export function sameEndpoint(a: string, b: string): boolean {
   const normalize = (raw: string): string => {
     try {
       const url = new URL(raw);

@@ -2539,7 +2539,7 @@ export const SAID = {
 		vars: { status: "code" },
 	},
 	"integrations.health.gitlab.noHook": {
-		en: "no GitLab webhook: add one at {url} with the binding's secret",
+		en: "no GitLab webhook calls {url}: add one there with the binding's secret",
 		vars: { url: "said" },
 	},
 	"integrations.health.gitlab.hookPath": {
