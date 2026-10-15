@@ -3,15 +3,20 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import {
+  appAdvancedSettingsUrl,
   buildAppManifest,
   type ConnectState,
   clientSecretHolds,
+  findAppsAwaitingCompletion,
   findInstanceGithubApp,
   INSTANCE_OWNER_ID,
+  installationSettingsUrl,
   installUrl,
   instanceAppGap,
+  listInstallationsForOrgs,
   MANIFEST_POST_URL,
   readAppIdentity,
+  readAppVisibility,
   readInstallation,
   recordInstallation,
   signConnectState,
@@ -19,6 +24,7 @@ import {
 import {
   assertVaultConfigured,
   decryptConnectionSecrets,
+  effectiveConfig,
   findConnectionById,
   type IntegrationConnectionRow,
   listBindingsForConnection,
@@ -34,7 +40,9 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { isPlatformAdmin } from '../middleware/require-admin.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { listOrgsForUser } from '../orgs/index.js';
 import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
+import { loadConnection } from './connection-routes.js';
 import {
   apiBaseUrl,
   askAnOperator,
@@ -59,7 +67,8 @@ githubAppRoutes.use('*', requireAuth(), assertEmailVerified());
  * Where Connect GitHub sends the browser for an org. With the instance's App complete, its install
  * page, carrying a state that names the org the installation will be recorded for. With none, the
  * manifest that makes it, for a platform admin only; anyone else is told whom to ask. An App the
- * instance holds without what proves an install is refused until an operator completes it.
+ * instance holds without what proves an install is refused until an operator completes it, and so
+ * is one a person or an org made before: an operator is sent to complete it, never to make another.
  */
 export async function beginConnect(
   c: Context<{ Variables: AuthVars }>,
@@ -90,7 +99,27 @@ export async function beginConnect(
     return c.json({ kind: 'install', installUrl: installUrl(slug, state) });
   }
 
-  if (!(await isPlatformAdmin(userId))) {
+  const operator = await isPlatformAdmin(userId);
+  // an App made before the instance had one is completed, never joined by a second
+  const [earlier] = await findAppsAwaitingCompletion();
+  if (earlier) {
+    const completePath = `/api/integration-connections/${earlier.id}/github-app/complete`;
+    if (!operator) {
+      throw refuse(
+        'GITHUB_APP_INCOMPLETE',
+        `this Forge's GitHub App ${earlier.displayName} is not complete yet. ` +
+          `A Forge operator completes it with POST ${completePath}. ${await askAnOperator()}`,
+      );
+    }
+    return c.json({
+      kind: 'complete',
+      connectionId: earlier.id,
+      displayName: earlier.displayName,
+      completePath,
+    });
+  }
+
+  if (!operator) {
     throw refuse(
       'GITHUB_APP_NOT_CONNECTED',
       `this Forge has no GitHub App yet, and only a Forge operator makes it. ${await askAnOperator()}`,
@@ -233,3 +262,62 @@ githubAppRoutes.post(
     return c.json({ connection: summarizeConnection(updated), recorded, notRecorded });
   },
 );
+
+/**
+ * A GitHub App connection as its directory row reads it: whether GitHub lets any account install
+ * it, the installations recorded for the caller's orgs with whether any project uses each, and what
+ * an operator still has to do before it serves the instance.
+ */
+githubAppRoutes.get('/:id/github-app', async (c) => {
+  const userId = c.get('userId');
+  const connection = await loadConnection(c.req.param('id'), userId, 'read');
+  if (connection.provider !== 'github') {
+    throw refuse(
+      'GITHUB_APP_NOT_INSTANCE',
+      `connection ${connection.id} is a ${connection.provider} connection, not a GitHub App.`,
+    );
+  }
+  const config = (connection.config ?? {}) as {
+    appSlug?: string;
+    appOwner?: string;
+    appOwnerIsOrg?: boolean;
+  };
+  const instance = connection.ownerType === 'instance';
+  // an App not yet the instance's, or one lacking what proves an install, waits on an operator
+  const awaitsCompletion = !instance || instanceAppGap(connection) !== null;
+  const slug = config.appSlug ?? null;
+  const visibility = slug ? await readAppVisibility(slug) : 'unknown';
+
+  const orgIds = (await listOrgsForUser(userId)).map((o) => o.id);
+  const recorded = instance ? await listInstallationsForOrgs(connection.id, orgIds) : [];
+  const used = new Set(
+    (await listBindingsForConnection(connection.id))
+      .filter((pair) => pair.binding.active)
+      .map((pair) => effectiveConfig<{ installationId?: number }>(pair).installationId),
+  );
+
+  return c.json({
+    connectionId: connection.id,
+    instance,
+    slug,
+    owner: config.appOwner ?? null,
+    visibility,
+    makePublicUrl:
+      visibility === 'private' && slug && config.appOwner
+        ? appAdvancedSettingsUrl(slug, config.appOwner, config.appOwnerIsOrg === true)
+        : null,
+    completePath: awaitsCompletion ? `/api/integration-connections/${connection.id}/github-app/complete` : null,
+    installations: recorded.map((row) => ({
+      installationId: row.installationId,
+      account: row.accountLogin,
+      accountType: row.accountType,
+      state: row.state,
+      used: used.has(row.installationId),
+      settingsUrl: installationSettingsUrl(
+        row.installationId,
+        row.accountLogin,
+        row.accountType !== 'User',
+      ),
+    })),
+  });
+});

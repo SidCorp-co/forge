@@ -43,7 +43,12 @@ export const { privateKey: PRIVATE_KEY } = generateKeyPairSync('rsa', {
 
 /** GitHub as the App sees it: what each route answers, and every URL asked. */
 export function stubGitHub(
-  opts: { userInstallations?: number[]; clientSecretHolds?: boolean } = {},
+  opts: {
+    userInstallations?: number[];
+    clientSecretHolds?: boolean;
+    /** How GitHub answers an unauthenticated read of the App: 200 public, 404 private. */
+    appPage?: number;
+  } = {},
 ) {
   const asked: string[] = [];
   const listed = opts.userInstallations ?? [OURS];
@@ -94,6 +99,10 @@ export function stubGitHub(
         repositories: [{ name: 'forge', full_name: `${owner}/forge`, owner: { login: owner } }],
       });
     }
+    if (path.startsWith('/apps/')) {
+      const status = opts.appPage ?? 200;
+      return Response.json({ slug: path.slice('/apps/'.length) }, { status });
+    }
     if (path === '/app') {
       return Response.json({
         id: Number(APP_ID),
@@ -137,6 +146,19 @@ export async function instanceApp(complete = true): Promise<string> {
       webhookSecret: WEBHOOK_SECRET,
       ...(complete ? { clientId: CLIENT_ID, clientSecret: CLIENT_SECRET } : {}),
     },
+  });
+  return row.id;
+}
+
+/** An App an org made before the instance had one: what forge-dev holds until an operator completes it. */
+export async function orgOwnedApp(orgId: string): Promise<string> {
+  const row = await createConnection({
+    ownerType: 'org',
+    ownerId: orgId,
+    provider: 'github',
+    displayName: 'GitHub App forge-dev-env',
+    config: {},
+    secrets: { appId: APP_ID, privateKey: PRIVATE_KEY, webhookSecret: WEBHOOK_SECRET },
   });
   return row.id;
 }

@@ -43,6 +43,25 @@ export async function findInstanceGithubApp(): Promise<IntegrationConnectionRow 
   return row ?? null;
 }
 
+/**
+ * The live GitHub Apps a person or an org made before the instance had one, oldest first. While one
+ * exists and the instance holds none, an operator completes it rather than making a second App.
+ */
+export async function findAppsAwaitingCompletion(): Promise<IntegrationConnectionRow[]> {
+  const rows = await db
+    .select()
+    .from(integrationConnections)
+    .where(
+      and(eq(integrationConnections.provider, 'github'), eq(integrationConnections.active, true)),
+    )
+    .orderBy(integrationConnections.createdAt);
+  return rows.filter((row) => {
+    if (row.ownerType === 'instance') return false;
+    const secrets = decryptConnectionSecrets<GitHubSecrets>(row);
+    return Boolean(secrets.appId && secrets.privateKey);
+  });
+}
+
 /** What the instance App lacks before an installation can be proven, or null when it lacks nothing. */
 export function instanceAppGap(connection: IntegrationConnectionRow): string | null {
   const config = (connection.config ?? {}) as GitHubConfig;

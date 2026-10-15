@@ -22,6 +22,7 @@ import {
   instanceApp,
   landing,
   OURS,
+  orgOwnedApp,
   record,
   STRANGERS,
   seedGithubWorld,
@@ -208,6 +209,99 @@ describe('Connect GitHub goes to the one App, and only an operator makes it (poi
   });
 });
 
+describe('an App made before the instance had one is completed, never joined by a second', () => {
+  async function anOperator() {
+    const operator = (await createTestUser({ verified: true, email: OPERATOR })).id;
+    await rows(sql`INSERT INTO organization_members (org_id, user_id, role)
+      VALUES (${project.orgId}, ${operator}, 'admin') RETURNING org_id`);
+    return operator;
+  }
+
+  it('PLANT: sends an operator to complete the org-owned App instead of handing a manifest', async () => {
+    const operator = await anOperator();
+    const earlier = await orgOwnedApp(project.orgId);
+
+    const res = await api(
+      await userToken(operator),
+      'POST',
+      '/api/integration-connections/github/connect',
+      { orgId: project.orgId },
+      { 'x-forwarded-host': 'localhost:3000', 'x-forwarded-proto': 'http' },
+    );
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.kind).toBe('complete');
+    expect(res.body.connectionId).toBe(earlier);
+    expect(res.body.completePath).toBe(
+      `/api/integration-connections/${earlier}/github-app/complete`,
+    );
+    expect(res.body.manifest).toBeUndefined();
+  });
+
+  it('tells an org admin who is no operator that the App awaits completion, naming the path', async () => {
+    await createTestUser({ verified: true, email: OPERATOR });
+    const earlier = await orgOwnedApp(project.orgId);
+
+    const res = await api(session, 'POST', '/api/integration-connections/github/connect', {
+      orgId: project.orgId,
+    });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(409);
+    expect((res.body.error as { code: string }).code).toBe('GITHUB_APP_INCOMPLETE');
+    expect(JSON.stringify(res.body)).toContain(
+      `/api/integration-connections/${earlier}/github-app/complete`,
+    );
+  });
+
+  it('PLANT: strands a manifest return while an org-owned App awaits completion, keeping one App', async () => {
+    const asked = stubGitHub();
+    const operator = await anOperator();
+    await orgOwnedApp(project.orgId);
+    const state = signConnectState(process.env.JWT_SECRET as string, {
+      userId: operator,
+      orgId: project.orgId,
+    });
+
+    const where = landing(
+      await api(
+        await userToken(operator),
+        'GET',
+        `/api/integrations/github/manifest-callback?code=c0de&state=${encodeURIComponent(state)}`,
+      ),
+    );
+
+    expect(where.searchParams.get('connect')).toBe('app_exists');
+    const [count] = await rows<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM integration_connections WHERE provider = 'github'`,
+    );
+    expect(count?.n).toBe(1);
+    expect(asked.filter((a) => a.includes('/app-manifests/')).length).toBe(1);
+  });
+
+  it('completing it makes it the instance App, and Connect GitHub then goes to its install page', async () => {
+    stubGitHub();
+    const operator = await anOperator();
+    const earlier = await orgOwnedApp(project.orgId);
+    const token = await userToken(operator);
+
+    const done = await api(
+      token,
+      'POST',
+      `/api/integration-connections/${earlier}/github-app/complete`,
+      { clientSecret: 'client-secret-of-the-app' },
+    );
+    expect(done.status, JSON.stringify(done.body)).toBe(200);
+
+    const res = await api(token, 'POST', '/api/integration-connections/github/connect', {
+      orgId: project.orgId,
+    });
+    expect(res.body.kind).toBe('install');
+    expect(new URL(res.body.installUrl as string).pathname).toBe(
+      '/apps/forge-dev-env/installations/new',
+    );
+  });
+});
+
 describe('an installation is recorded only once GitHub shows it is the installer’s (S1)', () => {
   const stateFor = (orgId: string, userId = admin) =>
     encodeURIComponent(
@@ -234,6 +328,26 @@ describe('an installation is recorded only once GitHub shows it is the installer
     expect(await installations()).toEqual([
       { installation_id: String(OURS), org_id: project.orgId, proof: 'oauth', state: 'active' },
     ]);
+  });
+
+  it('PLANT: an install started from a project lands back on that project’s connections, by slug', async () => {
+    stubGitHub();
+    await instanceApp();
+    const state = encodeURIComponent(
+      signConnectState(process.env.JWT_SECRET as string, {
+        userId: admin,
+        orgId: project.orgId,
+        projectId: project.id,
+      }),
+    );
+
+    const where = landing(
+      await installed(session, `installation_id=${OURS}&code=oauth-code&state=${state}`),
+    );
+
+    expect(`${where.pathname}${where.search}${where.hash}`).toBe(
+      `/projects/${project.slug}/settings?tab=connections#integrations`,
+    );
   });
 
   it('PLANT: a forged installation_id on the person’s own genuine state is refused, and nothing is recorded', async () => {

@@ -1,5 +1,11 @@
 export { githubIntegration } from './adapter.js';
 export { type AppDeliveryOutcome, routeAppDelivery } from './app-deliveries.js';
+export {
+  type AppVisibility,
+  appAdvancedSettingsUrl,
+  installationSettingsUrl,
+  readAppVisibility,
+} from './app-standing.js';
 export { installationStandings } from './binding-installation.js';
 export {
   appSettingsUrl,
@@ -22,6 +28,7 @@ export {
 } from './installations.js';
 export {
   clientSecretHolds,
+  findAppsAwaitingCompletion,
   findInstanceGithubApp,
   INSTANCE_OWNER_ID,
   installUrl,

@@ -86,6 +86,26 @@ describe('targets and bindings reach only what was recorded for the caller’s o
     expect(theirs.body.targets, 'another org reaches nothing it did not record').toEqual([]);
   });
 
+  it('/targets offers each unbound project the repository it matches, and a bound one nothing', async () => {
+    stubGitHub();
+    const connection = await instanceApp();
+    await record(connection, OURS, project.orgId);
+    await rows(sql`UPDATE projects SET slug = 'Forge' WHERE id = ${project.id} RETURNING id`);
+
+    const res = await api(session, 'GET', `/api/integration-connections/${connection}/targets`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.suggestedFor).toEqual([
+      { projectId: project.id, by: 'slug', target: target(OURS) },
+    ]);
+
+    const theirs = await api(otherSession, 'GET', `/api/integration-connections/${connection}/targets`);
+    expect(theirs.body.suggestedFor, 'nothing is suggested from what another org recorded').toEqual([]);
+
+    expect((await bind(session, connection, project.id, OURS)).status).toBe(200);
+    const after = await api(session, 'GET', `/api/integration-connections/${connection}/targets`);
+    expect(after.body.suggestedFor, 'a bound project already has its repository').toEqual([]);
+  });
+
   it('binds a recorded installation’s repository into a project of its org', async () => {
     stubGitHub();
     const connection = await instanceApp();
