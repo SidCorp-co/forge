@@ -124,7 +124,7 @@ export function chainOf(d: ShapeDraft, stored: readonly ReleaseChainEntry[]): Re
 
 /** Whether the draft declares no release, read off the shape picked and never off the chain's
  *  length: a shape that ships with its base branch not yet named has an empty chain and still
- *  ships. A clash keeps the stored chain's answer until a shape is picked. */
+ *  ships. With no shape picked, the stored chain answers. */
 export function shipsNothing(d: ShapeDraft, stored: readonly ReleaseChainEntry[]): boolean {
 	if (d.shape === null) return stored.length === 0;
 	return d.shape === "no-repository" || d.shape === "no-release";

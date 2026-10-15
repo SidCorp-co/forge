@@ -3211,7 +3211,7 @@
 - **Shape & release says in one sentence why nothing can release yet,** naming Testing, Tested and Awaiting release as the screen does rather than as code. (ISS-1229)
 - **A stuck-issue notice names its project and says how long,** with the status as the screen shows it, instead of a database timestamp. (ISS-1229)
 - **Notices name a status as the screen does, and a refusal adds the value to send:** "Awaiting release (awaiting_release)", never code. The release criteria hold is one sentence, with criteria as ranges and an issue key on one line. (ISS-1229)
-- **Shape & release no longer says a project ships nothing because its base branch is empty.** Under a shape that releases, the Live block still says no deploy connection serves it, and the Branch row asks for the base branch. (ISS-1171)
+- **Shape & release no longer says a project ships nothing because its base branch is empty.** Under a shape that releases, the Live block says no deploy connection serves it and asks for the base branch. (ISS-1171)
 - **A refused test credential is named by its label, every time.** The form and a refused save name each row the same way, and by its number only where it has no label. (ISS-1171)
 - **Shape & release refuses a test credential with no password, or one listed twice, by name.** The row is marked where it is wrong and nothing is saved; an agent writing the same is refused too. (ISS-1171)
 - **Shape & release marks an emptied base branch at its field, and keeps your chosen shape in view when a save is refused.** A failed environments save says what happened and what to do. (ISS-1171)

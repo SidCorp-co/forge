@@ -279,7 +279,9 @@ describe('credentialFaults — a credential a write may not store', () => {
     expect(faults).toEqual([
       expect.objectContaining({ path: 'testCredentials.1.label', rule: 'duplicate-label' }),
     ]);
-    expect(faults[0]?.message).toMatch(/^testCredentials\[1\] \('qa'\) has the label testCredentials\[0\] \('QA'\) already has/);
+    expect(faults[0]?.message).toMatch(
+      /^testCredentials\[1\] \('qa'\) has the label testCredentials\[0\] \('QA'\) already has/,
+    );
   });
 
   it('names one login listed twice under two labels', () => {
