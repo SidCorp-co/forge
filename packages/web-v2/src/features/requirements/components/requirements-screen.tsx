@@ -211,7 +211,7 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
               <AreasEditor projectId={projectId} areas={areas} />
             </>
           }
-          peek={peek.open ? <RequirementPeek key={peek.open} projectId={projectId} slug={slug} reqKey={peek.open} peek={peek} onOpenFull={() => list.openFull(peek.open as string)} /> : null}
+          peek={peek.open ? <RequirementPeek key={peek.open} projectId={projectId} slug={slug} reqKey={peek.open} peek={peek} full={list.fullOf(peek.open)} /> : null}
         >
           <AssistantStrip projectId={projectId} rows={all} onPeek={(k) => peek.set(k)} />
           <PlacementBanner projectId={projectId} rows={all} hasAreas={areas.length > 0} />

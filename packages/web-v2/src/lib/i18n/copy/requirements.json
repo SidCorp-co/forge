@@ -98,6 +98,7 @@
     "requirements.criteria.empty": "No criteria",
     "requirements.criteria.evidence": "What the evidence says · {n}",
     "requirements.criteria.heading": "Business criteria",
+    "requirements.peek.moreCriteria": "+{n} more",
     "requirements.criteria.leftUncovered": "Left without an issue by the accepted breakdown: {reason}",
     "requirements.criteria.nOfM": "{a} of {b}",
     "requirements.criteria.noTrace": "Not traced",

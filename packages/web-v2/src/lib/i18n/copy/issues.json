@@ -130,6 +130,8 @@
     "issues.description.placeholder": "What is the problem, and what does done look like?",
     "issues.description.save": "Save",
     "issues.description.title": "Description",
+    "issues.peek.latestComment": "Latest comment",
+    "issues.peek.commentCount": "{n} in all",
     "issues.detail.loadFailed": "Couldn't load issue",
     "issues.detail.loading": "loading issue…",
     "issues.details.title": "Details",

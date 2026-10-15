@@ -104,7 +104,7 @@ export function ReleasesScreen({ projectId, slug }: { projectId: string; slug: s
               )}
             </>
           }
-          peek={peek.open ? <ReleasePeek key={peek.open} projectId={projectId} version={peek.open} peek={peek} onOpenFull={() => list.openFull(peek.open as string)} /> : null}
+          peek={peek.open ? <ReleasePeek key={peek.open} projectId={projectId} version={peek.open} peek={peek} full={list.fullOf(peek.open)} /> : null}
         >
           <ComingNext next={comingQ.data} draft={all.find((r) => r.state === "draft")} slug={slug} clock={clock} />
           {all.length === 0 ? (

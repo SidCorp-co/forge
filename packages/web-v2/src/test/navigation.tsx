@@ -14,6 +14,8 @@ interface Overrides {
   usePathname?: () => string;
   useSearchParams?: () => URLSearchParams;
   useParams?: () => Record<string, string>;
+  /** Watches what a screen loads ahead; left out, nothing is loaded, as a test has no split page code. */
+  usePreload?: () => (href: string) => void;
 }
 
 const listeners = new Set<() => void>();
@@ -80,5 +82,7 @@ export function navigationDouble(overrides: Overrides = {}): typeof Navigation {
     );
   }
 
-  return { Link, useBasedHref: asGiven, useRouter, usePathname, useSearchParams, useParams };
+  const usePreload = overrides.usePreload ?? (() => () => {});
+
+  return { Link, useBasedHref: asGiven, useRouter, usePathname, useSearchParams, useParams, usePreload };
 }

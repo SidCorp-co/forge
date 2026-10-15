@@ -19,7 +19,7 @@ import {
   MarkStrip,
   PeekHead,
   PeekPanel,
-  type PeekState,
+  type FullPage, type PeekState,
   ProjectLoader,
   StatusBadge,
   Table,
@@ -219,11 +219,11 @@ function MasterProperties({ m }: { m: MasterStanding }) {
   );
 }
 
-export function MasterPeek({ m, peek, onOpenFull }: { m: MasterStanding; peek: PeekState; onOpenFull: () => void }) {
+export function MasterPeek({ m, peek, full }: { m: MasterStanding; peek: PeekState; full: FullPage }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   return (
-    <PeekPanel peek={peek} listLabel={t("agents.title")} noun={t("agents.master.title")} onOpenFull={onOpenFull} testId="master-peek">
+    <PeekPanel peek={peek} listLabel={t("agents.title")} noun={t("agents.master.title")} full={full} testId="master-peek">
       <PeekHead noun={t("agents.master.title")} itemKey={t("agents.master.word")} badge={<StatusBadge family="masterState" value={m.state} />} title={masterName(m, language)} />
       <MasterBanner m={m} className="px-4.5" />
       <div className="px-4.5 pb-4 pt-4">

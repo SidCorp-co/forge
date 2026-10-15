@@ -1,9 +1,10 @@
 
 // The peek (`?peek=FB-3`) beside the list: a summary, not the page — the header with the one
-// primary act, whose turn it is, and the facts the full page's rail shows.
+// primary act, whose turn it is, what the reporter said and showed, and the facts the full page's
+// rail shows.
 
 import { Written } from "@/lib/i18n/written";
-import { PeekHead, PeekPanel, type PeekState, StatusBadge } from "@/design";
+import { PeekHead, PeekPanel, type FullPage, type PeekState, useOpenFullPage, StatusBadge } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
@@ -11,6 +12,7 @@ import { useFeedbackForecasts } from "@/features/forecast";
 import { useFeedbackItem } from "../hooks";
 import { FeedbackPrimary } from "./feedback-detail";
 import { FeedbackBanner, LinkedFeedback } from "./feedback-facts";
+import { FeedbackPeekSaid } from "./feedback-peek-said";
 import { TriageVerbs } from "./feedback-verbs";
 
 export function FeedbackPeek({
@@ -18,20 +20,21 @@ export function FeedbackPeek({
   slug,
   fbKey,
   peek,
-  onOpenFull,
+  full,
 }: {
   projectId: string;
   slug: string;
   fbKey: string;
   peek: PeekState;
-  onOpenFull: () => void;
+  full: FullPage;
 }) {
   const t = useCopy();
   const q = useFeedbackItem(projectId, fbKey);
+  const openFull = useOpenFullPage(full);
   const forecasts = useFeedbackForecasts(projectId);
   const clock = useEtaClock();
   return (
-    <PeekPanel peek={peek} listLabel={t("feedback.title")} noun={t("feedback.title")} onOpenFull={onOpenFull} testId="feedback-peek">
+    <PeekPanel peek={peek} listLabel={t("feedback.title")} noun={t("feedback.title")} full={full} testId="feedback-peek">
       <QueryBoundary query={q} loadingLabel={t("feedback.loading")}>
         {(data) => {
           const f = data.feedback;
@@ -42,13 +45,14 @@ export function FeedbackPeek({
                 itemKey={f.key}
                 badge={<StatusBadge family="feedbackPhase" value={f.phase} />}
                 title={<Written text={f.title} lang={f.writtenLang} />}
-                action={<FeedbackPrimary f={f} onAct={onOpenFull} />}
+                action={<FeedbackPrimary f={f} onAct={openFull} />}
               />
               <FeedbackBanner f={f} slug={slug} className="px-4.5" />
               <div className="px-4.5 pt-3 empty:hidden">
                 <TriageVerbs projectId={projectId} f={f} />
               </div>
               <div className="px-4.5 pb-4 pt-4">
+                <FeedbackPeekSaid projectId={projectId} f={f} />
                 <LinkedFeedback f={f} slug={slug} forecast={forecasts.data?.items.find((i) => i.key === f.key)} clock={clock} />
               </div>
             </>

@@ -310,5 +310,5 @@ export function railRepeats(rail: HTMLElement): string | null {
 
 /** The peek beside the list, open on the fixture. */
 export function peek(d: RequirementDetail = reqDetail) {
-  renderWithQuery(<RequirementPeek projectId={PROJECT} slug="hop" reqKey="REQ-1" peek={{ open: "REQ-1", position: { at: 1, of: 1 }, set: () => {}, move: () => {} }} onOpenFull={() => {}} />, client(d));
+  renderWithQuery(<RequirementPeek projectId={PROJECT} slug="hop" reqKey="REQ-1" peek={{ open: "REQ-1", position: { at: 1, of: 1 }, set: () => {}, move: () => {} }} full={{ href: "/projects/hop", origin: null }} />, client(d));
 }

@@ -3,7 +3,7 @@
 // one line whom the module waits on, its open issues by state and activity, then the same facts the
 // full page's sticky rail shows.
 
-import { CoverageBar, PeekHead, PeekPanel, type PeekState } from "@/design";
+import { CoverageBar, PeekHead, PeekPanel, type FullPage, type PeekState } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { useModuleDetail } from "../hooks";
@@ -15,19 +15,19 @@ export function ModulePeek({
   slug,
   moduleSlug,
   peek,
-  onOpenFull,
+  full,
 }: {
   projectId: string;
   slug: string;
   moduleSlug: string;
   peek: PeekState;
-  onOpenFull: () => void;
+  full: FullPage;
 }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const q = useModuleDetail(projectId, moduleSlug);
   return (
-    <PeekPanel peek={peek} listLabel={t("modules.title")} noun={t("modules.noun")} onOpenFull={onOpenFull} testId="module-peek">
+    <PeekPanel peek={peek} listLabel={t("modules.title")} noun={t("modules.noun")} full={full} testId="module-peek">
       <QueryBoundary query={q} loadingLabel={t("modules.loadingOne")}>
         {(d) => (
           <>

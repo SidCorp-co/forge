@@ -22,7 +22,7 @@ import {
   MonoTag,
   PeekHead,
   PeekPanel,
-  type PeekState,
+  type FullPage, type PeekState,
   PersonChip,
   StatusBadge,
   Toggle,
@@ -191,16 +191,16 @@ export function SchedulePeek({
   s,
   access,
   peek,
-  onOpenFull,
+  full,
 }: {
   s: ScheduleStanding;
   access: AutomationAccess;
   peek: PeekState;
-  onOpenFull: () => void;
+  full: FullPage;
 }) {
   const t = useCopy();
   return (
-    <PeekPanel peek={peek} listLabel={t("schedules.title")} noun={t("schedules.noun.schedule")} onOpenFull={onOpenFull} testId="schedule-peek">
+    <PeekPanel peek={peek} listLabel={t("schedules.title")} noun={t("schedules.noun.schedule")} full={full} testId="schedule-peek">
       <PeekHead
         noun={t("schedules.noun.schedule")}
         itemKey={s.name}

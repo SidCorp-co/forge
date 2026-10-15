@@ -163,7 +163,7 @@ const releasesScreen = (): ReactElement => (
   <Seeded data={releaseSeed()}>
     <ReleasesScreen projectId={P} slug="hop" />
     <ComingNext next={coming as never} draft={summary({ waitingOn: waitingOn("person", { who: say("standing.who.holderOf", { perm: "releases.approve" }), act: CUT, rule: RULE }) }) as never} slug="hop" clock={{ lang: "vi", now: Date.parse(AT) }} />
-    <ReleasePeek projectId={P} version="0.1.0" peek={peek} onOpenFull={() => {}} />
+    <ReleasePeek projectId={P} version="0.1.0" peek={peek} full={{ href: "/projects/hop", origin: null }} />
   </Seeded>
 );
 

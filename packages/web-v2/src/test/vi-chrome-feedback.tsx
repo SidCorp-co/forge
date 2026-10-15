@@ -22,7 +22,7 @@ import type { ChromeScreen } from "./vi-chrome-screens";
 // waits on, why nobody was told) are said by their registry keys, as core says them, and the screen
 // reads them in vi from there.
 
-const P = "p1";
+export const P = "p1";
 const AT = "2026-10-05T08:00:00.000Z";
 const LAN = say("standing.who.named", { name: "Lan" });
 /** A reason core sends as English beside what it said. */
@@ -95,7 +95,7 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
     ...over,
   }) as FeedbackView;
 
-const ITEM = view();
+export const ITEM = view();
 
 const SUGGESTIONS = {
   suggestions: [
@@ -105,7 +105,7 @@ const SUGGESTIONS = {
   ],
 };
 
-const SEED: [QueryKey, unknown][] = [
+export const FEEDBACK_SEED: [QueryKey, unknown][] = [
   [["feedback", P], { feedback: ROWS, counts: {}, sensitive: false }],
   [["feedback-item", P, ITEM.key], { feedback: ITEM }],
   [feedbackForecastKey(P), { projectId: P, items: [] }],
@@ -115,7 +115,7 @@ const SEED: [QueryKey, unknown][] = [
   [["projects"], [{ id: P, role: "admin" }]],
 ];
 
-const Seeded = ({ children }: { children: ReactNode }) => <SeededQueries data={SEED}>{children}</SeededQueries>;
+const Seeded = ({ children }: { children: ReactNode }) => <SeededQueries data={FEEDBACK_SEED}>{children}</SeededQueries>;
 
 const peek = { open: ITEM.key, position: { at: 2, of: 7 }, set: () => {}, move: () => {} };
 
@@ -127,14 +127,14 @@ const feedbackList = () => (
 
 /** The item's page; `over` changes the item it reads (its phase, what the reader can do). */
 export const feedbackDetail = (over: Partial<FeedbackView> = {}) => (
-  <SeededQueries data={SEED.map(([k, v]): [QueryKey, unknown] => (k[0] === "feedback-item" ? [k, { feedback: view(over) }] : [k, v]))}>
+  <SeededQueries data={FEEDBACK_SEED.map(([k, v]): [QueryKey, unknown] => (k[0] === "feedback-item" ? [k, { feedback: view(over) }] : [k, v]))}>
     <FeedbackItemScreen projectId={P} slug="hop" fbKey={ITEM.key} />
   </SeededQueries>
 );
 
 const feedbackPeek = () => (
   <Seeded>
-    <FeedbackPeek projectId={P} slug="hop" fbKey={ITEM.key} peek={peek} onOpenFull={() => {}} />
+    <FeedbackPeek projectId={P} slug="hop" fbKey={ITEM.key} peek={peek} full={{ href: "/projects/hop", origin: null }} />
   </Seeded>
 );
 

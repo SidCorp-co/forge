@@ -178,6 +178,36 @@ function VerdictFilter({ coverage, value, onChange }: { coverage: RequirementDet
  * verdict's word (REQ-43 BC-10). The developer view adds the agent text: each criterion's code, the
  * verdict that counts with its issue, identity and time, and the revision it changed in (BC-7).
  */
+const PEEK_CRITERIA = 8;
+
+/** The peek's criteria: each one's verdict and words, the first eight, with how many more the full
+ *  page holds. Its evidence and issues are the full page's Criteria view. */
+export function PeekCriteria({ d }: { d: RequirementDetail }) {
+  const t = useCopy();
+  const cov = d.standing.coverage;
+  const rest = cov.length - PEEK_CRITERIA;
+  return (
+    <>
+      <ul className="grid gap-1.5" data-testid="peek-criteria">
+        {cov.slice(0, PEEK_CRITERIA).map((c) => (
+          <li key={c.code} className="flex gap-x-2 text-13" data-testid="criterion-row" data-verdict={c.verdict}>
+            <span className="w-4 flex-none pt-0.5">
+              <VerdictDot verdict={c.verdict} />
+            </span>
+            <span className="w-11 flex-none pt-px font-mono text-12 font-semibold text-muted">{c.code}</span>
+            <span className="line-clamp-2 min-w-0 flex-1 leading-snug">{c.body}</span>
+          </li>
+        ))}
+      </ul>
+      {rest > 0 ? (
+        <p className="mt-1.5 text-12 text-subtle" data-testid="peek-criteria-more">
+          {t("requirements.peek.moreCriteria", { n: rest })}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
 export function CriteriaChecklist({ d, slug, developer = false }: { d: RequirementDetail; slug: string; developer?: boolean }) {
   const t = useCopy();
   const time = useTimeFormat();

@@ -15,7 +15,7 @@ import {
   NativeSelect,
   PeekHead,
   PeekPanel,
-  type PeekState,
+  type FullPage, type PeekState,
   StatusBadge,
   ViewHeading,
   WaitBanner,
@@ -322,18 +322,18 @@ export function ReportPeek({
   slug,
   canWrite,
   peek,
-  onOpenFull,
+  full,
 }: {
   r: ReportStanding;
   projectId: string;
   slug: string;
   canWrite: boolean;
   peek: PeekState;
-  onOpenFull: () => void;
+  full: FullPage;
 }) {
   const t = useCopy();
   return (
-    <PeekPanel peek={peek} listLabel={t("schedules.title")} noun={t("schedules.noun.agentReport")} onOpenFull={onOpenFull} testId="report-peek">
+    <PeekPanel peek={peek} listLabel={t("schedules.title")} noun={t("schedules.noun.agentReport")} full={full} testId="report-peek">
       <PeekHead
         noun={t("schedules.noun.agentReport")}
         itemKey={shortId(r.id)}

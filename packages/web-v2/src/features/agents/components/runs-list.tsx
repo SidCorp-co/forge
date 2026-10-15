@@ -128,9 +128,9 @@ export function RunsList({ access }: { access: AgentsAccess }) {
               peek={
                 open ? (
                   isRun(open) ? (
-                    <RunPeek key={open.id} r={open} slug={slug} canWrite={canWrite} peek={peek} onOpenFull={() => list.openFull(open.id)} />
+                    <RunPeek key={open.id} r={open} slug={slug} canWrite={canWrite} peek={peek} full={list.fullOf(open.id)} />
                   ) : (
-                    <MasterPeek m={open} peek={peek} onOpenFull={() => list.openFull(MASTER_KEY)} />
+                    <MasterPeek m={open} peek={peek} full={list.fullOf(MASTER_KEY)} />
                   )
                 ) : undefined
               }

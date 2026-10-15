@@ -228,7 +228,7 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
               <ListFilterBar list="feedback" />
             </>
           }
-          peek={peek.open ? <FeedbackPeek key={peek.open} projectId={projectId} slug={slug} fbKey={peek.open} peek={peek} onOpenFull={() => list.openFull(peek.open as string)} /> : null}
+          peek={peek.open ? <FeedbackPeek key={peek.open} projectId={projectId} slug={slug} fbKey={peek.open} peek={peek} full={list.fullOf(peek.open)} /> : null}
         >
           {all.length === 0 ? (
             <div className="px-5 py-10">

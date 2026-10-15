@@ -374,7 +374,7 @@ export function IssuesBoard({ scope: project, mode, toolbarLead }: { scope: { pr
     hrefOf: (k) => issueHref(project.slug, k),
     origin: ISSUES_LIST,
   });
-  const { peek, rows, openFull } = list;
+  const { peek, rows, fullOf } = list;
   const row = issueRowView(project.slug, words, { of: etaOf, clock });
   const openRow = q.data?.issues.find((r) => r.key === peek.open) ?? null;
   const truncated = q.data && q.data.returned >= q.data.limit && q.data.counts[scope] > q.data.returned;
@@ -384,7 +384,7 @@ export function IssuesBoard({ scope: project, mode, toolbarLead }: { scope: { pr
       <ListLayout
         peek={
           openRow ? (
-            <IssuePeek key={openRow.key} slug={project.slug} row={openRow} forecast={forecasts.get(openRow.key)} clock={clock} peek={peek} onOpenFull={() => openFull(openRow.key)} />
+            <IssuePeek key={openRow.key} projectId={project.projectId} slug={project.slug} row={openRow} forecast={forecasts.get(openRow.key)} clock={clock} peek={peek} full={fullOf(openRow.key)} />
           ) : undefined
         }
       >

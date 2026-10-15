@@ -12,7 +12,7 @@ import { useWaitingSuggestions } from "@/features/suggestions";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { Written } from "@/lib/i18n/written";
-import type { RequirementDetail } from "../types";
+import type { RequirementDetail, RequirementRevision } from "../types";
 import { Assumptions, OpenQuestions } from "./requirement-unclear";
 
 function Bullets({ items }: { items: string[] }) {
@@ -26,6 +26,14 @@ function Bullets({ items }: { items: string[] }) {
 }
 
 const NoneNamed = ({ t }: { t: Copy }) => <p className="text-13 text-subtle">{t("requirements.overview.noneNamed")}</p>;
+
+/** What the requirement says first: the shown revision's TL;DR, else its goal, in the language it was
+ *  written in. The Overview's summary and the peek read it here, so both say the same words. */
+export function requirementSummary(d: RequirementDetail): { text: string; lang: RequirementRevision["writtenLang"] } | null {
+  const shown = d.revisions.find((r) => r.state === "current") ?? d.revisions[0];
+  const text = shown?.tldr ?? shown?.spec?.goal;
+  return text ? { text, lang: shown?.writtenLang } : null;
+}
 
 export function RequirementOverview({
   d,
@@ -43,7 +51,7 @@ export function RequirementOverview({
   const t = useCopy();
   const shown = d.revisions.find((r) => r.state === "current") ?? d.revisions[0];
   const spec = shown?.spec ?? {};
-  const summary = shown?.tldr ?? spec.goal;
+  const summary = requirementSummary(d)?.text;
   const goalBeyond = shown?.tldr && spec.goal && spec.goal !== shown.tldr ? spec.goal : null;
   const sug = useWaitingSuggestions(projectId, { requirement: d.key });
   const waiting = d.canSignOff && (sug.data?.suggestions.length ?? 0) > 0;

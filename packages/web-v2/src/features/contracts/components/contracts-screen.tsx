@@ -118,7 +118,7 @@ export function ContractsScreen({ projectId, slug }: { projectId: string; slug: 
         <div className="grid min-h-full content-start bg-app" data-testid="contracts-screen">
           {title}
           <ListLayout
-            peek={peek.open ? <ContractPeek key={peek.open} projectId={projectId} slug={slug} contractRef={peek.open} peek={peek} onOpenFull={() => openFull(peek.open as string)} /> : undefined}
+            peek={peek.open ? <ContractPeek key={peek.open} projectId={projectId} slug={slug} contractRef={peek.open} peek={peek} full={{ href: contractHref(slug, peek.open), origin: CONTRACTS_LIST }} /> : undefined}
           >
             <div className="min-w-0">
               <ListToolbar>

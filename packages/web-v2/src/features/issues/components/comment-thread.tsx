@@ -222,7 +222,7 @@ function Composer({ issueId }: { issueId: string }) {
   );
 }
 
-function CommentItem({
+export function CommentItem({
   node,
   issueId,
   members,
