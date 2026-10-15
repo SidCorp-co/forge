@@ -15,6 +15,7 @@ import type {
   IssueRow,
   IssueSearchOpts,
   IssueStatus,
+  LandingShape,
   ProjectMember,
   WaitingCause,
 } from "./types";
@@ -28,6 +29,8 @@ export interface PatchIssueInput {
   priority?: IssuePriority;
   complexity?: IssueComplexity | null;
   description?: string;
+  /** Where this issue's own work lands; null answers the project's shape. */
+  landingShape?: LandingShape | null;
 }
 
 export interface CreateIssueInput {

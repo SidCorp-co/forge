@@ -71,6 +71,9 @@ function mergeMarkSentence(err: ApiError): string | null {
   return null;
 }
 
+/** The issue page's row a person sets an issue's own landing shape on; refusals point at it by name. */
+export const LANDING_SHAPE_ROW = 'Work lands';
+
 /**
  * The two project writes refused for the work they would strand, in the web's own words. Core's
  * sentence is written for agents, with its code, field names and API routes; a person here acts on
@@ -90,17 +93,26 @@ function strandedWorkSentence(err: ApiError): string | null {
     );
   }
   const outsideGit = detailStr(err.details, 'to') === 'website';
-  const kept = detailStr(err.details, 'landingShape') === 'outside_git' ? 'outside git' : 'in git';
+  const kept = detailStr(err.details, 'landingShape') === 'outside_git' ? 'Outside git' : 'In git';
   return (
     `${total} open ${one ? 'issue carries a merge mark' : 'issues carry merge marks'} that would stop counting as a landing once this project ${outsideGit ? 'has no repository' : 'has a repository'}. ` +
-    `Finish ${it} first, then change the shape. To change it now instead, ${one ? 'that issue has' : 'each of those issues has'} to declare that its work lands ${kept}, so its mark keeps counting; ` +
-    'the issue page has no control for that yet, so ask an agent to set it.'
+    `Finish ${it} first, then change the shape. Or keep ${one ? 'its mark' : 'their marks'} counting: on ${one ? 'the issue' : 'each issue'}, press Unmark, set ${LANDING_SHAPE_ROW} to “${kept}”, ` +
+    `and mark ${one ? 'it' : 'each one'} merged again; then change the shape.`
+  );
+}
+
+/** A landing shape refused because a merge mark stands: the mark is judged on the lane it was made under. */
+function landingShapeSentence(err: ApiError): string | null {
+  if (err.code !== 'LANDING_SHAPE_MARK_STANDS') return null;
+  return (
+    'Nothing changed: this issue carries a merge mark, and a mark is judged on where its work landed when it was made. ' +
+    `Press Unmark, set ${LANDING_SHAPE_ROW} again, then mark it merged again.`
   );
 }
 
 export function formatApiError(err: unknown): string {
   if (err instanceof ApiError) {
-    const worded = mergeMarkSentence(err) ?? strandedWorkSentence(err);
+    const worded = mergeMarkSentence(err) ?? strandedWorkSentence(err) ?? landingShapeSentence(err);
     if (worded) return worded;
     const claimed = err.code === 'CLAIM_CONFLICT' ? claimConflictSentence(err.details) : null;
     if (claimed) return claimed;

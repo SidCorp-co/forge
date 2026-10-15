@@ -21,6 +21,8 @@ vi.mock("./inline-edit-cell", async () => {
   return { ...actual, StatusEdit: () => <span>issue status</span> };
 });
 
+vi.mock("./landing-shape-control", () => ({ LandingShapeControl: () => <span>work lands</span> }));
+
 vi.mock("./merge-marker-control", () => ({
   MergeMarkerControl: ({ mergedAt }: { mergedAt: string | null }) => (
     <button type="button">{mergedAt ? "Unmark" : "Mark merged"}</button>

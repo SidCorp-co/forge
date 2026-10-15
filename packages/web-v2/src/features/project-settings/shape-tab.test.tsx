@@ -528,13 +528,13 @@ describe("a save that would strand work", () => {
 		expect(within(banner).getByRole("link", { name: "ISS-4" })).toHaveAttribute("href", "/projects/desk/issues/ISS-4");
 		expect(within(banner).getByRole("link", { name: "ISS-9" })).toBeInTheDocument();
 		expect(banner).toHaveTextContent(
-			"2 open issues carry merge marks that would stop counting as a landing once this project has no repository. Finish them first, then change the shape. To change it now instead, each of those issues has to declare that its work lands in git, so its mark keeps counting; the issue page has no control for that yet, so ask an agent to set it.",
+			"2 open issues carry merge marks that would stop counting as a landing once this project has no repository. Finish them first, then change the shape. Or keep their marks counting: on each issue, press Unmark, set Work lands to “In git”, and mark each one merged again; then change the shape.",
 		);
-		expect(banner.textContent).not.toMatch(/PROJECT_KIND_STRANDS_WORK|`|\/api\/|forge_issues/);
+		expect(banner.textContent).not.toMatch(/PROJECT_KIND_STRANDS_WORK|`|\/api\/|forge_issues|agent|no control/);
 		expect(toast).not.toHaveBeenCalled();
 	});
 
-	it("says a kind refusal toward a repository in the singular, keeping a CMS issue outside git and asking for no pull request", async () => {
+	it("says a kind refusal toward a repository in the singular, pointing at the Work lands control to keep a CMS issue outside git", async () => {
 		projectRefusal = new ApiError(409, "PROJECT_KIND_STRANDS_WORK: a mark would stop counting.", "PROJECT_KIND_STRANDS_WORK", {
 			issues: ["ISS-4"],
 			total: 1,
@@ -546,9 +546,9 @@ describe("a save that would strand work", () => {
 		fireEvent.click(within(await pick(/repository, no release/i)).getByRole("button", { name: "Change the shape" }));
 		const banner = await screen.findByTestId("project-refusal");
 		expect(banner).toHaveTextContent(
-			"1 open issue carries a merge mark that would stop counting as a landing once this project has a repository. Finish it first, then change the shape. To change it now instead, that issue has to declare that its work lands outside git, so its mark keeps counting; the issue page has no control for that yet, so ask an agent to set it.",
+			"1 open issue carries a merge mark that would stop counting as a landing once this project has a repository. Finish it first, then change the shape. Or keep its mark counting: on the issue, press Unmark, set Work lands to “Outside git”, and mark it merged again; then change the shape.",
 		);
-		expect(banner.textContent).not.toMatch(/pull request|Unmark/);
+		expect(banner.textContent).not.toMatch(/pull request|agent|no control/);
 	});
 
 	it("says a save that landed once, in the tab's own name", async () => {

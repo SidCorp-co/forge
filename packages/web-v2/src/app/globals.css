@@ -91,6 +91,8 @@
   --color-amber: var(--amber-500);
   --color-green: var(--green-500);
   --color-red: var(--red-500);
+  /* a refusal said in text: the danger Banner's own foreground */
+  --color-danger: var(--red-600);
 
   /* pipeline stage hues */
   --color-stage-triage: var(--stage-triage);

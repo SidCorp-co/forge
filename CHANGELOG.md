@@ -129,6 +129,7 @@
 
 ### Added
 
+- **An issue page says where its work lands, and a person can change it.** Work lands sits in its properties; a change the issue's merge mark forbids is refused there, with the steps. (ISS-1171)
 - **Writing an issue into `clarified` or `tested` is refused.** Both were retired rungs that accepted the write and stranded the issue; the refusal names `approved` or `awaiting_release`. Issues already there can still move.
 
 - **The agent tools `forge_skills.register` and `forge_skills.list_registrations` are gone.** No status runs a skill, so binding one to a stage did nothing. Mark a skill `installOnly` with `forge_skills.update` instead.
