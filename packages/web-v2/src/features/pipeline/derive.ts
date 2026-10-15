@@ -51,12 +51,18 @@ const BLOCKER: Record<string, string> = {
   nobody: "Nobody — it stopped with a reason",
 };
 
-/** Who can end the wait and what it waits on, where the box reports the session blocked. */
-export function waitingOnOf(session: Pick<LiveSession, "report">): string | null {
+export interface WaitingOn {
+  text: string;
+  blocked: boolean;
+}
+
+/** Who can end the wait and what it waits on; a box that sent no report is said to, not read as unblocked. */
+export function waitingOnOf(session: Pick<LiveSession, "report">): WaitingOn {
   const report = session.report;
-  if (report?.work !== "blocked") return null;
+  if (!report) return { text: "Not reported by the box", blocked: false };
+  if (report.work !== "blocked") return { text: "Nothing", blocked: false };
   const who = report.blockerKind ? (BLOCKER[report.blockerKind] ?? report.blockerKind) : "Unnamed";
-  return report.waitingOn ? `${who} — ${report.waitingOn}` : who;
+  return { text: report.waitingOn ? `${who} — ${report.waitingOn}` : who, blocked: true };
 }
 
 export interface CheckIn {

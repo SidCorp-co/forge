@@ -16,7 +16,7 @@ function holderKey(holder: Holder): string {
 }
 
 function Label({ children }: { children: string }) {
-  return <span className="fg-caption mr-1.5 sm:hidden">{children}</span>;
+  return <span className="fg-caption mr-1.5 sm:sr-only">{children}</span>;
 }
 
 function HoldRow({ hold, slug, now }: { hold: HeldIssue; slug: string; now: number }) {

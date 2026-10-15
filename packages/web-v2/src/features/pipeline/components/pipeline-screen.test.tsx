@@ -125,6 +125,22 @@ describe("the Pipeline page with a reading", () => {
     expect(within(row).getByText("Quiet · 5m ago")).toBeInTheDocument();
   });
 
+  it("says a session the box never reported on is unreported, not that nothing blocks it", () => {
+    screenFor();
+    const row = screen.getAllByRole("listitem").find((r) => r.getAttribute("data-session-id") === "m1") as HTMLElement;
+    expect(within(row).getByText("Not reported by the box")).toBeInTheDocument();
+    expect(within(row).queryByText("Nothing")).not.toBeInTheDocument();
+  });
+
+  it("keeps every field label for a screen reader at desktop width, where the header row is hidden", () => {
+    screenFor();
+    for (const name of ["On", "Doing", "Waiting on", "Last check-in", "Held by", "Why", "Since"]) {
+      for (const label of screen.getAllByText(name, { selector: "span" })) {
+        expect(label.className).not.toMatch(/\bsm:hidden\b/);
+      }
+    }
+  });
+
   it("lists every held issue, a person's first, with who holds it, why and since when", () => {
     screenFor();
     const rows = within(screen.getByRole("list", { name: "Held" }))

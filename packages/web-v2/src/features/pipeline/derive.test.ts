@@ -62,20 +62,23 @@ describe("waitingOnOf — who can end the wait, in the box's words", () => {
   });
 
   it("names the blocker and what it waits on", () => {
-    expect(waitingOnOf({ report: report({}) })).toBe("A person — the answer on ISS-7");
+    expect(waitingOnOf({ report: report({}) })).toEqual({ text: "A person — the answer on ISS-7", blocked: true });
   });
 
   it("names the blocker alone where the box said nothing more", () => {
-    expect(waitingOnOf({ report: report({ blockerKind: "machine", waitingOn: null }) })).toBe("A machine");
+    expect(waitingOnOf({ report: report({ blockerKind: "machine", waitingOn: null }) }).text).toBe("A machine");
   });
 
-  it("says nothing for a runnable session or one the box never reported", () => {
-    expect(waitingOnOf({ report: report({ work: "runnable" }) })).toBeNull();
-    expect(waitingOnOf({ report: null })).toBeNull();
+  it("says Nothing only where the box reported the session runnable", () => {
+    expect(waitingOnOf({ report: report({ work: "runnable" }) })).toEqual({ text: "Nothing", blocked: false });
+  });
+
+  it("says the box sent no report rather than reading its silence as unblocked", () => {
+    expect(waitingOnOf({ report: null })).toEqual({ text: "Not reported by the box", blocked: false });
   });
 
   it("prints an unknown blocker kind as sent rather than guessing", () => {
-    expect(waitingOnOf({ report: report({ blockerKind: "vendor", waitingOn: null }) })).toBe("vendor");
+    expect(waitingOnOf({ report: report({ blockerKind: "vendor", waitingOn: null }) }).text).toBe("vendor");
   });
 });
 

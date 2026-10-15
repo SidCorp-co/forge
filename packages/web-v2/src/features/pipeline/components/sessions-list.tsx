@@ -18,7 +18,7 @@ const COLUMNS =
 
 /** A field's name, said on a phone where there is no column header to say it. */
 function Label({ children }: { children: string }) {
-  return <span className="fg-caption mr-1.5 flex-none sm:hidden">{children}</span>;
+  return <span className="fg-caption mr-1.5 flex-none sm:sr-only">{children}</span>;
 }
 
 function SessionRow({
@@ -85,7 +85,7 @@ function SessionRow({
       </div>
       <div className="fg-body-sm min-w-0">
         <Label>Waiting on</Label>
-        {waiting ?? <span className="text-subtle">Nothing</span>}
+        {waiting.blocked ? waiting.text : <span className="text-subtle">{waiting.text}</span>}
       </div>
       <div className="fg-body-sm">
         <Label>Last check-in</Label>
