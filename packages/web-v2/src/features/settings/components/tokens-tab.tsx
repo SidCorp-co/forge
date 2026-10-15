@@ -66,8 +66,44 @@ interface FormErrors {
   scopes?: string;
   permissions?: string;
 }
+type FormField = keyof FormErrors;
 /** The fields in the order the form draws them, so the first refused is the one nearest the top. */
-const FIELD_ORDER: (keyof FormErrors)[] = ["name", "scopes", "permissions"];
+const FIELD_ORDER: FormField[] = ["name", "scopes", "permissions"];
+
+interface FormState {
+  name: string;
+  scopes: PatScope[];
+  grantMode: "" | "full" | "named";
+  permissions: string[];
+  tokens: PatToken[];
+  menuLoaded: boolean;
+}
+
+/** The message each field would be refused with if Create token were pressed now. */
+function validate(form: FormState): FormErrors {
+  const next: FormErrors = {};
+  const name = form.name.trim();
+  if (!name) next.name = "Name is required.";
+  else if (form.tokens.some((t) => t.name === name && !t.revokedAt)) next.name = PAT_NAME_IN_USE;
+  if (form.scopes.length === 0) next.scopes = "Select at least one scope.";
+  if (!form.grantMode) next.permissions = "Choose what this token may reach.";
+  else if (form.grantMode === "named" && form.permissions.length === 0)
+    next.permissions = "Pick at least one permission, or choose full access.";
+  else if (!form.menuLoaded) next.permissions = "The permission menu hasn't loaded yet.";
+  return next;
+}
+
+/** What each field holds, in the form a refusal is compared against. */
+function heldValues(form: FormState): Record<FormField, string> {
+  return {
+    name: form.name.trim(),
+    scopes: [...form.scopes].sort().join(","),
+    permissions: `${form.grantMode}:${[...form.permissions].sort().join(",")}`,
+  };
+}
+
+/** A refusal recorded on a press: its message, and the value the field held when it was refused. */
+type Refusals = Partial<Record<FormField, { message: string; value: string }>>;
 
 export function TokensTab() {
   const tokensQ = useTokens();
@@ -92,10 +128,10 @@ export function TokensTab() {
   const [expiresAt, setExpiresAt] = useState("");
   // ISS-497 — "" = None (user-level); a project id = bind the token to it.
   const [boundProjectId, setBoundProjectId] = useState("");
-  const [errors, setErrors] = useState<FormErrors>({});
+  const [refusals, setRefusals] = useState<Refusals>({});
   // Create token sits below the whole form, so a refused field near its top is drawn off screen. The
   // first one refused is brought into view with the cursor in it, after the errors have rendered.
-  const [refused, setRefused] = useState<{ field: keyof FormErrors } | null>(null);
+  const [refused, setRefused] = useState<{ field: FormField } | null>(null);
   const nameRef = useRef<HTMLDivElement>(null);
   const scopesRef = useRef<HTMLDivElement>(null);
   const permissionsRef = useRef<HTMLDivElement>(null);
@@ -144,6 +180,17 @@ export function TokensTab() {
   // The menu the door will accept, served beside the list so the form cannot
   // offer a name the create call would be refused for.
   const menu = tokensQ.data?.menu ?? null;
+
+  // A refusal describes what its field holds now: it is shown only while the field still holds the
+  // value it refused and that value is still refused for the same reason.
+  const form: FormState = { name, scopes, grantMode, permissions, tokens, menuLoaded: !!menu };
+  const live = validate(form);
+  const held = heldValues(form);
+  const errors: FormErrors = {};
+  for (const field of FIELD_ORDER) {
+    const refusal = refusals[field];
+    if (refusal && refusal.value === held[field] && refusal.message === live[field]) errors[field] = refusal.message;
+  }
 
   // Consume the SSO reauth outcome on return: restore the draft on success,
   // surface the typed error on failure, and strip the params either way so a
@@ -227,15 +274,12 @@ export function TokensTab() {
   }
 
   function buildInput(): CreatePatInput | null {
-    const next: FormErrors = {};
-    if (!name.trim()) next.name = "Name is required.";
-    else if (tokens.some((t) => t.name === name.trim() && !t.revokedAt)) next.name = PAT_NAME_IN_USE;
-    if (scopes.length === 0) next.scopes = "Select at least one scope.";
-    if (!grantMode) next.permissions = "Choose what this token may reach.";
-    else if (grantMode === "named" && permissions.length === 0)
-      next.permissions = "Pick at least one permission, or choose full access.";
-    else if (!menu) next.permissions = "The permission menu hasn't loaded yet.";
-    setErrors(next);
+    const next: Refusals = {};
+    for (const field of FIELD_ORDER) {
+      const message = live[field];
+      if (message) next[field] = { message, value: held[field] };
+    }
+    setRefusals(next);
     const first = FIELD_ORDER.find((field) => next[field]);
     if (first) setRefused({ field: first });
     if (first || !menu) return null;
@@ -255,7 +299,7 @@ export function TokensTab() {
     setPermissions([]);
     setExpiresAt("");
     setBoundProjectId("");
-    setErrors({});
+    setRefusals({});
   }
 
   function runCreate(input: CreatePatInput) {
