@@ -53,10 +53,9 @@ nav{display:flex;flex-direction:column;gap:.25rem}
   .trim()
   .replace(/\n/g, "");
 
-/** A self-contained HTML 404 for an address naming nothing, served by the middleware, which can
- *  neither render React nor name the app's hashed stylesheet. It shows what `GuideShell` and
- *  the refusal in `PublicReader` show a client-side navigation, less the search a page without
- *  JavaScript could not run; with `indexDown`, what `PublicRefusal` says. */
+/** A self-contained HTML 404 from the middleware, which can neither render React nor name the
+ *  app's hashed stylesheet: what `GuideShell` and `PublicReader`'s refusal show, less the search a
+ *  page without JavaScript could not run; with `indexDown`, what `PublicRefusal` says. */
 export function refusalDocument(refusal: Refusal, { indexDown = false }: { indexDown?: boolean } = {}): string {
   const h = escapeHtml(refusal.heading);
   const said = indexDown ? saidWhileDown(refusal) : [refusal.body];

@@ -68,22 +68,18 @@ function listed(words: readonly string[]): string {
   return `${words.slice(0, -1).join(", ")}, and ${words[words.length - 1]}`;
 }
 
-/** Who the doors are for, as one phrase: "people using Forge and people connecting an assistant". */
 export function readersOf(doors: readonly Audience[]): string {
   return listed(doors.map((a) => DOORS[a].reader));
 }
 
-/** Whose pages the doors hold, each named once: "the pages for people". */
 export function pagesOf(doors: readonly Audience[]): string {
   return `the pages for ${listed([...new Set(doors.map((a) => DOORS[a].pages))])}`;
 }
 
-/** The line under the site name. */
 export function siteCaption(doors: readonly Audience[]): string {
   return `For ${readersOf(doors)}.`;
 }
 
-/** What a search field over these doors' pages is called. */
 export function searchLabel(doors: readonly Audience[]): string {
   return doors.length === AUDIENCES.length ? "Search every page" : `Search ${pagesOf(doors)}`;
 }

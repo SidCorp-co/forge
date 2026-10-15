@@ -21,7 +21,9 @@ describe('FORGE_FACTS', () => {
 
   it('names only forge_issues actions the tool serves', () => {
     const served: ReadonlySet<string> = new Set(ISSUE_ACTIONS);
-    const named = [...OPERATING_AFFORDANCES_TEXT.matchAll(/forge_issues action=(\w+)/g)].map((m) => m[1] ?? '');
+    const named = [...OPERATING_AFFORDANCES_TEXT.matchAll(/forge_issues action=(\w+)/g)].map(
+      (m) => m[1] ?? '',
+    );
     expect(named.length).toBeGreaterThan(0);
     expect(named.filter((a) => !served.has(a))).toEqual([]);
   });

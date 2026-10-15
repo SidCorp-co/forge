@@ -35,7 +35,6 @@ export const GUIDES_UNAVAILABLE: Refusal = {
   bodyWhileDown: GUIDES_UNAVAILABLE_BODY,
 };
 
-/** The doors whose pages need the guide index, and so cannot open while it is down. */
 const CLOSED_WHILE_DOWN = AUDIENCES.filter((a) => !BUNDLED_AUDIENCES.includes(a));
 
 export const LANDING_WHILE_DOWN = `Forge's guide index did not answer, so ${pagesOf(CLOSED_WHILE_DOWN)} could not be loaded. The search and the ways in below cover the pages built into this site, which open without it.`;
