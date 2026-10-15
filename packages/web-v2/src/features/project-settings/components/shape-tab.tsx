@@ -244,6 +244,8 @@ function ShapePage({
 
       <ShapeChoice form={shapeForm} canEdit={canEdit} clash={clash} />
 
+      <ProjectRefusal error={refusal} slug={slug} onDismiss={() => setRefusal(null)} />
+
       {showsRepository && <RepositoryFields form={shapeForm} canEdit={canEdit} />}
 
       {showsPath && <ReleasePath form={shapeForm} canEdit={canEdit} />}
@@ -283,19 +285,16 @@ function ShapePage({
             envForm.discard();
           }}
         >
-          <ProjectRefusal error={refusal} slug={slug} onDismiss={() => setRefusal(null)} />
-          {halfSaved && (
-            <Banner tone="attention" onDismiss={() => setHalfSaved(false)}>
-              The shape and repository were saved. The environments were not, and your edits to them
-              are still here.
-            </Banner>
-          )}
           <SaveRefusedBanner
             projectId={project.id}
             error={updateEnv.isError ? updateEnv.error : null}
-            onDismiss={() => updateEnv.reset()}
+            onDismiss={() => {
+              setHalfSaved(false);
+              updateEnv.reset();
+            }}
             document="environments"
             draft={envForm}
+            saved={halfSaved ? "The shape and repository were saved; the environments were not." : undefined}
           />
         </SettingsFormBar>
       )}
@@ -304,6 +303,7 @@ function ShapePage({
         open={confirming}
         projectName={project.name}
         inFlight={inFlight}
+        byStatus={byStatus}
         to={toLabel}
         onClose={() => setConfirming(false)}
         onConfirm={() => {

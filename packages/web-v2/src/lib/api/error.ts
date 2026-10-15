@@ -95,7 +95,7 @@ function strandedWorkSentence(err: ApiError): string | null {
   const outsideGit = detailStr(err.details, 'to') === 'website';
   const kept = detailStr(err.details, 'landingShape') === 'outside_git' ? 'Outside git' : 'In git';
   return (
-    `${total} open ${one ? 'issue carries a merge mark' : 'issues carry merge marks'} that would stop counting as a landing once this project ${outsideGit ? 'has no repository' : 'has a repository'}. ` +
+    `${total} unfinished ${one ? 'issue carries a merge mark' : 'issues carry merge marks'} that would stop counting as a landing once this project ${outsideGit ? 'has no repository' : 'has a repository'}. ` +
     `Finish ${it} first, then change the shape. Or keep ${one ? 'its mark' : 'their marks'} counting: on ${one ? 'the issue' : 'each issue'}, press Unmark, set ${LANDING_SHAPE_ROW} to “${kept}”, ` +
     `and mark ${one ? 'it' : 'each one'} merged again; then change the shape.`
   );
@@ -126,7 +126,12 @@ export function formatApiError(err: unknown): string {
 
 /** A failure as a sentence of its own, so what a message says next starts after a full stop. */
 export function formatApiReason(err: unknown): string {
-  const text = formatApiError(err).trim();
+  return asSentence(formatApiError(err));
+}
+
+/** A phrase opened with a capital and closed with a full stop, so it can follow another sentence. */
+export function asSentence(phrase: string): string {
+  const text = phrase.trim();
   const opened = /^[a-z]/.test(text) ? `${text.charAt(0).toUpperCase()}${text.slice(1)}` : text;
   return /[.!?]$/.test(opened) ? opened : `${opened}.`;
 }
@@ -354,14 +359,17 @@ export function wasOrWere(count: number): 'was' | 'were' {
   return count === 1 ? 'was' : 'were';
 }
 
+/** What a refused settings save opens with where no part of it was written. */
+export const NOTHING_SAVED = 'Nothing was saved.';
+
 /**
  * What a refused settings save reads as on screen: the settings that moved, in the
  * screen's own names, and that nothing was written. The re-read is an action beside this
  * sentence rather than an instruction inside it.
  */
-export function formatSettingsWriteError(err: unknown): string {
+export function formatSettingsWriteError(err: unknown, saved = NOTHING_SAVED): string {
   const conflicts = writeConflicts(err);
   if (conflicts.length === 0) return formatApiError(err);
   const { text, count } = describeSettings(conflicts.map((c) => c.path));
-  return `${text} ${wasOrWere(count)} changed by someone else while this page was open. Nothing was saved — your edits are still here.`;
+  return `${text} ${wasOrWere(count)} changed by someone else while this page was open. ${saved.replace(/\.$/, '')} — your edits are still here.`;
 }

@@ -169,6 +169,16 @@ describe("MergeMarkerControl on a project that lands in git keeps its form", () 
     expect(screen.queryByText(/lands outside git/)).toBeNull();
   });
 
+  it.each(["git", "outside_git"] as const)("shows no literal backtick in the panel of an issue landing %s", (landingShape) => {
+    render(
+      <MergeMarkerControl issueId="i1" mergedAt={null} suggestedTarget="ISS-791" landingShape={landingShape} landingSource="project" />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
+    const panel = screen.getByRole("dialog");
+    expect(panel.textContent).not.toContain("`");
+    if (landingShape === "git") expect(panel).toHaveTextContent(/because Closed means the work shipped/);
+  });
+
   it("takes a target past 200 characters whole, as it did before", () => {
     render(
       <MergeMarkerControl issueId="i1" mergedAt={null} suggestedTarget="ISS-791" landingShape="git" />,

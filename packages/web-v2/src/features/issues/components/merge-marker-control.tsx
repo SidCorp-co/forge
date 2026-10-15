@@ -19,7 +19,7 @@ const LANDING_MAX = 2000;
 
 const BLURB =
   "For work finished outside the pipeline. This is a claim that the code shipped, not a date " +
-  "field: it is what lets the issue close, because `closed` means the work shipped and a close " +
+  "field: it is what lets the issue close, because Closed means the work shipped and a close " +
   "without it is refused. It does not release the issues blocked on this one — a status does " +
   "that. Unmark withdraws a claim made wrongly, and is refused once the issue is closed: " +
   "reopen it first, because a closed issue with no claim is a state nothing here can hold.";

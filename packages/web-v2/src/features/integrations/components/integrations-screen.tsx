@@ -9,6 +9,7 @@
 // the operator comes looking for an app before a credential. What a row holds,
 // and what it deliberately does not: `connection-row.tsx`.
 
+import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 import {
   EmptyState,
@@ -141,6 +142,14 @@ export function IntegrationsScreen() {
   const selected = items.find((c) => c.id === selectedId) ?? null;
   const closeDrawer = useCallback(() => setSelectedId(null), []);
 
+  const projectsHere = useMemo(
+    () =>
+      (projectsQ.data ?? []).filter(
+        (p) => !p.archivedAt && (activeOrg ? p.orgId === activeOrg.id : true),
+      ),
+    [projectsQ.data, activeOrg],
+  );
+
   const scopeName = activeOrg
     ? activeOrg.isPersonal
       ? "your personal space"
@@ -164,21 +173,23 @@ export function IntegrationsScreen() {
         />
       );
     }
-    if (all.length > 0) {
-      return (
-        <EmptyState
-          title={`No connections in ${scopeName}`}
-          message={`You can see ${all.length} connection${all.length > 1 ? "s" : ""} in your other spaces — switch space in the sidebar to reach ${all.length > 1 ? "them" : "it"}.`}
-          mascot={false}
-        />
-      );
-    }
     return (
-      <EmptyState
-        title="No connections yet"
-        message="Create one by configuring an integration in any project's settings → Integrations."
-        mascot={false}
-      />
+      <>
+        {all.length > 0 ? (
+          <EmptyState
+            title={`No connections in ${scopeName}`}
+            message={`You can see ${all.length} connection${all.length > 1 ? "s" : ""} in your other spaces — switch space in the sidebar to reach ${all.length > 1 ? "them" : "it"}.`}
+            mascot={false}
+          />
+        ) : (
+          <EmptyState
+            title="No connections yet"
+            message="A connection is added from a project's settings, under Integrations."
+            mascot={false}
+          />
+        )}
+        <AddConnection projects={projectsHere} scopeName={scopeName} />
+      </>
     );
   }
 
@@ -260,5 +271,55 @@ export function IntegrationsScreen() {
         selected && <ConnectionEditDrawer connection={selected} onClose={closeDrawer} />
       }
     </PageContainer>
+  );
+}
+
+const ADD_LINK = "fg-body-sm font-semibold text-accent-text hover:underline";
+
+/** The one act that fills an empty directory: a connection is added from a project's own
+ *  Integrations settings, so the way forward is that tab of a project in this space. */
+function AddConnection({
+  projects,
+  scopeName,
+}: {
+  projects: { id: string; slug: string; name: string }[];
+  scopeName: string;
+}) {
+  const [chosen, setChosen] = useState(projects[0]?.slug ?? "");
+  const slug = projects.some((p) => p.slug === chosen) ? chosen : (projects[0]?.slug ?? "");
+  const href = (s: string) => `/projects/${s}/settings?tab=integrations`;
+  if (projects.length === 0) {
+    return (
+      <p className="fg-body-sm pb-10 text-center text-muted" data-testid="add-connection">
+        {scopeName.charAt(0).toUpperCase() + scopeName.slice(1)} has no project yet, and a connection is
+        added from one.{" "}
+        <Link href="/projects?new=1" className={ADD_LINK}>
+          Create a project
+        </Link>
+      </p>
+    );
+  }
+  if (projects.length === 1) {
+    const only = projects[0] as { slug: string; name: string };
+    return (
+      <p className="pb-10 text-center" data-testid="add-connection">
+        <Link href={href(only.slug)} className={ADD_LINK}>
+          Add a connection in {only.name}
+        </Link>
+      </p>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-2 pb-10" data-testid="add-connection">
+      <NativeSelect
+        value={slug}
+        onChange={(e) => setChosen(e.target.value)}
+        aria-label="Project to add a connection in"
+        options={projects.map((p) => ({ value: p.slug, label: p.name }))}
+      />
+      <Link href={href(slug)} className={ADD_LINK}>
+        Add a connection in this project
+      </Link>
+    </div>
   );
 }
