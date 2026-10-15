@@ -259,7 +259,8 @@ function criteriaUnearnedSentence(held: HeldIssueRef[], clears: readonly string[
 }
 
 /** "criterion 4", "criteria 1–30", "criteria 3, 7 and 9–12". */
-function criteriaPhrase(nums: readonly number[]): string {
+function criteriaPhrase(criteria: readonly number[]): string {
+  const nums = [...new Set(criteria)].sort((a, b) => a - b);
   const runs: string[] = [];
   for (let i = 0; i < nums.length; ) {
     let j = i;

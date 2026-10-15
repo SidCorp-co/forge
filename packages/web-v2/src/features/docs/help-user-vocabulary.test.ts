@@ -201,8 +201,8 @@ describe("the screens judge-15 read, against the same rules", () => {
     expect(offences(container.innerHTML).filter((r) => r === "a status written as code")).toEqual(found);
   });
 
-  // ISS-1229 r5d: core's refusals reach a screen through the same inlineCode; reader-status-words
-  // in core scans their source.
+  // ISS-1229 r5d: core's refusals reach a screen through the same inlineCode. The old wording is
+  // planted here; each refusal's own core test asserts what it sends now.
   it.each([
     [
       "the criteria hold, now",
@@ -215,11 +215,6 @@ describe("the screens judge-15 read, against the same rules", () => {
       ["a status written as code"],
     ],
     [
-      "a close refused for want of a tag, now",
-      "this project ships by version tag, so Closed means a tag matching `v*` contains the landing commit 1a2b3c4d5e6f, and no tag contains it yet. The issue rests at Awaiting release until a tag that contains it is cut and deployed.",
-      [],
-    ],
-    [
       "a close refused for want of a tag, before ISS-1229 r5d",
       "this project ships by version tag, so `closed` means a tag matching `v*` contains the landing commit 1a2b3c4d5e6f, and no tag contains it yet. The issue rests at `awaiting_release` until a tag that contains it is cut and deployed.",
       ["a status written as code"],
@@ -228,11 +223,6 @@ describe("the screens judge-15 read, against the same rules", () => {
       "a refused unmark, before ISS-1229 r5d",
       "Move it off `closed` first — `reopen` is the only exit `closed` has — and then `unmark`, or take `dropped` from `reopen`.",
       ["a status written as code"],
-    ],
-    [
-      "a refused unmark, now",
-      "Move it off Closed first — Reopened is the only exit Closed has — and then `unmark`, or take Dropped from Reopened.",
-      [],
     ],
   ])("a refusal core sends, drawn as %s", (_when, sentence, found) => {
     const { container } = render(createElement("p", null, inlineCode(sentence)));

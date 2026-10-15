@@ -313,6 +313,9 @@ describe('the criteria hold', () => {
     );
     expect(run([3, 7, 9, 10, 11, 12])).toContain('owes criteria 3, 7 and 9–12.');
     expect(run([4, 5])).toContain('owes criteria 4 and 5.');
+    expect(run([3, 1, 2])).toContain('owes criteria 1–3.');
+    expect(run([1, 1, 2, 3])).toContain('owes criteria 1–3.');
+    expect(run([4, 4])).toContain('owes criterion 4.');
   });
 
   const served: ServingReading = { kind: 'serving', served: [], unread: [], readAt: 'now' };
