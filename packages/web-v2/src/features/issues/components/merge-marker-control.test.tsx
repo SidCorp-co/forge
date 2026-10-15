@@ -182,3 +182,33 @@ describe("MergeMarkerControl on a project that lands in git keeps its form", () 
     expect(mark).toHaveBeenCalledWith({ target: long }, expect.anything());
   });
 });
+
+describe("MergeMarkerControl names whose answer the lane is", () => {
+  const openWith = (props: { landingShape: "git" | "outside_git"; landingSource?: "issue" | "project" }) => {
+    render(<MergeMarkerControl issueId="i1" mergedAt={null} suggestedTarget="ISS-5" {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
+    return screen.getByTestId("landing-line");
+  };
+
+  it("says an issue that declares its own shape lands where it declares, and that the issue says so", () => {
+    const line = openWith({ landingShape: "outside_git", landingSource: "issue" });
+    expect(line).toHaveTextContent("This issue's work lands outside git: the issue declares it itself, under Work lands.");
+    expect(screen.queryByText(/This project's work lands/)).toBeNull();
+  });
+
+  it("says an issue in git by its own declaration is in git, on a project whose shape may differ", () => {
+    expect(openWith({ landingShape: "git", landingSource: "issue" })).toHaveTextContent(
+      "This issue's work lands in git: the issue declares it itself, under Work lands.",
+    );
+  });
+
+  it("says an issue with no declaration of its own follows its project's shape", () => {
+    expect(openWith({ landingShape: "outside_git", landingSource: "project" })).toHaveTextContent(
+      "This issue's work lands outside git: that is its project's shape.",
+    );
+  });
+
+  it("names no source where the server did not say whose answer it is", () => {
+    expect(openWith({ landingShape: "outside_git" })).toHaveTextContent(/^This issue's work lands outside git\.$/);
+  });
+});

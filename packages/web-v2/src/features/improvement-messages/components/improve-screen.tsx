@@ -77,7 +77,7 @@ function RunItem({ run, slug }: { run: ScheduleRun; slug: string | undefined }) 
       <span className="fg-caption font-mono text-subtle">{fmtDuration(run.durationSeconds)}</span>
       {run.failureReason && (
         <Tooltip label={run.failureReason}>
-          <span className="fg-caption text-danger underline decoration-dotted">why?</span>
+          <span className="fg-caption fg-danger underline decoration-dotted">why?</span>
         </Tooltip>
       )}
       {slug && run.sessionId && (
@@ -120,7 +120,7 @@ function RunLog({
         </span>
       )}
       {runsQ.isError && (
-        <span className="fg-caption text-danger">
+        <span className="fg-caption fg-danger">
           Couldn&apos;t load run history — {formatApiError(runsQ.error)}
         </span>
       )}

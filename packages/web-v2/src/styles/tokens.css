@@ -181,3 +181,9 @@
    moved 2h ago. This rule sits after `.fg-caption`, same specificity, so source
    order decides and the mark survives. */
 .fg-caption-stale { font-weight: 600; color: var(--amber-600); }
+
+/* An error said at a type class's own size: `fg-danger` beside any `.fg-*` above. `text-danger`
+   is a Tailwind utility and is swallowed there for the reason the note above gives, so eleven
+   error lines rendered grey from the day they were written. This sits after every `.fg-*`, same
+   specificity, so source order decides; it is the danger Banner's own foreground. */
+.fg-danger { color: var(--red-600); }

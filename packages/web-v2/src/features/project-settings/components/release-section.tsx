@@ -13,6 +13,7 @@ import { useReleaseReadiness } from "../hooks";
 import { releaseAnswer } from "../shape-form";
 import type { ReleaseReadiness } from "../types";
 import { inlineCode } from "./inline-code";
+import { LIVE_DEPLOY_TARGET } from "./integrations-tab";
 
 const GAP_TEXT: Record<ReleaseReadiness["gaps"][number], string> = {
   "build-commands": "No build-commands fact — a session has nothing to build with.",
@@ -22,7 +23,7 @@ const GAP_TEXT: Record<ReleaseReadiness["gaps"][number], string> = {
   "release-runner-ambiguous":
     "Two live bindings name different release runners — a release is refused rather than sent to whichever was created first. Give them the same label, or retire one.",
   "release-target":
-    "This project declares a release but has no live deploy binding to send it to — every issue would wait for a release nobody can cut. Add one, or, if this project ships nothing, choose \"Repository, no release\" above.",
+    "This project declares a release but has no live deploy target to send it to — every issue would wait for a release nobody can cut. Add one, or, if this project ships nothing, choose \"Repository, no release\" below.",
   rollback:
     "No rollback declared — a failed release aborts and comments, and rolls back nothing.",
   "rollback-prose":
@@ -47,9 +48,12 @@ const NO_RELEASE_RUNNER_LABEL = "none — a release goes to any box in this proj
 
 const FACT_GAPS = new Set(["build-commands", "test-commands", "release-procedure"]);
 
+/** Where "add a live deploy target" lands: the section that adds one, with Deploy target and Live chosen. */
+const ADD_LIVE_TARGET = { tab: "integrations", add: LIVE_DEPLOY_TARGET, label: "Add a live deploy target" };
+
 /** Blockers a setting answers, and the tab that holds it; the rest are about the work waiting. */
-const BLOCKER_TAB: Record<string, { tab: string; label: string }> = {
-  RELEASE_TARGET_UNDECLARED: { tab: "integrations", label: "Add a live deploy binding" },
+const BLOCKER_TAB: Record<string, { tab: string; add?: string; label: string }> = {
+  RELEASE_TARGET_UNDECLARED: ADD_LIVE_TARGET,
   RELEASE_RUNNER_AMBIGUOUS: { tab: "integrations", label: "Reconcile the release runner labels" },
   RELEASE_PROBES_UNREADABLE: { tab: "integrations", label: "Check the live binding's probes" },
   RELEASE_POOL_EMPTY: { tab: "runners", label: "Assign a runner" },
@@ -89,7 +93,8 @@ function answerText(r: ReleaseReadiness): ReactNode {
 /** The answer line and every reason under it, each with a link to where it is set. */
 export function ReleaseAnswer({ projectId, slug }: { projectId: string; slug?: string }) {
   const q = useReleaseReadiness(projectId);
-  const tab = (t: string) => (slug ? `/projects/${slug}/settings?tab=${t}` : undefined);
+  const tab = (t: string, add?: string) =>
+    slug ? `/projects/${slug}/settings?tab=${t}${add ? `&add=${add}` : ""}` : undefined;
   const waitingHref = slug ? `/projects/${slug}/issues?status=awaiting_release` : undefined;
   const knowledgeHref = slug ? `/projects/${slug}/library?tab=knowledge&sub=rules` : undefined;
 
@@ -133,10 +138,12 @@ export function ReleaseAnswer({ projectId, slug }: { projectId: string; slug?: s
         <ul className="mt-3 divide-y divide-line border-y border-line" aria-label="What stops a release">
           {r.blockers.map((b) => {
             const at = BLOCKER_TAB[b.code];
-            const href = at ? tab(at.tab) : waitingHref;
+            const href = at ? tab(at.tab, at.add) : waitingHref;
+            // The sentence leads; the code is for whoever greps for it, not for the reader.
+            const gap = BLOCKER_GAP[b.code];
             return (
-              <li key={`${b.code}:${b.message}`} className="fg-body-sm py-2.5 text-fg">
-                <span className="font-mono text-subtle">{b.code}</span> — {inlineCode(b.message)}{" "}
+              <li key={`${b.code}:${b.message}`} className="fg-body-sm py-2.5 text-fg" data-code={b.code}>
+                {gap ? GAP_TEXT[gap] : inlineCode(b.message)}{" "}
                 {href && (
                   <Link href={href} className="text-accent-text hover:underline">
                     {at ? at.label : `Open the issues at ${ISSUE_STATUS_LABELS.awaiting_release}`}
@@ -162,9 +169,16 @@ export function ReleaseAnswer({ projectId, slug }: { projectId: string; slug?: s
                   <a href="#environment-live" className="text-accent-text hover:underline">
                     Record the live commit endpoint
                   </a>
+                ) : g === "release-target" && tab(ADD_LIVE_TARGET.tab) ? (
+                  <Link
+                    href={tab(ADD_LIVE_TARGET.tab, ADD_LIVE_TARGET.add) as string}
+                    className="text-accent-text hover:underline"
+                  >
+                    {ADD_LIVE_TARGET.label}
+                  </Link>
                 ) : tab("integrations") ? (
                   <Link href={tab("integrations") as string} className="text-accent-text hover:underline">
-                    {g === "release-target" ? "Add a live deploy binding" : "Set it on the live binding"}
+                    Set it on the live binding
                   </Link>
                 ) : null}
               </li>
@@ -226,8 +240,8 @@ export function ReleaseDetails({ projectId }: { projectId: string }) {
           </h4>
           <ul className="mt-1 divide-y divide-line border-y border-line">
             {r.warnings.map((w) => (
-              <li key={`${w.code}:${w.message}`} className="fg-body-sm py-2.5 text-fg">
-                <span className="font-mono text-subtle">{w.code}</span> — {inlineCode(w.message)}
+              <li key={`${w.code}:${w.message}`} className="fg-body-sm py-2.5 text-fg" data-code={w.code}>
+                {inlineCode(w.message)}
               </li>
             ))}
           </ul>

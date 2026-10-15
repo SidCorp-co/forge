@@ -283,7 +283,7 @@ export function BatchReleaseDialog({
                     <span className="fg-caption ml-auto shrink-0 text-muted">{statusLabel(issue.status)}</span>
                   </div>
                   {refusedWhy[issue.issueId] ? (
-                    <p className="fg-caption text-danger">Refused: {refusedWhy[issue.issueId]}</p>
+                    <p className="fg-caption fg-danger">Refused: {refusedWhy[issue.issueId]}</p>
                   ) : null}
                   <RadioGroup
                     name={`carried-${issue.issueId}`}

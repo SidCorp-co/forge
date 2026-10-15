@@ -10,6 +10,8 @@ import type { ComponentProps } from "react";
 import { Avatar, Badge, Button, MonoTag, Stat, StatusChip } from "@/design";
 import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-row-parts";
 import { IssueRefBadge } from "./issue-ref-badge";
+import { LANDING_SHAPE_ROW } from "@/lib/api/error";
+import { LandingShapeControl } from "./landing-shape-control";
 import { LiveReachValue } from "./live-reach-row";
 import { MergeMarkerControl } from "./merge-marker-control";
 import { InlineSelect, StatusEdit } from "./inline-edit-cell";
@@ -237,6 +239,8 @@ export function PropertiesRail({
   // An empty field renders no row; one whose action this reader holds keeps the action, on the shared `Not set` row.
   const offerModule = !hasModule && onEditModules !== undefined;
   const offerMerge = !issue.mergedAt && canMarkMerged === true;
+  const landingSource =
+    issue.declaredLandingShape === undefined ? undefined : issue.declaredLandingShape === null ? "project" : "issue";
   return (
     <div className="divide-y divide-line-subtle">
       {held && (
@@ -315,6 +319,16 @@ export function PropertiesRail({
           </div>
         </Row>
       )}
+      {canMarkMerged && (
+        <Row label={LANDING_SHAPE_ROW}>
+          <LandingShapeControl
+            issueId={issue.id}
+            declared={issue.declaredLandingShape ?? null}
+            effective={issue.landingShape}
+            disabled={pending || held}
+          />
+        </Row>
+      )}
       <Row label="Branch">
         <MonoTag>{issue.displayId}</MonoTag>
       </Row>
@@ -335,6 +349,7 @@ export function PropertiesRail({
                 mergedAt={issue.mergedAt}
                 suggestedTarget={issue.displayId}
                 landingShape={issue.landingShape}
+                landingSource={landingSource}
               />
             )}
           </div>
@@ -377,6 +392,7 @@ export function PropertiesRail({
                 mergedAt={null}
                 suggestedTarget={issue.displayId}
                 landingShape={issue.landingShape}
+                landingSource={landingSource}
               />
             )}
           </div>

@@ -494,15 +494,19 @@ describe("a save that would strand work", () => {
 	it("says the chain refusal whole, writes nothing, and links to the waiting issues", async () => {
 		projectRefusal = new ApiError(
 			409,
-			"RELEASE_CHAIN_STRANDS_WORK: this write empties the release chain while 1 of its issue waits.",
+			"RELEASE_CHAIN_STRANDS_WORK: this write empties the release chain while 1 of its issues waits.",
 			"RELEASE_CHAIN_STRANDS_WORK",
 			{ issues: ["ISS-3"], total: 1, status: "awaiting_release" },
 		);
 		await mount(project());
 		fireEvent.click(within(await pick(/repository, no release/i)).getByRole("button", { name: "Change the shape" }));
 		const banner = await screen.findByTestId("project-refusal");
-		expect(banner).toHaveTextContent(/Nothing was saved/);
-		expect(banner).toHaveTextContent(/RELEASE_CHAIN_STRANDS_WORK/);
+		expect(banner).toHaveTextContent(
+			"Nothing was saved. 1 issue waits at Awaiting release, and with no release path nothing would ever release it. Release it first, or return it to Developed, then save again.",
+		);
+		expect(banner.textContent).not.toMatch(/RELEASE_CHAIN_STRANDS_WORK|`|awaiting_release|\bthem\b/);
+		// Said once: the banner, and no toast over it.
+		expect(toast).not.toHaveBeenCalled();
 		expect(within(banner).getByRole("link", { name: /open the 1 waiting issue/i })).toHaveAttribute(
 			"href",
 			"/projects/desk/issues?status=awaiting_release",
@@ -514,12 +518,46 @@ describe("a save that would strand work", () => {
 		projectRefusal = new ApiError(409, "PROJECT_KIND_STRANDS_WORK: marks would stop counting.", "PROJECT_KIND_STRANDS_WORK", {
 			issues: ["ISS-4", "ISS-9"],
 			total: 2,
+			from: "standard",
+			to: "website",
+			landingShape: "git",
 		});
 		await mount(project());
 		fireEvent.click(within(await pick(/no repository/i)).getByRole("button", { name: "Change the shape" }));
 		const banner = await screen.findByTestId("project-refusal");
 		expect(within(banner).getByRole("link", { name: "ISS-4" })).toHaveAttribute("href", "/projects/desk/issues/ISS-4");
 		expect(within(banner).getByRole("link", { name: "ISS-9" })).toBeInTheDocument();
+		expect(banner).toHaveTextContent(
+			"2 open issues carry merge marks that would stop counting as a landing once this project has no repository. Finish them first, then change the shape. Or keep their marks counting: on each issue, press Unmark, set Work lands to “In git”, and mark each one merged again; then change the shape.",
+		);
+		expect(banner.textContent).not.toMatch(/PROJECT_KIND_STRANDS_WORK|`|\/api\/|forge_issues|agent|no control/);
+		expect(toast).not.toHaveBeenCalled();
+	});
+
+	it("says a kind refusal toward a repository in the singular, pointing at the Work lands control to keep a CMS issue outside git", async () => {
+		projectRefusal = new ApiError(409, "PROJECT_KIND_STRANDS_WORK: a mark would stop counting.", "PROJECT_KIND_STRANDS_WORK", {
+			issues: ["ISS-4"],
+			total: 1,
+			from: "website",
+			to: "standard",
+			landingShape: "outside_git",
+		});
+		await mount(project({ kind: "website", releaseChain: [] } as Partial<ProjectDetail>));
+		fireEvent.click(within(await pick(/repository, no release/i)).getByRole("button", { name: "Change the shape" }));
+		const banner = await screen.findByTestId("project-refusal");
+		expect(banner).toHaveTextContent(
+			"1 open issue carries a merge mark that would stop counting as a landing once this project has a repository. Finish it first, then change the shape. Or keep its mark counting: on the issue, press Unmark, set Work lands to “Outside git”, and mark it merged again; then change the shape.",
+		);
+		expect(banner.textContent).not.toMatch(/pull request|agent|no control/);
+	});
+
+	it("says a save that landed once, in the tab's own name", async () => {
+		await mount();
+		clear(/preview url/i);
+		save();
+		await waitFor(() => expect(sent).toHaveLength(1));
+		await waitFor(() => expect(toast).toHaveBeenCalledTimes(1));
+		expect(toast).toHaveBeenCalledWith({ title: "Shape & release saved", tone: "success" });
 	});
 
 	it("tells a project that ships nothing that issues already wait at the release gate", async () => {

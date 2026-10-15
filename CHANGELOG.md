@@ -129,6 +129,7 @@
 
 ### Added
 
+- **An issue page says where its work lands, and a person can change it.** Work lands sits in its properties; a change the issue's merge mark forbids is refused there, with the steps. (ISS-1171)
 - **Writing an issue into `clarified` or `tested` is refused.** Both were retired rungs that accepted the write and stranded the issue; the refusal names `approved` or `awaiting_release`. Issues already there can still move.
 
 - **The agent tools `forge_skills.register` and `forge_skills.list_registrations` are gone.** No status runs a skill, so binding one to a stage did nothing. Mark a skill `installOnly` with `forge_skills.update` instead.
@@ -3188,6 +3189,7 @@
 
 ### Fixed
 
+- **A refused settings save reads in words, once.** An empty refusal no longer reads "Bad Request"; shape refusals name what to press; the release blocker opens where a live deploy target is added; narrow screens hint at more tabs. (ISS-1171)
 - **A cancelled release says which silence it measured.** Its reason, and the release run's stall reading, name whether nothing was written since a box took the job or since the release's last write. (ISS-1319)
 - **A release batch whose box went silent no longer blocks the project.** After 25 minutes with nothing written to its ledger it is cancelled and its issues return to the release gate, so a new release can start. (ISS-1319)
 - **Writing a step handoff for a run that does not exist is refused by name.** It answered a server error; it now answers 404 naming `pipelineRunId`, over REST and through the tool. (ISS-1319)

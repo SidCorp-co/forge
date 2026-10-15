@@ -5,7 +5,7 @@
 // the Agent MCP servers preview, and the ISS-408/F3 "Share an existing
 // connection" Card. The workspace `/integrations` page is the owner-scoped
 // connection directory; everything project-scoped lives here.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Banner,
   Button,
@@ -22,6 +22,7 @@ import { ProjectIntegrationsPanel } from "@/features/integrations/components/pro
 import { useBindExistingConnection, useConnections, useIsOrgAdmin } from "@/features/integrations/hooks";
 import { providerLabel, providerModule } from "@/features/integrations/providers/registry";
 import { formatApiError } from "@/lib/api/error";
+import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { providerCanDeploy } from "@forge/contracts/deploy-capability";
 import type {
   AgentAccess,
@@ -46,12 +47,24 @@ const STAGE_CHOICES: { value: DeployStage; label: string; hint: string }[] = [
   { value: "live", label: "Live", hint: "real users are on it" },
 ];
 
+/** The section an "add a live deploy target" link lands on, named by its `?add=` and its id. */
+export const LIVE_DEPLOY_TARGET = "live-deploy-target";
+
 function connectionLabel(c: ConnectionSummary): string {
   const provider = providerLabel(c.provider);
   return c.displayName ? `${c.displayName} · ${provider}` : provider;
 }
 
-function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+function ShareExistingCard({
+  projectId,
+  canEdit,
+  addingLiveTarget,
+}: {
+  projectId: string;
+  canEdit: boolean;
+  /** Arrived to add a live deploy target: Deploy target is picked and Live ticked already. */
+  addingLiveTarget: boolean;
+}) {
   const connectionsQ = useConnections();
   const bind = useBindExistingConnection();
   const [connectionId, setConnectionId] = useState<string>("");
@@ -83,6 +96,12 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
   // control at all — that provider has no agent path for a grant to open.
   const agentPathKind = provider ? (providerModule(provider)?.agentPathKind ?? "none") : "none";
   const isOrgAdmin = useIsOrgAdmin(projectId);
+
+  useEffect(() => {
+    if (!addingLiveTarget) return;
+    setRole("deploy");
+    setStages(["live"]);
+  }, [addingLiveTarget]);
 
   function chooseRole(next: BindingRole) {
     setRole(next);
@@ -130,11 +149,13 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
   }
 
   return (
-    <SettingsSection>
+    <SettingsSection id={LIVE_DEPLOY_TARGET}>
       <SectionTitle className="fg-h3 mb-1">Share an existing connection</SectionTitle>
       <p className="fg-body-sm mb-4 text-muted">
         Bind one of your connections to this project without re-entering the credential. The
-        connection&apos;s owner keeps it; this project gets a webhook secret of its own.
+        connection&apos;s owner keeps it; this project gets a webhook secret of its own. A live
+        deploy target is a connection shared as <b>Deploy target</b> with <b>Live</b> ticked; one
+        you have not connected yet starts from its provider on this tab.
       </p>
 
       {!canEdit ? (
@@ -226,10 +247,14 @@ export function IntegrationsTab({
   projectId: string;
   canEdit: boolean;
 }) {
+  // Arriving to add one puts this section first, so the link lands on what it names.
+  const addingLiveTarget = new URLSearchParams(useLocationSearch()).get("add") === LIVE_DEPLOY_TARGET;
+  const share = <ShareExistingCard projectId={projectId} canEdit={canEdit} addingLiveTarget={addingLiveTarget} />;
   return (
     <div className="flex flex-col gap-4">
+      {addingLiveTarget && share}
       <ProjectIntegrationsPanel projectId={projectId} canEdit={canEdit} />
-      <ShareExistingCard projectId={projectId} canEdit={canEdit} />
+      {!addingLiveTarget && share}
     </div>
   );
 }

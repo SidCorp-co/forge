@@ -57,3 +57,58 @@ describe("the transport boundary sits around fetch, not around the response", ()
     await expect(apiClient("/whatever")).rejects.toBe(err);
   });
 });
+
+describe("a failure the server said nothing about is carried in words, never as its reason phrase", async () => {
+  const { formatApiError } = await import("./error");
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  async function failureOf(res: Response): Promise<string> {
+    fetchMock.mockResolvedValue(res);
+    const err = await apiClient("/projects/p").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    return formatApiError(err);
+  }
+
+  it.each([
+    [400, "Bad Request", "", "The server refused the request without saying why."],
+    [429, "Too Many Requests", "<html><body>Too Many Requests</body></html>", "Too many requests in a short time. Wait a moment, then try again."],
+    [413, "Payload Too Large", "<html>413</html>", "What was sent is larger than the server accepts."],
+    [500, "Internal Server Error", "", "The server ran into a problem and could not finish the request."],
+  ])("%i with no message of its own reads as words", async (status, statusText, body, words) => {
+    const said = await failureOf(new Response(body, { status, statusText }));
+    expect(said).toBe(words);
+    expect(said).not.toContain(statusText);
+    expect(said).not.toMatch(/\d{3}/);
+  });
+
+  it("a JSON body whose message is only the reason phrase reads as words too", async () => {
+    const said = await failureOf(
+      new Response(JSON.stringify({ message: "Bad Request" }), {
+        status: 400,
+        statusText: "Bad Request",
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    expect(said).toBe("The server refused the request without saying why.");
+  });
+
+  it("a message the server wrote is what a person reads", async () => {
+    const said = await failureOf(
+      new Response(JSON.stringify({ message: "Base branch is required." }), {
+        status: 400,
+        statusText: "Bad Request",
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    expect(said).toBe("Base branch is required.");
+  });
+
+  it("an HTTP/2 answer, which has no reason phrase, reads as words as well", async () => {
+    const said = await failureOf(new Response("", { status: 400, statusText: "" }));
+    expect(said).toBe("The server refused the request without saying why.");
+  });
+});

@@ -237,7 +237,7 @@ function Unsent({ item, onRetry }: { item: OutboxMessage; onRetry?: (id: string)
         <SentFiles files={item.files.map((file, index) => ({ key: `${index}-${file.name}`, name: file.name }))} />
       )}
       {failed ? (
-        <span className="fg-caption mt-1 flex items-center gap-2 text-danger">
+        <span className="fg-caption mt-1 flex items-center gap-2 fg-danger">
           <Icon name="alert" size={12} className="flex-none" />
           Couldn&apos;t send. {item.error}
           {onRetry && (

@@ -106,6 +106,8 @@ export interface IssueRow {
   mergedClaimedCommit?: string | null;
   /** ISS-1384 — what this issue accepts as landed, its own or its project's; core's, never re-derived. */
   landingShape?: LandingShape;
+  /** The issue's own declaration, or null where its project's shape decides. */
+  declaredLandingShape?: LandingShape | null;
   /** ISS-1217 — whether the merged work is on the live branch. Core's reading; null where none. */
   liveReach?: LiveReach | null;
   createdAt: string;

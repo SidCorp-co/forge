@@ -14,6 +14,7 @@ import type {
   CreatedIssue,
   IssueSearchOpts,
   IssueStatus,
+  LandingShape,
   WaitingCause,
 } from "./types";
 
@@ -321,6 +322,22 @@ export function useMergeMarker(issueId: string) {
       mark.mutate(args, { onSuccess: () => options.onSuccess?.(), onError: (err) => options.onError?.(err) }),
     unmark: () => unmark.mutate({}, { onSuccess: refresh }),
   };
+}
+
+/** Declares where this issue's own work lands, through the same door an agent uses. A refusal is
+ *  handed to the caller, which says it beside the control rather than in a toast. */
+export function useDeclareLandingShape(issueId: string) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: (landingShape: LandingShape | null) => issuesApi.patch(issueId, { landingShape }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["issue", issueId] });
+      qc.invalidateQueries({ queryKey: ["activities", issueId] });
+      qc.invalidateQueries({ queryKey: ["issues"] });
+      toast({ title: "Where its work lands is saved", tone: "success" });
+    },
+  });
 }
 
 export function useRunPipelineStep() {

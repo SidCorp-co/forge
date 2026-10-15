@@ -21,7 +21,16 @@ export const STRANDED_NAMED_MAX = 10;
 export interface StrandedWork {
   code: typeof RELEASE_CHAIN_STRANDS_WORK | typeof PROJECT_KIND_STRANDS_WORK;
   message: string;
-  details: { issues: string[]; total: number; status?: 'awaiting_release' };
+  details: {
+    issues: string[];
+    total: number;
+    status?: 'awaiting_release';
+    /** On the kind refusal: the kinds the write moves between, and the landing shape each issue
+     *  declares to stay on the lane its mark was written for. */
+    from?: string;
+    to?: string;
+    landingShape?: Lane['shape'];
+  };
 }
 
 function named(keys: string[]): string {
@@ -37,10 +46,14 @@ export function chainStrandsWork(waiting: string[]): StrandedWork {
     code: RELEASE_CHAIN_STRANDS_WORK,
     message:
       `${RELEASE_CHAIN_STRANDS_WORK}: this write empties the release chain, so the project would ship nothing, ` +
-      `while ${n} of its issue${n === 1 ? '' : 's'} wait${n === 1 ? 's' : ''} at \`awaiting_release\` for a release: ${named(waiting)}. ` +
-      'With an empty chain no release is ever cut for them, so they would wait for good. ' +
-      'Release them first, or return each one to `developed`, and then empty the chain. ' +
-      'Closing them is not a way out: a close records the work as shipped and unblocks every issue that depends on it.',
+      `while ${n} of its issues wait${n === 1 ? 's' : ''} at \`awaiting_release\` for a release: ${named(waiting)}. ` +
+      (n === 1
+        ? 'With an empty chain no release is ever cut for it, so it would wait for good. ' +
+          'Release it first, or return it to `developed`, and then empty the chain. ' +
+          'Closing it is not a way out: a close records the work as shipped and unblocks every issue that depends on it.'
+        : 'With an empty chain no release is ever cut for them, so they would wait for good. ' +
+          'Release them first, or return each one to `developed`, and then empty the chain. ' +
+          'Closing them is not a way out: a close records the work as shipped and unblocks every issue that depends on it.'),
     details: { issues: waiting, total: n, status: 'awaiting_release' },
   };
 }
@@ -68,7 +81,7 @@ export function kindStrandsWork(args: {
       'For each one, in this order: withdraw its mark (`DELETE /api/issues/:id/merge`, or `forge_issues` `unmark`), ' +
       `declare \`landingShape: ${args.was.shape}\` (\`PATCH /api/issues/:id\`, or \`forge_issues\` \`update\`), and mark it merged again; ` +
       'a landing shape is not taken while a mark stands. Each one is then judged on the lane its mark was written for, and the kind can change.',
-    details: { issues: keys, total: n },
+    details: { issues: keys, total: n, from: args.from, to: args.to, landingShape: args.was.shape },
   };
 }
 

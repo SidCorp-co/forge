@@ -435,7 +435,7 @@ function AddEpodsystemForm({
             onChange={(e) => setLabel(e.target.value.toLowerCase())}
           />
           {labelError && (
-            <p className="fg-body-sm text-danger">{labelError}</p>
+            <p className="fg-body-sm fg-danger">{labelError}</p>
           )}
         </Field>
       )}

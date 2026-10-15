@@ -119,7 +119,7 @@ describe("SchedulesScreen — present state", () => {
     const [r] = tableRows();
     const last = within(r).getByText(/Failed 2 hours ago/);
     expect(last.className).toContain("text-subtle");
-    expect(last.className).not.toContain("text-danger");
+    expect(last.className).not.toMatch(/danger/);
   });
 
   it("a skipped last run renders as neutral dated text and the screen stays up", () => {
