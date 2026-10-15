@@ -44,9 +44,9 @@ function Row({ children }: { children: React.ReactNode }) {
 }
 
 const SEMANTIC_TOKENS = [
-  ["--bg-app", "App"], ["--bg-surface", "Surface"], ["--bg-sunken", "Sunken"],
-  ["--bg-hover", "Hover"], ["--border-default", "Border"], ["--fg-default", "FG"],
-  ["--fg-muted", "Muted"], ["--accent", "Accent"], ["--link", "Link"],
+  ["var(--bg-app)", "App"], ["var(--bg-surface)", "Surface"], ["var(--bg-sunken)", "Sunken"],
+  ["var(--bg-hover)", "Hover"], ["var(--border-default)", "Border"], ["var(--fg-default)", "FG"],
+  ["var(--fg-muted)", "Muted"], ["var(--accent)", "Accent"], ["var(--link)", "Link"],
 ];
 
 const STATUSES: StatusKey[] = ["running", "queued", "blocked", "waiting", "passed", "failed", "paused", "done", "review"];
@@ -525,11 +525,11 @@ export default function KitPage() {
 
           <Section id="tokens" title="Color tokens" hint="Semantic layer (components reference these).">
             <Row>
-              {SEMANTIC_TOKENS.map(([token, label]) => (
-                <div key={token} className="flex flex-col items-center gap-1.5">
-                  <span className="size-14 rounded-md border border-line" style={{ background: `var(${token})` }} />
+              {SEMANTIC_TOKENS.map(([ink, label]) => (
+                <div key={ink} className="flex flex-col items-center gap-1.5">
+                  <span className="size-14 rounded-md border border-line" style={{ background: ink }} />
                   <span className="fg-caption">{label}</span>
-                  <span className="font-mono text-10 text-subtle">{token}</span>
+                  <span className="font-mono text-10 text-subtle">{ink.slice(4, -1)}</span>
                 </div>
               ))}
             </Row>

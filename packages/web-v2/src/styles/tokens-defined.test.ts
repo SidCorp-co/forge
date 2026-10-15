@@ -36,9 +36,11 @@ function setInline(text: string): Set<string> {
   return new Set([...code(text).matchAll(/["'](--[A-Za-z0-9_-]+)["']\s*:/g)].map((m) => m[1] as string));
 }
 
-/** Every `var(--name` a file reads. A name built at runtime (`var(--x-${k})`) keeps its `${`, so it is refused rather than skipped. */
+const NAME = /^--[A-Za-z0-9_-]+$/;
+
+/** Every `var(` argument a file reads, as written. One that is not a whole literal name was built at runtime, and is refused rather than skipped. */
 function readsVars(text: string): string[] {
-  return [...code(text).matchAll(/var\(\s*(--[A-Za-z0-9_-]+(?:\$\{)?)/g)].map((m) => m[1] as string);
+  return [...code(text).matchAll(/var\(\s*([^)\s,]*)/g)].map((m) => m[1] as string);
 }
 
 /** `file: --name` for each read nothing defines, given every source by path and what the stylesheets declare. */
@@ -48,8 +50,11 @@ function undefinedReads(sources: ReadonlyMap<string, string>, declared: Readonly
   for (const [file, text] of sources) {
     const inline = setInline(text);
     for (const name of readsVars(text)) {
-      if (declared.has(name) || fonts.has(name) || inline.has(name)) continue;
-      out.add(`${file}: ${name.endsWith("${") ? `${name}…} (a name built at runtime cannot be checked)` : name}`);
+      if (!NAME.test(name)) {
+        out.add(`${file}: var(${name}) (a name built at runtime cannot be checked)`);
+      } else if (!declared.has(name) && !fonts.has(name) && !inline.has(name)) {
+        out.add(`${file}: ${name}`);
+      }
     }
   }
   return [...out].sort();
@@ -92,11 +97,15 @@ describe("every var() the web source reads is defined", () => {
     expect(undefinedReads(sources, new Set())).toEqual(["b.tsx: --w"]);
   });
 
-  it("refuses a name built at runtime instead of skipping it", () => {
+  it("refuses a name built at runtime, in part or whole, instead of skipping it", () => {
     const open = "$" + "{";
-    const sources = new Map([["a.ts", `const c = \`var(--tone-${open}k})\`;`]]);
+    const sources = new Map([
+      ["a.ts", `const c = \`var(--tone-${open}k})\`;`],
+      ["b.tsx", `const s = { background: \`var(${open}token})\` };`],
+    ]);
     expect(undefinedReads(sources, new Set(["--tone-red"]))).toEqual([
-      `a.ts: --tone-${open}…} (a name built at runtime cannot be checked)`,
+      `a.ts: var(--tone-${open}k}) (a name built at runtime cannot be checked)`,
+      `b.tsx: var(${open}token}) (a name built at runtime cannot be checked)`,
     ]);
   });
 
