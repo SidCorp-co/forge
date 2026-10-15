@@ -5,7 +5,7 @@ import { INDEX_PATH, SITE_CAPTION, SITE_NAME } from "../audience";
 /** Chrome for the public documentation. Deliberately not the workspace shell:
  *  these routes are read by people with no Forge account and by agents with no
  *  credential, so nothing here reads a session. */
-export function GuideShell({ children }: { children: React.ReactNode }) {
+export function GuideShell({ children, indexDown = false }: { children: React.ReactNode; indexDown?: boolean }) {
   return (
     <div className="min-h-dvh bg-app">
       <header className="border-b border-line">
@@ -17,6 +17,7 @@ export function GuideShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">{children}</main>
+      {indexDown ? null : (
       <footer className="mx-auto max-w-6xl px-4 pb-12 sm:px-6">
         <p className="fg-caption break-words text-subtle">
           The pages for agents and scripts are also markdown an agent can fetch without a credential:{" "}
@@ -25,6 +26,7 @@ export function GuideShell({ children }: { children: React.ReactNode }) {
           page.
         </p>
       </footer>
+      )}
     </div>
   );
 }

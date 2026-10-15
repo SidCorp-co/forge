@@ -4,7 +4,7 @@ import { fetchGuide, fetchGuideCorpus, fetchGuideIndex, fetchGuideScope } from "
 const BASE = "http://core.test/api";
 
 function stubFetch(handler: (url: string) => Response | Promise<Response>) {
-  const spy = vi.fn(async (input: RequestInfo | URL) => handler(String(input)));
+  const spy = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => handler(String(input)));
   vi.stubGlobal("fetch", spy);
   return spy;
 }
@@ -48,6 +48,26 @@ describe("fetchGuideIndex", () => {
       throw new Error("ECONNREFUSED");
     });
     await expect(fetchGuideIndex()).rejects.toThrow(/could not be reached/);
+  });
+});
+
+describe("what is read past the fetch cache", () => {
+  it("reads the guide index live, so a page rendered while core is down cannot be built from a stale copy", async () => {
+    withBase();
+    const spy = stubFetch(() => Response.json({ guides: [] }));
+    await fetchGuideIndex();
+    const init = spy.mock.calls[0][1] as RequestInit & { next?: unknown };
+    expect(init.cache).toBe("no-store");
+    expect(init.next).toBeUndefined();
+  });
+
+  it("reads a guide's body through the cache, for five minutes", async () => {
+    withBase();
+    const spy = stubFetch(() => Response.json({ guide: { slug: "a", title: "A", summary: "s", version: 1, body: "b" } }));
+    await fetchGuide("a");
+    const init = spy.mock.calls[0][1] as RequestInit & { next?: { revalidate?: number } };
+    expect(init.cache).toBeUndefined();
+    expect(init.next?.revalidate).toBe(300);
   });
 });
 

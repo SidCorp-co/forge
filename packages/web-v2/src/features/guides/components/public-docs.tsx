@@ -30,7 +30,7 @@ import {
   ONE_CORPUS,
 } from "../audience";
 import { type PublicDoc, docsBehind, doorSections } from "../corpus";
-import { ALL_DOORS_LINK_TEXT, HELP_ONLY_SEARCH, type Refusal, saidWhileDown } from "../missing";
+import { ALL_DOORS_LINK_TEXT, HELP_ONLY_SEARCH, LANDING_WHILE_DOWN, type Refusal, saidWhileDown } from "../missing";
 
 /** What the reader shows: a door's page list, or one page by its href, unique across both homes. */
 export type ReaderView =
@@ -115,15 +115,16 @@ export function PublicLanding({
 }: {
   corpus: readonly PublicDoc[];
   placeholder: string;
-  scope: GuideScope;
+  scope: GuideScope | null;
 }) {
   const { query, setQuery, results } = useSearch(corpus);
   useDocumentTitle(null);
+  const doors = scope ? AUDIENCES : BUNDLED_AUDIENCES;
   return (
     <div className="flex flex-col gap-6">
       <div>
         <PageTitle className="fg-h2 text-fg">Forge documentation</PageTitle>
-        <p className="fg-body mt-2 max-w-[72ch] text-muted">{ONE_CORPUS}</p>
+        <p className="fg-body mt-2 max-w-[72ch] text-muted">{scope ? ONE_CORPUS : LANDING_WHILE_DOWN}</p>
       </div>
       <div className="max-w-[72ch]">
         <DocsSearchField
@@ -135,7 +136,7 @@ export function PublicLanding({
         {results ? <DocsSearchResults results={results.map((d) => resultItem(d, null, query))} /> : null}
       </div>
       <nav aria-label="Ways in" className="flex max-w-[72ch] flex-col divide-y divide-line-subtle border-y border-line-subtle">
-        {AUDIENCES.map((audience) => {
+        {doors.map((audience) => {
           const count = docsBehind(corpus, audience).length;
           return (
             <Link key={audience} href={doorHref(audience)} className="group flex flex-col gap-1 py-4">
@@ -146,7 +147,7 @@ export function PublicLanding({
                 </span>
               </div>
               <span className="fg-body-sm text-muted">{DOORS[audience].blurb}</span>
-              {audience === "agent" ? (
+              {audience === "agent" && scope ? (
                 <span className="fg-caption text-subtle">
                   <Said text={scope.elsewhere} />
                 </span>

@@ -7,7 +7,7 @@ import { DOORS, documentTitle } from "@/features/guides/audience";
 import { buildCorpus, fromGuide } from "@/features/guides/corpus";
 import { GuideShell } from "@/features/guides/components/guide-shell";
 import { PublicReader, PublicRefusal } from "@/features/guides/components/public-docs";
-import { GUIDES_UNAVAILABLE } from "@/features/guides/missing";
+import { GUIDES_UNAVAILABLE, missingGuideHeading } from "@/features/guides/missing";
 import { orUnreadable } from "@/features/guides/unreadable";
 
 type Params = { params: Promise<{ slug: string }> };
@@ -16,18 +16,19 @@ type Params = { params: Promise<{ slug: string }> };
  *  answer could not be read. */
 const readGuide = cache((slug: string) =>
   orUnreadable(async () => {
+    const scope = await fetchGuideScope();
     const guide = await fetchGuide(slug);
     if (!guide) return { guide: null };
-    const [guides, scope] = await Promise.all([fetchGuideCorpus(), fetchGuideScope()]);
-    return { guide, corpus: buildCorpus(HELP_DOCS, guides), scope };
+    return { guide, corpus: buildCorpus(HELP_DOCS, await fetchGuideCorpus()), scope };
   }),
 );
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
-  const read = await readGuide((await params).slug);
+  const { slug } = await params;
+  const read = await readGuide(slug);
   if (!read) return { title: documentTitle(GUIDES_UNAVAILABLE.heading), robots: { index: false } };
   const { guide } = read;
-  if (!guide) return {};
+  if (!guide) return { title: documentTitle(missingGuideHeading(slug)), robots: { index: false } };
   return { title: documentTitle(guide.title), description: `${DOORS.agent.notice} ${guide.summary}` };
 }
 
@@ -35,7 +36,7 @@ export default async function GuidePage({ params }: Params) {
   const read = await readGuide((await params).slug);
   if (!read) {
     return (
-      <GuideShell>
+      <GuideShell indexDown>
         <PublicRefusal refusal={GUIDES_UNAVAILABLE} />
       </GuideShell>
     );

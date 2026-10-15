@@ -17,7 +17,7 @@ const fetchGuideScope = vi.fn(async (): Promise<unknown> => {
 vi.mock("@/features/guides/api", () => ({ fetchGuideCorpus, fetchGuideScope, GuideFetchError }));
 vi.spyOn(console, "error").mockImplementation(() => {});
 
-const { BUNDLED_WAYS_IN, GUIDES_UNAVAILABLE, HELP_ONLY_SEARCH, SEARCH_UNAVAILABLE } = await import(
+const { BUNDLED_WAYS_IN, GUIDES_UNAVAILABLE, HELP_ONLY_SEARCH, LANDING_WHILE_DOWN, SEARCH_UNAVAILABLE } = await import(
   "@/features/guides/missing"
 );
 const { default: GuidesPage, generateMetadata } = await import("./page");
@@ -72,8 +72,26 @@ describe("/guides refusing an address, with the guide index down", () => {
   });
 });
 
-describe("/guides naming the landing or the agents' door, with the guide index down", () => {
-  it.each([[{ for: "agent" }], [{}]])(
+describe("/guides naming the landing, with the guide index down", () => {
+  it("builds the landing from the bundled pages: says why, searches them, and offers only the doors that open", async () => {
+    await open({});
+    expect(screen.getByRole("link", { name: "Forge documentation" })).toHaveAttribute("href", "/guides");
+    expect(screen.queryByRole("heading", { name: GUIDES_UNAVAILABLE.heading })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Forge documentation" })).toBeInTheDocument();
+    expect(screen.getByText(LANDING_WHILE_DOWN)).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Search every page" })).toHaveAttribute("placeholder", "Try “status”, “Claude”");
+    const doors = within(screen.getByRole("navigation", { name: "Ways in" })).getAllByRole("link");
+    expect(doors.map((d) => d.getAttribute("href"))).toEqual(BUNDLED_DOORS);
+    expect(screen.queryByText(/also markdown an agent can fetch/)).toBeNull();
+  });
+
+  it("names the documentation in the tab, not the outage", async () => {
+    expect((await generateMetadata({ searchParams: Promise.resolve({}) })).title).toBe("Forge documentation");
+  });
+});
+
+describe("/guides naming the agents' door, with the guide index down", () => {
+  it.each([[{ for: "agent" }]])(
     "renders in the docs' shell for %o: the site, that the guides could not be loaded, and only the doors that still open",
     async (params) => {
       await open(params);
@@ -97,6 +115,7 @@ describe("/guides naming a help page or a door of help pages, with the guide ind
     expect(screen.getByText(HELP_ONLY_SEARCH)).toBeInTheDocument();
     const onward = within(screen.getByRole("navigation", { name: "Other ways in" })).getAllByRole("link");
     expect(onward.map((d) => d.getAttribute("href"))).toEqual(["/guides?for=assistant-setup"]);
+    expect(screen.queryByText(/also markdown an agent can fetch/)).toBeNull();
   });
 
   it.each([

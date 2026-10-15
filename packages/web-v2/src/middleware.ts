@@ -27,8 +27,9 @@ async function coreStatus(path: string): Promise<number | null> {
 }
 
 /** Answers a `/guides/<slug>` naming no guide, and a `/guides?path=`/`?for=` naming no page or
- *  door, with a 404, and the landing, the agents' door or a guide whose guides core cannot answer
- *  for with a 503. A help page and a door of help pages are bundled and need no answer from core.
+ *  door, with a 404, and the agents' door or a guide whose guides core cannot answer for with a
+ *  503. The landing, a help page and a door of help pages are built from the bundled pages while
+ *  core is down, and need no answer from it.
  *  It gates nobody on those routes — why it is here and not in the page:
  *  docs/modules/guides/public-pages.md. */
 async function guides(request: NextRequest, pathname: string): Promise<NextResponse> {
@@ -58,8 +59,10 @@ async function guides(request: NextRequest, pathname: string): Promise<NextRespo
   if (!slug) {
     const asked = readPublicRequest(request.nextUrl.searchParams, HELP_SLUGS);
     if (asked.kind === "refused") return refuse(asked.refusal);
-    if (asked.kind === "page" || (asked.kind === "door" && BUNDLED_AUDIENCES.includes(asked.audience))) return pass();
-    return ok(await coreStatus("/guides")) ? pass() : unavailable();
+    if (asked.kind === "door" && !BUNDLED_AUDIENCES.includes(asked.audience)) {
+      return ok(await coreStatus("/guides")) ? pass() : unavailable();
+    }
+    return pass();
   }
 
   if (!GUIDE_SLUG.test(slug)) return refuse(missingGuide(slug));

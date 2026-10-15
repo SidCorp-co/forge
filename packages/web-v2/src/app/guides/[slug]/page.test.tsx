@@ -40,7 +40,42 @@ describe("/guides/<slug> while core cannot answer for the guides", () => {
   });
 
   it("throws an error that is not an unreadable guide, rather than calling it one", async () => {
+    fetchGuideScope.mockResolvedValueOnce({} as never);
     fetchGuide.mockRejectedValueOnce(new TypeError("a defect"));
     await expect(GuidePage({ params: Promise.resolve({ slug: "other" }) })).rejects.toThrow("a defect");
+  });
+});
+
+const SCOPE = { complete: false, listed: "l", elsewhere: "e", reach: "r", authority: "a", cliServed: [] };
+
+describe("/guides/<slug> naming no guide core publishes", () => {
+  it("names the refusal in the tab, so a client-side navigation onto it does not keep the site's bare name", async () => {
+    fetchGuideScope.mockResolvedValueOnce(SCOPE as never);
+    fetchGuide.mockResolvedValueOnce(null as never);
+    expect(await generateMetadata({ params: Promise.resolve({ slug: "no-such-guide" }) })).toEqual({
+      title: "Forge publishes no guide called “no-such-guide” — Forge documentation",
+      robots: { index: false },
+    });
+  });
+
+  it("names the address-less refusal where the slug is empty", async () => {
+    fetchGuideScope.mockResolvedValueOnce(SCOPE as never);
+    fetchGuide.mockResolvedValueOnce(null as never);
+    expect(await generateMetadata({ params: Promise.resolve({ slug: "" }) })).toEqual({
+      title: "Forge publishes no guide at that address — Forge documentation",
+      robots: { index: false },
+    });
+  });
+});
+
+describe("/guides/<slug> whose guide the fetch cache still holds while the live index does not answer", () => {
+  it("says the guides could not be loaded rather than serving the cached guide and every door", async () => {
+    fetchGuide.mockResolvedValueOnce({ slug: "cached", title: "Cached", summary: "s", version: 1, body: "# Cached" } as never);
+    const params = Promise.resolve({ slug: "cached" });
+
+    render(await GuidePage({ params }));
+
+    expect(screen.getByRole("heading", { name: GUIDES_UNAVAILABLE.heading })).toBeInTheDocument();
+    expect(screen.queryByText("The pages for agents and scripts are also markdown", { exact: false })).toBeNull();
   });
 });
