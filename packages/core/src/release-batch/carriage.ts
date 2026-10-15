@@ -5,10 +5,14 @@
  * served commit does not descend from the judged one and the files their trees differ in have to
  * be named.
  *
- * A successful answer about two named commits, or one commit's own diff, is content-addressed and
- * never changes, so it is kept for the process, bounded, oldest out first; a failure is a reading
- * about the moment and is never kept. A pair with no common ancestor arrives as a failed request
- * and is unread like any other.
+ * Whether the served commit descends from the judged one is asked first, as one compare; the files
+ * two commits differ in are paged through only when it does not, since a judged commit weeks behind
+ * the served one can differ in thousands of files and every page is a call.
+ *
+ * Whatever GitHub answered about two named commits, or one commit's own diff, is content-addressed
+ * and never changes — a list too long to take whole included — so it is kept for the process,
+ * bounded, oldest out first. A request that failed is a reading about the moment and is never kept.
+ * A pair with no common ancestor arrives as a failed request and is unread like any other.
  */
 
 import type { HostFileChange, SourceHost } from '../integrations/source-host/index.js';
@@ -34,9 +38,9 @@ function why(err: unknown): string {
 }
 
 async function readCarriage(host: SourceHost, judged: string, served: string): Promise<Carriage> {
+  if (DESCENDS.has(await host.compare(judged, served))) return { kind: 'descends' };
   const forward = await host.compareFiles(judged, served);
   if ('why' in forward) return { kind: 'unread', why: forward.why };
-  if (DESCENDS.has(forward.status)) return { kind: 'descends' };
   const back = await host.compareFiles(served, judged);
   if ('why' in back) return { kind: 'unread', why: back.why };
   return { kind: 'differs', paths: [...new Set([...forward.files, ...back.files])].sort() };
@@ -56,7 +60,7 @@ export async function carriageOf(
   if (spent) return { kind: 'unread', why: spent };
   try {
     const read = await readCarriage(host, judged, served);
-    if (read.kind !== 'unread') keep(carried, key, read);
+    keep(carried, key, read);
     return read;
   } catch (err) {
     return {
@@ -87,12 +91,10 @@ export async function changedFilesOf(
   if (spent) return { kind: 'unread', why: spent };
   try {
     const read = await host.commitFiles(landing);
-    if ('why' in read) return { kind: 'unread', why: read.why };
-    const files: ChangedFiles = {
-      kind: 'read',
-      paths: [...new Set(read.files)].sort(),
-      changes: read.changes,
-    };
+    const files: ChangedFiles =
+      'why' in read
+        ? { kind: 'unread', why: read.why }
+        : { kind: 'read', paths: [...new Set(read.files)].sort(), changes: read.changes };
     keep(changed, key, files);
     return files;
   } catch (err) {

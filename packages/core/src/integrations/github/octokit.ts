@@ -14,6 +14,7 @@ import { Octokit } from '@octokit/core';
 import { retry } from '@octokit/plugin-retry';
 import { throttling } from '@octokit/plugin-throttling';
 import { logger } from '../../lib/logger.js';
+import { SourceHostCallError } from '../source-host/index.js';
 import { GITHUB_API_BASE, type HeadersLike } from './types.js';
 
 const DEFAULT_TIMEOUT_MS = 8000;
@@ -56,8 +57,57 @@ function boundedFetch(inner: typeof fetch): typeof fetch {
 const shortWait = (retryAfter: number, retryCount: number) =>
   retryCount === 0 && retryAfter <= MAX_RATE_LIMIT_WAIT_S;
 
+/**
+ * A GitHub read refused here, without calling, because GitHub rate-limited this App or installation
+ * and the window has not reset. Status 429, so every door that words a provider's refusal words it.
+ */
+export class GitHubRateLimited extends SourceHostCallError {
+  readonly resetAt: Date;
+  constructor(resetAt: Date) {
+    super(429, `GitHub rate limit, resets at ${resetAt.toISOString()}`);
+    this.name = 'GitHubRateLimited';
+    this.resetAt = resetAt;
+    this.retryAt = resetAt;
+  }
+}
+
+/** Per App and installation (the throttle id): when GitHub said its window resets. */
+const limitedUntil = new Map<string, number>();
+
+/** When GitHub's answer says the window resets: `retry-after`, else `x-ratelimit-reset` once none remain. */
+function resetOf(err: unknown, now: number): number | null {
+  const answered = responseOf(err);
+  if (!answered || (answered.status !== 403 && answered.status !== 429)) return null;
+  const after = Number(answered.headers.get('retry-after'));
+  if (Number.isFinite(after) && after > 0) return now + after * 1000;
+  const reset = Number(answered.headers.get('x-ratelimit-reset'));
+  if (answered.headers.get('x-ratelimit-remaining') === '0' && Number.isFinite(reset)) {
+    return reset * 1000;
+  }
+  return null;
+}
+
+function limit(id: string, until: number): void {
+  if (until > (limitedUntil.get(id) ?? 0)) limitedUntil.set(id, until);
+}
+
+/** The window a client is inside now, if any: a reset already past is forgotten. */
+export function rateLimitedUntil(id: string, now = Date.now()): Date | null {
+  const until = limitedUntil.get(id);
+  if (until === undefined) return null;
+  if (until <= now) {
+    limitedUntil.delete(id);
+    return null;
+  }
+  return new Date(until);
+}
+
+const throttleId = (cred: AppCredential, installationId: number | null) =>
+  `${cred.apiBaseUrl ?? GITHUB_API_BASE}|${cred.appId}:${installationId ?? 'app'}`;
+
 function build(cred: AppCredential, installationId: number | null): GitHubOctokit {
-  return new GitHubApp({
+  const id = throttleId(cred, installationId);
+  const octokit = new GitHubApp({
     baseUrl: (cred.apiBaseUrl ?? GITHUB_API_BASE).replace(/\/+$/, ''),
     authStrategy: createAppAuth,
     auth: {
@@ -69,7 +119,8 @@ function build(cred: AppCredential, installationId: number | null): GitHubOctoki
     log: octokitLog,
     retry: { retries: 2, retryAfterBaseValue: 500 },
     throttle: {
-      id: `${cred.appId}:${installationId ?? 'app'}`,
+      id,
+      // a wait past a few seconds is no retry: the window is recorded and every request inside it is refused uncalled
       onRateLimit: (
         retryAfter: number,
         options: { method?: string; url?: string },
@@ -79,7 +130,9 @@ function build(cred: AppCredential, installationId: number | null): GitHubOctoki
         octokitLog.warn(
           `rate limited on ${options.method} ${options.url}, reset in ${retryAfter}s`,
         );
-        return shortWait(retryAfter, retryCount);
+        if (shortWait(retryAfter, retryCount)) return true;
+        limit(id, Date.now() + retryAfter * 1000);
+        return false;
       },
       onSecondaryRateLimit: (
         retryAfter: number,
@@ -90,10 +143,27 @@ function build(cred: AppCredential, installationId: number | null): GitHubOctoki
         octokitLog.warn(
           `secondary rate limit on ${options.method} ${options.url}, retry after ${retryAfter}s`,
         );
-        return shortWait(retryAfter, retryCount);
+        if (shortWait(retryAfter, retryCount)) return true;
+        limit(id, Date.now() + retryAfter * 1000);
+        return false;
       },
     },
   });
+  // outermost, so a request inside a recorded window reaches neither the throttle queue nor GitHub
+  octokit.hook.wrap('request', async (request, options) => {
+    const until = rateLimitedUntil(id);
+    if (until) throw new GitHubRateLimited(until);
+    try {
+      return await request(options);
+    } catch (err) {
+      const reset = resetOf(err, Date.now());
+      if (!reset) throw err;
+      // GitHub's own headers name the reset exactly; the throttle's estimate above is replaced by it
+      limitedUntil.set(id, reset);
+      throw new GitHubRateLimited(new Date(reset));
+    }
+  });
+  return octokit;
 }
 
 const instances = new Map<string, GitHubOctokit>();

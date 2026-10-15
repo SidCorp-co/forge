@@ -30,6 +30,8 @@ export class SourceHostCallError extends Error {
   readonly status: number;
   readonly detail: string | null;
   readonly phase: 'mint' | 'request';
+  /** When the host said a refused call may be tried again, where it named one (a rate limit). */
+  retryAt: Date | null = null;
   constructor(
     status: number,
     message: string,

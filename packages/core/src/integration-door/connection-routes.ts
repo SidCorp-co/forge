@@ -38,6 +38,7 @@ import {
 } from '../integrations/index.js';
 import { SourceHostCallError } from '../integrations/source-host/index.js';
 import { loadOrgRole, loadVisibleProjectIds } from '../lib/authz.js';
+import { providerRefused } from '../lib/provider-refusal.js';
 import { refused, refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { isPlatformAdmin } from '../middleware/require-admin.js';
@@ -238,10 +239,11 @@ integrationConnectionsRoutes.get('/:id/targets', async (c) => {
     });
   } catch (err) {
     if (!(err instanceof SourceHostCallError)) throw err;
-    throw new HTTPException(502, {
-      message: `${err.message}, so the repositories this App can see are unknown${err.detail ? `: ${err.detail}` : ''}`,
-      cause: { code: 'GITHUB_REFUSED', details: { httpStatus: err.status } },
-    });
+    throw providerRefused(
+      `${err.message}, so the repositories this App can see are unknown${err.detail ? `: ${err.detail}` : ''}`,
+      'GITHUB_REFUSED',
+      { details: { httpStatus: err.status }, retryAt: err.retryAt },
+    );
   }
 });
 

@@ -15,6 +15,7 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db/client.js';
 import { integrationBindings, integrationConnections } from '../../db/schema.js';
+import { providerRefused } from '../../lib/provider-refusal.js';
 import { refuser } from '../../lib/refusal.js';
 import {
   decryptConnectionSecrets,
@@ -23,6 +24,7 @@ import {
   type GitCredentialMint,
   listIntegrations,
 } from '../index.js';
+import { SourceHostCallError } from './errors.js';
 
 const refuse = refuser<GitRefusalCode>('GIT_REFUSED');
 
@@ -104,10 +106,11 @@ export async function mintGitCredentialForDevice(args: {
   try {
     minted = await mint.mint({ config, secrets: decryptConnectionSecrets(pair.connection) });
   } catch (err) {
-    throw new HTTPException(502, {
-      message: `${pair.binding.provider} did not mint a credential for ${repository}: ${err instanceof Error ? err.message : String(err)}`,
-      cause: { code: 'GIT_CREDENTIAL_MINT_FAILED' },
-    });
+    throw providerRefused(
+      `${pair.binding.provider} did not mint a credential for ${repository}: ${err instanceof Error ? err.message : String(err)}`,
+      'GIT_CREDENTIAL_MINT_FAILED',
+      { retryAt: err instanceof SourceHostCallError ? err.retryAt : null },
+    );
   }
   return { ...minted, repository, projectId: pair.binding.projectId };
 }
