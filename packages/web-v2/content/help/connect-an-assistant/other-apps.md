@@ -322,7 +322,7 @@ steps below install, and your app gives it these settings:
 | Setting | Value |
 |---|---|
 | Command | `npx` |
-| Arguments, one per line | `-y` · `mcp-remote@0.14.3` · your address · `--header` · `Authorization:${AUTH_HEADER}` · `--header` · `X-Forge-Project-Slug:${FORGE_PROJECT}` |
+| Arguments | seven, which the steps below give one at a time, in order |
 | Environment variable `AUTH_HEADER` | `Bearer`, a space, and your token |
 | Environment variable `FORGE_PROJECT` | the project's short name |
 
