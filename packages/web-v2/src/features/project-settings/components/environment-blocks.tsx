@@ -335,7 +335,14 @@ export function EnvironmentBlocks({
         ) : (
           <ul className="divide-y divide-line">
             {form.testCredentials.map((row, i) => {
-              const err = held.errorAt(`testCredentials.${i}`);
+              const errors = (["label", "username", "password"] as const).flatMap((field) => {
+                const message = held.errorAt(`testCredentials.${i}.${field}`);
+                return message ? [{ field, message, id: `credential-${i}-${field}-error` }] : [];
+              });
+              const marked = (field: "label" | "username" | "password") => {
+                const own = errors.find((e) => e.field === field);
+                return own ? { "aria-invalid": true as const, "aria-describedby": own.id } : {};
+              };
               return (
                 // biome-ignore lint/suspicious/noArrayIndexKey: position is the identity
                 <li key={i} className="py-3">
@@ -348,7 +355,7 @@ export function EnvironmentBlocks({
                         placeholder="Label (e.g. Admin)"
                         maxLength={LABEL_MAX}
                         aria-label={`Credential ${i + 1} label`}
-                        aria-invalid={err ? true : undefined}
+                        {...marked("label")}
                       />
                       <Input
                         value={row.username}
@@ -358,6 +365,7 @@ export function EnvironmentBlocks({
                         maxLength={USERNAME_MAX}
                         autoComplete="off"
                         aria-label={`Credential ${i + 1} username`}
+                        {...marked("username")}
                       />
                       <div className="flex items-center gap-2">
                         <Input
@@ -369,6 +377,7 @@ export function EnvironmentBlocks({
                           maxLength={PASSWORD_MAX}
                           autoComplete="off"
                           aria-label={`Credential ${i + 1} password`}
+                          {...marked("password")}
                           className="flex-1"
                         />
                         <Button
@@ -390,11 +399,11 @@ export function EnvironmentBlocks({
                       />
                     )}
                   </div>
-                  {err && (
-                    <p role="alert" className="fg-caption mt-2" style={FIELD_ERROR}>
-                      {err}
+                  {errors.map((e) => (
+                    <p key={e.field} id={e.id} role="alert" className="fg-caption mt-2" style={FIELD_ERROR}>
+                      {e.message}
                     </p>
-                  )}
+                  ))}
                 </li>
               );
             })}

@@ -2,6 +2,7 @@
 // ships to and the preview one QA opens), the test credentials and the limits of either. Written
 // through PATCH /api/projects/:id/environments as the keys the form changed beside the values it
 // read them against (ISS-1170). The Shape & release page renders it; this file holds no markup.
+import { type CredentialFinding, findCredentialFaults } from "@forge/contracts/test-credentials";
 import { z } from "zod";
 import type { EnvironmentsConfig, TestCredential, TestingUrl } from "./types";
 
@@ -177,9 +178,29 @@ const credentialRow = z
   .looseObject({ label: z.string(), username: z.string(), password: z.string() })
   .superRefine((row, ctx) => {
     if (row.label.trim() === "" && (row.username !== "" || row.password !== "")) {
-      ctx.addIssue({ code: "custom", message: "Label is required." });
+      ctx.addIssue({ code: "custom", path: ["label"], message: "Label is required." });
     }
   });
+
+/** What each credential rule says beside the field it marks; the rules are the server's own. */
+function credentialMessage(rows: CredRow[], f: CredentialFinding): string {
+  const label = rows[f.index]?.label.trim() ?? "";
+  const other = f.sameAs === undefined ? 0 : f.sameAs + 1;
+  switch (f.rule) {
+    case "password-required":
+      return `${label} has no password. Type its password, or remove the row.`;
+    case "duplicate-label":
+      return `Credential ${other} is already labelled ${rows[other - 1]?.label.trim() ?? label}. Rename this one, or remove it.`;
+    case "duplicate-login":
+      return `This is the same login as credential ${other}. Remove one of them.`;
+  }
+}
+
+const credentialRows = z.array(credentialRow).superRefine((rows, ctx) => {
+  for (const f of findCredentialFaults(rows)) {
+    ctx.addIssue({ code: "custom", path: [f.index, f.field], message: credentialMessage(rows as CredRow[], f) });
+  }
+});
 
 export const environmentsSchema = z.object({
   liveUrl: optionalUrl,
@@ -188,7 +209,7 @@ export const environmentsSchema = z.object({
   previewUrl: optionalUrl,
   previewApiUrl: optionalUrl,
   previewUrls: z.array(urlRow),
-  testCredentials: z.array(credentialRow),
+  testCredentials: credentialRows,
   limits: z.string(),
 }) as unknown as z.ZodType<EnvironmentsDraft, EnvironmentsDraft>;
 
