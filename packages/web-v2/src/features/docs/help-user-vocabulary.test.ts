@@ -205,8 +205,8 @@ describe("the screens judge-15 read, against the same rules", () => {
   // planted here; each refusal's own core test asserts what it sends now.
   it.each([
     [
-      "the criteria hold, now",
-      "Every issue at Awaiting release still owes a verdict on an acceptance criterion, so the automatic release cuts nothing until each is recorded: `ISS-754` owes criteria 1–30.",
+      "a status by its label beside a field in code",
+      "It rests at Awaiting release until a tag holds it; send `data.commit` with `mark_merged`.",
       [],
     ],
     [
