@@ -155,17 +155,22 @@ describe('Needs you lists a question only where it moves the work state (real Po
 
     it("splits out the awaiting issues the health row's parked list does not hold", async () => {
       const { selectAttentionTotals } = await import('../../src/me/attention-buckets.js');
+      const { readHealthAggregates } = await import('../../src/projects/health-aggregates.js');
       await issueAt('waiting', false);
       await issueAt('in_progress', true);
       await issueAt('needs_info', false);
       await issueAt('on_hold', true);
       const [totals] = Object.values(await selectAttentionTotals(owner));
+      // The parked list holds every status a person parks at, so only the in-flight issue with a
+      // question sits outside it.
       expect(totals).toEqual({
         awaitingInput: 4,
-        awaitingOutsideBlockers: 2,
+        awaitingOutsideBlockers: 1,
         needsReview: 0,
         failedJobs: 0,
       });
+      const { blockerRowsAll } = await readHealthAggregates([projectId]);
+      expect(blockerRowsAll.length + (totals?.awaitingOutsideBlockers ?? 0)).toBe(4);
     });
 
     it('has no entry for a project with nothing in any bucket', async () => {
