@@ -6,7 +6,7 @@ import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import type { FailureCause } from '../pipeline/failure-causes.js';
 import { classifyFailure } from '../pipeline/failure-classifier.js';
-import { closeRunIfOneShot } from '../pipeline/runs.js';
+import { closeRunIfOneShot, closeRunOnceJobsEnd } from '../pipeline/runs.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import type { ResumeRecord } from './resume-policy.js';
@@ -245,6 +245,7 @@ export async function syncAgentSessionLifecycle(
         const runOutcome =
           outcome === 'cancelled' ? 'cancelled' : outcome === 'failed' ? 'failed' : 'completed';
         await closeRunIfOneShot(job.pipelineRunId, runOutcome);
+        if (outcome === 'cancelled') await closeRunOnceJobsEnd(job.pipelineRunId);
       } catch (err) {
         logger.warn({ err, jobId: job.id }, 'agent-session-link: close-run (no-session) failed');
       }
@@ -277,6 +278,7 @@ export async function syncAgentSessionLifecycle(
       const runOutcome =
         outcome === 'cancelled' ? 'cancelled' : outcome === 'failed' ? 'failed' : 'completed';
       await closeRunIfOneShot(job.pipelineRunId, runOutcome);
+      if (outcome === 'cancelled') await closeRunOnceJobsEnd(job.pipelineRunId);
     }
   } catch (err) {
     logger.warn(

@@ -74,5 +74,7 @@ export async function unregisterAgentCronTicker(): Promise<void> {
   } catch (err) {
     logger.warn({ err }, 'agent.cron: unschedule failed');
   }
-  await boss.offWork(AGENT_CRON_QUEUE, { id });
+  // Passing options replaces pg-boss's default `{ wait: true }`, so it is named: without it this
+  // returns while a fetch in flight still holds the worker.
+  await boss.offWork(AGENT_CRON_QUEUE, { id, wait: true });
 }

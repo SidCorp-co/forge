@@ -24,6 +24,7 @@ import {
   restCredential,
 } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
+import { collectWorkEvidence } from '../pipeline/work-evidence.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { issueArchiveSide } from './archive.js';
 import { AttachmentError } from './attachment-service.js';
@@ -242,6 +243,7 @@ issueProjectRoutes.get(
         ...creatorMap.get(issue.id),
         pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(serialized.status),
         liveReach: await liveReachForIssue(issue),
+        recordedBranch: (await collectWorkEvidence(issue.id)).branch,
         labels: labelRows,
         comments: [],
         activity: [],
@@ -398,6 +400,7 @@ issueRoutes.get(
         agentStatus: agentBucket?.agentStatus ?? null,
         pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(serialized.status),
         liveReach: await liveReachForIssue(issue),
+        recordedBranch: (await collectWorkEvidence(issue.id)).branch,
         labels: labelRows,
         comments: [],
         activity: [],

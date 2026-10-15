@@ -109,6 +109,8 @@ export interface IssueRow {
   declaredLandingShape?: LandingShape | null;
   /** ISS-1217 — whether the merged work is on the live branch. Core's reading; null where none. */
   liveReach?: LiveReach | null;
+  /** The branch core's work-evidence gate counts for this issue; null where it counts none. */
+  recordedBranch?: string | null;
   createdAt: string;
   updatedAt: string;
   /** ISS-1257 — the oldest open question blocked on a person; null or absent when none is. */
