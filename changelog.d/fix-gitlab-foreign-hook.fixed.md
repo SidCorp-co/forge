@@ -1,1 +1,0 @@
-**The GitLab health check judges only Forge's own webhook**: another service's hook on the project is never stored, shown or judged, so its URL and secret stay out of Forge; a missing Forge hook is said as missing.

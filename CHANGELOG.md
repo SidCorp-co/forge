@@ -9,6 +9,19 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.247] - 2026-10-15
+
+GitLab health check reads only Forge's own webhook and never exposes another service's secret
+
+### Changed
+
+- **The Ecosystem page says who uses what from whom**: one sentence, a map of labelled arrows, what needs attention, one Connections row per consumer and contract, and a declared use with no call found said in words.
+- **A repository on a host no provider serves says so plainly**: its row reads "Not connected to <host> yet" instead of naming a source host binding.
+
+### Fixed
+
+- **The GitLab health check judges only Forge's own webhook**: another service's hook on the project is never stored, shown or judged, so its URL and secret stay out of Forge; a missing Forge hook is said as missing.
+
 ## [0.4.0-dev.246] - 2026-10-15
 
 A bound GitHub repository no longer exhausts its rate limit
