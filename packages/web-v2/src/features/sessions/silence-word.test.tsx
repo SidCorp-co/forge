@@ -4,7 +4,7 @@
 // the word the Pipeline page uses, so a surface carrying a word of its own goes red here.
 
 import { cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StatusChip } from "@/design";
 import { silenceText } from "@/features/agents/run-state";
 import type { RunSessionRow } from "@/features/agents/types";
@@ -12,6 +12,7 @@ import { SessionsList } from "@/features/pipeline/components/sessions-list";
 import type { LiveSession } from "@/features/pipeline/types";
 import { LiveSessionsCard } from "@/features/project-dashboard/components/live-sessions-card";
 import { FleetStrip } from "./components/fleet-strip";
+import { SessionsScreen } from "./components/sessions-screen";
 import { deriveSessionDisplayStatus, type SessionRow, statusToChip } from "./types";
 
 vi.mock("next/link", () => ({
@@ -22,8 +23,21 @@ vi.mock("@/features/projects/hooks", () => ({
   useProject: () => ({
     data: { devicePool: [{ id: "d1", name: "box-a", platform: "linux", status: "online" }], defaultDeviceId: "d1" },
   }),
+  useProjects: () => ({ data: [{ id: "p1", slug: "pair", name: "Pair", role: "owner" }] }),
+  useOrgScopedProjects: () => ({ projects: [], projectIds: new Set(["p1"]) }),
 }));
-vi.mock("./hooks", () => ({ useQueueStats: () => ({ data: { devices: [] } }) }));
+vi.mock("@/features/runners/hooks", () => ({ useDevices: () => ({ data: [] }) }));
+vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));
+const { mutation } = vi.hoisted(() => ({ mutation: () => ({ mutate: () => {}, isPending: false }) }));
+vi.mock("./hooks", () => ({
+  useQueueStats: () => ({ data: { devices: [] } }),
+  useSessions: () => ({ data: { items: [row], totalCount: 1 }, isLoading: false, isError: false }),
+  useCancelSession: mutation,
+  useRetrySession: mutation,
+  useRerunSession: mutation,
+  useAbortSession: mutation,
+  useSweepZombies: mutation,
+}));
 
 const NOW = Date.parse("2026-10-15T10:00:00.000Z");
 const SILENT_SINCE = new Date(NOW - 90_000).toISOString();
@@ -75,7 +89,14 @@ function wordOf(text: string): string {
   return text.split(" · ")[0].trim();
 }
 
-afterEach(cleanup);
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(NOW);
+});
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 describe("the word for a running session gone silent", () => {
   it("is the Pipeline page's word on the session chip, the dashboard, the runner strip and the Agents runs line", () => {
@@ -101,12 +122,24 @@ describe("the word for a running session gone silent", () => {
     )?.textContent;
     cleanup();
 
+    render(<SessionsScreen scope={{ projectId: "p1" }} />);
+    // The list's summary counts the silent sessions under the state's word.
+    const pills = [...document.querySelectorAll(".fg-overline")].map((el) => ({
+      label: el.textContent,
+      value: el.nextElementSibling?.textContent,
+    }));
+    const listStat = pills.find((p) => p.value === "1" && p.label !== "Active")?.label;
+    const listChip = [...document.querySelectorAll("span")].map((el) => el.textContent ?? "").find((t) => t === word);
+    cleanup();
+
     expect({
+      listStat,
+      listChip,
       chip: wordOf(chip),
       dashboard: wordOf(cardWord ?? ""),
       runnerStrip: strip,
       agentsRuns: wordOf(silenceText(run, NOW) ?? ""),
-    }).toEqual({ chip: word, dashboard: word, runnerStrip: word, agentsRuns: word });
+    }).toEqual({ listStat: word, listChip: word, chip: word, dashboard: word, runnerStrip: word, agentsRuns: word });
     expect(word).not.toBe("");
   });
 });
