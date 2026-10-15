@@ -287,13 +287,13 @@ interface RejectionStreakRow extends Record<string, unknown> {
 export async function alarmRejectionStreaks(): Promise<Inv7AlarmResult> {
   const rows = await db.execute<RejectionStreakRow>(sql`
     WITH verdicts AS (
-      -- This CTE used to materialise every verdict phase_journal has ever held before anything
+      -- This CTE used to materialise every verdict run_journal has ever held before anything
       -- narrowed it, so an alarm about loops happening RIGHT NOW cost the whole history of every
       -- run that ever finished. The outer pr.status = 'running' is kept as well: it is what the
       -- guard above is written about, and a reader deleting it there because "the CTE does it now"
       -- would be deleting the documented one.
       SELECT pj.run_id, pj.issue_id, pj.started_at, pj.artifact ->> 'decision' AS decision
-      FROM phase_journal pj
+      FROM run_journal pj
       WHERE pj.source = 'runner'
         AND pj.artifact ->> 'kind' = 'verdict'
         AND EXISTS (

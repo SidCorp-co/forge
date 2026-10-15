@@ -6,7 +6,7 @@ import { zValidator } from '../api-reference/declare/validator.js';
 import { phaseJournalOutcomes } from '../db/schema-journal.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { endPhase, listPhases, resumePoint, startPhase } from './phase-journal.js';
+import { endPhase, listPhases, PhaseEndRefused, resumePoint, startPhase } from './phase-journal.js';
 import {
   endPhaseOp,
   listRunPhases,
@@ -101,18 +101,23 @@ phaseRoutes.post(
     const { id } = c.req.valid('param');
     const body = c.req.valid('json');
     await runProjectFor(id, c.get('userId'), 'member');
-    await endPhase({
+    const ended = await endPhase({
       runId: id,
       phase: body.phase,
       attempt: body.attempt,
       outcome: body.outcome,
       ...(body.note ? { artifact: { kind: 'note' as const, text: body.note } } : {}),
+    }).catch((err: unknown) => {
+      if (err instanceof PhaseEndRefused) {
+        throw new HTTPException(err.status, { message: err.message, cause: { code: err.code } });
+      }
+      throw err;
     });
     return c.json(
       answer(phaseEndedSchema, {
-        phase: body.phase,
-        attempt: body.attempt,
-        outcome: body.outcome,
+        phase: ended.phase,
+        attempt: ended.attempt,
+        outcome: ended.outcome ?? body.outcome,
       }),
     );
   },

@@ -4,7 +4,12 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
-import { checkSurface, extractBodies, markdownBodies } from './lib/injected-doc-modes.mjs';
+import {
+  checkSurface,
+  extractBodies,
+  markdownBodies,
+  stepClaimsInSentence,
+} from './lib/injected-doc-modes.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -151,8 +156,11 @@ function main() {
     if (checked === 0) {
       throw new CannotRun('0 transitions found across every surface — R1 extraction is broken');
     }
-    if (claims === 0) {
-      throw new CannotRun('0 step claims found across every surface — R2 extraction is broken');
+    // Zero step claims is the state ISS-1229 asks for, so a count proves nothing about the
+    // extractor; a sentence that makes a claim does.
+    const canary = `The ${stepNames[0]} step writes the plan.`;
+    if (stepClaimsInSentence(canary, stepNames).length === 0) {
+      throw new CannotRun(`R2 extraction finds no step claim in "${canary}", which makes one`);
     }
   } catch (err) {
     if (err instanceof CannotRun) {

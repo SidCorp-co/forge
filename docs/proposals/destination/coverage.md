@@ -78,7 +78,7 @@ whose status is not re-derived is a claim, not a status.
 | D3 | Correction by supersede | `fact-projection.html` §3 | not checked |
 | D4 | The projection, and swapping it over history | `fact-projection.html` §5–6 | not checked |
 | D5 | Insert-time gates, and the write-skew hole | `fact-projection.html` §4 | not checked |
-| D6 | Retention and volume | **open** — deferrable; a capacity question, not a correctness one | `pipeline_outbox` and `phase_journal` appear in none of the 8 `RETENTION_RULES` — both accumulate without bound |
+| D6 | Retention and volume | **open** — deferrable; a capacity question, not a correctness one | `pipeline_outbox` and `run_journal` appear in none of the 8 `RETENTION_RULES` — both accumulate without bound |
 
 ## E · Not knowing — 5 / 5
 

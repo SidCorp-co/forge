@@ -122,6 +122,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'pipeline/issue-context-store.ts': 'by issue id, a guard that the issue is in the project',
   'pipeline/issue-run-invariant.ts': 'reads only work-in-progress statuses',
   'pipeline/pipeline-config-service.ts': 'reads only stage statuses, all non-terminal',
+  'pipeline/run-journal-routes.ts':
+    "the canonical key of the one issue the caller named, so an archived issue's page still shows its runs",
   'pipeline/shipped-at.ts':
     'the first shipped moment per issue, read only into counts and timings; an archived issue still shipped on its day',
   'pipeline/reconciler.ts': 'reads only entry and in-flight statuses',

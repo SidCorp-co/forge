@@ -11,7 +11,12 @@
 
 import { z } from 'zod';
 import { phaseJournalOutcomes } from '../../db/journal-vocabulary.js';
-import { endPhase, resumePoint, startPhase } from '../../pipeline/phase-journal.js';
+import {
+  endPhase,
+  PhaseEndRefused,
+  resumePoint,
+  startPhase,
+} from '../../pipeline/phase-journal.js';
 import { readPipelineRun } from '../../pipeline/runs.js';
 import type { ContextScopedMcpToolFactory } from './lib.js';
 import { assertPrincipalIsWriter, zodToMcpSchema } from './lib.js';
@@ -39,7 +44,7 @@ async function loadRunInProject(runId: string, projectId: string) {
 export const forgePhaseTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_phase',
   description:
-    "Declare which phase of an autonomous run you are in. Call action `start` BEFORE beginning a phase (understand, plan, code, self-review, review, merge, ship) and action `end` when it finishes, with `outcome` one of ok/failed/abandoned. The `start` call returns the `attempt` number to pass back to `end`; re-entering a phase (a review sending you back to code) starts a new attempt rather than overwriting the old one, so the journal shows the rounds. Action `resume_point` returns the newest phase with no end recorded — a session resuming after a death restarts there instead of at phase 1. You CANNOT write a review verdict here: a verdict is recorded by the runner from the reviewer's structured result, and the database refuses an agent-authored one.",
+    "Declare which phase of an autonomous run you are in. Call action `start` BEFORE beginning a phase (understand, plan, code, self-review, review, merge, ship) and action `end` when it finishes, with `outcome` one of ok/failed/abandoned. The `start` call returns the `attempt` number to pass back to `end`; re-entering a phase (a review sending you back to code) starts a new attempt rather than overwriting the old one, so the journal shows the rounds; an attempt is ended once, and a second `end` is refused naming the outcome it holds. Action `resume_point` returns the newest phase with no end recorded — a session resuming after a death restarts there instead of at phase 1. You CANNOT write a review verdict here: a verdict is recorded by the runner from the reviewer's structured result, and the database refuses an agent-authored one.",
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
@@ -71,13 +76,18 @@ export const forgePhaseTool: ContextScopedMcpToolFactory = (ctx) => ({
       throw new Error('BAD_REQUEST: attempt is required for end — pass the one start returned');
     }
     if (!input.outcome) throw new Error('BAD_REQUEST: outcome is required for end');
-    await endPhase({
-      runId: input.runId,
-      phase: input.phase,
-      attempt: input.attempt,
-      outcome: input.outcome,
-      ...(input.note ? { artifact: { kind: 'note', text: input.note } } : {}),
-    });
-    return { phase: input.phase, attempt: input.attempt, outcome: input.outcome };
+    try {
+      const ended = await endPhase({
+        runId: input.runId,
+        phase: input.phase,
+        attempt: input.attempt,
+        outcome: input.outcome,
+        ...(input.note ? { artifact: { kind: 'note', text: input.note } } : {}),
+      });
+      return { phase: ended.phase, attempt: ended.attempt, outcome: ended.outcome };
+    } catch (err) {
+      if (err instanceof PhaseEndRefused) throw new Error(`${err.code}: ${err.message}`);
+      throw err;
+    }
   },
 });

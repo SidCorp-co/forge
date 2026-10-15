@@ -12,7 +12,7 @@ page in the set that touches the module. Nothing here is fixed.
 | 2 | `done` and `cancelled` never collapse (`lifecycle.html` §1) | Resolved by ISS-1108 on the owner's decision of 2026-09-20: `closed` means the work shipped and nothing else. A close with no `merged_at` is refused in `issues/merged-at.ts:refuseUnshippedClose` and again by `trg_issues_closed_means_shipped`, and `dropped` is the non-work exit. Status alone separates them | **resolved** |
 | 3 | Only `done` releases an edge (`lifecycle.html` §3) | `BLOCKER_SETTLED_STATUSES` = `developed, testing, awaiting_release, closed` — a dependent starts four rungs before its blocker ships by default; since ISS-1225 an edge can declare `holdsUntil: shipped` (`issues/dependency-effects.ts:BLOCKER_SHIPPED_STATUSES`, `closed` only), which is the set's rule for that edge | deliberate divergence, and the set's rule now expressible per edge |
 | 4 | One lease per Intent, as a conditional write (`lifecycle.html` §5) | Split verdict. **Jobs**: real uniqueness, `jobs_active_unique (issue_id, type)` and `pipeline_runs_issue_open_uq`. **The thing named a lease**: `isIssueLeaseHeld` derives held-ness from `pipeline_runs.metadata->'runIssues'` — a JSONB array — **filtered on the asking device**, with no acquisition endpoint, no uniqueness, and a read-modify-write release | jobs **pass** · lease **fail** |
-| 5 | An attempt is the unit the harness counts (`lifecycle.html` §6) | Modelled on two axes: `jobs.attempts` with a cycle-guarded `jobs.retryOf` chain (`jobs/prior-attempts.ts` walks it and refuses to inherit prior sessions — what §6 asks for), and `issue_step_contexts.attempt` unique per `(issue, step, attempt)` | **pass** |
+| 5 | An attempt is the unit the harness counts (`lifecycle.html` §6) | Modelled on two axes: `jobs.attempts` with a cycle-guarded `jobs.retryOf` chain (`jobs/prior-attempts.ts` walks it and refuses to inherit prior sessions — what §6 asks for), and `run_journal.attempt` unique per `(run, phase, attempt)` | **pass** |
 | 6 | The ranking rule is stated (`lifecycle.html` §4) | Stated, and deliberately elsewhere: `devices/pool.ts` opens *"The pool applies no ordering policy and no dependency gate… the master answers what to run."* The rule lives in the master prompt, in `forge-plugin`, a different clock from the pool feeding it | deliberate divergence |
 | 7 | A starvation bound across projects (`lifecycle.html` §8) | One query per project, each with its own `LIMIT`; no cross-project bound, no age override | missing (mild) |
 | 8 | An Intent is versioned; a running attempt keeps its revision (`lifecycle.html` §2) | `issues` has no revision column. An edit overwrites and a live session is silently re-aimed | missing |
@@ -27,7 +27,7 @@ page in the set that touches the module. Nothing here is fixed.
 
 | Claimed in pass 1 | Actually |
 |---|---|
-| No `attempt` column anywhere on the work path | `jobs.attempts` (migration 0007) plus a `retryOf` chain, and `issue_step_contexts.attempt`. Pass-1 grep was truncated by `head` and I reported the truncation as the result |
+| No `attempt` column anywhere on the work path | `jobs.attempts` (migration 0007) plus a `retryOf` chain, and `run_journal.attempt`. Pass-1 grep was truncated by `head` and I reported the truncation as the result |
 | `approve_rate` / `pass_rate` measure n=0 because attempts are not modelled | The series was empty because the **handoff itself is deliberately best-effort** — never a status gate. A measurement plane fed by an artifact the system on purpose does not require reads zero forever, and no schema change fixes that; the column and both metrics were removed rather than displayed as zero |
 | Core never refuses by name | It does, for runner admission, with the doctrine stated in the source |
 | Admission writes nothing, so there is nowhere to stamp `policy_version` | There is an audited-transition plane with database-level bypass detection. It does not reach admission, which is a narrower and different gap |
@@ -70,6 +70,13 @@ provenance of its own.
 6. ~~**Delete `POST /me/pool/claim`**~~ **Done, ISS-1110.** It answered every call
    `{ ok: false, reason: 'runner_too_old' }` and had no caller; `prepare` and `start` are the way a
    job is taken.
+7. **Give the review-rejection alarm verdicts something writes.**
+   `pipeline/inv7-alarms.ts:alarmRejectionStreaks` counts `run_journal` rows with source `runner`
+   and a `verdict` artifact, and no code writes one: on `main` before ISS-1133 the only journal
+   writers were the agent's own phase calls and a backfill that wrote `system` rows. A review's
+   approve or request-changes lives in a `forge-record` in a comment, which no store holds whole
+   (guide `records-and-comments`). So the alarm has never fired. Choosing where a review decision
+   is stored is the decision this needs.
 
 ## Owner decisions this module is blocked on
 

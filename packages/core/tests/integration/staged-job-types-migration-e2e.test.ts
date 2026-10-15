@@ -101,12 +101,15 @@ describe('migration 0332', () => {
 
   beforeEach(async () => {
     await truncateAll(harness.db);
+    // ISS-1133 drops the journal this block counts; the stand-in holds the one column it reads.
+    await harness.db.execute(sql`CREATE TABLE phase_journal (job_id uuid)`);
     notices = [];
     client = postgres(harness.url, { max: 1, onnotice: (n) => notices.push(n.message ?? '') });
   });
 
   afterEach(async () => {
     await client.end({ timeout: 5 });
+    await harness.db.execute(sql`DROP TABLE IF EXISTS phase_journal`);
   });
 
   /** Everything one failed statement says, driver wrapper and cause together. */

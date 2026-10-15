@@ -20,9 +20,9 @@ the person's share of the thread was 98 and 123 characters against 26,000 and 46
 ### What core has no store for, said plainly
 
 A run's own records — a baseline, a decision, a correction, a park, a merged mark, a verdict, a
-review — have no store here that holds them whole. `issue_step_contexts` holds a step's handoff
-payload keyed `(issue, step, attempt)` and no typed verdict, so it is not where a verdict or a
-review goes. `issue_attributes` takes only the registered keys of issue assertions and
+review — have no store here that holds them whole. `run_journal` holds a step's handoff payload
+on its attempt, keyed `(run, step, attempt)` and written once, and no typed verdict, so it is not
+where a verdict or a review goes. `issue_attributes` takes only the registered keys of issue assertions and
 refuses anything else by name, so a baseline's gate/result/commit does not fit it and a route that
 would reject the write is not somewhere to be sent. Until one exists: put the assertions such a
 record makes ABOUT the issue at `{{ISSUE_ASSERTION_ROUTE}}` under a registered key, and keep the

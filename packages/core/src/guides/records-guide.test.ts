@@ -51,7 +51,7 @@ describe('the records-and-comments guide', () => {
 
   it('names the store each kind of thing a run records belongs in', () => {
     for (const store of [
-      'issue_step_contexts',
+      'run_journal',
       'issue_attributes',
       'agent_session_turns',
       'kernel_transitions',

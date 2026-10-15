@@ -53,28 +53,16 @@ export function useAttachments(id: string | undefined, projectId?: string) {
   });
 }
 
-/** Step-handoff rows for the issue (per-stage artifact cards, ISS-377). Keyed
- *  under the `['issue', id, …]` prefix so the event-router's `['issue', id]`
- *  invalidation (issue.updated / pipelineHealth.changed) refreshes it for free.
- */
-export function useStepHandoffs(projectId: string | undefined, id: string | undefined) {
+/** What each run of the issue did, from the run journal (ISS-1133). Keyed under the
+ *  `['issue', id, …]` prefix so the event-router's `['issue', id]` invalidation
+ *  (issue.updated / pipelineHealth.changed) refreshes it for free. */
+export function useRunJournal(projectId: string | undefined, id: string | undefined) {
   return useQuery({
-    queryKey: ["issue", id, "handoffs"],
-    queryFn: () => issueDetailApi.listHandoffs(projectId as string, id as string),
+    queryKey: ["issue", id, "run-journal"],
+    queryFn: () => issueDetailApi.runJournal(projectId as string, id as string),
     enabled: !!id && !!projectId,
     staleTime: 30_000,
-    select: (data) => data.rows,
-  });
-}
-
-/** Per-stage duration + cost for the issue: the REST view has no issueId filter, so the 90-day window is fetched and filtered in `select`. */
-export function useStepDurations(projectId: string | undefined, id: string | undefined) {
-  return useQuery({
-    queryKey: ["issue", id, "step-durations"],
-    queryFn: () => issueDetailApi.stepDurations(projectId as string),
-    enabled: !!id && !!projectId,
-    staleTime: 30_000,
-    select: (rows) => rows.filter((r) => r.issueId === id),
+    select: (data) => data.runs,
   });
 }
 

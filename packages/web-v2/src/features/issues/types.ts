@@ -303,32 +303,38 @@ export interface PipelineHealthPausedRun {
   since: string;
 }
 
-/** One step-handoff row from `GET /api/issue-step-contexts` (kind=handoff).
- *  `payload` is free-form jsonb — render defensively. */
-export interface StepHandoffRow {
-  id: string;
-  projectId: string;
-  issueId: string;
-  pipelineRunId: string | null;
-  kind: string;
-  step: string;
+/** How an attempt ended; `null` while it is open. */
+export type JournalOutcome = "ok" | "failed" | "abandoned";
+
+/** One attempt of one phase as `GET /api/run-journal` answers it (ISS-1133). */
+export interface JournalAttempt {
+  phase: string;
   attempt: number;
-  payload: Record<string, unknown> | null;
-  createdAt: string;
-  updatedAt: string;
+  source: "runner" | "agent" | "system";
+  outcome: JournalOutcome | null;
+  startedAt: string;
+  endedAt: string | null;
+  /** Null while open, and for an attempt only its handoff recorded: no span was declared. */
+  durationSeconds: number | null;
+  artifact: Record<string, unknown> | null;
+  /** The handoff the attempt left, free-form jsonb — render defensively. */
+  handoff: Record<string, unknown> | null;
+  handoffAt: string | null;
 }
 
-/** One row from `GET /api/pipeline/step-durations` (project-window, filtered to
- *  this issue client-side). Per-stage duration + cost source (ISS-377 gap E). */
-export interface StepDurationRow {
+/** One run of the issue, its attempts in the order they started. */
+export interface JournalRun {
   runId: string;
-  issueId: string | null;
-  projectId: string;
-  step: string;
+  /** 1 for the issue's first run, counted by the server over all of them. */
+  ordinal: number;
+  kind: "issue" | "pm" | "interactive" | "system";
+  status: "running" | "paused" | "completed" | "failed" | "cancelled";
+  /** The issue keys a group run was opened over; null for a run of this issue alone. */
+  group: string[] | null;
   startedAt: string;
-  finishedAt: string;
-  durationSeconds: number;
-  costUsd: number;
+  finishedAt: string | null;
+  costUsd: number | null;
+  attempts: JournalAttempt[];
 }
 
 /** Attachment carried on a comment node (ISS-363) — `url` is the download path,

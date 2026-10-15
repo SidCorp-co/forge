@@ -381,7 +381,7 @@ function withGroup(group: PipelineRunGroup): { group: PipelineRunGroup; runIssue
   return { group, runIssues: group.issues };
 }
 
-/** ISS-1273 — a box-driven run's step is its open `phase_journal` row. Two open rows mean a
+/** ISS-1273 — a box-driven run's step is its open `run_journal` row. Two open rows mean a
  *  driver never closed the earlier phase; the newest is the one it is on, the row
  *  `phase-journal.ts:resumePoint` resumes at, and `DISTINCT ON` settles that in the query rather
  *  than in whichever order rows arrived. */
@@ -390,7 +390,7 @@ async function loadOpenPhaseByRunIds(runIds: string[]): Promise<Map<string, stri
   if (runIds.length === 0) return out;
   const rows = (await db.execute(sql`
     SELECT DISTINCT ON (run_id) run_id, phase
-      FROM phase_journal
+      FROM run_journal
      WHERE ended_at IS NULL
        AND run_id IN (${sql.join(
          runIds.map((id) => sql`${id}::uuid`),
@@ -472,7 +472,9 @@ export async function loadPipelineRunSummary(runId: string): Promise<PipelineRun
  * Runs with no usage rows are absent from the map; callers should fall back
  * to {@link EMPTY_COST}.
  */
-async function loadCostByRunIds(runIds: string[]): Promise<Map<string, PipelineRunCostSummary>> {
+export async function loadCostByRunIds(
+  runIds: string[],
+): Promise<Map<string, PipelineRunCostSummary>> {
   const out = new Map<string, PipelineRunCostSummary>();
   if (runIds.length === 0) return out;
   const rows = await db

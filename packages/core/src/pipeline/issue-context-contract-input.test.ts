@@ -1,7 +1,9 @@
 /**
- * ISS-1133 — a step handoff is no contract input. `work-evidence.ts` reads the issue's own row and
- * no handoff, so neither a handoff written nor one deleted can move the `work_evidence` criterion,
- * and announcing either would wake every contract reader for an answer that cannot have changed.
+ * ISS-1133 — the handoff store over the run journal, against a mocked database.
+ *
+ * A handoff is no contract input: `work-evidence.ts` reads the issue's own row and no handoff, so
+ * a handoff written cannot move the `work_evidence` criterion and announces nothing. A handoff is
+ * written once onto its attempt's row; a second one, and every delete, is refused by name.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -10,22 +12,21 @@ vi.mock('../config/env.js', () => ({
   env: { JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef', NODE_ENV: 'test' },
 }));
 
-let upsertRows: unknown[] = [{ id: 'ctx-1', createdAt: new Date(), updatedAt: new Date() }];
-let deletedRows: unknown[] = [{ id: 'ctx-1' }];
+/** What each guarded statement answers, set per case; selects are served in order. */
+let filledRows: unknown[] = [];
+let appendedRows: unknown[] = [];
+let selects: unknown[][] = [];
 
+const update = vi.fn(() => ({
+  set: () => ({ where: () => ({ returning: async () => filledRows }) }),
+}));
 const insert = vi.fn(() => ({
-  values: () => ({
-    onConflictDoUpdate: () => ({ returning: async () => upsertRows }),
-  }),
+  values: () => ({ onConflictDoNothing: () => ({ returning: async () => appendedRows }) }),
 }));
-const del = vi.fn(() => ({ where: () => ({ returning: async () => deletedRows }) }));
-let issueRows: unknown[] = [{ id: '11111111-1111-4111-8111-111111111111' }];
 const select = vi.fn(() => ({
-  from: () => ({
-    where: () => ({ limit: async () => issueRows }),
-  }),
+  from: () => ({ where: () => ({ limit: async () => selects.shift() ?? [] }) }),
 }));
-vi.mock('../db/client.js', () => ({ db: { insert, delete: del, select } }));
+vi.mock('../db/client.js', () => ({ db: { insert, update, select } }));
 
 const refreshModuleKnowledgeForIssue = vi.fn(async () => undefined);
 vi.mock('../labels/module-knowledge-refresh.js', () => ({
@@ -33,9 +34,13 @@ vi.mock('../labels/module-knowledge-refresh.js', () => ({
 }));
 
 const { hooks } = await import('./hooks.js');
-const { deleteIssueContext, IssueNotInProject, writeIssueContext } = await import(
-  './issue-context-store.js'
-);
+const {
+  deleteIssueContext,
+  HandoffDeleteRefused,
+  HandoffRefused,
+  IssueNotInProject,
+  writeIssueContext,
+} = await import('./issue-context-store.js');
 
 /** Every `contractInputChanged` this suite heard, on the one bus the writer emits to. */
 const heard: { projectId: string; issueId?: string; reason: string }[] = [];
@@ -76,55 +81,73 @@ const handoff = {
   },
 };
 
+const ISSUE_ROW = [{ id: ISSUE_ID }];
+const RUN_ROW = [{ id: RUN_ID }];
+const AT = new Date('2026-10-15T07:00:00Z');
+
 beforeEach(() => {
   heard.length = 0;
   vi.clearAllMocks();
-  upsertRows = [{ id: 'ctx-1', createdAt: new Date(), updatedAt: new Date() }];
-  deletedRows = [{ id: 'ctx-1' }];
-  issueRows = [{ id: '11111111-1111-4111-8111-111111111111' }];
+  filledRows = [{ id: 'row-1', startedAt: AT, at: AT }];
+  appendedRows = [];
+  selects = [ISSUE_ROW, RUN_ROW];
 });
 
 describe('writing a handoff', () => {
-  it('writes the row and announces no contract input', async () => {
-    await writeIssueContext(handoff as never);
-    expect(insert).toHaveBeenCalledTimes(1);
+  it('fills the attempt the run declared, appends nothing and announces no contract input', async () => {
+    const written = await writeIssueContext(handoff as never);
+    expect(written).toEqual({ id: 'row-1', createdAt: AT, updatedAt: AT });
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(insert).not.toHaveBeenCalled();
     expect(heard).toEqual([]);
+  });
+
+  it('appends a closed attempt where the run never declared one', async () => {
+    filledRows = [];
+    appendedRows = [{ id: 'row-2', startedAt: AT, at: AT }];
+    expect((await writeIssueContext(handoff as never)).id).toBe('row-2');
+    expect(insert).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a second handoff for the attempt by name, naming when the first was written (criterion 11)', async () => {
+    filledRows = [];
+    selects = [ISSUE_ROW, RUN_ROW, [{ issueId: ISSUE_ID, handoffAt: AT }]];
+    const refused = await writeIssueContext(handoff as never).catch((e: unknown) => e);
+    expect(refused).toBeInstanceOf(HandoffRefused);
+    expect((refused as InstanceType<typeof HandoffRefused>).code).toBe('HANDOFF_ALREADY_WRITTEN');
+    expect((refused as Error).message).toContain(AT.toISOString());
+  });
+
+  it("refuses by name a handoff onto another issue's attempt", async () => {
+    filledRows = [];
+    selects = [ISSUE_ROW, RUN_ROW, [{ issueId: 'other-issue', handoffAt: null }]];
+    const refused = await writeIssueContext(handoff as never).catch((e: unknown) => e);
+    expect((refused as InstanceType<typeof HandoffRefused>).code).toBe('HANDOFF_NOT_THIS_ISSUE');
+    expect((refused as Error).message).toContain('other-issue');
   });
 });
 
 describe('writing a handoff against an issue of another project', () => {
-  it('is refused by name before any row is written or announced', async () => {
-    issueRows = [];
+  it('is refused by name before any row is written', async () => {
+    selects = [[]];
     await expect(writeIssueContext(handoff as never)).rejects.toBeInstanceOf(IssueNotInProject);
+    expect(update).not.toHaveBeenCalled();
     expect(insert).not.toHaveBeenCalled();
-    expect(heard).toEqual([]);
   });
 });
 
 describe('deleting a handoff', () => {
-  it('removes the row and announces no contract input', async () => {
-    const removed = await deleteIssueContext({
+  it('is refused by name and touches no row', async () => {
+    const refused = await deleteIssueContext({
       projectId: PROJECT_ID,
       issueId: ISSUE_ID,
       kind: 'handoff',
       step: 'code',
       attempt: 1,
-    });
-    expect(removed).toBe(1);
-    expect(heard).toEqual([]);
-  });
-
-  it('announces nothing when the delete matched no row', async () => {
-    deletedRows = [];
-    expect(
-      await deleteIssueContext({
-        projectId: PROJECT_ID,
-        issueId: ISSUE_ID,
-        kind: 'handoff',
-        step: 'code',
-        attempt: 9,
-      }),
-    ).toBe(0);
+    }).catch((e: unknown) => e);
+    expect(refused).toBeInstanceOf(HandoffDeleteRefused);
+    expect((refused as InstanceType<typeof HandoffDeleteRefused>).code).toBe('HANDOFF_IS_JOURNAL');
+    expect(update).not.toHaveBeenCalled();
     expect(heard).toEqual([]);
   });
 });
