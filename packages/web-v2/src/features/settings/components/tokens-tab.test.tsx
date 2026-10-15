@@ -527,3 +527,101 @@ describe("TokensTab — the Token created panel says its own copy result", () =>
     expect(toastSpy).not.toHaveBeenCalled();
   });
 });
+
+// ISS-1289 — a refusal describes what the field holds now. It stayed under Name, invalid and
+// describing it, after the reader typed a new, free name, until Create token was pressed again.
+describe("TokensTab — a refusal leaves once its field no longer holds what it refused", () => {
+  const refusal = (text: string) => screen.queryAllByRole("alert").find((el) => el.textContent === text) ?? null;
+  const scopesGroup = () => screen.getByRole("checkbox", { name: "read" }).closest("div[aria-describedby]");
+
+  it("goes when Name holds a new name, and is back when the refused name is typed back", () => {
+    tokens = [aToken({ name: "Claude Code" })];
+    render(<TokensTab />);
+    fireEvent.change(nameField(), { target: { value: "Claude Code" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Full access/ }));
+    fireEvent.click(createButton());
+    expect(refusal(PAT_NAME_IN_USE)).not.toBeNull();
+
+    fireEvent.change(nameField(), { target: { value: "Claude Code 2" } });
+    expect(refusal(PAT_NAME_IN_USE)).toBeNull();
+    expect(nameField()).not.toHaveAttribute("aria-invalid");
+    expect(nameField()).not.toHaveAttribute("aria-describedby");
+
+    fireEvent.change(nameField(), { target: { value: "Claude Code " } });
+    expect(refusal(PAT_NAME_IN_USE)).not.toBeNull();
+    expect(nameField()).toHaveAccessibleDescription(PAT_NAME_IN_USE);
+    expect(nameField()).toHaveAttribute("aria-invalid", "true");
+    expect(createMutate).not.toHaveBeenCalled();
+  });
+
+  it("goes when Name holds another taken name nobody pressed Create token on", () => {
+    tokens = [aToken({ name: "Claude Code" }), aToken({ id: "2", name: "Cursor" })];
+    render(<TokensTab />);
+    fireEvent.change(nameField(), { target: { value: "Claude Code" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Full access/ }));
+    fireEvent.click(createButton());
+    expect(refusal(PAT_NAME_IN_USE)).not.toBeNull();
+
+    fireEvent.change(nameField(), { target: { value: "Cursor" } });
+    expect(refusal(PAT_NAME_IN_USE)).toBeNull();
+    expect(nameField()).not.toHaveAttribute("aria-invalid");
+  });
+
+  it("goes when the token that held the name is revoked", () => {
+    tokens = [aToken({ name: "Claude Code" })];
+    const { rerender } = render(<TokensTab />);
+    fireEvent.change(nameField(), { target: { value: "Claude Code" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Full access/ }));
+    fireEvent.click(createButton());
+    expect(refusal(PAT_NAME_IN_USE)).not.toBeNull();
+
+    tokens = [aToken({ name: "Claude Code", revokedAt: "2026-01-02T00:00:00.000Z" })];
+    rerender(<TokensTab />);
+    expect(refusal(PAT_NAME_IN_USE)).toBeNull();
+    expect(nameField()).not.toHaveAttribute("aria-invalid");
+  });
+
+  it("shows no refusal for a value Create token was never pressed on", () => {
+    tokens = [aToken({ name: "Claude Code" })];
+    render(<TokensTab />);
+    fireEvent.click(screen.getByRole("radio", { name: /Full access/ }));
+    fireEvent.click(createButton());
+    expect(refusal("Name is required.")).not.toBeNull();
+
+    fireEvent.change(nameField(), { target: { value: "Claude Code" } });
+    expect(screen.queryAllByRole("alert")).toEqual([]);
+    expect(nameField()).not.toHaveAttribute("aria-invalid");
+  });
+
+  it("goes from Scopes when a scope is ticked, leaving the hint as its description", () => {
+    render(<TokensTab />);
+    fireEvent.change(nameField(), { target: { value: "ci" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "read" }));
+    fireEvent.click(screen.getByRole("radio", { name: /Full access/ }));
+    fireEvent.click(createButton());
+    expect(scopesGroup()).toHaveAccessibleDescription("Select at least one scope.");
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "write" }));
+    expect(refusal("Select at least one scope.")).toBeNull();
+    expect(scopesGroup()).toHaveAccessibleDescription("What this token may do.");
+    expect(scopesGroup()).not.toHaveAttribute("aria-invalid");
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "write" }));
+    expect(refusal("Select at least one scope.")).not.toBeNull();
+  });
+
+  it("goes from Permissions when a choice is made, and when a picked list gains a permission", () => {
+    render(<TokensTab />);
+    fireEvent.change(nameField(), { target: { value: "ci" } });
+    fireEvent.click(createButton());
+    expect(refusal("Choose what this token may reach.")).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("radio", { name: /permissions I pick/ }));
+    expect(screen.queryAllByRole("alert")).toEqual([]);
+
+    fireEvent.click(createButton());
+    expect(refusal("Pick at least one permission, or choose full access.")).not.toBeNull();
+    fireEvent.click(screen.getByRole("checkbox", { name: "issues:read" }));
+    expect(screen.queryAllByRole("alert")).toEqual([]);
+  });
+});
