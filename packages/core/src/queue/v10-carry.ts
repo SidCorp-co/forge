@@ -289,7 +289,11 @@ export async function carryV10Jobs(
     };
     const carried = { created: 0, retry: 0, active: 0 };
     const byQueue = new Map<string, V10Job[]>();
-    for (const row of live.rows) byQueue.set(row.name, [...(byQueue.get(row.name) ?? []), row]);
+    for (const row of live.rows) {
+      const bucket = byQueue.get(row.name);
+      if (bucket) bucket.push(row);
+      else byQueue.set(row.name, [row]);
+    }
     for (const [name, rows] of byQueue) {
       const ids = (await boss.insert(name, rows.map(jobInsert), { db, returnId: true })) ?? [];
       if (ids.length !== rows.length) {

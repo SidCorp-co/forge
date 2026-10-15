@@ -85,7 +85,11 @@ async function seedV10(schema: string, more?: (v10: PgBossV10) => Promise<void>)
   await v10.createQueue('carry-history');
 
   const queued = (await v10.send('carry-plain', { n: 'queued' })) as string;
-  const deferred = (await v10.send('carry-plain', { n: 'deferred' }, { startAfter: 3 })) as string;
+  const deferred = (await v10.send(
+    'carry-plain',
+    { n: 'deferred' },
+    { startAfter: 600 },
+  )) as string;
   const retry = (await v10.send('carry-retry', { n: 'retry' })) as string;
   const [first] = await v10.fetch('carry-retry');
   await v10.fail('carry-retry', first?.id as string, { reason: 'first attempt' });
@@ -142,7 +146,17 @@ describe('core booting pg-boss 12 against a pg-boss 10 schema', () => {
       singletonKey: 'k1',
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 3_500));
+    const deferredAt = async (at: string) =>
+      (
+        await rows<{ due: Date }>(`SELECT start_after AS due FROM ${at}.job WHERE id = $1`, [
+          seeded.deferred,
+        ])
+      )[0]?.due;
+    expect(await deferredAt(schema)).toEqual(await deferredAt(`${schema}_v10`));
+    await sql.query(`UPDATE ${schema}.job SET start_after = now() WHERE id = $1`, [
+      seeded.deferred,
+    ]);
+    await new Promise((resolve) => setTimeout(resolve, 2_500));
     const [later] = await queue.fetch<{ n: string }>('carry-plain');
     expect(later).toMatchObject({ id: seeded.deferred, data: { n: 'deferred' } });
     const [retried] = await queue.fetch<{ n: string }>('carry-retry', { includeMetadata: true });
