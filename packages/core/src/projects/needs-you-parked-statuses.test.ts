@@ -2,12 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../db/client.js', () => ({ db: {} }));
 
-import { AWAITING_INPUT_STATUSES, HUMAN_PARK_STATUSES } from '../issues/status-sets.js';
+import { HUMAN_PARK_STATUSES } from '../issues/status-sets.js';
 import { BLOCKED_STATUSES } from './health-aggregates.js';
 
-describe('the statuses the Needs you tile lists a parked issue at', () => {
-  it('are the statuses a person parks an issue at, so the help page names exactly these', () => {
-    const listed = new Set<string>([...AWAITING_INPUT_STATUSES, ...BLOCKED_STATUSES]);
-    expect([...listed].sort()).toEqual([...HUMAN_PARK_STATUSES].sort());
+describe('the statuses the health row lists a parked issue at', () => {
+  it('are every status a person parks an issue at, whoever owns the issue', () => {
+    // The attention response lists only the viewer's own; a parked issue somebody else owns is on
+    // the project's Held list and in Blocked on a person, so the parked list must hold it too.
+    expect([...BLOCKED_STATUSES].sort()).toEqual([...HUMAN_PARK_STATUSES].sort());
   });
 });

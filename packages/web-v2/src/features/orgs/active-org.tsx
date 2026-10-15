@@ -22,7 +22,7 @@ export function sortOrgs(orgs: OrgListItem[]): OrgListItem[] {
 interface ActiveOrgContextValue {
   /** All orgs the caller belongs to, personal-first then alphabetical. */
   orgs: OrgListItem[];
-  /** The resolved active org (null only while orgs are still loading). */
+  /** The resolved active org (null while the orgs or the stored preference are still being read). */
   activeOrg: OrgListItem | null;
   /** Convenience: `activeOrg?.id ?? null`. Drives the projects-console scope. */
   activeOrgId: string | null;
@@ -38,19 +38,23 @@ export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { data: orgsData } = useOrgs();
-  const { data: prefs } = usePreferences();
+  const prefsQ = usePreferences();
+  const prefs = prefsQ.data;
+  // Until the stored choice has been read there is no active org: a stand-in shown first and then
+  // replaced by the stored one reads, to everything watching, as a person switching orgs.
+  const prefsRead = prefsQ.isSuccess || prefsQ.isError;
 
   const orgs = useMemo(() => sortOrgs(orgsData ?? []), [orgsData]);
 
   const activeOrg = useMemo(() => {
-    if (orgs.length === 0) return null;
+    if (orgs.length === 0 || !prefsRead) return null;
     const stored = prefs?.activeOrgId ?? null;
     return (
       (stored ? orgs.find((o) => o.id === stored) : undefined) ??
       orgs.find((o) => o.isPersonal) ??
       orgs[0]
     );
-  }, [orgs, prefs?.activeOrgId]);
+  }, [orgs, prefsRead, prefs?.activeOrgId]);
 
   const mutation = useMutation({
     mutationFn: (orgId: string) => settingsApi.updatePreferences({ activeOrgId: orgId }),

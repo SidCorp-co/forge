@@ -124,6 +124,23 @@ export function formatApiError(err: unknown): string {
   return 'Unknown error';
 }
 
+/** A read that failed: what failed in the product's words, and the server's own code and message
+ *  for whoever reports it, which a screen keeps behind its technical view. */
+export interface ReadFailure {
+  said: string;
+  technical: string;
+}
+
+export function readFailure(err: unknown): ReadFailure {
+  if (err instanceof ApiError) {
+    const said = (err.code && FRIENDLY_CODES[err.code]) || unsaidFailure(err.status);
+    const code = err.code ? ` ${err.code}` : '';
+    return { said, technical: `${err.status}${code} — ${err.message.trim() || 'no message'}` };
+  }
+  const technical = err instanceof Error ? err.message : String(err);
+  return { said: 'Forge could not be reached. Check your connection, then try again.', technical };
+}
+
 /** A failure as a sentence of its own, so what a message says next starts after a full stop. */
 export function formatApiReason(err: unknown): string {
   return asSentence(formatApiError(err));

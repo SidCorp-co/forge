@@ -47,6 +47,7 @@ import { deriveAgentTasks, parseMessages, parseTurns } from "../types";
 import { SESSION_ATTACHMENTS } from "@/features/chat/attachments";
 import { ChatComposer, ReadOnlyComposerNote } from "@/features/chat/components/chat-composer";
 import { RunReport } from "./run-report/run-report";
+import { useLiveSessionRow } from "../live-row";
 import { ContextRail } from "./context-rail";
 import { Conversation } from "./conversation";
 import { NewOutput } from "./new-output";
@@ -94,7 +95,8 @@ export function SessionScreen({
   const setRailCollapsed = embedded ? setEmbeddedRailCollapsed : setPersistedRailCollapsed;
   const goBack = onClose ?? (projectSlug ? () => router.push(`/projects/${projectSlug}/agents`) : undefined);
 
-  const session = sessionQ.data;
+  // Judged on the newest check-in the live read has, not on the row as it was first fetched.
+  const session = useLiveSessionRow(sessionQ.data);
   const issueId = session?.metadata?.issueId;
 
   // Viewer = read-only: hide the composer (the server 403s sends regardless).

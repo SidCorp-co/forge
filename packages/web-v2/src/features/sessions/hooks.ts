@@ -4,12 +4,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";
 import { type ListSessionsOpts, sessionsApi } from "./api";
+import { isInteractiveSession, LIVE_READ_POLL_MS } from "./types";
 
-/** Sessions list. Keyed `['agent-sessions','list',opts]` — WS-invalidated. */
+/** Sessions list. Keyed `['agent-sessions','list',opts]` — WS-invalidated, and re-read on the live
+ *  period while it shows a running session, whose check-ins move no event. */
 export function useSessions(opts: ListSessionsOpts) {
   return useQuery({
     queryKey: ["agent-sessions", "list", opts],
     queryFn: () => sessionsApi.list(opts),
+    refetchInterval: (query) =>
+      query.state.data?.items.some((row) => row.status === "running" && !isInteractiveSession(row))
+        ? LIVE_READ_POLL_MS
+        : false,
   });
 }
 

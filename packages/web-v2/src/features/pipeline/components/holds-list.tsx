@@ -7,7 +7,7 @@ import { holderLine, orderHolds } from "../derive";
 import type { HeldIssue, Holder } from "../types";
 
 const OUTER = "sm:grid sm:grid-cols-[minmax(0,1.6fr)_minmax(0,3.8fr)] sm:gap-4";
-const INNER = "sm:grid sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1.6fr)_minmax(0,0.7fr)] sm:gap-4";
+const INNER = "sm:grid sm:grid-cols-[minmax(0,1.3fr)_minmax(0,2fr)_minmax(0,0.6fr)] sm:gap-4";
 
 /** One holder per kind and identity on an issue: a session, a claim's holder, a park's status. */
 function holderKey(holder: Holder): string {
@@ -21,11 +21,11 @@ function Label({ children }: { children: string }) {
 }
 
 /**
- * A reason on one line, whatever its length: a claim's next step or a park's reason can run to a
- * paragraph, which would push every row below it down. Where the line clips, a toggle opens the
- * whole of it in place, so a phone with no hover reaches every word.
+ * A reason held to three lines: one sentence is read whole in place, and a claim's next step or a
+ * park's reason that runs to a paragraph does not push every row below it down. Where the three
+ * lines clip, a toggle opens the whole of it in place, so a phone with no hover reaches every word.
  */
-function OneLineReason({ text }: { text: string }) {
+function ClampedReason({ text }: { text: string }) {
   const ref = useRef<HTMLSpanElement>(null);
   const [open, setOpen] = useState(false);
   const [clipped, setClipped] = useState(false);
@@ -33,7 +33,7 @@ function OneLineReason({ text }: { text: string }) {
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el || open) return;
-    const measure = () => setClipped(el.scrollWidth > el.clientWidth);
+    const measure = () => setClipped(el.scrollHeight > el.clientHeight + 1);
     measure();
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(measure);
@@ -42,8 +42,12 @@ function OneLineReason({ text }: { text: string }) {
   }, [open]);
 
   return (
-    <span className="flex min-w-0 items-baseline gap-2">
-      <span ref={ref} className={open ? "min-w-0 whitespace-pre-line break-words" : "min-w-0 truncate"} title={open ? undefined : text}>
+    <span className="flex min-w-0 flex-col items-start gap-0.5">
+      <span
+        ref={ref}
+        className={open ? "min-w-0 whitespace-pre-line break-words" : "line-clamp-3 min-w-0 break-words"}
+        title={open ? undefined : text}
+      >
         {text}
       </span>
       {(clipped || open) && (
@@ -83,7 +87,7 @@ function HoldRow({ hold, slug, now }: { hold: HeldIssue; slug: string; now: numb
               </span>
               <span className="flex min-w-0 items-baseline">
                 <Label>Why</Label>
-                <OneLineReason key={line.why} text={line.why} />
+                <ClampedReason key={line.why} text={line.why} />
               </span>
               <span>
                 <Label>Since</Label>
