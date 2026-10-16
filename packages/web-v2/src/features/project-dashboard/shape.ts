@@ -29,8 +29,7 @@ export function ageBand(seconds: number): AgeBand {
 export function parkedAges(rows: readonly IssueRow[] | undefined): Map<string, string> {
   const out = new Map<string, string>();
   for (const r of rows ?? []) {
-    const since = r.waitingOnPersonSince ?? r.statusEnteredAt;
-    if (since) out.set(r.id, since);
+    out.set(r.id, r.waitingOnPersonSince ?? r.statusEnteredAt);
   }
   return out;
 }

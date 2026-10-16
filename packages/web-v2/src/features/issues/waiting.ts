@@ -18,10 +18,10 @@ const SETTLED = new Set<IssueStatus>(statusesForLabels("done", "dropped"));
  * agent's claim writes the row and does not move this (ISS-1229 r8, judge-20).
  */
 export function inStatusFor(
-	row: { status: IssueStatus; statusEnteredAt?: string },
+	row: { status: IssueStatus; statusEnteredAt: string },
 	now: number,
 ): { label: string; stale: boolean } | null {
-	if (SETTLED.has(row.status) || !row.statusEnteredAt) return null;
+	if (SETTLED.has(row.status)) return null;
 	const since = new Date(row.statusEnteredAt).getTime();
 	if (Number.isNaN(since)) return null;
 	const ms = Math.max(0, now - since);

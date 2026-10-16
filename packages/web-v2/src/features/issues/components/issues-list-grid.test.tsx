@@ -42,6 +42,7 @@ const issue = (n: number, over: Partial<IssueRow> = {}): IssueRow => ({
   mergedAt: null,
   createdAt: "2026-09-01T00:00:00.000Z",
   updatedAt: "2026-09-01T00:00:00.000Z",
+  statusEnteredAt: "2026-09-01T00:00:00.000Z",
   estimatedCost: 1.25,
   modules: [{ labelId: "m-web", name: "web", color: "#1f6f4a", isPrimary: true }],
   ...over,

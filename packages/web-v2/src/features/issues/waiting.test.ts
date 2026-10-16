@@ -224,7 +224,6 @@ describe("how long the issue has stood at its status", () => {
 
   it("gives no figure rather than NaN when the timestamp is unusable", () => {
     expect(inStatusFor({ status: "open", statusEnteredAt: "not a date" }, NOW_MS)).toBeNull();
-    expect(inStatusFor({ status: "open" }, NOW_MS)).toBeNull();
   });
 
   it("never counts backwards from a row stamped in the future", () => {
