@@ -227,7 +227,7 @@ const INTERPOLATED =
  *  alone: `already in status ${requested}`, `Issue is at '${issue.status}'`. */
 const BARE_INTERPOLATED =
   /(?<!\\`)\$\{[\w.?]*(?:[sS]tatus|\bfrom|\bto|requested|final|destination|replacement)\}/;
-/** A stored value written after the word status, outside its "Label (value)" pair. */
+/** The word status followed by a value as stored: `already in status open`. */
 const STATUS_THEN_VALUE = new RegExp(`['\`"][^'\`"]*\\bstatus(?:es)?\\s+(?:${STATUSES})\\b(?!\\))`);
 /** A query, whose interpolations are parameters and not words anybody reads. */
 const SQL_LINE = /\bsql(?:<[^>]*>)?`|^\s*(?:VALUES|AND|OR|WHERE|SELECT|SET|FROM)\b/i;
@@ -235,8 +235,8 @@ const SQL_LINE = /\bsql(?:<[^>]*>)?`|^\s*(?:VALUES|AND|OR|WHERE|SELECT|SET|FROM)
 const TOUCHES_ISSUE_STATUS =
   /\bIssueStatus\b|\bissues\.status\b|\bissueStatuses\b|\bissue\??\.status\b/;
 
-/** Lines that write a status bare into a sentence, for whoever reads it: the stored value alone is
- *  neither the label a person reads nor the pair a caller reads. */
+/** Lines handing any reader the stored value with nothing beside it: a person wants the label, a
+ *  caller the label and then the value to send back. */
 function bareValueOffences(file: string, source: string): string[] {
   return source
     .split('\n')
