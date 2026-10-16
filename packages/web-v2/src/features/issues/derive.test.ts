@@ -846,6 +846,27 @@ describe("deriveCommentKind", () => {
 		expect(deriveCommentKind({ body })).toEqual({ kind, form: "prefix" });
 	});
 
+	// ISS-1228 round 8: a Released badge marks a comment that announces a release, the way core's own
+	// release stamp and a person's "Released v1.2.0 to prod" do: it says what went out or where. A line
+	// that only starts with the word — a question, a denial, talk about the word — announces nothing.
+	it.each([
+		["Released? Not yet — this is still blocked on the vendor.", "comment"],
+		["Shipped is the wrong word here: nothing has gone out.", "comment"],
+		["Released to production is the wording we should use once deployment finishes.", "comment"],
+		["Released to prod yet?", "comment"],
+		["Shipped not yet, the deploy was rolled back.", "comment"],
+		["**Released** in v0.4.3 — the picker went out.", "released"],
+		["__Shipped__ to production this morning.", "released"],
+		["Released in v0.4.2 — the picker went out.", "released"],
+		["Released outside a release batch, and recorded from what production is serving.", "released"],
+		["Released: the new picker.", "released"],
+		["Published release v2.0.1", "released"],
+		["## Release notes\nThe picker is new.", "released"],
+		["**Release note**\nThe picker is new.", "released"],
+	])("badges %j as %s by whether its opening announces a release", (body, kind) => {
+		expect(deriveCommentKind({ body })).toEqual({ kind, form: "prefix" });
+	});
+
 	it("classifies a stored component body by its prose, not by its markup", () => {
 		expect(
 			deriveCommentKind({
@@ -969,6 +990,33 @@ describe("openBlockingRefs for an edge that holds until shipped (ISS-1225)", () 
 });
 
 describe("deriveBlockerState", () => {
+	// ISS-1228 round 8: the banner names each blocker by its status. A dropped blocker is not open,
+	// and since it never finishes, telling a person to finish it first is no way out.
+	it("names each blocker with its status and never calls a dropped one open", () => {
+		const deps: IssueDependencies = {
+			incoming: [
+				...incomingBlocks({ id: "e1", fromIssueId: "b1", fromDisplayId: "ISS-9", fromStatus: "in_progress" }).incoming,
+				...incomingBlocks({ id: "e2", fromIssueId: "b2", fromDisplayId: "ISS-11", fromStatus: "dropped" }).incoming,
+			],
+			outgoing: [],
+		};
+		const b = deriveBlockerState(blockerIssue({ status: "approved" }), undefined, deps);
+		expect(b?.reason).toBe("Blocked by ISS-9 (In progress) and ISS-11 (Dropped).");
+		expect(b?.reason).not.toMatch(/open/i);
+		expect(b?.whoMustAct).toMatch(/dropped issue never finishes/i);
+		expect(b?.whoMustAct).toMatch(/remove/i);
+	});
+
+	it("tells a person to finish blockers that can still finish", () => {
+		const b = deriveBlockerState(
+			blockerIssue({ status: "approved" }),
+			undefined,
+			incomingBlocks({ fromDisplayId: "ISS-9", fromStatus: "open" }),
+		);
+		expect(b?.reason).toBe("Blocked by ISS-9 (Open).");
+		expect(b?.whoMustAct).toMatch(/^Finish ISS-9 first/);
+	});
+
 	it("returns null when actively progressing", () => {
 		expect(
 			deriveBlockerState(

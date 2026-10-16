@@ -465,8 +465,26 @@ export function groupRows(rows: IssueRow[], groupBy: GroupBy): IssueGroup[] {
 }
 
 function openingLine(body: string): string {
-	const text = body.replace(/<[^>]*>/g, " ");
+	const text = body.replace(/<[^>]*>/g, " ").replace(/(\*\*|__|[*_`~])/g, "");
 	return text.split("\n").map((line) => line.trim()).find((line) => line !== "") ?? "";
+}
+
+const RELEASE_HEADING = /^(#+\s*)?release notes?(\s*$|\s*[:—–-]|\s+for\b)/;
+/** Released / Shipped / Published release, then what went out (a version) or where or how it went. */
+const RELEASE_STATEMENT =
+	/^(released|shipped|published release)(\s*[:—–-]|\s+(v?\d|in|to|as|on|at|into|onto|outside|via|with|through|by|from|for)\b)/;
+/** A clause that asks, denies or says something of its own about the word announces nothing. */
+const NOT_AN_ANNOUNCEMENT =
+	/\?|\b(not|no|never|yet|n't|is|are|was|were|be|been|will|would|should|could|can|may|might|must)\b/;
+
+/** An opening line announces a release as core's stamp ("Released outside a release batch, …") and
+ *  "Released v1.2.0 to prod" do: its first clause states what went out or where it went. */
+function announcesRelease(line: string): boolean {
+	if (RELEASE_HEADING.test(line)) return true;
+	const statement = line.replace(/^#+\s*/, "");
+	if (!RELEASE_STATEMENT.test(statement)) return false;
+	const clause = statement.split(/[.;,—–]|\s-\s/)[0] ?? "";
+	return !NOT_AN_ANNOUNCEMENT.test(clause.replace(/^(released|shipped|published release)\s*:?/, ""));
 }
 
 /**
@@ -494,8 +512,7 @@ function prefixKind(body: string): CommentKind {
 		)
 	)
 		return "qa";
-	if (/^(#+\s*)?(released\b|release note|published release|shipped\b)/.test(b))
-		return "released";
+	if (announcesRelease(b)) return "released";
 	if (
 		/forge-code|plan implemented|implementation complete|code complete|pushed .* branch/.test(
 			b,
@@ -774,6 +791,27 @@ export function openBlockingRefs(
 		}));
 }
 
+function listInWords(items: readonly string[]): string {
+	if (items.length <= 1) return items[0] ?? "";
+	return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+function blockerWithStatus(ref: BlockingRef): string {
+	return ref.status ? `${ref.displayId} (${statusLabel(ref.status)})` : `${ref.displayId} (status not read)`;
+}
+
+/** A dropped blocker never finishes, and core's dispatcher holds a dependent behind it until the edge goes. */
+function blockerRemedy(refs: readonly BlockingRef[]): string {
+	const dropped = refs.filter((r) => r.status === "dropped").map((r) => r.displayId);
+	const live = refs.filter((r) => r.status !== "dropped").map((r) => r.displayId);
+	const finish = live.length > 0 ? `Finish ${listInWords(live)} first.` : "";
+	const remove =
+		dropped.length > 0
+			? `A dropped issue never finishes, so ${listInWords(dropped)} holds this one until somebody removes the dependency.`
+			: "";
+	return [finish, remove].filter(Boolean).join(" ");
+}
+
 /**
  * Derive the single blocker verdict for an issue, or `null` when it is actively
  * progressing. Precedence (richest signal first): a paused run → the park view
@@ -850,8 +888,8 @@ export function deriveBlockerState(
 	if (blockingRefs.length) {
 		return {
 			tone: "info",
-			reason: `Blocked by ${blockingRefs.length} open issue${blockingRefs.length > 1 ? "s" : ""}.`,
-			whoMustAct: "Finish the blocking issue(s) first.",
+			reason: `Blocked by ${listInWords(blockingRefs.map(blockerWithStatus))}.`,
+			whoMustAct: blockerRemedy(blockingRefs),
 			cta: { label: "Open blocking issue", kind: "open-blocker" },
 			blockingRefs,
 		};

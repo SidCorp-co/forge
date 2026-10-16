@@ -3,6 +3,7 @@ import { describeOperation, empty, fail, json } from '../api-reference/declare/d
 import { tableRow } from '../api-reference/declare/rows.js';
 import { agentSessionStatuses, agentSessions, sessionRuntimeStates } from '../db/schema.js';
 import { sessionTranscripts } from '../db/session-vocabulary.js';
+import { sessionReportSchema } from './box-report.js';
 
 export const listQuerySchema = z
   .object({
@@ -58,12 +59,16 @@ export const sweepQuerySchema = z.object({ projectId: z.uuid() }).strict();
 /** A whole session, transcript included. */
 export const sessionSchema = tableRow(agentSessions);
 
+/** A session as a reader sees it: the row, and what its box last reported about it. */
+export const sessionReadSchema = sessionSchema.extend({ report: sessionReportSchema });
+
 /** A session as a list shows it: no transcript, with its cost and the last line said. */
 export const sessionListItemSchema = sessionSchema.omit({ messages: true }).extend({
   messageCount: z.number().nullable(),
   transcript: z.enum(sessionTranscripts),
   estimatedCost: z.number(),
   lastMessagePreview: z.string().nullable(),
+  report: sessionReportSchema,
 });
 
 export const sessionListSchema = z.object({
@@ -137,11 +142,11 @@ export const createSession = describeOperation({
 });
 
 export const readSession = describeOperation({
-  summary: 'Read one agent session with its transcript',
+  summary: 'Read one agent session with its transcript and what its box last reported about it',
   description:
     'A device may read only the session dispatched to it, which is how a runner fetches the baseline its patch appends onto.',
   responses: {
-    200: json(sessionSchema),
+    200: json(sessionReadSchema),
     403: fail(
       'FORBIDDEN',
       'not a project member, not the conversation owner, or a device that does not own the session',

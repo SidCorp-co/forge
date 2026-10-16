@@ -10,8 +10,6 @@ import { useRouter } from "next/navigation";
 import {
   Badge,
   Button,
-  Card,
-  CardContent,
   EmptyState,
   ErrorState,
   HealthDot,
@@ -57,6 +55,7 @@ import {
 } from "../hooks";
 import {
   deriveLiveness,
+  isLiveDisplay,
   deriveSessionDisplayStatus,
   sessionStep,
   isAwaitingReply,
@@ -163,10 +162,10 @@ function matchesFilter(filter: SessionFilter, row: SessionRow, display: AgentSes
     case "queued":
       return row.status === "queued" || row.status === "idle";
     case "attention":
-      // ISS-322 — only GENUINE failures + live-stalled (about-to-be-reaped)
-      // sessions need attention. A terminal `cancelled_stale`/lifecycle cancel
-      // is benign cleanup (`swept`), so it no longer lands here.
-      return isRealFailure(display, row.failureReason) || display === "stalled";
+      // ISS-322 — only GENUINE failures, live-stalled (about-to-be-reaped) sessions and sessions
+      // their box reports blocked need attention. A terminal `cancelled_stale`/lifecycle cancel is
+      // benign cleanup (`swept`), so it no longer lands here.
+      return isRealFailure(display, row.failureReason) || display === "stalled" || display === "blocked";
     default:
       return true;
   }
@@ -381,7 +380,7 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
       </div>
 
       {sessionsQ.isLoading && (
-        <div className="overflow-hidden rounded-lg border border-line bg-surface">
+        <div className="border-y border-line">
           {Array.from({ length: 6 }).map((_, i) => (
             <SessionRowSkeleton key={i} />
           ))}
@@ -459,10 +458,10 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
             </Table>
           </div>
 
-          {/* Mobile: stacked cards — no horizontal page scroll. */}
-          <div className="space-y-2.5 md:hidden">
+          {/* Mobile: flush rows under hairlines — no horizontal page scroll, no card per session. */}
+          <ul aria-label="Sessions" className="divide-y divide-line border-y border-line md:hidden">
             {treeRows.map(({ row, depth }) => (
-              <SessionMobileCard
+              <SessionMobileRow
                 key={row.id}
                 row={row}
                 depth={depth}
@@ -474,7 +473,7 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
                 onInlineOpen={setOpenSessionId}
               />
             ))}
-          </div>
+          </ul>
         </>
       )}
 
@@ -520,7 +519,7 @@ function StatPill({ label, value, ink }: { label: string; value: string; ink?: s
 /** Build the contextual row-action menu, choosing items by display status. */
 function buildMenuItems(row: SessionRow, display: AgentSessionDisplayStatus, a: RowActions): MenuItem[] {
   const items: MenuItem[] = [];
-  const isLive = display === "running" || display === "stalled";
+  const isLive = isLiveDisplay(display);
   const isQueued = row.status === "queued" || row.status === "idle";
   const isTerminal =
     display === "completed" ||
@@ -645,7 +644,7 @@ function RunnerCell({
   now: number;
 }) {
   if (!row.deviceId) return <span className="fg-caption text-subtle">—</span>;
-  const live = display === "running" || display === "stalled";
+  const live = isLiveDisplay(display);
   const liveness = live ? deriveLiveness(row, now) : null;
   const health =
     liveness?.state === "stale" || liveness?.state === "reaping"
@@ -723,7 +722,7 @@ function StatusCell({
 }
 
 function useRowDuration(row: SessionRow, display: AgentSessionDisplayStatus): string {
-  const live = display === "running" || display === "stalled";
+  const live = isLiveDisplay(display);
   const startMs = row.startedAt ? new Date(row.startedAt).getTime() : undefined;
   const elapsed = useElapsed(startMs, live);
   if (!startMs) return "—";
@@ -830,7 +829,7 @@ function SessionKindTag({ row }: { row: SessionRow }) {
   return <Badge tone={KIND_TONE[kind]}>{SESSION_KIND_LABEL[kind]}</Badge>;
 }
 
-function SessionMobileCard({
+function SessionMobileRow({
   row,
   slug,
   deviceName,
@@ -861,8 +860,7 @@ function SessionMobileCard({
   return (
     // The same edge the table shows, at a width a phone can carry: the nesting
     // has to survive the narrow layout or the tree is a desktop-only claim.
-    <Card>
-      <CardContent>
+    <li className="py-3">
         <div
           className="flex items-start justify-between gap-3"
           style={depth > 0 ? { paddingLeft: depth * OWNER_INDENT_PX } : undefined}
@@ -894,7 +892,6 @@ function SessionMobileCard({
             <RunnerCell row={row} deviceName={deviceName} display={display} now={now} />
           </div>
         )}
-      </CardContent>
-    </Card>
+    </li>
   );
 }

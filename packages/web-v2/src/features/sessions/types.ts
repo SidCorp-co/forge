@@ -22,9 +22,21 @@ export const TERMINAL_SESSION_STATUSES: ReadonlySet<string> = new Set<AgentSessi
   TERMINAL_AGENT_SESSION_STATUSES,
 );
 
-/** Synthetic UI-only state derived from heartbeat freshness. The backend only
- *  persists `running`; the `stalled` distinction is presentational. */
-export type AgentSessionDisplayStatus = AgentSessionStatus | "stalled";
+/** UI-only readings of `running`: `stalled` is silent past the line `sessionSilence` draws, and
+ *  `blocked` still checks in while its box reports its work blocked. */
+export type AgentSessionDisplayStatus = AgentSessionStatus | "stalled" | "blocked";
+
+export function isLiveDisplay(display: AgentSessionDisplayStatus): boolean {
+  return display === "running" || display === "stalled" || display === "blocked";
+}
+
+export interface SessionBoxReport {
+  incarnation: string;
+  work: string;
+  blockerKind: string | null;
+  waitingOn: string | null;
+  observedAt: string;
+}
 
 /** Warning band between a fresh heartbeat and the sweeper's heartbeat_timeout
  *  cutoff — promote `running` → `stalled` past this. */
@@ -110,6 +122,8 @@ export interface SessionRow {
   /** Per-session dollar cost rolled up from usage_records, attached by the list
    *  endpoint (ISS-391). 0 when the session has no usage rows yet. */
   estimatedCost?: number;
+  /** What the box last reported about this session, off its ledger; `null` where it reported nothing. */
+  report?: SessionBoxReport | null;
   /** One-line preview of the last user/assistant turn, attached by the list
    *  endpoint (ISS-698). Null when no previewable turn exists yet (e.g. a
    *  brand-new session, or a legacy row with only the jsonb transcript). */
@@ -357,13 +371,14 @@ export function deriveLiveness(
 export function deriveSessionDisplayStatus(
   session: Pick<
     SessionRow,
-    "status" | "lastHeartbeatAt" | "startedAt" | "updatedAt" | "metadata"
+    "status" | "lastHeartbeatAt" | "startedAt" | "updatedAt" | "metadata" | "report"
   >,
   nowMs: number = Date.now(),
 ): AgentSessionDisplayStatus {
   if (session.status !== "running") return session.status;
   const { state } = deriveLiveness(session, nowMs);
-  return state === "stale" || state === "reaping" ? "stalled" : "running";
+  if (state === "stale" || state === "reaping") return "stalled";
+  return session.report?.work === "blocked" ? "blocked" : "running";
 }
 
 export function statusToChip(display: AgentSessionDisplayStatus): StatusKey {
@@ -385,6 +400,8 @@ export function statusToChip(display: AgentSessionDisplayStatus): StatusKey {
       return "archived";
     case "stalled":
       return "zombie";
+    case "blocked":
+      return "blocked";
     default:
       return "queued";
   }

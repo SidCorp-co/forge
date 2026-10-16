@@ -10,7 +10,7 @@ import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { applyFilters, type StateFilter } from "../filter";
 import { useRunSessions } from "../hooks";
-import { stalledRuns, workedRuns } from "../stalled-runs";
+import { openRuns, stalledRuns, workedRuns } from "../stalled-runs";
 import { RunRow } from "./run-row";
 
 const FILTERS: Array<{ value: StateFilter; label: string }> = [
@@ -153,6 +153,7 @@ function StalledBand({ projectId, now }: { projectId: string; now: number }) {
     () => stalledRuns(runsQ.data?.items, now),
     [runsQ.data, now],
   );
+  const open = useMemo(() => openRuns(runsQ.data?.items), [runsQ.data]);
 
   if (loading) {
     return <Skeleton variant="rect" className="h-8 w-full max-w-md" aria-busy="true" />;
@@ -175,6 +176,9 @@ function StalledBand({ projectId, now }: { projectId: string; now: number }) {
       </p>
     );
   }
+
+  // With no run open there is nothing to say about open runs: the tab below says what is running.
+  if (open.length === 0) return null;
 
   return (
     <p className="fg-caption text-muted">
@@ -260,9 +264,9 @@ export function RunsPane({ scope }: RunsPaneProps) {
               }}
             />
           ) : (
-            <ul className="flex flex-col gap-2">
+            <ul aria-label="Runs a box reports" className="flex flex-col divide-y divide-line border-y border-line">
               {rows.map((row) => (
-                <RunRow key={row.runId} row={row} now={now} />
+                <RunRow key={row.runId} row={row} now={now} slug={scope.slug} />
               ))}
             </ul>
           )}

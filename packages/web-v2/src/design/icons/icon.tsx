@@ -5,7 +5,7 @@ import {
   LayoutGrid, Link as LinkIcon, List, Lock, LogOut, type LucideIcon, Mail,
   Menu as MenuIcon, MessageSquare, Monitor, MoreHorizontal, PanelLeftClose, Pause, Pin, Play,
   Pencil, Plus, RotateCw, Rows3, Search, Server, Settings, Shield, Sparkles, Square,
-  Star, Trash2, TriangleAlert, Users, Workflow, X,
+  Star, Trash2, TriangleAlert, Users, WifiOff, Workflow, X,
   Bold, Code, Heading, Italic, ListOrdered, Quote, SquareCode,
 } from "lucide-react";
 
@@ -49,6 +49,8 @@ const ICONS = {
   trash: Trash2,
   arrowRight: ArrowRight,
   agent: Sparkles,
+  /** A session nobody has heard from: no signal. */
+  quiet: WifiOff,
   chat: MessageSquare,
   folder: Folder,
   users: Users,

@@ -174,7 +174,7 @@ describe("a running session gone silent", () => {
 
     const { container: runs } = render(
       <ul>
-        <RunRow row={run} now={NOW} />
+        <RunRow row={run} now={NOW} slug="pair" />
       </ul>,
     );
     const agentsRuns = readingOf(spans(runs).find((el) => /no report for/.test(el.textContent ?? "") && el.children.length === 0));
@@ -205,7 +205,7 @@ describe("a running session gone silent", () => {
 
     const { container: runs } = render(
       <ul>
-        <RunRow row={run} now={NOW} />
+        <RunRow row={run} now={NOW} slug="pair" />
       </ul>,
     );
     const runChip = runs.querySelector("li > span")?.textContent;
@@ -267,7 +267,7 @@ describe("a running session that keeps checking in", () => {
 
     const { container: runs } = render(
       <ul>
-        <RunRow row={beatingRun} now={NOW} />
+        <RunRow row={beatingRun} now={NOW} slug="pair" />
       </ul>,
     );
     const agentsRuns = runs.querySelector("li > span")?.textContent;
@@ -313,6 +313,91 @@ describe("the sessions list's count of working sessions (ISS-1228 criterion 36)"
     const { container } = render(<SessionsScreen scope={{ projectId: "p1" }} />);
     expect(readCounts(container, WORKING_WORD)).toEqual({ figure: "1", tab: "1" });
     listed = row;
+    cleanup();
+  });
+});
+
+describe("a running session its box reports blocked (ISS-1228 criteria 34, 40, 42)", () => {
+  const report = {
+    incarnation: "live",
+    work: "blocked",
+    blockerKind: "human",
+    waitingOn: "approve the database restore in Coolify",
+    observedAt: HEARD_AT,
+  };
+  const blockedLive: LiveSession = { ...live, lastHeartbeatAt: HEARD_AT, report };
+  const blockedRow: SessionRow = { ...row, lastHeartbeatAt: HEARD_AT, updatedAt: HEARD_AT, report };
+  const quietBlockedRow: SessionRow = { ...row, report };
+
+  it("is called Blocked on every surface that shows it, and counted nowhere as Working", () => {
+    const { container: pipeline } = render(<SessionsList sessions={[blockedLive]} slug="pair" now={NOW} />);
+    const reference = doingCell(pipeline);
+    cleanup();
+
+    const { container: card } = render(
+      <LiveSessionsCard sessions={[blockedLive]} slug="pair" now={NOW} read={{ read: "ok" }} />,
+    );
+    const dashboard = card.querySelector("li > span")?.textContent;
+    cleanup();
+
+    const { container: chipBox } = render(
+      <SessionChip status={statusToChip(deriveSessionDisplayStatus(blockedRow, NOW))} />,
+    );
+    const chip = chipBox.firstElementChild?.textContent;
+    cleanup();
+
+    const stage = sessionTurnStage({ live: true, display: deriveSessionDisplayStatus(blockedRow, NOW) });
+    const { container: page } = render(
+      stage ? <TurnStage stage={stage} waitingOn="A person — approve the database restore in Coolify" /> : <span />,
+    );
+    const pageLine = page.querySelector("[data-testid=turn-stage]")?.textContent?.split(" · ")[0];
+    const spinning = page.querySelector("[role=status]") !== null;
+    cleanup();
+
+    listed = blockedRow;
+    const { container: list } = render(<SessionsScreen scope={{ projectId: "p1" }} />);
+    const listChip = list.querySelector("tbody span.rounded-md.font-semibold")?.textContent;
+    const workingFigure = [...list.querySelectorAll(".fg-overline")].find((el) => el.textContent === WORKING_WORD)
+      ?.nextElementSibling?.textContent;
+    const workingTab = [...list.querySelectorAll("button")]
+      .map((b) => b.textContent ?? "")
+      .find((t) => t.startsWith(`${WORKING_WORD} `));
+    listed = row;
+    cleanup();
+
+    expect(reference).toBe("Blocked");
+    expect({ dashboard, chip, pageLine, listChip, spinning }).toEqual({
+      dashboard: reference,
+      chip: reference,
+      pageLine: reference,
+      listChip: reference,
+      spinning: false,
+    });
+    expect({ workingFigure, workingTab }).toEqual({ workingFigure: "0", workingTab: `${WORKING_WORD} 0` });
+  });
+
+  it("says on its own page what it last reported once it goes quiet", () => {
+    const display = deriveSessionDisplayStatus(quietBlockedRow, NOW);
+    const stage = sessionTurnStage({ live: true, display });
+    const { container: page } = render(
+      stage ? <TurnStage stage={stage} silentForMs={NOW - Date.parse(SILENT_SINCE)} reported="Blocked" /> : <span />,
+    );
+    expect(page.querySelector("[data-testid=turn-stage]")?.textContent).toBe("Quiet · last reported blocked 1m ago");
+  });
+});
+
+describe("the sessions list at a phone's width (ISS-1228 criterion 51)", () => {
+  it("lists each session as a flush row under a hairline, not a card", () => {
+    listed = row;
+    const { container } = render(<SessionsScreen scope={{ projectId: "p1" }} />);
+    const list = container.querySelector<HTMLElement>("ul[aria-label='Sessions']");
+    expect(list?.className).toMatch(/divide-y/);
+    const items = [...(list?.querySelectorAll<HTMLElement>(":scope > li") ?? [])];
+    expect(items).toHaveLength(1);
+    for (const item of items) {
+      expect(item.className).not.toMatch(/rounded|(^|\s)border(\s|$)/);
+      expect(item.querySelector(".rounded-lg.border, .rounded-xl.border")).toBeNull();
+    }
     cleanup();
   });
 });

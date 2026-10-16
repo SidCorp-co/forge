@@ -307,10 +307,11 @@ describe("loading more", () => {
   });
 });
 
-describe("the focus ring on a row (ISS-1228 extra fix)", () => {
-  // The scroller clips anything drawn outside a full-width row and the next row paints over its lower
-  // edge, so an outer ring showed only as a faint line above and below. The ring is drawn inside.
-  it("draws the focused row's ring inside the row, in the focus-ring token, with no outer shadow", () => {
+describe("the focus ring on a row (ISS-1228 criterion 47)", () => {
+  // Round 7 drew the ring inside the row over content that ran to the row's edge, so it covered each
+  // line's first character ("ISS-9" read "SS-9"). The ring stays on the row's own edge, where neither
+  // the frame nor the next row covers it, and the row's content is inset wider than the ring.
+  it("draws the focused row's ring along the row's edge, in the focus-ring token, with no outer shadow", () => {
     list(items(3));
     const row = screen.getByRole("article", { name: "Row 1" });
     const classes = row.className.split(/\s+/);
@@ -324,5 +325,51 @@ describe("the focus ring on a row (ISS-1228 extra fix)", () => {
       ]),
     );
     expect(classes.filter((c) => /^focus-visible:(outline-none|shadow-\[)/.test(c))).toEqual([]);
+  });
+
+  it("insets the row's content wider than the ring on every side, so the ring covers none of its text", () => {
+    list(items(3));
+    const classes = screen.getByRole("article", { name: "Row 1" }).className.split(/\s+/);
+    const ring = Number(classes.find((c) => /^focus-visible:outline-\d+$/.test(c))?.split("-").pop());
+    const inset = Number(classes.find((c) => /^p-\[\d+px\]$/.test(c))?.match(/\d+/)?.[0]);
+    expect(ring).toBe(2);
+    expect(inset).toBeGreaterThan(ring);
+  });
+});
+
+describe("the arrow keys (ISS-1228 criterion 48)", () => {
+  async function opened() {
+    list(items(1300));
+    await act(async () => {});
+    const first = articles()[0] as HTMLElement;
+    act(() => first.focus());
+    return first;
+  }
+
+  it("moves focus to the next row on ArrowDown and back on ArrowUp, instead of scrolling the frame", async () => {
+    const first = await opened();
+    const outcome = { notPrevented: true };
+    await act(async () => {
+      outcome.notPrevented = fireEvent.keyDown(first, { key: "ArrowDown" });
+    });
+    expect(outcome.notPrevented).toBe(false);
+    expect(document.activeElement).toHaveAttribute("data-index", "1");
+    await act(async () => void fireEvent.keyDown(document.activeElement as Element, { key: "ArrowUp" }));
+    expect(document.activeElement).toHaveAttribute("data-index", "0");
+  });
+
+  it("walks past the rows in view, drawing each row it reaches", async () => {
+    await opened();
+    for (let i = 0; i < 12; i++) {
+      await act(async () => void fireEvent.keyDown(document.activeElement as Element, { key: "ArrowDown" }));
+    }
+    expect(document.activeElement).toHaveAttribute("data-index", "12");
+  });
+
+  it("leaves ArrowDown alone inside a text field in a row", async () => {
+    list(items(3), { renderRow: (r) => <input aria-label={`field ${r.id}`} /> });
+    await act(async () => {});
+    const field = screen.getByLabelText("field n0");
+    expect(fireEvent.keyDown(field, { key: "ArrowDown" })).toBe(true);
   });
 });
