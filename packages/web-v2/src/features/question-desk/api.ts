@@ -1,4 +1,4 @@
-import type { RaisedQuestionAsker, RaisedQuestionsResponse } from "@forge/contracts/comments";
+import type { RaisedQuestionAsker, RaisedQuestionState, RaisedQuestionsResponse } from "@forge/contracts/comments";
 import { apiClient } from "@/lib/api/client";
 import { commentsApi } from "@/features/comments";
 
@@ -14,8 +14,9 @@ export interface AskTarget {
 const post = (body: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(body) });
 
 export const questionDeskApi = {
-  /** The questions raised on the project: the reader's own, or everyone's; owed first. */
-  raised: (projectId: string, by: RaisedQuestionAsker) => apiClient<RaisedQuestionsResponse>(`/projects/${projectId}/raised-questions?by=${by}`),
+  /** One page of the questions raised on the project in one state: the reader's own, or everyone's. */
+  raised: (projectId: string, by: RaisedQuestionAsker, state: RaisedQuestionState, offset: number, limit: number) =>
+    apiClient<RaisedQuestionsResponse>(`/projects/${projectId}/raised-questions?by=${by}&state=${state}&offset=${offset}&limit=${limit}`),
 
   /** The records of one scope a question can be about, by key and title. */
   targets: async (projectId: string, scope: Exclude<AskScope, "issue">): Promise<AskTarget[]> => {

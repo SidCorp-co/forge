@@ -61,8 +61,64 @@ describe("a text cut for a list row", () => {
 
 	it("reads a comment's short form as its first sentence of its first line that says anything", () => {
 		expect(shortForm("\n\nIs the export blocked? I tried twice.\nMore below.", 200)).toBe("Is the export blocked?");
-		expect(shortForm("## Requirement\n\nREQ-4 says so.", 200)).toBe("## Requirement");
+		expect(shortForm("## Requirement\n\nREQ-4 says so.", 200)).toBe("Requirement");
 		expect(shortForm("v1.2 ships the fix today", 200)).toBe("v1.2 ships the fix today");
 		expect(shortForm(`${source}. Second sentence.`, 120).length).toBeLessThanOrEqual(120);
+	});
+});
+
+// Live dev.251's Questions page: 566 rows, almost all release records, listed as `**Release…**` and
+// `## Release…` with their markers raw. A short form is what the row reads, so it reads as words.
+describe("a short form reads as plain words, never markdown markers", () => {
+	const short = (text: string) => shortForm(text, 200);
+
+	it("drops a heading's hashes, and a closing run of them", () => {
+		expect(short("## Release 0.4.0-dev.251\n\nShipped to beta.")).toBe("Release 0.4.0-dev.251");
+		expect(short("# Release notes #")).toBe("Release notes");
+	});
+
+	it("drops emphasis markers: ** __ * _ and ~~", () => {
+		expect(short("**Release 0.4.0-dev.251** landed on beta. Thanks.")).toBe("Release 0.4.0-dev.251 landed on beta.");
+		expect(short("__Bold__ and *slanted* and _also_ and ~~gone~~ words")).toBe("Bold and slanted and also and gone words");
+		expect(short("***Both*** at once")).toBe("Both at once");
+		expect(short("**run `pnpm verify` before** you push")).toBe("run pnpm verify before you push");
+	});
+
+	it("keeps inline code's text without its backticks, its own markers untouched", () => {
+		expect(short("Run `pnpm verify` first.")).toBe("Run pnpm verify first.");
+		expect(short("Set ``a`b`` and `*not em*` here")).toBe("Set a`b and *not em* here");
+	});
+
+	it("reads a link or an image as its text, and an autolink as its address", () => {
+		expect(short("See [the release page](https://forge.example/r/251.html) now. Then more.")).toBe("See the release page now.");
+		expect(short("![the board](https://forge.example/b.png) as shipped")).toBe("the board as shipped");
+		expect(short("Mirrored at <https://forge.example/r/251>")).toBe("Mirrored at https://forge.example/r/251");
+	});
+
+	it("drops a list bullet, a number, a task box and a blockquote marker", () => {
+		expect(short("- first bullet item")).toBe("first bullet item");
+		expect(short("* star bullet")).toBe("star bullet");
+		expect(short("+ plus bullet")).toBe("plus bullet");
+		expect(short("12. numbered item")).toBe("numbered item");
+		expect(short("- [x] done item")).toBe("done item");
+		expect(short("> quoted line")).toBe("quoted line");
+		expect(short("> > ## Heading in a quote")).toBe("Heading in a quote");
+	});
+
+	it("collapses whitespace to single spaces", () => {
+		expect(short("  **Release**\t\t  landed   on   beta  ")).toBe("Release landed on beta");
+	});
+
+	it("skips a line that is only markup: a fence and what it holds, a rule, an empty heading", () => {
+		expect(short("```ts\nconst x = 1;\n```\nThe sentence after.")).toBe("The sentence after.");
+		expect(short("---\n\nAfter the rule.")).toBe("After the rule.");
+		expect(short("##\n**Release** after.")).toBe("Release after.");
+	});
+
+	it("keeps a literal * or _ that is not emphasis, and an escaped marker as its character", () => {
+		expect(short("rename snake_case_name to camelCase")).toBe("rename snake_case_name to camelCase");
+		expect(short("2 * 3 = 6 and a * b * c")).toBe("2 * 3 = 6 and a * b * c");
+		expect(short("file_name_v2.ts and __dunder_like names")).toBe("file_name_v2.ts and __dunder_like names");
+		expect(short("a \\*literal\\* star")).toBe("a *literal* star");
 	});
 });

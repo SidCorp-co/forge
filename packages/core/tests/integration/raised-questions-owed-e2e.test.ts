@@ -4,9 +4,12 @@
  * notes printed whole as questions owed on issues that had ended. The business rules under test: a
  * question is owed only while the issue it sits on is live, and one on an ended issue is closed; a
  * row is the question's short form, never its body; Forge's own merge claim is never a question;
- * and the three counts cover every question exactly once.
+ * and the three counts cover every question exactly once. A read names one state and a page of it,
+ * so the Questions page lists what is owed and fetches the 566 answered and closed rows a page at a
+ * time, only when a reader opens them; and a release record's markdown is listed as plain words.
  *
  * @direct-test-of packages/core/src/comments/raised-read.ts
+ * @direct-test-of packages/core/src/comments/entity-routes.ts
  * @direct-test-of packages/contracts/src/comments.ts
  * @direct-test-of packages/core/src/comments/issue-comment.ts
  */
@@ -48,7 +51,10 @@ async function issueIn(projectId: string, status = 'in_progress'): Promise<strin
   return id;
 }
 
-async function project(): Promise<{ id: string; raised: (who: Who, by?: string) => Promise<Doc> }> {
+async function project(): Promise<{
+  id: string;
+  raised: (who: Who, by?: string, page?: string) => Promise<Doc>;
+}> {
   const id = (await createTestProject(ownerId)).id;
   await addProjectMember(id, memberId, 'member');
   await seedProjectDocument(id, ownerId, {
@@ -56,8 +62,8 @@ async function project(): Promise<{ id: string; raised: (who: Who, by?: string) 
   });
   return {
     id,
-    raised: async (who, by = 'me') =>
-      ok(await say(who, 'GET', `/api/projects/${id}/raised-questions?by=${by}`)),
+    raised: async (who, by = 'me', page = '') =>
+      ok(await say(who, 'GET', `/api/projects/${id}/raised-questions?by=${by}${page}`)),
   };
 }
 
@@ -322,5 +328,80 @@ describe('only a comment marked as a question is owed a reply', () => {
     );
     expect(count?.n).toBe(0);
     expect(await masterOwes(p.id)).toEqual([]);
+  });
+});
+
+describe('a read lists one state a page at a time, the counts covering all', () => {
+  /** Questions asked on `issue` one after another, so their order is their asking order. */
+  async function askedInTurn(issue: string, n: number, word: string): Promise<string[]> {
+    const ids: string[] = [];
+    for (let i = 0; i < n; i += 1) ids.push(await asked(issue, `${word} ${i}?`));
+    return ids;
+  }
+
+  it('lists only the state named, newest first for answered and closed, oldest first for owed', async () => {
+    const p = await project();
+    const live = await issueIn(p.id);
+    const ended = await issueIn(p.id);
+    const owed = await askedInTurn(live, 2, 'Owed');
+    const answered = await askedInTurn(live, 3, 'Answered');
+    for (const q of answered) {
+      ok(
+        await say('owner', 'POST', `/api/issues/${live}/comments`, {
+          intent: 'note',
+          body: 'Thanks.',
+          parentId: q,
+        }),
+        201,
+      );
+    }
+    const closed = await askedInTurn(ended, 5, 'Closed');
+    await seedIssueStatus(ended, 'dropped');
+    const ids = (read: Doc) => (read.questions as Doc[]).map((q) => q.id);
+    const counts = { owed: 2, answered: 3, closed: 5 };
+
+    const owedRead = await p.raised('member', 'me', '&state=owed');
+    expect(owedRead).toMatchObject(counts);
+    expect(ids(owedRead)).toEqual(owed);
+    expect(ids(await p.raised('member', 'me', '&state=answered'))).toEqual([...answered].reverse());
+
+    const first = await p.raised('member', 'me', '&state=closed&limit=2');
+    expect(first).toMatchObject(counts);
+    expect(ids(first)).toEqual([closed[4], closed[3]]);
+    expect(ids(await p.raised('member', 'me', '&state=closed&offset=2&limit=2'))).toEqual([
+      closed[2],
+      closed[1],
+    ]);
+    expect(ids(await p.raised('member', 'me', '&state=closed&offset=4&limit=2'))).toEqual([
+      closed[0],
+    ]);
+    expect(ids(await p.raised('member', 'me', '&state=closed&offset=5'))).toEqual([]);
+    // no state named: every state, owed first, as before
+    expect((await p.raised('member')).questions).toHaveLength(10);
+  });
+
+  it('refuses a state, offset or limit outside its shape by name', async () => {
+    const p = await project();
+    for (const [query, named] of [
+      ['state=Owed', 'state?'],
+      ['offset=-1', 'offset?'],
+      ['limit=0', 'limit?'],
+      ['limit=201', 'limit?'],
+      ['page=2', 'This route takes: by, limit, offset, state'],
+    ] as const) {
+      const refused = await say('member', 'GET', `/api/projects/${p.id}/raised-questions?${query}`);
+      expect(refused.status, query).toBe(400);
+      expect(JSON.stringify(refused.json), query).toContain(named);
+    }
+  });
+
+  it('lists a release record by its words, never its markdown markers', async () => {
+    const p = await project();
+    const issue = await issueIn(p.id);
+    const q1 = await asked(issue, '**Release 0.4.0-dev.251** landed on beta? Notes below.');
+    const q2 = await asked(issue, '## Release 0.4.0-dev.252\n\nShipped `snake_case_name` today.');
+    const byId = new Map(((await p.raised('member')).questions as Doc[]).map((q) => [q.id, q]));
+    expect(byId.get(q1)?.summary).toBe('Release 0.4.0-dev.251 landed on beta?');
+    expect(byId.get(q2)?.summary).toBe('Release 0.4.0-dev.252');
   });
 });

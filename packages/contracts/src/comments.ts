@@ -218,7 +218,7 @@ export const RAISED_QUESTION_SUMMARY_MAX = 200;
 
 /**
  * A question a person raised as a `question` comment, listed by its short form
- * (`./title-text.ts:shortForm`): its first sentence, cut to `RAISED_QUESTION_SUMMARY_MAX`. The body
+ * (`./title-text.ts:shortForm`): its first sentence as plain words, cut to `RAISED_QUESTION_SUMMARY_MAX`. The body
  * is never listed; it stays on the thread the question was asked in.
  */
 export interface RaisedQuestionView {
@@ -242,8 +242,9 @@ export interface RaisedQuestionView {
 }
 
 /**
- * `GET /api/projects/:id/raised-questions?by=me|people`: owed first, oldest first, then answered,
- * then closed, each newest first. The three counts cover every question, listed or not.
+ * `GET /api/projects/:id/raised-questions?by=me|people&state=&offset=&limit=`: owed first, oldest
+ * first, then answered, then closed, each newest first; with `state`, only that state's rows; then the
+ * page `offset`, `limit` names. The three counts cover every question, listed or not.
  */
 export interface RaisedQuestionsResponse {
 	questions: RaisedQuestionView[];
