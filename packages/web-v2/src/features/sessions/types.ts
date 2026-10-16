@@ -522,11 +522,7 @@ export function sessionStep(metadata: SessionMetadata | null): string | null {
 const text = (value: unknown): string | null =>
   typeof value === "string" && value.trim() !== "" ? value : null;
 
-/**
- * A session's title with the step kind core opened it under read in words. Core writes a step
- * session's title as `<skill or job type>: <issue title>`, both recorded in its metadata; a title
- * that does not start so was written by someone and is printed as written.
- */
+/** Core titles a step session `<skill or job type>: <issue>`; any other title is printed as written. */
 export function sessionTitle(session: {
   title: string | null;
   metadata?: Readonly<Record<string, unknown>> | null;
