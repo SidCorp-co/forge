@@ -1416,6 +1416,9 @@
     "whats-new": {
       "serves": ["REQ-14", "issue-delivery#act-release"]
     },
+    "widget": {
+      "serves": ["REQ-7", "feedback-triage#intake"]
+    },
     "workflows": {
       "serves": [
         "design-reconciliation#root-fix",

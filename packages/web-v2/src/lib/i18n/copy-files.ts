@@ -46,6 +46,7 @@ import shellCopy from "./copy/shell.json";
 import toursCopy from "./copy/tours.json";
 import visualBlocksCopy from "./copy/visual-blocks.json";
 import whatsNewCopy from "./copy/whats-new.json";
+import widgetCopy from "./copy/widget.json";
 import workflowsCopy from "./copy/workflows.json";
 import commonCopy from "./copy/common.json";
 import labelCopy from "./copy/label.json";
@@ -104,6 +105,7 @@ export const COPY_FILES = {
   "lib/i18n/copy/tours.json": toursCopy,
   "lib/i18n/copy/visual-blocks.json": visualBlocksCopy,
   "lib/i18n/copy/whats-new.json": whatsNewCopy,
+  "lib/i18n/copy/widget.json": widgetCopy,
   "lib/i18n/copy/workflows.json": workflowsCopy,
   "lib/i18n/copy/common.json": commonCopy,
   "lib/i18n/copy/label.json": labelCopy,
