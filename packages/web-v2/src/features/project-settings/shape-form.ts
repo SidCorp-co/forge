@@ -122,6 +122,14 @@ export function chainOf(d: ShapeDraft, stored: readonly ReleaseChainEntry[]): Re
 		: entries.map((e, i) => (i === last ? { ...e, tag: d.releaseTag } : e));
 }
 
+/** Whether the draft declares no release, read off the shape picked and never off the chain's
+ *  length: a shape that ships with its base branch not yet named has an empty chain and still
+ *  ships. With no shape picked, the stored chain answers. */
+export function shipsNothing(d: ShapeDraft, stored: readonly ReleaseChainEntry[]): boolean {
+	if (d.shape === null) return stored.length === 0;
+	return d.shape === "no-repository" || d.shape === "no-release";
+}
+
 export function kindOf(d: ShapeDraft, storedKind: string): string {
 	return d.shape === null ? storedKind : KIND_OF[d.shape];
 }

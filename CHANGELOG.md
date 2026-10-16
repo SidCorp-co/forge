@@ -3215,6 +3215,8 @@
 - **A stuck-issue notice counts from when the issue stopped moving,** not from its last edit, so a later change no longer makes it read younger. (ISS-1229)
 - **A wide diagram stays readable:** its labels keep at least 12px and it scrolls sideways inside its own box. (ISS-1229)
 - **An empty issue update says only that it has no fields,** and the no-release refusal no longer asks you to close issues it does not name. (ISS-1229)
+- **Shape & release no longer says a project ships nothing because its base branch is empty.** Under a shape that releases, the Live block says no deploy connection serves it and asks for the base branch. (ISS-1171)
+- **A refused test credential is named by its label, every time.** The form and a refused save name each row the same way, and by its number only where it has no label. (ISS-1171)
 - **Shape & release refuses a test credential with no password, or one listed twice, by name.** The row is marked where it is wrong and nothing is saved; an agent writing the same is refused too. (ISS-1171)
 - **Shape & release marks an emptied base branch at its field, and keeps your chosen shape in view when a save is refused.** A failed environments save says what happened and what to do. (ISS-1171)
 - **A project's release readiness names its base branch.** It answered none for a project whose release has no live target yet. (ISS-1171)
