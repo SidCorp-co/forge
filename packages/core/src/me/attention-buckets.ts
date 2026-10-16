@@ -28,6 +28,7 @@ import {
 } from '../db/schema.js';
 import { issueArchiveSide } from '../issues/archive.js';
 import { creatorIsAgentCondition } from '../issues/creator.js';
+import { statusEnteredAtSql } from '../issues/status-entered-at.js';
 import { AWAITING_INPUT_STATUSES, ISSUE_RESOLVED_STATUSES } from '../issues/status-sets.js';
 import { statusesInWorkState } from '../issues/work-state.js';
 import { visibleProjectsWhere } from '../lib/authz.js';
@@ -50,13 +51,16 @@ export interface AttentionIssueRow {
   issuePrefix: string | null;
   title: string;
   status: string;
-  updatedAt: Date;
+  /** When it entered its status: what the item's age counts from, never the last write (ISS-1229 r8). */
+  statusEnteredAt: Date;
   projectSlug: string;
   projectName: string;
 }
 
 /** The awaiting-input row, which carries WHY it is ranked where it is. */
 export interface AttentionAwaitingRow extends AttentionIssueRow {
+  /** Since its oldest open question to a person, or since it entered its status where none is open. */
+  waitingSince: Date;
   claimsHeld: number;
   workspacesPinned: number;
   dependents: number;
@@ -101,13 +105,19 @@ export function ownedForAnswer(userId: string) {
   );
 }
 
+const statusEnteredAt = statusEnteredAtSql({
+  id: sql`${issues.id}`,
+  status: sql`${issues.status}`,
+  createdAt: sql`${issues.createdAt}`,
+});
+
 const issueFields = {
   id: issues.id,
   issSeq: issues.issSeq,
   issuePrefix: projects.issuePrefix,
   title: issues.title,
   status: issues.status,
-  updatedAt: issues.updatedAt,
+  statusEnteredAt: sql<Date>`${statusEnteredAt}`.mapWith(issues.createdAt),
   projectSlug: projects.slug,
   projectName: projects.name,
 } as const;
@@ -166,6 +176,9 @@ export function selectAwaitingInput(userId: string): Promise<AttentionAwaitingRo
   return db
     .select({
       ...issueFields,
+      waitingSince: sql<Date>`coalesce((select min(q.created_at) from agent_questions q
+        where q.issue_id = ${issues.id} and q.status = 'open' and q.blocker_kind = 'human'),
+        ${statusEnteredAt})`.mapWith(issues.createdAt),
       claimsHeld: openQuestionCost('claims_held'),
       workspacesPinned: openQuestionCost('workspaces_pinned'),
       dependents: openQuestionCost('dependents'),

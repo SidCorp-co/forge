@@ -370,19 +370,24 @@ describe("a degraded project", () => {
     expect(within(screen.getByTestId("degraded-band")).getByRole("link")).toHaveAttribute("href", "/projects/pair/agents");
   });
 
-  it("does not degrade on a parked issue aged only from its last write, though its chip shows the 112 days", () => {
+  // ISS-1229 r8: a parked issue is aged from when it entered its status, which an edit does not move.
+  it("degrades on a parked issue that has stood at its status fourteen days, however recent its last write", () => {
     blockers = [{ issueId: "ISS-5", documentId: "d5", status: "on_hold" }];
     parked = {
-      data: { items: [{ id: "d5", updatedAt: ago(112 * DAY), waitingOnPersonSince: null }], totalCount: 1 },
+      data: {
+        items: [{ id: "d5", updatedAt: ago(60), statusEnteredAt: ago(112 * DAY), waitingOnPersonSince: null }],
+        totalCount: 1,
+      },
       ...settled,
       isPlaceholderData: false,
     };
     work = BUSY_WORK;
     const { container } = mount();
-    expect(shape(container)).toBe("working");
+    expect(shape(container)).toBe("degraded");
     const chip = screen.getByTestId("age-chip");
     expect(chip).toHaveAttribute("data-band", "overdue");
-    expect(chip).toHaveTextContent("112d since last write");
+    expect(chip).toHaveTextContent("112d");
+    expect(chip).not.toHaveTextContent("last write");
   });
 
   it("degrades on a parked issue whose open question has waited fourteen days", () => {

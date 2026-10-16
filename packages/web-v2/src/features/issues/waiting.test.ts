@@ -4,7 +4,7 @@ import {
   hasLiveAgentSession,
   queuedChipStatus,
   STALE_AFTER_MS,
-  sinceLastWrite,
+  inStatusFor,
   WAITING_REASON_SHORT,
 } from "./waiting";
 import type { IssueStatus, PipelineHealth, WaitingReason } from "./types";
@@ -197,15 +197,15 @@ describe("a gate this build has no words for", () => {
   });
 });
 
-describe("how long since the row was last written", () => {
+describe("how long the issue has stood at its status", () => {
   const NOW_MS = Date.parse("2026-09-15T12:00:00.000Z");
   const sat = (ms: number, status: IssueStatus = "in_progress") =>
-    sinceLastWrite(
-      { status, updatedAt: new Date(NOW_MS - ms).toISOString() },
+    inStatusFor(
+      { status, statusEnteredAt: new Date(NOW_MS - ms).toISOString() },
       NOW_MS,
     );
 
-  it("reads the span since the row last moved, not the wall clock", () => {
+  it("reads the span since the issue entered its status, not the wall clock", () => {
     const realNow = vi.spyOn(Date, "now").mockReturnValue(NOW_MS + 9_000_000);
     expect(sat(3 * 60 * 60 * 1000)?.label).toBe("3h");
     realNow.mockRestore();
@@ -223,7 +223,8 @@ describe("how long since the row was last written", () => {
   });
 
   it("gives no figure rather than NaN when the timestamp is unusable", () => {
-    expect(sinceLastWrite({ status: "open", updatedAt: "not a date" }, NOW_MS)).toBeNull();
+    expect(inStatusFor({ status: "open", statusEnteredAt: "not a date" }, NOW_MS)).toBeNull();
+    expect(inStatusFor({ status: "open" }, NOW_MS)).toBeNull();
   });
 
   it("never counts backwards from a row stamped in the future", () => {

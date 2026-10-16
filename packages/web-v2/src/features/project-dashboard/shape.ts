@@ -5,7 +5,7 @@
 import { formatElapsed } from "@/features/overview/derive";
 import type { IssueRow } from "@/features/issues/types";
 import type { PipelineRunListItem, ThroughputRow } from "@/features/runs/types";
-import type { AttentionCut, DashboardAttentionItem, ParkedAge } from "./derive";
+import type { AttentionCut, DashboardAttentionItem } from "./derive";
 
 /** A question or an attention item that has waited this long on a person makes the project degraded. */
 export const OVERDUE_WAIT_SECONDS = 14 * 86_400;
@@ -25,12 +25,13 @@ export function ageBand(seconds: number): AgeBand {
   return "overdue";
 }
 
-/** The parked issues' ages by issue id: the open question's wait where there is one, else the last write. */
-export function parkedAges(rows: readonly IssueRow[] | undefined): Map<string, ParkedAge> {
-  const out = new Map<string, ParkedAge>();
+/** When each parked issue began to wait, by issue id: its open question to a person where there is
+ *  one, else when it entered its status — never its last write, which an edit or a claim moves. */
+export function parkedAges(rows: readonly IssueRow[] | undefined): Map<string, string> {
+  const out = new Map<string, string>();
   for (const r of rows ?? []) {
-    if (r.waitingOnPersonSince) out.set(r.id, { since: r.waitingOnPersonSince, basis: "entered" });
-    else if (r.updatedAt) out.set(r.id, { since: r.updatedAt, basis: "last-write" });
+    const since = r.waitingOnPersonSince ?? r.statusEnteredAt;
+    if (since) out.set(r.id, since);
   }
   return out;
 }
@@ -133,7 +134,7 @@ function qualifiers(input: ShapeInput): Qualifier[] {
     const seconds = secondsSince(item.since, input.now);
     if (item.actionKind === "retry") {
       out.push({ item, seconds, kind: "failed" });
-    } else if (item.sinceBasis === "entered" && seconds !== null && seconds >= OVERDUE_WAIT_SECONDS) {
+    } else if (seconds !== null && seconds >= OVERDUE_WAIT_SECONDS) {
       out.push({ item, seconds, kind: "overdue" });
     }
   }

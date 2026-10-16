@@ -7,7 +7,8 @@
 // two facts the rendered colour actually rests on, each of which can go red on
 // its own: the span asks for the mark by a class the cascade lets through, and
 // that class is declared where it outranks `.fg-caption`.
-// ISS-1155 — the figure sits in the state cell, the last write only where nothing better is recorded.
+// ISS-1155 — the figure sits in the state cell. ISS-1229 r8 — where nothing more specific is
+// recorded it is how long the issue has stood at its status, never its last write.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -27,8 +28,8 @@ afterEach(cleanup);
 const NOW = Date.parse("2026-09-20T12:00:00.000Z");
 const HOUR = 3_600_000;
 
-/** A row last written `agoMs` before NOW, at a status whose state carries a figure. */
-const rowWrittenAgo = (agoMs: number, status: IssueStatus = "open"): IssueRow =>
+/** A row that entered its status `agoMs` before NOW and was written a minute ago. */
+const rowEnteredAgo = (agoMs: number, status: IssueStatus = "open"): IssueRow =>
   ({
     id: "i",
     projectId: "p",
@@ -47,7 +48,8 @@ const rowWrittenAgo = (agoMs: number, status: IssueStatus = "open"): IssueRow =>
     reopenCount: 0,
     mergedAt: null,
     createdAt: "2026-09-01T00:00:00.000Z",
-    updatedAt: new Date(NOW - agoMs).toISOString(),
+    updatedAt: new Date(NOW - 60_000).toISOString(),
+    statusEnteredAt: new Date(NOW - agoMs).toISOString(),
     agentStatus: null,
   }) as IssueRow;
 
@@ -59,7 +61,7 @@ const figureSpan = (row: IssueRow) => {
 };
 
 const classesOf = (agoMs: number) => {
-  const span = figureSpan(rowWrittenAgo(agoMs));
+  const span = figureSpan(rowEnteredAgo(agoMs));
   if (!span) throw new Error("the state cell rendered no figure");
   return span.className.split(/\s+/).filter(Boolean);
 };
@@ -85,44 +87,34 @@ describe("the stale mark reaches the cascade", () => {
 
   it("prints no figure for a settled row rather than a dash or a zero", () => {
     for (const status of ["closed", "dropped"] as const) {
-      expect(figureSpan(rowWrittenAgo(48 * HOUR, status)), status).toBeNull();
+      expect(figureSpan(rowEnteredAgo(48 * HOUR, status)), status).toBeNull();
     }
   });
 });
 
-// ISS-1097 — the column said "Waiting" over a figure that is not a wait, and titled itself
-// "No movement in 2d" / "Last moved 2h ago" over a figure that is neither. `issues.updated_at` is
-// reset by an agent's claim or lease renewal, in which no field of the issue changes, and is not
-// moved at all by a comment. So the copy has to name the measurement AND both surprises: a reader
-// who is told only "last updated" still reads the reset as movement.
+// ISS-1097 — the column said "Waiting" over a figure that was the last write to the row, which an
+// agent's claim or a title edit resets. ISS-1229 r8 — the figure is now how long the issue has
+// stood at its status, and its title says so and says what does not reset it.
 describe("the figure says what it measures", () => {
   const titleOf = (stale: boolean) =>
-    figureSpan(rowWrittenAgo(stale ? 48 * HOUR : 2 * HOUR))?.getAttribute("title") ?? "";
+    figureSpan(rowEnteredAgo(stale ? 48 * HOUR : 2 * HOUR))?.getAttribute("title") ?? "";
 
-  it("names the measurement as a write to this issue, on both branches", () => {
+  it("names the measurement as time at the issue's status, on both branches", () => {
+    expect(titleOf(true)).toMatch(/^This issue has been Open for 2d\./);
+    expect(titleOf(false)).toMatch(/^This issue has been Open for 2h\./);
+  });
+
+  it("says an edit or a claim does not reset it, on both branches", () => {
     for (const stale of [true, false]) {
-      expect(titleOf(stale), String(stale)).toMatch(/written to this issue|this issue was last written/i);
+      expect(titleOf(stale), String(stale)).toMatch(/an edit, a merge mark or a claim does not reset it/);
     }
   });
 
-  it("says a comment on its own does not reset it, on both branches", () => {
-    for (const stale of [true, false]) {
-      expect(titleOf(stale), String(stale)).toMatch(/comment on its own does not/i);
-    }
-  });
-
-  it("says an agent's claim or lease renewal does reset it, on both branches", () => {
-    for (const stale of [true, false]) {
-      expect(titleOf(stale), String(stale)).toMatch(/claim or lease renewal/i);
-    }
-  });
-
-  it("claims neither movement nor time-in-status, on either branch", () => {
+  it("claims neither movement nor a last write, on either branch", () => {
     for (const stale of [true, false]) {
       const said = titleOf(stale);
-      expect(said, String(stale)).not.toMatch(/last moved|no movement|since it moved/i);
+      expect(said, String(stale)).not.toMatch(/last moved|no movement|since it moved|last written/i);
       expect(said, String(stale)).not.toMatch(/\bwaiting\b/i);
-      expect(said, String(stale)).not.toMatch(/at this status|in this status/i);
     }
   });
 });

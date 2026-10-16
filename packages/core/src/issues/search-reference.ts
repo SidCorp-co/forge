@@ -30,6 +30,7 @@ export const issueListRowSchema = issueRowSchema
   })
   .extend({
     waitingOnPersonSince: z.date().nullable(),
+    statusEnteredAt: z.date(),
     displayId: z.string(),
     mergeMark: mergeMarkSchema,
   });

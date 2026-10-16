@@ -67,7 +67,7 @@ function issueItem(kind: AttentionKind, r: AttentionIssueRow): AttentionItem {
     kind,
     title: r.title,
     link: issueLink(r.projectSlug, r.id),
-    since: r.updatedAt.toISOString(),
+    since: r.statusEnteredAt.toISOString(),
     issueRef: formatIssueRef(r.issuePrefix, r.issSeq),
     status: r.status,
     projectSlug: r.projectSlug,
@@ -78,6 +78,7 @@ function issueItem(kind: AttentionKind, r: AttentionIssueRow): AttentionItem {
 function awaitingItem(r: AttentionAwaitingRow): AttentionItem {
   return {
     ...issueItem('awaiting_input', r),
+    since: r.waitingSince.toISOString(),
     blockerKind: r.blockerKind,
     questionId: r.questionId,
     cost: {
