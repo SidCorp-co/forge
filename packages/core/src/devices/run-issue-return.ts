@@ -17,9 +17,9 @@
  */
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
+import { forgeActor } from '../comments/forge-author.js';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, terminalAgentSessionStatuses } from '../db/schema.js';
-import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
 import { ASSERTS_WORK_IN_PROGRESS, HUMAN_PARK_STATUSES } from '../issues/status-sets.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
@@ -38,7 +38,6 @@ export interface ReturnedIssue {
 
 interface RunRow {
   projectId: string;
-  projectCreatedBy: string | null;
   startedAt: Date;
   keys: string[];
   statuses: Record<string, string>;
@@ -47,19 +46,16 @@ interface RunRow {
 async function readRun(runId: string): Promise<RunRow | null> {
   const rows = (await db.execute(sql`
     SELECT r.project_id,
-           p.created_by,
            r.started_at,
            COALESCE(r.metadata -> ${RUN_ISSUES_METADATA_KEY}, '[]'::jsonb) AS keys,
            COALESCE(r.metadata -> ${RUN_ISSUE_STATUSES_METADATA_KEY}, '{}'::jsonb) AS statuses
       FROM pipeline_runs r
-      JOIN projects p ON p.id = r.project_id
      WHERE r.id = ${runId}
   `)) as unknown as Array<Record<string, unknown>>;
   const row = rows[0];
   if (!row) return null;
   return {
     projectId: String(row.project_id),
-    projectCreatedBy: row.created_by == null ? null : String(row.created_by),
     startedAt: new Date(String(row.started_at)),
     keys: (row.keys ?? []) as string[],
     statuses: (row.statuses ?? {}) as Record<string, string>,
@@ -119,8 +115,7 @@ export async function returnIssuesForRun(
 
   const heldElsewhere = await keysHeldByAnotherLiveRun(runId, run.projectId);
 
-  const fallbackId = run.projectCreatedBy ?? run.projectId;
-  const actor: TransitionActor = { type: 'device', id: fallbackId, ownerId: fallbackId };
+  const actor = await forgeActor(db);
 
   const returned: ReturnedIssue[] = [];
   for (const issue of rows) {

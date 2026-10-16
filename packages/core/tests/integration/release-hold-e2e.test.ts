@@ -408,37 +408,63 @@ describe('a hold does not outlive the wait it describes', () => {
 describe('the hold and its comment commit together', () => {
   it('keeps the hold unwritten when its comment cannot be stored, so the next tick tries both', async () => {
     const id = await heldRow();
-    const { writeReleaseHolds, NO_ACTOR_HOLD } = await import('../../src/pipeline/release-hold.js');
-
-    await expect(
-      writeReleaseHolds({
-        issueIds: [id],
-        holdFor: () => NO_ACTOR_HOLD,
-        authorId: randomUUID(),
-        now: new Date(),
-      }),
-    ).rejects.toThrow();
+    const { writeReleaseHolds, NO_RELEASE_GATE_HOLD } = await import(
+      '../../src/pipeline/release-hold.js'
+    );
+    // A comment store that refuses every write, planted for this case alone.
+    await harness.db.execute(sql`
+      CREATE FUNCTION refuse_comment() RETURNS trigger LANGUAGE plpgsql AS
+        $$ BEGIN RAISE EXCEPTION 'comments refused for this case'; END $$;
+      CREATE TRIGGER refuse_comment BEFORE INSERT ON comments
+        FOR EACH ROW EXECUTE FUNCTION refuse_comment();
+    `);
+    try {
+      await expect(
+        writeReleaseHolds({ issueIds: [id], holdFor: () => NO_RELEASE_GATE_HOLD, now: new Date() }),
+      ).rejects.toThrow();
+    } finally {
+      await harness.db.execute(sql`
+        DROP TRIGGER refuse_comment ON comments;
+        DROP FUNCTION refuse_comment();
+      `);
+    }
 
     expect(await holdOf(id)).toBeNull();
     expect(await holdComments(id)).toHaveLength(0);
   }, 30_000);
 
+  it('writes the hold comment as Forge, never as the project creator (ISS-1421)', async () => {
+    const id = await heldRow();
+    const { writeReleaseHolds, NO_RELEASE_GATE_HOLD } = await import(
+      '../../src/pipeline/release-hold.js'
+    );
+    const { FORGE_AUTHOR_ID } = await import('../../src/comments/forge-author.js');
+
+    await writeReleaseHolds({
+      issueIds: [id],
+      holdFor: () => NO_RELEASE_GATE_HOLD,
+      now: new Date(),
+    });
+
+    const authors = await harness.db.execute<{ author_id: string }>(sql`
+      SELECT author_id FROM comments WHERE issue_id = ${id} AND body LIKE '%release-hold: %'
+    `);
+    expect(authors.map((r) => r.author_id)).toEqual([FORGE_AUTHOR_ID]);
+  }, 30_000);
+
   it('comments once when two writers race from the same prior hold', async () => {
     const id = await heldRow();
-    const { writeReleaseHolds, NO_ACTOR_HOLD } = await import('../../src/pipeline/release-hold.js');
+    const { writeReleaseHolds, NO_RELEASE_GATE_HOLD } = await import(
+      '../../src/pipeline/release-hold.js'
+    );
     const write = () =>
-      writeReleaseHolds({
-        issueIds: [id],
-        holdFor: () => NO_ACTOR_HOLD,
-        authorId: ownerId,
-        now: new Date(),
-      });
+      writeReleaseHolds({ issueIds: [id], holdFor: () => NO_RELEASE_GATE_HOLD, now: new Date() });
 
     const [a, b] = await Promise.all([write(), write()]);
 
     expect(a.written + b.written).toBe(1);
     expect(await holdComments(id)).toHaveLength(1);
-    expect((await holdOf(id))?.code).toBe('RELEASE_NO_ACTOR');
+    expect((await holdOf(id))?.code).toBe('NO_RELEASE_GATE');
   }, 30_000);
 });
 
@@ -457,7 +483,6 @@ describe('a reason is said once for as long as a row stays held', () => {
       writeReleaseHolds({
         issueIds: [id],
         holdFor: () => refusalHold('NO_RUNNER_ONLINE', reasons),
-        authorId: ownerId,
         now: new Date(),
       });
 
@@ -474,7 +499,6 @@ describe('a reason is said once for as long as a row stays held', () => {
       writeReleaseHolds({
         issueIds: [id],
         holdFor: () => refusalHold('NO_RUNNER_ONLINE', offline),
-        authorId: ownerId,
         now: new Date(),
       });
 
@@ -495,7 +519,6 @@ describe('a reason is said once for as long as a row stays held', () => {
       writeReleaseHolds({
         issueIds: [oldest, next],
         holdFor: () => refusalHold('NO_RUNNER_ONLINE', offline),
-        authorId: ownerId,
         now: new Date(),
         commentOn: new Set([commentOn]),
       });
@@ -505,7 +528,7 @@ describe('a reason is said once for as long as a row stays held', () => {
     const stale = { id: next, held: await holdOf(next) };
     await shared(next);
     const { commentOnce } = await holds();
-    await commentOnce(stale, ownerId, refusalHold('NO_RUNNER_ONLINE', offline), []);
+    await commentOnce(stale, refusalHold('NO_RUNNER_ONLINE', offline), []);
     expect(await holdComments(next)).toHaveLength(1);
 
     await clearReleaseHolds([next]);

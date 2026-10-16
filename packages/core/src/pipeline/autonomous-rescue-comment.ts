@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm';
+import { forgeAuthorId } from '../comments/forge-author.js';
 import { postSystemComment, withholdForIssue } from '../comments/system-write.js';
 import { db } from '../db/client.js';
 import { comments, type IssueStatus } from '../db/schema.js';
@@ -26,7 +27,6 @@ export function buildCapReachedCommentBody(args: {
 
 export async function postCapReachedComment(args: {
   issueId: string;
-  authorId: string;
   fromStatus: IssueStatus;
   cap: number;
   driveSessions: number;
@@ -42,7 +42,7 @@ export async function postCapReachedComment(args: {
 
     await postSystemComment({
       issueId: args.issueId,
-      authorId: args.authorId,
+      authorId: await forgeAuthorId(db),
       body: written,
     });
   } catch (err) {

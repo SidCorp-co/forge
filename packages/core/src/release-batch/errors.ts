@@ -201,6 +201,24 @@ export class ClaimConflictError extends Error {
 }
 
 /**
+ * An issue on the roster could not enter Releasing, so no issue on it did and the run was cancelled
+ * (ISS-1421): the roster enters in one transaction, never part of it.
+ */
+export class ReleaseRosterRefusedError extends Error {
+  readonly code = 'RELEASE_ROSTER_REFUSED';
+  constructor(
+    readonly issueId: string,
+    readonly refusedWith: string,
+    readonly detail: string,
+  ) {
+    super(
+      `RELEASE_ROSTER_REFUSED: issue ${issueId} could not enter Releasing (${refusedWith}: ${detail}), so no issue on this roster was claimed or moved and the release was cancelled. Clear that, or leave the issue off the roster, and start the release again.`,
+    );
+    this.name = 'ReleaseRosterRefusedError';
+  }
+}
+
+/**
  * One or more issues in the batch have no release note, so the batch would
  * close them claiming a ship nobody wrote anything about.
  */

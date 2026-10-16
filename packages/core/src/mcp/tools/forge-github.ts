@@ -166,8 +166,8 @@ export const forgeGithubTool: ContextScopedMcpToolFactory = (ctx) => ({
     'COMMENT) and `body`. Returns the review AND `issueComment`, because the verdict is ONE record: ' +
     "the same review is written onto the Forge issue the pull request's head branch names, by the " +
     "same writer that records a human's review arriving by webhook, keyed on GitHub's review id so " +
-    'neither path can write it twice. `issueComment.outcome` is written | already-noted | no-issue ' +
-    '| no-author. `no-issue` means the head branch names no issue here and is not an error. ' +
+    'neither path can write it twice, as Forge. `issueComment.outcome` is written | already-noted | ' +
+    'no-issue. `no-issue` means the head branch names no issue here and is not an error. ' +
     'Refusals name their cause: no GitHub binding on this project, a binding switched off, a ' +
     'binding no agent may use (its agent access is off — an org owner or admin turns it on under ' +
     'Settings → Integrations), the App not installed, and the connection holding no App credential ' +

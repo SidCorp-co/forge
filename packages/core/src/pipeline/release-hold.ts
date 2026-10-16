@@ -9,6 +9,7 @@
 
 import { createHash } from 'node:crypto';
 import { and, eq, inArray, like, sql } from 'drizzle-orm';
+import { forgeAuthorId } from '../comments/forge-author.js';
 import { postSystemComment } from '../comments/system-write.js';
 import { db } from '../db/client.js';
 import { comments, issues } from '../db/schema.js';
@@ -297,15 +298,6 @@ export const NO_RELEASE_GATE_HOLD: ReleaseHold = {
   waitingFor: 'a person to declare a release or close the issue',
 };
 
-export const NO_ACTOR_HOLD: ReleaseHold = {
-  code: 'RELEASE_NO_ACTOR',
-  reason:
-    'This project has no owner for the automatic release to act as, so no release can be cut for ' +
-    'this issue. Give the project an owner and the next sweep cuts it.',
-  owes: 'human',
-  waitingFor: 'an owner on the project',
-};
-
 // A refusal that clears itself (a release already running, a claim another writer won) is owed by
 // the release path; every other one names a declaration or a fleet a person has to change.
 const SELF_CLEARING: Readonly<Record<string, string>> = {
@@ -390,7 +382,6 @@ function saidInComment(body: string): string {
  */
 export async function commentOnce(
   row: { id: string; held: unknown },
-  authorId: string,
   hold: ReleaseHold,
   covers: readonly string[],
 ): Promise<void> {
@@ -400,6 +391,7 @@ export async function commentOnce(
   const body = releaseHoldComment(hold, true, covers);
   const legacy = !Array.isArray((row.held as Record<string, unknown> | null)?.said);
   const posted = legacy ? await saidBefore(row.id, hold, body) : false;
+  const authorId = await forgeAuthorId(db);
   await db.transaction(async (tx) => {
     // Guarded on the hold read, as `writeReleaseHolds` is: a hold replaced since keeps its own `said`.
     const updated = (await tx.execute(sql`
@@ -466,7 +458,6 @@ export interface ReleaseHoldTally {
 export async function writeReleaseHolds(args: {
   issueIds: readonly string[];
   holdFor: (issueId: string) => ReleaseHold;
-  authorId: string | null;
   now: Date;
   /** The rows a hold shared by every row named is commented on; absent, each row's own. */
   commentOn?: ReadonlySet<string>;
@@ -479,20 +470,19 @@ export async function writeReleaseHolds(args: {
     .where(inArray(issues.id, [...args.issueIds]))) as Array<{ id: string; held: unknown }>;
   const shared = args.commentOn !== undefined;
   const covers = shared && args.commentOn?.size ? await coveredRows(args.issueIds) : [];
+  const authorId = await forgeAuthorId(db);
 
   for (const row of rows) {
     const hold = args.holdFor(row.id);
     const carried = readReleaseHold(row.held);
     if (carried && sameReleaseHold(carried, hold)) {
       tally.unchanged += 1;
-      if (args.authorId && args.commentOn?.has(row.id)) {
-        await commentOnce(row, args.authorId, carried, covers);
-      }
+      if (args.commentOn?.has(row.id)) await commentOnce(row, carried, covers);
       continue;
     }
     const said = carried ? saidOf(row.held) : [];
     const key = saidKey(hold);
-    const named = args.authorId !== null && (args.commentOn?.has(row.id) ?? true);
+    const named = args.commentOn?.has(row.id) ?? true;
     const comment = named && !said.includes(key);
     const stored: StoredReleaseHold = {
       at: args.now.toISOString(),
@@ -515,9 +505,9 @@ export async function writeReleaseHolds(args: {
         RETURNING i.id
       `)) as unknown as Array<{ id: string }>;
       if (updated.length === 0) return false;
-      if (comment && args.authorId) {
+      if (comment) {
         const body = releaseHoldComment(hold, shared, covers);
-        await postSystemComment({ issueId: row.id, authorId: args.authorId, body }, tx);
+        await postSystemComment({ issueId: row.id, authorId, body }, tx);
       }
       return true;
     });

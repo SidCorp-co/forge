@@ -169,7 +169,7 @@ describe('the abort’s own account of a roster closed before it ran', () => {
 });
 
 describe('CLAIM_CONFLICT names what refused each issue, and what frees it', () => {
-  it('names a held roster by key with a return-to-gate abort on the batch that ended', async () => {
+  it('names a held roster by key, settled by the releasing sweep once its batch ended', async () => {
     const { runId, ids } = await batchOf(2);
     await promoted(runId);
     await abort(runId);
@@ -181,8 +181,9 @@ describe('CLAIM_CONFLICT names what refused each issue, and what frees it', () =
       expect(answer.message).not.toContain(id);
     }
     expect(answer.message).toContain(
-      `POST /api/projects/${projectId}/release-batches/${runId}/abort and a body of {"promotedRoster":"return-to-gate"}`,
+      `still claimed by release batch ${runId}, which has ended: Forge's releasing sweep settles them within a minute`,
     );
+    expect(answer.message).not.toMatch(/abort/i);
     expect(answer.message).not.toMatch(/Read the roster and send the issues it lists/);
     expect(answer.details.conflicts).toEqual(
       expect.arrayContaining(

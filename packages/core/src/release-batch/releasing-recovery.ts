@@ -1,8 +1,9 @@
 import { REDACTED, redactedMessage, redactQueryParams } from '@forge/observability';
 import { and, eq, sql } from 'drizzle-orm';
+import { forgeActor } from '../comments/forge-author.js';
 import { postSystemComment } from '../comments/system-write.js';
 import { db, type Tx } from '../db/client.js';
-import { type IssueStatus, issues, projects } from '../db/schema.js';
+import { type IssueStatus, issues } from '../db/schema.js';
 import { releaseAttempts } from '../db/schema-release-ledger.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
@@ -190,6 +191,16 @@ function howItCloses(destination: IssueStatus, refusal: CloseRefusal): string {
   );
 }
 
+/** "1 blocking run, 2 open questions": a person is told what blocks, never the ids a caller reads. */
+function countedBlockers(blocking: readonly string[]): string {
+  const counts = new Map<string, number>();
+  for (const named of blocking) {
+    const label = named.slice(0, named.lastIndexOf(' '));
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  return [...counts].map(([label, n]) => `${n} ${label}${n === 1 ? '' : 's'}`).join(', ');
+}
+
 /** "version 1.4.0, one with no version": the releases a repeated failure came from. */
 function releasesNamed(versions: ReadonlyArray<string | null>): string {
   return versions.map((v) => (v ? `version ${v}` : 'one with no version')).join(', ');
@@ -212,7 +223,7 @@ export function refusedCloseComment(args: {
     refusal.kind === 'refused'
       ? `The close was refused with \`${refusal.code}\`. ${
           refusal.blocking.length > 0
-            ? `Blocking it: ${refusal.blocking.join(', ')}.`
+            ? `Blocking it: ${countedBlockers(refusal.blocking)}.`
             : 'The refusal named no blocking object.'
         } What clears it: ${personClears(refusal)}`
       : `The close failed before it reached a decision: ${refusal.message}. Nothing on this issue refused it, so nothing here is yours to clear: that reason is for whoever operates this Forge to fix.`;
@@ -228,13 +239,17 @@ export function refusedCloseComment(args: {
   return opening + howItCloses(destination, refusal);
 }
 
+/** The account a comment about this move is written as: a person's own, a device's owner's. */
+function authorOf(actor: TransitionActor): string {
+  return actor.type === 'user' ? actor.id : actor.ownerId;
+}
+
 export interface RecoverStrandedReleasingOptions {
   /** Written onto the issue as the reason, and into a comment when an author is known. */
   reason: string;
-  /** The person who caused this, when there is one. Absent for a machine sweep. */
-  actorUserId?: string | undefined;
-  /** Who the comments are written as where no person caused this, such as a device's owner. */
-  commentAuthorId?: string | undefined;
+  /** Who caused this, when someone did: the moves are theirs, and so are the comments (a device's
+   *  are its owner's). Absent for a sweep, which acts and writes as Forge. */
+  actor?: TransitionActor | undefined;
   /** Post a comment naming the reason. Off for a sweep nobody asked for. */
   comment?: boolean;
   /** Why the finish could not close each issue, by id; such an issue's comment names it. */
@@ -265,10 +280,8 @@ export async function recoverStrandedReleasing(
       projectId: issues.projectId,
       status: issues.status,
       reopenCount: issues.reopenCount,
-      projectCreatedBy: projects.createdBy,
     })
     .from(issues)
-    .innerJoin(projects, eq(projects.id, issues.projectId))
     .where(eq(issues.releaseBatchRunId, runId));
 
   const alreadyClosed = claimed.filter((r) => r.status === 'closed').map((r) => r.id);
@@ -276,9 +289,9 @@ export async function recoverStrandedReleasing(
   if (promoted && options.settlePromotedRoster !== true) {
     logger.warn(
       { runId, claimed: claimed.length, reason: options.reason },
-      'release-batch: this run promoted, so its roster stays at Releasing for a person to settle',
+      'release-batch: this run promoted, so its roster stays at Releasing until the releasing sweep settles it',
     );
-    await noteOnRoster(runId, claimed, options, promotedNote(runId));
+    await noteOnRoster(runId, claimed, options, PROMOTED_NOTE);
     return {
       claimsCleared: [],
       alreadyClosed,
@@ -292,12 +305,13 @@ export async function recoverStrandedReleasing(
   const destination: IssueStatus = gateStatus ?? 'reopen';
 
   const recovered: string[] = [];
+  const actor = options.actor ?? (await forgeActor(db));
+  const author = authorOf(actor);
 
   for (const issue of claimed) {
     if (issue.status !== 'releasing') continue;
 
-    const author = options.actorUserId ?? options.commentAuthorId;
-    if (options.comment && author) {
+    if (options.comment) {
       const refusal = options.refusals?.get(issue.id);
       try {
         if (refusal) {
@@ -315,7 +329,7 @@ export async function recoverStrandedReleasing(
             issueId: issue.id,
             authorId: author,
             body: promoted
-              ? `${options.reason}. ${settledNote(issue.projectId, destination)}`
+              ? `${options.reason}. ${settledNote(destination)}`
               : `${options.reason}. The issue is at ${statusLabel(destination)} — a person decides whether it goes back to work or into another batch.`,
           });
         }
@@ -323,11 +337,6 @@ export async function recoverStrandedReleasing(
         logger.warn({ err, issueId: issue.id, runId }, 'release-batch: recovery comment failed');
       }
     }
-
-    const fallbackId = issue.projectCreatedBy ?? issue.projectId;
-    const actor: TransitionActor = options.actorUserId
-      ? { type: 'user', id: options.actorUserId }
-      : { type: 'device', id: fallbackId, ownerId: fallbackId };
 
     try {
       await transitionIssueStatus(
@@ -408,20 +417,17 @@ async function releaseClaims(
 }
 
 /** What a roster is told when an operator settles it although this run promoted. */
-function settledNote(projectId: string, destination: IssueStatus): string {
+function settledNote(destination: IssueStatus): string {
   return (
     `This batch recorded a promotion, so the code it carried may be on production, and an operator ` +
     `settled the roster rather than leave it at Releasing — the issue is back at ` +
-    `${statusLabel(destination)}. If the release did land, record it with ` +
-    `POST /api/projects/${projectId}/release-records, naming the commit production is serving and ` +
-    `how it was released; that closes it against evidence instead of by hand.`
+    `${statusLabel(destination)}. If the release did land, record that release, naming the commit ` +
+    `production is serving and how it was released; that closes it against evidence instead of by hand.`
   );
 }
 
-function promotedNote(runId: string): (projectId: string) => string {
-  return (projectId) =>
-    `This batch recorded a promotion, so its issues stay at Releasing and stay claimed: the code may be on production, and no other status here would be safe to claim. No screen settles a promoted roster yet, so settling it is an operator's act. Read the run with \`GET /api/projects/${projectId}/release-batches/${runId}/state\`. To settle the issues, abort the batch with POST /api/projects/${projectId}/release-batches/${runId}/abort and a body of {"promotedRoster":"return-to-gate"}, which puts them back at the release gate, and then, if the release did land, record it with POST /api/projects/${projectId}/release-records; or settle each issue by hand.`;
-}
+const PROMOTED_NOTE =
+  "This batch recorded a promotion, so the code it carried may be on production, and its issues stay at Releasing and claimed while its run is live. Once the run has ended, Forge's releasing sweep settles them within a minute: it reads what production serves, closes through a release record each issue whose landing commit production carries, and returns the rest to the release gate. View release on the issue shows where its run stands.";
 
 function sayRefusedClose(
   runId: string,
@@ -450,10 +456,10 @@ async function noteOnRoster(
   runId: string,
   claimed: Array<{ id: string; status: string; projectId: string }>,
   options: RecoverStrandedReleasingOptions,
-  note: (projectId: string) => string,
+  note: string,
 ): Promise<void> {
-  const author = options.actorUserId ?? options.commentAuthorId;
-  if (!options.comment || !author) return;
+  if (!options.comment) return;
+  const author = authorOf(options.actor ?? (await forgeActor(db)));
   for (const issue of claimed) {
     if (issue.status !== 'releasing') continue;
     const refusal = options.refusals?.get(issue.id);
@@ -465,7 +471,7 @@ async function noteOnRoster(
             projectId: issue.projectId,
             version: options.version ?? null,
             destination: 'releasing',
-            held: note(issue.projectId),
+            held: note,
             repeats,
           }),
         );
@@ -473,7 +479,7 @@ async function noteOnRoster(
         await postSystemComment({
           issueId: issue.id,
           authorId: author,
-          body: `${options.reason}. ${note(issue.projectId)}`,
+          body: `${options.reason}. ${note}`,
         });
       }
     } catch (err) {

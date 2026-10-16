@@ -33,7 +33,7 @@ export function requiresAuthoredReason(from: IssueStatus, to: IssueStatus): bool
 }
 
 const HEADINGS: Record<string, (from: IssueStatus, kind?: WaitingKind | null) => string> = {
-  reopen: (from) => `🔁 **Reopened from \`${from}\`**`,
+  reopen: (from) => `🔁 **Reopened from ${ISSUE_STATUS_LABELS[from]}**`,
   needs_info: (from) => `❓ **Needs info** — moved from \`${from}\``,
   waiting: (from, kind) =>
     kind === 'needs_resource'

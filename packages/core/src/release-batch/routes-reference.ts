@@ -67,6 +67,8 @@ export const createBatch = describeOperation({
       RELEASE_RECUT_REFUSED: '`recutOf` does not name the highest release, or that release shipped',
       RELEASE_VERSION_CONFLICT: 'another release took the version between the cut and the write',
       RELEASE_VERSION_EXHAUSTED: 'the version space of this release line is used up',
+      RELEASE_ROSTER_REFUSED:
+        'an issue on the roster could not enter Releasing, so none did and the release was cancelled',
     }),
     503: releaseFleet,
   },
@@ -167,7 +169,7 @@ export const lookAtLive = describeOperation({
 export const abortBatch = describeOperation({
   summary: 'Abort a release batch, cancel its jobs and hand the roster back',
   description:
-    'Closes no issue. `promotedRoster` says what becomes of a roster whose run already promoted: `hold` (the default) leaves it at releasing, `return-to-gate` puts it back for a release record.',
+    'Closes no issue. `promotedRoster` says what becomes of a roster whose run already promoted: `hold` (the default) leaves it at releasing until the releasing sweep, within a minute of the run ending, reads what production serves and closes or returns each issue; `return-to-gate` puts it back at once for a release record.',
   responses: {
     200: json(abortedSchema, 'What the abort did to the run and the roster'),
     403: needsMember,

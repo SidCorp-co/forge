@@ -44,7 +44,7 @@ export function AwaitingReleaseBanner({
 	}
 
 	const action = canWrite ? (
-		<Button size="sm" disabled={batch.isPending} onClick={() => batch.mutate({ issueIds: [issueId] })}>
+		<Button variant="primary" size="sm" disabled={batch.isPending} onClick={() => batch.mutate({ issueIds: [issueId] })}>
 			Release now
 		</Button>
 	) : undefined;

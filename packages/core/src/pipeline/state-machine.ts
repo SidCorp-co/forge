@@ -18,8 +18,10 @@ export const transitions: Record<IssueStatus, readonly IssueStatus[]> = {
   in_progress: ['developed', 'closed', 'needs_info', 'on_hold', 'dropped'],
   developed: ['testing', 'reopen', 'needs_info', 'on_hold', 'dropped'],
   testing: ['awaiting_release', 'closed', 'reopen', 'needs_info', 'on_hold', 'dropped'],
-  awaiting_release: ['releasing', 'needs_info', 'on_hold', 'dropped'],
-  releasing: ['closed', 'reopen', 'needs_info', 'on_hold'],
+  // No rung offers `releasing`, and `releasing` offers nothing: a release starts from the Release
+  // button and only the release carrying the issue ends it (ISS-1421, `issues/releasing-door.ts`).
+  awaiting_release: ['needs_info', 'on_hold', 'dropped'],
+  releasing: [],
   closed: ['reopen'],
   reopen: ['in_progress', 'developed', 'needs_info', 'on_hold', 'dropped'],
 

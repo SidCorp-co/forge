@@ -10,14 +10,12 @@
 // hairline at `lg` and under it as a disclosure below.
 
 import {
-  Button,
   Checkbox,
   Collapsible,
   ErrorState,
   HelpButton,
   IconButton,
   Markdown,
-  Menu,
   MonoTag,
   PageContainer,
   PageTitle,
@@ -25,7 +23,6 @@ import {
   Skeleton,
   StatusChip,
   Tabs,
-  type MenuItem,
   type TabItem,
 } from "@/design";
 import { useResumeRun } from "@/features/runs/hooks";
@@ -72,6 +69,7 @@ import type { IssueAgentSession, IssueStatus } from "../types";
 import { ActivityFeed } from "./activity-feed";
 import { AwaitingReleaseBanner } from "./awaiting-release-banner";
 import { BlockerBanner } from "./blocker-banner";
+import { IssueHeaderActions } from "./issue-header-actions";
 import { useGuardedTransition } from "./use-guarded-transition";
 import { CommentThread } from "./comment-thread";
 import { DescriptionSection } from "./description-section";
@@ -231,37 +229,9 @@ export function IssueDetailScreen({
   const statusPark = canWrite ? { reading: park, actions: parkActions } : undefined;
   const threadQuestion = park.state === "ready" && park.park ? threadQuestionOf(park.park) : null;
 
-  const isTerminal = issue.status === "awaiting_release" || issue.status === "closed";
-  const isParked = issue.status === "on_hold";
   // The run's state is a session chip beside the issue's lifecycle chip, never merged into it (ISS-360, ISS-1150).
   const runChip = runStatusChip(issue);
   const isRunActive = isLiveRun(runChip) || issue.status === "in_progress" || issue.status === "reopen";
-  const openSessions = () =>
-    router.push(`/projects/${slug}/agents?issue=${issue.id}`);
-  const openPipeline = () => router.push(`/projects/${slug}/pipeline`);
-
-  const moreItems: MenuItem[] = [
-    { label: "Open pipeline", icon: "pipeline", onSelect: openPipeline },
-    ...(isTerminal || isParked || !canWrite
-      ? []
-      : [
-          {
-            label: "Pause (hold)",
-            icon: "stop",
-            onSelect: () => onTransition("on_hold"),
-          } as MenuItem,
-        ]),
-    ...(isTerminal || !canWrite
-      ? []
-      : [
-          {
-            label: "Reopen",
-            icon: "rerun",
-            onSelect: () => onTransition("reopen"),
-          } as MenuItem,
-        ]),
-    { label: "Copy link", icon: "link", onSelect: copyLink },
-  ];
 
   const tabs: TabItem[] = [
     {
@@ -318,59 +288,16 @@ export function IssueDetailScreen({
             ]}
             shortcuts={[{ keys: "⌘K", desc: "Open the command palette" }]}
           />
-          {!canWrite || isTerminal ? (
-            canWrite ? (
-              <Button
-                variant="primary"
-                size="sm"
-                icon="rerun"
-                loading={pending}
-                onClick={() => onTransition("reopen")}
-              >
-                Reopen
-              </Button>
-            ) : (
-              <Button
-                variant="primary"
-                size="sm"
-                icon="pipeline"
-                onClick={openPipeline}
-              >
-                View pipeline
-              </Button>
-            )
-          ) : isRunActive ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              icon="stop"
-              loading={pending}
-              onClick={() => onTransition("on_hold")}
-            >
-              Pause
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              size="sm"
-              icon="pipeline"
-              onClick={openPipeline}
-            >
-              Run pipeline
-            </Button>
-          )}
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="agent"
-            onClick={openSessions}
-          >
-            Open session
-          </Button>
-          <Menu
-            align="right"
-            items={moreItems}
-            trigger={<IconButton icon="more" aria-label="Issue actions" />}
+          <IssueHeaderActions
+            slug={slug}
+            issueId={issue.id}
+            status={issue.status}
+            releaseRunId={issue.releaseBatchRunId}
+            canWrite={canWrite}
+            pending={pending}
+            isRunActive={isRunActive}
+            onTransition={onTransition}
+            onCopyLink={copyLink}
           />
         </div>
       </div>

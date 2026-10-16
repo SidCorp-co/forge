@@ -21,7 +21,6 @@ interface TakenRow extends Record<string, unknown> {
   project_id: string;
   job_id: string;
   taken_at: Date;
-  created_by: string | null;
 }
 
 /**
@@ -41,10 +40,8 @@ export const SWEEP_MAY_ABORT: SQL = sql`(status = 'running' AND metadata -> 'fin
  */
 async function takenBatches(): Promise<TakenRow[]> {
   return (await db.execute<TakenRow>(sql`
-    SELECT r.id AS run_id, r.project_id, j.id AS job_id, j.dispatched_at AS taken_at,
-           p.created_by
+    SELECT r.id AS run_id, r.project_id, j.id AS job_id, j.dispatched_at AS taken_at
     FROM pipeline_runs r
-    JOIN projects p ON p.id = r.project_id
     JOIN LATERAL (
       SELECT id, status, dispatched_at FROM jobs
       WHERE pipeline_run_id = r.id AND type = ${RELEASE_JOB_TYPE}
@@ -113,8 +110,9 @@ function reasonFor(silentMs: number, from: StallOrigin['from']): string {
 /**
  * Recover every release batch whose box took the job and then went quiet for longer than the
  * ledger's stall bound: the roster goes back to the release gate, the run is cancelled and a wedge
- * says so. A batch that declared a promotion keeps its roster at `releasing`, because that act may
- * have landed; one whose promotion settled is a person's to read and is left whole.
+ * says so. A batch that declared a promotion keeps its roster at `releasing` until its run is
+ * cancelled, because that act may have landed; the releasing sweep then settles each issue against
+ * what production serves (ISS-1421). One whose promotion settled is left whole.
  */
 export async function recoverSilentReleaseBatches(
   now: Date = new Date(),
@@ -126,7 +124,6 @@ export async function recoverSilentReleaseBatches(
     if (!verdict.act) continue;
     const result = await abortReleaseBatch(row.run_id, verdict.reason, null, {
       onlyWhen: SWEEP_MAY_ABORT,
-      ...(row.created_by ? { commentAs: row.created_by } : {}),
     }).catch((err: unknown) => {
       if (err instanceof ReleaseBatchNotAbortableError) return null;
       throw err;
@@ -171,14 +168,14 @@ async function emitWedge(row: TakenRow, promoted: boolean): Promise<void> {
     entityId: row.job_id,
     reason: 'a release batch went silent after a box took its job',
     action: promoted
-      ? 'Check what production is serving, then settle the issues the release left at releasing.'
+      ? 'Nothing to settle by hand: the releasing sweep reads what production is serving and closes or returns each issue the release left at releasing.'
       : 'Check that the machine that does this project`s releases is healthy, then cut the batch again.',
     title: 'A release stopped reporting and was cancelled',
     summary: promoted
-      ? 'The release had started putting code on production and then stopped reporting. It was cancelled, and its issues stay marked as releasing, because the code may have landed.'
+      ? 'The release had started putting code on production and then stopped reporting. It was cancelled; its issues were left at releasing because the code may have landed, and Forge now settles each one against what production serves.'
       : 'The machine running this release took it and then stopped reporting. It was cancelled, and every issue in it has been put back where it was, so nothing is lost and nothing is half-released.',
     nextStep: promoted
-      ? 'Look at what production is serving. If the release landed, record it against the commit production serves; if it did not, return its issues to the release gate.'
+      ? "Read the releasing sweep's comment on each issue: one whose code production carries is closed by a release record, and the rest are back at the release gate to release again."
       : 'Make sure the machine that does this project`s releases is switched on and healthy, then start the release again.',
   });
 }

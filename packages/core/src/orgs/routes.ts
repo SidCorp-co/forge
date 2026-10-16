@@ -50,7 +50,7 @@ import {
   renameOrg,
   updatedMemberSchema,
 } from './routes-reference.js';
-import { listOrgMembers, listOrgsForUser } from './service.js';
+import { isNeverAMember, listOrgMembers, listOrgsForUser } from './service.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -286,6 +286,12 @@ orgRoutes.post(
       return c.json(answer(invitedSchema, body), 202);
     }
 
+    if (isNeverAMember(target.id)) {
+      throw conflict(
+        `${email} is Forge's own account, which writes what Forge's sweeps say and is never a member`,
+        'FORGE_IS_NOT_A_MEMBER',
+      );
+    }
     const [inserted] = await db
       .insert(organizationMembers)
       .values({ orgId, userId: target.id, role })

@@ -333,23 +333,25 @@ describe('a batch aborted after its finish closed part of the roster', () => {
   }, 30_000);
 });
 
-describe('the paths a promoted roster is told to read', () => {
-  it('names the real project and run in the note a held roster is given', async () => {
+describe('what a promoted roster is told, in words a person acts on', () => {
+  const ROUTE_OR_ID =
+    /\/api\/|\{projectId\}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/;
+  it('points a held roster at View release, naming no route and no id', async () => {
     const { runId, ids } = await batchOf(1);
     await promoted(runId);
     await abort(runId);
     const note = await promotionNote(ids[0] as string);
-    expect(note).toContain(`/api/projects/${projectId}/release-batches/${runId}/state`);
-    expect(note).not.toMatch(/\{projectId\}|\{runId\}/);
+    expect(note).toContain('View release on the issue shows where its run stands.');
+    expect(note).not.toMatch(ROUTE_OR_ID);
   }, 30_000);
 
-  it('names the real project in the note a settled roster is given', async () => {
+  it('tells a settled roster to record the release, naming no route and no id', async () => {
     const { runId, ids } = await batchOf(1);
     await promoted(runId);
     await abort(runId, { promotedRoster: 'return-to-gate' });
     const note = await promotionNote(ids[0] as string);
-    expect(note).toContain(`/api/projects/${projectId}/release-records`);
-    expect(note).not.toMatch(/\{projectId\}|\{runId\}/);
+    expect(note).toContain('If the release did land, record that release');
+    expect(note).not.toMatch(ROUTE_OR_ID);
   }, 30_000);
 });
 
@@ -373,14 +375,15 @@ describe('a held promoted roster across a sweeper pass', () => {
     }
   }, 30_000);
 
-  it('still clears every other stale claim of a run that ended', async () => {
+  it('clears the stale claim of a run that ended off a row it left at the gate', async () => {
     const { runId, ids } = await batchOf(2);
-    await harness.db.execute(sql`UPDATE pipeline_runs SET status = 'failed' WHERE id = ${runId}`);
+    await harness.db.execute(sql`WITH r AS (UPDATE pipeline_runs SET status = 'failed' WHERE id = ${runId})
+      UPDATE issues SET status = 'awaiting_release' WHERE id = ${ids[0]}`);
     const { reapStaleReleaseBatchClaims } = await import(
       '../../src/pipeline/stale-release-claims.js'
     );
-    expect(await reapStaleReleaseBatchClaims()).toEqual({ released: 2 });
-    for (const id of ids) expect((await fx.stored(id)).claim).toBeNull();
+    expect(await reapStaleReleaseBatchClaims()).toEqual({ released: 1 });
+    expect((await fx.stored(ids[0] as string)).claim).toBeNull();
   }, 30_000);
 });
 
@@ -445,18 +448,23 @@ describe('the route a held promoted roster is told to take, followed in its orde
     });
   }
 
-  it('names the return-to-gate abort before release-records, which is refused until it has run', async () => {
+  // ISS-1421: Releasing is not a state an issue waits in, so a held roster is the releasing sweep's
+  // to settle once its run has ended, and nothing sends a person to an abort or a record for it.
+  it('names the releasing sweep as what settles a held roster, and the sweep settles it', async () => {
     const { ids, runId } = await heldBatch();
     const { message } = await refused(runId);
-    const abortAt = message.indexOf('"return-to-gate"');
-    const recordAt = message.indexOf(`POST /api/projects/${projectId}/release-records`);
-    expect(abortAt).toBeGreaterThan(-1);
-    expect(recordAt).toBeGreaterThan(abortAt);
-    expect(message).not.toMatch(/release-records, or abort/);
+    expect(message).toContain("Forge's releasing sweep reads what production serves");
+    expect(message).not.toContain('"return-to-gate"');
+    expect(message).not.toContain('/release-records');
 
+    const { settleStrandedReleasing } = await import('../../src/release-batch/releasing-settle.js');
+    const settled = await settleStrandedReleasing();
+    expect(settled.settled).toBe(ids.length);
+    for (const id of ids)
+      expect(await fx.stored(id)).toMatchObject({ status: 'awaiting_release', claim: null });
     serving = PUSHED;
-    const { ClaimConflictError } = await import('../../src/release-batch/errors.js');
-    await expect(recordRelease(ids)).rejects.toBeInstanceOf(ClaimConflictError);
+    await recordRelease(ids);
+    for (const id of ids) expect((await fx.stored(id)).status).toBe('closed');
   }, 30_000);
 
   it('closes the held roster when the refusal’s route is taken in its order', async () => {
@@ -467,15 +475,13 @@ describe('the route a held promoted roster is told to take, followed in its orde
     for (const id of ids) expect((await fx.stored(id)).status).toBe('closed');
   }, 30_000);
 
-  it('gives the held note no finish, and the abort then release-records as its route', async () => {
-    const { ids, runId } = await heldBatch();
+  it('gives the held note no finish and no route for a person: the releasing sweep settles it', async () => {
+    const { ids } = await heldBatch();
     const note = (await promotionNote(ids[0] as string)) ?? '';
     expect(note).not.toMatch(/finish/i);
-    const abortAt = note.indexOf(`POST /api/projects/${projectId}/release-batches/${runId}/abort`);
-    const recordAt = note.indexOf(`POST /api/projects/${projectId}/release-records`);
-    expect(abortAt).toBeGreaterThan(-1);
-    expect(note.indexOf('"return-to-gate"')).toBeGreaterThan(abortAt);
-    expect(recordAt).toBeGreaterThan(abortAt);
+    expect(note).toContain("Forge's releasing sweep settles them within a minute");
+    expect(note).toContain('View release on the issue shows where its run stands.');
+    expect(note).not.toMatch(/\/api\/|\/abort|\/release-records/);
   }, 30_000);
 });
 

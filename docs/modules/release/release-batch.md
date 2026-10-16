@@ -114,7 +114,14 @@ the rows behind it, and the carried check above answers those as it answers any 
 
 ## 2. From the claim to a box: the start (ISS-1323)
 
-A create that passes moves the roster to `releasing` and enqueues one `release_batch` job.
+A create that passes claims the roster for its run and moves it to `releasing` in one transaction
+(`packages/core/src/release-batch/enter-releasing.ts:enterReleasing`), so either the whole roster
+stands at `releasing` under a running run or none of it does and the run is cancelled
+(`RELEASE_ROSTER_REFUSED`, or `CLAIM_CONFLICT` for a lost race); then it enqueues one `release_batch`
+job. Creating a batch is the only door that writes `releasing`: every other door asking for it is
+refused `RELEASING_STARTS_FROM_RELEASE`, and a move off it from anything but the batch's finish or
+abort, or the releasing sweep, is refused `RELEASING_ENDS_BY_RELEASE`
+(`packages/core/src/issues/releasing-door.ts`, ISS-1421).
 `packages/core/src/release-batch/job-start.ts:readReleaseStart` reads that job, and `GET
 /api/projects/:projectId/release-batches/:runId/state` returns it as `start`. A batch no box has
 started can therefore be told apart from one whose agent is working:
@@ -149,7 +156,8 @@ The stamp is written only while the run is still running with no finish record, 
 (`packages/core/src/release-batch/abort-stamp.ts:stampAbort`), so a pause or a finish landing after the read stops it; a pass
 that died after stamping is resumed by the next on the reason it stamped, and a person's unfinished abort is never resumed.
 A batch with a `promote` attempt that never settled is cancelled with its roster held at `releasing`, and one
-whose promotion settled is left whole for a person. The in-flight guard itself reads status alone, so a new batch
+whose promotion settled is left whole; once the run is cancelled, the releasing sweep settles that roster (section
+below). The in-flight guard itself reads status alone, so a new batch
 is refused until the pass has run, at most a minute after the bound is crossed.
 
 The run screen (`packages/web-v2/src/features/releases/components/release-run-screen.tsx`) prints
@@ -219,8 +227,9 @@ One issue's refused close does not stop the others from closing. The refused iss
 leaves (`packages/core/src/release-batch/releasing-recovery.ts:refusedCloseComment`) says:
 
 - that the release it was in has shipped, with its version;
-- the refusal by its code (`OPEN_QUESTIONS`, say), and every blocking object the refusal reports —
-  each id under a `*Ids` key of its details, labelled (`open question <id>`);
+- the refusal by its code (`OPEN_QUESTIONS`, say), and the blocking objects the refusal reports,
+  counted by their label (`2 open questions`); the ids under each `*Ids` key of its details stay on
+  the refusal a caller reads, and never reach the comment (ISS-1421);
 - what clears it, as an act the issue's page offers at the release gate — for `OPEN_QUESTIONS`,
   answer each in its "Decision waiting" card; for `CLOSE_REQUIRES_SHIPPED`, Mark merged on its
   Properties rail; a code with no such act keeps the refusal's own detail
@@ -231,11 +240,29 @@ leaves (`packages/core/src/release-batch/releasing-recovery.ts:refusedCloseComme
   `awaiting_release` row holds none — no withdrawal of a question, which no surface there offers,
   and no API route (`docs/proposals/a-shipped-issue-at-the-gate-closes-only-by-another-release.md`).
 
-Where the run recorded a `promote` attempt, the refused issue does not move: it stays at
-`releasing`, still claimed, because the code may be on production. Its comment names the same
-refusal, and in place of the last point it says that settling a promoted roster is an operator's
-act no screen offers yet — abort the batch with `promotedRoster: return-to-gate`, or settle the
-issue by hand (`docs/proposals/a-promoted-roster-is-settled-only-through-the-api.md`).
+Where the run recorded a `promote` attempt, the refused issue does not move while the run is live:
+it stays at `releasing`, still claimed, because the code may be on production. Its comment names the
+same refusal, and in place of the last point it says that once the run has ended the releasing sweep
+settles it, and that View release on the issue shows where its run stands.
+
+### A row at `releasing` that nothing carries (ISS-1421)
+
+`releasing` is not a status an issue waits in. Once a minute, on its own queue
+(`packages/core/src/release-batch/releasing-settle.ts:registerReleasingSettle`, registered beside the
+other release recoveries), `packages/core/src/release-batch/releasing-settle.ts:settleStrandedReleasing`
+takes every row at `releasing` whose claim is empty or names a run that is neither running nor
+paused, at most 50 a pass, on every project. The stale-claims reaper (`packages/core/src/pipeline/stale-release-claims.ts:reapStaleReleaseBatchClaims`) leaves such a row claimed, so the sweep's comment can say how the run that claimed it ended. It reads the project's verified live identity
+(`packages/core/src/release-batch/releasing-settle-reading.ts`) and, through the repository reader,
+whether that identity descends from the row's landing commit. It posts one comment naming why nothing
+was carrying the row and what it found, returns the row to `awaiting_release` with the dead claim
+cleared in the same transaction — without re-reading the gate's entry records, which would otherwise
+hold the row at `releasing` for good — and, where production carries the landing commit, closes it
+through a release record naming the serving commit; that close is refused, under a lock on the row, where the issue's landing commit is no longer the one production was read as carrying. An unverified project, an unreadable probe or
+repository, a missing landing commit, or a record the release door refuses leaves the row at the gate
+with a comment saying which. A row a running or paused run carries is never touched. The moves, the comments and the release
+record are written as Forge (`packages/core/src/comments/forge-author.ts:forgeAuthorId`), an agent
+account in no organization minted on first use, never as a person; the comments name no route and
+no id, telling a person to record the release or to start one with Release now.
 
 A close that failed without a refusal names the database's own reason with its SQLSTATE, read off
 the driver error under drizzle's wrapper (`packages/core/src/lib/db-errors.ts:pgDriverError`) and

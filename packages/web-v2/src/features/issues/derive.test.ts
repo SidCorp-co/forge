@@ -279,12 +279,33 @@ describe("groupedTransitions (ISS-982)", () => {
 		expect(byTo.get("dropped")).toBe("discard");
 	});
 
-	it("does not file releasing's close under the discards", () => {
-		expect(groupedTransitions(EXITS, "releasing")[0]).toEqual({
-			to: "closed",
-			kind: "forward",
-			startsGroup: false,
-		});
+	it("files a park that comes first as a bounce, not as the rung's forward move (ISS-1421)", () => {
+		const atGate: StatusExits = { ...EXITS, awaiting_release: ["needs_info", "on_hold", "dropped"] };
+		expect(groupedTransitions(atGate, "awaiting_release")).toEqual([
+			{ to: "needs_info", kind: "bounce", startsGroup: false },
+			{ to: "on_hold", kind: "bounce", startsGroup: false },
+			{ to: "dropped", kind: "discard", startsGroup: true },
+		]);
+	});
+
+	it("never offers releasing, even where a table lists it (ISS-1421)", () => {
+		const stale: StatusExits = {
+			...EXITS,
+			awaiting_release: ["releasing", "needs_info", "on_hold", "dropped"],
+		};
+		expect(allowedTransitions(stale, "awaiting_release")).not.toContain("releasing");
+		expect(groupedTransitions(stale, "awaiting_release").map((g) => g.to)).toEqual([
+			"needs_info",
+			"on_hold",
+			"dropped",
+		]);
+	});
+
+	it("offers no move out of releasing, even where a table lists some (ISS-1421)", () => {
+		const stale: StatusExits = { ...EXITS, releasing: ["closed", "reopen", "needs_info", "on_hold"] };
+		expect(allowedTransitions(stale, "releasing")).toEqual([]);
+		expect(groupedTransitions(stale, "releasing")).toEqual([]);
+		expect(bulkAllowedStatuses(stale, [row({ id: "a", status: "releasing" })])).toEqual([]);
 	});
 
 	it("starts a group at the first item of each kind after the first", () => {

@@ -21,6 +21,7 @@ import {
   NoRunnerOnlineError,
   ReleasePoolEmptyError,
   ReleaseRecordMissingError,
+  ReleaseRosterRefusedError,
 } from '../release-batch/service.js';
 
 export interface ScheduledCutOutcome {
@@ -45,6 +46,7 @@ const CLASSIFIED_REFUSALS: ReadonlyArray<readonly [new (...args: never[]) => Err
   [ReleasePoolEmptyError, 'RELEASE_POOL_EMPTY'],
   [NoReleaseGateError, 'NO_RELEASE_GATE'],
   [ReleaseRecordMissingError, 'RELEASE_RECORD_MISSING'],
+  [ReleaseRosterRefusedError, 'RELEASE_ROSTER_REFUSED'],
 ];
 
 function reasonsOf(err: unknown): string[] {

@@ -91,6 +91,12 @@ describe("AwaitingReleaseBanner", () => {
     expect(screen.queryByRole("button", { name: /release now/i })).not.toBeInTheDocument();
   });
 
+  it("makes Release now the page's primary action (ISS-1421)", () => {
+    state({});
+    renderBanner();
+    expect(screen.getByRole("button", { name: "Release now" }).className).toContain("bg-accent");
+  });
+
   it("withholds the action from a reader who cannot write", () => {
     state({});
     renderBanner(false);

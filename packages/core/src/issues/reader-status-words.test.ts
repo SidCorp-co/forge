@@ -3,6 +3,7 @@ import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { issueStatuses } from '../db/schema.js';
 import { ISSUE_STATUS_LABELS, statusForCaller, statusLabel } from './status-sets.js';
+import { buildTransitionReasonBody } from './transition-reason.js';
 
 /**
  * ISS-1229 r5 — no status is written as code. A sentence a person reads (a screen, a notice, a
@@ -60,7 +61,7 @@ function withoutDescriptions(file: string, source: string): string {
 const KEPT_LINES: Array<[string, RegExp, string]> = [
   [
     'issues/transition-reason.ts',
-    /moved from \\`\$\{from\}\\`|Reopened from \\`\$\{from\}\\`|\*\*→ \\`\$\{toStatus\}\\`\*\*/,
+    /moved from \\`\$\{from\}\\`|\*\*→ \\`\$\{toStatus\}\\`\*\*/,
     'the transition heading is a wire format: forge-plugin reads "— moved from `<status>`" (earned.mjs ANNOUNCED) to find the park that set a status',
   ],
   [
@@ -104,6 +105,7 @@ const READS: Record<string, 'person' | 'caller'> = {
   'issues/apply-transition.ts': 'caller',
   'issues/archive.ts': 'caller',
   'issues/close-substitution.ts': 'caller',
+  'issues/draft-entry.ts': 'caller',
   'issues/landing-evidence.ts': 'caller',
   'issues/merge-marker.ts': 'caller',
   'issues/merged-at.ts': 'caller',
@@ -112,6 +114,7 @@ const READS: Record<string, 'person' | 'caller'> = {
   'issues/release-gate-hold.ts': 'person',
   'issues/release-record-required.ts': 'caller',
   'issues/release-tag-close.ts': 'caller',
+  'issues/releasing-door.ts': 'caller',
   'issues/transition-evidence.ts': 'caller',
   'issues/transition-reason.ts': 'caller',
   'issues/work-state.ts': 'caller',
@@ -137,6 +140,7 @@ const READS: Record<string, 'person' | 'caller'> = {
   'release-batch/reader-sentences.ts': 'person',
   'release-batch/claim-conflicts.ts': 'caller',
   'release-batch/releasing-recovery.ts': 'person',
+  'release-batch/releasing-settle.ts': 'person',
 };
 
 const HELPER = /\bstatus(?:Label|ForCaller)\b/;
@@ -150,7 +154,13 @@ type Kept = Array<[string, RegExp, string]>;
 
 /** Lines in a caller's file that only a person reads, so the label alone is right there. A sentence
  *  both read takes the pair. */
-const PERSON_LINES: Kept = [];
+const PERSON_LINES: Kept = [
+  [
+    'issues/transition-reason.ts',
+    /Reopened from \$\{ISSUE_STATUS_LABELS\[from\]\}/,
+    'the reopen heading opens a comment a person reads on the issue thread (ISS-1421)',
+  ],
+];
 
 /** The lines of the one message a line belongs to: the strings `+` joins up to it. */
 function message(lines: string[], i: number): string {
@@ -462,5 +472,16 @@ describe('a status a person reads is named by its label (ISS-1229)', () => {
   it('labels every status, and shows one this build does not know as stored', () => {
     for (const s of issueStatuses) expect(statusLabel(s)).toBe(ISSUE_STATUS_LABELS[s]);
     expect(statusLabel('somewhere_new')).toBe('somewhere_new');
+  });
+});
+
+describe('a comment that announces a reopen (ISS-1421)', () => {
+  it('names the status the issue left by its label, as a person reads it', () => {
+    const [heading] = buildTransitionReasonBody(
+      'reopen',
+      'releasing',
+      'the release run failed',
+    ).split('\n');
+    expect(heading).toBe('🔁 **Reopened from Releasing**');
   });
 });

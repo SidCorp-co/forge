@@ -1,7 +1,8 @@
 import { and, eq, sql } from 'drizzle-orm';
+import { forgeActor } from '../comments/forge-author.js';
 import { db } from '../db/client.js';
-import { type IssueStatus, issues, jobs, pipelineRuns, projects } from '../db/schema.js';
-import { applyStatusTransition } from '../issues/apply-transition.js';
+import { type IssueStatus, jobs, pipelineRuns } from '../db/schema.js';
+import { transitionIssueStatus } from '../issues/apply-transition.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { AUTONOMOUS_JOB_TYPE, AUTONOMOUS_QUESTION_STATUS } from './autonomous-mode.js';
@@ -94,22 +95,8 @@ async function parkForHuman(args: {
   reopenCount: number;
   doneDriveJobs: number;
 }): Promise<void> {
-  const [row] = await db
-    .select({ createdBy: projects.createdBy })
-    .from(issues)
-    .innerJoin(projects, eq(projects.id, issues.projectId))
-    .where(eq(issues.id, args.issueId))
-    .limit(1);
-  const actorId = row?.createdBy;
-  if (!actorId) {
-    logger.warn(
-      { issueId: args.issueId },
-      'autonomous-rescue-cap: no project owner to act as, leaving the issue where it is',
-    );
-    return;
-  }
-
-  await applyStatusTransition(
+  const actor = await forgeActor(db);
+  await transitionIssueStatus(
     {
       id: args.issueId,
       projectId: args.projectId,
@@ -117,7 +104,7 @@ async function parkForHuman(args: {
       reopenCount: args.reopenCount,
     },
     AUTONOMOUS_QUESTION_STATUS,
-    { id: actorId, ownerId: actorId },
+    actor,
     {
       reason: 'autonomous_rescue_cap_reached',
       transitionReason: `The driver was rescued ${AUTONOMOUS_RESCUE_CAP} times on this run without progress, so it has stopped rather than try a fourth.`,
@@ -129,7 +116,6 @@ async function parkForHuman(args: {
 
   await postCapReachedComment({
     issueId: args.issueId,
-    authorId: actorId,
     fromStatus: args.status,
     cap: AUTONOMOUS_RESCUE_CAP,
     driveSessions: args.doneDriveJobs,

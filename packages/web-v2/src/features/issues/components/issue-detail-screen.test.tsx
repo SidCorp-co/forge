@@ -20,6 +20,7 @@ let pipelineHealth: Record<string, unknown> | undefined;
 let status = "open";
 let issueOver: Record<string, unknown> = {};
 let park: Record<string, unknown> = { state: "ready", park: null };
+const requestTransition = vi.hoisted(() => vi.fn());
 
 const ISSUE = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -51,7 +52,7 @@ vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock("./awaiting-release-banner", () => ({ AwaitingReleaseBanner: () => null }));
 vi.mock("./use-guarded-transition", () => ({
-  useGuardedTransition: () => ({ requestTransition: vi.fn(), requestParkLeave: vi.fn(), dialog: null, isPending: false }),
+  useGuardedTransition: () => ({ requestTransition, requestParkLeave: vi.fn(), dialog: null, isPending: false }),
 }));
 vi.mock("./properties-rail", () => ({ PropertiesRail: () => <div>rail</div> }));
 vi.mock("./module-picker", () => ({ ModulePicker: () => null }));
@@ -104,6 +105,7 @@ beforeEach(() => {
   status = "open";
   issueOver = {};
   park = { state: "ready", park: null };
+  requestTransition.mockReset();
 });
 afterEach(() => {
   cleanup();
@@ -291,6 +293,52 @@ describe("the issue header's run", () => {
 });
 
 // ISS-1257 — a question marks its issue and leaves its rung alone; ISS-1310 — the banner reads it off the park view.
+describe("the issue header at Releasing (ISS-1421)", () => {
+  const menuItems = () => screen.queryAllByRole("menuitem").map((el) => el.textContent ?? "");
+
+  it("offers View release for the run carrying it, and no move only a release may make", () => {
+    status = "releasing";
+    issueOver = { releaseBatchRunId: "run-9" };
+    renderScreen();
+    expect(screen.queryByRole("button", { name: "Run pipeline" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Pause" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reopen" })).toBeNull();
+    expect(screen.getByRole("button", { name: "View release" })).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Issue actions"));
+    expect(menuItems()).not.toContain("Pause (hold)");
+    expect(menuItems()).not.toContain("Reopen");
+  });
+
+  it("offers no Pause at Releasing even while a session is live on the issue", () => {
+    status = "releasing";
+    issueOver = { releaseBatchRunId: "run-9", agentStatus: "running" };
+    pipelineHealth = { stage: "releasing", activeSession: { id: "s1", status: "running", skill: "forge-code", jobType: "drive" } };
+    renderScreen();
+    expect(screen.queryByRole("button", { name: "Pause" })).toBeNull();
+  });
+});
+
+describe("the issue header at Awaiting release (ISS-1421)", () => {
+  const menuItem = (name: string) => screen.queryAllByRole("menuitem").find((el) => el.textContent === name);
+
+  it("puts no Reopen primary in the header, and keeps Reopen in the menu with its meaning", () => {
+    status = "awaiting_release";
+    renderScreen();
+    expect(screen.queryByRole("button", { name: "Reopen" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Run pipeline" })).toBeNull();
+    fireEvent.click(screen.getByLabelText("Issue actions"));
+    fireEvent.click(menuItem("Reopen") as Element);
+    expect(requestTransition).toHaveBeenCalledWith(ISSUE.id, "reopen", expect.anything());
+    expect(menuItem("Pause (hold)")).toBeUndefined();
+  });
+
+  it("still offers Reopen as the primary on a closed issue", () => {
+    status = "closed";
+    renderScreen();
+    expect(screen.getByRole("button", { name: "Reopen" })).toBeInTheDocument();
+  });
+});
+
 describe("the issue page of work a person owes an answer", () => {
   const WAITING_FOR_INFORMATION = /waiting for information/;
 

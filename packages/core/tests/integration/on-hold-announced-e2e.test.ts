@@ -166,17 +166,19 @@ async function mcp(pat: string, args: Record<string, unknown>) {
 
 /**
  * Every status an ordinary writer may enter `on_hold` from: the gate admits any but `draft`, which
- * has its own case below, and `on_hold` itself, which is a same-status move. The transition map's
- * `on_hold` rows are the recommended path and leave out `closed` and `dropped`, which the gate admits.
+ * has its own case below, `on_hold` itself, which is a same-status move, and `releasing`, which
+ * only a release path leaves (`releasing-door-e2e`). The transition map's `on_hold` rows are the
+ * recommended path and leave out `closed` and `dropped`, which the gate admits.
  */
 const sourcesOfOnHold = () =>
-  issueStatuses.filter((from) => from !== 'on_hold' && from !== 'draft');
+  issueStatuses.filter((from) => from !== 'on_hold' && from !== 'draft' && from !== 'releasing');
 
 describe('REST POST /transition into on_hold', () => {
   it('has the closed and dropped sources the transition map leaves out among the ones it covers', () => {
     expect(sourcesOfOnHold().length).toBeGreaterThan(10);
-    expect(sourcesOfOnHold()).toEqual(expect.arrayContaining(['closed', 'dropped', 'releasing']));
+    expect(sourcesOfOnHold()).toEqual(expect.arrayContaining(['closed', 'dropped']));
     expect(sourcesOfOnHold()).not.toContain('draft');
+    expect(sourcesOfOnHold()).not.toContain('releasing');
   });
 
   it('leaves a draft where it is for an ordinary writer, naming the refusal, and writes nothing', async () => {

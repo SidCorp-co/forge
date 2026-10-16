@@ -223,9 +223,7 @@ export function abortedSentence(err: ReleaseBatchAbortedError): string {
       return `${none}: its release had already shipped, so the issues its finish closed stay closed, and the abort moved none of them.`;
     case 'held': {
       const rest = closed.length > 0 ? 'Every other issue stays' : 'Its issues stay';
-      // `release-records` takes only issues at the gate that no batch claims, so the abort that
-      // puts them there comes first and is never offered beside it.
-      return `${none}: it recorded a promotion, so the abort kept its claims.${kept} ${rest} at Releasing (releasing), still claimed, for a person to settle. To settle them, abort this batch again with \`promotedRoster: "return-to-gate"\`, which puts them back at the release gate; once they are there, if the release did land, record it with POST /api/projects/${err.projectId}/release-records, naming the commit production is serving.`;
+      return `${none}: it recorded a promotion, so the abort kept its claims.${kept} ${rest} at Releasing (releasing) only until Forge's releasing sweep reads what production serves, within a minute of this run ending: an issue whose landing commit production carries is closed by a release record, and the rest go back to the release gate. Nothing here is left for a person to settle.`;
     }
     case 'returning':
       return RETURNING_SENTENCE;

@@ -25,6 +25,10 @@ vi.mock('../issues/apply-transition.js', () => ({
   },
 }));
 
+vi.mock('../comments/forge-author.js', () => ({
+  forgeActor: async () => ({ type: 'user', id: 'forge', agency: 'agent' }),
+}));
+
 import { ASSERTS_WORK_IN_PROGRESS, HUMAN_PARK_STATUSES } from '../issues/status-sets.js';
 import { returnIssuesForRun } from './run-issue-return.js';
 
@@ -37,7 +41,6 @@ function runRow(keys: string[], statuses: Record<string, string>) {
   return [
     {
       project_id: 'proj-1',
-      created_by: 'owner-1',
       started_at: RUN_STARTED.toISOString(),
       keys,
       statuses,
@@ -78,6 +81,12 @@ describe('returnIssuesForRun', () => {
     const returned = await returnIssuesForRun(RUN, { reason: 'box silent' });
 
     expect(returned).toEqual([{ issueKey: 'ISS-457', from: 'in_progress', to: 'open' }]);
+    // A machine return is Forge's move, never the project creator's (ISS-1421).
+    expect(transitionIssueStatus.mock.calls[0]?.[2]).toEqual({
+      type: 'user',
+      id: 'forge',
+      agency: 'agent',
+    });
     expect(transitionIssueStatus).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'issue-457' }),
       'open',

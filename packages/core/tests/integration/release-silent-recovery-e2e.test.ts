@@ -172,6 +172,18 @@ describe('a batch whose box took the job and then went silent', () => {
     expect(reasons).toHaveLength(1);
     expect(reasons[0]).toContain('nothing is running it');
     expect(await wedgesFor(jobId)).toBe(1);
+    // The sweep acts and writes as Forge, never as the project's creator (ISS-1421).
+    const { FORGE_AUTHOR_ID } = await import('../../src/comments/forge-author.js');
+    const written = await harness.db.execute<{ author_id: string }>(
+      sql`SELECT author_id FROM comments WHERE issue_id = ${a}`,
+    );
+    expect(written.length).toBeGreaterThan(0);
+    expect(new Set(written.map((r) => r.author_id))).toEqual(new Set([FORGE_AUTHOR_ID]));
+    const moved = await harness.db.execute<{ actor_id: string; actor_agency: string }>(
+      sql`SELECT actor_id, actor_agency FROM kernel_transitions WHERE entity = 'issue' AND entity_id = ${a}
+            AND from_status = 'releasing'`,
+    );
+    expect(moved).toEqual([{ actor_id: FORGE_AUTHOR_ID, actor_agency: 'agent' }]);
   });
 
   it('finds nothing to do on a second pass', async () => {

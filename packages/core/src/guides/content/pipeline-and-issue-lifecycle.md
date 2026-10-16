@@ -40,7 +40,7 @@ actually refuses: the run/job invariant in `CLAUDE.md`.
               │                                                             │   rung, back to
 draft ─▶ open ─▶ confirmed ─▶ approved ─▶ in_progress ─▶ developed ─▶ testing ─▶ awaiting_release ─▶ releasing ─▶ closed
   │                                          │              │          │                                 │           │
-  └─▶ dropped                                │              └─▶ reopen ◀─┘ (a failed check)               └─▶ reopen ─┘
+  └─▶ dropped                                │              └─▶ reopen ◀─┘ (a failed check)               └◀─ gate ──┘
                                              └──▶ closed (project with no release gate)
 ```
 
@@ -54,20 +54,20 @@ draft ─▶ open ─▶ confirmed ─▶ approved ─▶ in_progress ─▶ dev
 | `developed` | the code exists and owes a proof | whoever reviews it |
 | `testing` | the proof is being run | whoever is testing it |
 | `awaiting_release` | merged to the base branch, waiting for production | a person, by pressing RELEASE |
-| `releasing` | a release was triggered and is running | the release batch |
+| `releasing` | a release batch run is carrying it to production now; never chosen from a menu | the release batch |
 | `needs_info` | a question a person owes an answer to | a person, by answering |
 | `on_hold` | a pause a person chose — **not** a question | the person who paused it |
 | `reopen` | a person disagreed with a close | a person, by routing it |
 | `closed` | done — nothing enters it without `merged_at` | nobody |
 | `dropped` | ended **without** stamping `merged_at` — it was not work | nobody |
 
-`needs_info` and `on_hold` are enterable from **every** rung and from each other. `draft` cannot park (it already is a resting place) and `closed`/`dropped` cannot: a park after an end is a reopen, and `closed → reopen` already is that hop, which on an autonomous project only a person writes.
+`needs_info` and `on_hold` are enterable from **every** rung but `releasing`, and from each other. `draft` cannot park (it already is a resting place) and `closed`/`dropped` cannot: a park after an end is a reopen, and `closed → reopen` already is that hop, which on an autonomous project only a person writes.
 
 **Leaving a park returns to the rung it left** — any of `open`, `confirmed`, `approved`, `in_progress`, `developed`, `testing` or `awaiting_release`, not always `open`. A park taken at `awaiting_release` is work already merged and waiting for production; sending it to `open` dispatches a fresh agent onto shipped work and loses its place at the gate. Today `pipeline/answer-resume.ts` sends an answered `needs_info` to `confirmed` once its last open question is answered — the rung that says its requirements are settled — or to `open` on a project whose `poolBacklog.statuses` admit nothing at `confirmed`, saying why on the thread; whatever rung it left, because nothing records where the park came from. So park at `needs_info` only for want of a requirement, and to ask a person about finished work, ask with `forge_questions` and leave the rung alone: a question marks its issue as waiting on a person and moves nothing, and an answer at any rung but `needs_info` moves nothing either.
 
 **A failed check goes to `reopen`, not backwards down the ladder.** On the **staged** lane, `developed → reopen` and `testing → reopen` are the two rejection exits, and `reopen` routes to `in_progress` (rework) or back to `developed` (the proof was wrong, the code was not). On the **autonomous** lane neither rung is a driver status, so the agent never writes them; a person does, from the board. `isReopenEntry` counts both as real rejections in the quality metric on either lane; only `in_progress → reopen` is excluded, because that one is the system recovering a dead run — which is why it is the one shape both modes produce.
 
-**Only `finish` and `abort` may write out of `releasing`.** An agent that could leave it would be declaring its own release finished. A batch that dies without either outcome hands its issues to `reopen` with the reason attached.
+**Only creating a release batch writes `releasing`, and only its `finish`, its `abort` or the releasing sweep write out of it** (ISS-1421). Every other door asking for either is refused by name (`RELEASING_STARTS_FROM_RELEASE`, `RELEASING_ENDS_BY_RELEASE`): a release starts from Release now on the issue's page or at the release gate, and an agent that could leave `releasing` would be declaring its own release finished. A batch that dies without either outcome hands its issues back to the release gate with the reason attached, and any row left at `releasing` with no running or paused run behind it is settled by the releasing sweep within a minute — closed by a release record where production's verified deployment carries its landing commit, otherwise returned to the gate, with a comment saying which.
 
 **Retired statuses, and the one that still WORKS.**
 
