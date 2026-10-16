@@ -348,15 +348,9 @@ describe('PATCH /api/issues/batch', () => {
       skipped: { id: string; reason: string; detail?: string }[];
     };
     expect(body.updated.map((u) => u.id)).toEqual([ISS2]);
-    expect(body.skipped).toEqual([
-      {
-        id: ISS1,
-        reason: 'illegal_transition',
-        detail: expect.stringContaining('nothing else this update carried was written'),
-      },
-    ]);
-    expect(issueUpdatedEmit).toHaveBeenCalledTimes(1);
-    expect(issueUpdatedEmit).toHaveBeenCalledWith(expect.objectContaining({ issueId: ISS2 }));
+    const detail = expect.stringContaining('nothing else this update carried was written');
+    expect(body.skipped).toEqual([{ id: ISS1, reason: 'illegal_transition', detail }]);
+    expect(issueUpdatedEmit.mock.calls.map(([p]) => p.issueId)).toEqual([ISS2]);
     // ISS-196 — the AFTER UPDATE trigger writes the outbox row; the legacy
     // inline hooks emit was removed. Assert the status UPDATE ran inside a
     // transaction (the outbox row is committed atomically with it).

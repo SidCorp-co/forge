@@ -439,6 +439,12 @@ const refusedDeclarationSentence: RefusedDeclaration = (n) => {
   return `a \`verify\` Forge cannot read — ${w('it names no probe', 'none of them names a probe')} with a url — and a declared \`verify\` takes NO project default, so no release can be proved ${w('there', 'at any of them')} and none closes past ${w('it', 'them')}. Correct ${w('it', 'each')} to \`{"probes":[{"url":"https://<host>/api/health","commitPath":"commit"}]}\`, or remove ${w('it', 'them')}: the project's \`environments.live.commitUrl\` then answers, and with neither the release is recorded unverified.`;
 };
 
+/** The probes whose url is not a url, counted, since the remedy alone speaks of one. */
+function unreadableUrls(n: number): string {
+  const w = (one: string, many: string) => agree(n, one, many);
+  return `${w('A declared verification probe holds a url that is', `${n} declared verification probes hold urls that are`)} not ${w('a url', 'urls')}, so no request could ever be made to ${w('it', 'them')} and the release would fail while reading what production is serving. Correct ${w('the probe', 'each probe')}, including its scheme.`;
+}
+
 export function unreadableSentence(
   remedy: string,
   details?: Record<string, unknown>,
@@ -447,7 +453,7 @@ export function unreadableSentence(
   const urls = Array.isArray(details?.urls) ? (details.urls as string[]) : [];
   const bindings = Array.isArray(details?.bindings) ? (details.bindings as string[]) : [];
   const parts: string[] = [];
-  if (urls.length > 0) parts.push(`${urls.join(', ')} — ${remedy}`);
+  if (urls.length > 0) parts.push(`${urls.join(', ')} — ${unreadableUrls(urls.length)}`);
   if (bindings.length > 0) {
     const which = bindings.map((b) => `\`${b}\``).join(', ');
     const w = (one: string, many: string) => agree(bindings.length, one, many);
