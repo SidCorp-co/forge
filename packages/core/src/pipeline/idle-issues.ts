@@ -13,18 +13,26 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issueStatuses } from '../db/schema.js';
 import { ADMITTED_RUNNER } from '../devices/pool-admission.js';
-import { issueWorkInFlightSql } from '../issues/issue-lease.js';
-import { statusEnteredAtSql } from '../issues/status-entered-at.js';
 import { statusLabel } from '../issues/status-sets.js';
 import { elapsedWords } from '../lib/elapsed-words.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
+import { resolveNotifications } from '../notifications/auto-resolve.js';
 import { emitNotification } from '../notifications/emit.js';
 import { sweepGroup } from '../notifications/explanations.js';
 import { projectAdminUserIdsFor } from '../notifications/project-admins.js';
 import { resolveArchivedProjectNotices } from './archived-project-notices.js';
+import {
+  type CandidateRow,
+  graceWaived,
+  hasMoved,
+  IDLE_KEY_SUFFIX,
+  IDLE_SCAN_LIMIT,
+  NOTHING_LIVE_ON_THIS_ISSUE,
+  readCandidates,
+  strandResolutionKey,
+} from './idle-candidates.js';
 import { holderFanout, readClaim } from './lease-fanout.js';
 import { readReleaseHold } from './release-hold.js';
 import {
@@ -34,34 +42,13 @@ import {
   leaseIsWorkInProgress,
   leaseShowsHolderGone,
 } from './session-claim.js';
-import { isTerminalPlacement } from './status-assertions.js';
 import {
   heldReleaseWait,
-  SHORTEST_GRACE_MS,
-  STRAND_RULES,
   type StrandEvidence,
   strandReason,
   strandRuleFor,
 } from './strand-rules.js';
-import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
-
-/** A USE of the fleet-wide predicate, never a second copy: `issues/issue-lease.ts` is the only
- *  place that SQL is written (ISS-1109), and a sweep answering it another way reports as stranded
- *  exactly the issues a box is holding. This binding only carries the `issues i` alias in. */
-const NOTHING_LIVE_ON_THIS_ISSUE = sql`NOT ${issueWorkInFlightSql({
-  issueId: sql`i.id`,
-  projectId: sql`i.project_id`,
-  issueKey: sql`'ISS-' || i.iss_seq`, // ISS-992:canonical
-})}`;
-
-/** How many rows one arm reads per pass, matching the other sweep axes. */
-export const IDLE_SCAN_LIMIT = 200;
-
-const IDLE_KEY_SUFFIX = ':idle';
-
-export function strandResolutionKey(issueId: string): string {
-  return `issue:${issueId}${IDLE_KEY_SUFFIX}`;
-}
+import { advanceSweep, sweepWindow } from './sweep-cursor.js';
 
 export interface IdleIssuesResult {
   /** Rows read as stranded this pass. */
@@ -74,6 +61,8 @@ export interface IdleIssuesResult {
   cleared: number;
   /** Rows whose status the rule table does not hold. */
   unclassified: number;
+  /** Delivered notices resolved because the row no longer carries the finding they were raised on. */
+  resolved: number;
 }
 
 /** What this pass writes onto the row, at `session_context.strand`. */
@@ -87,31 +76,6 @@ export interface StrandRecord {
   lease: string;
   evidence: { merged: boolean; everRan: boolean; poolHasRunner: boolean; leaseFanout: number };
 }
-
-interface CandidateRow {
-  id: string;
-  project_id: string;
-  iss_seq: number;
-  issue_prefix: string | null;
-  project_name: string;
-  status: string;
-  title: string;
-  /** Text, not a `Date`: `db.execute` hands raw SQL results back unparsed. */
-  updated_at: string;
-  /** When the row entered its status, which is what its notice counts from; `updated_at` moves on any write. */
-  entered_at: string;
-  merged_at: string | null;
-  lease: unknown;
-  strand: unknown;
-  release_hold: unknown;
-  ever_ran: boolean;
-  cursor_ts: string;
-}
-
-/** Terminal, plus every status the rule table declares at rest. Everything else is a candidate. */
-const NOT_WATCHED: readonly string[] = issueStatuses.filter(
-  (s) => isTerminalPlacement(s) || !STRAND_RULES[s].watch,
-);
 
 /**
  * One pass of the issue-level invariant.
@@ -140,6 +104,7 @@ export async function reconcileIdleIssues(
     leasesReleased: 0,
     cleared: 0,
     unclassified: 0,
+    resolved: 0,
   };
   for (const row of rows) {
     const judged = judge(row, now, fanout, pooled);
@@ -158,17 +123,14 @@ export async function reconcileIdleIssues(
   }
 
   result.cleared = await clearRecovered(now, scope);
+  result.resolved = await resolveClearedNotices(scope);
   await resolveArchivedProjectNotices(IDLE_KEY_SUFFIX);
   return result;
 }
 
-/**
- * Whether the finding already on the row says the same thing as the one just built.
- *
- * `at` is the only field that moves on its own, and it is what makes the record say how long the
- * row has been reported rather than how long ago the last tick was — so an unchanged finding is
- * left exactly as it was written.
- */
+/** Whether the finding on the row says what the one just built says. `at` alone moves on its own,
+ *  and it says how long the row has been reported rather than when the last tick ran, so an
+ *  unchanged finding is left exactly as it was written. */
 function unchangedStrand(held: unknown, next: StrandRecord): boolean {
   if (held === null || typeof held !== 'object') return false;
   const { at: _next, ...rest } = next;
@@ -213,7 +175,7 @@ function judge(
   if (!rule.watch) return null;
   // At `in_progress` the two hours run from the holder's last write, so the grace, not the lease
   // term, decides when a dead run's row is reached — and waiting it out buys the reading nothing.
-  if (!leaseShowsHolderGone(lease.verdict) && !graceSpent(row.updated_at, rule.graceMs, now)) {
+  if (!graceWaived(row, lease) && !graceSpent(row.updated_at, rule.graceMs, now)) {
     return null;
   }
 
@@ -264,57 +226,6 @@ function unclassifiedRecord(row: CandidateRow, lease: LeaseReading, now: Date): 
       leaseFanout: lease.fanout,
     },
   };
-}
-
-async function readCandidates(now: Date, scope: { projectId?: string }): Promise<CandidateRow[]> {
-  const cursorKey = `idle-issues:${scope.projectId ?? '*'}`;
-  const until = new Date(now.getTime() - SHORTEST_GRACE_MS).toISOString();
-  const window = sweepWindow(cursorKey, until);
-
-  // NOT IN, never IN: `issues.status` is a text column, so a value this build's enum has not caught
-  // up with must reach TypeScript to be named rather than be filtered out here.
-  const excluded = sql.join(
-    NOT_WATCHED.map((s) => sql`${s}`),
-    sql`, `,
-  );
-  const after = window.after;
-  const scoped = scope.projectId ? sql`AND i.project_id = ${scope.projectId}` : sql``;
-  const resume = after
-    ? sql`AND (i.updated_at, i.id) > (${after.ts}::timestamptz, ${after.id}::uuid)`
-    : sql``;
-
-  const rows = (await db.execute(sql`
-    SELECT i.id, i.project_id, i.iss_seq, i.status, i.title, i.updated_at, i.merged_at,
-           ${statusEnteredAtSql({ id: sql`i.id`, status: sql`i.status`, createdAt: sql`i.created_at` })}::text AS entered_at,
-           p.issue_prefix, p.name AS project_name,
-           i.session_context -> 'lease'  AS lease,
-           i.session_context -> 'strand' AS strand,
-           i.session_context -> 'releaseHold' AS release_hold,
-           i.updated_at::text AS cursor_ts,
-           EXISTS (SELECT 1 FROM pipeline_runs pr WHERE pr.issue_id = i.id) AS ever_ran
-      FROM issues i
-      JOIN projects p ON p.id = i.project_id
-     WHERE i.status NOT IN (${excluded})
-       AND p.archived_at IS NULL
-       AND i.updated_at < ${window.until}::timestamptz
-       AND ${NOTHING_LIVE_ON_THIS_ISSUE}
-       ${scoped}
-       ${resume}
-     ORDER BY i.updated_at ASC, i.id ASC
-     LIMIT ${IDLE_SCAN_LIMIT}
-  `)) as unknown as CandidateRow[];
-
-  const filled = rows.length === IDLE_SCAN_LIMIT;
-  const lastRow = rows.at(-1);
-  const last: SweepPosition | null = lastRow ? { ts: lastRow.cursor_ts, id: lastRow.id } : null;
-  advanceSweep(cursorKey, window, last, filled);
-  if (filled) {
-    logger.warn(
-      { limit: IDLE_SCAN_LIMIT, resumesAfter: last?.ts ?? null },
-      'idle-issues: the scan filled its page — the rest is read on later passes',
-    );
-  }
-  return rows;
 }
 
 /** Which of these projects has a runner the job pool would admit — that module's own predicate. */
@@ -458,6 +369,29 @@ async function clearRecovered(now: Date, scope: { projectId?: string }): Promise
   return cleared;
 }
 
+/**
+ * A notice stands only while its row carries the finding it was raised on. Clearing the finding is
+ * where this pass decides a row recovered, so that is where its notice ends, whichever way it
+ * recovered; read by notice rather than by the cleared page, so one cleared before this ran ends too.
+ */
+async function resolveClearedNotices(scope: { projectId?: string }): Promise<number> {
+  const scoped = scope.projectId ? sql`AND i.project_id = ${scope.projectId}` : sql``;
+  const rows = (await db.execute(sql`
+    SELECT DISTINCT n.resolution_key AS "key"
+      FROM notifications n
+      JOIN issues i ON i.id = n.issue_id
+     WHERE n.type = 'issue_stranded'
+       AND n.resolved_at IS NULL
+       AND n.state IN ('firing', 'inhibited')
+       AND n.resolution_key LIKE ${`issue:%${IDLE_KEY_SUFFIX}`}
+       AND NOT (coalesce(i.session_context, '{}'::jsonb) ? 'strand')
+       ${scoped}
+  `)) as unknown as Array<{ key: string }>;
+  let resolved = 0;
+  for (const { key } of rows) resolved += await resolveNotifications(key);
+  return resolved;
+}
+
 function stillStranded(
   row: {
     status: string;
@@ -485,13 +419,6 @@ function stillStranded(
     return false;
   }
   return !leaseIsWorkInProgress(lease.verdict);
-}
-
-/** Left the status its finding was written at; unreadable reads as moved, as this arm did before. */
-function hasMoved(status: string, strand: unknown): boolean {
-  if (strand === null || typeof strand !== 'object' || Array.isArray(strand)) return true;
-  const written = (strand as Record<string, unknown>).status;
-  return typeof written !== 'string' || written !== status;
 }
 
 /** Whether a row has stood at its status long enough for that status's own clock to say anything. */
@@ -547,14 +474,17 @@ async function surface(args: {
   const recipients = admins.get(row.project_id) ?? [];
   if (recipients.length === 0) return 0;
   const ref = formatIssueRef(row.issue_prefix, row.iss_seq);
-  const sent = await emitNotification({
-    recipients,
-    projectId: row.project_id,
-    issueId: row.id,
-    type: 'issue_stranded',
-    resolutionKey: strandResolutionKey(row.id),
-    ...sweepGroup('idle-issues', now),
-    ...idleNotice({ ref, projectName: row.project_name, record, now }),
-  });
+  const sent = await emitNotification(
+    {
+      recipients,
+      projectId: row.project_id,
+      issueId: row.id,
+      type: 'issue_stranded',
+      resolutionKey: strandResolutionKey(row.id),
+      ...sweepGroup('idle-issues', now),
+      ...idleNotice({ ref, projectName: row.project_name, record, now }),
+    },
+    now,
+  );
   return sent?.delivered ?? 0;
 }

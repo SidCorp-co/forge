@@ -34,7 +34,29 @@ export function advanceSweep(
   else positions.delete(cursorKey);
 }
 
+const arrivals = new Map<string, SweepPosition>();
+
+/** A row is due only once its grace lies strictly behind `now`, so a mark resumes at its time. */
+const FIRST_ID = '00000000-0000-0000-0000-000000000000';
+
+/** Past the last row read; with no mark, or one ahead of a clock that moved back, at `since`. */
+export function arrivalMark(key: string, now: Date, since: Date): SweepPosition {
+  const mark = arrivals.get(key);
+  if (mark && Date.parse(mark.ts) <= now.getTime()) return mark;
+  return { ts: since.toISOString(), id: FIRST_ID };
+}
+
+export function advanceArrivals(
+  key: string,
+  now: Date,
+  last: SweepPosition | null,
+  filled: boolean,
+): void {
+  arrivals.set(key, filled && last ? last : { ts: now.toISOString(), id: FIRST_ID });
+}
+
 /** Test helper — a cursor surviving between cases makes one case's page another's starting point. */
 export function resetSweepCursorsForTest(): void {
   positions.clear();
+  arrivals.clear();
 }

@@ -368,3 +368,46 @@ describe('GET /api/projects/health, the parked list', () => {
     expect(body[0]?.blockersTotal).toBe(9);
   });
 });
+
+describe('GET /api/projects/health, the stuck issues (ISS-1229 r12)', () => {
+  it('counts each project issue with a stuck-issue notice standing, as every stuck-issue sweep raises it', async () => {
+    authVerified();
+    queryQueue.push([{ id: PROJECT_A_ID }, { id: PROJECT_B_ID }]); // loadVisibleProjectIds
+    queryQueue.push([
+      { id: PROJECT_A_ID, slug: 'alpha', name: 'Alpha', agentConfig: null },
+      { id: PROJECT_B_ID, slug: 'beta', name: 'Beta', agentConfig: null },
+    ]); // visibleProjects
+    for (let i = 0; i < 11; i++) queryQueue.push([]); // the eleven reads before it
+    queryQueue.push([
+      { projectId: PROJECT_A_ID, id: 'i-3', issSeq: 3, issuePrefix: 'ALP', total: 7 },
+      { projectId: PROJECT_A_ID, id: 'i-9', issSeq: 9, issuePrefix: 'ALP', total: 7 },
+    ]); // stuckIssueRows: the first five of a project, each carrying the project's total
+
+    const res = await buildApp().request('/api/projects/health', {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{
+      projectSlug: string;
+      stuckIssues: number;
+      stuckIssueRefs: Array<{ issueId: string; documentId: string }>;
+    }>;
+    const alpha = body.find((p) => p.projectSlug === 'alpha');
+    expect(alpha?.stuckIssues).toBe(7);
+    expect(alpha?.stuckIssueRefs).toEqual([
+      { issueId: 'ALP-3', documentId: 'i-3' },
+      { issueId: 'ALP-9', documentId: 'i-9' },
+    ]);
+    expect(body.find((p) => p.projectSlug === 'beta')).toMatchObject({
+      stuckIssues: 0,
+      stuckIssueRefs: [],
+    });
+    const stuckRead = JSON.stringify(executedSql).replace(/\\n\s*/g, ' ');
+    expect(stuckRead).toContain("n.type = 'issue_stranded'");
+    expect(stuckRead).toContain("n.state = 'firing'");
+    expect(stuckRead).toContain('n.resolved_at IS NULL');
+    expect(stuckRead).toContain('count(*) OVER (PARTITION BY n.project_id)');
+    expect(stuckRead).toContain('ORDER BY min(n.created_at), i.id');
+  });
+});

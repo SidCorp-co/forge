@@ -7,11 +7,15 @@ import { registerIdleFixture } from '../helpers/idle-fixture.js';
 vi.mock('../../src/notifications/emit.js', () => ({
   emitNotification: async () => ({ delivered: 1 }),
 }));
-vi.mock('../../src/notifications/project-admins.js', () => ({
-  projectAdminUserIdsFor: async (ids: readonly string[]) =>
-    new Map(ids.map((id) => [id, [`admin-of-${id}`]])),
-  projectAdminUserIds: async () => ['admin'],
-}));
+vi.mock('../../src/notifications/project-admins.js', async () => {
+  const { sql } = await import('drizzle-orm');
+  return {
+    projectAdminUserIdsFor: async (ids: readonly string[]) =>
+      new Map(ids.map((id) => [id, [`admin-of-${id}`]])),
+    projectAdminUserIds: async () => ['admin'],
+    projectHasAdminSql: () => sql`TRUE`,
+  };
+});
 
 /**
  * ISS-1122 — both passes ask `issues/issue-lease.ts` whether anything is working an issue (ISS-1109),

@@ -9,11 +9,15 @@ vi.mock('../../src/notifications/emit.js', () => ({
     return { delivered: 1 };
   },
 }));
-vi.mock('../../src/notifications/project-admins.js', () => ({
-  projectAdminUserIdsFor: async (ids: readonly string[]) =>
-    new Map(ids.map((id) => [id, [`admin-of-${id}`]])),
-  projectAdminUserIds: async () => ['admin'],
-}));
+vi.mock('../../src/notifications/project-admins.js', async () => {
+  const { sql } = await import('drizzle-orm');
+  return {
+    projectAdminUserIdsFor: async (ids: readonly string[]) =>
+      new Map(ids.map((id) => [id, [`admin-of-${id}`]])),
+    projectAdminUserIds: async () => ['admin'],
+    projectHasAdminSql: () => sql`TRUE`,
+  };
+});
 
 /**
  * ISS-1229, judge j16: a stuck-issue notice counted from the row's last write, so any edit to the

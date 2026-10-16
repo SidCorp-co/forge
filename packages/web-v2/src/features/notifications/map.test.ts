@@ -49,3 +49,36 @@ describe("toNotificationItem", () => {
     expect(toNotificationItem(row()).group).toBeUndefined();
   });
 });
+
+describe("a stuck-issue row whose condition has since resolved (ISS-1229 r12)", () => {
+  const cleared = row({
+    title: "ISS-3 says work is in progress with no run behind it — qa",
+    body: "ISS-3 reads In progress, and nothing has worked it for 13 minutes.",
+    unread: false,
+    openMembers: 0,
+  });
+
+  it("reads as resolved, and says what it said only as what it said when raised", () => {
+    const item = toNotificationItem(cleared);
+    expect(item.label).toBe("RESOLVED");
+    expect(item.hue).toBe("green");
+    expect(item.sub).toBe(
+      "Since resolved. When it was raised: ISS-3 reads In progress, and nothing has worked it for 13 minutes.",
+    );
+  });
+
+  it("leaves a stuck-issue row that still holds as it stands", () => {
+    const item = toNotificationItem(row({ body: "still stuck" }));
+    expect(item.label).toBe("STRANDED");
+    expect(item.sub).toBe("still stuck");
+  });
+
+  it("reads a group whose every record has cleared as resolved too", () => {
+    expect(toNotificationItem(row({ members: 3, openMembers: 0, body: null })).label).toBe("RESOLVED");
+    expect(toNotificationItem(row({ members: 3, openMembers: 1, body: null })).label).toBe("STRANDED");
+  });
+
+  it("never reads a done task as a resolved condition", () => {
+    expect(toNotificationItem(row({ kind: "task", type: "intake_pending", openMembers: 0 })).label).toBe("INTAKE");
+  });
+});

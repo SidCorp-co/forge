@@ -52,7 +52,11 @@ import { refuseStrayArchiveFields, runArchiveAction } from './forge-issues-archi
 import { forgeIssuesDescription } from './forge-issues-description.js';
 import { toMcpIssueError } from './forge-issues-errors.js';
 import { moveWithWrites, transitionByData, writeWithoutMove } from './forge-issues-transition.js';
-import { unwrittenRefusal } from './forge-issues-update-refusal.js';
+import {
+  unwrittenIfUpdate,
+  unwrittenOnRefusal,
+  unwrittenRefusal,
+} from './forge-issues-update-refusal.js';
 import { ISSUE_REF_CLAUSE, issueRefSchema, refsFor } from './issue-ref-input.js';
 import {
   assertPrincipalIsMember,
@@ -433,27 +437,31 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
   description: forgeIssuesDescription(ISSUE_REF_CLAUSE),
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
-    refuseUnservedIssueAction((args as { action?: unknown } | null)?.action);
-    const input = inputSchema.parse(args);
     const { principal } = ctx;
-    const refs = refsFor(input, ctx, principal);
-    refuseStrayArchiveFields(input);
+    // An update refused by its input check has written nothing either, and says so (ISS-1229 r12).
+    const { input, refs } = unwrittenIfUpdate(args, () => {
+      refuseUnservedIssueAction((args as { action?: unknown } | null)?.action);
+      const input = inputSchema.parse(args);
+      const refs = refsFor(input, ctx, principal);
+      refuseStrayArchiveFields(input);
 
-    if (
-      input.data?.relations !== undefined &&
-      input.action !== 'create' &&
-      input.action !== 'update'
-    ) {
-      throw new Error(
-        `BAD_REQUEST: data.relations is applied only by action 'create' and 'update' (got '${input.action}') — send the edges on the create/update call that carries them`,
-      );
-    }
+      if (
+        input.data?.relations !== undefined &&
+        input.action !== 'create' &&
+        input.action !== 'update'
+      ) {
+        throw new Error(
+          `BAD_REQUEST: data.relations is applied only by action 'create' and 'update' (got '${input.action}') — send the edges on the create/update call that carries them`,
+        );
+      }
 
-    if (input.data?.landingShape !== undefined && input.action !== 'update') {
-      throw new Error(
-        `BAD_REQUEST: data.landingShape is applied only by action 'update' (got '${input.action}') — declare where this issue's work lands on an update of the issue`,
-      );
-    }
+      if (input.data?.landingShape !== undefined && input.action !== 'update') {
+        throw new Error(
+          `BAD_REQUEST: data.landingShape is applied only by action 'update' (got '${input.action}') — declare where this issue's work lands on an update of the issue`,
+        );
+      }
+      return { input, refs };
+    });
 
     switch (input.action) {
       case 'archive':
@@ -608,30 +616,32 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         return out;
       }
       case 'update': {
-        if (!input.documentId) throw new Error('BAD_REQUEST: documentId is required for update');
-        if (!input.data) throw new Error('BAD_REQUEST: data is required for update');
-        const issue = await loadIssue(await refs.issue('documentId', input.documentId));
-        await assertPrincipalIsWriter(principal, issue.projectId);
-
         // Nothing is written until every value is resolved, so a refusal here leaves the issue as
         // it was, and says so first (ISS-1229 r11).
-        const sentStatus = input.data.status !== undefined;
+        const sentStatus = input.data?.status !== undefined;
+        const { issue, data } = await unwrittenOnRefusal(sentStatus, async () => {
+          if (!input.documentId) throw new Error('BAD_REQUEST: documentId is required for update');
+          if (!input.data) throw new Error('BAD_REQUEST: data is required for update');
+          const issue = await loadIssue(await refs.issue('documentId', input.documentId));
+          await assertPrincipalIsWriter(principal, issue.projectId);
+          return { issue, data: input.data };
+        });
         let labelIds: ResolvedLabelAttach[] | undefined;
         let collected: ReturnType<typeof collectIssueFieldUpdates>;
         try {
-          if (input.data.labels !== undefined) {
-            labelIds = await resolveLabelIdsForWrite(issue.projectId, input.data.labels);
+          if (data.labels !== undefined) {
+            labelIds = await resolveLabelIdsForWrite(issue.projectId, data.labels);
           }
-          if (input.data.detectorKey !== undefined && !isValidDetectorKey(input.data.detectorKey)) {
+          if (data.detectorKey !== undefined && !isValidDetectorKey(data.detectorKey)) {
             throw new Error(
-              `BAD_REQUEST: data.detectorKey must be lowercase slash-separated slugs, max 120 chars (got '${input.data.detectorKey}')`,
+              `BAD_REQUEST: data.detectorKey must be lowercase slash-separated slugs, max 120 chars (got '${data.detectorKey}')`,
             );
           }
-          collected = collectIssueFieldUpdates(input.data as Record<string, unknown>, [
+          collected = collectIssueFieldUpdates(data as Record<string, unknown>, [
             ...SHARED_ISSUE_PATCH_FIELDS,
           ]);
           const writesFields = Object.keys(collected.updates).length > 0 || labelIds !== undefined;
-          if (input.data.expect && !writesFields) {
+          if (data.expect && !writesFields) {
             throw new Error(
               'BAD_REQUEST: data.expect is a precondition on a FIELD write — it holds nothing against a status or relations change. Send the field(s) to write alongside it.',
             );
@@ -648,23 +658,23 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
               issueId: issue.id,
               updates,
               labelIds,
-              ...(input.data.expect ? { expect: input.data.expect } : {}),
+              ...(data.expect ? { expect: data.expect } : {}),
               actor: principalHookActor(principal),
             }
           : null;
         const writer = { actor: principalHookActor(principal), createdById: principal.userId };
-        const writes = { fields, relations: input.data.relations, writer };
+        const writes = { fields, relations: data.relations, writer };
 
         let unasked: string | null = null;
         let rewritten: TransitionRewrite | null | undefined;
         let r: AppliedIssueRelation[];
-        if (input.data.status) {
+        if (data.status) {
           try {
             ({ rewritten, relations: r } = await moveWithWrites(
               issue,
-              input.data.status,
+              data.status,
               principal,
-              input.data,
+              data,
               writes,
             ));
           } catch (err) {
@@ -672,9 +682,9 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           }
           unasked = parkQuestionNotMinted({
             issue,
-            toStatus: input.data.status,
+            toStatus: data.status,
             actor: principalActor(principal),
-            options: { needs: input.data.needs },
+            options: { needs: data.needs },
           });
         } else {
           r = await writeWithoutMove(issue, writes);

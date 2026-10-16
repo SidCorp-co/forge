@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, isNull, notInArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNotNull, isNull, notInArray, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueStatuses, issues, projects } from '../db/schema.js';
 import { statusEnteredAtSql } from '../issues/status-entered-at.js';
@@ -8,8 +8,16 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
 import { type SweepDetector, sweepGroup } from '../notifications/explanations.js';
-import { projectAdminUserIdsFor } from '../notifications/project-admins.js';
+import { projectAdminUserIdsFor, projectHasAdminSql } from '../notifications/project-admins.js';
 import { resolveArchivedProjectNotices } from './archived-project-notices.js';
+import {
+  FRESH_SIGHTING_LIMIT,
+  pendingConditionSql,
+  pendingSightingLimit,
+  pendingSinceSql,
+  unraisedConditionSql,
+  withOwed,
+} from './owed-sighting.js';
 import { isTerminalPlacement } from './status-assertions.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
 
@@ -71,17 +79,90 @@ async function surfaceOnce(args: {
 }): Promise<number> {
   const adminIds = args.admins.get(args.projectId) ?? [];
   if (adminIds.length === 0) return -1;
-  const sent = await emitNotification({
-    recipients: adminIds,
-    projectId: args.projectId,
-    issueId: args.issueId,
-    type: 'issue_stranded',
-    title: args.title,
-    body: args.body,
-    resolutionKey: args.resolutionKey,
-    ...sweepGroup(args.detector, args.now),
-  });
+  const sent = await emitNotification(
+    {
+      recipients: adminIds,
+      projectId: args.projectId,
+      issueId: args.issueId,
+      type: 'issue_stranded',
+      title: args.title,
+      body: args.body,
+      resolutionKey: args.resolutionKey,
+      ...sweepGroup(args.detector, args.now),
+    },
+    args.now,
+  );
   return sent?.delivered ?? 0;
+}
+
+/** When the issue was parked: the row's own `updated_at` moves on any write (ISS-1229). */
+const PARKED_AT = statusEnteredAtSql({
+  id: sql`"issues"."id"`,
+  status: sql`"issues"."status"`,
+  createdAt: sql`"issues"."created_at"`,
+});
+
+type Scope = { projectId?: string };
+
+/** One read of waiting parks on live projects, `where` narrowing it, oldest or newest park first. */
+function readParks(args: { scope: Scope; where: SQL[]; order: SQL[]; limit: number }) {
+  return db
+    .select({
+      id: issues.id,
+      projectId: issues.projectId,
+      issuePrefix: projects.issuePrefix,
+      issSeq: issues.issSeq,
+      title: issues.title,
+      mergedAt: issues.mergedAt,
+      parkedAt: sql<string>`${PARKED_AT}::text`,
+      cursorTs: sql<string>`${PARKED_AT}::text`,
+      projectName: projects.name,
+    })
+    .from(issues)
+    .innerJoin(projects, eq(projects.id, issues.projectId))
+    .where(
+      and(
+        eq(issues.status, 'waiting'),
+        isNull(projects.archivedAt),
+        ...(args.scope.projectId ? [eq(issues.projectId, args.scope.projectId)] : []),
+        ...args.where,
+      ),
+    )
+    .orderBy(...args.order)
+    .limit(args.limit);
+}
+
+const TERMINAL = issueStatuses.filter(isTerminalPlacement);
+
+/** One read of merged issues still open with nothing running, `where` narrowing it, by merge time. */
+function readOwedCloses(args: { scope: Scope; where: SQL[]; order: SQL[]; limit: number }) {
+  return db
+    .select({
+      id: issues.id,
+      projectId: issues.projectId,
+      issuePrefix: projects.issuePrefix,
+      issSeq: issues.issSeq,
+      status: issues.status,
+      title: issues.title,
+      mergedAt: issues.mergedAt,
+      cursorTs: sql<string>`"issues"."merged_at"::text`,
+      projectName: projects.name,
+    })
+    .from(issues)
+    .innerJoin(projects, eq(projects.id, issues.projectId))
+    .where(
+      and(
+        isNotNull(issues.mergedAt),
+        isNull(projects.archivedAt),
+        notInArray(issues.status, TERMINAL),
+        sql`not exists (select 1 from jobs j where j.issue_id = issues.id and j.status in ('queued','dispatched','running'))`,
+        sql`not exists (select 1 from pipeline_runs r where r.issue_id = issues.id and r.status = 'running')`,
+        ...(args.scope.projectId ? [eq(issues.projectId, args.scope.projectId)] : []),
+        ...args.where,
+      ),
+    )
+    .orderBy(...args.order)
+    .limit(args.limit);
 }
 
 /**
@@ -103,45 +184,44 @@ export async function detectStrandedIssues(
     // makes the set finite and the wrap reachable.
     const window = sweepWindow(cursorKey, cutoff.toISOString());
 
-    const rows = await db
-      .select({
-        id: issues.id,
-        projectId: issues.projectId,
-        issuePrefix: projects.issuePrefix,
-        issSeq: issues.issSeq,
-        title: issues.title,
-        mergedAt: issues.mergedAt,
-        // How long it has been parked: the row's own `updated_at` moves on any write (ISS-1229).
-        parkedAt: sql<string>`${statusEnteredAtSql({
-          id: sql`"issues"."id"`,
-          status: sql`"issues"."status"`,
-          createdAt: sql`"issues"."created_at"`,
-        })}::text`,
-        cursorTs: sql<string>`"issues"."updated_at"::text`,
-        projectName: projects.name,
-      })
-      .from(issues)
-      .innerJoin(projects, eq(projects.id, issues.projectId))
-      .where(
-        and(
-          eq(issues.status, 'waiting'),
-          isNull(projects.archivedAt),
-          sql`"issues"."updated_at" < ${window.until}::timestamptz`,
-          ...(scope.projectId ? [eq(issues.projectId, scope.projectId)] : []),
-          ...(window.after
-            ? [
-                sql`("issues"."updated_at", "issues"."id") > (${window.after.ts}::timestamptz, ${window.after.id}::uuid)`,
-              ]
-            : []),
-        ),
-      )
-      .orderBy(asc(issues.updatedAt), asc(issues.id))
-      .limit(STRANDED_SCAN_LIMIT);
+    const page = await readParks({
+      scope,
+      where: [
+        sql`${PARKED_AT} < ${window.until}::timestamptz`,
+        ...(window.after
+          ? [
+              sql`(${PARKED_AT}, "issues"."id") > (${window.after.ts}::timestamptz, ${window.after.id}::uuid)`,
+            ]
+          : []),
+      ],
+      order: [asc(PARKED_AT), asc(issues.id)],
+      limit: STRANDED_SCAN_LIMIT,
+    });
 
-    const filled = rows.length === STRANDED_SCAN_LIMIT;
-    const lastRow = rows.at(-1);
+    const filled = page.length === STRANDED_SCAN_LIMIT;
+    const lastRow = page.at(-1);
     const last: SweepPosition | null = lastRow ? { ts: lastRow.cursorTs, id: lastRow.id } : null;
     advanceSweep(cursorKey, window, last, filled);
+
+    const rows = withOwed(
+      page,
+      await readParks({
+        scope,
+        where: [pendingConditionSql(sql`"issues"."id"`, STRANDED_KEY_SUFFIX)],
+        order: [asc(pendingSinceSql(sql`"issues"."id"`, STRANDED_KEY_SUFFIX)), asc(issues.id)],
+        limit: pendingSightingLimit(STRANDED_SCAN_LIMIT),
+      }),
+      await readParks({
+        scope,
+        where: [
+          unraisedConditionSql(sql`"issues"."id"`, STRANDED_KEY_SUFFIX),
+          sql`${PARKED_AT} < ${cutoff.toISOString()}::timestamptz`,
+          projectHasAdminSql(sql`"issues"."project_id"`),
+        ],
+        order: [desc(PARKED_AT), desc(issues.id)],
+        limit: FRESH_SIGHTING_LIMIT,
+      }),
+    );
 
     const admins = await projectAdminUserIdsFor(rows.map((r) => r.projectId));
 
@@ -196,48 +276,48 @@ export async function detectOwedCloses(
   try {
     await resolveArchivedProjectNotices(OWED_CLOSE_KEY_SUFFIX);
     const cutoff = new Date(now.getTime() - STRANDED_GRACE_MS);
-    const terminal = issueStatuses.filter(isTerminalPlacement);
 
     const cursorKey = `owed-close:${scope.projectId ?? '*'}`;
     const window = sweepWindow(cursorKey, cutoff.toISOString());
 
-    const rows = await db
-      .select({
-        id: issues.id,
-        projectId: issues.projectId,
-        issuePrefix: projects.issuePrefix,
-        issSeq: issues.issSeq,
-        status: issues.status,
-        title: issues.title,
-        mergedAt: issues.mergedAt,
-        cursorTs: sql<string>`"issues"."merged_at"::text`,
-        projectName: projects.name,
-      })
-      .from(issues)
-      .innerJoin(projects, eq(projects.id, issues.projectId))
-      .where(
-        and(
-          isNotNull(issues.mergedAt),
-          isNull(projects.archivedAt),
-          sql`"issues"."merged_at" < ${window.until}::timestamptz`,
-          notInArray(issues.status, terminal),
-          ...(window.after
-            ? [
-                sql`("issues"."merged_at", "issues"."id") > (${window.after.ts}::timestamptz, ${window.after.id}::uuid)`,
-              ]
-            : []),
-          sql`not exists (select 1 from jobs j where j.issue_id = issues.id and j.status in ('queued','dispatched','running'))`,
-          sql`not exists (select 1 from pipeline_runs r where r.issue_id = issues.id and r.status = 'running')`,
-          ...(scope.projectId ? [eq(issues.projectId, scope.projectId)] : []),
-        ),
-      )
-      .orderBy(asc(issues.mergedAt), asc(issues.id))
-      .limit(STRANDED_SCAN_LIMIT);
+    const page = await readOwedCloses({
+      scope,
+      where: [
+        sql`"issues"."merged_at" < ${window.until}::timestamptz`,
+        ...(window.after
+          ? [
+              sql`("issues"."merged_at", "issues"."id") > (${window.after.ts}::timestamptz, ${window.after.id}::uuid)`,
+            ]
+          : []),
+      ],
+      order: [asc(issues.mergedAt), asc(issues.id)],
+      limit: STRANDED_SCAN_LIMIT,
+    });
 
-    const filled = rows.length === STRANDED_SCAN_LIMIT;
-    const lastRow = rows.at(-1);
+    const filled = page.length === STRANDED_SCAN_LIMIT;
+    const lastRow = page.at(-1);
     const last: SweepPosition | null = lastRow ? { ts: lastRow.cursorTs, id: lastRow.id } : null;
     advanceSweep(cursorKey, window, last, filled);
+
+    const rows = withOwed(
+      page,
+      await readOwedCloses({
+        scope,
+        where: [pendingConditionSql(sql`"issues"."id"`, OWED_CLOSE_KEY_SUFFIX)],
+        order: [asc(pendingSinceSql(sql`"issues"."id"`, OWED_CLOSE_KEY_SUFFIX)), asc(issues.id)],
+        limit: pendingSightingLimit(STRANDED_SCAN_LIMIT),
+      }),
+      await readOwedCloses({
+        scope,
+        where: [
+          unraisedConditionSql(sql`"issues"."id"`, OWED_CLOSE_KEY_SUFFIX),
+          sql`"issues"."merged_at" < ${cutoff.toISOString()}::timestamptz`,
+          projectHasAdminSql(sql`"issues"."project_id"`),
+        ],
+        order: [desc(issues.mergedAt), desc(issues.id)],
+        limit: FRESH_SIGHTING_LIMIT,
+      }),
+    );
 
     const admins = await projectAdminUserIdsFor(rows.map((r) => r.projectId));
 

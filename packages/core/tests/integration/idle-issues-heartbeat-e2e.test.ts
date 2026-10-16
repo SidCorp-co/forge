@@ -10,11 +10,15 @@ vi.mock('../../src/notifications/emit.js', () => ({
     return { delivered: 1 };
   },
 }));
-vi.mock('../../src/notifications/project-admins.js', () => ({
-  projectAdminUserIdsFor: async (ids: readonly string[]) =>
-    new Map(ids.map((id) => [id, [`admin-of-${id}`]])),
-  projectAdminUserIds: async () => ['admin'],
-}));
+vi.mock('../../src/notifications/project-admins.js', async () => {
+  const { sql } = await import('drizzle-orm');
+  return {
+    projectAdminUserIdsFor: async (ids: readonly string[]) =>
+      new Map(ids.map((id) => [id, [`admin-of-${id}`]])),
+    projectAdminUserIds: async () => ['admin'],
+    projectHasAdminSql: () => sql`TRUE`,
+  };
+});
 
 const fx = registerIdleFixture(1500);
 const NOW = new Date('2026-09-20T16:00:00.000Z');
@@ -190,6 +194,18 @@ describe('A holder that stopped reporting (ISS-1195)', () => {
     expect(again.leasesReleased).toBe(0);
     const history = (await leaseOf(issueId))?.history as Array<Record<string, unknown>>;
     expect(history.filter((h) => h.how === 'swept')).toHaveLength(1);
+  });
+
+  /** ISS-1229 r12: the release is the sweep's own write, so it does not start the status grace again. */
+  it('keeps sighting the row it released on the heartbeat while its status grace is unspent', async () => {
+    const issueId = await seedSilentRow();
+
+    await mods.reconcileIdleIssues(NOW);
+    const next = await mods.reconcileIdleIssues(new Date(NOW.getTime() + 60_000));
+
+    expect(next.detected, 'sighted again, so its pending notice is not left to go stale').toBe(1);
+    expect(emitted).toHaveLength(2);
+    expect(await strandOf(issueId)).not.toBeNull();
   });
 
   /**

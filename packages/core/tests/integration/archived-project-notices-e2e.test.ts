@@ -63,7 +63,9 @@ async function seed(status: string): Promise<{ issueId: string; projectId: strin
     INSERT INTO issues (id, project_id, title, status, created_by_id, merged_at, iss_seq)
     VALUES (${issueId}, ${project.id}, 'archived probe', ${status}, ${owner.id}, ${DAYS_AGO}, 1)
   `);
-  await harness.db.execute(sql`UPDATE issues SET updated_at = ${DAYS_AGO} WHERE id = ${issueId}`);
+  await harness.db.execute(
+    sql`UPDATE issues SET updated_at = ${DAYS_AGO}, created_at = ${DAYS_AGO} WHERE id = ${issueId}`,
+  );
   return { issueId, projectId: project.id };
 }
 

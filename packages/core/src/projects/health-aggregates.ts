@@ -8,7 +8,7 @@ import { readLiveSessionCounts } from '../pipeline/live-session.js';
 import { firstShipped } from '../pipeline/shipped-at.js';
 
 /**
- * The eleven independent per-project reads behind `GET /api/projects/health`, and
+ * The twelve independent per-project reads behind `GET /api/projects/health`, and
  * the bound they run under, so the latency is a few waves rather than one round
  * trip per read.
  */
@@ -169,8 +169,39 @@ const readRunActivityRows = (projectIds: string[]) =>
     .where(inArray(pipelineRuns.projectId, projectIds))
     .groupBy(pipelineRuns.projectId);
 
+export type StuckIssueRow = {
+  projectId: string;
+  id: string;
+  issSeq: number;
+  issuePrefix: string | null;
+  /** How many issues of the project a notice stands for, beside the first `STUCK_ISSUES_LISTED`. */
+  total: number;
+};
+
+export const STUCK_ISSUES_LISTED = 5;
+
+/** Issues with a stuck-issue notice standing, longest-standing first: what every stuck-issue sweep raises, once per issue. */
+const readStuckIssueRows = (projectIds: string[]) =>
+  db.execute(sql`
+    SELECT "projectId", id, "issSeq", "issuePrefix", total::int AS total FROM (
+      SELECT n.project_id AS "projectId", i.id, i.iss_seq AS "issSeq", p.issue_prefix AS "issuePrefix",
+             count(*) OVER (PARTITION BY n.project_id) AS total,
+             row_number() OVER (PARTITION BY n.project_id ORDER BY min(n.created_at), i.id) AS rank
+        FROM notifications n
+        JOIN issues i ON i.id = n.issue_id
+        JOIN projects p ON p.id = i.project_id
+       WHERE n.type = 'issue_stranded'
+         AND n.state = 'firing'
+         AND n.resolved_at IS NULL
+         AND n.project_id IN (${idList(projectIds)})
+       GROUP BY n.project_id, i.id, i.iss_seq, p.issue_prefix
+    ) stuck
+     WHERE rank <= ${STUCK_ISSUES_LISTED}
+     ORDER BY "projectId", rank
+  `) as unknown as Promise<StuckIssueRow[]>;
+
 /**
- * Run the eleven reads concurrently under the module bound.
+ * Run the twelve reads concurrently under the module bound.
  *
  * The array order is load-bearing for the unit test's mock, which answers each
  * awaited query with the next row-set from a queue: the limiter starts parked
@@ -190,6 +221,7 @@ export async function readHealthAggregates(projectIds: string[]) {
     issueActivityRows,
     runActivityRows,
     liveSessionRows,
+    stuckIssueRows,
   ] = await Promise.all([
     run(() => readStatusRows(projectIds)),
     run(() => readBlockerRows(projectIds)),
@@ -202,6 +234,7 @@ export async function readHealthAggregates(projectIds: string[]) {
     run(() => readIssueActivityRows(projectIds)),
     run(() => readRunActivityRows(projectIds)),
     run(() => readLiveSessionCounts(projectIds)),
+    run(() => readStuckIssueRows(projectIds)),
   ]);
 
   return {
@@ -216,5 +249,6 @@ export async function readHealthAggregates(projectIds: string[]) {
     issueActivityRows,
     runActivityRows,
     liveSessionRows,
+    stuckIssueRows,
   };
 }

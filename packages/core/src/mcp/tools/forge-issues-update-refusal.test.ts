@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { IssueDependencyError } from '../../issues/dependency-service.js';
 import { TransitionError } from '../../issues/transition-error.js';
 import { toolErrorText } from '../server.js';
-import { leadWith, unwrittenRefusal } from './forge-issues-update-refusal.js';
+import { leadWith, unwrittenIfUpdate, unwrittenRefusal } from './forge-issues-update-refusal.js';
 
 const read = (err: unknown) => toolErrorText((err as Error).message);
 
@@ -33,10 +33,42 @@ describe('an update refusal that wrote nothing', () => {
     );
   });
 
-  it('keeps a not-found refusal classed as one', () => {
+  it('keeps a not-found relation classed as one, under its own code', () => {
     const err = unwrittenRefusal(new IssueDependencyError('NOT_FOUND'), false);
 
-    expect((err as Error).message).toMatch(/^NOT_FOUND: Nothing this update carried was written\./);
+    expect((err as Error).message).toMatch(
+      /^NOT_FOUND: RELATION_TARGET_NOT_FOUND: Nothing this update carried was written\./,
+    );
+  });
+
+  it('says first that nothing was written where the input check refused an update', () => {
+    const zod = Object.assign(new Error('zod'), {
+      name: 'ZodError',
+      issues: [{ path: ['data', 'priority'], message: 'Invalid option' }],
+    });
+    const err = (() => {
+      try {
+        return unwrittenIfUpdate({ action: 'update', data: { title: 't' } }, () => {
+          throw zod;
+        });
+      } catch (e) {
+        return e;
+      }
+    })();
+
+    expect(read(err)).toMatch(
+      /^Error: Nothing this update carried was written\. Invalid arguments — `data\.priority`: Invalid option/,
+    );
+  });
+
+  it('leaves the input check of another action as it was', () => {
+    const zod = Object.assign(new Error('zod'), { name: 'ZodError', issues: [] });
+
+    expect(() =>
+      unwrittenIfUpdate({ action: 'create' }, () => {
+        throw zod;
+      }),
+    ).toThrow(zod);
   });
 
   it('leaves a name the caller sends in its own case', () => {

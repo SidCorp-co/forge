@@ -201,21 +201,24 @@ async function emit(
 ): Promise<void> {
   const admins = await projectAdminUserIds(args.row.projectId);
   if (admins.length === 0) return;
-  await emitNotification({
-    recipients: admins,
-    projectId: args.row.projectId,
-    issueId: args.row.issueId,
-    type: 'issue_stranded',
-    resolutionKey,
-    ...sweepGroup('orphan-assertion', args.now),
-    ...orphanNotice({
-      ref: args.ref,
-      projectName: args.row.projectName,
-      status: args.row.status,
-      since: args.row.since,
-      now: args.now,
-    }),
-  });
+  await emitNotification(
+    {
+      recipients: admins,
+      projectId: args.row.projectId,
+      issueId: args.row.issueId,
+      type: 'issue_stranded',
+      resolutionKey,
+      ...sweepGroup('orphan-assertion', args.now),
+      ...orphanNotice({
+        ref: args.ref,
+        projectName: args.row.projectName,
+        status: args.row.status,
+        since: args.row.since,
+        now: args.now,
+      }),
+    },
+    args.now,
+  );
 }
 
 /**

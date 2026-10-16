@@ -61,7 +61,7 @@ type Row = { loopMonitor: { axis: string; claimHeldIssues: number; sweptBy: stri
 describe('GET /api/projects/health — the loop monitor axis (ISS-1273)', () => {
   // One of the two readers this pair got; `loop-monitor-axis.ts` logs the same on every tick.
   it('names the axis and counts the claim-held issues outside it', async () => {
-    for (let i = 0; i < 10; i++) queryQueue.push([]);
+    for (let i = 0; i < 11; i++) queryQueue.push([]);
     queryQueue.push([
       { project_id: PROJECT_ID, lease: { holder: 'iss-1-aaaa', renewedAt: FUTURE, minutes: 60 } },
       { project_id: PROJECT_ID, lease: { holder: 'iss-2-bbbb', renewedAt: FUTURE, minutes: 60 } },

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * Every `db.select()` chain and every `db.execute()` resolves only when the test
- * releases it, so the moment all eleven reads are outstanding is observable — which
+ * releases it, so the moment all twelve reads are outstanding is observable — which
  * is the whole point: a sequential handler never has two in flight, and a test
  * against an immediately-resolving mock cannot tell the two apart.
  */
@@ -43,8 +43,8 @@ const { readHealthAggregates, healthReadLoad, HEALTH_READ_CONCURRENCY } = await 
   './health-aggregates.js'
 );
 
-/** One request's reads: the ten rollups and the live-session count. */
-const READS = 11;
+/** One request's reads: the ten rollups, the live-session count and the stuck-issue count. */
+const READS = 12;
 const PROJECT_IDS = ['22222222-2222-4222-8222-222222222222'];
 const tick = () => new Promise<void>((r) => setTimeout(r, 0));
 
