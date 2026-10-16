@@ -53,9 +53,10 @@ export function ApprovalEntry({ item, slug }: { item: ApprovalItem; slug: string
       testId="approval-entry"
       rowKey={item.id}
       wrap
-      lead={<MonoTag>{item.key}</MonoTag>}
       title={title}
       facts={[
+        // After the title, not before it: keys differ in width, and a lead column of them staggers every title.
+        <MonoTag key="key">{item.key}</MonoTag>,
         <span key="kind" className="text-fg">
           {t(`approvals.kind.${item.kind}`)}
           {item.revision ? ` · r${item.revision}` : ""}
