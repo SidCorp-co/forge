@@ -98,9 +98,21 @@ export const DECISION_ACTS = {
 		path: "/api/previews/:previewId/approve",
 		reason: false,
 	},
+	"design.decide": {
+		path: "/api/projects/:projectId/workflows/:workflowId/design/decision",
+		reason: false,
+	},
+	"mockup.accept": {
+		path: "/api/projects/:projectId/mockups/:mockupKey/accept",
+		reason: false,
+	},
+	"mockup.return": {
+		path: "/api/projects/:projectId/mockups/:mockupKey/return",
+		reason: true,
+	},
 } as const;
 export type DecisionAct = keyof typeof DECISION_ACTS;
-const DECISION_ACT_NAMES = Object.keys(DECISION_ACTS) as [
+export const DECISION_ACT_NAMES = Object.keys(DECISION_ACTS) as [
 	DecisionAct,
 	...DecisionAct[],
 ];

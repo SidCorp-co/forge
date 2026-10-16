@@ -27,7 +27,7 @@ import {
   view,
 } from './access.js';
 import { previewOrigin } from './domain.js';
-import { OPEN_STATES, stateRefusal } from './rules.js';
+import { APPROVABLE_STATES, OPEN_STATES, stateRefusal } from './rules.js';
 import { sendIdeaMessage } from './subjects.js';
 
 const SNAPSHOT_WAIT_MS = 20_000;
@@ -98,7 +98,7 @@ export async function approvePreview(previewId: string, actor: PreviewActor) {
       `preview ${row.id} serves ${row.subjectKind === 'idea' ? 'an idea, which is kept as a picture' : 'a past build, which is reproduced'}, not an issue's run: only an issue's preview is approved down a lane`,
     );
   }
-  throwRefusal(stateRefusal(row.id, row.state, ['live', 'idle_closed'], 'be approved'));
+  throwRefusal(stateRefusal(row.id, row.state, APPROVABLE_STATES, 'be approved'));
   const snapshot = await askSnapshot(row);
   const fastLane = (await readProjectDocument(row.projectId))?.document.fastLane ?? null;
   const lane = classifyLane(snapshot.files, fastLane);

@@ -40,6 +40,7 @@ const OLD_REL = 'packages/web-v2/src/lib/i18n/product-copy.json';
  */
 export const PREFIX_HOMES = {
   agents: 'lib/i18n/copy/agents.json',
+  approvals: 'lib/i18n/copy/approvals.json',
   attachments: 'lib/i18n/copy/attachments.json',
   attention: 'lib/i18n/copy/attention.json',
   auth: 'lib/i18n/copy/auth.json',

@@ -290,7 +290,9 @@
     "shell.thread.sendFailed": "Couldn't send.",
     "shell.thread.sending": "Sending…",
     "shell.thread.tryAgain": "Try again",
-    "shell.thread.withdrawn": "A draft was replaced by the reply check and answered below."
+    "shell.thread.withdrawn": "A draft was replaced by the reply check and answered below.",
+    "nav.proj-approvals": "Approvals",
+    "shell.approvalsCount": "{n} waiting on your decision"
   },
   "vi": {
     "nav.attention": "Cần chú ý",
@@ -550,6 +552,8 @@
     "shell.thread.refused": "{what} đã bị từ chối",
     "shell.thread.sendFailed": "Không gửi được.",
     "shell.thread.sending": "Đang gửi…",
-    "shell.thread.tryAgain": "Thử lại"
+    "shell.thread.tryAgain": "Thử lại",
+    "nav.proj-approvals": "Phê duyệt",
+    "shell.approvalsCount": "{n} mục chờ bạn quyết định"
   }
 }

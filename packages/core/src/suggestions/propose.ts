@@ -227,7 +227,9 @@ export async function createSuggestion(input: {
 // Decision on design suggestion-lifecycle (ISS-117): a reviewer's edit is a new suggestion
 // the reviewer produced, naming the original, which is rejected with the reviewer's reason in the
 // same transaction; no state is added. Revising rejects the original, so it takes
-// suggestions.approve like any decision (ADR 0007)
+// suggestions.approve like any decision (ADR 0007). Its producer's own edit is the same new
+// suggestion, but the original is withdrawn, as only its producer may (rev 3): the author changes
+// what they asked and decides nothing, so it takes the project.write a withdraw takes.
 export async function reviseSuggestion(input: {
   projectId: string;
   id: string;
@@ -241,16 +243,18 @@ export async function reviseSuggestion(input: {
     const refusal = breakdownProposerRefusal(await permissionFactsOf(actor.userId, projectId));
     if (refusal) return { ok: false, refusals: [refusal] };
   }
+  const byProducer = first.producerId !== null && first.producerId === actor.userId;
   const forbidden = await permissionRefusalFor(
     actorFor(actor.userId, actor.agency),
-    'suggestions.approve',
+    byProducer ? 'project.write' : 'suggestions.approve',
     projectResource(projectId),
-    'revising a suggestion',
+    byProducer ? 'revising your own suggestion' : 'revising a suggestion',
   );
   if (forbidden) return { ok: false, refusals: [forbidden] };
   const target = targetOfRow(first);
   const early =
-    rejectReasonRefusal(input.reason) ?? payloadRefusal(first.kind, target.type, input.payload);
+    (byProducer ? null : rejectReasonRefusal(input.reason)) ??
+    payloadRefusal(first.kind, target.type, input.payload);
   if (early) return { ok: false, refusals: [early] };
   const reason = input.reason?.trim() ?? '';
   const payload = SUGGESTION_PAYLOADS[first.kind].schema.parse(input.payload);
@@ -290,6 +294,22 @@ export async function reviseSuggestion(input: {
     );
     if ('refusals' in proposed) return proposed.refusals;
     id = proposed.id;
+    if (byProducer) {
+      const withdrawn = `revised by its producer as suggestion ${id}${reason ? `: ${reason}` : ''}`;
+      const decidedWithdrawn = await transition(tx, SUGGESTION_MACHINE, {
+        to: 'withdrawn',
+        expect: 'proposed',
+        set: { decidedAt: new Date(), reason: withdrawn },
+        where: eq(suggestions.id, row.id),
+        reason: withdrawn,
+        actor: suggestionKernelActor(actor),
+        source: 'suggestions-revise',
+        returning: ['id'],
+      });
+      movedRow(decidedWithdrawn);
+      await recordDecision(tx, row, actor, 'withdrawn');
+      return null;
+    }
     const rejected = `${reason} (revised by its reviewer as suggestion ${id})`;
     const decidedRejected = await transition(tx, SUGGESTION_MACHINE, {
       to: 'rejected',

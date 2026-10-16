@@ -4,13 +4,16 @@ import { type ReactNode, useState } from "react";
 import { AcceptStep, Button } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
+import { useAuth } from "@/providers/auth-provider";
 import { useSuggestionDecision } from "../hooks";
 import type { SuggestionView } from "../types";
 import { RejectStep } from "./reject-step";
+import { SuggestionAuthorActs } from "./suggestion-author-acts";
 
 /**
  * The two acts every waiting suggestion offers: Accept, through the confirm step that says what it
- * writes and takes the reason, and Reject, which requires one. `children` are further acts beside them.
+ * writes and takes the reason, and Reject, which requires one; and to its author, Revise and
+ * Withdraw. `children` are further acts beside them.
  */
 export function SuggestionDecider({
   projectId,
@@ -28,6 +31,7 @@ export function SuggestionDecider({
   children?: ReactNode;
 }) {
   const t = useCopy();
+  const me = useAuth().user?.id;
   const decide = useSuggestionDecision(projectId, affected);
   const [step, setStep] = useState<"accept" | "reject" | null>(null);
   const busy = decide.isPending;
@@ -42,6 +46,7 @@ export function SuggestionDecider({
         {t("requirements.act.reject")}
       </Button>
       {children}
+      {me && s.producerId === me ? <SuggestionAuthorActs projectId={projectId} s={s} affected={affected} busy={busy || step !== null} /> : null}
       {step === "accept" ? (
         <div className="basis-full">
           <AcceptStep

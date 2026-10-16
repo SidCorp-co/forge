@@ -4,6 +4,7 @@
 
 import agentAccountsCopy from "./copy/agent-accounts.json";
 import agentsCopy from "./copy/agents.json";
+import approvalsCopy from "./copy/approvals.json";
 import attachmentsCopy from "./copy/attachments.json";
 import attentionCopy from "./copy/attention.json";
 import authCopy from "./copy/auth.json";
@@ -62,6 +63,7 @@ import writtenCopy from "./copy/written.json";
 export const COPY_FILES = {
   "lib/i18n/copy/agent-accounts.json": agentAccountsCopy,
   "lib/i18n/copy/agents.json": agentsCopy,
+  "lib/i18n/copy/approvals.json": approvalsCopy,
   "lib/i18n/copy/attachments.json": attachmentsCopy,
   "lib/i18n/copy/attention.json": attentionCopy,
   "lib/i18n/copy/auth.json": authCopy,

@@ -210,6 +210,9 @@
     "web-feature-agents": [
       "packages/web-v2/src/features/agents/**"
     ],
+    "web-feature-approvals": [
+      "packages/web-v2/src/features/approvals/**"
+    ],
     "web-feature-attention": [
       "packages/web-v2/src/features/attention/**"
     ],
@@ -489,6 +492,7 @@
         "web-feature-mcp-auth",
         "web-feature-auth",
         "web-feature-attention",
+        "web-feature-approvals",
         "web-feature-ecosystem",
         "web-feature-needs-you",
         "web-feature-agents",

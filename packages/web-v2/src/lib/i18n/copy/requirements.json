@@ -379,7 +379,15 @@
     "requirements.criteria.all": "All",
     "requirements.criteria.show": "Show",
     "requirements.revision.noneOpen": "None open",
-    "requirements.facts.agreed": "Agreed {when}"
+    "requirements.facts.agreed": "Agreed {when}",
+    "requirements.suggestion.revise": "Revise",
+    "requirements.suggestion.withdraw": "Withdraw",
+    "requirements.suggestion.withdrawConfirm": "Withdraw this suggestion? Nobody can accept it after.",
+    "requirements.suggestion.reviseWhy": "What changed, optional",
+    "requirements.suggestion.reviseSave": "Save revision",
+    "requirements.suggestion.reviseAll": "All fields",
+    "requirements.suggestion.reviseJsonInvalid": "Not valid JSON",
+    "requirements.suggestion.yours": "Yours"
   },
   "vi": {
     "requirements.act.accept": "Chấp nhận",
@@ -664,6 +672,14 @@
     "requirements.verdict.short": "Đạt chưa đủ",
     "requirements.verdict.skipped": "Bỏ qua",
     "requirements.who.ba": "BA",
-    "requirements.who.noOwner": "Chưa có người phụ trách"
+    "requirements.who.noOwner": "Chưa có người phụ trách",
+    "requirements.suggestion.revise": "Sửa",
+    "requirements.suggestion.withdraw": "Rút lại",
+    "requirements.suggestion.withdrawConfirm": "Rút lại đề xuất này? Sau đó không ai chấp nhận được nữa.",
+    "requirements.suggestion.reviseWhy": "Đã đổi gì, không bắt buộc",
+    "requirements.suggestion.reviseSave": "Lưu bản sửa",
+    "requirements.suggestion.reviseAll": "Tất cả trường",
+    "requirements.suggestion.reviseJsonInvalid": "JSON không hợp lệ",
+    "requirements.suggestion.yours": "Của bạn"
   }
 }

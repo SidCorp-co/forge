@@ -108,7 +108,9 @@ the kind does not take is \`SUGGESTION_TARGET_INVALID\`.
   same write, naming the original in \`revises\`; every check a new suggestion takes applies to it.
   Revising rejects the original, so it takes \`suggestions.approve\` like any decision
   (\`PERMISSION_FORBIDDEN\`), and a payload that changes nothing is
-  \`SUGGESTION_REVISION_UNCHANGED\`.
+  \`SUGGESTION_REVISION_UNCHANGED\`. Its producer's own revise is the author changing what they asked:
+  the new suggestion is proposed the same way and the original is **withdrawn**, not rejected, so it
+  takes the \`project.write\` a withdraw takes and its \`reason\` may be empty.
 - **withdraw** is the producer retracting its own (\`SUGGESTION_WITHDRAW_FORBIDDEN\` for anybody else,
   who rejects or revises it instead).
 - A decided suggestion stays decided: accepting, rejecting or withdrawing it again is

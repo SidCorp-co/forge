@@ -2,6 +2,7 @@ import { type BottomTabItem, type NavEntry, type NavItem, type NavItemGroup, isN
 import { joinedEcosystems, needsMe } from "@/features/ecosystem";
 import { ecosystemRoutes } from "@/features/ecosystem";
 import type { WorkspaceRead } from "@/features/ecosystem";
+import type { ApprovalInboxRead } from "@/features/approvals";
 import { needsYouHint } from "@/features/needs-you";
 import type { NeedsYouAreaKey, NeedsYouResponse } from "@/features/needs-you";
 import { labelCopy } from "@/lib/i18n/labels";
@@ -41,6 +42,7 @@ interface ProjGroup extends NavItemGroup {
 type ProjEntry = ProjItem | ProjGroup;
 
 const PRODUCT_GROUP_KEY = "product";
+const APPROVALS_KEY = "proj-approvals";
 const DELIVERY_GROUP_KEY = "delivery";
 
 // what a project is for comes first, under Product, open as its rows were before they were grouped;
@@ -48,6 +50,8 @@ const DELIVERY_GROUP_KEY = "delivery";
 // the roadmap and memory have no row of their own (REQ-33): each is read on the item it is about.
 const PROJECT_MENU: ProjEntry[] = [
   { key: "proj-overview", label: en("nav.proj-overview"), icon: "grid", sub: "" },
+  // what waits on the person's approve-type decision, from every area, in one list
+  { key: APPROVALS_KEY, label: en("nav.proj-approvals"), icon: "inbox", sub: "/approvals" },
   {
     key: PRODUCT_GROUP_KEY,
     label: en("nav.product"),
@@ -81,6 +85,8 @@ export const PROJECT_ITEMS: ProjItem[] = PROJECT_MENU.flatMap((e) => (isNavGroup
 // own waiting-on-you group, so a menu number never disagrees with the list it opens (REQ-11 BC-10)
 export interface ProjectBadges {
   needsYou?: NeedsYouResponse | undefined;
+  /** The approval inbox's own read, so its count is the size of the list it opens. */
+  approvals?: ApprovalInboxRead | undefined;
 }
 
 const AREA_OF: Record<string, NeedsYouAreaKey> = {
@@ -95,6 +101,10 @@ const AREA_OF: Record<string, NeedsYouAreaKey> = {
 };
 
 function badgeOf(key: string, badges: ProjectBadges, language: string): Pick<NavItem, "badge" | "badgeHint"> {
+  if (key === APPROVALS_KEY) {
+    const n = badges.approvals?.total;
+    return n === undefined ? {} : { badge: n, badgeHint: productCopy(language)("shell.approvalsCount", { n }) };
+  }
   const area = AREA_OF[key];
   if (area) {
     const read = badges.needsYou?.areas[area];

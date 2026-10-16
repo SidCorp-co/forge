@@ -1,6 +1,7 @@
 // The decisions the needs-me read builds, one per kind of record (REQ-41 BC-2): each with the
 // question, the recommended answer and why, and the buttons that answer it, every button's path
 // filled from `@forge/contracts/needs-you-decisions:DECISION_ACTS` so none posts to a path with a hole.
+// The approve-group ones are `needs-you-approve-builders.ts`.
 
 import type { NeedsYouAreaKey } from '@forge/contracts/needs-you';
 import {
@@ -27,7 +28,10 @@ export type Built = { decision: NeedsYouDecision; questionId: string | null };
 export const clip = (text: string, max: number) =>
   text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
 
-function filled(act: DecisionAct, params: Record<string, string | number | undefined>): string {
+export function filled(
+  act: DecisionAct,
+  params: Record<string, string | number | undefined>,
+): string {
   const path = decisionPath(act, params);
   if (!path.ok) {
     throw new Error(
@@ -37,7 +41,7 @@ function filled(act: DecisionAct, params: Record<string, string | number | undef
   return path.path;
 }
 
-function answer(
+export function answer(
   over: Omit<DecisionAnswer, 'needsReason' | 'effect' | 'recommended' | 'body'> &
     Partial<Pick<DecisionAnswer, 'needsReason' | 'effect' | 'recommended' | 'body'>>,
 ): DecisionAnswer {
@@ -279,157 +283,6 @@ export function questionDecision(
         }),
         typed,
       ],
-    },
-  };
-}
-
-export function revisionDecision(
-  row: AttentionRow,
-  area: NeedsYouAreaKey,
-  projectId: string,
-  n: number,
-): Built {
-  const params = { projectId: projectId, key: row.key, n };
-  return {
-    questionId: null,
-    decision: {
-      group: 'approve',
-      area,
-      entity: row.entity,
-      key: row.key,
-      title: clip(row.title, 500),
-      opens: { kind: 'requirement', key: row.key },
-      question: `Accept revision ${n} of ${row.key}, or return it to its author?`,
-      recommended: {
-        answerId: 'accept',
-        why: `Its author proposed revision ${n} for sign-off; accept it unless its change summary is not what you asked for.`,
-        by: 'rule',
-      },
-      noRecommendation: null,
-      answers: [
-        answer({
-          id: 'accept',
-          label: `Accept revision ${n}`,
-          act: 'revision.accept',
-          path: filled('revision.accept', params),
-          body: {},
-          effect: `Revision ${n} becomes the current revision of ${row.key}.`,
-          recommended: true,
-        }),
-        answer({
-          id: 'return',
-          label: 'Return with a reason',
-          act: 'revision.return',
-          path: filled('revision.return', params),
-          body: {},
-          needsReason: true,
-          effect: 'Sends it back to its author with your reason.',
-        }),
-      ],
-      touchedAt: row.touchedAt,
-    },
-  };
-}
-
-export function agreeDecision(
-  row: AttentionRow,
-  area: NeedsYouAreaKey,
-  projectId: string,
-  head: number,
-): Built {
-  const params = { projectId: projectId, key: row.key };
-  return {
-    questionId: null,
-    decision: {
-      group: 'approve',
-      area,
-      entity: row.entity,
-      key: row.key,
-      title: clip(row.title, 500),
-      opens: { kind: 'requirement', key: row.key },
-      question: `Agree ${row.key} at revision ${head}, or drop it?`,
-      recommended: {
-        answerId: 'agree',
-        why: 'Its linked designs are approved and it waits only on an agree; drop it with a reason if it should not be built.',
-        by: 'rule',
-      },
-      noRecommendation: null,
-      answers: [
-        answer({
-          id: 'agree',
-          label: `Agree revision ${head}`,
-          act: 'requirement.agree',
-          path: filled('requirement.agree', params),
-          body: { revision: head },
-          effect: `${row.key} is agreed at revision ${head} and goes to delivery.`,
-          recommended: true,
-        }),
-        answer({
-          id: 'drop',
-          label: 'Drop with a reason',
-          act: 'requirement.drop',
-          path: filled('requirement.drop', params),
-          body: {},
-          needsReason: true,
-          effect: `${row.key} is dropped and will not be built.`,
-        }),
-      ],
-      touchedAt: row.touchedAt,
-    },
-  };
-}
-
-export function releaseDecision(
-  row: AttentionRow,
-  area: NeedsYouAreaKey,
-  projectId: string,
-  release: { runId: string; failing: number; total: number },
-  approvalId: string,
-): Built {
-  const params = { projectId: projectId, runId: release.runId, approvalId };
-  const path = filled('release.decide', params);
-  const clean = release.failing === 0;
-  return {
-    questionId: null,
-    decision: {
-      group: 'approve',
-      area,
-      entity: row.entity,
-      key: row.key,
-      title: clip(row.title, 500),
-      opens: { kind: 'release', key: row.key },
-      question: `Approve release ${row.key} for production, or return it to the master?`,
-      recommended: {
-        answerId: clean ? 'approve' : 'return',
-        why: clean
-          ? `None of the ${release.total} criteria it carries is failing.`
-          : `${release.failing} of the ${release.total} criteria it carries are failing.`,
-        by: 'rule',
-      },
-      noRecommendation: null,
-      answers: [
-        answer({
-          id: 'approve',
-          label: `Approve ${row.key}`,
-          act: 'release.decide',
-          path,
-          body: { decision: 'approve' },
-          needsReason: true,
-          effect: 'The release may go to production.',
-          recommended: clean,
-        }),
-        answer({
-          id: 'return',
-          label: 'Return with a reason',
-          act: 'release.decide',
-          path,
-          body: { decision: 'return' },
-          needsReason: true,
-          effect: 'The master is told why and does not take it to production.',
-          recommended: !clean,
-        }),
-      ],
-      touchedAt: row.touchedAt,
     },
   };
 }

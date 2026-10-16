@@ -11,3 +11,6 @@ export type {
 
 /** One decision a person takes on a suggestion; an accept carries the reason the API keeps, where one was given. */
 export type SuggestionDecision = { kind: "accept"; id: string; reason?: string } | { kind: "reject"; id: string; reason: string };
+
+/** What a suggestion's author does with their own: revise it (the payload as it should read, and why) or withdraw it. */
+export type SuggestionAuthorAct = { kind: "revise"; id: string; payload: unknown; reason: string } | { kind: "withdraw"; id: string };
