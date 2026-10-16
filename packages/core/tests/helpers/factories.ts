@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../../src/db/client.js';
 import { DEFAULT_POLICY } from '../../src/project-config/default-policy.js';
 import { BOSS_SCHEMA } from '../../src/queue/boss.js';
+import { backgroundRefreshesSettled } from '../../src/release-page/refresh.js';
 import { CLAIM_MIN_RUNNER } from '../../src/runners/device-cap.js';
 
 export async function rows<T>(query: ReturnType<typeof sql>): Promise<T[]> {
@@ -22,8 +23,13 @@ const SEEDED_BY_MIGRATIONS = ['outbox_event_types'];
  * them in-process (`outbox/worker.ts:wakeConsumers`), and a delivery writes inside its own
  * transaction. A TRUNCATE taken across one deadlocks against it (40P01), so the outbox is drained
  * first: deliveries not yet started are dropped, and the ones running are waited out.
+ *
+ * A release page read that finds its highlights owed starts a refresh no request waits on
+ * (`release-page/refresh.ts:refreshInBackground`), which reads and writes across tables after its
+ * test returned; a TRUNCATE across it deadlocks the same way, so it is settled first too.
  */
 export async function truncateAll(): Promise<void> {
+  await backgroundRefreshesSettled();
   await drainOutbox();
   const tables = await truncatedTables();
   if (tables.length > 0) {

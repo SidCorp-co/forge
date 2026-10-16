@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { addVerdict, replaceCriteria } from '../../src/issues/criteria/service.js';
 import { userNames } from '../../src/lib/people.js';
+import { backgroundRefreshesSettled } from '../../src/release-page/index.js';
 import { api, patToken, userToken } from '../helpers/api.js';
 import {
   addProjectMember,
@@ -34,8 +35,10 @@ const tokens: Record<'owner' | 'member' | 'agent', string> = { owner: '', member
 const fx = releaseWorld(() => ({ projectId, ownerId }));
 let unplant: (() => void) | null = null;
 
-afterEach(() => {
+afterEach(async () => {
   unplant?.();
+  // a page read that found its highlights owed starts a refresh; none outlives its test
+  await backgroundRefreshesSettled();
 });
 
 beforeEach(async () => {
