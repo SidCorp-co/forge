@@ -1,1 +1,1 @@
-**A person answers the questions they owe with their own token.** Their own personal access token or Claude Code's MCP sign-in answers, over REST and MCP, what they could answer signed in; the answer records the token and client.
+**A person answers the questions they owe with their own token.** A personal access token or Claude Code's MCP sign-in answers them over REST and MCP; agent-blocked questions stay with agents, and the answer records token and client.

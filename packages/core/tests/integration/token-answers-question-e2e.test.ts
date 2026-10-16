@@ -2,9 +2,10 @@
  * A person's own token answers a question that person owes (owner, 2026-10-16), over REST and over
  * `/mcp` alike: a personal access token they minted, or the access token an MCP client holds on
  * their consent. It answers exactly what they could answer signed in — the session's own check —
- * and the answered round records the token and, for OAuth, the client (REQ-27 BC-2). An agent's
- * token keeps its rule, a token handed to act for someone answers nothing, the token's grant still
- * applies, and a second answer meets the not-open refusal.
+ * and the answered round records the token and, for OAuth, the client (REQ-27 BC-2). A question
+ * blocked on an agent or a peer keeps the agent-token rule, an agent's token answers nothing else,
+ * a token handed to act for someone answers nothing, the token's grant still applies, and a second
+ * answer meets the not-open refusal.
  */
 
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
@@ -246,20 +247,17 @@ describe('a question blocked on an agent or a peer', () => {
     expect((await stored(questionId)).round).toMatchObject({ answeredBy: agentId });
   });
 
-  it('takes a person’s token only where the person could answer it signed in', async () => {
+  it('refuses a person’s own token by name, even one holding every permission, at either door', async () => {
     const questionId = await asked('master_or_peer', { choice: true });
-    const viaToken = await answerRest(tok.member, questionId, { optionId: 'freeze' });
-    const viaSession = await answerRest(tok.memberSession, questionId, { optionId: 'freeze' });
-    expect(viaToken.status).toBe(403);
-    expect(viaToken.body.code).toBe('PERMISSION_FORBIDDEN');
-    expect(viaSession.body.code).toBe('PERMISSION_FORBIDDEN');
+    const viaRest = await answerRest(tok.owner, questionId, { optionId: 'ship' });
+    expect(viaRest.status).toBe(403);
+    expect(viaRest.body.code).toBe('QUESTION_BLOCKED_ON_AGENT');
+    expect(JSON.stringify(viaRest.body)).toContain('Agent Access Token');
+    const viaMcp = await answerMcp(tok.owner, questionId, { optionId: 'ship' });
+    expect(mcpCode(viaMcp)).toBe('QUESTION_BLOCKED_ON_AGENT');
     expect((await stored(questionId)).status).toBe('open');
-    const byOwner = await answerMcp(tok.owner, questionId, { optionId: 'freeze' });
-    expect(byOwner.isError, byOwner.text).toBe(false);
-    expect((await stored(questionId)).round).toMatchObject({
-      answeredBy: ownerId,
-      answeredWith: { tokenId: tokenIds.owner, client: null },
-    });
+    const byAgent = await answerRest(tok.agent, questionId, { optionId: 'ship' });
+    expect(byAgent.status, JSON.stringify(byAgent.body)).toBe(200);
   });
 
   it('refuses an agent’s token a question a person owes, by name', async () => {
@@ -379,6 +377,18 @@ describe('the access token an MCP client holds on the person’s consent', () =>
       answeredWith: { tokenId, client: { id: clientId, name: 'Claude Code' } },
     });
     expect(move?.actor_token_id).toBe(tokenId);
+  });
+
+  it('is refused a question blocked on an agent, by name', async () => {
+    const { accessToken } = await signedIn();
+    const questionId = await asked('master_or_peer');
+    const viaRest = await answerRest(accessToken, questionId, { text: 'tours.v2' });
+    expect(viaRest.status).toBe(403);
+    expect(viaRest.body.code).toBe('QUESTION_BLOCKED_ON_AGENT');
+    expect(mcpCode(await answerMcp(accessToken, questionId, { text: 'tours.v2' }))).toBe(
+      'QUESTION_BLOCKED_ON_AGENT',
+    );
+    expect((await stored(questionId)).status).toBe('open');
   });
 
   it('answers over REST the same way, and is held to the owner’s reach', async () => {
