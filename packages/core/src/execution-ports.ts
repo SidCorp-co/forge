@@ -4,12 +4,7 @@
 
 import { provideAgentReportsPorts } from './agent-reports/index.js';
 import { provideAgentSessionsPorts } from './agent-sessions/index.js';
-import {
-  insertComment,
-  latestIssueCommentWith,
-  postIssueNotice,
-  postIssueNoticeOnce,
-} from './comments/index.js';
+import { latestIssueCommentWith, postIssueNotice, postIssueNoticeOnce } from './comments/index.js';
 import { registerConversationAgentBridge, resolveProjectHandle } from './conversations/index.js';
 import {
   deviceHolderUserId,
@@ -154,8 +149,6 @@ export function provideExecutionPorts(): void {
     sendToBoxNow,
     scrubSessionOutput: async (sessionId, data) =>
       scrubJobOutput(await jobsOfSession(sessionId), data),
-    postSteerComment: async ({ issueId, authorId, body }) =>
-      (await insertComment({ issueId, authorId, authorDeviceId: null, body, parentId: null })).row,
   });
 
   provideDevicesPorts({

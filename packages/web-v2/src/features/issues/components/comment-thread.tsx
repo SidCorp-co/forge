@@ -5,7 +5,7 @@
 // resolved against the project members, and reply/add boxes.
 
 import { WrittenMark } from "@/lib/i18n/written";
-import { Avatar, Badge, BodyView, Button, EmptyState, Field, Icon, Textarea } from "@/design";
+import { Avatar, Badge, BodyView, Button, Checkbox, EmptyState, Field, Icon, Textarea } from "@/design";
 import { type ComposerIntent, DecisionInThread, IntentPicker } from "@/features/comments";
 import { formatApiError } from "@/lib/api/error";
 import { refusalsOf } from "@/lib/api/refusals";
@@ -27,18 +27,23 @@ import { StagedFileList, useStagedFiles } from "@/features/attachments";
 function AddCommentBox({
   issueId,
   parentId,
-  intent = "question",
+  intent: picked,
   placeholder,
   onDone,
 }: {
   issueId: string;
   parentId?: string;
-  /** What the comment is: a question owed a reply (a reply's default, as it always was), or a note. */
+  /**
+   * What a top-level comment is, as the composer's picker chose it. A reply has no picker: it is a
+   * note unless the person ticks Ask as a question, as core reads a comment sent with no intent.
+   */
   intent?: "question" | "note";
   placeholder: string;
   onDone?: () => void;
 }) {
   const [body, setBody] = useState("");
+  const [asks, setAsks] = useState(false);
+  const intent = picked ?? (asks ? "question" : "note");
   const staged = useStagedFiles({ unit: "comment", video: false, uniqueNames: false });
   const create = useCreateComment(issueId);
   const t = useCopy();
@@ -78,9 +83,14 @@ function AddCommentBox({
       <StagedFileList files={staged.files} warnings={staged.warnings} remove={staged.remove} />
 
       <div className="flex items-center justify-between gap-2">
-        <Button type="button" variant="ghost" size="sm" icon="plus" onClick={staged.choose}>
-          {t("issues.thread.attach")}
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button type="button" variant="ghost" size="sm" icon="plus" onClick={staged.choose}>
+            {t("issues.thread.attach")}
+          </Button>
+          {picked === undefined && (
+            <Checkbox checked={asks} onChange={setAsks} disabled={create.isPending} label={t("issues.thread.askAsQuestion")} />
+          )}
+        </div>
         {staged.input}
         <div className="flex gap-2">
           {onDone && (

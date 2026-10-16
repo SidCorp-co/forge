@@ -76,7 +76,7 @@ async function liveIssueOf(
  * An agent's `intent: question` comment is a question a person owes an answer to (ISS-260, FB-55):
  * a free-text Question keyed by the comment's own id, so `GET /api/questions/<comment id>` reads it
  * and `POST /api/questions/<comment id>/answer` answers it. A comment whose question fence already
- * minted the row asks nothing twice. A person's question comment is owed an agent's reply instead
+ * minted the row asks nothing twice. A comment a person marks as a question is owed an agent's reply instead
  * (`devices/comment-inbox.ts`), and mints nothing.
  */
 export async function mintCommentQuestion(

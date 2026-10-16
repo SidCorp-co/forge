@@ -20,7 +20,6 @@ import {
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { type RefusalError, refuser } from '../lib/refusal.js';
 import { writtenLangFor } from '../lib/written-lang.js';
-import { parseForgeRecord } from '../messaging/forge-record.js';
 import { emitEvent } from '../outbox/index.js';
 import { parseMentions, resolveMentions } from './mentions.js';
 import { screenAgentComment, screenRecordFence } from './screen.js';
@@ -77,7 +76,7 @@ export type NewComment = {
   declaresRecordRoute?: boolean | undefined;
   /**
    * What the comment means to do, as the caller sent it. Validated here, so every door refuses the
-   * same way; absent is decided by `defaultIntent` and the caller is warned.
+   * same way; absent is stored as `note` by `resolveIntent` and the caller is warned.
    */
   intent?: string | null | undefined;
   /** A decision's fields, stored beside the body that writes them out. */
@@ -123,33 +122,18 @@ export function intentRefusal(intent: unknown, path = '/intent'): RefusalError {
 }
 
 /**
- * The intent a comment that declared none is stored under. A person's comment is `question`, so
- * it stays owed a reply exactly as every person's comment was before intents existed; an agent's,
- * or any comment carrying a record, is `note`.
- *
- * cm:hack — the default exists because forge-plugin's `forge comment` and older web builds send
- * no intent. Ends when the pinned plugin sends `intent` on every comment
- * (forge-local-docs/plugin-followups.md); then an absent intent is refused COMMENT_INTENT_REQUIRED.
+ * The intent sent, checked; or `note` with the warning that says it was taken. A comment that
+ * declares no intent asks nothing, whoever wrote it: only `intent: question` is owed a reply.
  */
-function defaultIntent(byAnAgent: boolean, body: string): CommentIntent {
-  if (byAnAgent || parseForgeRecord(body)) return 'note';
-  return 'question';
-}
-
-/** The intent sent, checked; or the default with the warning that says it was taken. */
-export function resolveIntent(
-  sent: unknown,
-  byAnAgent: boolean,
-  body: string,
-): { intent: CommentIntent; warning: string | null } {
+export function resolveIntent(sent: unknown): { intent: CommentIntent; warning: string | null } {
   if (sent !== undefined && sent !== null) {
     if (!isCommentIntent(sent)) throw intentRefusal(sent);
     return { intent: sent, warning: null };
   }
-  const intent = defaultIntent(byAnAgent, body);
   return {
-    intent,
-    warning: `COMMENT_INTENT_DEFAULTED: no \`intent\` was sent, so this comment is stored as \`${intent}\` — send intent: ${COMMENT_INTENTS.join(' | ')}`,
+    intent: 'note',
+    warning:
+      'COMMENT_INTENT_DEFAULTED: no `intent` was sent, so this comment is stored as `note`, owed no reply — send intent: question to ask',
   };
 }
 
@@ -203,7 +187,7 @@ export async function insertComment(input: NewComment, tx: Tx = db): Promise<Wri
   const fence = screenRecordFence(input.body, input.declaresRecordRoute === true);
   const context = await loadStageContext(input.issueId, tx);
   const byAnAgent = await writtenByAnAgent(input, tx);
-  const { intent, warning } = resolveIntent(input.intent, byAnAgent, input.body);
+  const { intent, warning } = resolveIntent(input.intent);
   if (context && byAnAgent) {
     await screenAgentComment(context.projectId, input.body, tx, input.screenedAt);
   }

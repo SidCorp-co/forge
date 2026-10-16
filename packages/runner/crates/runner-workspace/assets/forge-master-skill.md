@@ -172,8 +172,9 @@ for the requirement the issue delivers, `{requirement: "REQ-n"}` for another by 
 `about` naming nothing is refused `QUESTION_ABOUT_UNKNOWN` or `QUESTION_ABOUT_NO_REQUIREMENT`; a wait
 on a merge mark is never also `about` anything (`QUESTION_ABOUT_ON_MERGE_WAIT`).
 
-**A person's comment is answered on the issue.** When the nudge says a person is owed a reply on
-an issue, that is work at whatever status the issue stands, `in_progress` and `awaiting_release`
+**A person's question is answered on the issue.** A comment a person marks as a question
+(`intent: question`) is owed a reply; one sent with no intent is a note, owed nothing. When the
+nudge says a person is owed a reply on an issue, that is work at whatever status the issue stands, `in_progress` and `awaiting_release`
 included, which no admissible read lists. Read the thread, reply to that comment in its thread
 (`parentId` set to the comment id the nudge names), and move the issue when the comment asks for
 that. Only a threaded reply takes it off the list: a top-level comment on the issue, a note or a

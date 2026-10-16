@@ -186,7 +186,8 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
             blocker={blocker}
             needsYouAct={needsYouAct}
             threadQuestion={threadQuestion}
-            onAnswerInThread={canWrite ? (text) => answerInThread.mutateAsync({ body: text }) : undefined}
+            // the answer to a park is owed the master's pickup: it is what moves the parked issue on
+            onAnswerInThread={canWrite ? (text) => answerInThread.mutateAsync({ body: text, intent: "question" }) : undefined}
             onTransition={onTransition}
             onResumeRun={onResumeRun}
             onProvideInfo={focusDecisions}

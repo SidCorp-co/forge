@@ -483,6 +483,7 @@
     "issues.table.actions": "Actions",
     "issues.table.selectAll": "Select all issues on this page",
     "issues.thread.agentOn": "An agent on {author}, a box paired by {owner}",
+    "issues.thread.askAsQuestion": "Ask as a question",
     "issues.thread.attach": "Attach",
     "issues.thread.comment": "Comment",
     "issues.thread.empty": "No comments",
