@@ -36,6 +36,13 @@ export async function runAlertSweep(now: Date = new Date()): Promise<AlertSweepR
   try {
     const alerts = await computeAlerts({ now });
     const adminIds = await platformAdminUserIds();
+    const raised = alerts.filter((a) => a.status !== 'ok').map((a) => a.id);
+    if (raised.length > 0 && adminIds.length === 0) {
+      logger.warn(
+        { alerts: raised },
+        'alert-sweeper: alerts are at warn or crit and no operator is notified: ADMIN_EMAILS names no user with a verified email',
+      );
+    }
     let notified = 0;
     let resolved = 0;
 
