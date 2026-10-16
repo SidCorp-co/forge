@@ -250,7 +250,7 @@ describe('forge_issues update — a refusal writes nothing and says so first', (
     ],
     [
       'a relation naming no issue',
-      'relation names an issue that does not exist',
+      'RELATION_TARGET_NOT_FOUND',
       () => ({
         relations: [{ kind: 'blocks', dependsOnId: '00000000-0000-4000-8000-000000000000' }],
       }),
@@ -323,5 +323,86 @@ describe('forge_issues update — a refusal writes nothing and says so first', (
     expect(said).toMatch(
       /^forge_issues refused: Error: CYCLE_DETECTED: Nothing this update carried was written\. /,
     );
+  });
+});
+
+describe('forge_issues update — every refusal before the write says first that nothing was written (ISS-1229 r12)', () => {
+  const NO_ISSUE = '00000000-0000-4000-8000-000000000000';
+
+  it.each([
+    ['with no status', {}, ''],
+    ['beside a status', { status: 'in_progress' }, ', the status move included'],
+  ] as const)(
+    'a value the input check refuses, sent %s, writes nothing and says so first',
+    async (_how, status, moved) => {
+      const w = await plainWorld();
+      const id = await insertIssue(w, 'confirmed');
+      const before = await whole(id);
+
+      const said = await refusal(w.token, {
+        action: 'update',
+        documentId: id,
+        data: { title: 'must not land', priority: 'urgent-ish', ...status },
+      });
+
+      expect(said).toMatch(
+        new RegExp(
+          `^forge_issues refused: Error: Nothing this update carried was written${moved}\\. Invalid arguments — \`data\\.priority\``,
+        ),
+      );
+      expect(await whole(id)).toEqual(before);
+    },
+  );
+
+  it('an update naming no issue says nothing it carried was written', async () => {
+    const w = await plainWorld();
+
+    const said = await refusal(w.token, {
+      action: 'update',
+      documentId: NO_ISSUE,
+      data: { title: 'must not land' },
+    });
+
+    expect(said).toMatch(
+      /^forge_issues refused: Error: Nothing this update carried was written\. /,
+    );
+  });
+
+  it('a relation naming no issue is refused RELATION_TARGET_NOT_FOUND, naming its field', async () => {
+    const w = await plainWorld();
+    const id = await insertIssue(w, 'confirmed');
+    const other = await insertIssue(w, 'open');
+    const before = await whole(id);
+
+    const said = await refusal(w.token, {
+      action: 'update',
+      documentId: id,
+      data: {
+        title: 'must not land',
+        relations: [
+          { kind: 'blocks', dependsOnId: other },
+          { kind: 'blocks', blocksId: NO_ISSUE },
+        ],
+      },
+    });
+
+    expect(said).toMatch(
+      /^forge_issues refused: Error: RELATION_TARGET_NOT_FOUND: Nothing this update carried was written\. /,
+    );
+    expect(said).toContain(`\`relations[1].blocksId\` names ${NO_ISSUE}`);
+    expect(await whole(id)).toEqual(before);
+  });
+
+  it('a create the input check refuses keeps its own words: it is no update', async () => {
+    const w = await plainWorld();
+
+    const said = await refusal(w.token, {
+      action: 'create',
+      projectId: w.projectId,
+      data: { title: 'never made', priority: 'urgent-ish' },
+    });
+
+    expect(said).toMatch(/^forge_issues refused: Error: invalid arguments — `data\.priority`/);
+    expect(said).not.toContain('Nothing this update carried was written');
   });
 });

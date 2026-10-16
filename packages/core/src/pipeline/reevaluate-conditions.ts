@@ -4,6 +4,7 @@ import { notifications } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { resolveNotifications } from '../notifications/auto-resolve.js';
 import { PENDING_STALE_MS } from '../notifications/deliver.js';
+import { RELEASED_PER_PASS } from './owed-sighting.js';
 
 export interface ReevaluateResult {
   /** Firing conditions whose subject is over. */
@@ -39,13 +40,20 @@ export async function reevaluateConditions(now: Date = new Date()): Promise<Reev
       result.resolved += await resolveNotifications(key);
     }
 
+    // Released a bounded batch a pass, longest-held first, so the sweeps can see every released
+    // condition again before it would go stale (owed-sighting.ts); the rest stay inhibited.
     const released = await db.execute<{ id: string }>(sql`
       UPDATE notifications n
-         SET state = 'pending', inhibited_by = NULL, pending_since = ${now.toISOString()}::timestamptz
-        FROM notifications root
-       WHERE n.inhibited_by = root.id
-         AND n.state = 'inhibited'
-         AND root.resolved_at IS NOT NULL
+         SET state = 'pending', inhibited_by = NULL, pending_since = ${now.toISOString()}::timestamptz,
+             last_seen_at = ${now.toISOString()}::timestamptz
+       WHERE n.id IN (
+         SELECT held.id FROM notifications held
+           JOIN notifications root ON root.id = held.inhibited_by
+          WHERE held.state = 'inhibited'
+            AND root.resolved_at IS NOT NULL
+          ORDER BY held.pending_since ASC, held.id ASC
+          LIMIT ${RELEASED_PER_PASS}
+       )
       RETURNING n.id
     `);
     result.released = released.length;

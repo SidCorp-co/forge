@@ -14,9 +14,8 @@ vi.mock('../../src/notifications/emit.js', () => ({
 
 /**
  * The admin lookup is a real seam inside the pass, between the page read and the row writes. A
- * hook on it is how a concurrent writer is put INSIDE that window deterministically — the `db`
- * export is a Proxy whose `get` trap always answers with the live instance's own method, so
- * spying it intercepts nothing.
+ * hook on it puts a concurrent writer INSIDE that window deterministically: the `db` export is a
+ * Proxy whose `get` trap answers with the live instance's method, so spying it intercepts nothing.
  */
 let betweenReadAndWrite: (() => Promise<void>) | null = null;
 vi.mock('../../src/notifications/project-admins.js', () => ({
@@ -25,6 +24,7 @@ vi.mock('../../src/notifications/project-admins.js', () => ({
     return new Map(ids.map((id) => [id, [`admin-of-${id}`]]));
   },
   projectAdminUserIds: async () => ['admin'],
+  projectHasAdminSql: () => sql`TRUE`,
 }));
 
 /**
@@ -40,21 +40,10 @@ vi.mock('../../src/notifications/project-admins.js', () => ({
 const fx = registerIdleFixture(1100);
 const NOW = new Date('2026-09-20T16:00:00.000Z');
 
-let mods: {
-  reconcileIdleIssues: (
-    now?: Date,
-    scope?: { projectId?: string },
-  ) => Promise<{
-    detected: number;
-    reported: number;
-    leasesReleased: number;
-    cleared: number;
-    unclassified: number;
-  }>;
-};
+let mods: typeof import('../../src/pipeline/idle-issues.js');
 
 beforeAll(async () => {
-  mods = (await import('../../src/pipeline/idle-issues.js')) as unknown as typeof mods;
+  mods = await import('../../src/pipeline/idle-issues.js');
 }, 60_000);
 
 beforeEach(async () => {

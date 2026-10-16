@@ -143,7 +143,7 @@ describe.each(Object.entries(doors))('%s', (_name, write) => {
     const { refused } = await write(callers.viewer, from, to);
     expect(refused, 'a viewer must not be able to write an edge').toBeDefined();
     expect(refused).toContain('role held is viewer');
-    expect(refused).toContain('requires the project member role');
+    expect(refused).toMatch(/requires the project member role/i);
     expect(await edgeCount()).toBe(0);
   });
 

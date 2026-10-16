@@ -43,11 +43,16 @@ export interface EmitNotificationInput {
   groupTitle?: string | null;
 }
 
+/** `now` is the evaluation's own clock: a sweep raising a condition dates it when it looked. */
 export async function emitNotification(
   input: EmitNotificationInput,
+  now?: Date,
 ): Promise<{ id: string; delivered: number } | null> {
-  return createNotification({
-    ...input,
-    severity: input.severity ?? defaultSeverityForType(input.type),
-  });
+  return createNotification(
+    {
+      ...input,
+      severity: input.severity ?? defaultSeverityForType(input.type),
+    },
+    now,
+  );
 }

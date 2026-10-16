@@ -119,6 +119,7 @@ const NOT_DISCOVERY: Record<string, string> = {
   'pipeline/archived-project-notices.ts': 'resolves open notices by their key, whatever the issue',
   'pipeline/ci-fix-pattern-learn.ts': 'by issue id',
   'pipeline/driver-comparison.ts': 'per-project and per-driver counts, no issue identity',
+  'pipeline/idle-candidates.ts': 'reads only non-terminal statuses on live projects',
   'pipeline/idle-issues.ts': 'reads only non-terminal statuses',
   'pipeline/inv7-alarms.ts': 'held or queued jobs and running runs',
   'pipeline/issue-context-store.ts': 'by issue id, a guard that the issue is in the project',

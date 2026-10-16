@@ -7,6 +7,7 @@ const adminsFor = vi.fn(async (projectIds: readonly string[]) => {
 });
 vi.mock('../notifications/project-admins.js', () => ({
   projectAdminUserIdsFor: (ids: readonly string[]) => adminsFor(ids),
+  projectHasAdminSql: () => undefined,
 }));
 
 const emitNotification = vi.fn(async () => ({ delivered: 1 }));

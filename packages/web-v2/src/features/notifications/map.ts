@@ -72,19 +72,31 @@ function hueFor(row: NotificationRow): NotificationItem["hue"] {
   return "cobalt";
 }
 
+/** A condition none of whose records still holds: the row that raised it is history, beside the row that says it resolved. */
+function clearedCondition(row: NotificationRow): boolean {
+  return !row.resolvedNotice && row.kind === "condition" && row.members > 0 && row.openMembers === 0;
+}
+
+/** What the row says under its title: a cleared condition says so first, and what it said then after it. */
+function subOf(row: NotificationRow): string | undefined {
+  if (!clearedCondition(row)) return row.body ?? undefined;
+  return row.body ? `Since resolved. When it was raised: ${row.body}` : "Since resolved.";
+}
+
 export function toNotificationItem(
   row: NotificationRow,
   actions?: NotificationAction[],
 ): NotificationItem {
+  const cleared = clearedCondition(row);
   return {
     id: row.id,
-    label: row.resolvedNotice ? "RESOLVED" : typeLabel(row.type),
+    label: row.resolvedNotice || cleared ? "RESOLVED" : typeLabel(row.type),
     text: row.title,
-    sub: row.body ?? undefined,
+    sub: subOf(row),
     time: formatRelativeTime(row.createdAt),
     // The server says whether anything is left to read: a resolved row is history, read or not.
     unread: row.unread,
-    hue: hueFor(row),
+    hue: cleared ? "green" : hueFor(row),
     // A delivery carrying one record is a plain row; one carrying several names the
     // cause, says how many are still true, and expands to them.
     group: row.members > 1 ? { total: row.members, open: row.openMembers } : undefined,

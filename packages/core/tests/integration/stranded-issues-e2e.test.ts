@@ -141,8 +141,9 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
     `);
     const updatedAgo = opts.updatedAgoMs ?? 48 * HOUR;
     const updatedAt = new Date(Date.now() - updatedAgo).toISOString();
+    // Made at its status with no transition since, so it was parked when it was made (ISS-1229 r12).
     await harness.db.execute(
-      sql`UPDATE issues SET updated_at = ${updatedAt} WHERE id = ${issueId}`,
+      sql`UPDATE issues SET updated_at = ${updatedAt}, created_at = ${updatedAt} WHERE id = ${issueId}`,
     );
     return { issueId, projectId: project.id, owner, projAdmin, plain };
   }

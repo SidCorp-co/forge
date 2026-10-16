@@ -460,25 +460,27 @@ notificationRoutes.delete(
   },
 );
 
-export async function createNotification(input: {
-  userId?: string;
-  recipients?: string[];
-  projectId?: string | null;
-  type: NotificationType;
-  title: string;
-  body?: string | null;
-  issueId?: string | null;
-  subject?: string | null;
-  secondaryIssueId?: string | null;
-  agentSessionId?: string | null;
-  severity?: string | null;
-  resolutionKey?: string | null;
-  dedupeKey?: string | null;
-  decisionId?: string | null;
-  groupKey?: string | null;
-  groupTitle?: string | null;
-}): Promise<{ id: string; delivered: number } | null> {
+export async function createNotification(
+  input: {
+    userId?: string;
+    recipients?: string[];
+    projectId?: string | null;
+    type: NotificationType;
+    title: string;
+    body?: string | null;
+    issueId?: string | null;
+    subject?: string | null;
+    secondaryIssueId?: string | null;
+    agentSessionId?: string | null;
+    severity?: string | null;
+    resolutionKey?: string | null;
+    dedupeKey?: string | null;
+    decisionId?: string | null;
+    groupKey?: string | null;
+    groupTitle?: string | null;
+  },
+  now?: Date,
+): Promise<{ id: string; delivered: number } | null> {
   const recipients = input.recipients ?? (input.userId ? [input.userId] : []);
-  const result = await recordAndDeliver({ ...input, recipients });
-  return result;
+  return recordAndDeliver({ ...input, recipients }, now);
 }
