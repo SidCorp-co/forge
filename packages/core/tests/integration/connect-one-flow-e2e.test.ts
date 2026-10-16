@@ -149,6 +149,14 @@ describe('one call adds a connection and binds its projects (FB-128 BC-1, BC-3)'
     type Bound = { revision: number; rewroteSwitchedOff: unknown };
     const written = (created.body.bindings as Bound[])[0];
     expect(written?.rewroteSwitchedOff, 'a fresh slot rewrites nothing').toBeNull();
+    // a DELETE sent with no body is refused naming the token it needs, never "Malformed JSON", and
+    // switches nothing off: the revision is what keeps it from undoing a change it never read
+    const bare = await api(session, 'DELETE', `/api/projects/${first.id}/bindings/${binding?.id}`);
+    expect(bare.status, JSON.stringify(bare.body)).toBe(400);
+    expect(JSON.stringify(bare.body)).toContain('CONFIG_WRITE_SHAPE');
+    expect(JSON.stringify(bare.body)).toContain('baseRevision');
+    expect(JSON.stringify(bare.body)).not.toContain('Malformed');
+    expect((await bindingsOf(first.id))[0]?.active).toBe(true);
     const off = await api(session, 'DELETE', `/api/projects/${first.id}/bindings/${binding?.id}`, {
       baseRevision: written?.revision,
     });
