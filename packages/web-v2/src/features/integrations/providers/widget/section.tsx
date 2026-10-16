@@ -1,7 +1,8 @@
 import { Banner, Button } from "@/design";
+import { formatApiError } from "@/lib/api/error";
+import { documentRefusals, refusalLine } from "@/lib/api/refusals";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useState } from "react";
-import { bindingRefusalText } from "../../bind-actions";
 import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
 import { useDeleteProviderIntegration, useUpdateProviderIntegration } from "../../hooks";
 import type { IntegrationSummary } from "../../types";
@@ -12,6 +13,25 @@ import { EMPTY_FORM, type FieldErrors, formOf, mintSiteKey, parseForm, patchOf, 
 import { EmbedCode, SigningSecret } from "./embed";
 import { WidgetFields } from "./fields";
 import { widget } from "./index";
+
+const SITE_KEY_REFUSALS = ["WIDGET_SITE_KEY_MINTED", "WIDGET_SITE_KEY_TAKEN"] as const;
+type SiteKeyRefusal = (typeof SITE_KEY_REFUSALS)[number];
+const isSiteKeyRefusal = (code: string): code is SiteKeyRefusal => (SITE_KEY_REFUSALS as readonly string[]).includes(code);
+
+/**
+ * A binding write's refusal, each by its code: the two about the site key with the sentence that says
+ * what to do, any other as core worded it, and a failure that named none as the request's own.
+ */
+function useRefusalText(): (err: unknown) => string {
+  const t = useCopy();
+  return (err) => {
+    const refusals = documentRefusals(err);
+    if (refusals.length === 0) return formatApiError(err);
+    return refusals
+      .map((r) => (isSiteKeyRefusal(r.code) ? `${r.code}: ${t(`integrations.widget.refused.${r.code}`)}` : refusalLine(r)))
+      .join(" · ");
+  };
+}
 
 /** The feedback widgets this project's client sites embed, one per label. */
 export function WidgetSettings({ projectId }: { projectId: string }) {
@@ -34,7 +54,9 @@ export function WidgetSettings({ projectId }: { projectId: string }) {
 export function AddWidgetForm({ projectId, hasDefault, onDone }: { projectId: string; hasDefault: boolean; onDone: () => void }) {
   const t = useCopy();
   const add = useAddBinding(projectId, widget.agentPathKind);
-  const [siteKey] = useState(mintSiteKey);
+  const refusalText = useRefusalText();
+  // minted here, so the embed code reads before the save; core keeps it for good once bound
+  const [siteKey, setSiteKey] = useState(mintSiteKey);
   const [label, setLabel] = useState("");
   const [form, setForm] = useState<WidgetForm>(EMPTY_FORM);
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -47,6 +69,11 @@ export function AddWidgetForm({ projectId, hasDefault, onDone }: { projectId: st
     void add.submit(
       { provider: widget.provider, role: "service", config: parsed.config, secrets: {}, ...(label ? { label } : {}) },
       onDone,
+      (err) => {
+        // another binding holds this key: the next create goes with a fresh one
+        if (documentRefusals(err).some((r) => r.code === "WIDGET_SITE_KEY_TAKEN")) setSiteKey(mintSiteKey());
+        return refusalText(err);
+      },
     );
   }
 
@@ -61,12 +88,14 @@ export function AddWidgetForm({ projectId, hasDefault, onDone }: { projectId: st
     >
       {hasDefault && <LabelField placeholder={t("integrations.widget.labelPlaceholder")} value={label} onChange={setLabel} error={badLabel} />}
       <WidgetFields form={form} errors={errors} set={setForm} />
+      <EmbedCode siteKey={siteKey} />
     </AddBindingForm>
   );
 }
 
 function WidgetBinding({ projectId, binding, isDefault }: { projectId: string; binding: IntegrationSummary; isDefault: boolean }) {
   const t = useCopy();
+  const refusalText = useRefusalText();
   const update = useUpdateProviderIntegration(projectId);
   const remove = useDeleteProviderIntegration(projectId);
   const saved = formOf(binding.config ?? {});
@@ -85,7 +114,7 @@ function WidgetBinding({ projectId, binding, isDefault }: { projectId: string; b
     try {
       await update.mutateAsync({ id: binding.id, body: { config: patchOf(parsed.config) } });
     } catch (err) {
-      setError(bindingRefusalText(err));
+      setError(refusalText(err));
     }
   }
 

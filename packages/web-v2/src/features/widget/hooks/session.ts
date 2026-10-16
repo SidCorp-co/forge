@@ -14,7 +14,10 @@ export type SessionView =
   | { step: "open"; session: WidgetSession }
   | { step: "refused"; refusal: Shown };
 
-/** A refusal no retry from this frame can change: the binding itself, or this origin, is refused. */
+/**
+ * A refusal no retry from this frame can change: the binding itself, or this origin, is refused —
+ * the page's own (core reads the Origin) or the one that framed it (`embeddedAt`, from the host channel).
+ */
 const FINAL = new Set(["WIDGET_SITE_UNKNOWN", "WIDGET_ORIGIN_REFUSED"]);
 
 export interface VisitorSession {
@@ -46,6 +49,7 @@ export function useVisitorSession(siteKey: string, mode: WidgetIdentityMode, hos
       ...(mode !== "signed" && email ? { visitor: { email } } : {}),
       ...(mode === "signed" && signed ? { signed } : {}),
       ...(host.context ? { context: host.context } : {}),
+      ...(host.parentOrigin ? { embeddedAt: host.parentOrigin } : {}),
       ...(kept.visitorId ? { visitorId: kept.visitorId } : {}),
     };
     open.mutate(body, {

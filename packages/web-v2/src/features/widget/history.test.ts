@@ -1,6 +1,6 @@
 import type { WidgetFeedbackDraft, WidgetHistory } from "@forge/contracts/widget";
 import { describe, expect, it } from "vitest";
-import { mergeHistory, withDraft, withMessage } from "./history";
+import { mergeHistory, withDraft, withFiled, withMessage } from "./history";
 
 // The history read and the live stream fill one cache: a line joins by id, never twice, and a read
 // that left before an event arrived does not take that event back.
@@ -39,5 +39,19 @@ describe("the conversation cache", () => {
   it("takes the read's state for a draft the cache still has pending", () => {
     const merged = mergeHistory({ messages: [], drafts: [draft("pending")] }, { messages: [], drafts: [draft("discarded")] });
     expect(merged.drafts).toEqual([draft("discarded")]);
+  });
+
+  it("puts a sent draft's status link on the draft, and a later read without one does not take it back", () => {
+    const link = { feedbackKey: "FB-9", statusUrl: "/w/status/fw_stat_x" };
+    const cached = withFiled({ messages: [], drafts: [draft("pending")] }, "d1", link);
+    expect(cached.drafts).toEqual([{ ...draft("filed"), filed: link }]);
+    expect(mergeHistory(cached, { messages: [], drafts: [{ ...draft("filed"), filed: null }] }).drafts).toEqual([{ ...draft("filed"), filed: link }]);
+  });
+
+  it("takes the read's status link where the cache has none, as after a reload", () => {
+    const link = { feedbackKey: "FB-9", statusUrl: "/w/status/fw_stat_x" };
+    const read: WidgetHistory = { messages: [], drafts: [{ ...draft("filed"), filed: link }] };
+    expect(mergeHistory(undefined, read).drafts[0]?.filed).toEqual(link);
+    expect(mergeHistory({ messages: [], drafts: [draft("pending")] }, read).drafts[0]?.filed).toEqual(link);
   });
 });

@@ -308,6 +308,10 @@
           "why": "The widget's own contract: `widget` names the channel an external reporter files through, the vocabulary the feedback_external_reporters CHECK is built from."
         },
         {
+          "glob": "packages/web-v2/src/features/widget/**",
+          "why": "The feedback widget's own web module: the frame a client page embeds, its visitor session and status page. Every line is about the widget, and `widget` here keys its own query cache."
+        },
+        {
           "glob": "packages/core/src/assistant/identity/directory.ts",
           "why": "The speaker directory switches on the conversation adapter, whose `widget` value is the visitor channel; it says by name that a widget visitor is never linked to a Forge account."
         }

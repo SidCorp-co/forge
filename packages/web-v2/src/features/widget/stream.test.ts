@@ -54,6 +54,8 @@ describe("a stream event read against the contract", () => {
       { type: "message", message },
       { type: "typing", on: true },
       { type: "draft", draft },
+      { type: "draft", draft: { ...draft, state: "filed", filed: { feedbackKey: "FB-12", statusUrl: "/w/status/fw_stat_x" } } },
+      { type: "draft", draft: { ...draft, filed: null } },
       { type: "filed", draftId: "d1", feedbackKey: "FB-12", statusUrl: "/w/status/fw_stat_x" },
       { type: "limit", code: "WIDGET_LIMIT_REACHED", detail: "30 turns a conversation" },
     ];
@@ -67,6 +69,7 @@ describe("a stream event read against the contract", () => {
       [JSON.stringify({ type: "message", message: { ...message, role: "operator" } }), 'a message\'s role "operator" is neither visitor nor assistant'],
       [JSON.stringify({ type: "draft", draft: { ...draft, kind: "rant" } }), 'a draft\'s kind "rant" is not one the contract names'],
       [JSON.stringify({ type: "draft", draft: { ...draft, did: 3 } }), "a draft's did, expected or whereSeen is neither text nor null"],
+      [JSON.stringify({ type: "draft", draft: { ...draft, filed: { feedbackKey: "FB-12" } } }), "a draft's filed lacks feedbackKey or statusUrl"],
       [JSON.stringify({ type: "filed", draftId: "d1" }), "a filed event lacks draftId, feedbackKey or statusUrl"],
       [JSON.stringify({ type: "limit", code: "SLOW_DOWN", detail: "x" }), 'a limit event\'s code "SLOW_DOWN" is not a widget refusal code'],
       [JSON.stringify({ type: "typing", on: "yes" }), "a typing event's on is not a boolean"],

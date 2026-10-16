@@ -438,6 +438,8 @@
     "integrations.widget.embed": "Embed code",
     "integrations.widget.siteKey": "Site key",
     "integrations.widget.siteKeyMissing": "This widget has no site key. Remove it and add it again.",
+    "integrations.widget.refused.WIDGET_SITE_KEY_MINTED": "A site key never changes once saved. Reload to restore it.",
+    "integrations.widget.refused.WIDGET_SITE_KEY_TAKEN": "Another widget holds this site key. A new one is ready.",
     "integrations.widget.copy": "Copy",
     "integrations.widget.copied": "Copied",
     "integrations.widget.copyFailed": "Couldn't copy here. Select the text and copy it.",

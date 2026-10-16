@@ -20,24 +20,19 @@ export function withDraft(history: WidgetHistory | undefined, draft: WidgetFeedb
   return { ...base, drafts };
 }
 
-export function withDraftState(
-  history: WidgetHistory | undefined,
-  draftId: string,
-  state: WidgetFeedbackDraft["state"],
-): WidgetHistory {
+/** A draft the visitor sent: it reads filed, and carries the status link core gave for it. */
+export function withFiled(history: WidgetHistory | undefined, draftId: string, filed: WidgetFiled): WidgetHistory {
   const base = history ?? EMPTY_HISTORY;
-  return { ...base, drafts: base.drafts.map((d) => (d.draftId === draftId ? { ...d, state } : d)) };
+  return { ...base, drafts: base.drafts.map((d) => (d.draftId === draftId ? { ...d, state: "filed", filed } : d)) };
 }
-
-/** The status links this conversation has been given, by draft: core's history does not carry them. */
-export type FiledLinks = Record<string, WidgetFiled>;
 
 const SETTLED: readonly WidgetFeedbackDraft["state"][] = ["filed", "discarded"];
 
 /**
  * A history core answered, folded over what the stream already put in the cache: a read that left
  * before an event arrived must not take that event back. Messages join by id; a draft keeps the
- * state that is further on, since a draft never goes back to pending.
+ * state that is further on, since a draft never goes back to pending, and a filed draft keeps the
+ * status link either side holds.
  */
 export function mergeHistory(cached: WidgetHistory | undefined, read: WidgetHistory): WidgetHistory {
   if (!cached) return read;
@@ -46,6 +41,7 @@ export function mergeHistory(cached: WidgetHistory | undefined, read: WidgetHist
   for (const draft of cached.drafts) {
     const was = read.drafts.find((d) => d.draftId === draft.draftId);
     if (!was || (was.state === "pending" && SETTLED.includes(draft.state))) merged = withDraft(merged, draft);
+    else if (was.state === "filed" && !was.filed && draft.filed) merged = withDraft(merged, { ...was, filed: draft.filed });
   }
   return merged;
 }

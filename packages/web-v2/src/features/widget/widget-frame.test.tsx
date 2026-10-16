@@ -53,7 +53,7 @@ function core(mode: WidgetIdentityMode) {
       body: { sessionToken: TOKEN, visitorId: VISITOR, conversationId: "c1", expiresAt: "2026-10-16T12:00:00.000Z" },
     },
     "GET /session/messages": { body: { messages: [], drafts: [] } },
-    "POST /session/messages": { body: { id: "v1", role: "visitor", text: "It broke", at: "2026-10-16T10:00:01.000Z" } },
+    "POST /session/messages": { status: 201, body: { message: { id: "v1", role: "visitor", text: "It broke", at: "2026-10-16T10:00:01.000Z" } } },
     "POST /session/drafts/d1/confirm": { body: { feedbackKey: "FB-31", statusUrl: STATUS_URL } },
     "POST /session/drafts/d1/discard": { body: { ...DRAFT, state: "discarded" } },
   };
@@ -129,7 +129,7 @@ describe("the widget frame's identity modes", () => {
     await fromHost({ type: "context", context: { url: `${HOST}/kettle`, productId: "kettle-blue" } });
     await userEvent.click(screen.getByRole("button", { name: "Start chat" }));
     await screen.findByTestId("widget-conversation");
-    expect(sessionOpen()?.body).toEqual({ context: { url: `${HOST}/kettle`, productId: "kettle-blue" } });
+    expect(sessionOpen()?.body).toEqual({ context: { url: `${HOST}/kettle`, productId: "kettle-blue" }, embeddedAt: HOST });
     expect(JSON.parse(window.localStorage.getItem(`forge-widget:${SITE_KEY}`) ?? "{}")).toMatchObject({ visitorId: VISITOR });
     expect(calls.find((c) => c.path === "/session/stream")?.auth).toBe(`Bearer ${TOKEN}`);
   });
@@ -139,7 +139,7 @@ describe("the widget frame's identity modes", () => {
     core("anonymous");
     renderWithQuery(<WidgetFrame siteKey={SITE_KEY} />);
     await screen.findByTestId("widget-conversation");
-    expect(sessionOpen()?.body).toEqual({ visitorId: VISITOR });
+    expect(sessionOpen()?.body).toEqual({ embeddedAt: HOST, visitorId: VISITOR });
     expect(screen.queryByTestId("widget-gate")).toBeNull();
   });
 
@@ -155,7 +155,7 @@ describe("the widget frame's identity modes", () => {
     await userEvent.type(screen.getByLabelText(/^Email/), "ana@kettle.example");
     await userEvent.click(screen.getByRole("button", { name: "Start chat" }));
     await screen.findByTestId("widget-conversation");
-    expect(sessionOpen()?.body).toEqual({ visitor: { email: "ana@kettle.example" } });
+    expect(sessionOpen()?.body).toEqual({ visitor: { email: "ana@kettle.example" }, embeddedAt: HOST });
   });
 
   it("email: core's refusal for a missing identity reads in plain words, by its code", async () => {
@@ -180,7 +180,31 @@ describe("the widget frame's identity modes", () => {
     expect(sessionOpen()).toBeUndefined();
     await fromHost({ type: "identify", signed: SIGNED });
     await screen.findByTestId("widget-conversation");
-    expect(sessionOpen()?.body).toEqual({ signed: SIGNED });
+    expect(sessionOpen()?.body).toEqual({ signed: SIGNED, embeddedAt: HOST });
+  });
+
+  it("names the origin that framed it, and stops for good when core refuses that origin", async () => {
+    core("anonymous");
+    replies[`POST /${SITE_KEY}/sessions`] = {
+      status: 403,
+      body: { error: { code: "WIDGET_ORIGIN_REFUSED", refusals: [{ code: "WIDGET_ORIGIN_REFUSED", path: "/embeddedAt", detail: "not allowed" }] } },
+    };
+    renderWithQuery(<WidgetFrame siteKey={SITE_KEY} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Start chat" }));
+    const note = await screen.findByTestId("widget-refusal");
+    expect(sessionOpen()?.body).toEqual({ embeddedAt: HOST });
+    expect(note).toHaveAttribute("data-code", "WIDGET_ORIGIN_REFUSED");
+    expect(note).toHaveTextContent("This site isn't allowed to use this chat.");
+    expect(screen.queryByRole("button", { name: "Start chat" })).toBeNull();
+  });
+
+  it("opened on its own, outside any page, names no framing origin", async () => {
+    Object.defineProperty(window, "parent", { value: window, configurable: true });
+    core("anonymous");
+    renderWithQuery(<WidgetFrame siteKey={SITE_KEY} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Start chat" }));
+    await screen.findByTestId("widget-conversation");
+    expect(sessionOpen()?.body).toEqual({});
   });
 
   it("signed: a signature core refuses reads as a sign-in it could not confirm", async () => {
@@ -249,6 +273,38 @@ describe("the widget frame's conversation", () => {
     expect(link).toHaveAttribute("href", `${window.location.origin}${STATUS_URL}`);
     expect(link).toHaveAttribute("target", "_blank");
     expect(link.getAttribute("rel")).toContain("noopener");
+  });
+
+  it("shows a sent report's status link again after a reload, from the history", async () => {
+    window.localStorage.setItem(`forge-widget:${SITE_KEY}`, JSON.stringify({ visitorId: VISITOR, email: null }));
+    core("anonymous");
+    replies["GET /session/messages"] = {
+      body: { messages: [], drafts: [{ ...DRAFT, state: "filed", filed: { feedbackKey: "FB-31", statusUrl: STATUS_URL } }] },
+    };
+    renderWithQuery(<WidgetFrame siteKey={SITE_KEY} />);
+    const filed = await screen.findByTestId("widget-filed");
+    expect(within(filed).getByText("Reference FB-31")).toBeInTheDocument();
+    expect(within(filed).getByTestId("widget-status-link")).toHaveAttribute("href", `${window.location.origin}${STATUS_URL}`);
+    expect(calls.some((c) => c.path.endsWith("/confirm"))).toBe(false);
+  });
+
+  it("reads a filed draft core holds no link for as sent, without one", async () => {
+    window.localStorage.setItem(`forge-widget:${SITE_KEY}`, JSON.stringify({ visitorId: VISITOR, email: null }));
+    core("anonymous");
+    replies["GET /session/messages"] = { body: { messages: [], drafts: [{ ...DRAFT, state: "filed", filed: null }] } };
+    renderWithQuery(<WidgetFrame siteKey={SITE_KEY} />);
+    const filed = await screen.findByTestId("widget-filed");
+    expect(within(filed).getByText("Pay button does nothing")).toBeInTheDocument();
+    expect(within(filed).queryByTestId("widget-status-link")).toBeNull();
+  });
+
+  it("clears a sent line once core answers it, and fails it loudly when the answer carries no message", async () => {
+    await openChat();
+    await userEvent.type(screen.getByLabelText("Message"), "It broke{Enter}");
+    await waitFor(() => expect(within(screen.getByRole("log")).getByText("It broke")).toBeInTheDocument());
+    replies["POST /session/messages"] = { status: 201, body: { id: "v2" } };
+    await userEvent.type(screen.getByLabelText("Message"), "Again{Enter}");
+    expect(await screen.findByText("Not sent. Try again.")).toBeInTheDocument();
   });
 
   it("copies the status link, and says so when the browser will not", async () => {

@@ -14,8 +14,8 @@ export function absoluteLink(statusUrl: string): string {
 
 /**
  * A sent report: thanks, the reference, and the private status link the visitor keeps to follow it,
- * with a way to copy it. Where the link is not known (the history of an earlier page), the report
- * reads sent without one.
+ * with a way to copy it — on the page that sent it and after a reload, since the history carries it.
+ * Where core holds no link for it, the report reads sent without one.
  */
 export function FiledLink({ title, filed }: { title: string; filed: WidgetFiled | null }) {
   const t = useCopy();

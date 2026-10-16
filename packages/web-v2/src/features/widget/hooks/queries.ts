@@ -1,13 +1,12 @@
 import type { WidgetFiled, WidgetHistory, WidgetPageContext } from "@forge/contracts/widget";
 import { type QueryClient, queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { WidgetRefusal, WidgetUnreachable, widgetApi } from "../api";
-import { type FiledLinks, mergeHistory, withDraft, withDraftState, withMessage } from "../history";
+import { mergeHistory, withDraft, withFiled, withMessage } from "../history";
 
 export const widgetKeys = {
   all: ["widget"] as const,
   config: (siteKey: string) => [...widgetKeys.all, "config", siteKey] as const,
   history: (token: string) => [...widgetKeys.all, "history", token] as const,
-  filed: (token: string) => [...widgetKeys.all, "filed", token] as const,
   status: (token: string) => [...widgetKeys.all, "status", token] as const,
 };
 
@@ -45,27 +44,17 @@ export function useWidgetHistory(token: string) {
 }
 export const useWidgetStatus = (token: string, enabled = true) => useQuery({ ...statusQuery(token), enabled });
 
-/** The status links given in this conversation, kept beside its history. */
-export function useFiledLinks(token: string): FiledLinks {
-  return useQuery({
-    queryKey: widgetKeys.filed(token),
-    queryFn: (): FiledLinks => ({}),
-    initialData: {},
-    staleTime: Number.POSITIVE_INFINITY,
-  }).data;
-}
-
 export function useSendMessage(token: string, context: WidgetPageContext | null) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (text: string) => widgetApi.sendMessage(token, text, context ?? undefined),
     onSuccess: (message) => {
-      if (message) qc.setQueryData<WidgetHistory>(widgetKeys.history(token), (h) => withMessage(h, message));
+      qc.setQueryData<WidgetHistory>(widgetKeys.history(token), (h) => withMessage(h, message));
     },
   });
 }
 
-/** Files a pending draft: the draft reads filed and its status link is kept for the conversation. */
+/** Files a pending draft: the draft reads filed, its status link on it as a reload reads it too. */
 export function useConfirmDraft(token: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -90,12 +79,6 @@ export function useDiscardDraft(token: string) {
   });
 }
 
-export function keepFiled(
-  qc: QueryClient,
-  token: string,
-  draftId: string,
-  filed: WidgetFiled,
-): void {
-  qc.setQueryData<WidgetHistory>(widgetKeys.history(token), (h) => withDraftState(h, draftId, "filed"));
-  qc.setQueryData<FiledLinks>(widgetKeys.filed(token), (links) => ({ ...links, [draftId]: filed }));
+export function keepFiled(qc: QueryClient, token: string, draftId: string, filed: WidgetFiled): void {
+  qc.setQueryData<WidgetHistory>(widgetKeys.history(token), (h) => withFiled(h, draftId, filed));
 }

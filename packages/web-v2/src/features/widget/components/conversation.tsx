@@ -1,5 +1,4 @@
 import type { WidgetMessage, WidgetPublicConfig } from "@forge/contracts/widget";
-import { useQueryClient } from "@tanstack/react-query";
 import { Banner, Button, Spinner } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
@@ -7,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { WidgetRefusal } from "../api";
 import type { HostChannel } from "../hooks/host";
 import { useLive } from "../hooks/live";
-import { useConfirmDraft, useDiscardDraft, useFiledLinks, useSendMessage, useWidgetHistory, widgetKeys } from "../hooks/queries";
+import { useConfirmDraft, useDiscardDraft, useSendMessage, useWidgetHistory } from "../hooks/queries";
 import { type Shown, shownOf } from "../refusal";
 import { Composer } from "./composer";
 import { DraftConfirm } from "./draft-confirm";
@@ -55,9 +54,7 @@ export function Conversation({
   onEnded: (why: Shown) => void;
 }) {
   const t = useCopy();
-  const qc = useQueryClient();
   const history = useWidgetHistory(token);
-  const filed = useFiledLinks(token);
   const live = useLive(token, { assistantReplied: host.noteAssistantReply, ended: onEnded });
   const send = useSendMessage(token, host.context);
   const confirm = useConfirmDraft(token);
@@ -84,11 +81,7 @@ export function Conversation({
   function post(item: Outgoing) {
     setOutbox((all) => [...all.filter((o) => o.id !== item.id), { ...item, failed: false }]);
     send.mutate(item.text, {
-      onSuccess: (message) => {
-        // a reply that is not the message itself: the line stays pending until the history holds it
-        const landed = message ? Promise.resolve() : qc.invalidateQueries({ queryKey: widgetKeys.history(token) });
-        void landed.then(() => setOutbox((all) => all.filter((o) => o.id !== item.id)));
-      },
+      onSuccess: () => setOutbox((all) => all.filter((o) => o.id !== item.id)),
       onError: (err) => {
         refused(err);
         setOutbox((all) => all.map((o) => (o.id === item.id ? { ...o, failed: true } : o)));
@@ -136,7 +129,7 @@ export function Conversation({
           <DraftConfirm
             key={d.draftId}
             draft={d}
-            filed={filed[d.draftId] ?? null}
+            filed={d.filed ?? null}
             busy={busyOf(d.draftId)}
             refusal={draftRefusal?.draftId === d.draftId ? draftRefusal.refusal : null}
             onSend={() => act("send", d.draftId)}

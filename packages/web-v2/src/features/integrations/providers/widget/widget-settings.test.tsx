@@ -121,6 +121,81 @@ describe("the widget settings", () => {
     expect(target).toMatchObject({ allowedOrigins: ["https://shop.example.com"], identity: { mode: "anonymous" } });
   });
 
+  it("shows the minted key's embed code before the save, and sends that key", async () => {
+    const calls = world([], (call) =>
+      call.method === "POST" && call.path === "/integration-connections" ? { body: { connection: { id: "c1" }, bindings: [] } } : undefined,
+    );
+    renderWithQuery(<WidgetSettings projectId="p1" />);
+    await userEvent.click(await screen.findByRole("button", { name: "Add a widget" }));
+    const shown = within(screen.getByTestId("widget-embed")).getByText(WIDGET_SITE_KEY_PATTERN);
+    await userEvent.type(screen.getByLabelText("Origin 1"), "https://shop.example.com");
+    await userEvent.click(screen.getByRole("button", { name: "Create widget" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
+    const sent = calls.find((c) => c.method === "POST")?.body as { bindings: { target: { siteKey: string } }[] };
+    expect(sent.bindings[0]?.target.siteKey).toBe(shown.textContent);
+  });
+
+  it("names a site key another widget holds, and the next create goes with a fresh key", async () => {
+    const taken = {
+      status: 422,
+      body: {
+        error: {
+          code: "WIDGET_SITE_KEY_TAKEN",
+          refusals: [{ code: "WIDGET_SITE_KEY_TAKEN", path: "/bindings/0/target/siteKey", detail: "another widget binding holds this site key" }],
+        },
+      },
+    };
+    let posts = 0;
+    const calls = world([], (call) => {
+      if (call.method !== "POST" || call.path !== "/integration-connections") return undefined;
+      posts += 1;
+      return posts === 1 ? taken : { body: { connection: { id: "c1" }, bindings: [] } };
+    });
+    renderWithQuery(<WidgetSettings projectId="p1" />);
+    await userEvent.click(await screen.findByRole("button", { name: "Add a widget" }));
+    await userEvent.type(screen.getByLabelText("Origin 1"), "https://shop.example.com");
+    await userEvent.click(screen.getByRole("button", { name: "Create widget" }));
+    expect(await screen.findByText("WIDGET_SITE_KEY_TAKEN: Another widget holds this site key. A new one is ready.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Create widget" }));
+    await waitFor(() => expect(posts).toBe(2));
+    const keys = calls
+      .filter((c) => c.method === "POST")
+      .map((c) => (c.body as { bindings: { target: { siteKey: string } }[] }).bindings[0]?.target.siteKey);
+    expect(keys[0]).toMatch(WIDGET_SITE_KEY_PATTERN);
+    expect(keys[1]).toMatch(WIDGET_SITE_KEY_PATTERN);
+    expect(keys[1]).not.toBe(keys[0]);
+  });
+
+  it("names a save core refuses for changing the site key", async () => {
+    const document = {
+      $schema: "https://forge.example/schemas/binding-v1.json",
+      version: 1,
+      id: "b1",
+      role: "service",
+      connection: "c1",
+      target: { provider: "widget", siteKey: SITE_KEY, allowedOrigins: ["https://shop.example.com"], identity: { mode: "anonymous" }, title: "Help" },
+    };
+    const calls = world([binding("anonymous")], (call) => {
+      if (call.method === "GET" && call.path === "/projects/p1/bindings/b1") return { body: { declared: true, revision: 3, document } };
+      if (call.method === "PUT" && call.path === "/projects/p1/bindings/b1")
+        return {
+          status: 422,
+          body: {
+            error: {
+              code: "WIDGET_SITE_KEY_MINTED",
+              refusals: [{ code: "WIDGET_SITE_KEY_MINTED", path: "/target/siteKey", detail: "a site key never changes once bound" }],
+            },
+          },
+        };
+      return undefined;
+    });
+    renderWithQuery(<WidgetSettings projectId="p1" />);
+    await userEvent.click(await screen.findByRole("button", { name: "Save widget" }));
+    expect(await screen.findByText("WIDGET_SITE_KEY_MINTED: A site key never changes once saved. Reload to restore it.")).toBeInTheDocument();
+    const put = calls.find((c) => c.method === "PUT")?.body as { document: { target: { siteKey: string } } };
+    expect(put.document.target.siteKey).toBe(SITE_KEY);
+  });
+
   it("shows a saved widget's embed code with its site key, and copies it", async () => {
     world([binding("anonymous")]);
     renderWithQuery(<WidgetSettings projectId="p1" />);

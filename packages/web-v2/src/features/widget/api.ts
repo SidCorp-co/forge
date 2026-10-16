@@ -3,7 +3,7 @@ import {
   type WidgetFeedbackDraft,
   type WidgetFiled,
   type WidgetHistory,
-  type WidgetMessage,
+  type WidgetMessageAccepted,
   type WidgetPageContext,
   type WidgetPublicConfig,
   type WidgetRefusalCode,
@@ -84,24 +84,16 @@ async function json<T>(path: string, init: RequestInit = {}, token?: string): Pr
 const post = (body: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(body) });
 const site = (siteKey: string) => `/${encodeURIComponent(siteKey)}`;
 
-/** What `POST /session/messages` answers is not fixed by the contract: a message when it is one, else nothing. */
-function messageOf(value: unknown): WidgetMessage | null {
-  const m = value as Partial<WidgetMessage> | null;
-  return m && typeof m.id === "string" && (m.role === "visitor" || m.role === "assistant") && typeof m.text === "string"
-    ? (m as WidgetMessage)
-    : null;
-}
-
 export const widgetApi = {
   config: (siteKey: string) => json<WidgetPublicConfig>(`${site(siteKey)}/config`),
   openSession: (siteKey: string, body: WidgetSessionRequest) =>
     json<WidgetSession>(`${site(siteKey)}/sessions`, post(body)),
   history: (token: string) => json<WidgetHistory>("/session/messages", {}, token),
+  /** The visitor's line as core stored it; the reply, and any draft, come on the stream. */
   sendMessage: async (token: string, text: string, context?: WidgetPageContext) => {
-    const res = await send("/session/messages", post(context ? { text, context } : { text }), token);
-    const body: unknown = res.status === 204 ? null : await res.json().catch(() => null);
-    const direct = messageOf(body);
-    return direct ?? messageOf((body as { message?: unknown } | null)?.message);
+    const accepted = await json<Partial<WidgetMessageAccepted> | null>("/session/messages", post(context ? { text, context } : { text }), token);
+    if (typeof accepted?.message?.id !== "string") throw new Error("core accepted the message but its answer carries no message");
+    return accepted.message;
   },
   confirm: (token: string, draftId: string) =>
     json<WidgetFiled>(`/session/drafts/${encodeURIComponent(draftId)}/confirm`, { method: "POST" }, token),

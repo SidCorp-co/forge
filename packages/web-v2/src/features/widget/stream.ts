@@ -1,4 +1,10 @@
-import type { WidgetFeedbackDraft, WidgetMessage, WidgetStreamEvent } from "@forge/contracts/widget";
+import {
+  WIDGET_DRAFT_KINDS,
+  WIDGET_DRAFT_STATES,
+  type WidgetFeedbackDraft,
+  type WidgetMessage,
+  type WidgetStreamEvent,
+} from "@forge/contracts/widget";
 import { isWidgetCode, send, WidgetRefusal } from "./api";
 
 // `GET /api/widget/session/stream` is server-sent events on the session token. EventSource cannot set
@@ -62,8 +68,8 @@ export type StreamRead = { event: WidgetStreamEvent } | { fault: string };
 
 const isText = (v: unknown): v is string => typeof v === "string";
 const isTextOrNull = (v: unknown) => v === null || isText(v);
-const DRAFT_KINDS = ["bug", "change_request", "idea", "question"];
-const DRAFT_STATES = ["pending", "filed", "discarded"];
+const DRAFT_KINDS: readonly string[] = WIDGET_DRAFT_KINDS;
+const DRAFT_STATES: readonly string[] = WIDGET_DRAFT_STATES;
 
 function messageFault(m: Partial<WidgetMessage> | undefined): string | null {
   if (!m || typeof m !== "object") return "a message event carries no message";
@@ -79,6 +85,9 @@ function draftFault(d: Partial<WidgetFeedbackDraft> | undefined): string | null 
     return "a draft's did, expected or whereSeen is neither text nor null";
   if (!DRAFT_KINDS.includes(String(d.kind))) return `a draft's kind "${String(d.kind)}" is not one the contract names`;
   if (!DRAFT_STATES.includes(String(d.state))) return `a draft's state "${String(d.state)}" is not one the contract names`;
+  const filed = d.filed as { feedbackKey?: unknown; statusUrl?: unknown } | null | undefined;
+  if (filed != null && (typeof filed !== "object" || !isText(filed.feedbackKey) || !isText(filed.statusUrl)))
+    return "a draft's filed lacks feedbackKey or statusUrl";
   return null;
 }
 

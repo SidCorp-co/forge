@@ -31,7 +31,12 @@ export function useAddBinding(projectId: string, pathKind: AgentPathKind) {
   const [agentAccess, setAgentAccess] = useState<AgentAccess>(AGENT_ACCESS_CLOSED);
   const [error, setError] = useState<string | null>(null);
 
-  async function submit(body: Omit<CreateBody, "agentAccess" | "orgId">, onDone?: () => void) {
+  /** `describe` words the create's failure where a provider reads its own refusals; else the generic sentence. */
+  async function submit(
+    body: Omit<CreateBody, "agentAccess" | "orgId">,
+    onDone?: () => void,
+    describe: (err: unknown) => string = formatApiError,
+  ) {
     setError(null);
     try {
       await create.mutateAsync({
@@ -41,7 +46,7 @@ export function useAddBinding(projectId: string, pathKind: AgentPathKind) {
       });
       onDone?.();
     } catch (err) {
-      setError(formatApiError(err));
+      setError(describe(err));
     }
   }
 
