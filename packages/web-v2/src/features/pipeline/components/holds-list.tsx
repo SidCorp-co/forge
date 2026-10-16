@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useLayoutEffect, useRef, useState } from "react";
 import { MonoTag } from "@/design";
 import { holderLine, orderHolds } from "../derive";
-import type { HeldIssue, Holder } from "../types";
+import type { HeldIssue, Holder, LiveSession } from "../types";
 
 const OUTER = "sm:grid sm:grid-cols-[minmax(0,1.6fr)_minmax(0,3.8fr)] sm:gap-4";
 const INNER = "sm:grid sm:grid-cols-[minmax(0,1.3fr)_minmax(0,2fr)_minmax(0,0.6fr)] sm:gap-4";
@@ -64,7 +64,17 @@ function ClampedReason({ text }: { text: string }) {
   );
 }
 
-function HoldRow({ hold, slug, now }: { hold: HeldIssue; slug: string; now: number }) {
+function HoldRow({
+  hold,
+  slug,
+  now,
+  sessions,
+}: {
+  hold: HeldIssue;
+  slug: string;
+  now: number;
+  sessions: readonly LiveSession[];
+}) {
   return (
     <li className={`flex flex-col gap-2 py-3 ${OUTER}`} data-issue-id={hold.issueId}>
       <Link
@@ -78,7 +88,7 @@ function HoldRow({ hold, slug, now }: { hold: HeldIssue; slug: string; now: numb
       </Link>
       <ul className="flex min-w-0 flex-col gap-1.5">
         {hold.holders.map((holder) => {
-          const line = holderLine(holder, now);
+          const line = holderLine(holder, now, sessions);
           return (
             <li key={holderKey(holder)} className={`fg-body-sm flex min-w-0 flex-col gap-0.5 ${INNER}`}>
               <span className="min-w-0 text-fg">
@@ -101,7 +111,18 @@ function HoldRow({ hold, slug, now }: { hold: HeldIssue; slug: string; now: numb
   );
 }
 
-export function HoldsList({ holds, slug, now }: { holds: HeldIssue[]; slug: string; now: number }) {
+export function HoldsList({
+  holds,
+  sessions,
+  slug,
+  now,
+}: {
+  holds: HeldIssue[];
+  /** The same read's live sessions, which say what a session holder is doing. */
+  sessions: readonly LiveSession[];
+  slug: string;
+  now: number;
+}) {
   if (holds.length === 0) {
     return <p className="fg-body-sm border-y border-line py-4">Nothing on this project is held.</p>;
   }
@@ -117,7 +138,7 @@ export function HoldsList({ holds, slug, now }: { holds: HeldIssue[]; slug: stri
       </div>
       <ul className="flex flex-col divide-y divide-line border-b border-line" aria-label="Held">
         {orderHolds(holds).map((hold) => (
-          <HoldRow key={hold.issueId} hold={hold} slug={slug} now={now} />
+          <HoldRow key={hold.issueId} hold={hold} slug={slug} now={now} sessions={sessions} />
         ))}
       </ul>
     </div>

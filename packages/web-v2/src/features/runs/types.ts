@@ -73,11 +73,20 @@ export interface PipelineRunRetrySummary {
   targetDeviceName: string | null;
 }
 
+/** Core `pipeline/runs-lane.ts`: `laneOf` and `groupOf`. */
+export type PipelineRunLane = "job" | "run_session" | "master" | "system";
+
+export type PipelineRunGroup =
+  | { source: "run_group" | "statuses_at_open"; issues: string[]; detail: null }
+  | { source: "none"; issues: []; detail: string };
+
 /** `GET /api/pipeline-runs/:id` — the full run rollup (steps + cost + attempts). */
 export interface PipelineRunSummary {
   id: string;
   projectId: string;
   issueId: string | null;
+  lane: PipelineRunLane;
+  group: PipelineRunGroup;
   /** ISS-460 — human ref (`ISS-<seq>`) of the run's issue; null for pm/system runs. */
   issueRef: string | null;
   issueTitle: string | null;

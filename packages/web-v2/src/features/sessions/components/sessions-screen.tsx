@@ -157,7 +157,9 @@ function matchesFilter(filter: SessionFilter, row: SessionRow, display: AgentSes
       // but `isAwaitingReply` only matches interactive chats).
       return isAwaitingReply(row);
     case "running":
-      return display === "running" || display === "stalled";
+      // Heard from and running: the one reading the header's Working figure counts too. A quiet
+      // session is counted under Quiet and Attention, never here.
+      return display === "running";
     case "queued":
       return row.status === "queued" || row.status === "idle";
     case "attention":
@@ -241,13 +243,11 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
   );
 
   const stats = useMemo(() => {
-    let active = 0;
     let queued = 0;
     let zombies = 0;
     const waits: number[] = [];
     rows.forEach((r, i) => {
       const d = displays[i];
-      if (d === "running") active += 1;
       if (r.status === "queued" || r.status === "idle") {
         queued += 1;
         // Time a still-queued session has been waiting for a runner.
@@ -264,7 +264,7 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
       const mid = Math.floor(waits.length / 2);
       medianWaitMs = waits.length % 2 ? waits[mid] : Math.round((waits[mid - 1] + waits[mid]) / 2);
     }
-    return { active, queued, zombies, medianWaitMs };
+    return { queued, zombies, medianWaitMs };
   }, [rows, displays, now]);
 
   const counts = useMemo(() => {
@@ -334,7 +334,7 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
         <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5">
           <PageTitle className="fg-h2">Sessions</PageTitle>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <StatPill label={WORKING_WORD} value={String(stats.active)} />
+            <StatPill label={WORKING_WORD} value={String(counts.running)} />
             <StatPill label="Queued" value={String(stats.queued)} />
             <StatPill
               label={SILENCE_WORD}

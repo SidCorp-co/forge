@@ -33,6 +33,10 @@ export interface VirtualListProps<Row> {
 
 const TYPING = "input, textarea, select, [contenteditable]";
 const FIRST_SCREEN_PX = 640;
+/** The focus ring is drawn inside the row: the scroller clips anything outside it, and the next row
+ *  paints over the row's lower edge, which left a faint line above and below as the only sign. */
+const ROW_CLASS =
+  "absolute left-0 top-0 w-full border-b border-line-subtle focus-visible:shadow-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-solid focus-visible:outline-[var(--focus-ring)]";
 
 /**
  * A list of rows that puts only the ones in view in the document: the feed pattern, so each row says
@@ -114,7 +118,7 @@ export function VirtualList<Row>({
               aria-posinset={item.index + 1}
               aria-setsize={size}
               aria-label={getRowLabel?.(row)}
-              className="absolute left-0 top-0 w-full border-b border-line-subtle focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+              className={ROW_CLASS}
               style={{ transform: `translateY(${item.start}px)` }}
             >
               {renderRow(row, item.index)}

@@ -54,6 +54,8 @@ const run = (over: Partial<PipelineRunListItem>): PipelineRunListItem =>
     id: "r",
     projectId: "p1",
     issueId: "i1",
+    lane: "job",
+    group: { source: "none", issues: [], detail: "a job-lane run carries its one issue in its own column, not a group" },
     issueRef: "ISS-1",
     issueTitle: "first",
     kind: "issue",
@@ -150,5 +152,45 @@ describe("the Agents runs tab with nothing running on a box", () => {
     pane();
     expect(screen.getByText("No runs on this project")).toBeInTheDocument();
     expect(screen.queryByRole("list", { name: "Closed runs" })).not.toBeInTheDocument();
+  });
+});
+
+describe("a closed run a box opened over issues (ISS-1228 criterion 37)", () => {
+  it("names each issue it was opened over, linking to its page, rather than calling it a System run", () => {
+    state.runs = [
+      run({
+        id: "rs",
+        issueId: null,
+        issueRef: null,
+        issueTitle: null,
+        kind: "system",
+        lane: "run_session",
+        group: { source: "run_group", issues: ["ISS-1", "ISS-4"], detail: null },
+        status: "completed",
+      }),
+    ];
+    state.total = 1;
+    pane();
+    const list = screen.getByRole("list", { name: "Closed runs" });
+    expect(within(list).getByRole("link", { name: "ISS-1" })).toHaveAttribute("href", "/projects/qa/issues/ISS-1");
+    expect(within(list).getByRole("link", { name: "ISS-4" })).toHaveAttribute("href", "/projects/qa/issues/ISS-4");
+    expect(within(list).queryByText("System run")).not.toBeInTheDocument();
+  });
+
+  it("still names the kind of a closed run that carries no issue and no group", () => {
+    state.runs = [
+      run({
+        id: "sys",
+        issueId: null,
+        issueRef: null,
+        issueTitle: null,
+        kind: "system",
+        lane: "system",
+        group: { source: "none", issues: [], detail: "this run was not opened over a group of issues" },
+      }),
+    ];
+    state.total = 1;
+    pane();
+    expect(within(screen.getByRole("list", { name: "Closed runs" })).getByText("System run")).toBeInTheDocument();
   });
 });

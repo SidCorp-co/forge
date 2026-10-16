@@ -72,6 +72,11 @@ export interface ChatComposerProps {
   busy?: boolean;
   /** Take a send while `busy`, for a caller that queues rather than refuses. */
   queueWhileBusy?: boolean;
+  /**
+   * Why nothing can be sent right now, for a caller that is neither answering nor ready. Set, the
+   * send and attach controls refuse without spinning and this sentence is shown at every width.
+   */
+  held?: string;
   placeholder?: string;
   /**
    * What this surface stages. Absent, and there is no attach control, no paste
@@ -119,6 +124,7 @@ export function ChatComposer({
   disabled,
   busy,
   queueWhileBusy,
+  held,
   placeholder = "Message the agent…",
   attachments,
   sticky = true,
@@ -149,7 +155,7 @@ export function ChatComposer({
   }, []);
 
   const canSend =
-    !disabled && (queueWhileBusy || !busy) && (value.trim().length > 0 || files.length > 0);
+    !disabled && !held && (queueWhileBusy || !busy) && (value.trim().length > 0 || files.length > 0);
   // Stop is offered on the turn, not on this browser's own send: anyone in the
   // room watching an answer arrive may end it, and `onStop` is given only while
   // there is a turn to end, so its presence is the whole condition.
@@ -232,7 +238,7 @@ export function ChatComposer({
    */
   const take = useCallback(
     (picked: readonly File[]) => {
-      if (!attachments) return;
+      if (!attachments || held) return;
       const outcome = stageFiles(picked, attachments, files.length);
       setRefusals(outcome.refused);
       if (outcome.accepted.length === 0) return;
@@ -241,7 +247,7 @@ export function ChatComposer({
         ...outcome.accepted.map((file) => ({ id: `file-${nextFileId.current++}`, file })),
       ]);
     },
-    [attachments, files.length],
+    [attachments, held, files.length],
   );
 
   const { getRootProps, getInputProps, open: openPicker, isDragActive } = useDropzone({
@@ -249,7 +255,7 @@ export function ChatComposer({
     noClick: true,
     noKeyboard: true,
     multiple: true,
-    disabled: !attachments || disabled || busy,
+    disabled: !attachments || disabled || busy || !!held,
   });
 
   /**
@@ -258,7 +264,7 @@ export function ChatComposer({
    */
   const onPaste = useCallback(
     (e: ClipboardEvent) => {
-      if (!attachments) return;
+      if (!attachments || held) return;
       const blobs: File[] = [];
       for (const item of Array.from(e.clipboardData.items)) {
         if (item.kind !== "file" || !item.type.startsWith("image/")) continue;
@@ -275,7 +281,7 @@ export function ChatComposer({
       e.preventDefault();
       take(blobs);
     },
-    [attachments, take],
+    [attachments, held, take],
   );
 
   const removeFile = (id: string) => {
@@ -451,7 +457,7 @@ export function ChatComposer({
                   icon="plus"
                   aria-label="Attach files"
                   className="h-11 w-11 flex-none"
-                  disabled={disabled || busy}
+                  disabled={disabled || busy || !!held}
                   onClick={openPicker}
                 />
               )}
@@ -488,7 +494,7 @@ export function ChatComposer({
                     icon="arrowRight"
                     aria-label="Send message"
                     className="h-11 w-11 flex-none rounded-full p-0"
-                    loading={busy}
+                    loading={busy && !held}
                     disabled={!canSend}
                     onClick={submit}
                   />
@@ -496,6 +502,7 @@ export function ChatComposer({
               </div>
             </div>
           </div>
+          {held && <p className="fg-caption px-1 text-muted">{held}</p>}
 
           {slashSkills && (
             <SlashSkillsMenu

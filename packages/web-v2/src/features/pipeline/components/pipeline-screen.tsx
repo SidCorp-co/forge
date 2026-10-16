@@ -73,7 +73,7 @@ export function PipelineScreen({ scope }: { scope: { projectId: string; slug: st
           </section>
           <section aria-labelledby="pipeline-holds">
             <SectionHeading id="pipeline-holds" title="Held" count={data?.holds.length} />
-            {data ? <HoldsList holds={data.holds} slug={slug} now={now} /> : <PlaceholderRows />}
+            {data ? <HoldsList holds={data.holds} sessions={data.sessions} slug={slug} now={now} /> : <PlaceholderRows />}
           </section>
         </>
       )}
