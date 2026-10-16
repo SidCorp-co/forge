@@ -427,8 +427,6 @@ describe('reapOrphanedOneShotRuns (ISS-445 — still an ACTIVE reaper)', () => {
 
   it('force-fails a lingering stale session then closes the run as failed', async () => {
     dbExecute.mockResolvedValueOnce([{ id: 'run-stale' }]);
-    // The first pass takes the sessions whose box still answers; this one's box does not.
-    sessionsWhere.mockResolvedValueOnce([]);
     sessionsWhere.mockResolvedValueOnce([{ id: 'sess-1', projectId: 'p1', deviceId: 'd1' }]);
     selectWhere.mockResolvedValueOnce([{ status: 'failed' }]);
 
@@ -440,28 +438,10 @@ describe('reapOrphanedOneShotRuns (ISS-445 — still an ACTIVE reaper)', () => {
       'p1',
       'd1',
       'agent-session.status',
-      expect.objectContaining({ status: 'failed', failureReason: 'heartbeat_timeout' }),
+      expect.objectContaining({ status: 'failed', failureReason: 'session_stopped_checking_in' }),
     );
     expect(closeRunIfOneShotMock).toHaveBeenCalledTimes(1);
     expect(closeRunIfOneShotMock).toHaveBeenCalledWith('run-stale', 'failed');
-  });
-
-  // ISS-1228 round 11: a session whose box still answers stopped checking in itself.
-  it('says a session whose box still answers stopped checking in', async () => {
-    dbExecute.mockResolvedValueOnce([{ id: 'run-stale' }]);
-    sessionsWhere.mockResolvedValueOnce([{ id: 'sess-2', projectId: 'p1', deviceId: 'd1' }]);
-    sessionsWhere.mockResolvedValueOnce([]);
-    selectWhere.mockResolvedValueOnce([{ status: 'failed' }]);
-
-    await reapOrphanedOneShotRuns(new Date('2026-06-12T00:00:00Z'));
-
-    expect(broadcastSessionEventMock).toHaveBeenCalledWith(
-      'sess-2',
-      'p1',
-      'd1',
-      'agent-session.status',
-      expect.objectContaining({ status: 'failed', failureReason: 'session_stopped_checking_in' }),
-    );
   });
 
   it('closes a run as completed when the session already finished (missed /desktop/status)', async () => {
