@@ -370,6 +370,31 @@ describe('the one-shot sweep, as the limit reads it (ISS-1228 round 9)', () => {
     expect(await statusOf(master.id)).toBe('failed');
   });
 
+  it('ends a session no later than its owner, whose end closes what it owns', async () => {
+    const master = await session('master', { runKind: 'pm' });
+    const chat = await session('chat', { runKind: 'pm' });
+    await harness.db.execute(sql`
+      UPDATE agent_sessions SET last_heartbeat_at = now() - interval '11 minutes',
+             parent_session_id = CASE WHEN id = ${chat.id}::uuid THEN ${master.id}::uuid END,
+             claude_session_id = CASE WHEN id = ${chat.id}::uuid THEN 'claude-6' END
+       WHERE id IN (${master.id}::uuid, ${chat.id}::uuid)
+    `);
+
+    for (const path of [`/agent-sessions/${chat.id}`, `/agent-sessions?projectId=${projectId}`]) {
+      const body = await get(path);
+      const items = (body.items as Array<{ id: string; silenceLimitMs: number }> | undefined) ?? [
+        body as { id: string; silenceLimitMs: number },
+      ];
+      for (const id of [chat.id, ...(body.items ? [master.id] : [])]) {
+        expect(items.find((i) => i.id === id)?.silenceLimitMs).toBeLessThan(11 * 60_000);
+      }
+    }
+    const { reapSilentMasters } = await import('../../src/devices/master-reaper.js');
+    await reapSilentMasters();
+    expect(await statusOf(master.id)).toBe('failed');
+    expect(await statusOf(chat.id)).toBe('failed');
+  });
+
   it('waits a master out while a child it owns is heard, as the master reaper does', async () => {
     const master = await session('master');
     await harness.db.execute(sql`

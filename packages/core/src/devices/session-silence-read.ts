@@ -55,7 +55,7 @@ function subjectOf(r: SilenceRow): SilenceSubject {
   };
 }
 
-/** The sessions whose silence decides theirs: siblings on one run, and a master's children. */
+/** The sessions whose silence decides theirs: siblings on one run, a master's children, owners. */
 async function readClosure(ids: readonly string[]): Promise<SilenceRow[]> {
   const wanted = sql.join(
     ids.map((id) => sql`${id}::uuid`),
@@ -71,6 +71,7 @@ async function readClosure(ids: readonly string[]): Promise<SilenceRow[]> {
         JOIN agent_sessions t
           ON (t.pipeline_run_id = s.pipeline_run_id AND t.status IN (${LIVE_SQL}))
           OR (t.parent_session_id = s.id AND t.status NOT IN (${TERMINAL_SQL}))
+          OR t.id = s.parent_session_id
     )
     SELECT s.id, s.pipeline_run_id, s.parent_session_id, s.kind, s.status, s.runtime_state,
            s.claude_session_id IS NOT NULL AS has_client,
@@ -124,36 +125,64 @@ export async function loadSilenceDeadlines(
 
   const memo = new Map<string, number | null>();
   const open = new Set<string>();
-  const deadline = (id: string, withSweep: boolean): number | null => {
-    const key = `${id}:${withSweep}`;
+  let reentered = 0;
+  const remember = (key: string, compute: () => number | null): number | null => {
     if (memo.has(key)) return memo.get(key) ?? null;
-    const r = byId.get(id);
-    if (!r || open.has(key)) return null;
+    if (open.has(key)) {
+      reentered += 1;
+      return null;
+    }
     open.add(key);
-    const runStartedAt = ms(r.run_started_at);
-    const siblings = r.pipeline_run_id === null ? [] : (oneShotRuns.get(r.pipeline_run_id) ?? []);
-    const found = silenceDeadline({
-      ...subjectOf(r),
-      children: (children.get(id) ?? []).map((c) => ({
-        beatAt: ms(c.last_heartbeat_at) ?? ms(c.started_at),
-        endsBy: deadline(c.id, true),
-      })),
-      oneShot:
-        !withSweep || runStartedAt === null
-          ? null
-          : {
-              runStartedAt,
-              sessions: siblings.map((t) => ({
-                beatAt: Number(t.sweep_beat_at),
-                runnerSeenAt: ms(t.runner_seen_at),
-                parked: t.parked,
-                endsBy: deadline(t.id, false),
-              })),
-            },
-    });
+    const before = reentered;
+    const found = compute();
     open.delete(key);
-    memo.set(key, found);
+    // A value read through a cycle is provisional, so only one computed without one is kept.
+    if (reentered === before) memo.set(key, found);
     return found;
   };
-  return new Map(ids.filter((id) => byId.has(id)).map((id) => [id, deadline(id, true)]));
+  const earliest = (...ends: Array<number | null>): number | null => {
+    const known = ends.filter((e): e is number => e !== null);
+    return known.length === 0 ? null : Math.min(...known);
+  };
+  const owner = (r: SilenceRow): SilenceRow | undefined => {
+    const p = r.parent_session_id === null ? undefined : byId.get(r.parent_session_id);
+    return p && !TERMINAL.has(p.status) ? p : undefined;
+  };
+  // Its own reapers; `final` adds its owners', whose end closes it too (session-descent).
+  const own = (id: string, withSweep: boolean): number | null =>
+    remember(`own:${id}:${withSweep}`, () => {
+      const r = byId.get(id);
+      if (!r) return null;
+      const runStartedAt = ms(r.run_started_at);
+      const siblings = r.pipeline_run_id === null ? [] : (oneShotRuns.get(r.pipeline_run_id) ?? []);
+      return silenceDeadline({
+        ...subjectOf(r),
+        children: (children.get(id) ?? []).map((c) => ({
+          beatAt: ms(c.last_heartbeat_at) ?? ms(c.started_at),
+          endsBy: own(c.id, true),
+        })),
+        oneShot:
+          !withSweep || runStartedAt === null
+            ? null
+            : {
+                runStartedAt,
+                sessions: siblings.map((t) => {
+                  const above = owner(t);
+                  return {
+                    beatAt: Number(t.sweep_beat_at),
+                    runnerSeenAt: ms(t.runner_seen_at),
+                    parked: t.parked,
+                    endsBy: earliest(own(t.id, false), above ? final(above.id) : null),
+                  };
+                }),
+              },
+      });
+    });
+  const final = (id: string): number | null =>
+    remember(`final:${id}`, () => {
+      const r = byId.get(id);
+      const above = r ? owner(r) : undefined;
+      return earliest(own(id, true), above ? final(above.id) : null);
+    });
+  return new Map(ids.filter((id) => byId.has(id)).map((id) => [id, final(id)]));
 }
