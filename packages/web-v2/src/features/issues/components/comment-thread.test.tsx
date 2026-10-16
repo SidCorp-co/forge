@@ -1,6 +1,7 @@
 // An owner's ruling is recorded as a decision, apart from the thread's chatter (dev.55): the composer's
 // Decision mode asks for what is decided and why, sends them as fields with intent `decision` so core
 // writes the body every agent reads, and a decision in the thread wears its own badge.
+// @direct-test-of packages/web-v2/src/features/issues/detail-hooks.ts
 
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -236,8 +237,8 @@ describe("a decision in the thread", () => {
   });
 });
 
-// The same QA: the composer sent no intent, so core stored every person's comment as a `question`
-// the master then owed a reply to. The composer says what the comment is and sends it by name.
+// The same QA: the composer sent no intent, and core then stored a person's comment as a `question`
+// the master owed a reply to. The composer says what the comment is and sends it by name.
 describe("what a comment on an issue is", () => {
   it("is sent as a question by default and as a note when Note is picked", async () => {
     const calls = fakeCore(() => ({ status: 201, body: { id: "c9" } }));
@@ -250,5 +251,51 @@ describe("what a comment on an issue is", () => {
     await user.type(await screen.findByPlaceholderText("Add a note…"), "Verified on dev.185.");
     await user.click(screen.getByRole("button", { name: "Post note" }));
     await waitFor(() => expect(calls).toContainEqual({ method: "POST", path: "/issues/i1/comments", body: { body: "Verified on dev.185.", intent: "note" } }));
+  });
+});
+
+// Core stores a comment sent with no intent as a note (dev.251: 639 merge claims read as owed). A
+// reply was sent as a question with no choice; it is a note unless the person asks.
+describe("what a reply on an issue is", () => {
+  const landed = { ...decided, id: "c3", intent: "note", decision: null, body: "Landed on dev." } as unknown as CommentNode;
+
+  async function openReply() {
+    const user = userEvent.setup();
+    renderWithQuery(<CommentThread issueId="i1" comments={[landed]} members={[]} />);
+    await user.click(screen.getByRole("button", { name: "Reply" }));
+    await user.type(await screen.findByPlaceholderText("Write a reply…"), "Thanks, verified.");
+    return user;
+  }
+
+  it("is sent as a note unless Ask as a question is ticked", async () => {
+    const calls = fakeCore(() => ({ status: 201, body: { id: "c10" } }));
+    const user = await openReply();
+    expect(screen.getByRole("checkbox", { name: "Ask as a question" })).not.toBeChecked();
+    await user.click(screen.getByRole("button", { name: "Reply" }));
+    await waitFor(() =>
+      expect(calls).toContainEqual({ method: "POST", path: "/issues/i1/comments", body: { body: "Thanks, verified.", intent: "note", parentId: "c3" } }),
+    );
+  });
+
+  it("is sent as a question, owed a reply, when Ask as a question is ticked", async () => {
+    const calls = fakeCore(() => ({ status: 201, body: { id: "c11" } }));
+    const user = await openReply();
+    await user.click(screen.getByRole("checkbox", { name: "Ask as a question" }));
+    await user.click(screen.getByRole("button", { name: "Reply" }));
+    await waitFor(() =>
+      expect(calls).toContainEqual({ method: "POST", path: "/issues/i1/comments", body: { body: "Thanks, verified.", intent: "question", parentId: "c3" } }),
+    );
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
+  });
+
+  it("sends nothing for a blank reply, ticked or not", async () => {
+    const calls = fakeCore(() => ({ status: 201, body: { id: "c12" } }));
+    const user = userEvent.setup();
+    renderWithQuery(<CommentThread issueId="i1" comments={[landed]} members={[]} />);
+    await user.click(screen.getByRole("button", { name: "Reply" }));
+    await user.type(await screen.findByPlaceholderText("Write a reply…"), "   ");
+    await user.click(screen.getByRole("checkbox", { name: "Ask as a question" }));
+    expect(screen.getByRole("button", { name: "Reply" })).toBeDisabled();
+    expect(calls.filter((c) => c.method === "POST")).toEqual([]);
   });
 });

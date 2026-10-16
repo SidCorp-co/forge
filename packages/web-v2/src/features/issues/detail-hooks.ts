@@ -87,8 +87,8 @@ export function useCreateComment(id: string) {
   const { toast } = useToast();
   const t = useCopy();
   return useMutation({
-    mutationFn: async (args: { body: string; intent?: "question" | "note"; parentId?: string; files?: File[] }) => {
-      const created = await issueDetailApi.createComment(id, args.body, args.intent ?? "question", args.parentId);
+    mutationFn: async (args: { body: string; intent: "question" | "note"; parentId?: string; files?: File[] }) => {
+      const created = await issueDetailApi.createComment(id, args.body, args.intent, args.parentId);
       const files = args.files ?? [];
       if (files.length > 0) {
         // Sequential upload keeps it simple and avoids server contention. On a

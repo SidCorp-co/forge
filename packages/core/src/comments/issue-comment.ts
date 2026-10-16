@@ -1,5 +1,5 @@
 // Posting a comment on an issue, by every door that takes one: REST's `POST /api/issues/:id/comments`
-// and the MCP door's `forge_questions ask` (a person's question comment, owed a reply).
+// and the MCP door's `forge_questions ask` (a comment marked as a question, owed a reply).
 
 import type { CommentRefusalCode, DecisionFields } from '@forge/contracts/comments';
 import { HTTPException } from 'hono/http-exception';

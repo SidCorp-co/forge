@@ -78,7 +78,7 @@ export async function postLeaveComment(
       issueId: args.issue.id,
       authorId: args.actor.type === 'user' ? args.actor.id : args.actor.ownerId,
       body: buildLeaveBody(args.fromStatus, args.toStatus, reason),
-      // A person's word on leaving a park is owed a reply, as every person's comment was (ISS-56).
+      // A person's word on leaving a park is marked a question: the agent owes it a reply (ISS-56).
       intent: actorAgency(args.actor) === 'human' ? 'question' : 'note',
       authorsWords: true,
       screenedAt: '/reason',

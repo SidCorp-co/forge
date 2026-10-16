@@ -8,6 +8,7 @@
  *
  * @direct-test-of packages/core/src/comments/raised-read.ts
  * @direct-test-of packages/contracts/src/comments.ts
+ * @direct-test-of packages/core/src/comments/issue-comment.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -214,5 +215,112 @@ describe('the counts cover every question exactly once', () => {
       expect(read.answered).toBe(tally('answered'));
       expect(read.closed).toBe(tally('closed'));
     }
+  });
+});
+
+// The release peer's count on beta (dev.251): 656 comments owed a reply, 639 of them the operator's
+// merge claims and landing notes sent through a PAT with no intent, 17 a device's, none a question.
+// The rule under test: a comment sent with no intent is a note; only `intent: question` is owed.
+describe('only a comment marked as a question is owed a reply', () => {
+  async function viaPat(projectId: string): Promise<typeof say> {
+    const { mintPat } = await import('../../src/credentials/pat.js');
+    const { plaintext } = await mintPat({
+      permissions: ['*'],
+      userId: memberId,
+      name: `operator laptop ${projectId}`,
+      projectIds: [projectId],
+    });
+    const { app } = await import('../../src/index.js');
+    return requester(app, { member: plaintext });
+  }
+
+  async function masterOwes(projectId: string): Promise<string[]> {
+    const { readOwedComments } = await import('../../src/devices/index.js');
+    return (await readOwedComments(projectId)).items.map((o) => o.commentId);
+  }
+
+  it('stores a comment a person sends through a PAT with no intent as a note, owed nothing', async () => {
+    const p = await project();
+    const issue = await issueIn(p.id);
+    const pat = await viaPat(p.id);
+    const written = ok(
+      await pat('member', 'POST', `/api/issues/${issue}/comments`, {
+        body: 'Merged to dev in #1067; landing on beta next.',
+      }),
+      201,
+    );
+    expect(written.intent).toBe('note');
+    expect(written.warnings).toEqual([expect.stringMatching(/^COMMENT_INTENT_DEFAULTED: .*note/)]);
+    expect(await p.raised('member')).toMatchObject({
+      questions: [],
+      owed: 0,
+      answered: 0,
+      closed: 0,
+    });
+    expect(await masterOwes(p.id)).toEqual([]);
+  });
+
+  it('owes a reply to the same PAT’s comment once it is sent with intent question', async () => {
+    const p = await project();
+    const issue = await issueIn(p.id);
+    const pat = await viaPat(p.id);
+    const written = ok(
+      await pat('member', 'POST', `/api/issues/${issue}/comments`, {
+        intent: 'question',
+        body: 'Does the landing cover the mobile board?',
+      }),
+      201,
+    );
+    expect(written.intent).toBe('question');
+    expect(written).not.toHaveProperty('warnings');
+    const mine = await p.raised('member');
+    expect(mine).toMatchObject({ owed: 1, answered: 0, closed: 0 });
+    expect(mine.questions[0]).toMatchObject({ id: written.id, state: 'owed', owedBy: 'agent' });
+    expect(await masterOwes(p.id)).toEqual([written.id]);
+  });
+
+  it('owes nothing to a reply or an explicit note with no question mark on it, by any door', async () => {
+    const p = await project();
+    const issue = await issueIn(p.id);
+    const pat = await viaPat(p.id);
+    const top = ok(
+      await say('member', 'POST', `/api/issues/${issue}/comments`, { body: 'Landed on dev.' }),
+      201,
+    );
+    expect(top.intent).toBe('note');
+    const reply = ok(
+      await pat('member', 'POST', `/api/issues/${issue}/comments`, {
+        body: 'And on beta.',
+        parentId: top.id,
+      }),
+      201,
+    );
+    expect(reply.intent).toBe('note');
+    ok(
+      await pat('member', 'POST', `/api/issues/${issue}/comments`, {
+        intent: 'note',
+        body: 'Verified on dev.251.',
+      }),
+      201,
+    );
+    expect(await p.raised('member', 'people')).toMatchObject({ questions: [], owed: 0 });
+    expect(await masterOwes(p.id)).toEqual([]);
+  });
+
+  it('refuses an intent outside the closed set by name and writes nothing', async () => {
+    const p = await project();
+    const issue = await issueIn(p.id);
+    const pat = await viaPat(p.id);
+    const refused = await pat('member', 'POST', `/api/issues/${issue}/comments`, {
+      intent: 'Question',
+      body: 'Is this owed?',
+    });
+    expect(refused.status).toBe(422);
+    expect(JSON.stringify(refused.json)).toContain('COMMENT_INTENT_UNKNOWN');
+    const [count] = await rows<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM comments WHERE issue_id = ${issue}`,
+    );
+    expect(count?.n).toBe(0);
+    expect(await masterOwes(p.id)).toEqual([]);
   });
 });

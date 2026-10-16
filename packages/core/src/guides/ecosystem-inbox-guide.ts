@@ -32,8 +32,8 @@ the token the pane's \`forge\` CLI borrows.
 - When anything is owed, the pass is nudged even when the backlog is empty, and the nudge names how
   many documents are waiting. A pass that ends with the inbox untouched and no word on why is the same
   deviation as an idle pane with admissible issues.
-- The same read counts, beside the channel, which issue comments a person is owed a reply to, and a
-  person's comment wakes the box with \`source: 'comment'\`. That inbox is not an ecosystem one and needs no channel: see *Issue comments*
+- The same read counts, beside the channel, which question comments on issues a person is owed a
+  reply to, and a person's comment wakes the box with \`source: 'comment'\`. That inbox is not an ecosystem one and needs no channel: see *Issue comments*
   below.
 
 ### What counts as owed
@@ -201,10 +201,11 @@ Writing either takes \`contracts.write\` on this project (member or above); with
 \`PERMISSION_FORBIDDEN\`.
 
 ### Issue comments
-A comment a person writes on one of this project's issues is owed a reply until an agent comments on
-that issue after it — a master's reply, or a run's. It is owed at every status but \`closed\` and
-\`dropped\`, so it reaches you on an issue at \`in_progress\` or \`awaiting_release\` that no admissible
-read lists. The nudge names those issues. Read each thread (\`GET /api/issues/:id/comments\`), answer
+A comment a person marks as a question (\`intent: question\`) on one of this project's issues is owed
+a reply until an agent replies in its thread — a master's reply, or a run's; a comment sent with no
+intent is a note, owed nothing. It is owed at every status but \`closed\` and \`dropped\`, and
+never on an archived issue, so it reaches you on an issue at \`in_progress\` or
+\`awaiting_release\` that no admissible read lists. The nudge names those issues. Read each thread (\`GET /api/issues/:id/comments\`), answer
 on the issue, and move the issue when the comment asks for it. Your reply is what takes it off the
 list: a comment read and left unanswered is still owed on the next pass. An agent's own comment is
 never owed.
