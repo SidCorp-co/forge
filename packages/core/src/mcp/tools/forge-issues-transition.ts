@@ -9,6 +9,7 @@ import {
   flushIssueRelationEffects,
   type IssueRelationInput,
   type PendingIssueRelation,
+  writeBesideRelations,
   writeIssueRelations,
 } from '../../issues/relations-service.js';
 import { TransitionError } from '../../issues/transition-error.js';
@@ -17,6 +18,7 @@ import {
   type IssueUpdateInput,
   writeIssueFieldsIn,
 } from '../../issues/update-service.js';
+import { unwrittenRefusal } from './forge-issues-update-refusal.js';
 import { principalActor } from './lib.js';
 
 /** The part of `forge_issues` `data` a status move reads. */
@@ -61,14 +63,11 @@ export interface UpdateWrites {
   writer: Parameters<typeof applyIssueRelations>[0];
 }
 
-const NOTHING_WRITTEN =
-  'Nothing else this update carried was written: send it again without `data.status` to write the rest';
-
 /**
  * An `update` that moves a status writes its fields, labels and relations inside the move's own
  * transaction, before the status write, so the move reads them (a `plan` beside `approved`, release
- * notes beside `closed`) and a refused move leaves none of them written (ISS-1229 r10). The refusal
- * says so; a status alone is refused in the transition door's own words.
+ * notes beside `closed`) and a refused move leaves none of them written (ISS-1229 r10). A refusal
+ * raised before the commit says so first; a status alone is refused in the transition door's words.
  */
 export async function moveWithWrites(
   issue: Parameters<typeof transitionIssueStatus>[0],
@@ -84,11 +83,19 @@ export async function moveWithWrites(
   const carries = fields !== null || (relations?.length ?? 0) > 0;
   let wrote = false;
   let pending: PendingIssueRelation[] = [];
+  // A refusal the writes raised is known to be inside the transaction; anything else thrown after
+  // the move began may come after its commit, and is let through as it is.
+  let refusedInWrites: unknown = null;
   const inTransaction: InTransaction = carries
     ? {
         beforeStatusWrite: async (tx) => {
-          if (fields) ({ wrote } = await writeIssueFieldsIn(tx, fields));
-          pending = await writeIssueRelations(writer, issue.projectId, issue.id, relations, tx);
+          try {
+            if (fields) ({ wrote } = await writeIssueFieldsIn(tx, fields));
+            pending = await writeIssueRelations(writer, issue.projectId, issue.id, relations, tx);
+          } catch (err) {
+            refusedInWrites = err;
+            throw err;
+          }
         },
         ...(fields && 'releaseNotes' in fields.updates
           ? { releaseNotesWritten: fields.updates.releaseNotes }
@@ -99,16 +106,40 @@ export async function moveWithWrites(
   try {
     moved = await transitionByData(issue, status, principal, data, inTransaction);
   } catch (err) {
-    if (carries && err instanceof TransitionError) {
-      throw new TransitionError(
-        err.code,
-        `${err.detail.replace(/\.$/, '')}. ${NOTHING_WRITTEN}`,
-        err.details,
-      );
+    if (carries && (err instanceof TransitionError || err === refusedInWrites)) {
+      throw unwrittenRefusal(err, true);
     }
     throw err;
   }
   if (wrote && fields) await announceContractInput(issue.id, issue.projectId, fields.updates);
   await flushIssueRelationEffects(writer, issue.projectId, pending);
   return { rewritten: moved.rewritten, relations: pending.map((p) => p.applied) };
+}
+
+/**
+ * An `update` that sends no status writes its fields, labels and relations in one transaction, so a
+ * relation the graph refuses leaves the title beside it unwritten too, and the refusal says so.
+ */
+export async function writeWithoutMove(
+  issue: Parameters<typeof transitionIssueStatus>[0],
+  writes: UpdateWrites,
+): Promise<AppliedIssueRelation[]> {
+  const { fields, relations, writer } = writes;
+  if (fields === null && (relations?.length ?? 0) === 0) return [];
+  let wrote = false;
+  let pending: PendingIssueRelation[];
+  try {
+    ({ wrote, pending } = await writeBesideRelations(
+      writer,
+      issue.projectId,
+      issue.id,
+      relations,
+      async (tx) => (fields ? (await writeIssueFieldsIn(tx, fields)).wrote : false),
+    ));
+  } catch (err) {
+    throw unwrittenRefusal(err, false);
+  }
+  if (wrote && fields) await announceContractInput(issue.id, issue.projectId, fields.updates);
+  await flushIssueRelationEffects(writer, issue.projectId, pending);
+  return pending.map((p) => p.applied);
 }

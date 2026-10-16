@@ -239,3 +239,46 @@ describe('live bindings naming different release runners', () => {
     expect(three).not.toMatch(/\bTwo\b/);
   });
 });
+
+// ISS-1229 r11, judge-25: "Every issue at Awaiting release still owes…" was said of one issue.
+describe('every issue at Awaiting release still owing a criterion', () => {
+  const sentence = (n: number) =>
+    releaseBlockerSentence('RELEASE_CRITERIA_UNEARNED', { held: held(n) });
+
+  it('speaks of the one issue, at one', () => {
+    expect(sentence(1)).toBe(
+      'The one issue at Awaiting release still owes a verdict on an acceptance criterion, so the automatic release cuts nothing until each verdict it owes is recorded: `ISS-1` owes criterion 1.',
+    );
+  });
+
+  it('counts the issues and speaks of them, at two', () => {
+    expect(sentence(2)).toBe(
+      'All 2 issues at Awaiting release still owe a verdict on an acceptance criterion, so the automatic release cuts nothing until each verdict they owe is recorded: `ISS-1` owes criterion 1; `ISS-2` owes criterion 1.',
+    );
+  });
+
+  it('keeps the general sentence where it names no issue', () => {
+    expect(releaseBlockerSentence('RELEASE_CRITERIA_UNEARNED')).toMatch(/^Every issue at /);
+  });
+});
+
+describe('every issue at the gate held because nothing can read what the project serves', () => {
+  const sentence = (n: number) =>
+    releaseBlockerSentence('RELEASE_RUNTIME_UNROUTED', {
+      missing: 'no probe',
+      held: held(n),
+    });
+
+  it('speaks of the one issue, at one', () => {
+    const one = sentence(1);
+    expect(one).toContain('and the one issue waiting at the gate is held on that one reason');
+    expect(one).toContain('the next sweep weighs it again');
+    expect(one).not.toMatch(/every (waiting )?issue/);
+  });
+
+  it('counts the issues and speaks of them, at two', () => {
+    const two = sentence(2);
+    expect(two).toContain('and all 2 issues waiting at the gate are held on that one reason');
+    expect(two).toContain('the next sweep weighs them again');
+  });
+});

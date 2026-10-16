@@ -175,3 +175,21 @@ describe('the runner label warning, as a person reads it', () => {
     expect(reader).not.toMatch(CALLER_WORDING);
   });
 });
+
+// ISS-1229 r11, judge-25: the screen said labels disagree without saying which.
+describe('live bindings naming different release runners, as a person reads it', () => {
+  it('names each label and counts them', () => {
+    const read = releaseBlockerReaderSentence('RELEASE_RUNNER_AMBIGUOUS', {
+      labels: ['box-a', 'box-b', 'box-c'],
+    });
+    expect(read).toBe(
+      'Live bindings name 3 different release runners (box-a, box-b, box-c) — a release is refused rather than sent to whichever was created first. Give them the same label, or retire all but one.',
+    );
+  });
+
+  it('keeps the general sentence where no label was read', () => {
+    expect(releaseBlockerReaderSentence('RELEASE_RUNNER_AMBIGUOUS', { labels: [] })).not.toMatch(
+      /\(\)/,
+    );
+  });
+});
