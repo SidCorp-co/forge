@@ -316,7 +316,14 @@ describe('REST PATCH /batch into on_hold', () => {
     const res = await batch([id], w.token, { status: 'on_hold' });
 
     const body = (await res.json()) as { skipped: Array<{ id: string; reason: string }> };
-    expect(body.skipped).toEqual([{ id, reason: 'transition_reason_required' }]);
+    expect(body.skipped).toEqual([
+      {
+        id,
+        reason: 'transition_reason_required',
+        code: 'TRANSITION_REASON_REQUIRED',
+        message: expect.any(String),
+      },
+    ]);
     expect(await statusOf(id)).toBe('in_progress');
     expect(await thread(id)).toHaveLength(0);
   });

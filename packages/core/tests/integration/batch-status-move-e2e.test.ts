@@ -118,6 +118,8 @@ describe('PATCH /issues/batch — an issue whose status move is refused keeps ev
         {
           id,
           reason,
+          code: reason.toUpperCase(),
+          message: expect.any(String),
           detail: expect.stringContaining('nothing else this update carried was written'),
         },
       ]);
@@ -145,7 +147,9 @@ describe('PATCH /issues/batch — an issue whose status move is refused keeps ev
 
     const answer = await batch(w, [id], { status: 'confirmed', priority: 'low' });
 
-    expect(answer.skipped).toEqual([{ id, reason: 'no_op' }]);
+    expect(answer.skipped).toEqual([
+      { id, reason: 'no_op', code: 'NO_OP', message: expect.any(String) },
+    ]);
   });
 
   it('still writes the fields of a batch that sends no status', async () => {

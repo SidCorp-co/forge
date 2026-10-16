@@ -141,6 +141,7 @@ const READS: Record<string, 'person' | 'caller'> = {
   'release-batch/claim-conflicts.ts': 'caller',
   'release-batch/releasing-recovery.ts': 'person',
   'release-batch/releasing-settle.ts': 'person',
+  'release-batch/release-path-words.ts': 'caller',
 };
 
 const HELPER = /\bstatus(?:Label|ForCaller)\b/;

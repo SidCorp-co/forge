@@ -349,7 +349,15 @@ describe('PATCH /api/issues/batch', () => {
     };
     expect(body.updated.map((u) => u.id)).toEqual([ISS2]);
     const detail = expect.stringContaining('nothing else this update carried was written');
-    expect(body.skipped).toEqual([{ id: ISS1, reason: 'illegal_transition', detail }]);
+    expect(body.skipped).toEqual([
+      {
+        id: ISS1,
+        reason: 'illegal_transition',
+        code: 'ILLEGAL_TRANSITION',
+        message: expect.stringContaining('a Draft (draft) issue may only move to'),
+        detail,
+      },
+    ]);
     expect(issueUpdatedEmit.mock.calls.map(([p]) => p.issueId)).toEqual([ISS2]);
     // ISS-196 — the AFTER UPDATE trigger writes the outbox row; the legacy
     // inline hooks emit was removed. Assert the status UPDATE ran inside a

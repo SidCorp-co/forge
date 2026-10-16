@@ -186,7 +186,7 @@ describe('a move to Releasing from any door but a release batch (criteria 5, 6, 
       const body = (await res.json()) as { code: string; message: string };
       expect(body.code).toBe('RELEASING_STARTS_FROM_RELEASE');
       expect(body.message).toContain(
-        'so it must reach Awaiting release before a release can carry it',
+        'so it must reach Awaiting release (awaiting_release) before a release can carry it',
       );
       expect(body.message).not.toContain('Release now');
       expect(await row(id)).toEqual({ status: from, claim: null });
@@ -247,8 +247,14 @@ describe('a move to Releasing from any door but a release batch (criteria 5, 6, 
     });
 
     expect(res.status).toBe(400);
-    const body = (await res.json()) as { code: string; details: { formErrors: string[] } };
+    const body = (await res.json()) as {
+      code: string;
+      message: string;
+      details: { formErrors: string[] };
+    };
     expect(body.code).toBe('BAD_REQUEST');
+    expect(body.message).toContain('Unrecognized key: "status"');
+    expect(body.message).toContain('POST /api/issues/:id/transition');
     expect(body.details.formErrors).toContain(
       'Unrecognized key: "status" — an issue update never writes a status. A status moves through POST /api/issues/:id/transition (or `forge_issues` `transition`), and only starting a release puts an issue at Releasing.',
     );

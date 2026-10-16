@@ -160,7 +160,14 @@ describe('an agent closes on a project whose release chain has nowhere to land',
       skipped: Array<{ id: string; reason: string }>;
     };
     expect(body.updated).toEqual([]);
-    expect(body.skipped).toEqual([{ id, reason: 'release_target_undeclared' }]);
+    expect(body.skipped).toEqual([
+      {
+        id,
+        reason: 'release_target_undeclared',
+        code: 'RELEASE_TARGET_UNDECLARED',
+        message: expect.stringContaining('no active deploy binding'),
+      },
+    ]);
     expect(await statusOf(id)).toBe('testing');
   }, 120_000);
 

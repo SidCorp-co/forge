@@ -5,7 +5,7 @@
 // there.
 
 import type { IssueStatus } from '../db/schema.js';
-import { statusForCaller, statusLabel } from '../issues/status-sets.js';
+import { statusForCaller } from '../issues/status-sets.js';
 import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
 
 /** How this project releases, as the sentences below choose by. */
@@ -22,8 +22,6 @@ export async function readReleasePath(projectId: string): Promise<ReleasePath> {
   }
 }
 
-const GATE = statusLabel(RELEASE_GATE_STATUS);
-
 const SHIPS_NOTHING =
   'This project ships nothing, so no release ever carries its issues: one can only once the ' +
   "project's Shape & release setting chooses a shape that releases.";
@@ -39,9 +37,8 @@ export function releaseStartsFor(path: ReleasePath, projectId: string, from: Iss
       return from === RELEASE_GATE_STATUS
         ? "Start one with Release now on this issue's page or at the release gate, or with " +
             `POST /api/projects/${projectId}/release-batches naming this issue in \`issueIds\`.`
-        : `A release carries only issues waiting at ${statusForCaller(RELEASE_GATE_STATUS)}, and ` +
-            `this one is at ${statusForCaller(from)}, so it must reach ${GATE} before a release ` +
-            'can carry it.';
+        : `This issue is at ${statusForCaller(from)}, so it must reach ` +
+            `${statusForCaller(RELEASE_GATE_STATUS)} before a release can carry it.`;
     case 'ships-nothing':
       return SHIPS_NOTHING;
     case 'no-live-target':

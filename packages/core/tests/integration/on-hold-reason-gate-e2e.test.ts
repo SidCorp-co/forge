@@ -272,7 +272,14 @@ describe('PATCH /batch — one reason goes with every issue', () => {
       const res = await batch([id], w.token, data);
 
       const body = (await res.json()) as { skipped: Array<{ id: string; reason: string }> };
-      expect(body.skipped).toEqual([{ id, reason: 'transition_reason_required' }]);
+      expect(body.skipped).toEqual([
+        {
+          id,
+          reason: 'transition_reason_required',
+          code: 'TRANSITION_REASON_REQUIRED',
+          message: expect.any(String),
+        },
+      ]);
       expect(await statusOf(id)).toBe('in_progress');
       expect(await bodiesOf(id)).toHaveLength(0);
     }

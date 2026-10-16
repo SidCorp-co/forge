@@ -52,7 +52,7 @@ describe('entering releasing (ISS-1421)', () => {
       const refusal = await releasingDoorRefusal({ ...base, from, to: 'releasing' });
       expect(refusal?.code, from).toBe('RELEASING_STARTS_FROM_RELEASE');
       expect(refusal?.detail, from).toContain(
-        'so it must reach Awaiting release before a release can carry it',
+        'so it must reach Awaiting release (awaiting_release) before a release can carry it',
       );
       expect(refusal?.detail, from).not.toContain('Release now');
       expect(refusal?.detail, from).not.toContain('release-batches');
