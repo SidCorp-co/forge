@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.251] - 2026-10-16
+
+A BA works requirements, feedback, releases and approvals from Claude Code and the web
+
+### Added
+
+- **An MCP client now works releases, designs, questions and issues.** Each answer says whether work runs and when it is likely done. Approvals stay with their approver, and an issue is never filed from MCP.
+- **A BA works requirements and feedback from an MCP client.** forge_requirements and forge_feedback read, draft, revise, file and clarify, and every answer says whether work is running and its forecast ETA, or why there is none.
+- **A project has one Approvals inbox.** Suggestions, mockups, previews, designs, requirement revisions and releases waiting on your decision list oldest first, with who asked, and are approved, declined or opened in place; a suggestion's author can revise or withdraw it.
+- **A feedback item shows its progress, its likely duplicates, and asks its reporter; a Questions page lists questions owed and raises new ones.** Every item states whether work runs, which issues carry it, and its estimate or why none exists.
+- **A BA revises requirements and authors designs in the web.** A revision opens on the agreed head with its reason; criteria take Given/When/Then steps and trace to design steps; designs are created, edited and proposed.
+
 ## [0.4.0-dev.250] - 2026-10-16
 
 Deploys, source reviews, Sentry and storefront move from core's MCP server to REST

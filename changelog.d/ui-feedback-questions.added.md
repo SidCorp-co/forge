@@ -1,1 +1,0 @@
-**A feedback item shows its progress, its likely duplicates, and asks its reporter; a Questions page lists questions owed and raises new ones.** Every item states whether work runs, which issues carry it, and its estimate or why none exists.
