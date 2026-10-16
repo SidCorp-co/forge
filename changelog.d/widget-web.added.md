@@ -1,1 +1,0 @@
-**Client sites can embed a feedback chat with one script tag.** Visitors pin the problem down with a limited assistant, confirm the draft, and keep a private status link; projects set origins, identity mode and limits under Integrations.
