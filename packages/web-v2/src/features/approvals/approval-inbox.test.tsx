@@ -109,6 +109,15 @@ describe("the approval inbox", () => {
     expect(await rowOf("ISS-9")).toHaveTextContent("Asker not recorded");
   });
 
+  it("holds a long title to two lines, the whole of it on hover", async () => {
+    const long = "Route every refund over the limit to the payments team ".repeat(9).trim();
+    core(inbox([{ ...mockup, title: long }]));
+    renderWithQuery(<ApprovalInbox projectId={P} slug="hop" />);
+    const shown = within(await rowOf("MK-3")).getByTestId("approval-title");
+    expect(shown.className).toMatch(/\bline-clamp-2\b/);
+    expect(shown).toHaveAttribute("title", long);
+  });
+
   it("offers a row decided on its own page no button, only the way there", async () => {
     core(inbox([repin]));
     renderWithQuery(<ApprovalInbox projectId={P} slug="hop" />);
@@ -132,13 +141,13 @@ describe("the approval inbox", () => {
       id: "suggestion:s-9",
       key: "ISS-12",
       opens: { kind: "issue", key: "ISS-12" },
-      problem: "askedBy.name: Too big: expected string to have <=200 characters",
+      problem: "the asker's name is longer than 200 characters",
     };
     core(inbox([mockup], [broken]));
     renderWithQuery(<ApprovalInbox projectId={P} slug="hop" />);
     const entry = await screen.findByTestId("approval-unreadable");
     expect(entry).toHaveTextContent("Suggestion ISS-12 could not be read here");
-    expect(within(entry).getByTestId("approval-unreadable-problem")).toHaveTextContent("askedBy.name");
+    expect(within(entry).getByTestId("approval-unreadable-problem")).toHaveTextContent("Unreadable: the asker's name is longer than 200 characters");
     expect(within(entry).getByTestId("approval-open")).toHaveAttribute("href", "/projects/hop/issues/ISS-12");
     expect(within(entry).queryByTestId("approval-approve")).toBeNull();
     expect(await rowOf("MK-3")).toBeInTheDocument();

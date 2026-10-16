@@ -229,7 +229,7 @@ describe('an approval row is titled by its record’s short title, and one long 
         id: `suggestion:${made.suggestion.id}`,
         key: w.issues[0]?.key,
         opens: { kind: 'issue', key: w.issues[0]?.key },
-        problem: expect.stringContaining('askedBy.name'),
+        problem: "the asker's name is longer than 200 characters",
       },
     ]);
     expect((inbox.items as Doc[]).map((i) => i.kind).sort()).toEqual([
