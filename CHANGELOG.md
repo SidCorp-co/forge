@@ -3247,6 +3247,8 @@
 - **A mindmap opens with its centre in view,** and a diagram wider than its box fades at the edge and says it scrolls sideways. (ISS-1229)
 - **Asking for the status an issue already has names it in words and as the value to send,** "Open (open)", and a status-change notification names the status as the screen does. (ISS-1229)
 - **A release reason about two live deploy bindings speaks of both,** "none of them names a probe… remove them", where it went on as if there were one. (ISS-1229)
+- **A link under a release reason agrees with what it counts:** "Check the live bindings' verify steps" beside two bindings, "Open the issue at Awaiting release" beside one. Three release runner labels are no longer called two. (ISS-1229)
+- **An agent's issue update that asks for the status the issue already has is refused,** as a status move is, and writes nothing else it carried, where it answered that it updated. (ISS-1229)
 - **Shape & release no longer says a project ships nothing because its base branch is empty.** Under a shape that releases, the Live block says no deploy connection serves it and asks for the base branch. (ISS-1171)
 - **A refused test credential is named by its label, every time.** The form and a refused save name each row the same way, and by its number only where it has no label. (ISS-1171)
 - **Shape & release refuses a test credential with no password, or one listed twice, by name.** The row is marked where it is wrong and nothing is saved; an agent writing the same is refused too. (ISS-1171)
