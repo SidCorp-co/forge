@@ -24,7 +24,7 @@ export const STOREFRONT_DRAFT_VERSION = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 export const STOREFRONT_ENVIRONMENT = /^[a-z][a-z0-9-]{0,62}$/u;
 
 export const STOREFRONT_DRAFT_SHAPE =
-	'{ kind: "storefront_draft", workflowId: <the provider\'s workflow id>, draftVersion: <the draft version id forge_storefront_target reports>, environment: <a non-production environment the project document declares, e.g. preview> }';
+	'{ kind: "storefront_draft", workflowId: <the provider\'s workflow id>, draftVersion: <the draft version id the storefront target route reports>, environment: <a non-production environment the project document declares, e.g. preview> }';
 
 export const STOREFRONT_DRAFT_REFUSAL_CODES = [
 	"VERDICT_STOREFRONT_DRAFT_SHAPE",

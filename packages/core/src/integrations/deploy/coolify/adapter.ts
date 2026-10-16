@@ -366,8 +366,8 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
 };
 
 /**
- * Coolify's declaration. An agent reaches it only through `forge_coolify_deploy`, which core
- * performs: the API token never leaves core, so the grant on a coolify binding widens who may ask
+ * Coolify's declaration. An agent reaches it only through `/api/projects/:id/integrations/coolify/…`,
+ * which core performs: the API token never leaves core, so the grant on a coolify binding widens who may ask
  * core to deploy rather than who holds the credential.
  */
 export const coolifyIntegration = declareIntegration<CoolifyConfig, CoolifySecrets>({
@@ -383,7 +383,11 @@ export const coolifyIntegration = declareIntegration<CoolifyConfig, CoolifySecre
     // Coolify's API has a rollback endpoint, so a rollback here is an ACTION and not a note for a
     // human — which is why the release batch refuses free text on a coolify channel.
     structuredRollback: true,
-    agentPath: { kind: 'permission', tools: ['forge_coolify_deploy'], permission: 'deploys.run' },
+    agentPath: {
+      kind: 'permission',
+      routes: ['/api/projects/:id/integrations/coolify'],
+      permission: 'deploys.run',
+    },
   },
   schemas: {
     connectionConfig: coolifyConnectionConfigSchema,
@@ -399,7 +403,7 @@ export const coolifyIntegration = declareIntegration<CoolifyConfig, CoolifySecre
     bindingOnlyConfigKeys: COOLIFY_BINDING_ONLY_CONFIG_KEYS,
   },
   usage: {
-    hint: 'Deploy / redeploy and poll deployment status via the `forge_coolify_deploy` tool.',
+    hint: 'Deploy, poll status and read logs at `/api/projects/:id/integrations/coolify/…`, or `forge coolify`.',
     guideSlug: 'deploy-safety',
   },
   presentation: {

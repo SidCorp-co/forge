@@ -288,7 +288,13 @@ export const gitlabIntegration = declareIntegration<GitLabConfig, GitLabSecrets>
     webhookSignatureHeader: 'x-gitlab-token',
     webhookVerification: 'shared-token',
     structuredRollback: false,
-    agentPath: { kind: 'core-mediated', tools: ['forge_source'] },
+    agentPath: {
+      kind: 'core-mediated',
+      routes: [
+        '/api/projects/:id/integrations/source/change-requests',
+        '/api/projects/:id/integrations/source/checks',
+      ],
+    },
   },
   schemas: {
     connectionConfig: gitlabConfigBase,
@@ -303,7 +309,7 @@ export const gitlabIntegration = declareIntegration<GitLabConfig, GitLabSecrets>
     bindingConfigKeys: GITLAB_BINDING_CONFIG_KEYS,
   },
   usage: {
-    hint: "Read and write merge requests through `forge_source` — a diff, a failing job's trace, a note, a new merge request, reviewers, an approval. Never `glab`: Forge holds the token. Nothing there merges.",
+    hint: "Read and write merge requests at `/api/projects/:id/integrations/source/…` — a diff, a failing job's trace, a note, a new merge request, reviewers, an approval. Never `glab`: Forge holds the token. Nothing there merges.",
   },
   presentation: {
     label: 'GitLab',

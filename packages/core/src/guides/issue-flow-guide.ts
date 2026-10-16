@@ -258,7 +258,7 @@ naming its own rule before the green counts.
    passing review by a reviewer other than the building run stands at that commit.
    On the fast lane the deploy that follows is web only:
    \`POST /api/projects/:projectId/integrations/coolify/deploy\` \`{ issueId, targets }\`, the labels
-   \`fastLane.deployTargets\` declares (\`forge_coolify_deploy\` takes the same \`targets\`). It is
+   \`fastLane.deployTargets\` declares. It is
    refused \`FAST_LANE_NOT_ELIGIBLE\`, naming the commit, while any commit between what a target
    serves and the head it deploys from is not fast — deploy every target instead — and
    \`FAST_LANE_UNVERIFIED\` where that range cannot be read whole. It is verified by the commit the

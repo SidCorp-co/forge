@@ -44,7 +44,10 @@ import { announceIntegrationChanged, setBindingInboundSecret } from '../project-
 import { summarizeBindings, summarizeOneBinding } from './binding-standing.js';
 import { registerCoolifyDeployRoutes } from './coolify-routes.js';
 import { buildMcpPreview } from './mcp-preview-service.js';
+import { registerSentryRoutes } from './sentry-routes.js';
+import { registerSourceRoutes } from './source-routes.js';
 import { buildIntegrationsStatusCards } from './status-service.js';
+import { registerStorefrontRoutes } from './storefront-routes.js';
 
 const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
 
@@ -57,6 +60,9 @@ export const integrationsRoutes = new Hono<{ Variables: AuthVars }>();
 integrationsRoutes.use('*', requireAuth(), assertEmailVerified());
 
 registerCoolifyDeployRoutes(integrationsRoutes);
+registerSourceRoutes(integrationsRoutes);
+registerSentryRoutes(integrationsRoutes);
+registerStorefrontRoutes(integrationsRoutes);
 
 /** The binding `id` of this project, after the caller's membership (and, for `admin`, role). */
 async function projectBinding(

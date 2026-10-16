@@ -91,7 +91,7 @@ function renderMethod(): string {
 ### Your method
 Load it if this session has it: run the \`${RELEASE_BATCH_SKILL}\` skill, then announce what you loaded with \`method\` (\`{"skill":"<name>","loaded":true}\`).
 
-If it will not load, announce THAT — \`loaded: false\` with a detail saying why — and carry on under the release procedure below, which is this project's own method. \`finish\` does not read the announcement and does not refuse a run that made none. What does depend on it: a deploy through \`forge_coolify_deploy\` is refused until this run has recorded SOMETHING on its release batch, because until then nothing shows the credential this session holds can record what the deploy did.
+If it will not load, announce THAT — \`loaded: false\` with a detail saying why — and carry on under the release procedure below, which is this project's own method. \`finish\` does not read the announcement and does not refuse a run that made none. What does depend on it: a deploy (\`POST /api/projects/:id/integrations/coolify/deploy\`) is refused until this run has recorded SOMETHING on its release batch, because until then nothing shows the credential this session holds can record what the deploy did.
 `;
 }
 

@@ -1,4 +1,4 @@
-/** Epodsystem's half of `forge_storefront_target`: the store identity plus its themes, read live. */
+/** Epodsystem's half of the storefront target route: the store identity plus its themes, read live. */
 
 import type { StorefrontTargetArgs } from '../index.js';
 import { epodsystemEndpoint } from './endpoints.js';

@@ -1,6 +1,6 @@
 /**
- * The Coolify deploy commands over REST, so an agent on the CLI can reach them
- * without `forge_coolify_deploy`.
+ * The Coolify deploy commands over REST — the one door to them. The forge CLI
+ * calls these; core's MCP server carries no delivery tool.
  *
  * Registered ONTO `integrationsRoutes` rather than mounted as a second router
  * on `/api/projects`: a sub-app's `use('*')` covers every path under its mount
@@ -39,6 +39,7 @@ import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { announceIntegrationChanged } from '../project-config/index.js';
 import {
   coolifyDeliveryStatus,
+  listApplicationsForIntegration,
   listCoolifyIntegrations,
   listCoolifyRollbackImages,
   refuseCoolify,
@@ -48,6 +49,7 @@ import {
   runCoolifyRollback,
 } from '../release-batch/index.js';
 import { coolifyRefusal, given, requireCoolifyRun } from './coolify-access.js';
+import { coolifyDeploymentLogs, coolifyRuntimeLogs } from './coolify-logs.js';
 
 const deployBodySchema = z
   .object({
@@ -85,6 +87,25 @@ const applicationsBodySchema = z.union([
 ]);
 
 const integrationQuerySchema = z.object({ integrationId: z.string().optional() });
+
+/** `lines` is rejected outside 1..1000, never clamped into it. */
+const linesSchema = z.coerce.number().int().min(1).max(1000).optional();
+
+const logsQuerySchema = z
+  .object({
+    integrationId: z.uuid().optional(),
+    deploymentUuid: z.string().min(1).max(200).optional(),
+    lines: linesSchema,
+  })
+  .strict();
+
+const runtimeLogsQuerySchema = z
+  .object({
+    integrationId: z.uuid().optional(),
+    resourceUuid: z.string().min(1).max(200).optional(),
+    lines: linesSchema,
+  })
+  .strict();
 
 const rollbackImagesQuerySchema = z.object({
   integrationId: z.string().optional(),
@@ -128,6 +149,7 @@ export function registerCoolifyDeployRoutes(routes: Routes): void {
 
 /** Deploy, cancel and roll back, and the reads that show where they stand. */
 function registerCommandRoutes(routes: Routes): void {
+  registerLogRoutes(routes);
   routes.get(
     '/:projectId/integrations/coolify/status',
     projectMember,
@@ -191,6 +213,25 @@ function registerCommandRoutes(routes: Routes): void {
   );
 }
 
+/**
+ * A deployment's build log and a target's live container log, scrubbed and tailed. Compare
+ * `logsDigest` across reads to tell a log that has not moved from a stale one.
+ */
+function registerLogRoutes(routes: Routes): void {
+  routes.get(
+    '/:projectId/integrations/coolify/logs',
+    projectMember,
+    zValidator('query', logsQuerySchema),
+    (c) => answer(c, () => coolifyDeploymentLogs(c.req.param('projectId'), c.req.valid('query'))),
+  );
+  routes.get(
+    '/:projectId/integrations/coolify/runtime-logs',
+    projectMember,
+    zValidator('query', runtimeLogsQuerySchema),
+    (c) => answer(c, () => coolifyRuntimeLogs(c.req.param('projectId'), c.req.valid('query'))),
+  );
+}
+
 /** What a binding is set up with: its integrations, the applications to pick, the bound targets. */
 function registerSetupRoutes(routes: Routes): void {
   routes.get('/:projectId/integrations/coolify', async (c) => {
@@ -198,6 +239,18 @@ function registerSetupRoutes(routes: Routes): void {
     await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(projectId));
     return c.json(await listCoolifyIntegrations(projectId));
   });
+  routes.get(
+    '/:projectId/integrations/coolify/applications',
+    projectMember,
+    zValidator('query', integrationQuerySchema),
+    (c) => {
+      const { integrationId } = c.req.valid('query');
+      const projectId = c.req.param('projectId');
+      return answer(c, () =>
+        listApplicationsForIntegration({ projectId, ...given({ integrationId }) }),
+      );
+    },
+  );
   routes.post(
     '/:projectId/integrations/coolify/applications',
     projectMember,

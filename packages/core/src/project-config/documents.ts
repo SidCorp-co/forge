@@ -43,7 +43,7 @@ function issueRefusals(issue: z.core.$ZodIssue, version: unknown): ApiRefusal[] 
         code: 'TOOL_PATTERN_INVALID',
         path: pointer(issue.path),
         detail:
-          'not a tool pattern the runner can deny: a built-in tool name (`Bash`), optionally with a specifier (`Bash(git push:*)`), or an MCP server or tool (`mcp__forge__forge_coolify_deploy`, `mcp__playwright__*`).',
+          'not a tool pattern the runner can deny: a built-in tool name (`Bash`), optionally with a specifier (`Bash(git push:*)`), or an MCP server or tool (`mcp__forge__forge_channel`, `mcp__playwright__*`).',
       },
     ];
   }

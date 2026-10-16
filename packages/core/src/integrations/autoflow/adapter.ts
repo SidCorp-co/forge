@@ -263,7 +263,7 @@ export const autoflowIntegration = declareIntegration<AutoflowConfig, AutoflowSe
     structuredRollback: false,
     agentPath: {
       kind: 'direct-mcp',
-      tools: [],
+      routes: [],
       serverName: 'autoflow',
       previewSecrets: { accessToken: '[redacted]' },
       justification:
@@ -303,7 +303,7 @@ export const autoflowIntegration = declareIntegration<AutoflowConfig, AutoflowSe
     bindingOnlyConfigKeys: AUTOFLOW_BINDING_ONLY_CONFIG_KEYS,
   },
   usage: {
-    hint: 'Read the site + its flows via `forge_storefront_target`, build through the `mcp__autoflow__*` shop tools. Writes land on drafts; `publish_backend_workflow` / `publish_draft_theme` go live, `revert_backend_workflow` rolls back.',
+    hint: 'Read the site + its flows at `GET /api/projects/:id/integrations/storefront/target`, build through the `mcp__autoflow__*` shop tools. Writes land on drafts; `publish_backend_workflow` / `publish_draft_theme` go live, `revert_backend_workflow` rolls back.',
   },
   presentation: {
     label: 'Autoflow',

@@ -33,7 +33,7 @@ export function ownObservation(
 const GITLAB_DELIVERY_LOG =
   "the project's own webhook page on GitLab, under Settings, Webhooks, this hook, Recent events";
 
-/** What `forge_source list` says about each GitLab binding on a project. Contacts GitLab not at all. */
+/** What `GET /api/projects/:id/integrations/source` says about each GitLab binding on a project. Contacts GitLab not at all. */
 export async function gitlabBindingReports(
   projectId: string,
 ): Promise<Array<{ provider: string } & Record<string, unknown>>> {

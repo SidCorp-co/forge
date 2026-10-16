@@ -438,33 +438,47 @@ describe('a web-only deploy (BC-7)', () => {
     expect(await queued()).toEqual([]);
   });
 
-  it('the agent tool takes the same guard: refused over a kernel commit, web alone over fast ones', async () => {
+  it("an agent's token takes the same guard: refused over a kernel commit, web alone over fast ones", async () => {
     const pat = await patToken(ownerId, [declared]);
-    const tool = async (args: Doc) => {
-      const res = await api(
-        pat,
-        'POST',
-        '/mcp',
-        {
-          jsonrpc: '2.0',
-          id: 1,
-          method: 'tools/call',
-          params: { name: 'forge_coolify_deploy', arguments: args },
-        },
-        { accept: 'application/json, text/event-stream' },
+    const deploy = async () =>
+      JSON.stringify(
+        (
+          await api(pat, 'POST', `/api/projects/${declared}/integrations/coolify/deploy`, {
+            targets: ['web'],
+          })
+        ).body,
       );
-      return JSON.stringify(res.body);
-    };
     repo.ranges.set(`${SERVED}..${repo.head}`, [KERNEL_COMMIT]);
-    const refused = await tool({ action: 'deploy', projectId: declared, targets: ['web'] });
+    const refused = await deploy();
     expect(refused).toContain('FAST_LANE_NOT_ELIGIBLE');
     expect(refused).toContain(KERNEL_COMMIT.slice(0, 12));
     expect(await queued()).toEqual([]);
     repo.ranges.set(`${SERVED}..${repo.head}`, [C1]);
-    const shipped = await tool({ action: 'deploy', projectId: declared, targets: ['web'] });
-    expect(shipped).toContain('\\"lane\\":\\"fast\\"');
+    const shipped = await deploy();
+    expect(shipped).toContain('"lane":"fast"');
     const [job] = await queued();
     expect(job?.data.payload).toMatchObject({ targetLabels: ['web'] });
+  });
+
+  it('is no longer an MCP tool: the server refuses the name it was served under', async () => {
+    const pat = await patToken(ownerId, [declared]);
+    const res = await api(
+      pat,
+      'POST',
+      '/mcp',
+      {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: {
+          name: 'forge_coolify_deploy',
+          arguments: { action: 'deploy', projectId: declared, targets: ['web'] },
+        },
+      },
+      { accept: 'application/json, text/event-stream' },
+    );
+    expect(JSON.stringify(res.body)).toContain('Unknown tool: forge_coolify_deploy');
+    expect(await queued()).toEqual([]);
   });
 
   it('deploys every target without `targets`, as before', async () => {
