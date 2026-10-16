@@ -70,7 +70,7 @@ export interface CollectReleaseBlockersOptions {
 
 const REMEDY: Record<ReleaseBlockerCode, string> = {
   NO_RELEASE_GATE:
-    'This project has no release step, so Forge has no release to start or record: here, closing an issue is what ships it. Close these issues to ship them. To release through Forge instead, declare a production environment with a deploy binding in the project document, written with PUT /api/projects/:id/config.',
+    'This project declares no production environment, so a release has nowhere to go and none can be cut; an issue at the release gate still closes only through a release. Declare a production environment with a deploy binding in the project document (PUT /api/projects/:id/config), then cut.',
   RELEASE_TARGET_UNDECLARED:
     'Nothing says where a release of this project lands: the project document is missing, or its production environment has no active deploy binding, or no promotion reaches the branch it deploys from. Correct the project document (`PUT /api/projects/:id/config`), or declare no production environment if Forge ships nothing here.',
   CLAIM_CONFLICT:

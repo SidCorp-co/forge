@@ -91,13 +91,12 @@ function Approval({ a }: { a: ReleaseApprovalView }) {
   );
 }
 
-export function ChecksPane({ r, slug }: { r: ReleaseDetail; slug: string }) {
+/** The release's cuts, its approvals and its batch runs; nothing where it has none of them. */
+export function ReleaseHistory({ r, slug }: { r: ReleaseDetail; slug: string }) {
   const t = useCopy();
-  if (r.attempts.length === 0 && r.approvals.length === 0 && r.cuts.length === 0) {
-    return <p className="text-13 text-subtle">{t("releases.checksEmpty")}</p>;
-  }
+  if (r.attempts.length === 0 && r.approvals.length === 0 && r.cuts.length === 0) return null;
   return (
-    <div className="grid gap-8" data-testid="view-checks">
+    <div className="grid gap-8" data-testid="release-history">
       <ReleaseAttempts r={r} slug={slug} />
       {r.approvals.length > 0 ? (
         <section aria-label={t("releases.approvals")}>

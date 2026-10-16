@@ -1,44 +1,29 @@
 
 import { RELEASE_PAGE_VIEWS, type ReleasePageViewKind } from "@forge/contracts/release-page";
-import {
-  DetailLayout,
-  DetailMobileTitle,
-  DetailPane,
-  DetailTabs,
-  FactsRail,
-  SegmentedControl,
-  StatusBadge,
-  useUrlChoice,
-  useUrlTab,
-} from "@/design";
+import { DetailLayout, DetailMobileTitle, DetailPane, FactsRail, SegmentedControl, StatusBadge, useUrlChoice } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy } from "@/lib/i18n/interface-language";
-import type { ProductCopyKey } from "@/lib/i18n/product-copy";
-import { useRelease, useReleasePage, useReleases } from "../hooks";
+import { useRelease, useReleasePage } from "../hooks";
+import type { ReleaseDetail } from "../types";
 import { ContinuedAs, EndedAttempt } from "./release-attempts";
 import { ReleaseBanner, releaseTitle } from "./release-bits";
-import { ChecksPane } from "./release-checks";
 import { ReleasePageActions } from "./release-page-actions";
 import { ReleaseRail } from "./release-rail";
 import { ReleaseReader, useReleaseContents } from "./release-reader";
-import { CriteriaPane, IssuesPane, NotesPane, OverviewPane, RELEASE_TABS, type ReleaseTab } from "./release-panes";
+import { ReleaseRecord, recordContents } from "./release-record";
 
-const LABEL: Record<ReleaseTab, ProductCopyKey> = {
-  overview: "releases.tab.overview",
-  issues: "releases.tab.issues",
-  criteria: "releases.tab.criteria",
-  checks: "releases.tab.checks",
-  notes: "releases.tab.notes",
-};
-
-/** The release as a reader reads it, in the view the person chose. */
-function ReaderPane({ projectId, slug, version, view }: { projectId: string; slug: string; version: string; view: ReleasePageViewKind }) {
+/**
+ * The release as a reader reads it, in the view the person chose: the Technical view carries the
+ * release's own record after the page, as sections of it and entries in its one contents.
+ */
+function ReaderPane({ projectId, r, slug, view }: { projectId: string; r: ReleaseDetail; slug: string; view: ReleasePageViewKind }) {
   const t = useCopy();
-  const q = useReleasePage(projectId, version, view);
+  const q = useReleasePage(projectId, r.version, view);
+  const record = view === "developer" ? { contents: recordContents(r, t), node: <ReleaseRecord r={r} slug={slug} /> } : undefined;
   return (
     <DetailPane label={t("releases.page.loading")} testId="release-page-reader">
       <QueryBoundary query={q} loadingLabel={t("releases.page.loading")}>
-        {(page) => <ReleaseReader page={page} slug={slug} authed railContents />}
+        {(page) => <ReleaseReader page={page} slug={slug} authed railContents record={record} />}
       </QueryBoundary>
     </DetailPane>
   );
@@ -46,35 +31,15 @@ function ReaderPane({ projectId, slug, version, view }: { projectId: string; slu
 
 export function ReleasePage({ projectId, slug, version }: { projectId: string; slug: string; version: string }) {
   const t = useCopy();
-  const [tab, onTab] = useUrlTab(RELEASE_TABS);
   const [view, onView] = useUrlChoice<ReleasePageViewKind>("view", RELEASE_PAGE_VIEWS, "user");
   const q = useRelease(projectId, version);
-  const list = useReleases(projectId);
   // the same read the reader pane holds: the share and export acts sit beside the view switch
   const pageQ = useReleasePage(projectId, version, view);
-  const contents = useReleaseContents(pageQ.data);
+  const contents = useReleaseContents(pageQ.data, view === "developer" && q.data ? recordContents(q.data.release, t) : []);
   return (
     <QueryBoundary query={q} loadingLabel={t("releases.loadingOne")}>
       {(data) => {
         const r = data.release;
-        const tabs = [
-          { value: "overview" as const, label: t(LABEL.overview) },
-          { value: "issues" as const, label: t(LABEL.issues), count: r.issues.length },
-          { value: "criteria" as const, label: t(LABEL.criteria), count: r.criteria.total },
-          { value: "checks" as const, label: t(LABEL.checks), count: r.cuts.length + r.attempts.length + r.approvals.length },
-          { value: "notes" as const, label: t(LABEL.notes) },
-        ];
-        const operator =
-          tab === "issues" ? (
-            <IssuesPane r={r} slug={slug} />
-          ) : (
-            <DetailPane label={t(LABEL[tab])}>
-              {tab === "overview" ? <OverviewPane r={r} slug={slug} all={list.data?.releases ?? [r]} /> : null}
-              {tab === "criteria" ? <CriteriaPane r={r} /> : null}
-              {tab === "checks" ? <ChecksPane r={r} slug={slug} /> : null}
-              {tab === "notes" ? <NotesPane r={r} slug={slug} /> : null}
-            </DetailPane>
-          );
         return (
           <DetailLayout
             testId="release-detail"
@@ -103,13 +68,7 @@ export function ReleasePage({ projectId, slug, version }: { projectId: string; s
                 </span>
               ) : null}
             </div>
-            <ReaderPane projectId={projectId} slug={slug} version={r.version} view={view} />
-            {view === "developer" ? (
-              <>
-                <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="release-tabs" />
-                {operator}
-              </>
-            ) : null}
+            <ReaderPane projectId={projectId} r={r} slug={slug} view={view} />
           </DetailLayout>
         );
       }}

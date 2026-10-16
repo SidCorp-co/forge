@@ -205,10 +205,10 @@ export const NO_RELEASE_GATE_HOLD: ReleaseHold = {
   reason:
     'This project declares no release (its project document has no production environment), so ' +
     'there is no release for the automatic sweep to carry this issue into, and nothing will move ' +
-    'it from `awaiting_release`. Either declare a production environment with a deploy binding, ' +
-    'or close the issue.',
+    'it from `awaiting_release`, where it closes only through a release. Declare a production ' +
+    'environment with a deploy binding, then cut a release.',
   owes: 'human',
-  waitingFor: 'a person to declare a release or close the issue',
+  waitingFor: 'a person to declare a production environment',
 };
 
 export const NO_ACTOR_HOLD: ReleaseHold = {

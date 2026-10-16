@@ -6,9 +6,8 @@ import { ComingNext } from "@/features/releases/components/coming-next";
 import { ReleaseActions } from "@/features/releases/components/release-actions";
 import { ReleaseItemScreen } from "@/features/releases/components/release-item-screen";
 import { ContinuedAs } from "@/features/releases/components/release-attempts";
-import { ChecksPane } from "@/features/releases/components/release-checks";
 import { WhatChanges } from "@/features/releases/components/release-changes";
-import { CriteriaPane, IssuesPane, NotesPane } from "@/features/releases/components/release-panes";
+import { ReleaseRecord } from "@/features/releases/components/release-record";
 import { ReleasePeek } from "@/features/releases/components/release-peek";
 import { ReleasesScreen } from "@/features/releases/components/releases-screen";
 import { BUILTIN_WORKFLOW_TEMPLATES } from "@forge/contracts/workflow-templates";
@@ -171,15 +170,10 @@ const releaseDetailScreen = (): ReactElement => (
   <Seeded data={releaseSeed()}>
     <ReleaseItemScreen projectId={P} slug="hop" version="0.1.0" />
     <ReleaseActions projectId={P} r={{ ...detail, can: { cut: false, decide: false, split: true }, split: { issueIds: ["i1"], rest: 13 } } as never} />
-    <IssuesPane r={detail as never} slug="hop" />
-    <CriteriaPane r={detail as never} />
-    <ChecksPane r={detail as never} slug="hop" />
+    <ReleaseRecord r={detail as never} slug="hop" />
     <ContinuedAs to={{ version: "0.0.9", shipped: true }} slug="hop" />
     <ContinuedAs to={{ version: "0.0.9", shipped: false }} slug="hop" />
-    <NotesPane r={detail as never} slug="hop" />
     <WhatChanges changes={detail.changes as never} slug="hop" />
-    <ChecksPane r={{ ...detail, attempts: [], approvals: [], cuts: [] } as never} slug="hop" />
-    <NotesPane r={{ ...detail, notes: { ...detail.notes, sections: [], withoutNotes: [] } } as never} slug="hop" />
   </Seeded>
 );
 
