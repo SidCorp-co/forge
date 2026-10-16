@@ -256,11 +256,11 @@ export function ReleaseAnswer({
         <ul className="mt-3 divide-y divide-line border-y border-line" aria-label="What stops a release">
           {r.blockers.map((b) => {
             const link = linkFor(b);
-            // The sentence leads; the code is for whoever greps for it, not for the reader.
+            // The person's sentence leads; the caller's and the code are for an API caller.
             const gap = BLOCKER_GAP[b.code];
             return (
               <li key={`${b.code}:${b.message}`} className="fg-body-sm py-2.5 text-fg" data-code={b.code}>
-                {gap ? GAP_TEXT[gap] : inlineCode(b.message)} <BlockerLinkView link={link} slug={slug} />
+                {gap ? GAP_TEXT[gap] : inlineCode(b.reader)} <BlockerLinkView link={link} slug={slug} />
               </li>
             );
           })}
@@ -354,7 +354,7 @@ export function ReleaseDetails({ projectId }: { projectId: string }) {
           <ul className="mt-1 divide-y divide-line border-y border-line">
             {r.warnings.map((w) => (
               <li key={`${w.code}:${w.message}`} className="fg-body-sm py-2.5 text-fg" data-code={w.code}>
-                {inlineCode(w.message)}
+                {inlineCode(w.reader)}
               </li>
             ))}
           </ul>

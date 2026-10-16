@@ -13,6 +13,9 @@ import type { ReleaseReadiness } from "../types";
 
 expect.extend(matchers);
 
+/** What core sends an API caller beside the reader sentence these fixtures plant; never drawn. */
+const CALLER_SENTENCE = "The caller's sentence, which this screen does not draw.";
+
 const readiness = vi.fn();
 vi.mock("../hooks", async (importActual) => {
 	const actual = await importActual<typeof import("../hooks")>();
@@ -68,7 +71,8 @@ describe("the issue link beside a release sentence opens what that sentence coun
 		const { container } = drawWith({
 			code: "RELEASE_ROSTER_EMPTY",
 			evaluated: true,
-			message:
+			message: CALLER_SENTENCE,
+			reader:
 				"Nothing is ready to release: 1 issue is at Testing or Tested, and each moves to Awaiting release once it records where its change now runs.",
 			details: { nearGate: 1 },
 		});
@@ -85,7 +89,8 @@ describe("the issue link beside a release sentence opens what that sentence coun
 		const { container } = drawWith({
 			code: "RELEASE_ROSTER_EMPTY",
 			evaluated: true,
-			message: "Nothing is ready to release: no issue is at Testing, Tested or Awaiting release.",
+			message: CALLER_SENTENCE,
+			reader: "Nothing is ready to release: no issue is at Testing, Tested or Awaiting release.",
 			details: { nearGate: 0 },
 		});
 
@@ -97,7 +102,8 @@ describe("the issue link beside a release sentence opens what that sentence coun
 		const { container } = drawWith({
 			code: "RELEASE_ROSTER_EMPTY",
 			evaluated: true,
-			message: "Nothing is ready to release: no issue is at Awaiting release.",
+			message: CALLER_SENTENCE,
+			reader: "Nothing is ready to release: no issue is at Awaiting release.",
 		});
 
 		expect(issueLinks(container)).toEqual([]);
@@ -107,7 +113,8 @@ describe("the issue link beside a release sentence opens what that sentence coun
 		const { container } = drawWith({
 			code: "RELEASE_CRITERIA_UNEARNED",
 			evaluated: true,
-			message:
+			message: CALLER_SENTENCE,
+			reader:
 				"Every issue at Awaiting release still owes a verdict on an acceptance criterion, so the automatic release cuts nothing until each is recorded: `ISS-4` owes criteria 1–3.",
 		});
 
@@ -188,7 +195,8 @@ describe("a link beside a release sentence opens exactly the set that sentence n
 			const { container } = drawWith({
 				code,
 				evaluated: code !== "RELEASE_CHECK_UNEVALUATED",
-				message: `The sentence core sends for ${code}.`,
+				message: CALLER_SENTENCE,
+			reader: `The sentence core sends for ${code}.`,
 				...(planted.details ? { details: planted.details } : {}),
 			});
 			expect(linksOf(container)).toEqual(planted.links);
@@ -199,14 +207,16 @@ describe("a link beside a release sentence opens exactly the set that sentence n
 		const { container } = drawWith({
 			code: "BATCH_IN_FLIGHT",
 			evaluated: true,
-			message: "A release is already running for this project and is waiting on a decision.",
+			message: CALLER_SENTENCE,
+			reader: "A release is already running for this project and is waiting on a decision.",
 			details: { decision: { displayId: "ISS-12" } },
 		});
 		expect(linksOf(container)).toEqual([issuePage("ISS-12")]);
 	});
 
 	it("offers no link for a code this screen does not know", () => {
-		const { container } = drawWith({ code: "RELEASE_SOMETHING_NEW", evaluated: true, message: "Something new stops it." });
+		const { container } = drawWith({ code: "RELEASE_SOMETHING_NEW", evaluated: true, message: CALLER_SENTENCE,
+			reader: "Something new stops it." });
 		expect(screen.getByText("Something new stops it.")).toBeInTheDocument();
 		expect(linksOf(container)).toEqual([]);
 	});
@@ -215,7 +225,8 @@ describe("a link beside a release sentence opens exactly the set that sentence n
 		const { container } = drawWith({
 			code: "RELEASE_RECORD_MISSING",
 			evaluated: true,
-			message: "2 issues named here have no release note.",
+			message: CALLER_SENTENCE,
+			reader: "2 issues named here have no release note.",
 			details: { issueIds: ["u-4", "u-7"], displayIds: ["ISS-4", "ISS-7"] },
 		});
 		expect(container.querySelector("li [data-testid='release-named-issues']")?.textContent).toBe("Open ISS-4, ISS-7");
@@ -237,7 +248,8 @@ describe("a notice after the release answer", () => {
 
 	it("follows a list of reasons with no gap, its top hairline laid on the list's last one", () => {
 		const { container } = drawAnswer(
-			blockedBy({ code: "BATCH_IN_FLIGHT", evaluated: true, message: "A release is already running." }),
+			blockedBy({ code: "BATCH_IN_FLIGHT", evaluated: true, message: CALLER_SENTENCE,
+			reader: "A release is already running." }),
 		);
 		const notice = screen.getByTestId("stranded-notice");
 		const holder = notice.parentElement as HTMLElement;
@@ -248,7 +260,8 @@ describe("a notice after the release answer", () => {
 	});
 
 	it("keeps its own space under an answer that lists nothing", () => {
-		drawAnswer({ ...blockedBy({ code: "X", evaluated: true, message: "x" }), blockers: [], hasReleaseGate: false });
+		drawAnswer({ ...blockedBy({ code: "X", evaluated: true, message: CALLER_SENTENCE,
+			reader: "x" }), blockers: [], hasReleaseGate: false });
 		const holder = screen.getByTestId("stranded-notice").parentElement as HTMLElement;
 		expect(holder.className.split(" ")).toContain("mt-3");
 	});

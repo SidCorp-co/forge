@@ -119,8 +119,9 @@ export const readinessSchema = z.object({
   declarationRead: z.boolean(),
   channelsRead: z.boolean(),
   gaps: z.array(z.string()),
-  blockers: z.array(blockerSchema),
-  warnings: z.array(warningSchema),
+  /** `reader` is the sentence a person reads; `message` stays the caller's. */
+  blockers: z.array(blockerSchema.extend({ reader: z.string() })),
+  warnings: z.array(warningSchema.extend({ reader: z.string() })),
   carried: carriedRecordSchema,
 });
 

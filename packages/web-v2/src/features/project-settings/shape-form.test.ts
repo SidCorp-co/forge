@@ -147,7 +147,7 @@ describe("shipsNothing", () => {
 });
 
 describe("releaseAnswer", () => {
-	const blocker = { code: "RELEASE_ROSTER_EMPTY", evaluated: true, message: "Nothing waits." };
+	const blocker = { code: "RELEASE_ROSTER_EMPTY", evaluated: true, message: "Nothing waits.", reader: "Nothing waits." };
 
 	it("never reads an unread declaration as a project that ships nothing", () => {
 		expect(releaseAnswer(readiness({ declarationRead: false, releaseChain: [] }))).toEqual({ kind: "unread" });
