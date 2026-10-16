@@ -1,5 +1,5 @@
 // The face of the workflows feature: what other features import of it (CODE-STANDARD.md, Structure).
-export { templateFor } from "./canvas/model";
+export { templateFor, titleOf } from "./canvas/model";
 export { presentTrace } from "./canvas/step-focus";
 export { WorkflowCanvas } from "./canvas/workflow-canvas";
 export { SystemOverviewRegion } from "./components/system-overview";

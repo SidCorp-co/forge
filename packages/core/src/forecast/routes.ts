@@ -7,6 +7,7 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { readFeedbackForecasts } from './feedback.js';
+import { readFeedbackProgress } from './feedback-progress.js';
 import { readIssueForecast, readProjectForecast } from './read.js';
 import {
   readComingNext,
@@ -22,6 +23,7 @@ const issueParam = z.object({
   key: z.string().regex(/^[A-Za-z][A-Za-z0-9]{1,5}-\d+$/),
 });
 const requirementParam = z.object({ id: z.uuid(), key: z.string().regex(/^REQ-\d+$/) });
+const feedbackParam = z.object({ id: z.uuid(), fb: z.string().trim().min(1).max(64) });
 const noQuery = z.strictObject({});
 
 export const forecastRoutes = new Hono<{ Variables: AuthVars }>();
@@ -95,6 +97,25 @@ forecastRoutes.get(
     return c.json(
       await egressForRequest(actor.agency, projectId, 'issue', read, 'the feedback forecast'),
     );
+  },
+);
+
+// one item's work and estimate: its line from the same read as the list's, so the two never differ
+forecastRoutes.get(
+  '/:id/forecast/feedback/:fb',
+  zValidator('param', feedbackParam),
+  zValidator('query', noQuery),
+  async (c) => {
+    const { id: projectId, fb } = c.req.valid('param');
+    const viewer = await forecastViewerOf(projectId, c.get('userId'));
+    const actor = restActor(c);
+    const read = await readFeedbackProgress(
+      { userId: c.get('userId'), agency: actor.agency },
+      projectId,
+      fb,
+      viewer,
+    );
+    return c.json(await egressForRequest(actor.agency, projectId, 'issue', read, fb));
   },
 );
 

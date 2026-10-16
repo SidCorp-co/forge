@@ -371,13 +371,15 @@ export const ACCEPT_SUGGESTION_SHAPE =
 	"{ reason? } — why it is accepted, and on whose authority";
 
 /** `POST /api/projects/:id/suggestions/:sid/revise` — a reviewer's edit: the original is rejected
- *  with `reason` and a new suggestion carrying `payload` is proposed by the reviewer (ISS-117). */
+ *  with `reason` and a new suggestion carrying `payload` is proposed by the reviewer (ISS-117). Its
+ *  producer's own edit proposes the new one the same way and withdraws the original; `reason` may be
+ *  empty there, since nothing is rejected. */
 export const reviseSuggestionRequestSchema = z.strictObject({
 	payload: z.unknown(),
 	reason: z.string().max(REASON_TEXT_MAX),
 });
 export const REVISE_SUGGESTION_SHAPE =
-	"{ payload, reason } — the whole payload as it should read, and why the original is changed";
+	"{ payload, reason } — the whole payload as it should read, and why the original is changed (a reviewer must say why)";
 
 /** `POST /api/projects/:id/suggestions/:sid/reject`. */
 export const rejectSuggestionRequestSchema = z.strictObject({

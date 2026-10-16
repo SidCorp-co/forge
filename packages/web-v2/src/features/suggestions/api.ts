@@ -1,5 +1,5 @@
 import { apiClient } from "@/lib/api/client";
-import type { SuggestionDecision, SuggestionListResponse, SuggestionResponse } from "./types";
+import type { SuggestionAuthorAct, SuggestionDecision, SuggestionListResponse, SuggestionResponse } from "./types";
 
 export type SuggestionTargetFilter = { requirement: string } | { feedback: string };
 
@@ -14,4 +14,9 @@ export const suggestionsApi = {
   },
   decide: (projectId: string, d: SuggestionDecision) =>
     apiClient<SuggestionResponse>(`${base(projectId)}/${d.id}/${d.kind}`, post(d.reason ? { reason: d.reason } : {})),
+  /** Its author's own acts: a revise proposes the payload as it should read and withdraws the original; a withdraw takes it back. */
+  author: (projectId: string, a: SuggestionAuthorAct) =>
+    a.kind === "revise"
+      ? apiClient<SuggestionResponse>(`${base(projectId)}/${a.id}/revise`, post({ payload: a.payload, reason: a.reason }))
+      : apiClient<SuggestionResponse>(`${base(projectId)}/${a.id}/withdraw`, post({})),
 };

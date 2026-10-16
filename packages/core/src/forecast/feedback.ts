@@ -18,7 +18,7 @@ import { pausedOf, stamp } from './read.js';
 import type { ForecastViewer } from './release.js';
 import { readsFor, scopeOf } from './scope.js';
 
-interface LinkRow {
+export interface LinkRow {
   id: string;
   routed_requirement_id: string | null;
   routed_requirement_seq: number | null;
@@ -44,12 +44,38 @@ async function linksOf(projectId: string): Promise<Map<string, LinkRow>> {
 const untriaged = (s: FeedbackSummary) =>
   (FEEDBACK_UNTRIAGED_PHASES as readonly string[]).includes(s.phase) && !s.snoozed;
 
+/** Every listed item, its route links and its line, read from one simulation. */
+export interface FeedbackLines {
+  asOf: string;
+  items: FeedbackSummary[];
+  links: Map<string, LinkRow>;
+  /** Each item's line by its id. */
+  lines: Map<string, FeedbackForecast>;
+}
+
 export async function readFeedbackForecasts(
   viewer: { userId: string; agency: ActorAgency },
   projectId: string,
   forecastViewer: ForecastViewer | null,
   now: Date = new Date(),
 ): Promise<FeedbackForecasts> {
+  const read = await readFeedbackLines(viewer, projectId, forecastViewer, now);
+  return {
+    ...stamp(read.asOf),
+    projectId,
+    items: read.items.flatMap((s) => {
+      const f = read.lines.get(s.id);
+      return f ? [f] : [];
+    }),
+  };
+}
+
+export async function readFeedbackLines(
+  viewer: { userId: string; agency: ActorAgency },
+  projectId: string,
+  forecastViewer: ForecastViewer | null,
+  now: Date = new Date(),
+): Promise<FeedbackLines> {
   const listed = await listFeedbackAs(viewer, projectId);
   if (!listed.ok) {
     throw new Error(
@@ -119,12 +145,5 @@ export async function readFeedbackForecasts(
     const of = root ? own.get(root) : undefined;
     own.set(s.id, { key: s.key, triage: of?.triage ?? null, delivery: of?.delivery ?? null });
   }
-  return {
-    ...stamp(reads.f.run.asOf),
-    projectId,
-    items: items.flatMap((s) => {
-      const f = own.get(s.id);
-      return f ? [f] : [];
-    }),
-  };
+  return { asOf: reads.f.run.asOf, items, links, lines: own };
 }

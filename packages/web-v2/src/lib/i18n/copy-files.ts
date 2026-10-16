@@ -4,6 +4,7 @@
 
 import agentAccountsCopy from "./copy/agent-accounts.json";
 import agentsCopy from "./copy/agents.json";
+import approvalsCopy from "./copy/approvals.json";
 import attachmentsCopy from "./copy/attachments.json";
 import attentionCopy from "./copy/attention.json";
 import authCopy from "./copy/auth.json";
@@ -34,6 +35,7 @@ import projectHomeCopy from "./copy/project-home.json";
 import projectSettingsCopy from "./copy/project-settings.json";
 import projectStatusCopy from "./copy/project-status.json";
 import projectsCopy from "./copy/projects.json";
+import questionDeskCopy from "./copy/question-desk.json";
 import questionsCopy from "./copy/questions.json";
 import releasesCopy from "./copy/releases.json";
 import requirementsCopy from "./copy/requirements.json";
@@ -62,6 +64,7 @@ import writtenCopy from "./copy/written.json";
 export const COPY_FILES = {
   "lib/i18n/copy/agent-accounts.json": agentAccountsCopy,
   "lib/i18n/copy/agents.json": agentsCopy,
+  "lib/i18n/copy/approvals.json": approvalsCopy,
   "lib/i18n/copy/attachments.json": attachmentsCopy,
   "lib/i18n/copy/attention.json": attentionCopy,
   "lib/i18n/copy/auth.json": authCopy,
@@ -92,6 +95,7 @@ export const COPY_FILES = {
   "lib/i18n/copy/project-settings.json": projectSettingsCopy,
   "lib/i18n/copy/project-status.json": projectStatusCopy,
   "lib/i18n/copy/projects.json": projectsCopy,
+  "lib/i18n/copy/question-desk.json": questionDeskCopy,
   "lib/i18n/copy/questions.json": questionsCopy,
   "lib/i18n/copy/releases.json": releasesCopy,
   "lib/i18n/copy/requirements.json": requirementsCopy,

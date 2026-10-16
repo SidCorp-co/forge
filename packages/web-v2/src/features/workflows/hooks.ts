@@ -9,7 +9,7 @@ import { workflowsApi } from "./api";
 import type { CanvasHealth } from "./canvas/workflow-canvas";
 import { edgeHealthOf, HEALTH_PARAM, type HealthSurface, LAYER_PARAM, layerOf, nodeHealthOf, overlayOn, sourceHref } from "./health";
 import { builtinTemplateWords } from "./template-words";
-import type { DesignDecisionBody, RepinActBody, SystemGraphRef, WorkflowTemplateList } from "./types";
+import type { DesignDecisionBody, DesignDocument, RepinActBody, SystemGraphRef, WorkflowTemplateList } from "./types";
 
 /** Every query key the workflows feature reads under; a key without its workflow is the prefix of every design's. */
 const workflowKeys = {
@@ -96,4 +96,31 @@ export const useRepinPlan = (projectId: string | undefined, workflowId: string |
 export const useRepinAct = (projectId: string, workflowId: string) =>
   useWrite((body: RepinActBody) => workflowsApi.repin(projectId, workflowId, body), {
     touches: [workflowKeys.list(projectId), workflowKeys.design(projectId), workflowKeys.health(projectId), workflowKeys.repins(projectId)],
+  });
+
+/** Every read a design write changes: the list, its design and health, and what a re-pin would take. */
+const designTouches = (projectId: string, workflowId?: string) => [workflowKeys.list(projectId), workflowKeys.design(projectId, workflowId), workflowKeys.health(projectId, workflowId), workflowKeys.repins(projectId)];
+
+/** A new design as a draft; the list reads again so its page finds it. */
+export const useCreateDesign = (projectId: string) =>
+  useWrite((document: DesignDocument) => workflowsApi.create(projectId, document), { touches: [workflowKeys.list(projectId)] });
+
+/** The design written whole over the revision it was read at. */
+export const useWriteDesign = (projectId: string, workflowId: string) =>
+  useWrite((a: { baseRevision: number; document: DesignDocument; issue?: string }) => workflowsApi.write(projectId, workflowId, a.baseRevision, a.document, a.issue), {
+    touches: designTouches(projectId, workflowId),
+  });
+
+/** A draft proposed to its approver; the design core answers with is shown at once. */
+export const useProposeDesign = (projectId: string, workflowId: string) =>
+  useWrite((a: { revision: number; issue?: string }) => workflowsApi.propose(projectId, workflowId, a.revision, a.issue), {
+    shows: workflowKeys.design(projectId, workflowId),
+    touches: designTouches(projectId, workflowId),
+  });
+
+/** The example a template draws, which a new design starts from; a template's example never changes on a running deploy. */
+export const useTemplateExample = (projectId: string, template: { id: string; version: number } | null) =>
+  useQuery({
+    ...readOf(["workflow-template", projectId, template?.id, template?.version], () => workflowsApi.template(projectId, template?.id as string, template?.version as number), 5 * 60_000),
+    select: (read) => read.example,
   });

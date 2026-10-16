@@ -8,11 +8,12 @@ import type {
   PreviewSubject,
   PreviewSubjectKind,
 } from '@forge/contracts/preview';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type PreviewRow, previews } from '../db/schema-previews.js';
+import { issueKeysAndTitles } from '../issues/index.js';
 import { type PreviewSite, previewOrigin } from './domain.js';
-import { OPEN_STATES, runEndedWhy } from './rules.js';
+import { APPROVABLE_STATES, OPEN_STATES, runEndedWhy } from './rules.js';
 import { streamCountsOf } from './tunnel.js';
 
 export async function previewById(id: string): Promise<PreviewRow | null> {
@@ -210,4 +211,49 @@ export function previewsIn(states: readonly PreviewState[]): Promise<PreviewRow[
     .select()
     .from(previews)
     .where(inArray(previews.state, [...states]));
+}
+
+export interface ApprovablePreview {
+  id: string;
+  issueKey: string;
+  issueTitle: string;
+  createdBy: string;
+  /** When it went live, else when it was opened. */
+  since: string;
+}
+
+/**
+ * The issue previews of `projectId` waiting to be approved, oldest first: an issue's preview serving
+ * its run's change, or closed idle with it kept. An idea's or a past build's preview is never
+ * approved down a lane, so none is listed.
+ */
+export async function approvablePreviewsOf(projectId: string): Promise<ApprovablePreview[]> {
+  const rows = await db
+    .select()
+    .from(previews)
+    .where(
+      and(
+        eq(previews.projectId, projectId),
+        eq(previews.subjectKind, 'issue'),
+        inArray(previews.state, [...APPROVABLE_STATES]),
+      ),
+    )
+    .orderBy(asc(previews.createdAt));
+  const issueIds = rows.flatMap((r) => (r.issueId ? [r.issueId] : []));
+  const named = await issueKeysAndTitles(projectId, issueIds);
+  return rows.map((r) => {
+    const issue = r.issueId ? named.get(r.issueId) : undefined;
+    if (!issue) {
+      throw new Error(
+        `previews: issue preview ${r.id} names issue ${r.issueId ?? '(none)'}, which project ${projectId} does not hold`,
+      );
+    }
+    return {
+      id: r.id,
+      issueKey: issue.key,
+      issueTitle: issue.title,
+      createdBy: r.createdBy,
+      since: (r.liveAt ?? r.createdAt).toISOString(),
+    };
+  });
 }

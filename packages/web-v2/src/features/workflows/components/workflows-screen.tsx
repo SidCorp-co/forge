@@ -16,6 +16,7 @@ import { catalogue, systemContextOf, templateIdOf, templateTitle } from "../cata
 import { useWorkflowTemplates, useWorkflows } from "../hooks";
 import { WORKFLOWS_LIST, workflowHref } from "@/lib/routes/workflows";
 import type { WorkflowRecord } from "../types";
+import { NewDesign } from "./new-design";
 import { SystemOverviewRegion } from "./system-overview";
 import { HealthSummaryChips } from "./health-parts";
 import { DesignPill, DesignWaits, ProposedMarker } from "./workflow-parts";
@@ -56,11 +57,13 @@ function DesignItem({ r, slug, templates }: { r: WorkflowRecord; slug: string; t
 
 function Designs({
   all,
+  projectId,
   slug,
   templates,
   narrow,
 }: {
   all: readonly WorkflowRecord[];
+  projectId: string;
   slug: string;
   templates: readonly WorkflowTemplate[];
   /** Beside the overview: two-line rows, no column header. */
@@ -112,6 +115,9 @@ function Designs({
         <span className="flex flex-wrap items-center gap-1.5" data-testid="workflows-filter">
           <ListFilterBar list="workflows" />
         </span>
+        <span className="ml-auto">
+          <NewDesign projectId={projectId} slug={slug} templates={templates} />
+        </span>
       </header>
       <div className="border-t border-line-subtle" data-testid="workflow-list">
         {groups.map((g) => (
@@ -133,7 +139,7 @@ function Designs({
 }
 
 /** No design yet: the owner asks for the first ones here, confirmed before the job that draws them runs. */
-function NoWorkflows({ projectId }: { projectId: string }) {
+function NoWorkflows({ projectId, slug, templates }: { projectId: string; slug: string; templates: readonly WorkflowTemplate[] }) {
   const t = useCopy();
   const state = useOnboardingState(projectId);
   const hint = state.data?.hint;
@@ -152,6 +158,9 @@ function NoWorkflows({ projectId }: { projectId: string }) {
           {error}
         </p>
       ) : null}
+      <div className="mt-3 flex justify-center">
+        <NewDesign projectId={projectId} slug={slug} templates={templates} />
+      </div>
       {dialog}
     </div>
   );
@@ -192,7 +201,7 @@ export function WorkflowsScreen({ projectId, slug, projectName, canEdit = false 
               <div className="flex min-h-0 flex-1 max-lg:flex-col lg:[contain:size]" data-testid="workflows-split">
                 {overview}
                 <aside className="w-100 flex-none overflow-y-auto border-l border-line-subtle bg-surface max-lg:w-full max-lg:overflow-visible max-lg:border-l-0 max-lg:border-t" data-testid="workflows-list-pane">
-                  <Designs all={all} slug={slug} templates={templates} narrow />
+                  <Designs all={all} projectId={projectId} slug={slug} templates={templates} narrow />
                 </aside>
               </div>
             </div>
@@ -203,9 +212,9 @@ export function WorkflowsScreen({ projectId, slug, projectName, canEdit = false 
             <PageTitle>{t("workflows.title")}</PageTitle>
             {overview}
             {all.length === 0 ? (
-              <NoWorkflows projectId={projectId} />
+              <NoWorkflows projectId={projectId} slug={slug} templates={templates} />
             ) : (
-              <Designs all={all} slug={slug} templates={templates} narrow={false} />
+              <Designs all={all} projectId={projectId} slug={slug} templates={templates} narrow={false} />
             )}
           </div>
         );

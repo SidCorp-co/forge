@@ -66,7 +66,7 @@ describe("a feedback item's triage checklist on its page", () => {
   });
 
   it("keeps the checklist under Activity for a reader past triage, not at the top (REQ-43 BC-8)", async () => {
-    const past = { phase: "planned", can: { triage: false, drop: false, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, snooze: false, message: false, tellShipped: false, note: false, attach: false } } as const;
+    const past = { phase: "planned", can: { triage: false, drop: false, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, snooze: false, message: false, tellShipped: false, note: false, attach: false, clarify: false } } as const;
     fakeCore((c: Call) => (c.path === "/projects/p1/feedback/FB-2/checklist" ? { body: { feedbackId: "f2", key: "FB-2", checklists: [readOf(FEEDBACK_TRIAGE_CHECKLIST, record(FEEDBACK_TRIAGE_CHECKLIST, { kind: "bug" }))] } } : HANG));
     const top = renderWithQuery(feedbackDetail(past));
     await screen.findAllByText("Muc FB-2");

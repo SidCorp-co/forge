@@ -1,9 +1,12 @@
 export { runKnowledgeEmbeddingBackfill } from './embedding-backfill.js';
 export {
+  type DraftEmbedding,
   deleteFeedbackEmbedding,
   EMBEDDING_PROVIDER_NOT_CONFIGURED,
+  embedText,
   type ItemEmbeddingStatus,
   itemEmbeddingOf,
+  type NearestItem,
   nearestItems,
   unembeddedCounts,
   writeItemEmbedding,

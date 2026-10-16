@@ -248,7 +248,7 @@ export async function listEntityCommentsAs(
   return { comments: shown, returned: shown.length };
 }
 
-async function egressOfScopes(projectId: string, actor: EntityCommentActor, door: ReadDoor) {
+export async function egressOfScopes(projectId: string, actor: EntityCommentActor, door: ReadDoor) {
   const level = await dataPolicyOf(projectId);
   const reader = { agency: actor.agency, providerBound: door.providerBound };
   return {
@@ -282,7 +282,7 @@ async function decisionFilters(projectId: string, query: ListDecisionsQuery) {
 
 // a person made a decision when it was written in their own name, by no device; the view's author
 // agency reads the same two facts (`entityCommentView`)
-const MADE_BY_A_PERSON = and(
+export const MADE_BY_A_PERSON = and(
   sql`${comments.authorDeviceId} IS NULL`,
   sql`coalesce(${users.kind}, 'human') = 'human'`,
 ) as SQL;
@@ -377,7 +377,7 @@ const joined = <T>(value: T | null, commentId: string): T => {
   return value;
 };
 
-function targetOfRow(
+export function targetOfRow(
   scope: CommentScope,
   r: EntityCommentRow & {
     issueSeq: number | null;

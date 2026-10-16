@@ -300,11 +300,16 @@
         "issues",
         "labels",
         "masterPasses",
+        "mockups",
+        "previews",
+        "projectWorkflowDesigns",
         "projects",
         "releaseApprovals",
-        "requirements"
+        "requirementRevisions",
+        "requirements",
+        "suggestions"
       ],
-      "serves": ["REQ-11", "REQ-14", "automation#needs_you"]
+      "serves": ["REQ-8", "REQ-11", "REQ-14", "automation#needs_you"]
     },
     "devices": {
       "kind": "kernel",
@@ -1230,6 +1235,9 @@
     "agents": {
       "serves": ["REQ-15", "agent-run-standing"]
     },
+    "approvals": {
+      "serves": ["REQ-8", "REQ-11", "REQ-41"]
+    },
     "attachments": {
       "serves": ["via:issues", "via:feedback"]
     },
@@ -1279,7 +1287,9 @@
         "feedback-triage#decide",
         "feedback-triage#decline",
         "feedback-triage#verify",
-        "feedback-triage#verify-ask"
+        "feedback-triage#verify-ask",
+        "feedback-triage#ask",
+        "feedback-triage#dedup"
       ]
     },
     "forecast": {
@@ -1371,6 +1381,9 @@
     "projects": {
       "serves": ["project-onboarding#created"]
     },
+    "question-desk": {
+      "serves": ["REQ-41", "agent-run-standing#waiting_person"]
+    },
     "questions": {
       "serves": ["REQ-2", "agent-run-standing#waiting_person"]
     },
@@ -1382,7 +1395,10 @@
         "REQ-4",
         "REQ-12",
         "requirement-to-delivery#accept",
-        "requirement-lifecycle#dropped"
+        "requirement-lifecycle#dropped",
+        "requirement-lifecycle#rev_draft",
+        "requirement-lifecycle#rev_proposed",
+        "requirement-to-delivery#req-head"
       ]
     },
     "run-control": {
@@ -1427,7 +1443,8 @@
         "design-reconciliation#marked-canvas",
         "design-reconciliation#reconciled-view",
         "workflow-step-health#d-overlay",
-        "workflow-step-health#d-list-summary"
+        "workflow-step-health#d-list-summary",
+        "design-reconciliation#revise-design"
       ]
     }
   },

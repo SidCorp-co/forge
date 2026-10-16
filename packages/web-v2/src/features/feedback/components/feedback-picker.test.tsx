@@ -12,7 +12,7 @@ import { TriageVerbs } from "./feedback-verbs";
 
 afterEach(() => vi.unstubAllGlobals());
 
-const CAN = { triage: true, drop: false, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, snooze: false, message: false, tellShipped: false, note: false, attach: false };
+const CAN = { triage: true, drop: false, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, snooze: false, message: false, tellShipped: false, note: false, attach: false, clarify: false };
 const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
   ({
     id: "f4",

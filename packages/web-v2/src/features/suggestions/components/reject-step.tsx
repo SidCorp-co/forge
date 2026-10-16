@@ -8,7 +8,21 @@ import { useCopy } from "@/lib/i18n/interface-language";
  * assistant strip alike: the reason is required, as core's reject route refuses one left empty, and it is
  * kept on the suggestion and shown in the item's history. Nothing is sent until it is submitted.
  */
-export function RejectStep({ loading = false, onConfirm, onCancel }: { loading?: boolean; onConfirm: (reason: string) => void; onCancel: () => void }) {
+export function RejectStep({
+  loading = false,
+  label,
+  reasonLabel,
+  onConfirm,
+  onCancel,
+}: {
+  loading?: boolean;
+  /** The confirming button, named as the act ("Reject", "Decline", "Return"); Reject by default. */
+  label?: string;
+  /** The reason field's label and placeholder; a rejection's by default. */
+  reasonLabel?: string;
+  onConfirm: (reason: string) => void;
+  onCancel: () => void;
+}) {
   const t = useCopy();
   const [reason, setReason] = useState("");
   return (
@@ -21,15 +35,15 @@ export function RejectStep({ loading = false, onConfirm, onCancel }: { loading?:
       }}
     >
       <Input
-        aria-label={t("requirements.suggestion.rejectWhy")}
-        placeholder={t("requirements.suggestion.rejectWhy")}
+        aria-label={reasonLabel ?? t("requirements.suggestion.rejectWhy")}
+        placeholder={reasonLabel ?? t("requirements.suggestion.rejectWhy")}
         value={reason}
         onChange={(e) => setReason(e.target.value)}
         className="min-w-64 flex-1"
         ref={focusOnMount}
       />
       <Button type="submit" size="sm" disabled={!reason.trim()} loading={loading}>
-        {t("requirements.act.reject")}
+        {label ?? t("requirements.act.reject")}
       </Button>
       <Button type="button" size="sm" variant="ghost" disabled={loading} onClick={onCancel}>
         {t("common.cancel")}

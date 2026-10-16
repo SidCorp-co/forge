@@ -8,13 +8,20 @@
 import {
   type FeedbackDedup,
   feedbackKey,
+  type SimilarFeedbackDraft,
   type SimilarFeedbackResponse,
 } from '@forge/contracts/feedback';
 import { say, sayEn } from '@forge/contracts/said';
 import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { feedback } from '../db/schema-feedback.js';
-import { itemEmbeddingOf, nearestItems, writeItemEmbedding } from '../knowledge/index.js';
+import {
+  embedText,
+  itemEmbeddingOf,
+  type NearestItem,
+  nearestItems,
+  writeItemEmbedding,
+} from '../knowledge/index.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { logger } from '../lib/logger.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
@@ -78,6 +85,41 @@ export async function nearestFeedbackOf(
   return { ran: true, nearest: feedbackKey(hit.seq), similarity: near.similarity };
 }
 
+/** The items `nearest` names, as a viewer may read them, nearest first. */
+async function hitsOf(
+  projectId: string,
+  nearest: readonly NearestItem[],
+  withhold: boolean,
+): Promise<SimilarFeedbackResponse['hits']> {
+  const rows =
+    nearest.length === 0
+      ? []
+      : await db
+          .select()
+          .from(feedback)
+          .where(
+            inArray(
+              feedback.id,
+              nearest.map((n) => n.itemId),
+            ),
+          );
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  return Promise.all(
+    nearest.flatMap((n) => {
+      const item = byId.get(n.itemId);
+      if (!item) return [];
+      return [
+        (async () => ({
+          key: feedbackKey(item.fbSeq),
+          title: withhold ? feedbackKey(item.fbSeq) : item.title,
+          phase: await phaseOfRow(projectId, item),
+          similarity: n.similarity,
+        }))(),
+      ];
+    }),
+  );
+}
+
 export async function similarFeedbackAs(
   viewer: FeedbackActor,
   projectId: string,
@@ -109,32 +151,35 @@ export async function similarFeedbackAs(
     exclude: row.id,
     limit,
   });
-  const rows =
-    nearest.length === 0
-      ? []
-      : await db
-          .select()
-          .from(feedback)
-          .where(
-            inArray(
-              feedback.id,
-              nearest.map((n) => n.itemId),
-            ),
-          );
-  const byId = new Map(rows.map((r) => [r.id, r]));
-  const hits = await Promise.all(
-    nearest.flatMap((n) => {
-      const item = byId.get(n.itemId);
-      if (!item) return [];
-      return [
-        (async () => ({
-          key: feedbackKey(item.fbSeq),
-          title: withhold ? feedbackKey(item.fbSeq) : item.title,
-          phase: await phaseOfRow(projectId, item),
-          similarity: n.similarity,
-        }))(),
-      ];
-    }),
-  );
+  const hits = await hitsOf(projectId, nearest, withhold);
+  return { status: 'ok', model: own.model, hits: shown(hits, 'the similar feedback') };
+}
+
+/**
+ * The filed items most like a draft not yet sent: the draft's head embedded through the same policy
+ * gate an item's own vector passes, compared with the project's stored vectors, nothing written. A
+ * draft the policy withholds, or no provider can embed, answers that status and no hits, never an
+ * empty list that would read as "nothing similar".
+ */
+export async function similarToDraftAs(
+  viewer: FeedbackActor,
+  projectId: string,
+  draft: SimilarFeedbackDraft,
+  door: ReadDoor = {},
+  limit = 5,
+): Promise<SimilarFeedbackResponse> {
+  await requireCan(actorFor(viewer.userId), 'project.read', projectResource(projectId));
+  const { withhold, shown } = feedbackEgress(await dataPolicyOf(projectId), viewer.agency, door);
+  const text = [draft.title, draft.body ?? ''].filter((t) => t.trim()).join('\n');
+  const own = await embedText(projectId, 'feedback', text, 'the feedback draft');
+  if (own.status !== 'embedded') return { status: own.status, message: own.error, hits: [] };
+  const nearest = await nearestItems({
+    projectId,
+    kind: 'feedback',
+    vector: own.vector,
+    model: own.model,
+    limit,
+  });
+  const hits = await hitsOf(projectId, nearest, withhold);
   return { status: 'ok', model: own.model, hits: shown(hits, 'the similar feedback') };
 }

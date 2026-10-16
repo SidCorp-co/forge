@@ -1,11 +1,15 @@
 import type { WorkflowHealth } from "@forge/contracts/workflow-health";
+import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import { apiClient } from "@/lib/api/client";
-import type { DesignDecisionBody, RepinActBody, RepinActResult, RepinPlan, SystemGraph, SystemGraphRef, WorkflowDesign, WorkflowList, WorkflowTemplateList } from "./types";
+import type { DesignDecisionBody, DesignDocument, WorkflowBody, RepinActBody, RepinActResult, RepinPlan, SystemGraph, SystemGraphRef, WorkflowDesign, WorkflowList, WorkflowRecord, WorkflowTemplateList } from "./types";
 
 export const workflowsApi = {
   list: (projectId: string) => apiClient<WorkflowList>(`/projects/${projectId}/workflows`),
   templates: (projectId: string) =>
     apiClient<WorkflowTemplateList>(`/projects/${projectId}/workflow-templates`),
+  /** One template with the built-in example drawn in it, null for a template that has none. */
+  template: (projectId: string, id: string, version: number) =>
+    apiClient<{ template: WorkflowTemplate; example: WorkflowBody | null }>(`/projects/${projectId}/workflow-templates/${encodeURIComponent(id)}/${version}`),
   design: (projectId: string, workflowId: string) =>
     apiClient<WorkflowDesign>(`/projects/${projectId}/workflows/${workflowId}/design`),
   health: (projectId: string, workflowId: string) =>
@@ -25,6 +29,18 @@ export const workflowsApi = {
     apiClient<RepinActResult>(`/projects/${projectId}/workflows/${workflowId}/design/repins`, {
       method: "POST",
       body: JSON.stringify(body),
+    }),
+  /** A new design, written as a draft (`baseRevision: null`); core answers with the workflow as stored. */
+  create: (projectId: string, document: DesignDocument) =>
+    apiClient<WorkflowRecord>(`/projects/${projectId}/workflows`, { method: "POST", body: JSON.stringify({ baseRevision: null, document }) }),
+  /** The whole document written over the revision it was read at; a design past draft is proposed by it, drawn under `issue` when named. */
+  write: (projectId: string, workflowId: string, baseRevision: number, document: DesignDocument, issue?: string) =>
+    apiClient<WorkflowRecord>(`/projects/${projectId}/workflows/${workflowId}`, { method: "PUT", body: JSON.stringify({ baseRevision, document, ...(issue ? { issue } : {}) }) }),
+  /** A draft put in front of its approver at the revision read; `issue` names the issue it is drawn under. */
+  propose: (projectId: string, workflowId: string, revision: number, issue?: string) =>
+    apiClient<WorkflowDesign>(`/projects/${projectId}/workflows/${workflowId}/design/propose`, {
+      method: "POST",
+      body: JSON.stringify({ revision, ...(issue ? { issue } : {}) }),
     }),
   decide: (projectId: string, workflowId: string, body: DesignDecisionBody) =>
     apiClient<WorkflowDesign>(`/projects/${projectId}/workflows/${workflowId}/design/decision`, {

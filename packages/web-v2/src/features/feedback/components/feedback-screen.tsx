@@ -214,6 +214,7 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
             creating ? (
               <FeedbackForm
                 projectId={projectId}
+                slug={slug}
                 onDone={(key) => {
                   setCreating(false);
                   if (key) peek.set(key);

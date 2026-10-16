@@ -196,7 +196,7 @@ export async function readAttention(
       ),
     ],
   };
-  return { rows, requirements, releases, issues, feedback: items };
+  return { rows, requirements, releases, issues, feedback: items, health };
 }
 
 /** Each area's rows that wait on the viewer, newest first: the one filter every Needs you read takes. */

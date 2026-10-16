@@ -1,0 +1,1 @@
+**A BA revises requirements and authors designs in the web.** A revision opens on the agreed head with its reason; criteria take Given/When/Then steps and trace to design steps; designs are created, edited and proposed.

@@ -31,6 +31,7 @@ import { feedbackEgress, type ReadDoor, WITHHELD } from './egress.js';
 import { linkedOf, summaryOf, viewerCanOf } from './list-read.js';
 import { sourceOf } from './relations.js';
 import { reportersOf } from './reporters.js';
+import { clarificationRefusal, redactedRefusal } from './rules.js';
 import { shipNoticeOf } from './ship-notice.js';
 import { recordCheckOf, verifyHeldOf } from './verify-window.js';
 
@@ -113,6 +114,8 @@ export function canOf(i: {
   phase: FeedbackPhase;
   userId: string;
   canSeeNotes: boolean;
+  /** A clarification on the item is still open: at most one is (`rules.ts:clarificationRefusal`). */
+  clarificationOpen: boolean;
 }): Omit<FeedbackView['can'], 'tellShipped'> {
   const { facts, row, phase } = i;
   const approver = holds(facts, 'feedback.approve');
@@ -131,6 +134,11 @@ export function canOf(i: {
     message: approver,
     note: i.canSeeNotes,
     attach: holds(facts, 'project.write') && row.redactedAt === null,
+    // the route's own rule, so the form is offered exactly where a send would be taken
+    clarify:
+      holds(facts, 'project.write') &&
+      redactedRefusal(row.redactedAt) === null &&
+      clarificationRefusal(phase, i.clarificationOpen ? 'open' : null) === null,
   };
 }
 
@@ -209,6 +217,21 @@ function verifiedViewOf(
     byReporter: d.decidedBy === row.reportedBy,
     reason: withhold ? null : d.reason,
     says: { reason: withhold ? null : decisionReasonSaid(d.reason, d.decidedAgency) },
+  };
+}
+
+/** The item's latest clarification: its status, and its prompt and answer where the viewer may read them. */
+function clarificationViewOf(
+  q: Pick<typeof agentQuestions.$inferSelect, 'id' | 'status' | 'steps'> | undefined,
+  withhold: boolean,
+): FeedbackView['clarification'] {
+  if (!q) return null;
+  const step = q.steps.at(-1);
+  return {
+    id: q.id,
+    status: q.status,
+    prompt: withhold ? null : (step?.prompt ?? null),
+    answer: withhold ? null : step && 'answerText' in step ? (step.answerText ?? null) : null,
   };
 }
 
@@ -295,7 +318,6 @@ export async function detailAs(
   ]);
   const acceptReasons = await acceptReasonsOf(decisions.map((d) => d.fromSuggestionId));
   const q = questions[0];
-  const step = q?.steps.at(-1);
   const root = row.duplicateOf ? linked.roots.get(row.duplicateOf) : undefined;
   const shipNotice = await shipNoticeOf(projectId, {
     id: row.id,
@@ -357,22 +379,18 @@ export async function detailAs(
         from: r.from,
       })),
       messages: messageViewsOf(shownMessages, deciders, withhold),
-      clarification: q
-        ? {
-            id: q.id,
-            status: q.status,
-            prompt: withhold ? null : (step?.prompt ?? null),
-            answer: withhold
-              ? null
-              : step && 'answerText' in step
-                ? (step.answerText ?? null)
-                : null,
-          }
-        : null,
+      clarification: clarificationViewOf(q, withhold),
       openSuggestions: open?.n ?? 0,
       shipNotice,
       can: {
-        ...canOf({ facts, row, phase, userId: viewer.userId, canSeeNotes }),
+        ...canOf({
+          facts,
+          row,
+          phase,
+          userId: viewer.userId,
+          canSeeNotes,
+          clarificationOpen: q?.status === 'open',
+        }),
         tellShipped:
           approver &&
           shipNotice?.state === 'not_told' &&

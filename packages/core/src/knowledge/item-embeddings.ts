@@ -55,36 +55,51 @@ async function upsert(
 const surfaceOf = (arc: ItemArc): EgressSurface =>
   'requirementId' in arc ? 'requirement' : 'feedback';
 
-/** Embeds the item's head as its project's data policy allows, replacing whatever row it held. */
-export async function writeItemEmbedding(head: ItemHead): Promise<ItemEmbeddingStatus> {
-  const scope = {
-    level: await dataPolicyOf(head.projectId),
-    surface: surfaceOf(head.arc),
-    what: head.what,
-  };
-  const egress = egressText(scope.level, scope.surface, head.text, scope.what);
+/** A text's vector as its project's data policy allows, or the status that says why there is none. */
+export type DraftEmbedding =
+  | { status: 'embedded'; vector: number[]; model: string; hash: string }
+  | { status: Exclude<ItemEmbeddingStatus, 'embedded'>; error: string; hash: string };
+
+/**
+ * One text embedded through the policy gate every item vector passes: withheld on a project whose
+ * data policy keeps content in place, refused where no provider is configured, failed on a provider
+ * error. Nothing is stored: an item's own row is `writeItemEmbedding`'s.
+ */
+export async function embedText(
+  projectId: string,
+  surface: EgressSurface,
+  text: string,
+  what: string,
+): Promise<DraftEmbedding> {
+  const scope = { level: await dataPolicyOf(projectId), surface, what };
+  const egress = egressText(scope.level, scope.surface, text, scope.what);
   if (!egress.ok) {
-    const hash = createHash('sha256').update(head.text).digest('hex');
-    await upsert(head, hash, { status: 'withheld_by_policy', error: egress.refusal.detail });
-    return 'withheld_by_policy';
+    const hash = createHash('sha256').update(text).digest('hex');
+    return { status: 'withheld_by_policy', error: egress.refusal.detail, hash };
   }
   const hash = createHash('sha256').update(egress.text).digest('hex');
   if (!embeddingsConfigured()) {
-    await upsert(head, hash, {
-      status: 'provider_not_configured',
-      error: EMBEDDING_PROVIDER_NOT_CONFIGURED,
-    });
-    return 'provider_not_configured';
+    return { status: 'provider_not_configured', error: EMBEDDING_PROVIDER_NOT_CONFIGURED, hash };
   }
   try {
     const { vector, model } = await embedWithModel(scope, egress.text);
-    await upsert(head, hash, { status: 'embedded', vector, model });
-    return 'embedded';
+    return { status: 'embedded', vector, model, hash };
   } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
-    await upsert(head, hash, { status: 'failed', error });
-    return 'failed';
+    return { status: 'failed', error: err instanceof Error ? err.message : String(err), hash };
   }
+}
+
+/** Embeds the item's head as its project's data policy allows, replacing whatever row it held. */
+export async function writeItemEmbedding(head: ItemHead): Promise<ItemEmbeddingStatus> {
+  const out = await embedText(head.projectId, surfaceOf(head.arc), head.text, head.what);
+  await upsert(
+    head,
+    out.hash,
+    out.status === 'embedded'
+      ? { status: 'embedded', vector: out.vector, model: out.model }
+      : { status: out.status, error: out.error },
+  );
+  return out.status;
 }
 
 export type ItemKind = 'requirement' | 'feedback';

@@ -1,5 +1,6 @@
 import type { Said } from "@forge/contracts/said";
-import { forecastWait, RULE, say, sentence, waitingOn } from "./said";
+import { RULE, say, sentence, waitingOn } from "./said";
+import { PROGRESS_CASES, progress, work } from "./feedback-progress";
 import type { QueryKey } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { feedbackForecastKey } from "@/features/forecast/hooks";
@@ -8,12 +9,12 @@ import { FeedbackHistory } from "@/features/feedback/components/feedback-detail"
 import { FeedbackForm } from "@/features/feedback/components/feedback-form";
 import { FeedbackItemScreen } from "@/features/feedback/components/feedback-item-screen";
 import { FeedbackPeek } from "@/features/feedback/components/feedback-peek";
+import { FeedbackProgress } from "@/features/feedback/components/feedback-progress";
 import { MessagePreview } from "@/features/feedback/components/feedback-messages";
 import { RetargetEditor } from "@/features/feedback/components/feedback-retarget";
 import { FeedbackScreen } from "@/features/feedback/components/feedback-screen";
 import { DeclineForm, DuplicateForm, SnoozeForm } from "@/features/feedback/components/feedback-verbs";
 import type { FeedbackSummary, FeedbackView } from "@/features/feedback/types";
-import { useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { Seeded as SeededQueries } from "./vi-chrome-requirements";
 import type { ChromeScreen } from "./vi-chrome-screens";
 
@@ -27,7 +28,7 @@ const AT = "2026-10-05T08:00:00.000Z";
 const LAN = say("standing.who.named", { name: "Lan" });
 /** A reason core sends as English beside what it said. */
 const noted = (s: Said) => ({ reason: sentence(s), says: { reason: s } });
-const CAN = { triage: true, verify: true, reopen: true, askVerify: true, redact: true, retarget: true, snooze: true, message: true, tellShipped: false, note: true, attach: true };
+const CAN = { triage: true, verify: true, reopen: true, askVerify: true, redact: true, retarget: true, snooze: true, message: true, tellShipped: false, note: true, attach: true, clarify: true };
 
 const summary = (n: number, over: Partial<FeedbackSummary> = {}): FeedbackSummary =>
   ({
@@ -113,6 +114,9 @@ export const FEEDBACK_SEED: [QueryKey, unknown][] = [
   [["mockups", P, "feedback", ITEM.key], { mockups: [], returned: 0 }],
   [["feedback-choices", P, "requirement"], [{ key: "REQ-1", title: "Dang nhap" }]],
   [["projects"], [{ id: P, role: "admin" }]],
+  [["issues", "standing", "forecast", "feedback", P, ITEM.key], progress(ITEM.key, work({ state: "running", running: 1, total: 1, issues: [{ key: "ISS-4", title: "Sua bang", status: "in_progress" }] }), { kind: "none", reason: "history", waits: null, history: { n: 3, floor: 10 }, until: null })],
+  [["feedback-similar", P, ITEM.key], { status: "ok", hits: [{ key: "FB-9", title: "Bang trong", phase: "planned", similarity: 0.82 }] }],
+  ...PROGRESS_CASES.map((c): [QueryKey, unknown] => [["issues", "standing", "forecast", "feedback", P, c.key], c]),
 ];
 
 const Seeded = ({ children }: { children: ReactNode }) => <SeededQueries data={FEEDBACK_SEED}>{children}</SeededQueries>;
@@ -138,16 +142,17 @@ const feedbackPeek = () => (
   </Seeded>
 );
 
-/** The rail with both of its time rows, ETA and the forecast line, in the language the screen reads in. */
-function FactsWithForecast({ f }: { f: FeedbackView }) {
-  const lang = useInterfaceLanguage();
-  const forecast = { key: f.key, triage: { label: "forecast", asOf: AT, kind: "paused", ...forecastWait(say("standing.who.holderOf", { perm: "project.write" }), say("standing.act.triageIt"), say("feedback.rule.triagerTriages", { phase: "new" })), ref: null, since: null, late: null }, delivery: null };
-  return <LinkedFeedback slug="hop" f={f} forecast={forecast as never} clock={{ lang, now: Date.parse(AT), timeZone: "UTC" }} />;
-}
+/** The progress block at every work state and every reason an item has no date. */
+const feedbackProgress = () => (
+  <Seeded>
+    {PROGRESS_CASES.map((c) => (
+      <FeedbackProgress key={c.key} projectId={P} slug="hop" fbKey={c.key} />
+    ))}
+  </Seeded>
+);
 
 const feedbackFacts = () => (
   <Seeded>
-    <FactsWithForecast f={view({ phase: "new", attentionGroup: "needs_you" })} />
     <LinkedFeedback
       slug="hop"
       f={view({
@@ -183,8 +188,8 @@ const feedbackFacts = () => (
 
 const feedbackFilingForm = () => (
   <Seeded>
-    <FeedbackForm projectId={P} onDone={() => {}} />
-    <FeedbackForm projectId={P} onDone={() => {}} agentReport="0123456789ab" />
+    <FeedbackForm projectId={P} slug="hop" onDone={() => {}} />
+    <FeedbackForm projectId={P} slug="hop" onDone={() => {}} agentReport="0123456789ab" />
   </Seeded>
 );
 
@@ -205,6 +210,7 @@ export const SCREENS: ChromeScreen[] = [
   { name: "Feedback detail", render: feedbackDetail },
   { name: "Feedback peek", render: feedbackPeek },
   { name: "Feedback facts and history", render: feedbackFacts },
+  { name: "Feedback progress", render: feedbackProgress },
   { name: "Feedback triage and message forms", render: feedbackForms },
   { name: "Feedback filing form", render: feedbackFilingForm },
 ];

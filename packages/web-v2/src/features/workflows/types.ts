@@ -120,6 +120,9 @@ export interface WorkflowBody {
   writtenBy: { runId?: string; sessionId?: string; sha?: string };
 }
 
+/** What a design write sends: the version-2 document whole, without the stamps core owns. */
+export type DesignDocument = Omit<WorkflowBody, "version"> & { $schema: string; version: 2 };
+
 interface WorkflowDocument extends WorkflowBody {
   id: string;
   createdAt: string;

@@ -229,7 +229,7 @@ type Form = "dismiss" | "duplicate" | "promote" | null;
  * to the triage door. File and Reopen are the primary act's, and a triaged report's state, triager
  * and outcome are the header's and the rail's, so none is said here a second time (REQ-43 BC-5).
  */
-export function ReportTriage({ r, projectId }: { r: ReportStanding; projectId: string }) {
+export function ReportTriage({ r, projectId, slug }: { r: ReportStanding; projectId: string; slug: string }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const triage = useTriageAgentReport(projectId);
@@ -308,7 +308,7 @@ export function ReportTriage({ r, projectId }: { r: ReportStanding; projectId: s
       ) : null}
       {form === "promote" ? (
         <div className="mt-3">
-          <FeedbackForm projectId={projectId} agentReport={r.id} draft={feedbackDraftOf(r, language)} onDone={() => setForm(null)} />
+          <FeedbackForm projectId={projectId} slug={slug} agentReport={r.id} draft={feedbackDraftOf(r, language)} onDone={() => setForm(null)} />
         </div>
       ) : null}
       <Refusal error={triage.error} />
@@ -343,7 +343,7 @@ export function ReportPeek({
       />
       <ReportBanner r={r} className="px-4.5" />
       <div className="grid gap-5 px-4.5 pb-4 pt-4">
-        {canWrite ? <ReportTriage r={r} projectId={projectId} /> : null}
+        {canWrite ? <ReportTriage r={r} projectId={projectId} slug={slug} /> : null}
         <ReportProperties r={r} slug={slug} />
       </div>
     </PeekPanel>
