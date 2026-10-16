@@ -8,7 +8,6 @@ import { masterCharterPath } from '../projects/master-charter.js';
 import { deviceRoom } from './rooms.js';
 import { roomManager } from './server.js';
 
-/** Boxes bound to the project, sockets the wake went to, and boxes that were themselves listening. */
 export interface WakeReach {
   boxes: number;
   delivered: number;
