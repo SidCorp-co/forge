@@ -11,7 +11,8 @@ export function statusEnteredAtSql(issue: { id: SQL; status: SQL; createdAt: SQL
   )`;
 }
 
-/** When the issue's last job, run or run session ended or gave it back, or it entered its status. */
+/** When the issue's last job, run or run session ended or gave it back, or it entered its status. A run
+ *  that gave the issue back is read at that moment, whatever it went on to work. */
 export function lastWorkedAtSql(issue: {
   id: SQL;
   status: SQL;
@@ -28,8 +29,8 @@ export function lastWorkedAtSql(issue: {
        JOIN agent_sessions lls ON lls.id = ll.session_id
        LEFT JOIN pipeline_runs llr ON llr.id = ll.run_id
       WHERE ll.project_id = ${issue.projectId} AND ll.issue_key = (${issue.issueKey})),
-    (SELECT max(GREATEST(gr.finished_at,
-                         (gr.metadata -> ${RUN_RELEASED_METADATA_KEY}::text ->> (${issue.issueKey}))::timestamptz))
+    (SELECT max(COALESCE((gr.metadata -> ${RUN_RELEASED_METADATA_KEY}::text ->> (${issue.issueKey}))::timestamptz,
+                         gr.finished_at))
        FROM pipeline_runs gr
       WHERE gr.project_id = ${issue.projectId}
         AND gr.metadata -> ${RUN_GROUP_METADATA_KEY}::text @> to_jsonb((${issue.issueKey})::text))

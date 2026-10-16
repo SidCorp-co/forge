@@ -290,6 +290,55 @@ describe('how long an orphan notice says nothing has worked the issue', () => {
     ]);
   });
 
+  it('keeps an issue given back from a run that went on with another issue at its own clock', async () => {
+    const user = await createTestUser(harness.db);
+    const project = await createTestProject(harness.db, user.id);
+    const device = await createTestDevice(harness.db, user.id);
+    await bindTestRunner(harness.db, { projectId: project.id, deviceId: device.id });
+    const given = await anIssueAt({
+      projectId: project.id,
+      createdById: user.id,
+      issSeq: 15,
+      status: 'in_progress',
+      agoMs: 5 * HOUR,
+    });
+    await anIssueAt({
+      projectId: project.id,
+      createdById: user.id,
+      issSeq: 16,
+      status: 'open',
+      agoMs: 5 * HOUR,
+    });
+    await enteredAt(given, 'in_progress', ago(4 * HOUR));
+    await mods.openRunSession({
+      deviceId: device.id,
+      projectId: project.id,
+      issueKeys: ['ISS-15', 'ISS-16'],
+      name: 'run-pair',
+    });
+    await mods.releaseIssueLease({
+      deviceId: device.id,
+      issueKey: 'ISS-15',
+      projectId: project.id,
+    });
+    // Given back two hours ago; the run went on with ISS-16 and finished a minute ago.
+    await harness.db.execute(sql`
+      UPDATE pipeline_runs
+         SET metadata = jsonb_set(metadata, '{runReleasedAt,ISS-15}', to_jsonb(${ago(2 * HOUR + 60_000)}::text)),
+             status = 'completed', finished_at = ${ago(60_000)}
+       WHERE project_id = ${project.id}
+    `);
+    await harness.db.execute(
+      sql`UPDATE issues SET updated_at = ${ago(PAST_GRACE)} WHERE id = ${given}`,
+    );
+
+    await mods.detectOrphanedRunAssertions();
+
+    expect(await noticeBodies(given)).toEqual([
+      'ISS-15 reads In progress, and nothing has worked it for 2 hours: no job, issue run or run session is live for it.',
+    ]);
+  });
+
   it('says so where its last run ended a minute ago, however long ago the row was written', async () => {
     const user = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, user.id);
