@@ -13,6 +13,7 @@ interface SilenceRow {
   runtime_state: string | null;
   metadata: unknown;
   child_lead_ms: number | string | null;
+  run_start_lead_ms: number | string | null;
   one_shot: OneShotSibling[] | null;
 }
 
@@ -43,6 +44,8 @@ export async function loadSilenceLimits(
            (SELECT EXTRACT(EPOCH FROM MAX(COALESCE(c.last_heartbeat_at, c.started_at)) - x.beat) * 1000
               FROM agent_sessions c
              WHERE c.parent_session_id = x.id AND c.status NOT IN (${TERMINAL})) AS child_lead_ms,
+           (SELECT EXTRACT(EPOCH FROM r.started_at - x.beat) * 1000
+              FROM pipeline_runs r WHERE r.id = x.pipeline_run_id) AS run_start_lead_ms,
            (SELECT jsonb_agg(jsonb_build_object(
                      'leadMs', EXTRACT(EPOCH FROM COALESCE(t.last_heartbeat_at, t.started_at, t.updated_at, t.created_at) - x.beat) * 1000,
                      'runnerAnswers', EXISTS (SELECT 1 FROM runners rn
@@ -64,7 +67,12 @@ export async function loadSilenceLimits(
         runtimeState: r.runtime_state,
         metadata: r.metadata,
         childLeadMs: r.child_lead_ms === null ? null : Number(r.child_lead_ms),
-        oneShot: r.one_shot?.map((t) => ({ ...t, leadMs: Number(t.leadMs) })) ?? null,
+        oneShot: r.one_shot
+          ? {
+              runStartLeadMs: Number(r.run_start_lead_ms),
+              sessions: r.one_shot.map((t) => ({ ...t, leadMs: Number(t.leadMs) })),
+            }
+          : null,
       }),
     ]),
   );

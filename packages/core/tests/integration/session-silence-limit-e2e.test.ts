@@ -202,6 +202,21 @@ describe("a session read carries core's own silence limit (ISS-1228 round 9)", (
     expect(await statusOf(id)).toBe('failed');
   });
 
+  it('waits for a young run to reach the heartbeat timeout before reporting the one-shot sweep, as the sweep does', async () => {
+    const { id, runId } = await session('run_session');
+    await harness.db.execute(
+      sql`UPDATE pipeline_runs SET started_at = now() - interval '1 minute' WHERE id = ${runId}`,
+    );
+
+    // Heard four minutes ago on a run begun one minute ago: the sweep may take it two minutes on.
+    const limit = (await get(`/agent-sessions/${id}`)).silenceLimitMs as number;
+    expect(limit).toBeGreaterThan(6 * 60_000 - 10_000);
+    expect(limit).toBeLessThan(6 * 60_000 + 10_000);
+    const { reapOrphanedOneShotRuns } = await import('../../src/pipeline/sweeper.js');
+    await reapOrphanedOneShotRuns(new Date());
+    expect(await statusOf(id)).toBe('running');
+  });
+
   it('keeps ten minutes while the runner answers or a person is asked, and the one-shot sweep leaves the session be', async () => {
     const quiet = await session('run_session');
     const asked = await session('run_session');

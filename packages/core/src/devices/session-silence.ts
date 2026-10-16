@@ -20,7 +20,8 @@ export interface SilenceSubject {
   runtimeState?: string | null;
   metadata?: unknown;
   childLeadMs?: number | null;
-  oneShot?: readonly OneShotSibling[] | null;
+  /** Where its run is a running one-shot run with no job: when that run began, and its live sessions. */
+  oneShot?: { runStartLeadMs: number; sessions: readonly OneShotSibling[] } | null;
 }
 
 /** As the loop monitor's `metadata -> key IS NOT NULL` reads it: the key present, a JSON null included. */
@@ -45,10 +46,11 @@ export function silenceLimitMs(session: SilenceSubject): number | null {
       carries(session.metadata, 'escalation') ||
       carries(session.metadata, 'agentChat'));
   if (heartbeatReaped) limits.push(heartbeatMs);
-  const siblings = session.oneShot ?? [];
-  if (siblings.length > 0 && !siblings.some((t) => t.parked)) {
+  const siblings = session.oneShot?.sessions ?? [];
+  if (session.oneShot && siblings.length > 0 && !siblings.some((t) => t.parked)) {
     limits.push(
       Math.max(
+        session.oneShot.runStartLeadMs + heartbeatMs,
         ...siblings.map(
           (t) => t.leadMs + (t.runnerAnswers ? oneShotDeviceGraceMs(heartbeatMs) : heartbeatMs),
         ),
