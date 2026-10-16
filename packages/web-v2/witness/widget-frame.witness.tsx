@@ -29,7 +29,7 @@ window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
     return json({ title: "Kettle Co. help", greeting: "Hi! Tell us what went wrong and we'll pass it on.", accent: ACCENT, identity: { mode: "anonymous" }, messageMaxChars: 4000 });
   if (path === `/${SITE_KEY}/sessions`) return json({ sessionToken: TOKEN, visitorId: crypto.randomUUID(), conversationId: "c1", expiresAt: at(59) });
   if (path === "/session/messages" && method === "GET") return json({ messages: [], drafts: [] });
-  if (path === "/session/messages") return json({ id: crypto.randomUUID(), role: "visitor", text: "x", at: at(1) });
+  if (path === "/session/messages") return json({ message: { id: crypto.randomUUID(), role: "visitor", text: "x", at: at(1) } }, 201);
   if (path === "/session/drafts/d1/confirm") return json({ feedbackKey: "FB-31", statusUrl: `/w/status/fw_stat_${"x".repeat(43)}` });
   if (path === "/session/stream") {
     const encoder = new TextEncoder();

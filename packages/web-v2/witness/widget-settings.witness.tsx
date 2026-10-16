@@ -67,6 +67,8 @@ function look(theme: "light" | "dark") {
   if (document.documentElement.scrollWidth > width()) wrong.push(`the page scrolls sideways: ${document.documentElement.scrollWidth} px in ${width()}`);
   const embed = document.querySelector("[data-testid=widget-snippet-embed]");
   if (!embed?.textContent?.includes(SITE_KEY)) wrong.push("the embed code does not carry the site key");
+  for (const origin of document.querySelectorAll<HTMLInputElement>("[data-testid=widget-origins] input"))
+    if (origin.scrollWidth > origin.clientWidth) wrong.push(`the origin ${origin.value} is cut off: ${origin.scrollWidth} px in ${origin.clientWidth}`);
   return wrong;
 }
 

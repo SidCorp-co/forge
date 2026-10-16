@@ -30,13 +30,13 @@ function OriginsField({
         {origins.map((origin, i) => (
           // the rows are positions in an edited list, so a row's index is what names it
           // eslint-disable-next-line @eslint-react/no-array-index-key
-          <div key={i} className="flex items-center gap-2">
+          <div key={i} className="flex max-w-xl items-center gap-2">
             <Input
               aria-label={t("integrations.widget.originN", { n: i + 1 })}
               placeholder={t("integrations.widget.originPlaceholder")}
               value={origin}
               onChange={(e) => onChange(origins.map((o, j) => (j === i ? e.target.value : o)))}
-              className="font-mono"
+              className="min-w-0 flex-1 font-mono"
             />
             {origins.length > 1 && (
               <IconButton
