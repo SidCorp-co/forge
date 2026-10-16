@@ -288,7 +288,7 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
  * GitHub's declaration.
  *
  * `core-mediated` since ISS-1074: Forge holds the App credential and makes the call, and an agent
- * asks for it through `forge_source`. It said `none` before
+ * asks for it at `/api/projects/:id/integrations/source/…`. It said `none` before
  * ISS-1074, and the sentence beside it — "the agent works the repository with the runner box's
  * own git credentials" — was true of the TREE and wrong about the repository: reading a diff,
  * reading a failing job's log and writing a review are not git, and every one of them was being
@@ -312,7 +312,13 @@ export const githubIntegration = declareIntegration<GitHubConfig, GitHubSecrets>
     webhookHeader: 'x-github-event',
     webhookSignatureHeader: 'x-hub-signature-256',
     structuredRollback: false,
-    agentPath: { kind: 'core-mediated', tools: ['forge_source'] },
+    agentPath: {
+      kind: 'core-mediated',
+      routes: [
+        '/api/projects/:id/integrations/source/change-requests',
+        '/api/projects/:id/integrations/source/checks',
+      ],
+    },
   },
   schemas: {
     connectionConfig: githubConnectionConfig,
@@ -327,7 +333,7 @@ export const githubIntegration = declareIntegration<GitHubConfig, GitHubSecrets>
     bindingConfigKeys: GITHUB_BINDING_CONFIG_KEYS,
   },
   usage: {
-    hint: "Read and write this repository through `forge_source` — a pull request diff, a failing check run's log, a comment, a new pull request, a review request, a review verdict. Never `gh`: the App is the identity, and no credential reaches this box. Nothing here merges.",
+    hint: "Read and write pull requests at `/api/projects/:id/integrations/source/…` — a diff, a failing check run's log, a comment, a new pull request, reviewers, a verdict. Never `gh`: the App is the identity, and no credential reaches this box. Nothing there merges.",
   },
   presentation: {
     label: 'GitHub',

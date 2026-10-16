@@ -228,7 +228,7 @@ export async function recentOutboundDeliveries(
 
 /**
  * Returns the most recent outbound delivery for an integration regardless of
- * status — used by `forge_coolify_deploy → status` to surface the latest
+ * status — used by the Coolify status and logs routes to surface the latest
  * deployment attempt (including a still-`pending` or `failed` one) alongside
  * its `response.deployment_uuid`.
  */

@@ -51,13 +51,15 @@ function agentPathReasons(path) {
   if (path.kind === 'none') return [];
 
   const reasons = [];
-  if (path.toolsType !== 'array') {
+  if (path.routesType !== 'array') {
     reasons.push(
-      `a ${path.kind} agentPath carries tools: ${path.toolsType ?? 'missing'}, not an array`,
+      `a ${path.kind} agentPath carries routes: ${path.routesType ?? 'missing'}, not an array`,
     );
   }
   if (path.kind === 'permission' && !nonEmptyString(path.permission)) {
-    reasons.push('a permission agentPath names no `permission` that decides who may use its tools');
+    reasons.push(
+      'a permission agentPath names no `permission` that decides who may use its routes',
+    );
   }
   if (path.kind !== 'direct-mcp') return reasons;
 

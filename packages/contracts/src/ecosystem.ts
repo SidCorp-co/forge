@@ -174,7 +174,7 @@ export const ECOSYSTEM_REFUSAL_STATUSES = {
 >;
 
 // The channel tool's actions: reads answer, writes change a channel document.
-const CHANNEL_READS = [
+export const CHANNEL_READS = [
 	"register",
 	"inbox",
 	"outbox",

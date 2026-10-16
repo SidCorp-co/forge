@@ -60,17 +60,27 @@ describe('a /mcp write from a token without the write scope', () => {
   });
 
   it('is refused by name, saying the scope and the tool', async () => {
-    const res = await call(tool('forge_issues', { action: 'update' }));
+    const res = await call(tool('forge_agent_report', { action: 'submit' }));
     expect(res.status).toBe(403);
     const body = (await res.json()) as { message: string; cause: { code: string } };
     expect(body.cause.code).toBe('INSUFFICIENT_SCOPE');
     expect(body.message).toContain("'write' scope");
-    expect(body.message).toContain('forge_issues action=update');
+    expect(body.message).toContain('forge_agent_report action=submit');
+  });
+
+  it("is refused for a write action that shares a name with another tool's read", async () => {
+    // `release` is a channel write; no served tool reads under a name another one writes under.
+    expect((await call(tool('forge_channel', { action: 'release' }))).status).toBe(403);
+    expect((await call(tool('forge_ecosystem', { action: 'link_create' }))).status).toBe(403);
+  });
+
+  it('is refused for a tool this server does not serve, whatever its action', async () => {
+    expect((await call(tool('forge_coolify_deploy', { action: 'status' }))).status).toBe(403);
   });
 
   it('is refused when a read hides in a batch with a write', async () => {
     const res = await call([
-      tool('forge_issues', { action: 'list' }),
+      tool('forge_agent_report', { action: 'list' }),
       tool('forge_agent_report', { action: 'submit' }),
     ]);
     expect(res.status).toBe(403);
@@ -81,12 +91,19 @@ describe('a /mcp write from a token without the write scope', () => {
   });
 
   it('lets a read through', async () => {
-    expect((await call(tool('forge_issues', { action: 'list' }))).status).toBe(200);
+    expect((await call(tool('forge_agent_report', { action: 'list' }))).status).toBe(200);
     expect((await call({ jsonrpc: '2.0', id: 1, method: 'tools/list' })).status).toBe(200);
+  });
+
+  it("lets every served tool's read through, the action-less upload fetch included", async () => {
+    expect((await call(tool('forge_channel', { action: 'inbox' }))).status).toBe(200);
+    expect((await call(tool('forge_ecosystem', { action: 'interface' }))).status).toBe(200);
+    expect((await call(tool('forge_uploads', { data: {} }))).status).toBe(200);
+    expect((await call(tool('forge_uploads', { action: 'fetch', data: {} }))).status).toBe(200);
   });
 
   it('lets a token holding write do the same write', async () => {
     scopes.held = ['read', 'write'];
-    expect((await call(tool('forge_issues', { action: 'update' }))).status).toBe(200);
+    expect((await call(tool('forge_agent_report', { action: 'submit' }))).status).toBe(200);
   });
 });

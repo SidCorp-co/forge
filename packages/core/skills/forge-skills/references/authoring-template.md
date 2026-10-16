@@ -15,7 +15,7 @@ arguments: "documentId"
 <1–2 sentences: what this skill does when invoked and the ONE thing it must get right for this project.>
 
 ## Tools
-- `forge-runner api` for the issue and its comments (+ the project-specific tools: e.g. a vendor MCP, forge_coolify_deploy, Bash)
+- `forge-runner api` for the issue and its comments (+ the project-specific tools: e.g. a vendor MCP, `forge coolify`, Bash)
 
 ## Workflow
 

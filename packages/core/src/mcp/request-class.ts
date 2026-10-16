@@ -1,4 +1,7 @@
+import { CHANNEL_READS } from '@forge/contracts/ecosystem';
+import type { McpToolName } from '@forge/contracts/mcp-tools';
 import type { MiddlewareHandler } from 'hono';
+import { ECOSYSTEM_READS } from '../ecosystem/index.js';
 import type { PatRequestClass } from '../lib/rate-limits.js';
 import type { PrincipalVars } from '../middleware/require-pat.js';
 
@@ -20,22 +23,22 @@ const READ_METHODS: ReadonlySet<string> = new Set([
   'logging/setLevel',
 ]);
 
-const READ_ACTIONS: ReadonlySet<string> = new Set([
-  'list',
-  'get',
-  'design',
-  'search',
-  'status',
-  'state',
-  'logs',
-  'runtime-logs',
-  'applications',
-  'targets',
-  'rollback-images',
-]);
+/**
+ * Each served tool's read actions; every other action is write-class. Typed against the served
+ * names, so a tool added to the registry declares its reads or does not compile, and a name no tool
+ * serves is write-class (it is refused on the server either way).
+ */
+const READ_ACTIONS = {
+  forge_agent_report: new Set(['list', 'get']),
+  forge_uploads: new Set(['fetch']),
+  forge_channel: new Set<string>(CHANNEL_READS),
+  forge_ecosystem: new Set<string>(ECOSYSTEM_READS),
+} satisfies Record<McpToolName, ReadonlySet<string>>;
 
-/** Read-only tools that take no `action` argument, so nothing in their arguments identifies them. */
-const READ_ONLY_TOOLS: ReadonlySet<string> = new Set(['forge_storefront_target']);
+/** The action a tool takes when the call names none — its schema's own default. */
+const DEFAULT_ACTION: Partial<Record<McpToolName, string>> = { forge_uploads: 'fetch' };
+
+const isServed = (name: string): name is McpToolName => Object.hasOwn(READ_ACTIONS, name);
 
 /** The class of one JSON-RPC envelope, whatever shape it turned out to be. */
 function classifyMcpEnvelope(envelope: unknown): PatRequestClass {
@@ -52,16 +55,15 @@ function classifyMcpEnvelope(envelope: unknown): PatRequestClass {
 
   const call = (params ?? {}) as { name?: unknown; arguments?: unknown };
   if (typeof call.name !== 'string') return 'write';
+  if (!isServed(call.name)) return 'write';
   const args = (call.arguments ?? {}) as Record<string, unknown>;
-  if (typeof args.action === 'string') {
-    return READ_ACTIONS.has(args.action) ? 'read' : 'write';
-  }
-  return READ_ONLY_TOOLS.has(call.name) ? 'read' : 'write';
+  const action = args.action ?? DEFAULT_ACTION[call.name];
+  return typeof action === 'string' && READ_ACTIONS[call.name].has(action) ? 'read' : 'write';
 }
 
 /**
  * What in one envelope makes it write-class, named as the caller wrote it
- * (`forge_issues action=update`, a method), so a refusal says which call.
+ * (`forge_agent_report action=submit`, a method), so a refusal says which call.
  */
 function writeCallsOf(envelope: unknown): string[] {
   if (Array.isArray(envelope)) return envelope.flatMap(writeCallsOf);

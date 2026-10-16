@@ -197,7 +197,7 @@ export interface SourceHostFactory {
     config: Record<string, unknown>;
     secrets: Record<string, unknown>;
   }): SourceHost;
-  /** What `forge_source list` reports for this provider's bindings on a project. Contacts no host. */
+  /** What `GET /api/projects/:id/integrations/source` reports for this provider's bindings on a project. Contacts no host. */
   listBindings?(projectId: string): Promise<Array<{ provider: string } & Record<string, unknown>>>;
 }
 

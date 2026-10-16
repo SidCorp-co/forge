@@ -99,11 +99,11 @@ export const sentryIntegration = declareIntegration<SentryConfig, SentrySecrets>
     structuredRollback: false,
     agentPath: {
       kind: 'direct-mcp',
-      tools: ['forge_sentry'],
+      routes: ['/api/projects/:id/integrations/sentry/issues'],
       serverName: 'sentry',
       previewSecrets: { authToken: '[redacted]' },
       justification:
-        'Core mediates the issue read itself: `forge_sentry` answers `list` and `get` against this binding without the credential leaving core. Everything past an issue — events, traces, Seer, the search syntax Sentry keeps adding to — has no core-mediated route, and the hosted https MCP is OAuth-only and unusable against a self-hosted instance, so reaching any of it means the runner executing `npx @sentry/mcp-server` with the token in its environment.',
+        'Core mediates the issue read itself: `GET /api/projects/:id/integrations/sentry/issues` answers the list and one issue against this binding without the credential leaving core. Everything past an issue — events, traces, Seer, the search syntax Sentry keeps adding to — has no core-mediated route, and the hosted https MCP is OAuth-only and unusable against a self-hosted instance, so reaching any of it means the runner executing `npx @sentry/mcp-server` with the token in its environment.',
       buildEntry: (config, secrets) => {
         const authToken = secrets.authToken;
         if (typeof authToken !== 'string' || authToken.length === 0) return null;
@@ -124,7 +124,7 @@ export const sentryIntegration = declareIntegration<SentryConfig, SentrySecrets>
     bindingConfigKeys: SENTRY_BINDING_CONFIG_KEYS,
   },
   usage: {
-    hint: '`forge_sentry` reads this error stream on demand — `list` narrowed by release, window, path or request id, `get` for one issue. It changes nothing in Sentry and files nothing; the scheduled pull is what files.',
+    hint: '`GET /api/projects/:id/integrations/sentry/issues` reads this error stream on demand, narrowed by release, window, path or request id; `/issues/:issueId` reads one. It changes nothing in Sentry and files nothing; the scheduled pull is what files.',
     renderExtra: (config) => {
       const read = readTargets(config as SentryConfig);
       if ('refusal' in read) return `  - refused (${read.refusal.reason}): ${read.refusal.message}`;

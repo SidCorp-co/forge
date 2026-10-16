@@ -1,18 +1,11 @@
 // The one MCP registry: every tool this server serves, keyed by the name contracts declares for it
-// (`@forge/contracts/mcp-tools`). Each tool lives in its module's `tool.ts`, and a provider's in
-// the integration door as `<port>-tool.ts`, never in the adapter. The REST API is the primary door
-// and the forge CLI sits on it; a tool is listed here only where an agent Forge runs needs it and
-// neither covers it.
+// (`@forge/contracts/mcp-tools`). Each tool lives in its module's `tool.ts`. The REST API is the
+// primary door and the forge CLI sits on it. Delivery — deploys, the source host, Sentry, the storefront target — is the CLI's over
+// REST and has no tool here; this server is for the product layer.
 
 import type { McpToolName } from '@forge/contracts/mcp-tools';
 import { forgeAgentReportTool } from '../agent-reports/tool.js';
 import { forgeChannelTool, forgeEcosystemTool } from '../ecosystem/tool.js';
-import {
-  forgeCoolifyDeployTool,
-  forgeSentryTool,
-  forgeSourceTool,
-  forgeStorefrontTargetTool,
-} from '../integration-door/tool.js';
 import type { ContextScopedMcpToolFactory } from '../lib/tool.js';
 import { forgeUploadsTool } from '../uploads/tool.js';
 
@@ -31,11 +24,4 @@ export const MCP_TOOLS = {
   // whose CLI has no REST verbs for them, under the same amnesty `mcp-tools-with-rest-twins`.
   forge_channel: (ctx) => forgeChannelTool(ctx),
   forge_ecosystem: (ctx) => forgeEcosystemTool(ctx),
-  // A core-mediated integration's agent path: the provider credential stays in core. forge_source,
-  // forge_sentry and forge_storefront_target have no REST route; forge_coolify_deploy's deployment and
-  // runtime logs have none, and masters deploy through it until the forge CLI maps the rest.
-  forge_source: (ctx) => forgeSourceTool(ctx),
-  forge_coolify_deploy: (ctx) => forgeCoolifyDeployTool(ctx),
-  forge_sentry: (ctx) => forgeSentryTool(ctx),
-  forge_storefront_target: (ctx) => forgeStorefrontTargetTool(ctx),
 } satisfies Record<McpToolName, ContextScopedMcpToolFactory>;

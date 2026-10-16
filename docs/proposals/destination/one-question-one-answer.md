@@ -64,11 +64,11 @@ product moves. Decide the mechanism once and the keep-list becomes a field.
 
 ## What the keep-list is
 
-Owner rule, 2026-10-04: the REST API is the primary door and the CLI sits on it; MCP keeps only
-the tools an agent needs that neither covers. The registry holds 8: `forge_uploads` (fetch, for the
-transport reason above), the core-mediated integrations whose credential stays in core —
-`forge_source`, `forge_coolify_deploy`, `forge_sentry`, `forge_storefront_target` — and three with
-REST twins, `forge_agent_report` (`/api/agent-reports`), `forge_channel` and `forge_ecosystem`
+Owner rule, 2026-10-04: the REST API is the primary door and the CLI sits on it. Owner rule,
+2026-10-16: delivery leaves MCP entirely — the source host, Coolify, Sentry and the storefront target
+are REST under `/api/projects/:id/integrations/…`, where the credential still stays in core — and MCP
+is for the product layer a BA works in. Of what was there, the registry keeps 4: `forge_uploads`
+(fetch, for the transport reason above) and three with REST twins, `forge_agent_report` (`/api/agent-reports`), `forge_channel` and `forge_ecosystem`
 (`/api/projects/:id/channel|interface|links|builder-runs`; only `forge_ecosystem action=context` has
 no route). No prompt in this repository names those three; they stay while the forge-plugin skills
 call them. Reading and writing the record, memory, knowledge and project settings are REST.

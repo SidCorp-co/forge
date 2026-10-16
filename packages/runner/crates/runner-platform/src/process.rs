@@ -23,7 +23,7 @@ use tokio::process::{Child, Command};
 /// continues. It does NOT bound Bash (own timeout), subagents (a Task is not an
 /// MCP call), or any non-MCP work — so long/legit jobs are never killed. 10 min
 /// sits well above any real single MCP call (Forge data tools are sub-second,
-/// `forge_coolify_deploy` only enqueues, Playwright actions self-bound ~30-60s).
+/// Playwright actions self-bound ~30-60s).
 const DEFAULT_MCP_TOOL_TIMEOUT_MS: &str = "600000";
 
 /// Resolve the `MCP_TOOL_TIMEOUT` to inject when spawning `claude`: `None` when

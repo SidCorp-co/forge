@@ -62,7 +62,7 @@ for (const decl of listIntegrations()) {
       agentPath: {
         present: path !== undefined && path !== null,
         kind: path && path.kind,
-        toolsType: path && typeOf(path.tools),
+        routesType: path && typeOf(path.routes),
         serverName: path && path.serverName,
         permission: path && path.permission,
         justification: path && path.justification,

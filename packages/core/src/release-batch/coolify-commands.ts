@@ -1,9 +1,9 @@
 /**
  * The Coolify deploy commands, for every surface that offers them.
  *
- * The MCP tool (`integration-door/coolify-tool.ts`) and the REST twin under
- * `/api/projects/:projectId/integrations/...` call the same functions rather
- * than restating the branch rules — `deploy` in particular decides whether a
+ * The REST routes under `/api/projects/:projectId/integrations/coolify/…`
+ * (`integration-door/coolify-routes.ts`) and the release batch call the same
+ * functions rather than restating the branch rules — `deploy` in particular decides whether a
  * PROD binding may dispatch, and that decision must not exist twice.
  *
  * Authorisation is the CALLER's job: each surface knows its own principal.
@@ -268,7 +268,7 @@ async function resolveLatestIssueRunId(issueId: string): Promise<string | null> 
 
 /**
  * Whether an issue has reached the post-release stage (`awaiting_release`/`closed`) —
- * the only statuses where an agent-driven `forge_coolify_deploy` call is
+ * the only statuses where an agent-driven Coolify deploy is
  * allowed to touch a prod integration. Every pre-release status returns
  * `false`, so a mid-pipeline deploy (code/fix/testing) is staging-only.
  */

@@ -242,8 +242,8 @@ const epodsystemAdapterMethods: IntegrationAdapterMethods<EpodsystemConfig, Epod
 /**
  * Epodsystem's declaration. `direct-mcp`: the run's MCP config names Forge's relay, which adds the `crmk_` key (REQ-21 BC-2).
  *
- * `tools` is empty although core answers `forge_storefront_target` from the same binding, and that
- * is deliberate — the tool REPORTS the grant rather than being gated by it. Gating it would close a
+ * `routes` is empty although core answers `GET /api/projects/:id/integrations/storefront/target` from
+ * the same binding, and that is deliberate — the route REPORTS the grant rather than being gated by it. Gating it would close a
  * read of the store's own non-secret context that is open today, and the grant is binary, so there
  * is no way to close the credential half and leave the context half open.
  */
@@ -262,7 +262,7 @@ export const epodsystemIntegration = declareIntegration<EpodsystemConfig, Epodsy
     structuredRollback: false,
     agentPath: {
       kind: 'direct-mcp',
-      tools: [],
+      routes: [],
       serverName: 'epodsystem',
       previewSecrets: { apiKey: '[redacted]' },
       justification:
@@ -287,7 +287,7 @@ export const epodsystemIntegration = declareIntegration<EpodsystemConfig, Epodsy
     bindingConfigKeys: EPODSYSTEM_BINDING_CONFIG_KEYS,
   },
   usage: {
-    hint: 'Read store + theme context via `forge_storefront_target` and customize the storefront via the `mcp__epodsystem__*` shop tools. Always build on the DRAFT theme; publishing promotes draft to main.',
+    hint: 'Read store + theme context at `GET /api/projects/:id/integrations/storefront/target` and customize the storefront via the `mcp__epodsystem__*` shop tools. Always build on the DRAFT theme; publishing promotes draft to main.',
   },
   presentation: {
     label: 'Epodsystem',

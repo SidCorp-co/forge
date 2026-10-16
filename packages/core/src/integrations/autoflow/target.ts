@@ -1,5 +1,5 @@
 /**
- * Autoflow's half of `forge_storefront_target`: the site a binding builds and the Backend Builder
+ * Autoflow's half of the storefront target route (`integration-door/storefront-routes.ts`): the site a binding builds and the Backend Builder
  * graph behind it — workflows and the routes they answer — read live through the binding's token.
  */
 

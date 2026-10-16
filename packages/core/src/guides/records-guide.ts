@@ -111,7 +111,8 @@ block names what that criterion was judged against before the next \`criterion\`
   version.
 - \`runtime: <workflow id>@draft:<draft version>\` with \`environment: <key>\` — an unpublished
   storefront draft (an Autoflow workflow), judged on a non-production environment the project
-  document declares. The id and version are the ones \`forge_storefront_target\` reports in
+  document declares. The id and version are the ones
+  \`GET /api/projects/:id/integrations/storefront/target\` reports in
   \`workflows[]\`; \`POST /api/issues/:id/verdicts\` takes the same as the \`identity\` \`{ kind: storefront_draft, workflowId,
   draftVersion, environment }\`. Forge reads the draft back from the project's storefront source
   each time the verdict is read or weighed, never trusting what it read when the verdict was

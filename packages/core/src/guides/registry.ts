@@ -133,7 +133,7 @@ Only when it's reusable by a *different* agent on a *different* issue — a conv
     version: 1,
     body: `## Deploy safety
 
-Deploys via \`forge_coolify_deploy\` are hard to reverse and affect a shared, externally-visible environment — treat every call with the same care as a production push.
+Deploys (\`POST /api/projects/:id/integrations/coolify/deploy\`, or \`forge coolify\`) are hard to reverse and affect a shared, externally-visible environment — treat every call with the same care as a production push.
 
 ### Before you deploy
 - Confirm you're targeting the intended environment. An explicit integration/service scope is a hard filter — don't rely on defaults picking the right one, especially near a release, when it's easy to accidentally redeploy production mid-pipeline instead of a staging target.

@@ -3228,6 +3228,13 @@
       "when": 1826323200000,
       "tag": "0502_an_mcp_client_signs_in_through_the_browser",
       "breakpoints": true
+    },
+    {
+      "idx": 503,
+      "version": "7",
+      "when": 1826409600000,
+      "tag": "0503_delivery_leaves_the_mcp_server",
+      "breakpoints": true
     }
   ]
 }

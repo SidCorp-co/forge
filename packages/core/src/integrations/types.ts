@@ -147,21 +147,26 @@ export interface InboundDispatchResult {
   refusal?: string;
 }
 
+/**
+ * How an agent reaches a provider. `routes` are the core REST routes (a prefix each) that answer it
+ * from the binding's credential, gated by this path's grant; the forge CLI calls them, and core's
+ * MCP server carries no delivery tool.
+ */
 export type AgentPath =
   | { readonly kind: 'none' }
-  | { readonly kind: 'core-mediated'; readonly tools: readonly string[] }
+  | { readonly kind: 'core-mediated'; readonly routes: readonly string[] }
   | {
       /**
-       * Core answers the tools, and holding `permission` on the project decides who may use them,
+       * Core answers the routes, and holding `permission` on the project decides who may use them,
        * agent or person; the binding carries no agent access grant.
        */
       readonly kind: 'permission';
-      readonly tools: readonly string[];
+      readonly routes: readonly string[];
       readonly permission: ProjectPermission;
     }
   | {
       readonly kind: 'direct-mcp';
-      readonly tools: readonly string[];
+      readonly routes: readonly string[];
       /** Base MCP server name. A `multiBinding` provider suffixes it per label. */
       readonly serverName: string;
       /** Why this provider offers no core-mediated route. Read by the declaration checker. */
@@ -188,7 +193,7 @@ export type AgentPath =
 export type AgentPathKind = AgentPath['kind'];
 
 /** The shape every provider that is not `direct-mcp` takes when it does not say otherwise. */
-const CORE_MEDIATED_BY_DEFAULT: AgentPath = { kind: 'core-mediated', tools: [] };
+const CORE_MEDIATED_BY_DEFAULT: AgentPath = { kind: 'core-mediated', routes: [] };
 
 /**
  * Declares which integration surfaces a provider actually supports, so the UI, the connection and
@@ -392,7 +397,7 @@ export interface VerifyBindingTargetArgs {
   held: Record<string, unknown> | null;
 }
 
-/** What `forge_storefront_target` hands a provider's `storefrontTarget`: the one binding it selected. */
+/** What `GET /api/projects/:id/integrations/storefront/target` hands a provider's `storefrontTarget`: the one binding it selected. */
 export interface StorefrontTargetArgs {
   /** The connection the secrets belong to: a provider whose token expires refreshes it there. */
   connectionId: string;
@@ -578,7 +583,7 @@ export interface IntegrationDeclaration<
   /** Absent exactly where nothing is integrated. */
   readonly adapter?: IntegrationAdapterMethods<TConfig, TSecrets>;
   /**
-   * The provider-specific half of `forge_storefront_target`'s answer for one selected binding.
+   * The provider-specific half of the storefront target route's answer for one selected binding.
    * Present exactly on the providers a project's `source.storefront` may name; the tool serves
    * every provider declaring it and names the rest when asked for one.
    */

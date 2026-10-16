@@ -1,8 +1,8 @@
 /**
  * Coolify log READS — the build log of a deployment and the runtime log of a
  * live container. Split out of `adapter.ts` because neither is part of the
- * fixed `IntegrationAdapter` interface: the MCP `forge_coolify_deploy` tool
- * calls them directly, and adapter.ts was over its 500-line budget.
+ * fixed `IntegrationAdapter` interface: the logs routes
+ * (`integration-door/coolify-logs.ts`) call them directly, and adapter.ts was over its 500-line budget.
  */
 
 import { scrubLogText } from '@forge/observability';
