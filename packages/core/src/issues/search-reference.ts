@@ -63,7 +63,12 @@ export const pipelineHealthSchema = z.object({
   stage: z.enum(issueStatuses),
   worker: workerSchema,
   activeSession: z
-    .object({ id: z.string(), status: z.enum(['queued', 'running']), skill: z.string() })
+    .object({
+      id: z.string(),
+      status: z.enum(['queued', 'running']),
+      skill: z.string(),
+      jobType: z.string(),
+    })
     .optional(),
   waitingOn: z
     .object({

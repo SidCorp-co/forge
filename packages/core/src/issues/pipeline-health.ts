@@ -91,6 +91,8 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
       id: activeSession.id,
       status: activeSession.status as 'queued' | 'running',
       skill: skillFromSessionMetadata(activeSession.metadata),
+      jobType:
+        typeof activeSession.metadata?.jobType === 'string' ? activeSession.metadata.jobType : '',
     };
   }
 

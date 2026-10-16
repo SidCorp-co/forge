@@ -121,7 +121,7 @@ describe('classifyPipelineHealthForIssue', () => {
           {
             id: 'sess-1',
             status: 'running',
-            metadata: { skill: 'forge-code' },
+            metadata: { skill: 'forge-code', jobType: 'drive' },
             lane: 'job',
             holds: true,
           },
@@ -131,6 +131,7 @@ describe('classifyPipelineHealthForIssue', () => {
     expect(out.activeSession).toEqual({
       id: 'sess-1',
       status: 'running',
+      jobType: 'drive',
       skill: 'forge-code',
     });
   });

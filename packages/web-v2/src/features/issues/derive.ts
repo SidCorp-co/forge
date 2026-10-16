@@ -1,4 +1,5 @@
 
+import { jobKindLabel } from "@/features/overview/job-kinds";
 import {
 	AUTONOMOUS_LABELS,
 	type AutonomousLabel,
@@ -505,6 +506,14 @@ function prefixKind(body: string): CommentKind {
 
 /** What a comment says it records, as core's own writer stamped it (`comments.announces`). */
 export type CommentAnnouncement = "release";
+
+/** The live step in the dashboard's words: its job kind, else the skill it runs. */
+export function liveStepWords(
+  active: { skill: string; jobType?: string } | null | undefined,
+): string | null {
+  const kind = active?.jobType || active?.skill;
+  return kind ? jobKindLabel(kind) : null;
+}
 
 /**
  * The comment's lifecycle badge. Released is a fact core records when its release flow writes the
