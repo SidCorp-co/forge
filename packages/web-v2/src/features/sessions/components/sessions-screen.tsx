@@ -580,7 +580,6 @@ function SessionIdentity({
 }) {
   const router = useRouter();
   const issueId = row.metadata?.issueId;
-  const kind = sessionKind(row);
   const title = sessionTitle(row) ?? "Untitled session";
   return (
     <div className="min-w-0">
@@ -590,23 +589,16 @@ function SessionIdentity({
           onClick={onOpen}
           className="block w-full text-left focus-visible:outline-none"
         >
-          <span className="fg-body-sm block truncate text-fg hover:text-accent-text">{title}</span>
+          <span title={title} className="fg-body-sm block break-words text-fg hover:text-accent-text sm:truncate">
+            {title}
+          </span>
         </button>
       ) : (
-        <p className="fg-body-sm truncate text-fg">{title}</p>
+        <p title={title} className="fg-body-sm break-words text-fg sm:truncate">
+          {title}
+        </p>
       )}
       <div className="mt-1 flex flex-wrap items-center gap-1.5">
-        {/* Pipeline (job-driven) vs interactive chat — a running chat spawns no
-            job, so it is NOT a wedged runner (ISS-378 AC#4). */}
-        <Tooltip
-          label={
-            kind === "chat"
-              ? "Interactive chat — spawns no pipeline job, so a running chat is not a wedged runner."
-              : "Pipeline session — driven by a pipeline job on a runner."
-          }
-        >
-          <MonoTag hue={kind === "chat" ? "flame" : "cobalt"}>{kind}</MonoTag>
-        </Tooltip>
         {issueId &&
           (slug ? (
             <IssueRefBadge id={issueId} slug={slug} />
@@ -831,9 +823,12 @@ const KIND_TONE = {
   chat: "neutral",
 } as const satisfies Record<AgentSessionKind, "neutral" | "accent" | "cobalt">;
 
+/** A running chat spawns no job, so it is not a wedged runner (ISS-378 AC#4); the kind says which. */
 function SessionKindTag({ row }: { row: SessionRow }) {
   const kind = sessionKind(row);
-  return <Badge tone={KIND_TONE[kind]}>{SESSION_KIND_LABEL[kind]}</Badge>;
+  const tag = <Badge tone={KIND_TONE[kind]}>{SESSION_KIND_LABEL[kind]}</Badge>;
+  if (kind !== "chat") return tag;
+  return <Tooltip label="Interactive chat — spawns no pipeline job, so a running chat is not a wedged runner.">{tag}</Tooltip>;
 }
 
 function SessionMobileRow({

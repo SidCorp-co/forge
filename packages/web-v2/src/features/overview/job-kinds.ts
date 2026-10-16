@@ -13,12 +13,12 @@ export const JOB_KIND_LABEL: Record<JobType, string> = {
   custom: "Custom prompts",
 };
 
-/** A retired kind's stored name in its own words, so a reader is shown no code. */
-function inWords(type: string): string {
+/** A stored name nobody gave words to, in its own words, so a reader is shown no code. */
+export function storedNameInWords(type: string): string {
   const words = type.split(/[_\-\s]+/).filter(Boolean).join(" ").toLowerCase();
   return words === "" ? "Unnamed work" : words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 export function jobKindLabel(type: string): string {
-  return JOB_KIND_LABEL[type as JobType] ?? inWords(type);
+  return JOB_KIND_LABEL[type as JobType] ?? storedNameInWords(type);
 }

@@ -5,7 +5,7 @@ export type StatusDomain = "issue" | "session";
 
 export interface StatusChipProps {
   status: StatusKey;
-  /** When running, append the step the session is on, e.g. `running · implement`, after `label` where one is given. */
+  /** When running, append the step the session is on, e.g. `Running · Issue work`, after `label` where one is given. */
   stage?: string;
   size?: "sm" | "md";
   /** Status vocabulary this chip belongs to. Defaults to `issue`. */
@@ -54,7 +54,7 @@ export function StatusChip({ status, stage, size = "md", domain = "issue", label
   const isRunning = status === "running";
   const isSession = domain === "session";
   const baseLabel = isSession ? (label ?? SESSION_LABELS[status] ?? m.label) : (label ?? m.label);
-  const text = stage && isRunning ? `${label ?? "running"} · ${stage}` : baseLabel;
+  const text = stage && isRunning ? `${baseLabel} · ${stage}` : baseLabel;
   const mono = isSession || (stage && isRunning);
   return (
     <span

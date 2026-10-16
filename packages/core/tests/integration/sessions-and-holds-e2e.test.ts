@@ -83,6 +83,34 @@ describe('readSessionsAndHolds — sessions (ISS-1228)', () => {
     expect(out.holds[0]?.holders[0]?.by).toBe('session');
   });
 
+  // ISS-1228 r9: the Pipeline page said "No issue held" for a step session the issue page showed
+  // running that issue. A job's session is bound to its issue by `metadata.issueId` — the bind
+  // pipeline-health reads — and no issue lease.
+  it("gives a step session the issue its job works, and that issue the session's hold", async () => {
+    const issueId = await fx.seedIssue({ status: 'in_progress' });
+    const step = await session('pipeline', 'running');
+    await fx.db.execute(sql`
+      UPDATE agent_sessions SET metadata = jsonb_build_object('issueId', ${issueId}::text, 'jobType', 'drive')
+       WHERE id = ${step}
+    `);
+    const out = await read();
+    expect(out.sessions.find((s) => s.id === step)?.issues.map((i) => i.issueId)).toEqual([issueId]);
+    expect(out.holds.map((h) => h.issueId)).toEqual([issueId]);
+    expect(out.holds[0]?.holders).toMatchObject([{ by: 'session', sessionId: step, sessionKind: 'pipeline' }]);
+  });
+
+  it('names a run session and its lease once, where it also records the issue', async () => {
+    const issueId = await fx.seedIssue({ status: 'in_progress' });
+    await fx.seedIssueLease(fx.lastSeq, 'running');
+    await fx.db.execute(sql`
+      UPDATE agent_sessions SET metadata = jsonb_build_object('issueId', ${issueId}::text)
+       WHERE kind = 'run_session' AND project_id = ${fx.projectId}
+    `);
+    const out = await read();
+    expect(out.sessions[0]?.issues.map((i) => i.issueId)).toEqual([issueId]);
+    expect(out.holds[0]?.holders).toHaveLength(1);
+  });
+
   it('holds nothing for a lease whose session has ended', async () => {
     await fx.seedIssue({ status: 'in_progress' });
     await fx.seedIssueLease(fx.lastSeq, 'failed');

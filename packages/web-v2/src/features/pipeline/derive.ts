@@ -1,4 +1,5 @@
 import { BLOCKED_TONE, BLOCKED_WORD, lastReported, type SemanticTone, WORKING_WORD } from "@/design/status";
+import { storedNameInWords } from "@/features/overview/job-kinds";
 import { STALLED_THRESHOLD_MS, sessionSilence, sessionTitle } from "@/features/sessions/types";
 import { formatElapsed } from "@/lib/utils/format";
 import type { HeldIssue, Holder, LiveSession, PersonOwes } from "./types";
@@ -13,9 +14,9 @@ const KIND_LABEL: Record<string, string> = {
   pm: "PM",
 };
 
-/** What kind of session this is, in a person's word; an unknown kind is printed as core sent it. */
+/** What kind of session this is, in a person's word; an unknown kind is its stored name in words. */
 export function sessionKindLabel(kind: string): string {
-  return KIND_LABEL[kind] ?? kind;
+  return KIND_LABEL[kind] ?? storedNameInWords(kind);
 }
 
 /** The session's name: its title where it has one, its step kind in words, else its kind. */
@@ -166,15 +167,15 @@ function sessionWhy(session: LiveSession | undefined, now: number): string {
  *  same read's live sessions, which a session holder is said through. */
 export function holderLine(holder: Holder, now: number, sessions: readonly LiveSession[] = []): HolderLine {
   switch (holder.by) {
-    case "session":
+    case "session": {
+      const live = sessions.find((s) => s.id === holder.sessionId);
+      const name = live ? sessionName(live) : holder.sessionTitle?.trim() || sessionKindLabel(holder.sessionKind);
       return {
-        who: `${holder.sessionTitle?.trim() || sessionKindLabel(holder.sessionKind)} on ${holder.deviceName ?? "an unnamed box"}`,
-        why: sessionWhy(
-          sessions.find((s) => s.id === holder.sessionId),
-          now,
-        ),
+        who: `${name} on ${holder.deviceName ?? "an unnamed box"}`,
+        why: sessionWhy(live, now),
         since: ago(holder.since, now) ?? "Start not recorded",
       };
+    }
     case "claim": {
       const until = clock(holder.expiresAt);
       return {

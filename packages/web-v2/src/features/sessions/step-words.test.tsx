@@ -4,7 +4,7 @@
 // drive while spend and Where time goes read the same kinds in words. Every surface that names a
 // session's step kind reads it in the dashboard's words, from the one job-kinds source.
 
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { jobKindLabel } from "@/features/overview/job-kinds";
 import { SessionsList } from "@/features/pipeline/components/sessions-list";
@@ -63,6 +63,7 @@ function step(id: string, title: string, metadata: SessionRow["metadata"]): Sess
 }
 
 const rows: SessionRow[] = [
+  { ...step("s0", "run: ISS-4", { type: "run_session" }), kind: "run_session" },
   step("s1", "release_batch", { jobType: "release_batch" }),
   step("s2", "forge-code: Fix the export", { jobType: "drive", skillName: "forge-code" }),
   step("s3", "review_followup_rework_after_codex_consult", { jobType: "review_followup_rework_after_codex_consult" }),
@@ -72,15 +73,15 @@ afterEach(cleanup);
 
 describe("a session's step kind, wherever it is named", () => {
   it("reads a step session's title in words, keeping the issue it names", () => {
-    expect(sessionTitle(rows[0])).toBe("Releases");
-    expect(sessionTitle(rows[1])).toBe("Issue work: Fix the export");
-    expect(sessionTitle(rows[2])).toBe("Review followup rework after codex consult");
+    expect(sessionTitle(rows[1])).toBe("Releases");
+    expect(sessionTitle(rows[2])).toBe("Issue work: Fix the export");
+    expect(sessionTitle(rows[3])).toBe("Review followup rework after codex consult");
   });
 
   it("prints a title someone wrote, or one with no recorded step, as written", () => {
     expect(sessionTitle(step("s4", "Nightly sweep", { jobType: "drive" }))).toBe("Nightly sweep");
-    expect(sessionTitle({ ...rows[0], metadata: null })).toBe("release_batch");
-    expect(sessionTitle({ ...rows[0], title: null })).toBeNull();
+    expect(sessionTitle({ ...rows[1], metadata: null })).toBe("release_batch");
+    expect(sessionTitle({ ...rows[1], title: null })).toBeNull();
   });
 
   it("names the step a session records in words", () => {
@@ -93,6 +94,27 @@ describe("a session's step kind, wherever it is named", () => {
     expect(container.textContent).not.toMatch(RAW);
     expect(container.textContent).toContain("Releases");
     expect(container.textContent).toContain("Issue work: Fix the export");
+  });
+
+  // ISS-1228 r9: each row also wore its stored kind, `run_session` or `pipeline`, beside the words.
+  it("names a session's kind only in words on the sessions list", () => {
+    const { container } = render(<SessionsScreen scope={{ projectId: "p1" }} />);
+    const said = container.querySelector("table")?.textContent ?? container.textContent ?? "";
+    expect(said).not.toMatch(/run_session|\bpipeline\b/);
+    expect(said).toContain("Run");
+    expect(said).toContain("Step");
+  });
+
+  // ISS-1228 r9: "Review followup rework after codex consult: Rename the …" was cut with nothing to
+  // show the rest, on a phone or anywhere else.
+  it("wraps a session's title below sm and says it whole on hover where it is cut", () => {
+    render(<SessionsScreen scope={{ projectId: "p1" }} />);
+    for (const el of screen.getAllByText("Issue work: Fix the export")) {
+      const tokens = el.className.split(/\s+/);
+      expect(tokens).not.toContain("truncate");
+      expect(tokens).toEqual(expect.arrayContaining(["break-words", "sm:truncate"]));
+      expect(el.getAttribute("title")).toBe("Issue work: Fix the export");
+    }
   });
 
   it("names no step kind by its stored name on the Pipeline page", () => {

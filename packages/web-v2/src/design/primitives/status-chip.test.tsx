@@ -54,7 +54,7 @@ describe("a running chip's step", () => {
     for (const words of Object.values(JOB_KIND_LABEL)) {
       const { container } = render(<StatusChip domain="session" status="running" stage={words} />);
       const text = container.querySelector("[title]") as HTMLElement;
-      expect(text.textContent).toBe(`running · ${words}`);
+      expect(text.textContent, "the status in words, not its stored key").toBe(`Running · ${words}`);
       const room = Number(/max-w-\[(\d+)ch\]/.exec(text.className)?.[1] ?? Number.POSITIVE_INFINITY);
       expect(room, `"${text.textContent}" is cut at ${room} characters`).toBeGreaterThanOrEqual(text.textContent?.length ?? 0);
       cleanup();

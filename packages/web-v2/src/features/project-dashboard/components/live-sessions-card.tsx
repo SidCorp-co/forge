@@ -29,6 +29,7 @@ export interface LiveSessionsCardProps {
 function SessionRow({ session, slug, now }: { session: LiveSession; slug: string; now: number }) {
   const doing = doingOf(session, now);
   const checkIn = checkInOf(session, now);
+  const name = sessionName(session);
   return (
     <li className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2" data-session-id={session.id}>
       <span className="fg-body-sm flex w-[9.5rem] flex-none items-center gap-1.5 text-fg">
@@ -41,9 +42,10 @@ function SessionRow({ session, slug, now }: { session: LiveSession; slug: string
       </span>
       <Link
         href={`/projects/${slug}/agents/${session.id}`}
-        className="fg-body-sm min-w-0 flex-1 basis-40 truncate text-fg hover:underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+        title={name}
+        className="fg-body-sm min-w-0 flex-1 basis-40 break-words text-fg hover:underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] sm:truncate"
       >
-        {sessionName(session)}
+        {name}
       </Link>
       {session.issues.length > 0 && (
         <span className="flex min-w-0 flex-wrap items-baseline gap-1.5">

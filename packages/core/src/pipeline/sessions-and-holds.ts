@@ -1,7 +1,7 @@
 /**
  * One project's live agent sessions and what is held on it (ISS-1228): the pipeline surface's
  * whole read. No new state — sessions are `agent_sessions`, a session's issues are its
- * `issue_leases`, what it waits on is the box's own `device_run_ledger` entry, a claim is
+ * `issue_leases` or its job's `metadata.issueId`, what it waits on is the box's own `device_run_ledger` entry, a claim is
  * `issues.session_context.lease` read by `readClaim`, and a person's hold is the park record.
  */
 
@@ -309,7 +309,21 @@ export async function readSessionsAndHolds(
      WHERE l.project_id = ${projectId}::uuid
        AND s.status NOT IN (${terminalSessions})
        AND ${liveIssue}
-     ORDER BY issues.iss_seq
+    UNION ALL
+    -- A job's session holds its issue by \`metadata.issueId\`, the job lane pipeline-health binds.
+    SELECT s.id, s.title, s.kind, d.name, coalesce(s.started_at, s.created_at),
+           issues.id, issues.iss_seq, issues.title, issues.status
+      FROM agent_sessions s
+      JOIN issues ON issues.project_id = s.project_id AND issues.id::text = s.metadata ->> 'issueId'
+      LEFT JOIN devices d ON d.id = s.device_id
+     WHERE s.project_id = ${projectId}::uuid
+       AND s.status NOT IN (${terminalSessions})
+       AND ${liveIssue}
+       AND NOT EXISTS (
+         SELECT 1 FROM issue_leases l
+          WHERE l.session_id = s.id AND l.issue_key = 'ISS-' || issues.iss_seq -- ISS-992:canonical
+       )
+     ORDER BY iss_seq
   `)) as unknown as LeaseRow[];
 
   const claimRows = (await db.execute(sql`
