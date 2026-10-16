@@ -36,21 +36,16 @@ export function advanceSweep(
 
 const arrivals = new Map<string, SweepPosition>();
 
-/** Before every row: a mark at a time resumes with the rows due at it, which a read at that time
- *  could not take — a row is due only once its grace lies strictly behind `now`. */
+/** A row is due only once its grace lies strictly behind `now`, so a mark resumes at its time. */
 const FIRST_ID = '00000000-0000-0000-0000-000000000000';
 
-/**
- * Where a read in arrival order resumes: past the last row it read, or, with no mark or one ahead of
- * `now` (a clock that moved back), `since` — what came before that is the traversals' to reach.
- */
+/** Past the last row read; with no mark, or one ahead of a clock that moved back, at `since`. */
 export function arrivalMark(key: string, now: Date, since: Date): SweepPosition {
   const mark = arrivals.get(key);
   if (mark && Date.parse(mark.ts) <= now.getTime()) return mark;
   return { ts: since.toISOString(), id: FIRST_ID };
 }
 
-/** A full read stops at its last row; a short one has read everything that arrived before `now`. */
 export function advanceArrivals(
   key: string,
   now: Date,
