@@ -58,7 +58,7 @@ describe("the author's own acts on a waiting suggestion", () => {
     const c = await card();
     fireEvent.click(within(c).getByTestId("suggestion-revise-open"));
     const form = within(c).getByTestId("suggestion-revise");
-    fireEvent.change(within(form).getByLabelText("Tldr"), { target: { value: "Progress, weekly" } });
+    fireEvent.change(within(form).getByLabelText("Summary"), { target: { value: "Progress, weekly" } });
     fireEvent.change(within(form).getByLabelText("What changed, optional"), { target: { value: "weekly, not daily" } });
     fireEvent.click(within(form).getByRole("button", { name: "Save revision" }));
     await waitFor(() => expect(calls.find((x) => x.method === "POST")).toBeDefined());

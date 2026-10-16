@@ -54,7 +54,7 @@ function ReviseForm({ s, busy, onSend, onCancel }: { s: SuggestionView; busy: bo
     >
       {all === null
         ? fields.map((f) => (
-            <Field key={f} label={fieldLabel(f)}>
+            <Field key={f} label={f === "tldr" ? t("requirements.revise.summary") : fieldLabel(f)}>
               <Textarea rows={2} value={words[f] ?? ""} onChange={(e) => setWords((w) => ({ ...w, [f]: e.target.value }))} />
             </Field>
           ))
