@@ -1,1 +1,0 @@
-**A release's Technical view has one navigation, and its counts agree.** Its record folds into the page, "checks" and "criteria" each mean one thing, and a project with no production environment no longer reads "ships on close".

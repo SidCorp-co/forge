@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.248] - 2026-10-16
+
+Release pages read as release notes: a plain title and sentence for each change
+
+### Changed
+
+- **A release reads as a page: a name, a short summary and each change titled.** A release is named once drafted, every user note needs a short title, and the peek is the page shortened.
+
+### Fixed
+
+- **A release's Technical view has one navigation, and its counts agree.** Its record folds into the page, "checks" and "criteria" each mean one thing, and a project with no production environment no longer reads "ships on close".
+
 ## [0.4.0-dev.247] - 2026-10-15
 
 GitLab health check reads only Forge's own webhook and never exposes another service's secret
