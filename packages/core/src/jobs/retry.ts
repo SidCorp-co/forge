@@ -202,19 +202,22 @@ async function notifyCapacityOutage(
  * What to tell an operator about an empty pool, given which of the three ways
  * it is empty.
  */
-function wedgeCopy(
+export function wedgeCopy(
   allLimited: boolean,
   limitedCount: number,
   tooOldCount: number,
   args: { scope: string },
 ): { reason: string; action: string; title: string; summary: string; nextStep: string } {
   const { scope } = args;
+  /** Its runners, as a person counts them: never "all 1" or "all 2". */
+  const its = (n: number, one: string, many: string) =>
+    n === 1 ? `its one runner ${one}` : `${n === 2 ? 'both' : `all ${n}`} of its runners ${many}`;
   if (allLimited) {
     return {
       reason: `all ${limitedCount} capable device(s) are rate-limited or quarantined`,
       action: 'raise the account limit or wait for the provider reset',
       title: `No capacity: every runner for ${scope} is limited`,
-      summary: `Work for ${scope} is paused because all ${limitedCount} of its runners have hit an account limit. Steps keep waiting and resume by themselves once one frees up.`,
+      summary: `Work for ${scope} is paused because ${its(limitedCount, 'has', 'have')} hit an account limit. Steps keep waiting and resume by themselves once one frees up.`,
       nextStep:
         'Raise the account spend/usage limit, or wait for the provider reset — no other action needed.',
     };
@@ -224,7 +227,7 @@ function wedgeCopy(
       reason: `all ${tooOldCount} capable device(s) run a build too old to claim work`,
       action: 'update the runner on those hosts',
       title: `No capacity: every runner for ${scope} is out of date`,
-      summary: `Work for ${scope} is paused because all ${tooOldCount} of its runners are online but running a build older than this server requires, so every claim is refused. This does NOT clear by itself.`,
+      summary: `Work for ${scope} is paused because ${its(tooOldCount, 'is', 'are')} online but running a build older than this server requires, so every claim is refused. This does NOT clear by itself.`,
       nextStep:
         'Update forge-runner on those hosts; work resumes on the next tick once they report the new version.',
     };

@@ -115,7 +115,7 @@ describe("the issue link beside a release sentence opens what that sentence coun
 			evaluated: true,
 			message: CALLER_SENTENCE,
 			reader:
-				"All 2 issues at Awaiting release still owe a verdict on an acceptance criterion, so the automatic release cuts nothing until each verdict they owe is recorded: `ISS-4` owes criteria 1–3; `ISS-5` owes criterion 1.",
+				"Both issues at Awaiting release still owe a verdict on an acceptance criterion, so the automatic release cuts nothing until each verdict they owe is recorded: `ISS-4` owes criteria 1–3; `ISS-5` owes criterion 1.",
 		});
 
 		expect(issueLinks(container)).toEqual([
