@@ -110,12 +110,18 @@ describe('time in a status counts from entering it, not from the last write (rea
     const plain = await editedAfterEntering('needs_info');
     const asked = await editedAfterEntering('needs_info');
     const opened = minutesAgo(4);
-    await harness.db.execute(sql`
+    // The oldest open question to a person counts; a newer one, an answered older one and a
+    // question only a machine can answer do not.
+    const question = (status: string, kind: string, at: Date) => sql`
       INSERT INTO agent_questions (id, project_id, issue_id, status, blocker_kind, steps,
                                    claims_held, workspaces_pinned, dependents, created_at)
-      VALUES (${randomUUID()}, ${projectId}, ${asked}, 'open', 'human', '[]'::jsonb, 0, 0, 0,
-              ${opened.toISOString()})
-    `);
+      VALUES (${randomUUID()}, ${projectId}, ${asked}, ${status}, ${kind}, '[]'::jsonb, 0, 0, 0,
+              ${at.toISOString()})
+    `;
+    await harness.db.execute(question('open', 'human', opened));
+    await harness.db.execute(question('open', 'human', minutesAgo(2)));
+    await harness.db.execute(question('answered', 'human', minutesAgo(5)));
+    await harness.db.execute(question('open', 'machine', minutesAgo(5)));
     const { selectAwaitingInput } = await import('../../src/me/attention-buckets.js');
     const rows = new Map((await selectAwaitingInput(owner)).map((r) => [r.id, r]));
     expect(rows.get(plain)?.waitingSince.toISOString()).toBe(ENTERED.toISOString());
