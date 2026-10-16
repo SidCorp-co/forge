@@ -75,9 +75,10 @@ export function forgeIssuesDescription(refClause: string): string {
     "needs_info on an autonomous project, an agent's closed held at awaiting_release by the " +
     'release gate), rewritten { requested, stored, rule: autonomous_driver | release_gate, ' +
     'waitingKind { sent, stored }, detail }; update answers it whenever it moved the status. ' +
-    'An update that moves a status writes its other fields, labels and relations in the same ' +
-    'transaction: a move refused for any reason (NO_OP for the status already held, an illegal ' +
-    'move, a close with nothing shipped) writes nothing it carried, and the refusal says so.\n' +
+    'An update writes its fields, labels, relations and any status move in one transaction: ' +
+    'refused for any reason (NO_OP for the status already held, an illegal move, a close with ' +
+    'nothing shipped, a relation naming the issue itself, an unknown label) it writes nothing ' +
+    'it carried, and the refusal says so in its first sentence, after its code.\n' +
     "LANDING SHAPE. get and every write's answer carry landingShape (git | outside_git), the one " +
     "field saying where THIS issue's work lands and so what its mark and close accept, and " +
     "declaredLandingShape, the issue's own declaration, null where its project's kind answers " +

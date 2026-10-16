@@ -16,7 +16,7 @@ import {
 import type { ServingReading } from './serving-reading.js';
 
 const range = { start: 'main', cut: 'a'.repeat(40), live: 'production' };
-const ids = (n: number) => ['ISS-1', 'ISS-2'].slice(0, n);
+const ids = (n: number) => ['ISS-1', 'ISS-2', 'ISS-3'].slice(0, n);
 const held = (n: number) =>
   ids(n).map((displayId, i) => ({ issueId: `u-${i}`, displayId, criteria: [1] }));
 const hold = (deviceName: string): RunnerHold => ({
@@ -237,5 +237,59 @@ describe('live bindings naming different release runners', () => {
     const three = sentence(['box-a', 'box-b', 'box-c']);
     expect(three).toContain('name 3 different release runners (box-a, box-b, box-c)');
     expect(three).not.toMatch(/\bTwo\b/);
+  });
+});
+
+// ISS-1229 r11, judge-25: "Every issue at Awaiting release still owes…" was said of one issue.
+describe('every issue at Awaiting release still owing a criterion', () => {
+  const sentence = (n: number) =>
+    releaseBlockerSentence('RELEASE_CRITERIA_UNEARNED', { held: held(n) });
+
+  it('speaks of the one issue, at one', () => {
+    expect(sentence(1)).toBe(
+      'The one issue at Awaiting release still owes a verdict on an acceptance criterion, so the automatic release cuts nothing until each verdict it owes is recorded: `ISS-1` owes criterion 1.',
+    );
+  });
+
+  it('speaks of both issues, at two', () => {
+    expect(sentence(2)).toBe(
+      'Both issues at Awaiting release still owe a verdict on an acceptance criterion, so the automatic release cuts nothing until each verdict they owe is recorded: `ISS-1` owes criterion 1; `ISS-2` owes criterion 1.',
+    );
+  });
+
+  it('counts all of them, from three', () => {
+    expect(sentence(3)).toMatch(/^All 3 issues at Awaiting release still owe a verdict/);
+  });
+
+  it('keeps the general sentence where it names no issue', () => {
+    expect(releaseBlockerSentence('RELEASE_CRITERIA_UNEARNED')).toMatch(/^Every issue at /);
+  });
+});
+
+describe('every issue at the gate held because nothing can read what the project serves', () => {
+  const sentence = (n: number) =>
+    releaseBlockerSentence('RELEASE_RUNTIME_UNROUTED', {
+      missing: 'no probe',
+      held: held(n),
+    });
+
+  it('speaks of the one issue, at one', () => {
+    const one = sentence(1);
+    expect(one).toContain('and the one issue waiting at the gate is held on that one reason');
+    expect(one).toContain('the next sweep weighs it again');
+    expect(one).not.toMatch(/every (waiting )?issue/);
+  });
+
+  it('speaks of both issues, at two', () => {
+    const two = sentence(2);
+    expect(two).toContain('and both issues waiting at the gate are held on that one reason');
+    expect(two).toContain('the next sweep weighs them again');
+    expect(two).not.toMatch(/\ball 2\b/i);
+  });
+
+  it('counts all of them, from three', () => {
+    expect(sentence(3)).toContain(
+      'and all 3 issues waiting at the gate are held on that one reason',
+    );
   });
 });

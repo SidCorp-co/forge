@@ -436,7 +436,7 @@ describe('the hold where a repository read failed', () => {
 
     expect(message).toContain(`cannot be weighed until the repository can be read: ${FIX}.`);
     expect(message.split(FIX)).toHaveLength(2);
-    expect(message.indexOf(FIX)).toBeLessThan(message.indexOf('until each is recorded'));
+    expect(message.indexOf(FIX)).toBeLessThan(message.indexOf('until each verdict it owes'));
     expect(message).toContain('`ISS-1127` owes criteria 1 and 2');
   });
 

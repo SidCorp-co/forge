@@ -83,16 +83,26 @@ async function plainWorld(): Promise<World> {
   return { userId: user.id, projectId: project.id, token: plaintext };
 }
 
-describe('forge_issues update — a status move and the writes beside it are one', () => {
-  async function refusal(token: string, args: Record<string, unknown>): Promise<string> {
-    const err = await mcp(token, args).then(
-      () => null,
-      (e: Error) => e.message,
-    );
-    if (err === null) throw new Error('forge_issues answered where a refusal was owed');
-    return err;
-  }
+async function refusal(token: string, args: Record<string, unknown>): Promise<string> {
+  const err = await mcp(token, args).then(
+    () => null,
+    (e: Error) => e.message,
+  );
+  if (err === null) throw new Error('forge_issues answered where a refusal was owed');
+  return err;
+}
 
+async function whole(id: string) {
+  const rows = await harness.db.execute(sql`
+    SELECT title, plan, release_notes, status, updated_at::text AS updated_at,
+           (SELECT count(*)::int FROM issue_dependencies d
+             WHERE d.from_issue_id = ${id}::uuid OR d.to_issue_id = ${id}::uuid) AS edges
+      FROM issues WHERE id = ${id}::uuid
+  `);
+  return rows[0];
+}
+
+describe('forge_issues update — a status move and the writes beside it are one', () => {
   async function row(id: string) {
     const rows = await harness.db.execute<{ title: string; status: string; updated_at: string }>(
       sql`SELECT title, status, updated_at::text FROM issues WHERE id = ${id}::uuid`,
@@ -126,8 +136,10 @@ describe('forge_issues update — a status move and the writes beside it are one
       data: { status: 'confirmed', title: 'a new title', plan: 'a plan' },
     });
 
-    expect(said).toContain('NO_OP: issue already in status Confirmed (confirmed)');
-    expect(said).toContain('send it again without `data.status` to write the rest');
+    expect(said).toMatch(
+      /^forge_issues refused: Error: NO_OP: The status move was refused, so nothing else this update carried was written: send it again without `data\.status` to write the rest\. /,
+    );
+    expect(said).toContain('Issue already in status Confirmed (confirmed)');
     expect(await row(id)).toEqual(before);
   });
 
@@ -147,16 +159,6 @@ describe('forge_issues update — a status move and the writes beside it are one
     );
     expect(edges.length).toBe(0);
   });
-
-  async function whole(id: string) {
-    const rows = await harness.db.execute(sql`
-      SELECT title, plan, release_notes, status, updated_at::text AS updated_at,
-             (SELECT count(*)::int FROM issue_dependencies d
-               WHERE d.from_issue_id = ${id}::uuid OR d.to_issue_id = ${id}::uuid) AS edges
-        FROM issues WHERE id = ${id}::uuid
-    `);
-    return rows[0];
-  }
 
   const NOTES = { section: 'Fixed', userFacing: 'A thing works.' };
 
@@ -184,8 +186,11 @@ describe('forge_issues update — a status move and the writes beside it are one
         },
       });
 
-      expect(said).toContain(`${code}: `);
-      expect(said).toContain('Nothing else this update carried was written');
+      expect(said).toMatch(
+        new RegExp(
+          `^forge_issues refused: Error: ${code}: The status move was refused, so nothing else this update carried was written: send it again without \`data\\.status\` to write the rest\\. `,
+        ),
+      );
       expect(await whole(id)).toEqual(before);
     },
   );
@@ -233,5 +238,90 @@ describe('forge_issues update — a status move and the writes beside it are one
 
     expect(body.action).toBe('updated');
     expect((await row(id)).title).toBe('a new title');
+  });
+});
+
+describe('forge_issues update — a refusal writes nothing and says so first', () => {
+  it.each([
+    [
+      'a relation naming the issue itself',
+      'SELF_DEP',
+      (_id: string, self: string) => ({ relations: [{ kind: 'blocks', dependsOnId: self }] }),
+    ],
+    [
+      'a relation naming no issue',
+      'relation names an issue that does not exist',
+      () => ({
+        relations: [{ kind: 'blocks', dependsOnId: '00000000-0000-4000-8000-000000000000' }],
+      }),
+    ],
+    [
+      'a label the project does not have',
+      'or more labels do not exist in this project',
+      () => ({ labels: ['no-such-label'] }),
+    ],
+  ] as const)(
+    'an update with no status refused for %s writes none of the fields beside it, and says so first',
+    async (_what, names, extra) => {
+      const w = await plainWorld();
+      const id = await insertIssue(w, 'confirmed');
+      const before = await whole(id);
+
+      const said = await refusal(w.token, {
+        action: 'update',
+        documentId: id,
+        data: { title: 'a new title', plan: 'a plan', ...extra(id, id) },
+      });
+
+      expect(await whole(id)).toEqual(before);
+      expect(said).toMatch(
+        /^forge_issues refused: Error: (?:[A-Z_]+: )*Nothing this update carried was written\. /,
+      );
+      expect(said).toContain(names);
+    },
+  );
+
+  it('a status move refused for a relation naming the issue itself moves nothing and says so first', async () => {
+    const w = await plainWorld();
+    const id = await insertIssue(w, 'open');
+    const before = await whole(id);
+
+    const said = await refusal(w.token, {
+      action: 'update',
+      documentId: id,
+      data: {
+        status: 'confirmed',
+        title: 'a new title',
+        relations: [{ kind: 'blocks', dependsOnId: id }],
+      },
+    });
+
+    expect(said).toMatch(
+      /^forge_issues refused: Error: SELF_DEP: Nothing this update carried was written, the status move included\. /,
+    );
+    expect(await whole(id)).toEqual(before);
+  });
+
+  it('a blocks relation that would close a loop writes none of the fields beside it', async () => {
+    const w = await plainWorld();
+    const id = await insertIssue(w, 'confirmed');
+    const other = await insertIssue(w, 'open');
+    await mcp(w.token, {
+      action: 'update',
+      documentId: other,
+      data: { relations: [{ kind: 'blocks', dependsOnId: id }] },
+    });
+    const before = await whole(id);
+
+    const said = await refusal(w.token, {
+      action: 'update',
+      documentId: id,
+      data: { title: 'a new title', relations: [{ kind: 'blocks', dependsOnId: other }] },
+    });
+
+    expect(await whole(id)).toEqual(before);
+    expect(said).toMatch(
+      /^forge_issues refused: Error: CYCLE_DETECTED: Nothing this update carried was written\. /,
+    );
   });
 });

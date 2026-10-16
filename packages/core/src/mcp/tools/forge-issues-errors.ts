@@ -10,12 +10,40 @@
 import { BodyInvalidError } from '../../body/errors.js';
 import { AttachmentError } from '../../issues/attachment-service.js';
 import { IssueCreateError } from '../../issues/create-service.js';
+import { IssueDependencyError } from '../../issues/dependency-service.js';
 import { LabelResolutionError, PrimaryModuleError } from '../../issues/label-service.js';
 import {
+  IssueUpdateNotFound,
   LandingShapeMarkStands,
   SessionContextDropsUnreadKeys,
   SessionContextExpectMismatch,
 } from '../../issues/update-service.js';
+
+/** A `relations` entry the graph refused, in the words of the issue the update names. */
+function relationRefusal(err: IssueDependencyError): Error {
+  switch (err.code) {
+    case 'SELF_DEP':
+      return new Error(
+        'BAD_REQUEST: SELF_DEP: a relation names the issue itself; `dependsOnId` or `blocksId` names another issue of this project',
+      );
+    case 'NOT_FOUND':
+      return new Error('NOT_FOUND: a relation names an issue that does not exist');
+    case 'CROSS_PROJECT':
+      return new Error(
+        "BAD_REQUEST: CROSS_PROJECT: a relation names an issue of another project; both sides of a relation belong to this issue's project",
+      );
+    case 'CYCLE_DETECTED':
+      return new Error('CYCLE_DETECTED: this blocks relation would close a loop of blocks edges');
+    case 'CYCLE_DEPTH_EXCEEDED':
+      return new Error(
+        'CYCLE_DEPTH_EXCEEDED: the blocks graph behind this relation is deeper than a loop can be checked for',
+      );
+    case 'HOLD_NEEDS_BLOCKS':
+      return new Error(`BAD_REQUEST: ${err.message}`);
+    default:
+      return new Error(err.message);
+  }
+}
 
 export function toMcpIssueError(err: unknown): unknown {
   if (err instanceof BodyInvalidError) return new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
@@ -36,6 +64,10 @@ export function toMcpIssueError(err: unknown): unknown {
     );
   }
   if (err instanceof LandingShapeMarkStands) return new Error(`${err.code}: ${err.message}`);
+  if (err instanceof IssueDependencyError) return relationRefusal(err);
+  if (err instanceof IssueUpdateNotFound) {
+    return new Error('NOT_FOUND: the issue was gone by the time this update reached it');
+  }
   if (err instanceof SessionContextExpectMismatch) {
     return new Error(
       'SESSION_CONTEXT_MISMATCH: `sessionContext` no longer holds the value this write expected — ' +

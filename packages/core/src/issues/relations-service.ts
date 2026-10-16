@@ -73,6 +73,23 @@ export async function applyIssueRelations(
   return pending.map((p) => p.applied);
 }
 
+/**
+ * What `before` writes and every edge, on one transaction: an edge the graph refuses leaves what
+ * `before` wrote unwritten too (ISS-1229 r11). The caller flushes the effects once it commits.
+ */
+export async function writeBesideRelations<T>(
+  writer: IssueDependencyWriter,
+  projectId: string,
+  issueId: string,
+  relations: readonly IssueRelationInput[] | undefined,
+  before: (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => Promise<T>,
+): Promise<{ wrote: T; pending: PendingIssueRelation[] }> {
+  return db.transaction(async (tx) => {
+    const wrote = await before(tx);
+    return { wrote, pending: await writeIssueRelations(writer, projectId, issueId, relations, tx) };
+  });
+}
+
 /** One edge landed, plus what announcing it will need. */
 export type PendingIssueRelation = {
   applied: AppliedIssueRelation;
