@@ -1,115 +1,101 @@
-// The release as its reader reads it (REQ-40), shaped to be read in thirty seconds: where it stands
-// and a plain summary first, then its changes counted at a glance, and each change
-// as one short row in its group. Its contents sit in the facts rail beside it on a wide screen and are
-// one menu at its top where there is no rail. Everything code-level (the full note, the issue and requirement
-// keys, the criteria, the technical note) sits behind the row's own disclosure; the build, the range
-// and the lists an engineer reads are the Technical view's. The same component draws a page in the
-// app (a member, with links into the project) and a frozen page a share link opens (no links, no
-// technical note), so the two cannot read differently.
+// The release as its reader reads it (REQ-40), shaped to be read in under a minute: the summary it was
+// given and its changes counted in one line, its highlights, what an admin must do before it goes
+// out, then each change in its group as its short title, whole, with the sentence that says it in full
+// one click away. The overview holds no criterion, code, commit or path (BC-15): those, the changes
+// nobody using the product sees (BC-16) and the requirements' criteria are the Technical view's. The
+// same component draws a page in the app (a member, with links into the project) and a frozen page a
+// share link opens (no links, no technical note), so the two cannot read differently.
 
-import { RELEASE_CHANGE_GROUPS, type ReleaseGlance, releaseGlanceOf, releaseSummaryOf } from "@forge/contracts/release-digest";
+import { RELEASE_CHANGE_GROUPS, type ReleaseGlance, releaseGlanceOf } from "@forge/contracts/release-digest";
 import type { ReleasePage } from "@forge/contracts/release-page";
-import { type ContentsItem, ContentsMenu, DetailLeadEnd, StatCell, StatRow } from "@/design";
-import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
-import { verifiedSentence } from "../verified";
+import { type ContentsItem, ContentsMenu, DetailLeadEnd, RowItem, RowList, Section } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
+import { Link } from "@/lib/navigation/router";
 import { ANCHOR, type Anchor, GROUP_TITLE, type Reach } from "./release-anchors";
-import { AdminSteps, ChangeGroup, OtherChanges, Requirements, StillOpen } from "./release-groups";
+import { BeforeYouRelease, ChangeGroup, GroupTitle, OtherChanges, Requirements, StillOpen } from "./release-groups";
 import { ReleaseHighlightList } from "./release-highlights";
 import { checksByIssue } from "./release-row-detail";
 import { Technical } from "./release-technical";
 
-/** Where the release stands in one line: live and where, or not yet; who approved; what it proved; whether an admin owes a step. */
-function ReleaseStanding({ page }: { page: ReleasePage }) {
-  const t = useCopy();
-  const time = useTimeFormat();
-  const h = page.header;
-  const a = h.approval;
-  const where = h.environment?.url ?? h.environment?.name ?? null;
-  const live =
-    h.releasedAt && where
-      ? t("releases.page.status.live", { where, at: time.date(h.releasedAt) })
-      : h.releasedAt
-        ? t("releases.page.status.released", { at: time.date(h.releasedAt) })
-        : `${t("releases.page.status.notReleased")}, ${t("releases.page.status.notDeployed")}`;
-  const approval =
-    a.state === "approved" && a.by
-      ? a.at
-        ? t("releases.page.approval.approvedAt", { who: a.by.name, at: time.date(a.at) })
-        : t("releases.page.approval.approved", { who: a.by.name })
-      : t(`releases.page.approval.${a.state}`);
-  // where the range was not read, no admin step is claimed absent: it says it was not checked
-  const admin =
-    page.actionRequired.length > 0 ? null : page.shipped.state === "read" ? t("releases.page.admin.none") : t("releases.page.admin.unchecked");
-  const facts = [live, approval, verifiedSentence(h.verified, t), ...(admin ? [admin] : [])];
+/**
+ * The summary the release was given once drafted (BC-14), whole. A release nobody named shows none:
+ * naming it is its master's to do, and nothing here derives one or apologises for it.
+ */
+function ReleaseSummary({ page }: { page: ReleasePage }) {
+  const summary = page.header.summary;
+  if (!summary) return null;
   return (
-    <p className="flex flex-wrap gap-x-2 gap-y-0.5 text-13 text-muted" data-testid="page-header" data-state={h.state} data-approval={a.state}>
-      {facts.map((f, i) => (
-        <span key={f} className="whitespace-normal">
-          {i > 0 ? <span className="mr-2 text-neutral-8">·</span> : null}
-          {f}
-        </span>
+    <p className="max-w-prose text-16 leading-relaxed text-fg" data-testid="page-summary">
+      {summary}
+    </p>
+  );
+}
+
+/** The changes counted in one line, each count a link to its group. */
+function ReleaseTally({ glance }: { glance: ReleaseGlance }) {
+  const t = useCopy();
+  const counted = RELEASE_CHANGE_GROUPS.filter((g) => glance.groups[g].length > 0);
+  if (counted.length === 0) return null;
+  return (
+    <p className="flex flex-wrap gap-x-4 gap-y-1 text-14 text-muted" data-testid="page-tally">
+      {counted.map((g) => (
+        <a key={g} href={`#${ANCHOR[g]}`} className="hover:text-link" data-testid={`page-tally-${g}`}>
+          {t(`releases.page.tally.${g}`, { n: glance.groups[g].length })}
+        </a>
       ))}
     </p>
   );
 }
 
-/** Two to four plain lines a product owner reads first (`release-digest.ts:releaseSummaryOf`), or why there is none. */
-function ReleaseSummaryLines({ page }: { page: ReleasePage }) {
+/**
+ * What nobody using the product sees (BC-16), and the changes with no note for users yet: counted in
+ * one line on the overview, pointing at the Technical view; listed there.
+ */
+function InternalChanges({ page, glance, reach }: { page: ReleasePage; glance: ReleaseGlance; reach: Reach }) {
   const t = useCopy();
-  const summary = releaseSummaryOf(page);
-  if (summary.state === "refused") {
+  if (page.view === "developer") {
+    const rows = page.internal.changes ?? [];
+    if (rows.length === 0) return null;
     return (
-      <p className="text-14 text-muted" data-testid="page-summary" data-state="refused" data-code={summary.refusal.code}>
-        {t("releases.page.summary.refused", { detail: summary.refusal.detail })}
-      </p>
+      <Section id={ANCHOR.internal} title={<GroupTitle title={t(GROUP_TITLE.internal)} n={rows.length} />} testId="page-internal">
+        <RowList label={t(GROUP_TITLE.internal)}>
+          {rows.map((r) => (
+            <RowItem key={r.issueKey} wrap dim title={r.title} facts={[t(`releases.page.internal.${r.why}`)]} trailing={<span className="font-mono text-12 text-subtle">{r.issueKey}</span>} testId="page-internal-row" rowKey={r.issueKey} />
+          ))}
+        </RowList>
+      </Section>
     );
   }
-  return (
-    <div className="grid gap-1" aria-label={t("releases.page.summary.label")} data-testid="page-summary" data-state="derived">
-      {summary.lines.map((line, i) => (
-        <p key={line} className={i === 0 ? "text-16 font-medium leading-snug text-fg" : "text-14 leading-snug text-fg"}>
-          {line}
-        </p>
-      ))}
-    </div>
-  );
-}
-
-/** The changes counted by group, each cell a link to its group; a group with nothing in it is counted and not linked. */
-function ReleaseCounts({ glance }: { glance: ReleaseGlance }) {
-  const t = useCopy();
-  const cells: { key: Anchor; n: number }[] = [
-    ...RELEASE_CHANGE_GROUPS.map((g) => ({ key: g, n: glance.groups[g].length })),
-    { key: "other", n: glance.other },
-    { key: "open", n: glance.open.issues },
+  const lines = [
+    ...(glance.internal > 0 ? [t(glance.internal === 1 ? "releases.page.internal.one" : "releases.page.internal.many", { n: glance.internal })] : []),
+    ...(glance.other > 0 ? [`${t(glance.other === 1 ? "releases.page.unnoted.one" : "releases.page.unnoted.many", { n: glance.other })}.`] : []),
   ];
+  if (lines.length === 0) return null;
   return (
-    <nav aria-label={t("releases.page.glance.label")} data-testid="page-glance">
-      <StatRow testId="page-glance-row" cellMin={110} cells={cells.length}>
-        {cells.map((c) => (
-          <StatCell
-            key={c.key}
-            label={t(GROUP_TITLE[c.key as keyof typeof GROUP_TITLE])}
-            value={c.n}
-            href={c.n > 0 ? `#${ANCHOR[c.key]}` : undefined}
-            tone={c.key === "open" && c.n > 0 ? "you" : undefined}
-            testId={`page-glance-${c.key}`}
-          />
-        ))}
-      </StatRow>
-    </nav>
+    <p className="flex flex-wrap items-baseline gap-x-2 border-t border-line-subtle pt-3 text-14 text-muted" data-testid="page-internal-line" data-internal={glance.internal} data-unnoted={glance.other}>
+      {lines.map((l) => (
+        <span key={l}>{l}</span>
+      ))}
+      {reach.slug ? (
+        <Link href="?view=developer" className="text-link hover:underline" data-testid="page-internal-see">
+          {t("releases.page.internal.see")}
+        </Link>
+      ) : null}
+    </p>
   );
 }
 
 /** The groups the page draws, in reading order, so its contents name exactly what is on it. */
 function shownGroups(page: ReleasePage, glance: ReleaseGlance): Anchor[] {
+  const developer = page.view === "developer";
   return [
     ...(page.highlights.state === "none" ? [] : (["highlights"] as const)),
-    ...RELEASE_CHANGE_GROUPS.filter((g) => glance.groups[g].length > 0),
-    ...(page.requirements.length > 0 ? (["requirements"] as const) : []),
-    ...(page.knownIssues.length > 0 ? (["open"] as const) : []),
-    ...(page.withoutNotes.length > 0 ? (["other"] as const) : []),
     ...(page.actionRequired.length > 0 ? (["admin"] as const) : []),
+    ...RELEASE_CHANGE_GROUPS.filter((g) => glance.groups[g].length > 0),
+    ...(developer && (page.internal.changes?.length ?? 0) > 0 ? (["internal"] as const) : []),
+    ...(developer && page.requirements.length > 0 ? (["requirements"] as const) : []),
+    ...(developer && page.knownIssues.length > 0 ? (["open"] as const) : []),
+    ...(developer && page.withoutNotes.length > 0 ? (["other"] as const) : []),
     ...(page.technical ? (["technical"] as const) : []),
   ];
 }
@@ -136,28 +122,33 @@ export function ReleaseReader({ page, slug, authed, railContents = false }: { pa
   const glance = releaseGlanceOf(page);
   const checks = checksByIssue(page);
   const reach: Reach = { slug, authed };
+  const developer = page.view === "developer";
   return (
     <div className="grid gap-6" data-testid="release-reader" data-view={page.view} data-tour="rel-users">
       <ContentsMenu items={contents} label={t("releases.page.contents")} testId="page-contents" className={railContents ? "-mb-4 lg:hidden" : "-mb-4"} />
-      <div className="grid gap-3">
-        <ReleaseSummaryLines page={page} />
-        <ReleaseStanding page={page} />
+      <div className="grid gap-3" data-testid="page-header" data-state={page.header.state} data-approval={page.header.approval.state}>
+        <ReleaseSummary page={page} />
+        <ReleaseTally glance={glance} />
       </div>
-      <ReleaseCounts glance={glance} />
-      {/* the summary and the counts are this page's lead: below 1024px the rail follows them */}
+      {/* the summary and the tally are this page's lead: below 1024px the rail follows them */}
       <DetailLeadEnd inset />
       {/* each group's list ends on a hairline; a second one over the next group's title would box it */}
       <div className="grid [&>section]:border-t-0">
         <div id={ANCHOR.highlights} className="scroll-mt-24 pt-5 empty:hidden">
           <ReleaseHighlightList highlights={page.highlights} slug={slug} authed={authed} />
         </div>
+        <BeforeYouRelease page={page} />
         {RELEASE_CHANGE_GROUPS.map((g) => (
           <ChangeGroup key={g} group={g} rows={glance.groups[g]} page={page} checks={checks} reach={reach} />
         ))}
-        <Requirements page={page} slug={slug} />
-        <StillOpen page={page} reach={reach} />
-        <OtherChanges page={page} reach={reach} />
-        <AdminSteps page={page} />
+        <InternalChanges page={page} glance={glance} reach={reach} />
+        {developer ? (
+          <>
+            <Requirements page={page} slug={slug} />
+            <StillOpen page={page} reach={reach} />
+            <OtherChanges page={page} reach={reach} />
+          </>
+        ) : null}
         <Technical page={page} slug={slug} />
       </div>
     </div>

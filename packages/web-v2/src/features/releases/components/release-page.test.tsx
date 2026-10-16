@@ -78,24 +78,19 @@ describe("the release page screen", () => {
     expect(calls.some((c) => c.path === "/projects/p1/releases/0.4.0/page?view=developer")).toBe(true);
   });
 
-  it("lists the page's contents at the top of the rail, above its facts, and keeps the reader's menu for where the rail falls under the page", async () => {
+  it("reads the rail as where it stands, its requirements counted, then the page's contents, keeping the reader's menu for where the rail falls under the page", async () => {
     railBeside();
     serve();
     renderWithQuery(<ReleasePage projectId="p1" slug="forge" version="0.4.0" />);
     const list = await screen.findByTestId("release-rail-contents");
     const rail = screen.getByTestId("facts-rail");
     expect(rail).toContainElement(list);
-    // first in the rail, before the release's own facts
-    expect(list.compareDocumentPosition(within(rail).getByTestId("release-facts")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(within(list).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual([
-      "#release-highlights",
-      "#release-new",
-      "#release-fixed",
-      "#release-requirements",
-      "#release-open",
-      "#release-other",
-      "#release-admin",
-    ]);
+    const order = [...within(rail).getByTestId("release-rail").querySelectorAll("[data-testid='release-standing'], [data-testid='rail-requirements'], [data-testid='release-rail-contents']")].map((e) => e.getAttribute("data-testid"));
+    expect(order).toEqual(["release-standing", "rail-requirements", "release-rail-contents"]);
+    // a requirement is counted in the checks this release meets, never listed criterion by criterion (BC-5)
+    expect(within(rail).getByTestId("rail-requirement")).toHaveTextContent("REQ-40 · Release page2 of its 13 criteria proven");
+    expect(rail).not.toHaveTextContent("Each release has a page.");
+    expect(within(list).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(["#release-highlights", "#release-admin", "#release-new", "#release-fixed"]);
     // the rail's list shows from 1024px, the reader's one-control menu only below it
     expect(list.parentElement?.className).toMatch(/(^|\s)max-lg:hidden(\s|$)/);
     expect(screen.getByTestId("page-contents").className).toMatch(/(^|\s)lg:hidden(\s|$)/);
@@ -118,7 +113,7 @@ describe("the release page screen", () => {
 // serves it: a pass, a short, a pass on an earlier build only, a fail, a proven criterion tracing no
 // code, and one of an issue tracing no requirement. Core counts the record and the page by one rule;
 // the screen draws the header, the panel and the list from those numbers and rows.
-describe("the header, the Proof panel and the list say one count (BC-5)", () => {
+describe("the rail and the Technical view's list say one count (BC-5)", () => {
   const verified = { level: "some_criteria" as const, proven: 4, total: 6, check: null, provider: null };
   const page = releasePage({
     header: { ...releasePage().header, verified },
@@ -148,30 +143,30 @@ describe("the header, the Proof panel and the list say one count (BC-5)", () => 
     },
   });
 
-  it("reads the same proven and total in the header, the panel and the rows of the list", async () => {
+  it("reads the same proven and total in the rail and the rows of the Technical view's list", async () => {
+    window.history.replaceState(null, "", "/projects/forge/releases/0.4.0?view=developer");
     fakeCore((c) => {
       if (c.path === "/projects/p1/releases/0.4.0")
         return { body: { release: { ...DETAIL, verified, criteria: { proven: 4, failing: 1, open: 1, unproven: 0, total: 6 } } } };
       if (c.path === "/projects/p1/releases") return { body: { releases: [] } };
-      if (c.path === "/projects/p1/releases/0.4.0/page?view=user") return { body: page };
+      if (c.path === "/projects/p1/releases/0.4.0/page?view=developer") return { body: { ...page, view: "developer", technical: TECHNICAL } };
       return { body: {} };
     });
     renderWithQuery(<ReleasePage projectId="p1" slug="forge" version="0.4.0" />);
-    const header = await screen.findByTestId("page-header");
-    expect(header).toHaveTextContent("Partly verified: 4 of 6 criteria proven");
-    // said once: the rail beside the reader carries no Proof panel (REQ-43 BC-5)
+    await screen.findByTestId("page-requirements");
+    expect(screen.getByTestId("standing-verified")).toHaveTextContent("4 of 6 checks met");
+    // said once: the rail carries no Proof panel (REQ-43 BC-5)
     expect(screen.queryByTestId("facts-proof")).toBeNull();
-    expect(screen.queryByTestId("release-verified-by")).toBeNull();
     // the requirement's 3 proven rows, the untraced one, and the 2 still open sum to the header's 6
     expect(screen.getByTestId("page-requirement")).toHaveTextContent("Checks met: 3");
     const open = screen.getAllByTestId("page-known-issue").map((r) => Number(within(r).getByText(/^\d+ open$/).textContent?.split(" ")[0]));
     expect(3 + (page.untraced?.proven.length ?? 0) + open.reduce((a, b) => a + b, 0)).toBe(6);
-    // a row opened in a user's view marks each criterion and names no issue number or code (REQ-43 BC-7, BC-10)
+    // a row opened on the Technical view marks each criterion by its number on its issue (REQ-43 BC-7, BC-10)
     const iss2 = screen.getAllByTestId("page-change").find((r) => r.getAttribute("data-row-key") === "ISS-2");
     if (!iss2) throw new Error("no ISS-2 row");
     fireEvent.click(within(iss2).getAllByRole("button")[0]);
     const lines = [...within(iss2).getByTestId("page-row-detail").querySelectorAll("li")].map((l) => l.textContent);
-    expect(lines).toEqual(["✓the reminder names the patient"]);
+    expect(lines).toEqual(["✓#1(REQ-1 BC-2) the reminder names the patient"]);
     const iss1 = screen.getAllByTestId("page-change").find((r) => r.getAttribute("data-row-key") === "ISS-1");
     if (!iss1) throw new Error("no ISS-1 row");
     fireEvent.click(within(iss1).getAllByRole("button")[0]);
@@ -184,7 +179,7 @@ describe("the header, the Proof panel and the list say one count (BC-5)", () => 
     expect(short.className, rule).toMatch(/\btext-warn-11\b/);
     expect(short.textContent, rule).not.toMatch(/[≈✓]/);
     expect(short).toHaveAccessibleName("Short");
-    expect([...proof.querySelectorAll("li")].map((l) => l.textContent)).toEqual(["✓A nurse sees the reminder", "A nurse sees it on a phone"]);
+    expect([...proof.querySelectorAll("li")].map((l) => l.textContent)).toEqual(["✓#1A nurse sees the reminder", "#2A nurse sees it on a phone"]);
   });
 });
 

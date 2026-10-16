@@ -42,7 +42,8 @@ describe("exporting a release page", () => {
     await user.click(await screen.findByRole("menuitem", { name: "Copy Markdown" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
     const md = (writeText.mock.calls[0] as unknown as [string])[0];
-    expect(md).toContain("# Release 0.4.0");
+    expect(md).toContain("# 0.4.0 · Readable releases");
+    expect(md).toContain("- Releases read as pages: Open any release and read what it brings, whole, in under a minute.");
     expect(md).toContain(`(${window.location.origin}/api/attachments/00000000-0000-4000-8000-000000000001/download)`);
     await user.click(screen.getByTestId("release-page-export"));
     expect(await screen.findByRole("menuitem", { name: "Copied" })).toBeTruthy();
@@ -66,7 +67,9 @@ describe("exporting a release page", () => {
     expect(eml).toContain("multipart/alternative");
     const plainPart = eml.split(/--forge-release-\w+\r\n/)[1] ?? "";
     const plain = plainPart.split("\r\n\r\n")[1]?.replace(/\r\n/g, "") ?? "";
-    expect(atob(plain)).toContain("Releases read as pages.");
+    const words = new TextDecoder().decode(Uint8Array.from(atob(plain), (ch) => ch.charCodeAt(0)));
+    expect(words).toContain("0.4.0 · Readable releases");
+    expect(words).toContain("Releases read as pages: Open any release and read what it brings, whole, in under a minute.");
   });
 
   it("offers neither share nor export where the page says the viewer may do neither", () => {

@@ -3214,6 +3214,13 @@
       "when": 1826150400000,
       "tag": "0500_one_github_app_serves_the_instance",
       "breakpoints": true
+    },
+    {
+      "idx": 501,
+      "version": "7",
+      "when": 1826236800000,
+      "tag": "0501_a_drafted_release_holds_its_name",
+      "breakpoints": true
     }
   ]
 }

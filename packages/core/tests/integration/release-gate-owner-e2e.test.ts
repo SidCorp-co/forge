@@ -52,7 +52,7 @@ beforeEach(async () => {
 
 const call = async (
   who: keyof typeof tokens,
-  method: 'GET' | 'POST' | 'PATCH',
+  method: 'GET' | 'POST' | 'PATCH' | 'PUT',
   path: string,
   body?: unknown,
 ) => {
@@ -113,6 +113,13 @@ async function twoSweeps(): Promise<{ nudges: number; first: Doc; second: Doc }>
   return { nudges, first, second };
 }
 
+/** The draft named, so the only work these sweeps owe is the note's (REQ-40 BC-14). */
+const nameDraft = () =>
+  call('owner', 'PUT', `/api/projects/${projectId}/releases/0.1.0/naming`, {
+    name: 'Visit reminders',
+    summary: 'Nurses see a reminder before each visit. Visit reports keep their filter.',
+  });
+
 describe('a draft release held by a missing release note', () => {
   it('waits on the master by name, with the act and the issue, not on the release gate', async () => {
     const key = await keyOf(await fx.insertIssue('awaiting_release', null));
@@ -135,6 +142,7 @@ describe('a draft release held by a missing release note', () => {
 
   it('tells the master once across two sweeps, naming the issue and the write that clears it', async () => {
     const id = await fx.insertIssue('awaiting_release', null);
+    await nameDraft();
     const { nudges, first, second } = await twoSweeps();
     expect(first.work.owed).toBe(1);
     expect(first.work.owedLine).toContain(`with no release note (${await keyOf(id)} ${id})`);
@@ -145,9 +153,14 @@ describe('a draft release held by a missing release note', () => {
 
   it('clears from the owed work and the draft once the master writes the note', async () => {
     const id = await fx.insertIssue('awaiting_release', null);
+    await nameDraft();
     const before = await sweep(null);
     await call('agent', 'PATCH', `/api/issues/${id}`, {
-      releaseNotes: { section: 'Added', userFacing: 'A reminder reaches the nurse' },
+      releaseNotes: {
+        section: 'Added',
+        title: 'Visit reminders',
+        userFacing: 'A reminder reaches the nurse',
+      },
     });
     const after = await sweep(before.work.digest);
     expect(after.work.owed).toBe(0);
@@ -164,8 +177,10 @@ describe('an issue at the gate that carries its note', () => {
   it('is owed nothing, and wakes nobody across two sweeps', async () => {
     const id = await fx.insertIssue('awaiting_release', {
       section: 'Added',
-      userFacing: 'A new thing',
+      title: 'A new thing',
+      userFacing: 'A new thing reaches the nurse.',
     });
+    await nameDraft();
     const { nudges, first } = await twoSweeps();
     expect(first.work.owed).toBe(0);
     expect(first.work.owedLine).not.toContain(id);

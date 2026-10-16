@@ -356,6 +356,9 @@ export interface ReleasePageApproval {
 
 export interface ReleasePageHeader {
 	version: string;
+	/** The release's name and summary, written when it was cut (REQ-40 BC-14); null until written. */
+	name: string | null;
+	summary: string | null;
 	state: ReleaseState;
 	releasedAt: string | null;
 	/** Where it runs: the production environment the release was verified on. */
@@ -407,15 +410,39 @@ export interface ReleasePageRequirement extends ReleasePageCriteria {
 }
 
 /**
- * One user-facing line (`customer-notes.ts:customerNotes` output), with the kind its section reads
- * as and the section itself, so a Security entry groups apart from the fixes its kind folds it into;
- * `section` is null or absent where a row was made before it carried one (a share frozen earlier).
+ * One change as users read it (`customer-notes.ts:customerNotes` output), with the kind its section
+ * reads as and the section itself, so a Security entry groups apart from the fixes its kind folds it
+ * into; `section` is null or absent where a row was made before it carried one (a share frozen
+ * earlier). `line` is the note's short title, or the whole sentence of a note written before titles;
+ * `detail` is the one sentence a titled note says in full (REQ-40 BC-6). Neither is ever cut.
  */
 export interface ReleasePageChange {
 	issueKey: string;
 	kind: WhatsNewKind;
 	section?: WhatsNewSection | null;
 	line: string;
+	detail: string | null;
+	/** The requirement the change's issue traces, for the row's link; null where it traces none. */
+	requirementKey: string | null;
+}
+
+/**
+ * Why a change is internal (REQ-40 BC-16): its note says nobody using the product sees it (`skip`),
+ * or its issue only carries another change of this release out (`carries`, a publish or a contract).
+ */
+export const RELEASE_INTERNAL_WHYS = ["skip", "carries"] as const;
+
+export interface ReleasePageInternal {
+	issueKey: string;
+	title: string;
+	why: (typeof RELEASE_INTERNAL_WHYS)[number];
+}
+
+/** The changes nobody using the product sees: counted on every view, listed only on the developer one. */
+export interface ReleasePageInternals {
+	count: number;
+	/** Null on the user view. */
+	changes: ReleasePageInternal[] | null;
 }
 
 /** What an admin must do once the release lands (BC-7). */
@@ -423,6 +450,8 @@ export const RELEASE_ACTION_KINDS = [
 	"setting",
 	"migration",
 	"permission",
+	/** A step an issue's note names for an admin (`releaseNotes.adminSteps`), said as its writer said it. */
+	"step",
 ] as const;
 export type ReleaseActionKind = (typeof RELEASE_ACTION_KINDS)[number];
 
@@ -430,15 +459,15 @@ export interface ReleaseActionItem {
 	kind: ReleaseActionKind;
 	/** The act, in a sentence an admin follows. */
 	sentence: string;
-	/** The artifact that owes it: a migration file, a permission key, a project-config path. */
-	ref: string;
+	/** The artifact that owes it: a migration file, a permission key, a project-config path; null on a written step. */
+	ref: string | null;
 	issues: string[];
 }
 
 /** Whether an ask's sentence already names its artifact, so a reader prints the ref once. */
 export const actionSaysRef = (
 	a: Pick<ReleaseActionItem, "sentence" | "ref">,
-): boolean => a.sentence.includes(a.ref);
+): boolean => a.ref === null || a.sentence.includes(a.ref);
 
 export interface ReleaseKnownIssue {
 	issueKey: string;
@@ -550,6 +579,7 @@ export interface ReleasePage {
 	untraced: ReleasePageCriteria | null;
 	improvements: ReleasePageChange[];
 	fixes: ReleasePageChange[];
+	internal: ReleasePageInternals;
 	withoutNotes: ReleasePageUnnoted[];
 	actionRequired: ReleaseActionItem[];
 	/** What the commit range was read as: where it is unread, "nothing required" is not claimed. */
@@ -575,11 +605,14 @@ const ProvenSchema = z.strictObject({
 	issueKey: z.string().min(1).nullable().default(null),
 	n: z.number().int().min(1).nullable().default(null),
 });
+// a share frozen before titles holds each change's whole sentence as its line, with no detail
 const ChangeSchema = z.strictObject({
 	issueKey: z.string().min(1),
 	kind: z.enum(WHATS_NEW_KINDS),
 	section: z.enum(WHATS_NEW_SECTIONS).nullable().default(null),
 	line: z.string().min(1),
+	detail: z.string().min(1).nullable().default(null),
+	requirementKey: z.string().min(1).nullable().default(null),
 });
 
 /**
@@ -592,6 +625,8 @@ export const ReleasePageSnapshotSchema = z.strictObject({
 	projectId: z.uuid(),
 	header: z.strictObject({
 		version: z.string().min(1),
+		name: z.string().min(1).nullable().default(null),
+		summary: z.string().min(1).nullable().default(null),
 		state: z.enum(RELEASE_STATES),
 		releasedAt: ISO.nullable(),
 		environment: z
@@ -640,6 +675,10 @@ export const ReleasePageSnapshotSchema = z.strictObject({
 		.default(null),
 	improvements: z.array(ChangeSchema),
 	fixes: z.array(ChangeSchema),
+	/** A share counts its internal changes and never lists them; one frozen before they were counted reads none. */
+	internal: z
+		.strictObject({ count: z.number().int().min(0), changes: z.null() })
+		.default({ count: 0, changes: null }),
 	withoutNotes: z.array(
 		z.strictObject({
 			issueKey: z.string().min(1),
@@ -651,7 +690,7 @@ export const ReleasePageSnapshotSchema = z.strictObject({
 		z.strictObject({
 			kind: z.enum(RELEASE_ACTION_KINDS),
 			sentence: z.string().min(1),
-			ref: z.string().min(1),
+			ref: z.string().min(1).nullable(),
 			issues: z.array(z.string().min(1)),
 		}),
 	),

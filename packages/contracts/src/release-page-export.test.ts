@@ -14,6 +14,8 @@ function page(over: Partial<ReleasePage> = {}): ReleasePage {
 		projectId: "p1",
 		header: {
 			version: "0.4.0",
+			name: "Readable releases",
+			summary: "Every release now opens as a page you can read in a minute. Each change is named in a short title and one sentence.",
 			state: "shipped",
 			releasedAt: "2026-10-09T10:00:00.000Z",
 			environment: { name: "production", url: "https://forge.example" },
@@ -110,11 +112,26 @@ function page(over: Partial<ReleasePage> = {}): ReleasePage {
 			unproven: 0,
 		},
 		improvements: [
-			{ issueKey: "ISS-1", kind: "new", line: "Releases read as pages." },
+			{
+				issueKey: "ISS-1",
+				kind: "new",
+				section: "Added",
+				line: "Releases read as pages",
+				detail: "Open any release and read what it brings, whole.",
+				requirementKey: "REQ-40",
+			},
 		],
 		fixes: [
-			{ issueKey: "ISS-2", kind: "fixed", line: "Dates show correctly." },
+			{
+				issueKey: "ISS-2",
+				kind: "fixed",
+				section: "Fixed",
+				line: "Dates show correctly.",
+				detail: null,
+				requirementKey: null,
+			},
 		],
+		internal: { count: 2, changes: null },
 		withoutNotes: [],
 		actionRequired: [],
 		shipped: {
@@ -143,98 +160,81 @@ function page(over: Partial<ReleasePage> = {}): ReleasePage {
 	};
 }
 
-describe("a release page as Markdown (BC-11)", () => {
+const fix = (line: string) => ({
+	issueKey: "ISS-2",
+	kind: "fixed" as const,
+	section: "Fixed" as const,
+	line,
+	detail: null,
+	requirementKey: null,
+});
+
+describe("a release page as Markdown (BC-11), shaped as its overview (REQ-40)", () => {
 	const md = releasePageMarkdown(page(), { origin: "https://forge.example" });
-	it("heads with the version and the header facts", () => {
-		expect(md).toContain("# Release 0.4.0");
+	it("heads with the version and name, the summary it was cut with, and the header facts", () => {
+		expect(md).toContain(
+			"# 0.4.0 · Readable releases\n\nEvery release now opens as a page you can read in a minute.",
+		);
 		expect(md).toContain(
 			"Released 2026-10-09 · Runs at https://forge.example · Build aaaaaaa",
 		);
-		expect(md).toContain(
-			"2 of 3 criteria proven · Approved by Ada on 2026-10-09",
-		);
+		expect(md).toContain("2 of 3 checks met · Approved by Ada on 2026-10-09");
 	});
-	it("writes each user section, with the clip as an absolute link", () => {
+	it("heads a release cut without a name by its version alone", () => {
+		const bare = page();
+		const out = releasePageMarkdown(
+			page({ header: { ...bare.header, name: null, summary: null } }),
+		);
+		expect(out.startsWith("# Release 0.4.0\n\nReleased")).toBe(true);
+	});
+	it("writes each change in its group as its title and its sentence, whole, with the clip as an absolute link", () => {
 		expect(md).toContain(
 			"## Highlights\n- Every release has a page: Open a release and read what changed. ([Watch the clip](https://forge.example/api/attachments/x/download))",
 		);
-		expect(md).toContain("## Improvements\n- Releases read as pages.");
-		expect(md).toContain("## Fixes\n- Dates show correctly.");
-		// J7 on 0.4.0-dev.222: rows tracing one criterion each said its wording, so they read alike
 		expect(md).toContain(
-			"- Release page (complete): 2 of its 13 criteria proven on this build: Each release has a page (The page shows the version and date; The page names who approved it); The page opens on highlights (Highlights open it, short of its wording)",
+			"## New\n- Releases read as pages: Open any release and read what it brings, whole.",
 		);
-		// a proven criterion of an issue tracing no requirement is listed too, as the header counts it
+		expect(md).toContain("## Fixed\n- Dates show correctly.");
+	});
+	it("counts the requirements' checks and the changes users do not see, and lists no criterion (BC-15, BC-16)", () => {
 		expect(md).toContain(
-			"- Not traced to a requirement: The export opens in a mail client.",
+			"## Requirements\n- Release page (complete): 2 checks met by this release",
 		);
-		expect(md).toContain("- Known issues are listed. (Falls short)");
+		expect(md).toContain(
+			"## Internal\n- 2 changes nobody using the product sees.",
+		);
+		expect(md).toContain(
+			"## Known issues\n- 1 check is not yet met on this build.",
+		);
+		for (const criterion of [
+			"The page shows the version and date.",
+			"Each release has a page.",
+			"The export opens in a mail client.",
+			"Known issues are listed.",
+		])
+			expect(md).not.toContain(criterion);
 	});
-	it("reads a share frozen before a requirement was counted as its rows did", () => {
-		const [req] = page().requirements;
-		if (!req) throw new Error("the fixture carries a requirement");
-		const frozen = releasePageMarkdown(
-			page({ requirements: [{ ...req, business: null }] }),
-		);
-		expect(frozen).toContain(
-			"- Release page (complete): The page shows the version and date.; The page names who approved it.; Highlights open it. (short of its wording) (1 not yet proven on this build)",
-		);
-	});
-	// J10 on 0.4.0-dev.227: each ask printed its migration path twice, in the sentence and after it
-	it("names an ask's artifact once, adding it only where the sentence does not say it", () => {
+	it("says what an admin must do before it goes out, and never the file behind a step", () => {
 		const ref = "packages/core/drizzle/migrations/0495_intake_retry.sql";
 		const asks = releasePageMarkdown(
 			page({
+				header: { ...page().header, state: "awaiting_approval" },
 				actionRequired: [
-					{ kind: "migration", ref, issues: ["ISS-455"], sentence: `Back up the database before this release deploys: ${ref} changes its schema.` },
-					{ kind: "setting", ref: "VAULT_KEY", issues: [], sentence: "Set the vault key." },
+					{ kind: "step", ref: null, issues: ["ISS-1"], sentence: "Start a worker on the deploy queue." },
+					{ kind: "migration", ref, issues: ["ISS-455"], sentence: "Back up the database before this release deploys: it changes the schema." },
 				],
 			}),
 		);
-		expect(asks.split(ref)).toHaveLength(2);
-		expect(asks).toContain("- Set the vault key. (VAULT_KEY)");
+		expect(asks).toContain(
+			"## Before you release\n- Start a worker on the deploy queue.\n- Back up the database",
+		);
+		expect(asks).not.toContain(ref);
 	});
 	it("says an empty Action required reads empty, and never names an issue key", () => {
 		expect(md).toContain("## Action required\nNothing is required of you.");
 		expect(md).not.toContain("ISS-");
 	});
-	it("says a known issue as the criterion's own words and its state, never QA's reason (BC-11)", () => {
-		const both = page({
-			view: "developer",
-			knownIssues: [
-				{
-					issueKey: "ISS-3",
-					requirementKey: "REQ-40",
-					bc: "BC-8",
-					statement: "Known issues are listed.",
-					standing: "fail",
-					reason: "GET /api/x answers 500 on commit 0e697e0",
-					elsewhere: { verdict: "pass", commitSha: "c".repeat(40) },
-				},
-				{
-					issueKey: "ISS-4",
-					requirementKey: null,
-					bc: null,
-					statement: "A developer view adds notes.",
-					standing: "not_judged",
-					reason: null,
-					elsewhere: null,
-				},
-			],
-		});
-		for (const out of [
-			releasePageMarkdown(both),
-			releasePageEmail(both).text,
-			releasePageEmail(both).html,
-		]) {
-			expect(out).toContain("Known issues are listed.");
-			expect(out).toContain("Failing");
-			expect(out).toContain("Not yet judged");
-			expect(out).not.toContain("answers 500");
-			expect(out).not.toContain("0e697e0");
-		}
-	});
-	it("does not say nothing is required of a range it could not read", () => {
+	it("does not say nothing is required where no step was written and the range was not read", () => {
 		const out = releasePageMarkdown(
 			page({
 				shipped: { state: "unread", why: "the repository was unreachable" },
@@ -242,7 +242,7 @@ describe("a release page as Markdown (BC-11)", () => {
 		);
 		expect(out).not.toContain("Nothing is required of you.");
 		expect(out).toContain(
-			"What this release requires of you could not be read: the repository was unreachable.",
+			"No admin step was written, and the commit range was not read.",
 		);
 	});
 	it("never carries the technical notes of a developer-view page", () => {
@@ -279,52 +279,38 @@ describe("a release page as Markdown (BC-11)", () => {
 			}),
 		);
 		expect(out).not.toContain("## Highlights");
-		expect(out).toContain("## Improvements");
+		expect(out).toContain("## New");
 	});
 });
 
 describe("a release page as an email (BC-11)", () => {
 	it("has a subject, a plain-text body and an escaped HTML body from the same sections", () => {
 		const e = releasePageEmail(
-			page({
-				fixes: [
-					{
-						issueKey: "ISS-2",
-						kind: "fixed",
-						line: "<script>x</script> & more",
-					},
-				],
-			}),
+			page({ fixes: [fix("<script>x</script> & more")] }),
 		);
-		expect(e.subject).toBe("Release 0.4.0");
+		expect(e.subject).toBe("0.4.0 · Readable releases");
+		expect(e.text).toContain("Every release now opens as a page");
 		expect(e.text).toContain("HIGHLIGHTS\n- Every release has a page");
 		expect(e.text).toContain("<script>x</script> & more");
 		expect(e.html).toContain("&lt;script&gt;x&lt;/script&gt; &amp; more");
 		expect(e.html).not.toContain("<script>");
 	});
 	it("assembles an .eml: an RFC 2047 subject and two base64 alternatives that decode back", () => {
-		const e = releasePageEmail(
-			page({
-				fixes: [
-					{ issueKey: "ISS-2", kind: "fixed", line: "Sửa lỗi ngày — ok" },
-				],
-			}),
-		);
+		const e = releasePageEmail(page({ fixes: [fix("Sửa lỗi ngày — ok")] }));
 		const eml = releasePageEml(e, new Date("2026-10-09T10:00:00.000Z"));
 		expect(eml).toContain("Date: Fri, 09 Oct 2026 10:00:00 GMT");
 		expect(eml).toContain("X-Unsent: 1");
+		const utf8 = (b64: string) =>
+			new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
 		const subject = /Subject: =\?UTF-8\?B\?(.+?)\?=/.exec(eml)?.[1] ?? "";
-		expect(atob(subject)).toBe("Release 0.4.0");
+		expect(utf8(subject)).toBe("0.4.0 · Readable releases");
 		const bodies = eml.split(/--forge-release-\w+\r\n/).slice(1);
 		expect(bodies).toHaveLength(2);
-		const decode = (part: string) => {
-			const b64 =
+		const decode = (part: string) =>
+			utf8(
 				part.split("\r\n\r\n")[1]?.split("\r\n--")[0]?.replace(/\r\n/g, "") ??
-				"";
-			return new TextDecoder().decode(
-				Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)),
+					"",
 			);
-		};
 		expect(decode(bodies[0] ?? "")).toBe(e.text);
 		expect(decode(bodies[1] ?? "")).toBe(e.html);
 		expect(decode(bodies[0] ?? "")).toContain("Sửa lỗi ngày — ok");

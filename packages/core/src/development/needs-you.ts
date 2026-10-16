@@ -146,8 +146,8 @@ export async function readAttention(
     releases: releases.releases.map((r) => ({
       entity: 'release',
       key: r.version,
-      ...(r.headline
-        ? writtenTitle(r.headline, null)
+      ...(r.name
+        ? writtenTitle(r.name, null)
         : composedTitle(say('needsYou.title.release', { version: r.version }))),
       standing: r,
       touchedAt: r.at,

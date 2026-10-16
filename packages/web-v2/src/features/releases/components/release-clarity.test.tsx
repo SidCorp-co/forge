@@ -1,18 +1,10 @@
-// A release says why it asks to be split and what splitting does, and keeps its forecast and approval
-// in its rail at every width: the template places the rail on a phone (detail-rail-place.test.tsx), so
-// the release neither copies them above its summary nor leaves its Run group behind on its own.
+// A release says why it asks to be split and what splitting does, and its rail says where it stands in
+// plain words at every width: the template places the rail on a phone (detail-rail-place.test.tsx).
 
-import type { ScopeForecast } from "@forge/contracts/forecast";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ReleaseBanner } from "./release-bits";
-import * as facts from "./release-facts";
-
-const NOW = Date.parse("2026-10-07T12:00:00Z");
-const at = (min: number) => new Date(NOW + min * 60_000).toISOString();
-const stamp = { label: "forecast" as const, asOf: at(0) };
-const range = { ...stamp, kind: "forecast" as const, p50At: at(60), p85At: at(120), p50Minutes: 60, p85Minutes: 120, ahead: 0, aheadKeys: [], waitsOn: [], basis: { n: 20, floor: 10, windowDays: 60, complexity: null, cycleP50Minutes: 60, cycleP85Minutes: 90, throughputPerDay: 1, concurrency: 1, concurrencyBasis: "t" }, late: null };
-const scope = { ...stamp, scope: "release", key: "0.1.0", title: "t", progress: { total: 3, shipped: 0, awaitingRelease: 0, toDo: 3 }, forecast: range, next: null, delivery: null, anchor: { at: "2026-10-07T00:00:00.000Z", event: { key: "forecast.event.none" } }, moved: null } as unknown as ScopeForecast;
+import { WhereReleaseStands } from "./release-rail";
 
 const release = {
   version: "0.1.0",
@@ -31,12 +23,27 @@ describe("a release that has to be split", () => {
   });
 });
 
-describe("a release's rail", () => {
-  it("holds the approval and the forecast itself, hidden at no width and copied nowhere", () => {
-    const { container } = render(<facts.ReleaseProperties r={{ ...release, issues: [], criteria: { total: 0, proven: 0, failing: 0, open: 0, unproven: 0 }, cutCount: 0 } as never} forecast={scope} besideReader />);
-    expect(screen.getByTestId("facts-approval")).toBeInTheDocument();
-    expect(within(screen.getByTestId("facts-run")).getByTestId("facts-release-forecast")).toBeInTheDocument();
+describe("a release's rail, in plain words (BC-19)", () => {
+  const draft = { ...release, releasedAt: null, production: null, verified: { level: "none", proven: 0, total: 0, check: null, provider: null } };
+
+  it("says its status, approver, where it goes, what was checked and the next step, at every width", () => {
+    const { container } = render(<WhereReleaseStands r={draft as never} />);
+    expect(screen.getByTestId("standing-status")).toHaveTextContent("Not cut yet");
+    expect(screen.getByTestId("standing-approver")).toHaveTextContent("A project admin");
+    expect(screen.getByTestId("standing-goes-to")).toHaveTextContent("No production environment yet");
+    expect(screen.getByTestId("standing-verified")).toHaveTextContent("Not checked yet");
+    expect(screen.getByTestId("standing-next")).toHaveTextContent("Next: Add a production environment, then cut");
     expect(container.innerHTML).not.toMatch(/max-(sm|md|lg):hidden/);
-    expect(Object.keys(facts)).not.toContain("ReleasePhoneStanding");
+  });
+
+  it("asks for the cut only once the release has somewhere to go", () => {
+    render(<WhereReleaseStands r={{ ...draft, production: { name: "production", url: null } } as never} />);
+    expect(screen.getByTestId("standing-next")).toHaveTextContent("Next: Cut the release");
+  });
+
+  it("names none of the pipeline's words: no forecast, no run, no list of who can decide", () => {
+    const { container } = render(<WhereReleaseStands r={{ ...draft, state: "awaiting_approval", production: { name: "production", url: null }, approvers: [{ id: "u", name: "orchestrator", kind: "agent" }] } as never} />);
+    for (const word of ["Forecast", "Not cut yet: no run", "Can decide", "orchestrator", "Run"]) expect(container).not.toHaveTextContent(word);
+    expect(screen.getByTestId("standing-next")).toHaveTextContent("Next: Approve the release");
   });
 });

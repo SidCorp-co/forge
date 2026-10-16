@@ -122,6 +122,14 @@ project's users, so it is in the language the project writes in (`forge-runner a
 names it), whatever language the issue body or its commits are in. The nudge that says a note is owed names it too, and a
 write that plainly disagrees comes back with a `warnings` entry: rewrite the note, do not leave it.
 
+**A release reads as its notes and its name say, never cut.** Every note but `Skip` carries
+`releaseNotes.title`, a short name of at most ten words, beside `userFacing`, its one full sentence; a
+note without a title is refused by name. Each step an admin must take before the change goes out goes
+in `releaseNotes.adminSteps`, which the page lists under "Before you release". Name a release once
+it is drafted, with a `name` (a few words) and a two-to-three-sentence `summary`:
+`forge-runner api projects/<projectId>/releases/<version>/naming -X PUT` names the draft or a release
+already cut, and a draft's name carries through its cut.
+
 **A mark names what landed.** On an outside-git project, the mark (`forge-runner api issues/<id>/merge`)
 carries `landing` and `artifacts` `[{surface, ref, change}]` — Autoflow workflows are `logic`, routes `api`,
 tables `data`, storefront pages and themes `ui`, a `forge-workflow:` revision `design` — so its release says what

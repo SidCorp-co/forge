@@ -30,6 +30,28 @@ function List({ title, items, testId }: { title: string; items: string[]; testId
   );
 }
 
+/** How the release's going out was proved, and where it runs: the deploy check its run recorded. */
+function DeployCheck({ page }: { page: ReleasePage }) {
+  const t = useCopy();
+  const { check, provider } = page.header.verified;
+  const where = page.header.environment?.url ?? null;
+  if (check === null && !where) return null;
+  return (
+    <p className="flex flex-wrap gap-x-4 gap-y-0.5 text-13 text-muted">
+      {check !== null ? (
+        <span data-testid="release-verified-by">
+          {t("releases.verifiedBy")}: {t(`releases.verifiedBy.${check}`, { provider: provider ?? "" })}
+        </span>
+      ) : null}
+      {where ? (
+        <a className="text-link hover:underline" href={where} target="_blank" rel="noreferrer" data-testid="release-address">
+          {where.replace(/^https?:\/\//, "")}
+        </a>
+      ) : null}
+    </p>
+  );
+}
+
 /** The Technical view's addition (BC-9): the build, the range, and what it ships; never drawn from a page that carries none. */
 export function Technical({ page, slug }: { page: ReleasePage; slug?: string | undefined }) {
   const t = useCopy();
@@ -46,6 +68,7 @@ export function Technical({ page, slug }: { page: ReleasePage; slug?: string | u
             ? t("releases.page.technical.range", { base: shortSha(page.shipped.base), head: shortSha(page.shipped.head) })
             : t("releases.page.technical.unread", { why: page.shipped.why })}
         </p>
+        <DeployCheck page={page} />
         <List title={t("releases.page.technical.migrations")} items={tech.migrations} testId="page-technical-migrations" />
         <List title={t("releases.page.technical.contracts")} items={tech.contracts} testId="page-technical-contracts" />
         <List title={t("releases.page.technical.dependencies")} items={tech.dependencies} testId="page-technical-dependencies" />

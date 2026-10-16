@@ -290,7 +290,9 @@ export interface ReleaseSummary
 	runId: string | null;
 	state: ReleaseState;
 	current: boolean;
-	headline: string;
+	/** The release's name and its two-to-three-sentence summary, written when it was cut (REQ-40 BC-14); null until written, and on a draft nobody cut. */
+	name: string | null;
+	summary: string | null;
 	issueCount: number;
 	requirements: string[];
 	criteria: ReleaseCriteriaTotals;
@@ -526,8 +528,12 @@ export interface ReleaseNoteEntry {
 	key: string;
 	/** The issue's title, so a reader names the change by it and not by the bare key. */
 	title: string;
+	/** The note's short title a reader scans (REQ-40 BC-6); null on a note written before titles, whose `userFacing` is shown whole instead. */
+	heading: string | null;
 	userFacing: string;
 	technical: string | null;
+	/** What an admin must do before this change goes out, as its note says (REQ-40 BC-7). */
+	adminSteps: string[];
 }
 
 export interface ReleaseNoteAttentionView {
@@ -645,6 +651,8 @@ export interface ReleaseDetail extends ReleaseSummary {
 		/** Issues whose landing touched only a design: approved designs, which users do not get as a change. */
 		designs: ReleaseNoteEntry[];
 		withoutNotes: { key: string; title: string }[];
+		/** Issues whose note says nobody using the product sees them (`Skip`): counted apart (REQ-40 BC-16). */
+		skipped: ReleaseNoteEntry[];
 		/**
 		 * Issues reopened after this release claimed them: their note and landing now say a later
 		 * round, which this release did not ship, so neither is read as this release's.
@@ -749,6 +757,8 @@ export const RELEASE_REFUSAL_CODES = [
 	"RELEASE_RANGE_FILE_MISSING",
 	/** A range report that sends a file the reader does not read, or one its changes do not name. */
 	"RELEASE_RANGE_FILE_UNREAD",
+	/** A name or summary written for a version that is neither the drafted release nor one cut. */
+	"RELEASE_VERSION_UNKNOWN",
 ] as const;
 export type ReleaseRefusalCode = (typeof RELEASE_REFUSAL_CODES)[number];
 export const RELEASE_REFUSAL_STATUSES = {
@@ -761,6 +771,7 @@ export const RELEASE_REFUSAL_STATUSES = {
 	CLAIM_CONFLICT: 409,
 	RELEASE_RANGE_NO_BASE: 409,
 	RELEASE_RANGE_BASE_MOVED: 409,
+	RELEASE_VERSION_UNKNOWN: 404,
 } as const satisfies RefusalStatuses<ReleaseRefusalCode | ReleaseBlockerCode>;
 
 /** What production serves, read when asked and never stored (core `release-batch/serving-reading.ts`). */

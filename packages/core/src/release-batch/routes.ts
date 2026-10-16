@@ -1,4 +1,5 @@
 import { REASON_PARAGRAPH_MAX } from '@forge/contracts/comments';
+import { ReleaseNamingSchema } from '@forge/contracts/release-notes';
 import {
   ReleaseRangeReadsBodySchema,
   ReleaseRangeReportSchema,
@@ -53,8 +54,17 @@ const createBodySchema = z
      * a schema's `Invalid input` (ISS-1127 criterion 1).
      */
     issueIds: rosterIdsSchema,
+    /** The release's name and summary (REQ-40 BC-14); both or neither, each held to `ReleaseNamingSchema`. */
+    name: z.string().optional(),
+    summary: z.string().optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((body, ctx) => {
+    if (body.name === undefined && body.summary === undefined) return;
+    const naming = ReleaseNamingSchema.safeParse({ name: body.name, summary: body.summary });
+    for (const issue of naming.success ? [] : naming.error.issues)
+      ctx.addIssue({ code: 'custom', path: issue.path, message: issue.message });
+  });
 
 export const releaseBatchRoutes = new Hono<{ Variables: AuthVars }>();
 releaseBatchRoutes.use('*', requireAuth(), assertEmailVerified());
@@ -65,13 +75,14 @@ releaseBatchRoutes.post(
   zValidator('json', createBodySchema),
   async (c) => {
     const { projectId } = c.req.valid('param');
-    const { issueIds } = c.req.valid('json');
+    const { issueIds, name, summary } = c.req.valid('json');
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.admin');
 
-    const result = await createReleaseBatch({ projectId, issueIds, userId });
+    const naming = name !== undefined && summary !== undefined ? { name, summary } : null;
+    const result = await createReleaseBatch({ projectId, issueIds, userId, naming });
     return c.json(result, 201);
   },
 );

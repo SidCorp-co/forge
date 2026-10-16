@@ -92,6 +92,7 @@ function part(n: number, gates: ReleaseGateView[], state: Part['state'] = 'draft
     verification: null,
     cuts: [],
     continuedAs: null,
+    naming: null,
   };
 }
 
@@ -315,7 +316,7 @@ describe('an issue reopened after the release claimed it (BC-6, J9 on 0.4.0-dev.
     expect(d.notes.reworked).toEqual([{ key: 'ISS-1', title: 'Issue 1' }]);
     expect(d.notes.withoutNotes).toEqual([]);
     expect(d.issues.find((i) => i.key === 'ISS-1')?.section).toBeNull();
-    expect(JSON.stringify(d.headline)).not.toContain('tried again');
+    expect(JSON.stringify(d.notes.sections)).not.toContain('tried again');
   });
 
   it('keeps a reopen from before the claim, and claims nothing for a draft', () => {
@@ -378,7 +379,7 @@ describe('a release that shipped the rework claims it at its own close (BC-6, J1
     expect(d.notes.reworked).toEqual([]);
     expect(fixes(d).map((e) => [e.key, e.userFacing])).toEqual([['ISS-455', RETRY]]);
     expect(d.issues.find((i) => i.key === 'ISS-455')?.section).toBe('Fixed');
-    expect(JSON.stringify(d.headline)).toContain('tried again');
+    expect(JSON.stringify(d.notes.sections)).toContain('tried again');
   });
 
   it('keeps it reworked on dev.224, whose close the reopen came after', () => {

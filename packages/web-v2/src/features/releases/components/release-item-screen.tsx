@@ -4,6 +4,7 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import { useRelease } from "../hooks";
 import { RELEASES_LIST, releasesListHref } from "@/lib/routes/releases";
 import { ReleaseActions } from "./release-actions";
+import { releaseTitle } from "./release-bits";
 import { ReleasePage } from "./release-page";
 
 export function ReleaseItemScreen({ projectId, slug, version }: { projectId: string; slug: string; version: string }) {
@@ -15,7 +16,7 @@ export function ReleaseItemScreen({ projectId, slug, version }: { projectId: str
     <div className="min-h-full bg-app" data-testid="release-item-screen">
       <DetailHeader
         back={{ href: back, label: t("releases.title") }}
-        title={t("releases.releaseVersion", { version })}
+        title={r ? releaseTitle(r, t) : t("releases.releaseVersion", { version })}
         badge={r ? <StatusBadge family="releaseState" value={r.state} /> : null}
         action={r ? <ReleaseActions projectId={projectId} r={r} /> : null}
       />

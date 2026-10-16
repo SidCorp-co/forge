@@ -407,7 +407,16 @@ describe('an issue reopened between two releases reads as the rework of the one 
     const dev225 = await page('0.4.0-dev.225');
     expect(dev225.withoutNotes).toEqual([]);
     const key = dev225.fixes[0]?.issueKey;
-    expect(dev225.fixes).toEqual([{ issueKey: key, kind: 'fixed', section: 'Fixed', line: RETRY }]);
+    expect(dev225.fixes).toEqual([
+      {
+        issueKey: key,
+        kind: 'fixed',
+        section: 'Fixed',
+        line: RETRY,
+        detail: null,
+        requirementKey: null,
+      },
+    ]);
     expect(dev225.actionRequired).toEqual([
       expect.objectContaining({ kind: 'migration', ref: MIGRATION, issues: [key] }),
     ]);

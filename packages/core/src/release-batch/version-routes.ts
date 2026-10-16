@@ -1,3 +1,4 @@
+import { ReleaseNamingSchema } from '@forge/contracts/release-notes';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
@@ -11,6 +12,7 @@ import {
   parseDecision,
   requestApproval,
 } from './approvals.js';
+import { nameRelease } from './naming.js';
 import { findReleaseBatchRun } from './queries.js';
 import { listReleases, readRelease } from './release-read.js';
 import type { ViewerFacts } from './release-view.js';
@@ -82,6 +84,20 @@ releaseVersionRoutes.get('/:projectId/releases/:version', versionParam, async (c
   requireHeld(access, 'project.read');
   return c.json({ release: await readRelease(projectId, version, viewerOf(c, access)) });
 });
+
+// A release's name and summary (REQ-40 BC-14), written by whoever may cut it: at the cut, or here
+// for a release cut without them. Each is held to `ReleaseNamingSchema` and refused by name.
+releaseVersionRoutes.put(
+  '/:projectId/releases/:version/naming',
+  versionParam,
+  zValidator('json', ReleaseNamingSchema),
+  async (c) => {
+    const { projectId, version } = c.req.valid('param');
+    const userId = c.get('userId');
+    requireHeld(await loadProjectAccess(projectId, userId), 'project.admin');
+    return c.json(await nameRelease(projectId, version, c.req.valid('json'), userId));
+  },
+);
 
 releaseVersionRoutes.post(
   '/:projectId/release-batches/:runId/approvals',

@@ -6,11 +6,18 @@ import type { ReleaseNoteSection } from "./releases.js";
 // carried its issue key and internal title, notes named internal paths, ISS-102 and the issue that
 // published it (ISS-122) both described the CRM report screen, and nothing copied or exported them.
 
-const entry = (key: string, title: string, userFacing: string) => ({
+const entry = (
+	key: string,
+	title: string,
+	userFacing: string,
+	heading: string | null = null,
+) => ({
 	key,
 	title,
+	heading,
 	userFacing,
 	technical: null,
+	adminSteps: [],
 });
 
 const SECTIONS: ReleaseNoteSection[] = [
@@ -63,7 +70,7 @@ const SECTIONS: ReleaseNoteSection[] = [
 
 describe("release notes a customer can be handed", () => {
 	const view = customerNotes(SECTIONS);
-	const lines = view.sections.flatMap((s) => s.lines);
+	const lines = view.sections.flatMap((s) => s.lines.map((l) => l.line));
 	const all = () => lines.join("\n");
 
 	it("names no issue key, internal title or internal path, taking out the brackets that held them", () => {
@@ -106,6 +113,26 @@ describe("release notes a customer can be handed", () => {
 			why: "duplicate",
 			into: ["ISS-90"],
 		});
+	});
+
+	it("keeps a titled note as its title and its sentence, each whole, and holds it back where either names a handle", () => {
+		const sentence =
+			"Giờ đây, khi deploy lại thiết kế lên cửa hàng ePOD, sản phẩm đã có được cập nhật tại chỗ.";
+		const titled = customerNotes([
+			{
+				section: "Fixed",
+				entries: [
+					entry("ISS-3", "t", sentence, "Deploy lại lên ePOD không còn lỗi trùng SKU"),
+					entry("ISS-4", "t", "Reports load faster.", "Faster reports (ISS-9)"),
+					entry("ISS-5", "t", "Reports open.", "Reports at /pages/reports"),
+				],
+			},
+		]);
+		expect(titled.sections[0]?.lines).toEqual([
+			{ key: "ISS-3", line: "Deploy lại lên ePOD không còn lỗi trùng SKU", detail: sentence },
+			{ key: "ISS-4", line: "Faster reports", detail: "Reports load faster." },
+		]);
+		expect(titled.held).toEqual([{ key: "ISS-5", references: ["path /pages/reports"] }]);
 	});
 
 	it("keeps each section's order and drops an empty one", () => {

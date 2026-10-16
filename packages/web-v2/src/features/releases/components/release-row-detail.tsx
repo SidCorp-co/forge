@@ -1,17 +1,15 @@
-// What opens under a change's row on a release page: the full note where the row cut it, the issue
-// and requirement it came from, its criteria proven and open, and its technical note, which a
-// member's page reads from the Technical view only when a row is opened and a share never shows.
+// What opens under a change's row on a release page: the sentence that says it in full and the issue
+// and requirement it came from; on the Technical view, its criteria proven and open and its technical
+// note as well. A share shows neither criteria nor technical note.
 
 import type { ReleaseKnownIssue, ReleasePage, ReleasePageChange, ReleasePageProven } from "@forge/contracts/release-page";
 import { Link } from "@/lib/navigation/router";
-import { QueryBoundary } from "@/lib/api/query-boundary";
 import type { ReactNode } from "react";
 import { HollowCheck, statusReading } from "@/design";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { issueHref } from "@/lib/routes/issues";
 import { requirementHref } from "@/lib/routes/requirements";
 import { withoutCriterionCode } from "@/lib/utils/criterion-code";
-import { useReleasePage } from "../hooks";
 import type { Reach } from "./release-anchors";
 
 /**
@@ -42,21 +40,10 @@ export function CheckLine({ text, mark, label }: { text: string; mark: ReactNode
   );
 }
 
-/** The issue's technical note: on the page in the Technical view, else read from it when the reader opens a row; never on a share. */
-export function TechnicalNote({ page, issueKey, reach }: { page: ReleasePage; issueKey: string; reach: Reach }) {
-  const t = useCopy();
-  if (page.technical) return <TechnicalNoteText text={page.technical.notes.find((n) => n.issueKey === issueKey)?.technical ?? null} />;
-  if (!reach.authed) return null;
-  return <TechnicalNoteRead projectId={page.projectId} version={page.header.version} issueKey={issueKey} label={t("releases.page.row.technicalLoading")} />;
-}
-
-export function TechnicalNoteRead({ projectId, version, issueKey, label }: { projectId: string; version: string; issueKey: string; label: string }) {
-  const q = useReleasePage(projectId, version, "developer");
-  return (
-    <QueryBoundary query={q} loadingLabel={label}>
-      {(dev) => <TechnicalNoteText text={dev.technical?.notes.find((n) => n.issueKey === issueKey)?.technical ?? null} />}
-    </QueryBoundary>
-  );
+/** The issue's technical note, as the Technical view carries it; a share and the overview never show one. */
+export function TechnicalNote({ page, issueKey }: { page: ReleasePage; issueKey: string }) {
+  if (!page.technical) return null;
+  return <TechnicalNoteText text={page.technical.notes.find((n) => n.issueKey === issueKey)?.technical ?? null} />;
 }
 
 export function TechnicalNoteText({ text }: { text: string | null }) {
@@ -125,17 +112,33 @@ export function checksByIssue(page: ReleasePage): Map<string, IssueChecks> {
   return out;
 }
 
-/** What opens under a row: the full note where the row cut it, its keys, its criteria, and its technical note. */
-export function ChangeDetail({ page, change, checks, cut, reach }: { page: ReleasePage; change: ReleasePageChange; checks: IssueChecks | undefined; cut: boolean; reach: Reach }) {
+/**
+ * What opens under a change's row. On the overview: the sentence that says it in full and where to
+ * read more (its issue, its requirement, its technical details), never a criterion (BC-15). On the
+ * Technical view: its criteria proven and open, and its technical note, as well.
+ */
+export function ChangeDetail({ page, change, checks, reach }: { page: ReleasePage; change: ReleasePageChange; checks: IssueChecks | undefined; reach: Reach }) {
   const t = useCopy();
   const developer = page.view === "developer";
   const proven = checks?.proven ?? [];
   const open = checks?.open ?? [];
+  const requirementKey = change.requirementKey ?? checks?.requirement ?? null;
   return (
     <div className="grid gap-3 pl-0.5" data-testid="page-row-detail">
-      {cut ? <p className="text-14 text-fg">{change.line}</p> : null}
-      <RowKeys issueKey={change.issueKey} requirementKey={checks?.requirement ?? null} slug={reach.slug} />
-      {proven.length + open.length > 0 ? (
+      {change.detail ? (
+        <p className="max-w-prose text-14 text-muted" data-testid="page-row-sentence">
+          {change.detail}
+        </p>
+      ) : null}
+      <span className="flex flex-wrap gap-x-4 gap-y-0.5">
+        <RowKeys issueKey={change.issueKey} requirementKey={requirementKey} slug={reach.slug} />
+        {!developer && reach.slug ? (
+          <Link href="?view=developer#release-technical" className="text-12 text-link hover:underline" data-testid="page-row-technical-link">
+            {t("releases.page.row.technicalLink")}
+          </Link>
+        ) : null}
+      </span>
+      {developer && proven.length + open.length > 0 ? (
         <div className="grid gap-1">
           <span className="text-12 font-medium text-subtle">{t("releases.page.row.checks", { passed: proven.length, open: open.length })}</span>
           <ul className="grid gap-0.5">
@@ -143,17 +146,12 @@ export function ChangeDetail({ page, change, checks, cut, reach }: { page: Relea
               <CheckLine key={`o:${k.statement}`} mark="○" text={`${withoutCriterionCode(k.statement)} (${t(STANDING_KEY(k.standing))})`} />
             ))}
             {proven.map((p) => (
-              <CheckLine
-                key={`p:${p.n ?? p.statement}`}
-                mark={p.short ? <ShortMark /> : "✓"}
-                text={developer ? p.statement : withoutCriterionCode(p.statement)}
-                label={developer && p.n !== null ? `#${p.n}` : null}
-              />
+              <CheckLine key={`p:${p.n ?? p.statement}`} mark={p.short ? <ShortMark /> : "✓"} text={p.statement} label={p.n !== null ? `#${p.n}` : null} />
             ))}
           </ul>
         </div>
       ) : null}
-      <TechnicalNote page={page} issueKey={change.issueKey} reach={reach} />
+      {developer ? <TechnicalNote page={page} issueKey={change.issueKey} /> : null}
     </div>
   );
 }

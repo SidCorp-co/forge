@@ -967,7 +967,7 @@
     "release-batch": {
       "kind": "domain",
       "context": "release",
-      "owns": ["releaseApprovals", "releaseAttempts", "releaseHolds"],
+      "owns": ["releaseApprovals", "releaseAttempts", "releaseDraftNamings", "releaseHolds"],
       "serves": [
         "issue-delivery#case-release",
         "issue-delivery#task-release",

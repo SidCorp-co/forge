@@ -189,14 +189,16 @@ issueRoutes.patch(
     if (note && note.section !== 'Skip') {
       const held = await readProjectDocument(issue.projectId);
       const language = held?.document.contentLanguage ?? 'en';
-      const mismatch = contentLanguageScriptWarning(
-        language,
-        note.userFacing,
-        'releaseNotes.userFacing',
-      );
-      if (mismatch) warnings.push(mismatch);
-      const references = releaseNoteReferenceWarning(note.userFacing, 'releaseNotes.userFacing');
-      if (references) warnings.push(references);
+      const read: [string, string][] = [
+        ...(note.title ? [[note.title, 'releaseNotes.title'] as [string, string]] : []),
+        [note.userFacing, 'releaseNotes.userFacing'],
+      ];
+      for (const [text, field] of read) {
+        const mismatch = contentLanguageScriptWarning(language, text, field);
+        if (mismatch) warnings.push(mismatch);
+        const references = releaseNoteReferenceWarning(text, field);
+        if (references) warnings.push(references);
+      }
     }
     return c.json(warnings.length > 0 ? { ...patched, warnings } : patched);
   },

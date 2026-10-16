@@ -126,8 +126,9 @@ export function PeekPanel({ peek, listLabel, noun, full, children, testId }: Pee
         </Button>
         <IconButton icon="arrowUp" size="sm" aria-label={t("common.peekPrevious", { noun: noun.toLowerCase() })} disabled={!pos || pos.at <= 1} onClick={() => peek.move(-1)} />
         <IconButton icon="arrowDown" size="sm" aria-label={t("common.peekNext", { noun: noun.toLowerCase() })} disabled={!pos || pos.at >= pos.of} onClick={() => peek.move(1)} />
+        {/* a phone's sheet has no room for the count beside its back control and full-page link: the arrows still step */}
         {pos ? (
-          <span className="mx-1 whitespace-nowrap font-mono text-11 text-subtle" data-testid="peek-position">
+          <span className="mx-1 whitespace-nowrap font-mono text-11 text-subtle max-sm:hidden" data-testid="peek-position">
             {t("common.peekPosition", { at: pos.at, of: pos.of })}
           </span>
         ) : null}

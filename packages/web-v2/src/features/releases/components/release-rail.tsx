@@ -1,0 +1,82 @@
+// The release page's rail (REQ-40 BC-5, BC-19): where the release stands in plain words, the
+// requirements it delivers with how many of their checks it meets, and the page's contents. The
+// criteria themselves are the Technical view's; the rail counts them and never lists them.
+
+import type { ReleasePage, ReleasePageRequirement } from "@forge/contracts/release-page";
+import { type ContentsItem, ContentsList, Fact, FactsGroup } from "@/design";
+import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
+import { Link } from "@/lib/navigation/router";
+import { requirementHref } from "@/lib/routes/requirements";
+import { releaseStandingOf } from "../release-standing";
+import type { ReleaseDetail } from "../types";
+
+/**
+ * What a requirement's checks read on this release: its own criteria proven, counted by the rule the
+ * requirement counts by where it has one (REQ-35), else the issue checks proving it.
+ */
+function requirementCount(r: ReleasePageRequirement, t: Copy): string {
+  return r.business
+    ? t("releases.page.requirement.business", { proven: r.business.proven.length, total: r.business.total })
+    : t("releases.page.requirement.checksMet", { n: r.proven.length });
+}
+
+export function WhereReleaseStands({ r }: { r: ReleaseDetail }) {
+  const t = useCopy();
+  const time = useTimeFormat();
+  const s = releaseStandingOf(r, t, time.date);
+  return (
+    <FactsGroup title={t("releases.standing.title")} testId="release-standing">
+      <Fact label={t("releases.standing.label.status")} testId="standing-status">
+        {s.status}
+      </Fact>
+      <Fact label={t("releases.standing.label.approver")} testId="standing-approver">
+        {s.approver}
+      </Fact>
+      <Fact label={t("releases.standing.label.goesTo")} testId="standing-goes-to">
+        {s.goesTo}
+      </Fact>
+      <Fact label={t("releases.standing.label.verified")} testId="standing-verified">
+        {s.verified}
+      </Fact>
+      {s.next ? (
+        <p className="pt-1 text-13 font-medium text-warn-11" data-testid="standing-next">
+          {t("releases.peek.next", { step: s.next })}
+        </p>
+      ) : null}
+    </FactsGroup>
+  );
+}
+
+function RailRequirements({ page, slug }: { page: ReleasePage; slug: string }) {
+  const t = useCopy();
+  if (page.requirements.length === 0) return null;
+  return (
+    <FactsGroup title={t("releases.page.group.requirements")} testId="rail-requirements">
+      <ul className="grid gap-3">
+        {page.requirements.map((r) => (
+          <li key={r.key} className="grid gap-0.5" data-testid="rail-requirement" data-key={r.key}>
+            <Link href={requirementHref(slug, r.key)} className="text-13 font-medium text-fg hover:text-link hover:underline">
+              {r.key} · {r.title}
+            </Link>
+            <span className="text-12-5 text-muted">{requirementCount(r, t)}</span>
+          </li>
+        ))}
+      </ul>
+    </FactsGroup>
+  );
+}
+
+export function ReleaseRail({ r, page, slug, contents }: { r: ReleaseDetail; page: ReleasePage | undefined; slug: string; contents: ContentsItem[] }) {
+  const t = useCopy();
+  return (
+    <div data-testid="release-rail">
+      <WhereReleaseStands r={r} />
+      {page ? <RailRequirements page={page} slug={slug} /> : null}
+      {/* where the rail falls under the page, the reader's own menu stands in for the contents */}
+      <div className="border-t border-line-subtle pt-3.5 max-lg:hidden">
+        <ContentsList items={contents} label={t("releases.page.contents")} testId="release-rail-contents" />
+      </div>
+    </div>
+  );
+}

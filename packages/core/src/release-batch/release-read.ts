@@ -19,8 +19,10 @@ import {
   releaseVerifiedBy,
   resolveReleaseChannels,
 } from './channel.js';
+import { draftVersionOf } from './draft-version.js';
 import { readFinishRecord } from './finish-record.js';
 import { readLandingReadings } from './landing-surfaces.js';
+import { draftNaming, readReleaseNaming } from './naming.js';
 import { RECORDED_VERIFICATIONS } from './plan.js';
 import { waitingIssueIds } from './queries.js';
 import { refuseRelease } from './refuse.js';
@@ -35,24 +37,10 @@ import {
   summaryOf,
 } from './release-read-views.js';
 import type { ViewerFacts } from './release-view.js';
-import { formatReleaseVersion, parseReleaseVersion, RELEASE_VERSION_SHAPE } from './version.js';
-import type { LineageRun, VersionDecision } from './version-rule.js';
+import { parseReleaseVersion, RELEASE_VERSION_SHAPE } from './version.js';
+import type { LineageRun } from './version-rule.js';
 import { currentReleaseVersion, decideRosterVersion, readLineage } from './version-store.js';
 import { attemptsOf, issueIdsOf, versionRuns, versionStatus } from './versions.js';
-
-/**
- * The version a decision hands the draft. An undecided re-cut shows the version in question, and its
- * gate (`RELEASE_VERSION_UNDECIDED`) says why it cannot be cut yet; a line the rule refuses shows the
- * number it would have been, refused by its own gate at the cut.
- */
-function draftVersionOf(d: VersionDecision): string {
-  return d.kind === 'exhausted' || d.kind === 'behind' ? formatReleaseVersion(d.next) : d.version;
-}
-
-/** The number the next cut takes: the version rule asked about the roster waiting at the gate. */
-export async function nextDraftVersion(projectId: string): Promise<string> {
-  return draftVersionOf(await decideRosterVersion(projectId, await waitingIssueIds(projectId)));
-}
 
 interface DraftPart {
   part: Part;
@@ -68,10 +56,11 @@ async function draftPart(projectId: string): Promise<DraftPart | null> {
     collectReleaseBlockers(projectId, { issueIds: ids, door: 'batch' }),
     holderNames('project.admin', projectId),
   ]);
+  const version = draftVersionOf(decision);
   return {
     recutOf: 'recutOf' in decision ? decision.recutOf.id : null,
     part: {
-      version: draftVersionOf(decision),
+      version,
       runId: null,
       state: 'draft',
       issueIds: ids,
@@ -84,6 +73,7 @@ async function draftPart(projectId: string): Promise<DraftPart | null> {
       commit: null,
       cuts: [],
       continuedAs: null,
+      naming: await draftNaming(projectId, version),
     },
   };
 }
@@ -151,6 +141,7 @@ function runPart(
     commit: finishedCommit(run.metadata),
     cuts: [],
     continuedAs: null,
+    naming: readReleaseNaming(run.metadata),
   };
 }
 

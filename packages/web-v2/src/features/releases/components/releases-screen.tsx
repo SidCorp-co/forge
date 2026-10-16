@@ -26,6 +26,7 @@ import { useEtaClock } from "@/lib/i18n/eta-clock";
 import { useComingNext } from "@/features/forecast";
 import { ComingNext } from "./coming-next";
 import { ReleasePeek } from "./release-peek";
+import { releaseTitle } from "./release-bits";
 import { ReleaseTrain } from "./release-train";
 
 type Label = ReturnType<typeof useLabel>;
@@ -50,7 +51,7 @@ const rowOf =
   (r: ReleaseSummary): ListRowView => ({
     key: r.version,
     href: releaseHref(slug, r.version),
-    title: r.headline || t("releases.releaseVersion", { version: r.version }),
+    title: releaseTitle(r, t),
     facts: [
       t("releases.issuesCount", { n: r.issueCount }),
       requirementsOf(r, t),
@@ -78,7 +79,7 @@ export function ReleasesScreen({ projectId, slug }: { projectId: string; slug: s
   const list = useListPage({
     rows: all,
     keyOf: (r) => r.version,
-    searchOf: (r) => `${r.version} ${r.headline} ${r.requirements.join(" ")}`,
+    searchOf: (r) => `${r.version} ${r.name ?? ""} ${r.summary ?? ""} ${r.requirements.join(" ")}`,
     narrow: (r) => matchesListFilter(filter, { waiting: waitingFilterOf(r), text: "", state: r.state }),
     groupsOf: (rows) => groupsOf(rows, label),
     foldKey: "web-v2:releases-fold",

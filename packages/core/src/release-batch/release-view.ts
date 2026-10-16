@@ -237,30 +237,6 @@ export function proofOf(t: ReleaseCriteriaTotals): ReleaseProof {
   return t.unproven > 0 ? 'unproven' : 'proven';
 }
 
-const SECTION_ORDER = ['Added', 'Changed', 'Fixed', 'Removed', 'Security'];
-const HEADLINE_LINES = 2;
-const HEADLINE_WIDTH = 72;
-
-const clip = (s: string) => {
-  const t = s.replace(/\s+/g, ' ').trim();
-  return t.length > HEADLINE_WIDTH ? `${t.slice(0, HEADLINE_WIDTH - 1).trimEnd()}…` : t;
-};
-
-export function headlineOf(items: readonly { section: string | null; text: string }[]): string {
-  const rank = (s: string | null) => {
-    const at = s === null ? -1 : SECTION_ORDER.indexOf(s);
-    return at === -1 ? SECTION_ORDER.length : at;
-  };
-  const sorted = items
-    .map((it, i) => ({ it, i }))
-    .sort((a, b) => rank(a.it.section) - rank(b.it.section) || a.i - b.i)
-    .map((x) => clip(x.it.text))
-    .filter((t) => t.length > 0);
-  const shown = sorted.slice(0, HEADLINE_LINES).join('; ');
-  const rest = sorted.length - HEADLINE_LINES;
-  return rest > 0 ? `${shown}; +${rest} more` : shown;
-}
-
 export interface CompletionFacts {
   key: string;
   title: string;

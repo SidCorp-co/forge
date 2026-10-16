@@ -2,7 +2,7 @@ import type { ReleaseShipped } from '@forge/contracts/release-page';
 import type { ReleaseApprovalView, ReleaseDetail } from '@forge/contracts/releases';
 import { describe, expect, it } from 'vitest';
 import type { RangeChange } from '../release-batch/index.js';
-import { actionsOf, approvalOf, buildOf, changesOf, technicalOf } from './sections.js';
+import { actionsOf, approvalOf, buildOf, technicalOf } from './sections.js';
 
 const HEAD = 'c'.repeat(40);
 const UNREAD: ReleaseShipped = { state: 'unread', why: 'planted' };
@@ -24,10 +24,12 @@ function detail(over: Partial<ReleaseDetail> = {}): ReleaseDetail {
       sections: [],
       designs: [],
       withoutNotes: [],
+      skipped: [],
       reworked: [],
       language: 'en',
       attention: [],
     },
+    issues: [],
     changes: {
       surfaces: [],
       risks: [],
@@ -89,64 +91,7 @@ describe('the build a page describes', () => {
   });
 });
 
-describe('improvements and fixes in user terms (BC-6)', () => {
-  const entry = (key: string, userFacing: string, title = `title ${key}`) => ({
-    key,
-    title,
-    userFacing,
-    technical: null,
-  });
-  const notes = {
-    sections: [
-      { section: 'Added', entries: [entry('ISS-1', 'Nurses see reminders.')] },
-      {
-        section: 'Changed',
-        entries: [
-          entry('ISS-2', 'Reports load faster.'),
-          entry('ISS-3', 'Reports load faster.'),
-          entry('ISS-4', 'See ISS-9 for the reminder fix.'),
-        ],
-      },
-      { section: 'Fixed', entries: [entry('ISS-5', 'A saved filter no longer resets.')] },
-      { section: 'Security', entries: [entry('ISS-7', 'Reset links stop working once used.')] },
-    ],
-    designs: [],
-    withoutNotes: [{ key: 'ISS-6', title: 'Untold change' }],
-    reworked: [],
-    language: 'en',
-    attention: [],
-  };
-
-  it('keeps each line with its issue, the kind its section reads as, and the section itself', () => {
-    const out = changesOf(notes);
-    expect(out.improvements).toEqual([
-      { issueKey: 'ISS-1', kind: 'new', section: 'Added', line: 'Nurses see reminders.' },
-      { issueKey: 'ISS-2', kind: 'improved', section: 'Changed', line: 'Reports load faster.' },
-    ]);
-    // a Security entry reads as a fix and keeps its section, so the page groups it apart
-    expect(out.fixes).toEqual([
-      {
-        issueKey: 'ISS-5',
-        kind: 'fixed',
-        section: 'Fixed',
-        line: 'A saved filter no longer resets.',
-      },
-      {
-        issueKey: 'ISS-7',
-        kind: 'fixed',
-        section: 'Security',
-        line: 'Reset links stop working once used.',
-      },
-    ]);
-  });
-
-  it('names an issue with no line, and one whose line a reader cannot follow, rather than inventing one', () => {
-    expect(changesOf(notes).withoutNotes).toEqual([
-      { issueKey: 'ISS-6', title: 'Untold change', why: 'no_note' },
-      { issueKey: 'ISS-4', title: 'title ISS-4', why: 'held' },
-    ]);
-  });
-});
+const NO_NOTES = detail().notes;
 
 describe('what an admin must do (BC-7) and the technical notes (BC-9)', () => {
   const artifact = (
@@ -206,11 +151,11 @@ describe('what an admin must do (BC-7) and the technical notes (BC-9)', () => {
   };
 
   it('derives settings, migrations and permissions from what the release ships, naming each artifact', () => {
-    expect(actionsOf(changes, UNREAD)).toEqual([
+    expect(actionsOf(changes, UNREAD, NO_NOTES)).toEqual([
       {
         kind: 'migration',
         ref: 'packages/core/drizzle/migrations/0478_highlights.sql',
-        sentence: expect.stringMatching(/^Back up the database/),
+        sentence: 'Back up the database before this release deploys: it changes the schema.',
         issues: ['ISS-1'],
       },
       {
@@ -237,12 +182,20 @@ describe('what an admin must do (BC-7) and the technical notes (BC-9)', () => {
             {
               section: 'Added',
               entries: [
-                { key: 'ISS-1', title: 'Page', userFacing: 'A page.', technical: 'New table.' },
+                {
+                  key: 'ISS-1',
+                  title: 'Page',
+                  heading: null,
+                  userFacing: 'A page.',
+                  technical: 'New table.',
+                  adminSteps: [],
+                },
               ],
             },
           ],
           designs: [],
           withoutNotes: [],
+          skipped: [],
           reworked: [],
           language: 'en',
           attention: [],
@@ -282,15 +235,17 @@ describe('what the commit range ships adds to what the issues named (BC-7, BC-9)
     ],
   };
 
-  it('asks an admin for each migration and each new required setting though no issue filled a field', () => {
-    const items = actionsOf(none, shipped);
+  it('asks an admin once for the migrations, naming no file, and for each new required setting though no issue filled a field', () => {
+    const items = actionsOf(none, shipped, NO_NOTES);
     expect(items.map((i) => `${i.kind}:${i.ref}`)).toEqual([
-      'migration:packages/core/drizzle/migrations/0477_preview.sql',
-      'migration:packages/core/drizzle/migrations/0478_page.sql',
+      'migration:packages/core/drizzle/migrations/0477_preview.sql, packages/core/drizzle/migrations/0478_page.sql',
       'setting:FORGE_VAULT_KEY',
     ]);
-    expect(items[0]?.sentence).toMatch(/^Back up the database/);
-    expect(items[2]?.sentence).toMatch(/^Set FORGE_VAULT_KEY/);
+    expect(items[0]?.sentence).toBe(
+      'Back up the database before this release deploys: it changes the schema.',
+    );
+    expect(items[0]?.sentence).not.toMatch(/\.sql/);
+    expect(items[1]?.sentence).toMatch(/^Set FORGE_VAULT_KEY/);
   });
 
   it('says an item once where an issue also named it, keeping that issue', () => {
@@ -313,10 +268,11 @@ describe('what the commit range ships adds to what the issues named (BC-7, BC-9)
         },
       ],
     };
-    const items = actionsOf(named, shipped);
-    const mig = items.filter((i) => i.ref.endsWith('0477_preview.sql'));
+    const items = actionsOf(named, shipped, NO_NOTES);
+    const mig = items.filter((i) => i.kind === 'migration');
     expect(mig).toHaveLength(1);
     expect(mig[0]?.issues).toEqual(['ISS-491']);
+    expect(mig[0]?.ref?.split(', ').filter((r) => r.endsWith('0477_preview.sql'))).toHaveLength(1);
   });
 
   it('lists the derived migrations, contracts, dependencies and every new setting in the developer notes', () => {
@@ -328,7 +284,7 @@ describe('what the commit range ships adds to what the issues named (BC-7, BC-9)
   });
 
   it('claims nothing from a range it did not read', () => {
-    expect(actionsOf(none, UNREAD)).toEqual([]);
+    expect(actionsOf(none, UNREAD, NO_NOTES)).toEqual([]);
     expect(technicalOf(detail({ changes: none }), kept(UNREAD), null).migrations).toEqual([]);
   });
 });
@@ -382,38 +338,21 @@ describe('a read range is what the release ships, whatever its issues landed bef
   });
 
   it('asks an admin for nothing the range does not ship', () => {
-    expect(actionsOf(earlier, quiet)).toEqual([]);
+    expect(actionsOf(earlier, quiet, NO_NOTES)).toEqual([]);
   });
 
   it('keeps an issue on an item the range ships and its landing names', () => {
     const ships = { ...quiet, migrations: [MIG] };
     expect(technicalOf(detail({ changes: earlier }), kept(ships), null).migrations).toEqual([MIG]);
-    expect(actionsOf(earlier, ships)).toEqual([
+    expect(actionsOf(earlier, ships, NO_NOTES)).toEqual([
       expect.objectContaining({ kind: 'migration', ref: MIG, issues: ['ISS-488'] }),
     ]);
   });
 
   it('never reads the journal or a snapshot as a migration, where the range is unread too', () => {
     expect(technicalOf(detail({ changes: earlier }), kept(UNREAD), null).migrations).toEqual([MIG]);
-    expect(actionsOf(earlier, UNREAD).filter((a) => a.kind === 'migration')).toEqual([
+    expect(actionsOf(earlier, UNREAD, NO_NOTES).filter((a) => a.kind === 'migration')).toEqual([
       expect.objectContaining({ ref: MIG }),
-    ]);
-  });
-});
-
-describe('an issue reworked after the release claimed it (BC-6, J9 on 0.4.0-dev.224)', () => {
-  it('is named as reworked, never shown with the line its later round wrote', () => {
-    const out = changesOf({
-      sections: [],
-      designs: [],
-      withoutNotes: [],
-      reworked: [{ key: 'ISS-455', title: 'Intake drafts' }],
-      language: 'en',
-      attention: [],
-    });
-    expect(out.fixes).toEqual([]);
-    expect(out.withoutNotes).toEqual([
-      { issueKey: 'ISS-455', title: 'Intake drafts', why: 'reworked' },
     ]);
   });
 });

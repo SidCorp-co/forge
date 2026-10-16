@@ -10,6 +10,8 @@ export const ANCHOR = {
   improved: "release-improved",
   fixed: "release-fixed",
   security: "release-security",
+  removed: "release-removed",
+  internal: "release-internal",
   requirements: "release-requirements",
   open: "release-open",
   other: "release-other",
@@ -18,15 +20,17 @@ export const ANCHOR = {
 } as const;
 export type Anchor = keyof typeof ANCHOR;
 
-export const GROUP_TITLE: Record<ReleaseChangeGroup | "requirements" | "open" | "other" | "admin" | "technical", ProductCopyKey> = {
+export const GROUP_TITLE: Record<ReleaseChangeGroup | "internal" | "requirements" | "open" | "other" | "admin" | "technical", ProductCopyKey> = {
   new: "releases.page.group.new",
   improved: "releases.page.group.improved",
   fixed: "releases.page.group.fixed",
   security: "releases.page.group.security",
+  removed: "releases.page.group.removed",
+  internal: "releases.page.group.internal",
   requirements: "releases.page.group.requirements",
   open: "releases.page.group.open",
   other: "releases.page.group.other",
-  admin: "releases.page.group.admin",
+  admin: "releases.page.before.title",
   technical: "releases.page.group.technical",
 };
 

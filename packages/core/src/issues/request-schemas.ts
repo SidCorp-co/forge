@@ -6,7 +6,7 @@
 
 import { ISSUE_CREATE_ATTACHMENTS_MAX } from '@forge/contracts/attachments';
 import { ISSUE_INITIAL_STATUSES } from '@forge/contracts/issue-machine';
-import { ReleaseNotesSchema } from '@forge/contracts/release-notes';
+import { ReleaseNotesWriteSchema } from '@forge/contracts/release-notes';
 import { writtenLangSchema } from '@forge/contracts/written-lang';
 import { z } from 'zod';
 import { BODY_FORMATS } from '../body/formats.js';
@@ -35,7 +35,7 @@ export const issuePatchSchema = z
     assigneeId: z.uuid().nullable().optional(),
     labels: z.array(labelAttachItemSchema).max(100).optional(),
     metadata: issueMetadataSchema.optional(),
-    releaseNotes: ReleaseNotesSchema.nullable().optional(),
+    releaseNotes: ReleaseNotesWriteSchema.nullable().optional(),
     sessionContext: sessionContextSchema,
     workState: workStatePatchSchema.optional(),
     detectorKey: z.string().trim().min(1).max(120).optional(),

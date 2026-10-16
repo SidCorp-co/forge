@@ -372,8 +372,9 @@ export async function owedReleaseNotes(
 
 /**
  * The issues waiting at the gate whose release note is written but would read wrong to a user:
- * not in the project's content language, or carrying an engineer's reference. The same test the
- * draft page and the write-time warning apply (`releaseNoteAttention`); a master fixes each note.
+ * not in the project's content language, carrying an engineer's reference, or written before short
+ * titles and so without one (REQ-40 BC-17). The same test the draft page and the write-time warning
+ * apply (`releaseNoteAttention`); a master fixes each note.
  */
 export async function warnedReleaseNotes(
   projectId: string,
@@ -398,6 +399,7 @@ export async function warnedReleaseNotes(
     if (!r.notes || r.notes.section === 'Skip') return [];
     const found = releaseNoteAttention(language, r.notes.userFacing);
     const problems = [
+      ...(r.notes.title?.trim() ? [] : ['no short title']),
       ...(found.notInLanguage ? [`not in ${contentLanguageName(language)}`] : []),
       ...found.references,
     ];

@@ -38,7 +38,8 @@ interface Stamped {
 export interface StatusShippedRelease {
 	version: string;
 	releasedAt: string;
-	headline: string;
+	/** The name it was cut with (REQ-40 BC-14); null on one cut without. */
+	name: string | null;
 	issueCount: number;
 	/** The requirements its issues serve, by key. */
 	requirements: string[];

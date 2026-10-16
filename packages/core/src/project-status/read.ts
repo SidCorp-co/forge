@@ -136,7 +136,7 @@ function shippedOf(
   const view = (r: ReleaseSummary) => ({
     version: r.version,
     releasedAt: r.releasedAt as string,
-    headline: r.headline,
+    name: r.name,
     issueCount: r.issueCount,
     requirements: r.requirements,
     contents: r.contents,
