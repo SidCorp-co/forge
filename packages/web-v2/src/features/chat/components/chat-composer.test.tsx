@@ -201,6 +201,18 @@ describe("ChatComposer — held", () => {
     expect(line.className).not.toMatch(/\bhidden\b/);
   });
 
+  it("stages no file however it arrives while held: picked, dropped or pasted", async () => {
+    render(<ChatComposer onSend={vi.fn()} attachments={SESSION_ATTACHMENTS} held="Sending waits." />);
+    pick([fileOf("picked.png", "image/png")]);
+    const shot = fileOf("pasted.png", "image/png");
+    fireEvent.paste(screen.getByLabelText("Message"), {
+      clipboardData: { items: [{ kind: "file", type: "image/png", getAsFile: () => shot }] },
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByText("picked.png")).not.toBeInTheDocument();
+    expect(screen.queryByText("pasted.png")).not.toBeInTheDocument();
+  });
+
   it("spins for nothing it was told is held, even when busy is passed beside it", () => {
     render(<ChatComposer onSend={vi.fn()} busy held="Sending waits." />);
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
