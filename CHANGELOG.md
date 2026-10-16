@@ -3234,6 +3234,7 @@
 - **The live agent on an issue page reads Quiet, in amber, once it has been silent a minute,** as every other screen does. It said "Heartbeat stale" in red only after three. (ISS-1228)
 - **Every kind of work reads in words wherever Forge names it.** Sessions, a session's page, runs, issues and the Pipeline page show each step whole; on a phone a session's title wraps clear of its buttons. (ISS-1228)
 - **The Pipeline page names the issue a step works.** It said "No issue held" for a step the issue page showed running. On a phone, empty-panel lines and session names wrap rather than cut off. (ISS-1228)
+- **A session's issue chip names its issue.** The sessions list said "Issue" for a step working ISS-2; it now shows the key and links to it. (ISS-1228)
 - **The pipeline help page says what Settings holds, and that a gated draft is dropped, not closed.** It described a per-stage Auto/Manual/Skip setting that does not exist, and told readers to close a draft, which is refused. (ISS-1229)
 - **Getting started no longer walks an issue through stages that are gone.** It now says one agent carries an issue from filed to shipped, as the public guide index does. (ISS-1229)
 - **The overview names each kind of work and each session failure in plain words.** Its work table no longer says Stage or links one kind to the next, and a failure reads "Runner unreachable". (ISS-1229)

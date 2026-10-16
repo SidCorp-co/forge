@@ -579,7 +579,7 @@ function SessionIdentity({
   onOpen?: () => void;
 }) {
   const router = useRouter();
-  const issueId = row.metadata?.issueId;
+  const issue = row.issue ?? null;
   const title = sessionTitle(row) ?? "Untitled session";
   return (
     <div className="min-w-0">
@@ -599,11 +599,13 @@ function SessionIdentity({
         </p>
       )}
       <div className="mt-1 flex flex-wrap items-center gap-1.5">
-        {issueId &&
+        {issue &&
           (slug ? (
-            <IssueRefBadge id={issueId} slug={slug} />
+            <IssueRefBadge id={issue.id} slug={slug} displayId={issue.displayId} title={issue.title} />
           ) : (
-            <span className="fg-caption truncate">{issueId}</span>
+            <span className="fg-caption truncate" title={issue.title}>
+              {issue.displayId}
+            </span>
           ))}
         {/* Jump to the pipeline-run timeline (ISS-378 AC#3). */}
         {row.pipelineRunId && (

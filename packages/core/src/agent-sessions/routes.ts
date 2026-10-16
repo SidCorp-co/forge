@@ -71,6 +71,7 @@ import {
   detectUnexpandedSkillFailure,
   finalizeScheduleSessionFailure,
 } from './session-failure.js';
+import { loadSessionIssueRefs } from './session-issue-ref.js';
 import { onTerminalPatch } from './terminal-effects.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
 import { agentSessionTurnsRoutes } from './turns-routes.js';
@@ -384,8 +385,10 @@ agentSessionRoutes.get(
 
     const reportById = await loadSessionReports(pageIds);
     const deadlineById = await loadSilenceDeadlines(pageIds);
+    const issueById = await loadSessionIssueRefs(pageIds);
     const items = rows.map((r) => ({
       ...r,
+      issue: issueById.get(r.id) ?? null,
       estimatedCost: costById.get(r.id) ?? 0,
       lastMessagePreview: previewById.get(r.id) ?? null,
       report: reportById.get(r.id) ?? null,

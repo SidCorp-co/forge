@@ -124,6 +124,9 @@ export interface SessionRow {
   report?: SessionBoxReport | null;
   /** How long core lets this session go unheard before ending it; `null` where nothing does. */
   silenceLimitMs?: number | null;
+  /** The issue the session works, named by the list endpoint; `null` where it records none or core
+   *  matched no issue of its project to the id it records. */
+  issue?: { id: string; displayId: string; title: string } | null;
   /** One-line preview of the last user/assistant turn, attached by the list
    *  endpoint (ISS-698). Null when no previewable turn exists yet (e.g. a
    *  brand-new session, or a legacy row with only the jsonb transcript). */

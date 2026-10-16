@@ -65,7 +65,11 @@ function step(id: string, title: string, metadata: SessionRow["metadata"]): Sess
 const rows: SessionRow[] = [
   { ...step("s0", "run: ISS-4", { type: "run_session" }), kind: "run_session" },
   step("s1", "release_batch", { jobType: "release_batch" }),
-  step("s2", "forge-code: Fix the export", { jobType: "drive", skillName: "forge-code" }),
+  {
+    ...step("s2", "forge-code: Fix the export", { jobType: "drive", skillName: "forge-code", issueId: "i2" }),
+    issue: { id: "i2", displayId: "ISS-2", title: "Fix the export" },
+  } as SessionRow,
+  { ...step("s5", "triage: Gone", { jobType: "triage", issueId: "i-gone" }), issue: null } as SessionRow,
   step("s3", "review_followup_rework_after_codex_consult", { jobType: "review_followup_rework_after_codex_consult" }),
 ];
 
@@ -75,7 +79,7 @@ describe("a session's step kind, wherever it is named", () => {
   it("reads a step session's title in words, keeping the issue it names", () => {
     expect(sessionTitle(rows[1])).toBe("Releases");
     expect(sessionTitle(rows[2])).toBe("Issue work: Fix the export");
-    expect(sessionTitle(rows[3])).toBe("Review followup rework after codex consult");
+    expect(sessionTitle(rows[4])).toBe("Review followup rework after codex consult");
   });
 
   it("prints a title someone wrote, or one with no recorded step, as written", () => {
@@ -115,6 +119,16 @@ describe("a session's step kind, wherever it is named", () => {
       expect(tokens).toEqual(expect.arrayContaining(["break-words", "sm:truncate"]));
       expect(el.getAttribute("title")).toBe("Issue work: Fix the export");
     }
+  });
+
+  // ISS-1228 r9: a step row's issue chip read "Issue", naming no issue, for a session on ISS-2.
+  it("names a step row's issue by its key, linking to it, and draws no chip for an issue core could not name", () => {
+    const { container } = render(<SessionsScreen scope={{ projectId: "p1" }} />);
+    const keys = screen.getAllByRole("link", { name: "ISS-2" });
+    expect(keys.length).toBeGreaterThan(0);
+    for (const key of keys) expect(key.getAttribute("href")).toBe("/projects/pair/issues/i2");
+    expect(container.textContent).not.toMatch(/\bIssue\b(?! work| ·)/);
+    expect(container.textContent).not.toContain("i-gone");
   });
 
   it("names no step kind by its stored name on the Pipeline page", () => {
