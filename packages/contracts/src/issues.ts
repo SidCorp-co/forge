@@ -1,6 +1,9 @@
-import type { RefusalStatuses } from "./refusal.js";
 import { PROBE_REFUSAL_CODES } from "./criterion-probes.js";
-import { DESIGN_CHECK_CODES, VERDICT_JUDGE_REFUSAL_CODES } from "./issue-design.js";
+import {
+	DESIGN_CHECK_CODES,
+	VERDICT_JUDGE_REFUSAL_CODES,
+} from "./issue-design.js";
+import type { RefusalStatuses } from "./refusal.js";
 import { STOREFRONT_DRAFT_REFUSAL_CODES } from "./verdict-identity.js";
 
 export type { ReleaseNotes, ReleaseNotesSection } from "./release-notes.js";
@@ -138,13 +141,18 @@ export const ISSUE_CREATE_REFUSAL_CODES = [
 	"INVALID_STATUS",
 	"INVALID_DETECTOR_KEY",
 	"CHAT_FILES_FEEDBACK_NOT_ISSUES",
+	"MCP_FILES_FEEDBACK_NOT_ISSUES",
 ] as const;
 export type IssueCreateRefusalCode =
 	(typeof ISSUE_CREATE_REFUSAL_CODES)[number];
 
-/** A chat door's credential is refused an issue whoever holds it: it files Feedback or a Requirement. */
+/**
+ * A chat door's credential is refused an issue whoever holds it, and so is an MCP client: each
+ * files Feedback or a Requirement, and issues are born from those.
+ */
 export const ISSUE_CREATE_REFUSAL_STATUSES = {
 	CHAT_FILES_FEEDBACK_NOT_ISSUES: 403,
+	MCP_FILES_FEEDBACK_NOT_ISSUES: 403,
 } as const satisfies RefusalStatuses<IssueCreateRefusalCode>;
 
 export const ISSUE_TAKE_REFUSAL_CODES = [

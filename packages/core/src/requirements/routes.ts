@@ -21,7 +21,6 @@ import { REQUIREMENT_TITLE_MAX, titleText } from '@forge/contracts/title-text';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { egressForRequest } from '../lib/data-egress.js';
-import { logger } from '../lib/logger.js';
 import { refused } from '../lib/refusal.js';
 import { assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { holdChatWrite } from '../middleware/chat-write-hold.js';
@@ -33,13 +32,12 @@ import { requirementChecklistRoutes } from './checklist-routes.js';
 import { requestContract } from './contract-request.js';
 import { readRequirementDecisionsAs } from './decisions-read.js';
 import { deferRequirement, undeferRequirement } from './deferral.js';
-import { designsNamed, draftLinked } from './draft-linked.js';
+import { draftRequirement } from './draft-linked.js';
 import { requirementLinkRoutes } from './link-routes.js';
 import {
   acceptPlacement,
   areasOf,
   proposeMissingPlacements,
-  proposePlacement,
   setAreas,
   setPlacement,
 } from './placement.js';
@@ -101,23 +99,16 @@ requirementRoutes.post(
   holdChatWrite('requirement_draft'),
   async (c) => {
     const { title, designs, ...write } = c.req.valid('json');
-    const projectId = c.req.valid('param').id;
-    const linked = await designsNamed(projectId, designs ?? []);
-    if (!linked.ok) return refused(c, [linked.refusal], 'REQUIREMENT_REFUSED');
-    const outcome = await draftLinked({
-      projectId,
-      actor: actorOf(c),
-      title,
-      write,
-      workflowIds: linked.ids,
-    });
-    // the assistant proposes the area and short name from what was just written; a person accepts
-    if (outcome.ok) {
-      void proposePlacement(projectId, outcome.requirement.id).catch((err: unknown) =>
-        logger.warn({ err }, 'requirement placement: the proposal on create failed'),
-      );
-    }
-    return answer(c, outcome);
+    return answer(
+      c,
+      await draftRequirement({
+        projectId: c.req.valid('param').id,
+        actor: actorOf(c),
+        title,
+        write,
+        designs: designs ?? [],
+      }),
+    );
   },
 );
 

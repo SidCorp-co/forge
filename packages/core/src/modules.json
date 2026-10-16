@@ -913,6 +913,11 @@
       ],
       "serves": ["REQ-39", "REQ-41"]
     },
+    "product-door": {
+      "kind": "door",
+      "context": "platform",
+      "serves": ["core-components#door-mcp", "REQ-11", "REQ-40"]
+    },
     "project-config": {
       "kind": "domain",
       "context": "project-config",

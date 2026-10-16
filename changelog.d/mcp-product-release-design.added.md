@@ -1,0 +1,1 @@
+**An MCP client now works releases, designs, questions and issues.** Each answer says whether work runs and when it is likely done. Approvals stay with their approver, and an issue is never filed from MCP.

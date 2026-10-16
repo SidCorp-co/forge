@@ -12,7 +12,7 @@ import {
   parseDecision,
   requestApproval,
 } from './approvals.js';
-import { nameRelease } from './naming.js';
+import { nameReleaseAs } from './naming.js';
 import { findReleaseBatchRun } from './queries.js';
 import { listReleases, readRelease } from './release-read.js';
 import type { ViewerFacts } from './release-view.js';
@@ -93,9 +93,7 @@ releaseVersionRoutes.put(
   zValidator('json', ReleaseNamingSchema),
   async (c) => {
     const { projectId, version } = c.req.valid('param');
-    const userId = c.get('userId');
-    requireHeld(await loadProjectAccess(projectId, userId), 'project.admin');
-    return c.json(await nameRelease(projectId, version, c.req.valid('json'), userId));
+    return c.json(await nameReleaseAs(projectId, version, c.req.valid('json'), c.get('userId')));
   },
 );
 

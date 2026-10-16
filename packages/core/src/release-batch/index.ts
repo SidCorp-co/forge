@@ -1,5 +1,10 @@
 export { registerReleaseApprovalWake } from './approval-wake.js';
-export { approvalRequired, approvalsOfRuns } from './approvals.js';
+export {
+  approvalRequired,
+  approvalsOfRuns,
+  decideApprovalOfVersion,
+  parseDecision,
+} from './approvals.js';
 export { registerReleaseBatchClaimSubscriber } from './claim-subscriber.js';
 export {
   activeCoolifyIntegrations,
@@ -30,7 +35,7 @@ export {
   readSurfaceMap,
   type SurfaceMap,
 } from './landing-surfaces.js';
-export { unnamedReleases } from './naming.js';
+export { nameReleaseAs, unnamedReleases } from './naming.js';
 export {
   provideReleaseBatchPorts,
   servedCarries,
@@ -45,10 +50,11 @@ export {
 } from './queries.js';
 export { bindingReachesProduction } from './release-coolify.js';
 export { type CarriedVerdict, carriedVerdictsOf } from './release-facts.js';
-export { readRelease } from './release-read.js';
+export { listReleases, readRelease } from './release-read.js';
 export { type AutomaticReleaseSweepResult, sweepAutomaticReleases } from './release-sweep.js';
 export type { ViewerFacts } from './release-view.js';
 export { type ShippedReleaseRun, shippedReleaseRuns } from './shipped-earlier.js';
 export { type RangeChange, type RangeReading, readRange } from './shipped-range.js';
+export { releaseToolView } from './tool-view.js';
 export { recoverUnstartedReleaseBatches } from './unstarted-recovery.js';
 export { deploymentConfirms } from './verify.js';

@@ -1,9 +1,17 @@
 import { CHANNEL_READS } from '@forge/contracts/ecosystem';
+import {
+  DESIGN_TOOL_READS,
+  ISSUES_TOOL_READS,
+  QUESTIONS_TOOL_READS,
+  RELEASES_TOOL_READS,
+} from '@forge/contracts/mcp-product';
 import type { McpToolName } from '@forge/contracts/mcp-tools';
 import type { MiddlewareHandler } from 'hono';
 import { ECOSYSTEM_READS } from '../ecosystem/index.js';
 import type { PatRequestClass } from '../lib/rate-limits.js';
 import type { PrincipalVars } from '../middleware/require-pat.js';
+import { FEEDBACK_READ_ACTIONS } from './feedback-tool.js';
+import { REQUIREMENT_READ_ACTIONS } from './requirements-tool.js';
 
 /**
  * JSON-RPC methods that read. `tools/call` is absent deliberately — it is the
@@ -33,6 +41,12 @@ const READ_ACTIONS = {
   forge_uploads: new Set(['fetch']),
   forge_channel: new Set<string>(CHANNEL_READS),
   forge_ecosystem: new Set<string>(ECOSYSTEM_READS),
+  forge_requirements: new Set(REQUIREMENT_READ_ACTIONS),
+  forge_feedback: new Set(FEEDBACK_READ_ACTIONS),
+  forge_releases: new Set<string>(RELEASES_TOOL_READS),
+  forge_design: new Set<string>(DESIGN_TOOL_READS),
+  forge_questions: new Set<string>(QUESTIONS_TOOL_READS),
+  forge_issues: new Set<string>(ISSUES_TOOL_READS),
 } satisfies Record<McpToolName, ReadonlySet<string>>;
 
 /** The action a tool takes when the call names none — its schema's own default. */

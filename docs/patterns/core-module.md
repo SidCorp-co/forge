@@ -86,9 +86,9 @@ requirements and workflow designs.
   fails. It runs in `pnpm verify` and CI; `--markers` writes every finding as Wrong markers. A
   status written outside the kernel is not linted: the database refuses it (Status machines,
   below).
-- **The API comes first.** The CLI wraps the routes, and MCP keeps only what neither covers
-  ([api-first.md](../proposals/destination/api-first.md)), so every rule below is stated for the
-  route first.
+- **The API comes first.** The CLI wraps the routes, and MCP serves the product layer and what
+  neither covers ([api-first.md](../proposals/destination/api-first.md)), so every rule below is
+  stated for the route first.
 - **What a change runs before it lands.** `pnpm tc:changed` (`scripts/tc-changed.mjs`), which
   typechecks the packages a change touched and their importers, and the direct tests of the files it
   touched (REQ-36 BC-7); then `pnpm verify`, which runs every checker named on this page. The whole
@@ -227,7 +227,7 @@ One file per responsibility, under `packages/core/src/<module>/`. The references
 | **standing.ts** | The module's derived facts, when it has any, extending `packages/contracts/src/standing.ts:Standing` | Write |
 | **events.ts** | The outbox events this module emits, typed in contracts | Emit an event no module consumes |
 | **routes.ts** | Hono routes: param validators, `strictBody`, the actor, `answer`. It is the heavy face: every router the module serves is exported from it | Hold a rule or a database call (BC-15); be imported by anything but the route registry |
-| **tool.ts** | The MCP door, only when an agent needs what the CLI and the API do not cover (BC-21) | Re-implement a rule; be imported by anything but the two tool registries |
+| **tool.ts** | The MCP door: the product layer a person works from an MCP client, or what the CLI and the API do not cover (BC-21) | Re-implement a rule; be imported by anything but the two tool registries |
 | **index.ts** | The light face (BC-13): services, read functions, types | Mount anything; export a router or a tool; construct anything at import |
 
 - **Routes hold no queries (BC-15).** A route file validates, calls one service or read function,
@@ -239,17 +239,22 @@ One file per responsibility, under `packages/core/src/<module>/`. The references
 - A route's prefix is in `packages/core/src/credentials/pat-permissions.ts:PAT_PERMISSION_RESOURCES`, so a
   token can be granted it.
 
-## Doors: REST first, the CLI over it, MCP only where neither serves (BC-21)
+## Doors: REST first, the CLI over it, MCP for the product layer (BC-21)
 
 The owner ruled on 2026-10-04 that MCP is slimmed: "cái nào cli thay thế được và nên dùng API hơn
-và CLI hơn thì không cần MCP".
+và CLI hơn thì không cần MCP"; on 2026-10-16, that it serves the product layer, delivery staying off it.
 
 - **The REST API is the primary door.** Every act and every read is a route first.
 - **The CLI is built over the API.** A CLI verb calls a route and adds nothing the route does not
   answer; a verb and a route with the same name accept the same filters. The generated API
   reference (`packages/core/src/api-contract/`) is where a difference shows.
-- **MCP keeps only what an agent needs and neither the CLI nor the API covers.** A tool that only
-  re-wraps a route the CLI already reaches is removed, not migrated.
+- **MCP serves the product layer, and what neither the CLI nor the API covers.** The owner ruled
+  on 2026-10-16 that a person works the product from an MCP client: releases, designs, questions
+  and issues read each have a tool, and every answer about work in motion says whether it runs and
+  when it is likely done. Delivery (deploys, the source host, Sentry, the storefront target)
+  stays REST and the CLI. An MCP client files no issue (`MCP_FILES_FEEDBACK_NOT_ISSUES`). The
+  product tools compose several modules with the forecast, which none of them may import, so they
+  live in the `product-door` door module.
 - **A tool that stays is one tool per resource with an `action` enum** whose verbs match the
   routes, lives in its module (**tool.ts**), and calls the same service and read functions as the
   route. Its input is one `z.strictObject`; it declares `grant`, `reach` and `route`, and both doors

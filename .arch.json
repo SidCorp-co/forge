@@ -143,6 +143,9 @@
     "core-project-config": [
       "packages/core/src/project-config/**"
     ],
+    "core-product-door": [
+      "packages/core/src/product-door/**"
+    ],
     "core-project-status": [
       "packages/core/src/project-status/**"
     ],

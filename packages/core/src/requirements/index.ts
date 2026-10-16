@@ -17,6 +17,7 @@ export {
   type DraftGapsOutcome,
   fillDraftGaps,
 } from './draft-gaps.js';
+export { draftRequirement } from './draft-linked.js';
 export { draftPictureRefusals, type Landing, landingIn, NEW_REQUIREMENT } from './draft-picture.js';
 export { embedRequirementHead, similarRequirements } from './embeddings.js';
 export { feedbackLinksOf } from './feedback-links.js';
@@ -38,7 +39,9 @@ export {
   rewriteRevisionIn,
 } from './revision-write.js';
 export { roomSettleWriter } from './room-settle.js';
+export { revisionFields } from './route-kit.js';
 export { linkIssueRefusal } from './rules.js';
+export { proposeRevision, writeRevision } from './service.js';
 export { actOnStaleDraftAnswer, registerStaleDraftAct } from './stale-draft-act.js';
 export { sweepStaleDrafts } from './stale-drafts.js';
 export {

@@ -8,6 +8,12 @@ export const MCP_TOOL_NAMES = [
 	"forge_uploads",
 	"forge_channel",
 	"forge_ecosystem",
+	"forge_requirements",
+	"forge_feedback",
+	"forge_releases",
+	"forge_design",
+	"forge_questions",
+	"forge_issues",
 ] as const;
 
 export type McpToolName = (typeof MCP_TOOL_NAMES)[number];
