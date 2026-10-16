@@ -248,6 +248,7 @@ export const FAILURE_REASON_LABEL: Record<SessionFailureReason, string> = {
   unclassified: "Unclassified",
   queue_timeout: "Queue timeout",
   heartbeat_timeout: "No heartbeat",
+  session_stopped_checking_in: "Stopped checking in",
   turn_never_reported: "No turn ever reported",
   no_worker_online: "No runner online",
   no_client_ack: "No acknowledgement",
@@ -292,7 +293,9 @@ export const FAILURE_REASON_ACTION: Record<SessionFailureReason, string> = {
   audit_ran_blind: "The scheduled run called no tools, so it produced no evidence — Rerun.",
   unclassified: "The cause wasn't recorded — open the run timeline to see why.",
   queue_timeout: "No runner picked it up — check the fleet strip for an online runner.",
-  heartbeat_timeout: "The runner died mid-run — Retry to re-dispatch.",
+  heartbeat_timeout: "The session stopped sending heartbeats — Retry to re-dispatch.",
+  session_stopped_checking_in:
+    "The session stopped checking in while its runner kept answering — open the session to see where it stopped, then Retry.",
   turn_never_reported:
     "A runner picked this up but nothing ever reported the agent starting a turn — check whether its prompt was actually submitted, then Rerun.",
   no_worker_online: "Bring a runner online or check device pairing, then Retry.",

@@ -20,9 +20,6 @@ import {
 } from '../helpers/index.js';
 
 const TEN_MIN = 10 * 60_000;
-/** A run session heard four minutes ago on a jobless run whose runner answered just now: the
- *  one-shot sweep may take it once the runner's word is three minutes old. */
-const RUNNER_LAPSES = 7 * 60_000;
 
 function near(actual: unknown, expected: number): void {
   expect(Math.abs((actual as number) - expected)).toBeLessThan(10_000);
@@ -114,17 +111,44 @@ describe("a session read carries core's own silence limit (ISS-1228 round 9)", (
         i.silenceLimitMs,
       ]),
     );
-    near(byId.get(run.id), RUNNER_LAPSES);
+    // Its box answers, so the one-shot sweep waits out the grace and the run reaper's ten minutes
+    // come first (ISS-1228 round 11; this read seven, three past the box's latest answer).
+    near(byId.get(run.id), TEN_MIN);
     expect(byId.get(pool.id)).toBe(THREE_MIN);
     // A waiting session is not the heartbeat hop's, but its residency ends it: ten minutes and the grace.
     expect(byId.get(waiting.id)).toBe(15 * 60_000);
+  });
+
+  // ISS-1228 round 11 (judge-27): a box that kept answering moved the end three minutes past its
+  // latest answer on every read, so the countdown stood at "2m 59s" for six minutes.
+  it('holds the end still while the box keeps answering, and moves it only when the box goes quiet', async () => {
+    await runnerAnswers();
+    const run = await session('run_session');
+    const endAt = async () => {
+      const body = await get(`/agent-sessions/${run.id}`);
+      return Date.parse(body.lastHeartbeatAt as string) + (body.silenceLimitMs as number);
+    };
+    const first = await endAt();
+    await harness.db.execute(
+      sql`UPDATE runners SET last_seen_at = now() + interval '2 minutes' WHERE device_id = ${deviceId}::uuid`,
+    );
+    expect(await endAt()).toBe(first);
+
+    // The box last heard two minutes ago and silent since: the sweep may take the session a minute
+    // from now, which no longer moves.
+    await harness.db.execute(
+      sql`UPDATE runners SET last_seen_at = now() - interval '2 minutes' WHERE device_id = ${deviceId}::uuid`,
+    );
+    const quiet = await endAt();
+    expect(quiet).toBeLessThan(first);
+    expect(await endAt()).toBe(quiet);
   });
 
   it('answers it on the one-session read the session page reads', async () => {
     await runnerAnswers();
     const run = await session('run_session');
     const body = await get(`/agent-sessions/${run.id}`);
-    near(body.silenceLimitMs, RUNNER_LAPSES);
+    near(body.silenceLimitMs, TEN_MIN);
   });
 
   it("answers it on the Pipeline page's live sessions", async () => {
@@ -134,7 +158,7 @@ describe("a session read carries core's own silence limit (ISS-1228 round 9)", (
     const live = (body.sessions as Array<{ id: string; silenceLimitMs: number | null }>).find(
       (s) => s.id === run.id,
     );
-    near(live?.silenceLimitMs, RUNNER_LAPSES);
+    near(live?.silenceLimitMs, TEN_MIN);
     expect(live).toMatchObject({ jobType: null, skillName: null });
   });
 
@@ -170,7 +194,7 @@ describe("a session read carries core's own silence limit (ISS-1228 round 9)", (
 
     const body = await get(`/projects/${projectId}/run-sessions`);
     const rows = body.items as Array<{ sessionId: string | null; silenceLimitMs: number | null }>;
-    near(rows.find((r) => r.sessionId === run.id)?.silenceLimitMs, RUNNER_LAPSES);
+    near(rows.find((r) => r.sessionId === run.id)?.silenceLimitMs, TEN_MIN);
     expect(rows.find((r) => r.sessionId === null)?.silenceLimitMs).toBeNull();
   });
 
@@ -371,7 +395,7 @@ describe('the one-shot sweep, as the limit reads it (ISS-1228 round 9)', () => {
     `);
     await runnerAnswers();
 
-    near((await get(`/agent-sessions/${quiet.id}`)).silenceLimitMs, RUNNER_LAPSES);
+    near((await get(`/agent-sessions/${quiet.id}`)).silenceLimitMs, TEN_MIN);
     expect((await get(`/agent-sessions/${asked.id}`)).silenceLimitMs).toBe(TEN_MIN);
     const { reapOrphanedOneShotRuns } = await import('../../src/pipeline/sweeper.js');
     await reapOrphanedOneShotRuns(new Date());

@@ -63,6 +63,7 @@ import {
   useIssueDeps,
   usePatchIssue,
   useProjectMembers,
+  useRunPipelineStep,
 } from "../hooks";
 import { useIssuePark } from "../park";
 import type { IssueAgentSession, IssueStatus } from "../types";
@@ -125,6 +126,7 @@ export function IssueDetailScreen({
   } = useGuardedTransition();
   const qc = useQueryClient();
   const resumeRun = useResumeRun();
+  const runIssue = useRunPipelineStep();
   // ISS-1160 — a display-key load keys `useIssue` on `id`+`projectId` (never
   // globally unique on `id` alone), so an invalidation naming only the
   // canonical uuid this mutation reports misses that entry; name both.
@@ -297,6 +299,8 @@ export function IssueDetailScreen({
             pending={pending}
             isRunActive={isRunActive}
             onTransition={onTransition}
+            onRun={() => runIssue.mutate(issue.id, { onSuccess: refreshIssue })}
+            running={runIssue.isPending}
             onCopyLink={copyLink}
           />
         </div>

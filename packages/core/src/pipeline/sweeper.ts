@@ -3,6 +3,7 @@ import { type AlertSweepResult, runAlertSweep } from '../admin/alert-sweeper.js'
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { broadcastSessionEvent } from '../jobs/agent-session-link.js';
+import { boxAnswersSql } from '../jobs/box-answers.js';
 import { killGraceMs } from '../jobs/kill-gate.js';
 import {
   getLoopThresholds,
@@ -490,25 +491,33 @@ export async function reapOrphanedOneShotRuns(
     try {
       // A session already completed or failed is left as-is — the run still
       // needs closing (the missed-`/desktop/status` case).
-      const flipped = await applyKernelTransition(db, {
-        entity: 'session',
-        returning: SWEEP_SESSION_COLUMNS,
-        to: 'failed',
-        set: { failureReason: 'heartbeat_timeout', updatedAt: now },
-        where: and(
-          eq(agentSessions.pipelineRunId, row.id),
-          inArray(agentSessions.status, LIVE_SESSION_STATUSES),
-        ),
-        fromStatus: 'active',
-        reason: 'heartbeat_timeout',
-        actor: { type: 'sweeper' },
-        source: 'sweeper',
-      });
-      for (const s of flipped) {
-        broadcastSessionEvent(s.id, s.projectId, s.deviceId, 'agent-session.status', {
-          status: 'failed',
-          failureReason: 'heartbeat_timeout',
+      // A session whose box still answers stopped checking in itself; the box was reachable, so
+      // its reason says that rather than that the heartbeat (read: the runner) died (ISS-1228).
+      for (const [failureReason, boxed] of [
+        ['session_stopped_checking_in', boxAnswersSql(sql`${agentSessions.deviceId}`)],
+        ['heartbeat_timeout', sql`NOT ${boxAnswersSql(sql`${agentSessions.deviceId}`)}`],
+      ] as const) {
+        const flipped = await applyKernelTransition(db, {
+          entity: 'session',
+          returning: SWEEP_SESSION_COLUMNS,
+          to: 'failed',
+          set: { failureReason, updatedAt: now },
+          where: and(
+            eq(agentSessions.pipelineRunId, row.id),
+            inArray(agentSessions.status, LIVE_SESSION_STATUSES),
+            boxed,
+          ),
+          fromStatus: 'active',
+          reason: 'heartbeat_timeout',
+          actor: { type: 'sweeper' },
+          source: 'sweeper',
         });
+        for (const s of flipped) {
+          broadcastSessionEvent(s.id, s.projectId, s.deviceId, 'agent-session.status', {
+            status: 'failed',
+            failureReason,
+          });
+        }
       }
 
       const sessions = await db

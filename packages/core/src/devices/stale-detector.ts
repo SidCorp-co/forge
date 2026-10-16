@@ -1,12 +1,13 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { BOX_SILENT_AFTER_MS } from '../jobs/box-answers.js';
 import { logger } from '../logger.js';
 import { boss } from '../queue/boss.js';
 import { deviceRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 
 export const DEVICE_STALE_DETECTOR_QUEUE = 'device-status-detector';
-const DEVICE_STALE_THRESHOLD = "interval '90 seconds'";
+const DEVICE_STALE_THRESHOLD = `interval '${BOX_SILENT_AFTER_MS / 1000} seconds'`;
 
 type StaleDeviceRow = {
   id: string;

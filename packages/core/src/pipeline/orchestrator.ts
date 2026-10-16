@@ -5,13 +5,15 @@ import { logger } from '../logger.js';
 import type { Actor } from './activity.js';
 import {
   AUTONOMOUS_ENTRY_STATUS,
+  type DriveRelease,
   dispatchAutonomous,
   dispatchDriveManual,
+  isEntryGateClosed,
 } from './autonomous-dispatch.js';
 import type { HooksBus } from './hooks.js';
 import { type PipelineConfig, pipelineConfigSchema } from './pipeline-config-schema.js';
 
-export { ActiveJobConflictError } from './enqueue-helper.js';
+export { NoMasterRunningError } from './autonomous-dispatch.js';
 
 async function loadPipelineConfig(projectId: string): Promise<{ cfg: PipelineConfig | null }> {
   const [row] = await db
@@ -37,8 +39,9 @@ export async function triggerPipelineStepManual(args: {
   status: IssueStatus;
   actor: Actor;
   reason: Record<string, unknown>;
-}): Promise<{ released: true }> {
-  return dispatchDriveManual(args);
+}): Promise<DriveRelease> {
+  const { cfg } = await loadPipelineConfig(args.projectId);
+  return dispatchDriveManual({ ...args, entryGated: isEntryGateClosed(cfg) });
 }
 
 export async function reEnqueueForIssue(args: {

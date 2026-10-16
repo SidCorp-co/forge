@@ -11,6 +11,8 @@ import {
   disagreement,
   disagreementText,
   endReasonText,
+  leaseDisagreementText,
+  offlineText,
   pendingReasonText,
   silenceText,
   stateLabelAt,
@@ -69,7 +71,14 @@ function coreReadingLines(row: RunSessionRow, now: number): { lines: string[]; s
   const split = disagreement(row);
   const ended = endReasonText(row);
   const note = pendingReasonText(row);
-  const lines = [silence, split && disagreementText(split), ended, note].filter(Boolean) as string[];
+  const lines = [
+    silence,
+    split && disagreementText(split, row),
+    offlineText(row),
+    leaseDisagreementText(row),
+    ended,
+    note,
+  ].filter(Boolean) as string[];
   return { lines, silence };
 }
 
@@ -154,7 +163,7 @@ export function RunRow({ row, now, slug }: RunRowProps) {
         </span>
       )}
       <Marks row={row} />
-      <span className="fg-caption hidden break-words text-subtle sm:block sm:max-w-[12rem]">
+      <span className="fg-caption break-words text-subtle sm:max-w-[12rem]">
         {row.deviceName ?? row.deviceId}
       </span>
       <span className="fg-caption flex-none whitespace-nowrap text-subtle">

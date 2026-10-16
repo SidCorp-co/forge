@@ -29,13 +29,19 @@ function subject(over: Partial<SilenceSubject>): SilenceSubject {
 }
 
 const alone = (
-  over: { runnerSeenAt?: number | null; parked?: boolean; runStartedAt?: number } = {},
+  over: {
+    runnerSeenAt?: number | null;
+    runnerAnswers?: boolean;
+    parked?: boolean;
+    runStartedAt?: number;
+  } = {},
 ) => ({
   runStartedAt: over.runStartedAt ?? T - 60 * MIN,
   sessions: [
     {
       beatAt: T,
       runnerSeenAt: over.runnerSeenAt ?? null,
+      runnerAnswers: over.runnerAnswers ?? false,
       parked: over.parked ?? false,
       endsBy: null,
     },
@@ -146,6 +152,35 @@ describe('silenceLimitMs', () => {
     ).toBe(10 * MIN);
   });
 
+  // ISS-1228 round 11 (judge-27): a box that keeps answering moved the published end three minutes
+  // past its latest answer on every reading, so a screen counted "2m 59s" for six minutes.
+  it('publishes one end for a session whose box keeps answering, however late its latest answer', () => {
+    const run = (seen: number) =>
+      silenceDeadline(
+        subject({
+          kind: 'run_session',
+          oneShot: alone({ runnerSeenAt: seen, runnerAnswers: true }),
+        }),
+      );
+    expect(run(T + MIN)).toBe(run(T + 6 * MIN));
+    expect(run(T + MIN)).toBe(T + 10 * MIN);
+    const chat = (seen: number) =>
+      silenceDeadline(subject({ oneShot: alone({ runnerSeenAt: seen, runnerAnswers: true }) }));
+    expect(chat(T + MIN)).toBe(chat(T + 15 * MIN));
+    expect(chat(T + MIN)).toBe(T + ONE_SHOT_DEVICE_GRACE_FLOOR_MS);
+  });
+
+  it('keeps both bounds once the box stops answering: its last answer, never past the grace, never before the beat', () => {
+    // Heard at minute 0, its box last at minute 19 and silent since: the sweep may take it at 20.
+    expect(silenceDeadline(subject({ oneShot: alone({ runnerSeenAt: T + 19 * MIN }) }))).toBe(
+      T + ONE_SHOT_DEVICE_GRACE_FLOOR_MS,
+    );
+    // Its box last heard before the session itself: the session's own beat plus three minutes.
+    expect(silenceDeadline(subject({ oneShot: alone({ runnerSeenAt: T - 2 * MIN }) }))).toBe(
+      T + 3 * MIN,
+    );
+  });
+
   it("holds the runner's grace only while the runner's own last word is within the heartbeat timeout", () => {
     expect(silenceLimitMs(subject({ oneShot: alone({ runnerSeenAt: T + 2 * MIN }) }))).toBe(
       5 * MIN,
@@ -163,7 +198,13 @@ describe('silenceLimitMs', () => {
       runStartedAt: T - 60 * MIN,
       sessions: [
         ...alone().sessions,
-        { beatAt: T + 90_000, runnerSeenAt: null, parked: false, endsBy: null },
+        {
+          beatAt: T + 90_000,
+          runnerSeenAt: null,
+          runnerAnswers: false,
+          parked: false,
+          endsBy: null,
+        },
       ],
     };
     expect(silenceLimitMs(subject({ oneShot: two }))).toBe(3 * MIN + 90_000);
@@ -187,7 +228,10 @@ describe('silenceLimitMs', () => {
   it('lets a sibling hold the one-shot sweep off only until another reaper ends that sibling', () => {
     const run = (endsBy: number | null, parked = false) => ({
       runStartedAt: T - 60 * MIN,
-      sessions: [...alone().sessions, { beatAt: T, runnerSeenAt: T + 10 * MIN, parked, endsBy }],
+      sessions: [
+        ...alone().sessions,
+        { beatAt: T, runnerSeenAt: T + 10 * MIN, runnerAnswers: false, parked, endsBy },
+      ],
     });
     expect(silenceLimitMs(subject({ oneShot: run(null) }))).toBe(13 * MIN);
     expect(silenceLimitMs(subject({ oneShot: run(T + MIN) }))).toBe(3 * MIN);

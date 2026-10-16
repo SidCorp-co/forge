@@ -11,7 +11,7 @@ import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
-import { ActiveJobConflictError, triggerPipelineStepManual } from '../pipeline/orchestrator.js';
+import { NoMasterRunningError, triggerPipelineStepManual } from '../pipeline/orchestrator.js';
 import {
   EMPTY_USAGE_TOTALS,
   usageSessionMatch,
@@ -330,7 +330,7 @@ issueExtrasRoutes.post(
     assertProjectRole(access, 'member');
 
     try {
-      await triggerPipelineStepManual({
+      const done = await triggerPipelineStepManual({
         projectId: issue.projectId,
         issueId: issue.id,
         status: issue.status,
@@ -338,18 +338,14 @@ issueExtrasRoutes.post(
         reason: { manual: true },
       });
       return c.json(
-        answer(runPipelineStepAnswerSchema, { issueId: issue.id, status: 'awaiting_release' }),
+        answer(runPipelineStepAnswerSchema, { issueId: issue.id, status: issue.status, ...done }),
         202,
       );
     } catch (err) {
-      if (err instanceof ActiveJobConflictError) {
+      if (err instanceof NoMasterRunningError) {
         throw new HTTPException(409, {
-          message: `active ${err.type} job already running for this issue`,
-          cause: {
-            code: 'JOB_ALREADY_ACTIVE',
-            existingJobId: err.existingJobId,
-            type: err.type,
-          },
+          message: err.message,
+          cause: { code: 'NO_MASTER_RUNNING' satisfies typeof err.code },
         });
       }
       if (err instanceof Error && err.message.startsWith('AUTONOMOUS_NOT_AT_ENTRY')) {

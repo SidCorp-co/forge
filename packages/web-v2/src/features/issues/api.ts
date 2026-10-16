@@ -20,6 +20,15 @@ import type {
   WaitingCause,
 } from "./types";
 
+
+/** What a press of Run did; the issue stays where it is, and masters take it from there. */
+export interface RunAnswer {
+  issueId: string;
+  status: string;
+  released: boolean;
+  masters: number;
+  boxesReached: number;
+}
 export const ISSUES_PAGE_SIZE = 25;
 
 /** One entry of a `labels` write. A bare string attaches by name or uuid, not primary. */
@@ -173,8 +182,10 @@ export const issuesApi = {
       body: JSON.stringify({ labels }),
     }),
 
+  /** `POST /api/issues/:id/run-pipeline-step` — offer an issue at Open to the project's masters.
+   *  Refused 409 `NO_MASTER_RUNNING` where none runs; no job is minted either way. */
   runPipelineStep: (id: string) =>
-    apiClient<unknown>(`/issues/${id}/run-pipeline-step`, {
+    apiClient<RunAnswer>(`/issues/${id}/run-pipeline-step`, {
       method: "POST",
       body: "{}",
     }),

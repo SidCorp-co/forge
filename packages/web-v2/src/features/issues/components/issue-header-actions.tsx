@@ -19,6 +19,8 @@ export function IssueHeaderActions({
   pending,
   isRunActive,
   onTransition,
+  onRun,
+  running,
   onCopyLink,
 }: {
   slug: string;
@@ -29,6 +31,9 @@ export function IssueHeaderActions({
   pending: boolean;
   isRunActive: boolean;
   onTransition: (to: IssueStatus) => void;
+  /** Offer the issue to the project's masters; only at Open, the one status a press can start. */
+  onRun: () => void;
+  running: boolean;
   onCopyLink: () => void;
 }) {
   const router = useRouter();
@@ -60,6 +65,9 @@ export function IssueHeaderActions({
         isRunActive={isRunActive}
         pending={pending}
         onTransition={onTransition}
+        atEntry={status === "open"}
+        onRun={onRun}
+        running={running}
         openPipeline={openPipeline}
         openRelease={(runId) => router.push(`/projects/${slug}/releases/${runId}`)}
       />
@@ -93,6 +101,9 @@ function PrimaryAction(props: {
   isRunActive: boolean;
   pending: boolean;
   onTransition: (to: IssueStatus) => void;
+  atEntry: boolean;
+  onRun: () => void;
+  running: boolean;
   openPipeline: () => void;
   openRelease: (runId: string) => void;
 }) {
@@ -126,9 +137,18 @@ function PrimaryAction(props: {
       </Button>
     );
   }
+  // Run asks core to offer the issue to the masters and says what came back; anywhere else the
+  // primary opens the Pipeline page and is named for that (ISS-1228 round 11).
+  if (props.atEntry) {
+    return (
+      <Button variant="primary" size="sm" icon="play" loading={props.running} onClick={props.onRun}>
+        Run
+      </Button>
+    );
+  }
   return (
     <Button variant="primary" size="sm" icon="pipeline" onClick={props.openPipeline}>
-      Run pipeline
+      Open pipeline
     </Button>
   );
 }

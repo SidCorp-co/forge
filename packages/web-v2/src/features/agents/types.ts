@@ -7,6 +7,8 @@ export type BlockerKind = "machine" | "master_or_peer" | "human" | "nobody";
 export interface RunIssue {
   issueKey: string;
   leaseReturned: boolean;
+  /** Core still holds the lease for the run's session, whatever the box says. */
+  coreHolds?: boolean;
 }
 
 export interface RunSessionRow {
@@ -27,6 +29,8 @@ export interface RunSessionRow {
   issues: RunIssue[];
   deviceId: string;
   deviceName: string | null;
+  deviceStatus?: string | null;
+  deviceLastSeenAt?: string | null;
   observedAt: string;
   workSince?: string;
   /** Core's own reading, never the box's claim — the two disagreeing is signal. */
