@@ -18,20 +18,21 @@ import {
   questionStatuses,
 } from '../db/schema-questions.js';
 import { isUuid, resolveIssueRouteRef } from '../issues/index.js';
-import { egressAs } from '../lib/data-egress.js';
+import type { EgressReader } from '../lib/data-egress.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { forbidden } from '../middleware/route-errors.js';
 import { fieldShape, strictBody, zValidator } from '../middleware/zod-validator.js';
+import { assertTokenMayAnswer } from './answer-door.js';
+import { ANSWER_SHAPE, answerBody, givenAnswerOf } from './answer-input.js';
 import { doorOfRequest } from './ports.js';
 import {
   answerAs,
   askAs,
   decodeCursor,
   projectQuestionsFor,
-  questionSurface,
   readQuestionFor,
   readQuestionsForIssue,
 } from './read.js';
+import { type ShownQuestion, shownQuestion as shown } from './shown.js';
 
 const uuid = z.uuid();
 
@@ -101,83 +102,13 @@ const listQuery = z.object({
   cursor: pageSchema.shape.cursor,
 });
 
-const answerFields = z.object({
-  optionId: z.string({ error: 'optionId must be a string' }).optional(),
-  text: z.string({ error: 'text must be a string' }).optional(),
-  round: z
-    .number({ error: 'round is required, as an integer' })
-    .int({ error: 'round is required, as an integer' }),
-  note: z
-    .string({ error: 'note must be a string' })
-    .max(1000, { error: 'note is at most 1000 characters' })
-    .optional(),
-  stillWaits: z
-    .object(
-      {
-        reason: z
-          .string({ error: 'stillWaits.reason must be a string' })
-          .max(1000, { error: 'stillWaits.reason is at most 1000 characters' }),
-        blockedBy: z
-          .string({ error: 'stillWaits.blockedBy must be an issue key or id' })
-          .max(200)
-          .optional(),
-      },
-      {
-        error:
-          'stillWaits is { reason, blockedBy? }: what the issue still waits on after this answer',
-      },
-    )
-    .strict()
-    .optional(),
-});
-
-const ANSWER_SHAPE =
-  "{ round, optionId | text, note?, stillWaits? }: round is the round being answered, as an integer, and the answer is exactly one of optionId (one of the question's options) or text (a free answer)";
-
-const filled = (v: unknown) => typeof v === 'string' && v.trim().length > 0;
-const isBody = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
-
-// the one-answer rule reads the body even where a field of it failed, so one 400 names every fault
-const answerBody = answerFields
-  .strict()
-  .refine((b) => filled(b.optionId) || filled(b.text), {
-    path: ['optionId'],
-    message: 'the answer is required: send optionId or text',
-    when: (p) => isBody(p.value),
-  })
-  .refine((b) => !(filled(b.optionId) && filled(b.text)), {
-    path: ['text'],
-    message: 'send optionId or text, never both',
-    when: (p) => isBody(p.value),
-  });
-
 const notFound = (what: 'question' | 'issue' = 'question') =>
   new HTTPException(404, { message: `${what} not found`, cause: { code: 'NOT_FOUND' } });
 
-type ShownQuestion = {
-  id: string;
-  status: string;
-  projectId: string;
-  issueId: string | null;
-  feedbackId: string | null;
-  requirementId: string | null;
-  batchId: string | null;
-};
-
-/** A question as the project's data policy lets this reader see it; withheld text keeps its ids. */
-async function shown<Q extends ShownQuestion>(agency: ActorAgency | undefined, q: Q) {
+function readerOf(agency: ActorAgency | undefined): EgressReader {
   if (!agency)
     throw new Error('questions: a question read reached its handler without an auth gate');
-  const out = await egressAs(
-    { agency },
-    q.projectId,
-    await questionSurface(q),
-    q,
-    `question ${q.id}`,
-  );
-  return out.ok
-    ? out.value
-    : { id: q.id, status: q.status, issueId: q.issueId, withheld: out.refusal };
+  return { agency };
 }
 
 function questionId(c: { req: { param: (k: string) => string } }): string {
@@ -185,30 +116,6 @@ function questionId(c: { req: { param: (k: string) => string } }): string {
   if (!uuid.safeParse(id).success) throw badRequest('the question id must be a uuid');
   return id;
 }
-
-const sessionOnly = (verb: string) =>
-  forbidden(
-    `a question is ${verb} by a person in a session, and this request carries a personal ` +
-      'access token. Sign in to answer it, or reply in the room the question was delivered to.',
-  );
-
-/**
- * A question whose blocker is another agent, answered by a credential that
- * names an agent — and by nothing else (ISS-1003).
- *
- * `blockerKind: 'master_or_peer'` says in the row itself that the thing this
- * run is waiting on is another agent. Before this, no credential could answer
- * it: every token was refused here and no agent held a session, so a peer-
- * blocked park could only ever be cleared by a person standing in for the peer.
- */
-const peerBlockedOnly = () =>
-  forbidden(
-    'this question is blocked on another agent, and this request carries a personal access ' +
-      'token owned by a person, which establishes nobody: a borrowed credential may act but may ' +
-      'not say who is speaking. Answer it with the agent’s OWN Agent Access Token — an org admin ' +
-      'mints one for an existing agent at POST /api/orgs/:orgId/agents/:agentUserId/tokens. Or ' +
-      'sign in and answer it as a person.',
-  );
 
 export const questionRoutes = new Hono<{ Variables: AuthVars }>();
 questionRoutes.use('/', requireAuth(), assertEmailVerified());
@@ -237,7 +144,7 @@ questionRoutes.get('/', zValidator('query', listQuery), async (c) => {
     return c.json({
       ...open,
       questions: await Promise.all(
-        open.questions.map((q) => shown(agency, q as typeof q & ShownQuestion)),
+        open.questions.map((q) => shown(readerOf(agency), q as typeof q & ShownQuestion)),
       ),
     });
   }
@@ -247,7 +154,7 @@ questionRoutes.get('/', zValidator('query', listQuery), async (c) => {
 async function issueQuestions(issueId: string, userId: string, agency: AuthVars['agency']) {
   const seen = await readQuestionsForIssue(issueId, userId);
   if (!seen) throw notFound();
-  return { questions: await Promise.all(seen.map((q) => shown(agency, q))) };
+  return { questions: await Promise.all(seen.map((q) => shown(readerOf(agency), q))) };
 }
 
 questionRoutes.post(
@@ -279,37 +186,30 @@ questionRoutes.post(
 questionRoutes.get('/:id', async (c) => {
   const seen = await readQuestionFor(questionId(c), c.get('userId'));
   if (!seen) throw notFound();
-  return c.json(await shown(c.get('agency'), seen));
+  return c.json(await shown(readerOf(c.get('agency')), seen));
 });
 
 questionRoutes.post(
   '/:id/answer',
   async (c, next) => {
     if (c.get('principal') === 'pat') {
-      const agentUserId = c.get('agentUserId');
-      const seen = await readQuestionFor(questionId(c), agentUserId ?? c.get('userId'));
-      if (!seen) throw notFound();
-      if (seen.blockerKind !== 'master_or_peer') throw sessionOnly('answered');
-      if (!agentUserId) throw peerBlockedOnly();
+      await assertTokenMayAnswer({
+        questionId: questionId(c),
+        userId: c.get('userId'),
+        agentUserId: c.get('agentUserId') ?? null,
+      });
     }
     await next();
   },
   strictBody(answerBody, ANSWER_SHAPE),
   async (c) => {
-    const body = c.req.valid('json');
-    const hasOption = filled(body.optionId);
     return c.json(
       await answerAs({
         questionId: questionId(c),
-        answer: hasOption
-          ? { kind: 'option', optionId: body.optionId as string }
-          : { kind: 'text', text: body.text as string },
-        round: body.round,
+        ...givenAnswerOf(c.req.valid('json')),
         userId: c.get('userId'),
         agency: restActor(c).agency,
         via: await doorOfRequest(c),
-        ...(body.note === undefined ? {} : { note: body.note }),
-        ...(body.stillWaits === undefined ? {} : { stillWaits: body.stillWaits }),
       }),
     );
   },

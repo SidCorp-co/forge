@@ -1,7 +1,7 @@
 import type { ReleaseCutView, ReleaseDetail } from '@forge/contracts/releases';
 import { describe, expect, it } from 'vitest';
 import { refusalSays } from './release-cuts.js';
-import { releaseToolView } from './tool.js';
+import { releaseToolView } from './tool-view.js';
 
 // "why was 0.4.0 cancelled" on HOP (journey walk F5): the reason lives on the attempt that wore 0.4.0,
 // and the assistant's release read must carry it — the refusal, its meaning, the abort reason, what

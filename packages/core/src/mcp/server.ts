@@ -192,9 +192,15 @@ function publicGuidesUrl(): string {
 
 /** Built per call so `env` is read lazily and this module stays side-effect free. */
 function forgeMcpInstructions(): string {
-  return `You are connected to a Forge-managed project — Forge is the control plane for this repo's issues, pipeline, and durable memory. The REST API (\`<host>/api/...\`, a personal access token as \`Authorization: Bearer\`) is the primary door and the \`forge\` CLI sits on it; this server carries only what neither covers:
+  return `You are connected to a Forge-managed project — Forge is the control plane for this repo's issues, pipeline, and durable memory. The REST API (\`<host>/api/...\`, a personal access token as \`Authorization: Bearer\`) is the primary door and the \`forge\` CLI sits on it; this server carries the product layer, so a person can work from an MCP client, and what neither covers:
 
+- \`forge_releases\` — releases: what shipped, what is drafted, what waits on approval; name one, and decide its approval where you hold releases.approve.
+- \`forge_design\` — workflow designs, suggestions and mockups: read them, write and propose a design, and approve, return, accept, reject, revise or withdraw where you hold the permission.
+- \`forge_questions\` — questions waiting on a person, one read in full, an answer, and your own question on an issue.
+- \`forge_issues\` — delivery work read: each issue's status, whether an agent works on it now and when it is likely done. It files no issue: \`create\` is refused MCP_FILES_FEEDBACK_NOT_ISSUES and says where the record goes instead (Feedback, a Requirement, or a question).
 - \`forge_uploads\` — read an issue, comment or session attachment; an image comes back as a viewable block.
+
+Every answer about work in motion says whether it is running now and when it is likely done, or plainly why there is no date.
 
 Everything else is REST or the CLI:
 - Delivery has no tool here. A connected integration's credential stays in core and the call is made from core: Coolify deploys and logs under \`/api/projects/:id/integrations/coolify/…\`, the source host's change requests under \`/api/projects/:id/integrations/source/…\`, Sentry under \`/api/projects/:id/integrations/sentry/issues\`, and the storefront target at \`GET /api/projects/:id/integrations/storefront/target\`.

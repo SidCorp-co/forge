@@ -20,19 +20,14 @@ import {
   proposeDesign,
   readDesignAs,
 } from './design-service.js';
-import {
-  noHealthSummary,
-  projectHealthAs,
-  readWorkflowHealthAs,
-  summaryOfHealth,
-} from './health-read.js';
+import { readWorkflowHealthAs } from './health-read.js';
+import { listWorkflowsWithHealthAs } from './listed.js';
 import { WRITE_OBSERVATION_SHAPE, writeObservationSchema } from './observation-schema.js';
 import { listObservations, observationAs, writeObservation } from './observations.js';
 import { designStepsOf, designSummaryOf, workflowSummaryOf } from './projection.js';
 import { type IgnoredField, readBackOf } from './read-back.js';
 import {
   createWorkflow,
-  listWorkflowsAs,
   readWorkflowAs,
   updateWorkflow,
   type WorkflowOutcome,
@@ -119,18 +114,11 @@ workflowRoutes.post('/:id/workflows', idParam, envelope, async (c) => {
 workflowRoutes.get('/:id/workflows', idParam, listView, async (c) => {
   const { id } = c.req.valid('param');
   const viewer = { userId: c.get('userId'), agency: c.get('agency') ?? 'human' };
-  const [views, health] = await Promise.all([
-    listWorkflowsAs(viewer.userId, id),
-    projectHealthAs(viewer, id),
-  ]);
   const listed = await egressForRequest(
     c.get('agency'),
     id,
     'design',
-    views.map((v) => {
-      const h = health.get(v.document.id);
-      return { ...v, health: h ? summaryOfHealth(h) : noHealthSummary() };
-    }),
+    await listWorkflowsWithHealthAs(viewer, id),
     'the workflows',
   );
   const workflows =

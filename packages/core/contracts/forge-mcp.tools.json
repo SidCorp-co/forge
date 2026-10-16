@@ -317,6 +317,134 @@
       "name": "forge_channel"
     },
     {
+      "description": "What the product is designed as, and the decisions on it: workflow designs, suggestions and mockups. Reading is open to anyone on the project; a decision (approve, return, accept, reject) is the act of whoever holds its permission — workflow-designs.approve, suggestions.approve, mockups — and the service refuses anyone else by name. Decide only what the person asked you to.\nWorkflow designs:\n- design_list { projectId, view? }: every workflow with its design status, revision, approved revision and health.\n- design_get { projectId, workflowId, view?: summary | steps | full, revision?, stepFrom?, stepTo? }: one design, whom it waits on, and `progress`: each issue building it, whether an agent works on it now, and when it is likely done.\n- design_create { projectId, body: { baseRevision: null, document } } and design_revise { projectId, workflowId, body: { baseRevision, document, issue? } }: write a workflow document (the revision you read is the base).\n- design_propose { projectId, workflowId, revision, issue? }: propose a revision for approval.\n- design_decide { projectId, workflowId, revision, decision: approve | return, reason? }: a return says why.\nSuggestions (on a requirement, issue, feedback item or workflow):\n- suggestion_list { projectId, requirement? | issue? | feedback? | workflow?, status?: [proposed, accepted, rejected, stale, withdrawn], view? }: summaries; view full reads each payload, a breakdown's slices among them.\n- suggestion_create { projectId, body: { kind: requirement_draft | revision_diff | readiness | breakdown | triage | duplicate | feedback_triage | design_change, requirement | issue | feedback | workflow, baseRevision, payload, model? } }.\n- suggestion_accept { projectId, suggestionId, reason? }: accepting writes what it suggests. Accepting a breakdown files its issues at draft: that is how a requirement becomes delivery work, so read every slice before you accept.\n- suggestion_reject { projectId, suggestionId, reason }, suggestion_revise { projectId, suggestionId, payload, reason } (rejects the original, proposes yours), suggestion_withdraw { projectId, suggestionId } (its producer only).\nMockups (MK-n, on a requirement, feedback item or issue):\n- mockup_list { projectId, requirement | feedback | issue }, mockup_get { projectId, mockup }.\n- mockup_propose { projectId, body: { target: { feedback } | { issue }, kind: wireframe | sketch | image | html | api_example, caption?, and exactly one of { name, mime?, contentBase64 }, { document } (a wireframe-v1 board) or { source: { from: issue | comment, attachmentId }, name? } } }.\n- mockup_accept { projectId, mockup, reason? }, mockup_return { projectId, mockup, reason }, mockup_withdraw { projectId, mockup }.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "design_list",
+              "design_get",
+              "suggestion_list",
+              "mockup_list",
+              "mockup_get",
+              "design_create",
+              "design_revise",
+              "design_propose",
+              "design_decide",
+              "suggestion_create",
+              "suggestion_accept",
+              "suggestion_reject",
+              "suggestion_revise",
+              "suggestion_withdraw",
+              "mockup_propose",
+              "mockup_accept",
+              "mockup_return",
+              "mockup_withdraw"
+            ],
+            "type": "string"
+          },
+          "body": {
+            "description": "design_create/_revise, suggestion_create, mockup_propose: the REST body"
+          },
+          "decision": {
+            "enum": [
+              "approve",
+              "return"
+            ],
+            "type": "string"
+          },
+          "feedback": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "issue": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "mockup": {
+            "description": "a mockup key (MK-n) or uuid",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "payload": {},
+          "projectId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "requirement": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "status": {
+            "items": {
+              "enum": [
+                "proposed",
+                "accepted",
+                "rejected",
+                "stale",
+                "withdrawn"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "stepFrom": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "stepTo": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "suggestionId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "view": {
+            "description": "design_list: summary | full; design_get: summary | steps | full",
+            "enum": [
+              "summary",
+              "steps",
+              "full"
+            ],
+            "type": "string"
+          },
+          "workflow": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "workflowId": {
+            "description": "design_*: the workflow whose design this is",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "projectId"
+        ],
+        "type": "object"
+      },
+      "name": "forge_design"
+    },
+    {
       "description": "Read and write a project's ecosystem records: its interface, the links its own code holds to the contracts it consumes, its builder runs, and an ecosystem's bus. Reads: interface, links, link, builder_runs, builder_run, context (the contracts a run touching { paths } calls: per link with a call site under a path, its guide notes and the measured diff from its pinned version to the latest; recorded on { session } when named), bus (an ecosystem as this token may see it; each link carries impact: whether the latest version of its contract version passes or breaks it, naming the fields, call sites and outside-contract surface it breaks). Writes take { baseRevision, document } as their REST route does: interface_write (a holder of contracts.write; changing commitment windows that are already set also takes commitments.write, which a full token holds where its holder does and a named token only where its grant names it, PERMISSION_FORBIDDEN otherwise), link_create and link_update (link-v1, only by the consuming project's own agent; a link's pinnedVersion and a consumption's builtAgainst name an approved version, CONTRACT_VERSION_NOT_APPROVED for a proposed or returned one), builder_run_create and builder_run_update (builder-run-v1; a join or a push opens the run itself, so a master updates the open one, and a finished run's answer carries report.declaredWithoutCallSite), builder_run_supersede ({ run, reason }: closes an open run as superseded and opens a fresh manual run with the steps the project's current source type derives, waking its master; the project's own agent's, or an org admin's of the steward or the project's org). contract_version_publish ({ contract, version, kind, source, sourceRef }, POST /api/projects/:id/contracts/:contract/versions on REST) records a version of a contract this project publishes with artifact { upload: true }: kind is graphql (SDL text), mcp-tools ({ tools: [{ name, inputSchema }] }), openapi or json-schema, and must be the publication's type; core indexes its elements and measures it against the latest version. Refused by name: CONTRACT_KIND_UNKNOWN, CONTRACT_KIND_MISMATCH, ARTIFACT_UNREADABLE (an openapi artifact the pinned oasdiff cannot load among them), VERSION_BUMP_TOO_SMALL, VERSION_NOT_IN_SCHEME, VERSION_NOT_MEASURED (semver, a change no differ measured: name the version), CONTRACT_NOT_PUBLISHED, PERMISSION_FORBIDDEN (the writer rule of interface_write). contract_version_decide ({ contract, version, decision: approve | return, reason? }, POST /api/projects/:id/contracts/:contract/versions/:version/decision on REST) decides a proposed version: a recorded version is proposed, and current only once approved. Whoever holds contracts.approve (project admin, or an org owner or admin), person or agent alike decides any version, breaking included. Refused by name: PERMISSION_FORBIDDEN, CONTRACT_VERSION_NOT_PROPOSED, CONTRACT_DECISION_REASON_MISSING. The writer is the token, never a field of the document. A refusal comes back as { code, path, detail } under the service's own code, nothing written. For the channel, use forge_channel.",
       "inputSchema": {
         "additionalProperties": false,
@@ -421,6 +549,258 @@
         "type": "object"
       },
       "name": "forge_ecosystem"
+    },
+    {
+      "description": "Delivery work as a person following it reads it: each issue's status, whether an agent is working on it now, and when it is likely done (the forecast's dates, or plainly why there is none). It reads; it files nothing.\n- action=list { projectId, status?, statusNot?, search?, limit?, offset? }: issues most recently changed first, each with key, title, status, priority and `progress`. `pause` names a wait that holds the whole project, such as no runner online.\n- action=get { projectId, issue }: one issue with its description, the questions it waits on, and `progress`.\n- action=create: refused (MCP_FILES_FEEDBACK_NOT_ISSUES). An MCP client files no issue. Issues are the delivery side: Forge files one only when a requirement's breakdown is accepted, or when feedback is triaged as delivery work, so the product record always leads. Record what the person means instead, after they confirm it: (1) a problem, bug, change or idea someone reported is Feedback (forge_feedback; kind bug | change_request | idea | question), linked to the requirement it touches, and its triage files the issue; (2) new or changed behaviour is a Requirement or a revision of one (forge_requirements), and accepting its breakdown (forge_design suggestion_accept) files the issues, so read every slice first; (3) a question about work already under way is forge_questions ask on that issue. When to step in: ask the person before recording anything, and never accept a breakdown or a triage on your own: each files delivery work, so the person decides it. Work so urgent it fits none of these is filed by the person in the Forge web app, not from here.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "list",
+              "get",
+              "create"
+            ],
+            "type": "string"
+          },
+          "issue": {
+            "description": "get: an issue key (ISS-12) or uuid",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "limit": {
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "offset": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "projectId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "search": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "status": {
+            "description": "list: only these statuses",
+            "items": {
+              "enum": [
+                "draft",
+                "open",
+                "reopen",
+                "in_progress",
+                "approved",
+                "needs_info",
+                "on_hold",
+                "awaiting_release",
+                "closed",
+                "dropped"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "statusNot": {
+            "description": "list: none of these statuses",
+            "items": {
+              "enum": [
+                "draft",
+                "open",
+                "reopen",
+                "in_progress",
+                "approved",
+                "needs_info",
+                "on_hold",
+                "awaiting_release",
+                "closed",
+                "dropped"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "action",
+          "projectId"
+        ],
+        "type": "object"
+      },
+      "name": "forge_issues"
+    },
+    {
+      "description": "Questions waiting on a person, and a person's own question on an issue.\n- action=list { projectId, status?: open | answered | void | expired | needs_info (open by default), issue?, limit?, cursor? }: what is owed an answer, newest first, each with its prompt, its options (locked where you may not choose one) and the recommended one. `issue` narrows to one issue's questions. Read `hasMore` and pass `nextCursor` back as `cursor` for the next page.\n- action=get { projectId, questionId }: one question with every round, and `progress`: the issue it parks, whether work on it is running, and when it is likely done once answered.\n- action=answer { projectId, questionId, round, optionId | text, note?, stillWaits? }: { round, optionId | text, note?, stillWaits? }: round is the round being answered, as an integer, and the answer is exactly one of optionId (one of the question's options) or text (a free answer). A question a person owes is answered by that person signed in, on the web or in the room it was delivered to; this door carries a token, so it is refused with that instruction. With a token only a question blocked on another agent is answered, by that agent's own token.\n- action=ask { projectId, issue, body, parentId? }: raise your own question on an issue, as a question comment the agent working it owes a reply. To question a requirement or report a problem, use Feedback or the requirement instead: an issue is delivery work, and a question there is about that work.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "list",
+              "get",
+              "answer",
+              "ask"
+            ],
+            "type": "string"
+          },
+          "body": {
+            "description": "ask: your question, as the person would write it",
+            "type": "string"
+          },
+          "cursor": {
+            "description": "list: the nextCursor of the last page",
+            "maxLength": 200,
+            "minLength": 3,
+            "type": "string"
+          },
+          "issue": {
+            "description": "an issue key (ISS-12) or uuid: list its questions, or ask on it",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "limit": {
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "note": {
+            "type": "string"
+          },
+          "optionId": {
+            "type": "string"
+          },
+          "parentId": {
+            "description": "ask: the comment it replies to, if any",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "projectId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "questionId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "round": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "status": {
+            "description": "list: open by default",
+            "enum": [
+              "open",
+              "answered",
+              "void",
+              "expired",
+              "needs_info"
+            ],
+            "type": "string"
+          },
+          "stillWaits": {},
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "projectId"
+        ],
+        "type": "object"
+      },
+      "name": "forge_questions"
+    },
+    {
+      "description": "A project's releases: what shipped, what is drafted, what waits on approval, and the acts a person takes on one. Every answer about a release still moving carries `progress`: whether work is running now, and when it is likely done (the forecast's dates), or plainly why there is no date.\n- action=list { projectId, state?, limit? }: releases newest first, each with version, state (draft | in_progress | awaiting_approval | returned | shipped | failed | aborted), name, summary, releasedAt, issue count, requirements, what was verified, and whom it waits on. `draft` is the release now gathering issues: how many are still to land, which an agent is working on, and when it is likely in people's hands.\n- action=get { projectId, version }: one release in full: what users get (notes by section), the requirements it completes, its issues with their proof, what stands in the way, the approval, every attempt at it.\n- action=page { projectId, version, view? }: the release page a reader reads (user view, or developer for the technical notes).\n- action=name { projectId, version, name, summary }: name a drafted or cut release. Needs project admin, as cutting does.\n- action=decide { projectId, version, decision: approve | return, reason? }: decide the approval request the release run is waiting on. This is a person's act: it needs releases.approve on the project, and an approval is judged by the release approval checklist (refused CHECKLIST_INCOMPLETE naming the gap). A return must say why. Read the release (get) before you decide, and decide only when the person asked you to.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "list",
+              "get",
+              "page",
+              "name",
+              "decide"
+            ],
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "approve",
+              "return"
+            ],
+            "type": "string"
+          },
+          "limit": {
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "name": {
+            "description": "name: the release name, a few words",
+            "type": "string"
+          },
+          "projectId": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "reason": {
+            "description": "decide: why; a return must say why",
+            "type": "string"
+          },
+          "state": {
+            "description": "list: only releases in this state",
+            "enum": [
+              "draft",
+              "in_progress",
+              "awaiting_approval",
+              "returned",
+              "shipped",
+              "failed",
+              "aborted"
+            ],
+            "type": "string"
+          },
+          "summary": {
+            "description": "name: two or three sentences on what it brings",
+            "type": "string"
+          },
+          "version": {
+            "description": "the release version, e.g. 0.3.0",
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          },
+          "view": {
+            "description": "page: user (default) or developer",
+            "maxLength": 40,
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "projectId"
+        ],
+        "type": "object"
+      },
+      "name": "forge_releases"
     },
     {
       "description": "READ an issue, comment or session attachment so you can analyze it: the one Forge read no shell command can do, because an image comes back as a viewable image block. Uploading is `POST /api/issues/:id/attachments` (multipart) or `forge attach`. data={target:\"issue\"|\"comment\"|\"session\", attachmentId:<uuid from any attachments[].id>}. Images (png/jpeg/gif/webp) return as a viewable image block; the structured answer carries no bytes, so it says `inlined: false` with `reason: image_block_in_content` and names the block as `image: { contentIndex, mimeType }`. Text/markdown return inline, framed as data, with `inlined: true`. PDFs/video and oversized files (> inline cap) return metadata only. EVERY fetch also returns `downloadUrl` (+ `downloadExpiresAt`): a short-lived, self-authenticating URL to `curl` the raw bytes onto disk or hand to a service that must fetch the file itself. Treat it as a secret: do not log it or paste it into a comment.",

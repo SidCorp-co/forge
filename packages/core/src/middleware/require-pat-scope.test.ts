@@ -102,6 +102,20 @@ describe('a /mcp write from a token without the write scope', () => {
     expect((await call(tool('forge_uploads', { action: 'fetch', data: {} }))).status).toBe(200);
   });
 
+  it("lets the product tools' reads through and holds their writes", async () => {
+    expect((await call(tool('forge_releases', { action: 'list' }))).status).toBe(200);
+    expect((await call(tool('forge_design', { action: 'mockup_get' }))).status).toBe(200);
+    expect((await call(tool('forge_questions', { action: 'get' }))).status).toBe(200);
+    expect((await call(tool('forge_issues', { action: 'get' }))).status).toBe(200);
+    expect((await call(tool('forge_releases', { action: 'decide' }))).status).toBe(403);
+    expect((await call(tool('forge_design', { action: 'suggestion_accept' }))).status).toBe(403);
+    expect((await call(tool('forge_questions', { action: 'ask' }))).status).toBe(403);
+  });
+
+  it('lets forge_issues create through to its refusal: it writes nothing', async () => {
+    expect((await call(tool('forge_issues', { action: 'create' }))).status).toBe(200);
+  });
+
   it('lets a token holding write do the same write', async () => {
     scopes.held = ['read', 'write'];
     expect((await call(tool('forge_agent_report', { action: 'submit' }))).status).toBe(200);

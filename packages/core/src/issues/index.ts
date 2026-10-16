@@ -10,6 +10,7 @@ export type { ActorRef, ResolvedActor } from './actor-identity.js';
 export { actorKey } from './actor-identity.js';
 export { resolveActors, userLabel } from './actor-resolution.js';
 export { type Admission, admitBorn } from './admission.js';
+export { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 export {
   applyStatusTransition,
   transitionIssueStatus,
@@ -117,6 +118,7 @@ export {
 } from './issue-route-ref.js';
 export { landingShapeOf, landingShortfall, requireLandingShape } from './landing-evidence.js';
 export { holderFanout, readClaim } from './lease-fanout.js';
+export { listIssues } from './list-service.js';
 export { currentMarkClaims } from './mark-trail.js';
 export {
   archivedIssueIdsSql,
