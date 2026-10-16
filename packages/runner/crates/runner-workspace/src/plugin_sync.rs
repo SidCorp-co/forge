@@ -260,6 +260,18 @@ fn marketplace_name_in(dir: &Path) -> Option<String> {
     v.get("name")?.as_str().map(str::to_owned)
 }
 
+/// The directory this box's operator registered `repo`'s marketplace name to, where they did: the
+/// sweep then leaves it (`register_marketplace`), so no server designation or pin for `repo` is
+/// applied here, and `forge-runner doctor` says so.
+pub fn operator_registration(repo: &str) -> Option<PathBuf> {
+    let dir = marketplace_clone_dir(repo)?;
+    let name = marketplace_name_in(&dir);
+    match classify_known(&read_known_marketplaces(), repo, &dir, name.as_deref()) {
+        KnownMarketplace::Foreign(_, path) => Some(path),
+        _ => None,
+    }
+}
+
 fn read_known_marketplaces() -> String {
     claude_config_dir()
         .map(|d| d.join("plugins").join("known_marketplaces.json"))

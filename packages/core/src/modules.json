@@ -322,6 +322,7 @@
         "personal-data-flow#ds-box-creds",
         "personal-data-flow#pr-provision",
         "REQ-25",
+        "REQ-26",
         "issue-delivery#rule-return",
         "core-kernel#k-devices",
         "core-kernel#k-runners"

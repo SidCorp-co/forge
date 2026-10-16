@@ -2,8 +2,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { runnerProvisionStatuses } from '../db/schema.js';
-import { readPluginDesignations, unionPluginDesignations } from '../lib/plugin-designation.js';
-import { RefusalError } from '../lib/refusal.js';
+import { readBoxDesignations, unionPluginDesignations } from '../lib/plugin-designation.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { forbidden, notFound } from '../middleware/route-errors.js';
@@ -262,13 +261,7 @@ deviceAuthRoutes.get('/me/plugins', requireDevice(), async (c) => {
 
   const rows = await deviceProjectAgentConfigs(device.id);
 
-  const plugins = unionPluginDesignations(
-    rows.map((r) => {
-      const read = readPluginDesignations(r.agentConfig, r.slug);
-      if (!read.ok) throw new RefusalError([read.refusal], 'PLUGIN_DESIGNATIONS_INVALID');
-      return { slug: r.slug, designations: read.designations };
-    }),
-  );
+  const plugins = unionPluginDesignations(readBoxDesignations(rows));
 
   return c.json({ plugins });
 });

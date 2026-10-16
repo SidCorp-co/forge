@@ -4,15 +4,22 @@ export const PLUGIN_REFUSAL_CODES = ["PLUGIN_DESIGNATIONS_INVALID"] as const;
 
 export type PluginRefusalCode = (typeof PLUGIN_REFUSAL_CODES)[number];
 
+/** One project's pin of one plugin, on a box that serves it. */
+export interface PluginPin {
+	project: string;
+	name: string;
+	ref: string;
+}
+
 /**
- * Two projects served by one box that pin one plugin at different commits (REQ-26 BC-2). The box
- * holds one clone, so it can honour neither pin; core drops the pin and reports the conflict here
- * rather than letting the box pick one silently.
+ * Projects served by one box that pin one marketplace at different commits (REQ-26). The box holds
+ * one clone of each marketplace, so it can honour none of the pins, whether they pin one plugin or
+ * two of it; core drops them and reports the conflict here rather than letting the box pick one
+ * silently.
  */
 export interface PluginPinConflict {
 	device: { id: string; name: string };
 	marketplace: string;
-	name: string;
-	/** Each project on that box pinning the plugin, with its pin; unpinned projects are left out. */
-	pins: { project: string; ref: string }[];
+	/** Each pin into that marketplace on that box, by project then plugin; unpinned designations are left out. */
+	pins: PluginPin[];
 }

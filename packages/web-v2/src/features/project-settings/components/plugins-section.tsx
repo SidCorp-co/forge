@@ -62,14 +62,21 @@ export function PluginSettings({ projectId, canEdit }: { projectId: string; canE
 function PinConflicts({ projectId }: { projectId: string }) {
   const t = useCopy();
   const q = usePluginConflicts(projectId);
+  // a refused read (a project on a shared box whose stored list is unreadable) is said, never shown as no conflict
+  if (q.isError)
+    return (
+      <div className="mt-3">
+        <ErrorState message={formatApiError(q.error)} onRetry={() => void q.refetch()} />
+      </div>
+    );
   const conflicts = q.data?.conflicts ?? [];
   if (conflicts.length === 0) return null;
   return (
     <div className="mt-3 space-y-2" data-testid="plugin-pin-conflicts">
       {conflicts.map((c) => (
-        <Banner key={`${c.device.id}-${c.marketplace}-${c.name}`} tone="attention">
-          <span className="font-semibold">{t("settings.project.plugins.conflict", { name: c.name, box: c.device.name })}</span>{" "}
-          {c.pins.map((p) => `${p.project} ${p.ref.slice(0, 7)}`).join(" · ")}. {t("settings.project.plugins.conflictSo")}
+        <Banner key={`${c.device.id}-${c.marketplace}`} tone="attention">
+          <span className="font-semibold">{t("settings.project.plugins.conflict", { marketplace: c.marketplace, box: c.device.name })}</span>{" "}
+          {c.pins.map((p) => `${p.project} ${p.name}@${p.ref.slice(0, 7)}`).join(" · ")}. {t("settings.project.plugins.conflictSo")}
         </Banner>
       ))}
     </div>

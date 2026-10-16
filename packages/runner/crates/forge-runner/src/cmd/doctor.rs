@@ -143,12 +143,17 @@ fn device_rows(cfg: &Config) {
     // is a legitimate device state, not a failure, so it reports as a note.
     if cfg.plugins.enabled {
         match cfg.plugins.marketplace_repo.as_deref() {
-            Some(repo) if !cfg.plugins.plugin_names.is_empty() => println!(
-                "✔ plugins      {} @ {repo}",
-                cfg.plugins.plugin_names.join(", ")
-            ),
+            Some(repo) if !cfg.plugins.plugin_names.is_empty() => {
+                println!(
+                    "✔ plugins      config.toml names {} @ {repo}",
+                    cfg.plugins.plugin_names.join(", ")
+                );
+                if let Some(path) = runner_workspace::plugin_sync::operator_registration(repo) {
+                    println!("{}", super::doctor_plugins::registered_row(repo, &path));
+                }
+            }
             _ => println!(
-                "• plugins      enabled but none designated — `forge-runner config set plugins.plugin-names forge`"
+                "• plugins      config.toml names none — `forge-runner config set plugins.plugin-names forge`"
             ),
         }
     } else {
@@ -340,6 +345,13 @@ async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
             println!("✖ runners      timeout after {}s", ONLINE_TIMEOUT.as_secs());
             failed = true;
         }
+    }
+
+    // What core designates for this box, its pins and their conflicts (REQ-26); the sweep applies
+    // none of it while `plugins.enabled = false`, which the local row above already says.
+    if cfg.plugins.enabled {
+        let local = cfg.plugins.marketplace_repo.as_deref();
+        failed |= super::doctor_plugins::rows(&client, ONLINE_TIMEOUT, local).await;
     }
 
     failed

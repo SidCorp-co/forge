@@ -137,7 +137,7 @@
     "settings.project.people.roleLabel": "Role",
     "settings.project.people.roleOf": "Role of {email}",
     "settings.project.plugins.add": "Add a plugin",
-    "settings.project.plugins.conflict": "{name} has two pins on {box}:",
+    "settings.project.plugins.conflict": "{marketplace} has conflicting pins on {box}:",
     "settings.project.plugins.conflictSo": "The box follows latest until one pin is changed.",
     "settings.project.plugins.emptyTitle": "No plugins",
     "settings.project.plugins.isPinned": "pinned",
