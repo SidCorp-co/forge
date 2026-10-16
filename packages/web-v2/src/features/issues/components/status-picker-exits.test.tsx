@@ -7,7 +7,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import { ToastProvider } from "@/providers/toast-provider";
@@ -507,7 +507,22 @@ describe("Releasing is never a menu choice (ISS-1421)", () => {
       />,
     );
     fireEvent.click(screen.getByLabelText("Row actions"));
+    await vi.waitFor(() => expect(get).toHaveBeenCalled());
+    await act(async () => {});
     expect(screen.getByText(/finishes or is aborted/)).toBeInTheDocument();
     expect(labels().filter((l) => l.startsWith("Status: "))).toEqual([]);
+  });
+
+  it("offers the bulk bar no status for a selection holding a row at Releasing", async () => {
+    get.mockResolvedValue(OLD_CORE);
+    wrap(
+      <BulkActionBar
+        projectId="p1"
+        selectedRows={[row({ status: "releasing" }), row({ id: "i2", status: "releasing" })]}
+        onCleared={vi.fn()}
+      />,
+    );
+    await screen.findByText("No status change is valid for every selected issue");
+    expect(screen.getByRole("button", { name: /Set status/ })).toBeDisabled();
   });
 });

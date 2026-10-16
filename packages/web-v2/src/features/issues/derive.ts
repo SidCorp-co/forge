@@ -180,7 +180,7 @@ export function statusToTone(status: IssueStatus): SemanticTone {
 	return STATUS_KEY_TONE[statusToChip(status)];
 }
 
-/** No menu offers these: a release starts from the Release button, core refuses every other door (ISS-1421). */
+/** No menu enters or leaves these: only a release run does, and core refuses every other door (ISS-1421). */
 const RELEASE_ONLY_TARGETS: ReadonlySet<IssueStatus> = new Set(["releasing"]);
 
 /**
@@ -197,6 +197,7 @@ export function allowedTransitions(
 	exits: StatusExits | undefined,
 	from: IssueStatus,
 ): IssueStatus[] {
+	if (RELEASE_ONLY_TARGETS.has(from)) return [];
 	return (exits?.[from] ?? []).filter((to) => !RELEASE_ONLY_TARGETS.has(to));
 }
 

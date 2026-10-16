@@ -301,6 +301,13 @@ describe("groupedTransitions (ISS-982)", () => {
 		]);
 	});
 
+	it("offers no move out of releasing, even where a table lists some (ISS-1421)", () => {
+		const stale: StatusExits = { ...EXITS, releasing: ["closed", "reopen", "needs_info", "on_hold"] };
+		expect(allowedTransitions(stale, "releasing")).toEqual([]);
+		expect(groupedTransitions(stale, "releasing")).toEqual([]);
+		expect(bulkAllowedStatuses(stale, [row({ id: "a", status: "releasing" })])).toEqual([]);
+	});
+
 	it("starts a group at the first item of each kind after the first", () => {
 		const g = groupedTransitions(EXITS, "in_progress");
 		expect(g.filter((x) => x.startsGroup).map((x) => x.to)).toEqual(["needs_info", "closed"]);
