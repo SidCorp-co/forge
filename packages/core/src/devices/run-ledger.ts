@@ -161,8 +161,8 @@ export interface ProjectRunSessionRow
    *  has not ended — `sessionStatus` is what separates those two, never this field's absence. */
   sessionFailureReason: string | null;
   lastActivityAt: string | null;
-  /** How long core lets the run's session go unheard before it ends it; `null` where no silence
-   *  does, or where core holds no session for the run. */
+  /** How long after `lastActivityAt` core ends the run's session if nothing more is heard; `null`
+   *  where that is null, where no silence ends it, or where core holds no session for the run. */
   silenceLimitMs: number | null;
   masterTitle: string | null;
 }

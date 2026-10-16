@@ -157,6 +157,32 @@ describe("a session read carries core's own silence limit (ISS-1228 round 9)", (
     near(rows.find((r) => r.sessionId === run.id)?.silenceLimitMs, RUNNER_LAPSES);
     expect(rows.find((r) => r.sessionId === null)?.silenceLimitMs).toBeNull();
   });
+
+  it('counts the runs tab from the last heartbeat, and gives no limit where none came', async () => {
+    const { id } = await session('run_session', { runKind: 'pm' });
+    await harness.db.execute(sql`
+      UPDATE agent_sessions SET last_heartbeat_at = NULL, started_at = now() - interval '4 minutes'
+       WHERE id = ${id}
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO device_run_ledger (device_id, run_id, project_id, session_id, worktree_path, boot_id,
+                                     incarnation, work, issues, observed_at)
+      VALUES (${deviceId}::uuid, ${randomUUID()}, ${projectId}::uuid, ${id}, '/tmp/wt', 'boot-1',
+              'live', 'runnable', '[]'::jsonb, now())
+    `);
+
+    expect((await get(`/agent-sessions/${id}`)).silenceLimitMs).toBe(TEN_MIN);
+    const body = await get(`/projects/${projectId}/run-sessions`);
+    const row = (
+      body.items as Array<{
+        sessionId: string;
+        lastActivityAt: string | null;
+        silenceLimitMs: number | null;
+      }>
+    ).find((r) => r.sessionId === id);
+    expect(row?.lastActivityAt).toBeNull();
+    expect(row?.silenceLimitMs).toBeNull();
+  });
 });
 
 describe('the limit against each reaper that ends a session for silence (ISS-1228 round 9)', () => {
