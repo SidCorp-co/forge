@@ -36,7 +36,7 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const wakeMastersForProject = vi.fn(async () => ({ boxes: 1, delivered: 1 }));
+const wakeMastersForProject = vi.fn(async () => ({ boxes: 1, delivered: 1, reached: 1 }));
 vi.mock('../ws/master-wake.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../ws/master-wake.js')>()),
   wakeMastersForProject: (...a: unknown[]) => wakeMastersForProject(...(a as [])),

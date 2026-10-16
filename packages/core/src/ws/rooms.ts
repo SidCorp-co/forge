@@ -1,6 +1,8 @@
 export interface Subscriber {
   send(data: string): void;
   readyState: number;
+  /** Who opened the socket: a device room's own box is `device`, its owner's browser is not. */
+  principal?: { type: string };
 }
 
 export interface PublishEnvelope {
@@ -77,6 +79,14 @@ export class RoomManager {
       delivered++;
     }
     return delivered;
+  }
+
+  /** Whether a box itself is listening on the room now, which `publish`'s socket count cannot say. */
+  heardByBox(room: string): boolean {
+    for (const sub of this.rooms.get(room) ?? []) {
+      if (sub.readyState === OPEN && sub.principal?.type === 'device') return true;
+    }
+    return false;
   }
 
   roomSize(room: string): number {

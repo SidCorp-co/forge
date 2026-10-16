@@ -4,7 +4,7 @@ const selectLimit = vi.fn();
 const dbExecute = vi.fn(async (): Promise<unknown[]> => []);
 const insertAndEnqueueJob = vi.fn(async (_args: Record<string, unknown>) => ({ jobId: 'job-1' }));
 const openIssueRun = vi.fn(async () => ({ id: 'run-1', startedAt: new Date() }));
-const wakeMastersForProject = vi.fn(async () => ({ boxes: 1, delivered: 1 }));
+const wakeMastersForProject = vi.fn(async () => ({ boxes: 1, delivered: 1, reached: 1 }));
 
 vi.mock('../db/client.js', () => ({
   db: {
@@ -82,7 +82,7 @@ describe('dispatchAutonomous', () => {
 describe('dispatchDriveManual', () => {
   it('releases the issue and wakes the boxes, minting nothing, and says what it did', async () => {
     dbExecute.mockResolvedValueOnce([{ n: 2 }]);
-    wakeMastersForProject.mockResolvedValueOnce({ boxes: 2, delivered: 1 });
+    wakeMastersForProject.mockResolvedValueOnce({ boxes: 2, delivered: 3, reached: 1 });
     await expect(
       dispatchDriveManual({ ...BASE, status: 'open', entryGated: true }),
     ).resolves.toEqual({ released: true, masters: 2, boxesReached: 1 });

@@ -8,6 +8,13 @@ import { masterCharterPath } from '../projects/master-charter.js';
 import { deviceRoom } from './rooms.js';
 import { roomManager } from './server.js';
 
+/** Boxes bound to the project, sockets the wake went to, and boxes that were themselves listening. */
+export interface WakeReach {
+  boxes: number;
+  delivered: number;
+  reached: number;
+}
+
 export const MASTER_WAKE_STATUSES: readonly IssueStatus[] = [
   'open',
   'draft',
@@ -37,7 +44,7 @@ export async function wakeMastersForProject(args: {
   projectId: string;
   issueId: string | null;
   status: IssueStatus;
-}): Promise<{ boxes: number; delivered: number }> {
+}): Promise<WakeReach> {
   return publishWake(args.projectId, {
     projectId: args.projectId,
     issueId: args.issueId,
@@ -54,7 +61,7 @@ export async function wakeMastersForProject(args: {
 export async function wakeMastersForAnswer(args: {
   projectId: string;
   questionId: string;
-}): Promise<{ boxes: number; delivered: number }> {
+}): Promise<WakeReach> {
   return publishWake(args.projectId, {
     projectId: args.projectId,
     issueId: null,
@@ -62,15 +69,14 @@ export async function wakeMastersForAnswer(args: {
   });
 }
 
-async function publishWake(
-  projectId: string,
-  data: Record<string, unknown>,
-): Promise<{ boxes: number; delivered: number }> {
+async function publishWake(projectId: string, data: Record<string, unknown>): Promise<WakeReach> {
   try {
     const deviceIds = await devicesServing(projectId);
     let delivered = 0;
+    let reached = 0;
     for (const id of deviceIds) {
       delivered += roomManager.publish(deviceRoom(id), { event: 'master.wake', data });
+      if (roomManager.heardByBox(deviceRoom(id))) reached += 1;
     }
     if (delivered > 0) {
       logger.debug({ ...data, delivered }, 'master.wake published');
@@ -83,10 +89,10 @@ async function publishWake(
         'master.wake reached no listener — nothing on this project consumed it',
       );
     }
-    return { boxes: deviceIds.length, delivered };
+    return { boxes: deviceIds.length, delivered, reached };
   } catch (err) {
     logger.warn({ err, projectId }, 'master.wake could not be published');
-    return { boxes: 0, delivered: 0 };
+    return { boxes: 0, delivered: 0, reached: 0 };
   }
 }
 

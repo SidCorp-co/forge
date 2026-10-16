@@ -111,8 +111,8 @@ export async function dispatchDriveManual(args: {
     status: args.status,
   });
   logger.info(
-    { projectId: args.projectId, issueId: args.issueId, masters, boxesReached: wake.delivered },
+    { projectId: args.projectId, issueId: args.issueId, masters, boxesReached: wake.reached },
     'autonomous-dispatch: released by hand — offered to this project masters',
   );
-  return { released: args.entryGated, masters, boxesReached: wake.delivered };
+  return { released: args.entryGated, masters, boxesReached: wake.reached };
 }
