@@ -7,7 +7,7 @@ As of 07/10/2026, 10:00 · the last 7 days
 
 ## Shipped
 
-- **0.2.0** · 06/10/2026, 09:30 · 2 issues · Partly verified: 1 of 2 criteria proven, and the deploy checked by the production probes
+- **0.2.0** · 06/10/2026, 09:30 · 2 issues · Partly verified: 1 of 2 checks met, and the deploy checked by the production probes
   - ISS-11 Saved boards keep every card (REQ-3)
   - ISS-12 Export keeps the order (REQ-3)
 
@@ -76,7 +76,7 @@ Tính đến 10:00 07/10/2026 · 7 ngày qua
 
 ## Đã tới người dùng
 
-- **0.2.0** · 09:30 06/10/2026 · 2 issue · Kiểm chứng một phần: 1/2 tiêu chí đạt, và deploy được kiểm tra bằng đầu dò production
+- **0.2.0** · 09:30 06/10/2026 · 2 issue · Kiểm chứng một phần: 1/2 kiểm tra đạt, và deploy được kiểm tra bằng đầu dò production
   - ISS-11 Saved boards keep every card (REQ-3)
   - ISS-12 Export keeps the order (REQ-3)
 

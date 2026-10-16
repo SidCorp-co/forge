@@ -1,3 +1,4 @@
+// @direct-test-of packages/web-v2/src/lib/i18n/copy/releases.json
 import { screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { renderWithQuery } from "@/test/render";
@@ -18,7 +19,7 @@ describe("Shipped recently on the dashboard", () => {
     expect(line.textContent).toContain("0.2.0");
     expect(line.textContent).toContain("06/10/2026");
     expect(line.textContent).toContain("2 issues");
-    expect(line.textContent).toContain("Partly verified: 1 of 2 criteria proven");
+    expect(line.textContent).toContain("Partly verified: 1 of 2 checks met");
     expect(line.textContent).toContain("completes REQ-3");
     expect(screen.getByTestId("shipped-recently-report").getAttribute("href")).toBe("/projects/hop/status");
   });

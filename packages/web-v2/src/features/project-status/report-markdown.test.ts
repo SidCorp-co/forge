@@ -1,3 +1,4 @@
+// @direct-test-of packages/web-v2/src/lib/i18n/copy/releases.json
 import { verbatim } from "@forge/contracts/said";
 import { RULE, say, waitingOn } from "@/test/said";
 import { describe, expect, it } from "vitest";
@@ -36,7 +37,7 @@ describe("the status report as Markdown", () => {
 
   it("says what each shipped release verified and dates each section", () => {
     const md = statusMarkdown(STATUS, words("en"));
-    expect(md).toContain("Partly verified: 1 of 2 criteria proven, and the deploy checked by the production probes");
+    expect(md).toContain("Partly verified: 1 of 2 checks met, and the deploy checked by the production probes");
     expect(md.match(/_read /g)).toHaveLength(7);
   });
 
