@@ -14,7 +14,7 @@
 
 import { markdown } from "@codemirror/lang-markdown";
 import { useQuery } from "@tanstack/react-query";
-import CodeMirror, { type EditorView } from "@uiw/react-codemirror";
+import CodeMirror, { EditorView } from "@uiw/react-codemirror";
 import { type ReactNode, useRef, useState } from "react";
 import { BodyView, IconButton, PreviewPane, Spinner, useDebounced } from "@/design";
 import type { IconName } from "@/design/icons/icon";
@@ -33,6 +33,23 @@ import {
 } from "../markdown-actions";
 
 const PREVIEW_DEBOUNCE_MS = 300;
+
+/** Markdown, with long lines wrapped at the box's edge: a paragraph never scrolls sideways out of sight. */
+const EXTENSIONS = [markdown(), EditorView.lineWrapping];
+
+/**
+ * The page's own tokens, in place of CodeMirror's light theme: that one painted the box white in dark
+ * mode under the dark theme's pale text, so what was typed read at under 2:1 (witness/comment-reply-intent).
+ */
+const ON_TOKENS = EditorView.theme({
+  "&": { backgroundColor: "transparent", color: "var(--fg-default)" },
+  ".cm-content": { caretColor: "var(--fg-default)" },
+  ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--fg-default)" },
+  ".cm-placeholder": { color: "var(--fg-subtle)" },
+  "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
+    backgroundColor: "var(--info-5)",
+  },
+});
 
 interface Tool {
   icon: IconName;
@@ -103,8 +120,6 @@ export function BodyEditor({
   const viewRef = useRef<EditorView | null>(null);
   const debounced = useDebounced(value, PREVIEW_DEBOUNCE_MS);
 
-  const extensions = [markdown()];
-
   const preview = useQuery({
     queryKey: ["body", "preview", debounced],
     queryFn: () => bodyApi.preview(debounced),
@@ -143,7 +158,8 @@ export function BodyEditor({
             viewRef.current = v;
             v.dom.addEventListener("keydown", (e) => shortcut(e, v));
           }}
-          extensions={extensions}
+          extensions={EXTENSIONS}
+          theme={ON_TOKENS}
           editable={!disabled}
           placeholder={placeholder}
           minHeight={`${rows * 1.5}rem`}
