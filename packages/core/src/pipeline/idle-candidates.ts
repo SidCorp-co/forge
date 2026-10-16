@@ -146,12 +146,26 @@ export async function readCandidates(
     order: sql`${pendingSinceSql(sql`i.id`, IDLE_KEY_SUFFIX)} ASC, i.id ASC`,
     limit: pendingSightingLimit(IDLE_SCAN_LIMIT),
   });
+  // Newest first, resuming past the rows read last pass: one the judge declines to raise (a live
+  // claim) stays unraised, and without the cursor those rows would hold every fresh slot.
+  const freshKey = `idle-fresh:${scope.projectId ?? '*'}`;
+  const freshWindow = sweepWindow(freshKey, now.toISOString());
+  const older = freshWindow.after
+    ? sql`AND (i.updated_at, i.id) < (${freshWindow.after.ts}::timestamptz, ${freshWindow.after.id}::uuid)`
+    : sql``;
   const fresh = await selectCandidates({
     scope,
     where: sql`${unraisedConditionSql(sql`i.id`, IDLE_KEY_SUFFIX)} AND i.updated_at < ${dueBeforeSql(now)}
-      AND ${projectHasAdminSql(sql`i.project_id`)}`,
+      AND ${projectHasAdminSql(sql`i.project_id`)} ${older}`,
     order: sql`i.updated_at DESC, i.id DESC`,
     limit: FRESH_SIGHTING_LIMIT,
   });
+  const lastFresh = fresh.at(-1);
+  advanceSweep(
+    freshKey,
+    freshWindow,
+    lastFresh ? { ts: lastFresh.cursor_ts, id: lastFresh.id } : null,
+    fresh.length === FRESH_SIGHTING_LIMIT,
+  );
   return withOwed(rows, pending, fresh);
 }

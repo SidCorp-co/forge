@@ -288,6 +288,35 @@ describe('the rows a pass owes a sighting, on a board that is hard to read', () 
     expect((seen.deliveredAt ?? 0) - t0).toBeLessThanOrEqual(20 * MINUTE);
   }, 600_000);
 
+  it('reaches a due issue behind 200 newer ones a live claim keeps from being raised', async () => {
+    const w = await world();
+    const t0 = Date.now();
+    await board(w, 'open', t0, false);
+    const watched = await target(w, 'open', t0, false);
+    const claimed = new Date(t0 + 10 * MINUTE).toISOString();
+    await harness.db.execute(sql`
+      INSERT INTO issues (id, project_id, title, status, created_by_id, iss_seq, session_context, created_at, updated_at)
+      SELECT gen_random_uuid(), ${w.projectId}::uuid, 'claimed ' || g, 'open', ${w.ownerId}::uuid, ${BOARD + 1} + g,
+             jsonb_build_object('lease', jsonb_build_object(
+               'holder', 'holder-' || g, 'minutes', 600, 'renewedAt', ${claimed}::text,
+               'history', jsonb_build_array(jsonb_build_object('at', ${claimed}::text, 'how', 'claim')))),
+             ${new Date(t0).toISOString()}::timestamptz + (g * 5 || ' milliseconds')::interval,
+             ${new Date(t0).toISOString()}::timestamptz + (g * 5 || ' milliseconds')::interval
+        FROM generate_series(1, 200) g
+    `);
+
+    const seen = await follow({
+      sweep: sweeps.idle,
+      from: t0 + 10 * MINUTE,
+      to: t0 + 22 * MINUTE,
+      ownerId: w.ownerId,
+      issueId: watched,
+    });
+
+    expect(seen.deliveredAt, 'delivered at all').not.toBeNull();
+    expect((seen.deliveredAt ?? 0) - t0).toBeLessThanOrEqual(20 * MINUTE);
+  }, 600_000);
+
   it('keeps a backlog a cleared wedge releases pending until it is seen again', async () => {
     const w = await world();
     const t0 = Date.now();
