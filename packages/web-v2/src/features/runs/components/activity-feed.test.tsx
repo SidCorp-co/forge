@@ -43,6 +43,8 @@ function run(attempts: PipelineRunAttempt[]): PipelineRunSummary {
     id: "run-1",
     projectId: "proj-1",
     issueId: null,
+    lane: "system",
+    group: { source: "none", issues: [], detail: "this run was not opened over a group of issues" },
     issueRef: null,
     issueTitle: null,
     kind: "issue",

@@ -72,6 +72,11 @@ export interface ChatComposerProps {
   busy?: boolean;
   /** Take a send while `busy`, for a caller that queues rather than refuses. */
   queueWhileBusy?: boolean;
+  /**
+   * Why nothing can be sent right now, for a caller that is neither answering nor ready. Set, the
+   * send and attach controls refuse without spinning and this sentence is shown at every width.
+   */
+  held?: string;
   placeholder?: string;
   /**
    * What this surface stages. Absent, and there is no attach control, no paste
@@ -119,6 +124,7 @@ export function ChatComposer({
   disabled,
   busy,
   queueWhileBusy,
+  held,
   placeholder = "Message the agent…",
   attachments,
   sticky = true,
@@ -149,7 +155,7 @@ export function ChatComposer({
   }, []);
 
   const canSend =
-    !disabled && (queueWhileBusy || !busy) && (value.trim().length > 0 || files.length > 0);
+    !disabled && !held && (queueWhileBusy || !busy) && (value.trim().length > 0 || files.length > 0);
   // Stop is offered on the turn, not on this browser's own send: anyone in the
   // room watching an answer arrive may end it, and `onStop` is given only while
   // there is a turn to end, so its presence is the whole condition.
@@ -451,7 +457,7 @@ export function ChatComposer({
                   icon="plus"
                   aria-label="Attach files"
                   className="h-11 w-11 flex-none"
-                  disabled={disabled || busy}
+                  disabled={disabled || busy || !!held}
                   onClick={openPicker}
                 />
               )}
@@ -488,7 +494,7 @@ export function ChatComposer({
                     icon="arrowRight"
                     aria-label="Send message"
                     className="h-11 w-11 flex-none rounded-full p-0"
-                    loading={busy}
+                    loading={busy && !held}
                     disabled={!canSend}
                     onClick={submit}
                   />
@@ -496,6 +502,7 @@ export function ChatComposer({
               </div>
             </div>
           </div>
+          {held && <p className="fg-caption px-1 text-muted">{held}</p>}
 
           {slashSkills && (
             <SlashSkillsMenu

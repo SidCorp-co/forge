@@ -186,3 +186,23 @@ describe("ChatComposer — one attach control, announced once", () => {
     expect(screen.getAllByRole("button", { name: /attach|upload/i })).toHaveLength(1);
   });
 });
+
+describe("ChatComposer — held", () => {
+  it("refuses a send and an attachment without spinning, and says why at every width", () => {
+    const onSend = vi.fn();
+    render(<ChatComposer onSend={onSend} attachments={SESSION_ATTACHMENTS} held="Sending waits." />);
+    type("hello");
+    fireEvent.click(screen.getByLabelText("Send message"));
+    expect(onSend).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Send message")).toBeDisabled();
+    expect(screen.getByLabelText("Attach files")).toBeDisabled();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    const line = screen.getByText("Sending waits.");
+    expect(line.className).not.toMatch(/\bhidden\b/);
+  });
+
+  it("spins for nothing it was told is held, even when busy is passed beside it", () => {
+    render(<ChatComposer onSend={vi.fn()} busy held="Sending waits." />);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+});

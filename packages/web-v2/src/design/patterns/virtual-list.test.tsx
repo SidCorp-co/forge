@@ -306,3 +306,23 @@ describe("loading more", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 });
+
+describe("the focus ring on a row (ISS-1228 extra fix)", () => {
+  // The scroller clips anything drawn outside a full-width row and the next row paints over its lower
+  // edge, so an outer ring showed only as a faint line above and below. The ring is drawn inside.
+  it("draws the focused row's ring inside the row, in the focus-ring token, with no outer shadow", () => {
+    list(items(3));
+    const row = screen.getByRole("article", { name: "Row 1" });
+    const classes = row.className.split(/\s+/);
+    expect(classes).toEqual(
+      expect.arrayContaining([
+        "focus-visible:outline-2",
+        "focus-visible:-outline-offset-2",
+        "focus-visible:outline-solid",
+        "focus-visible:outline-[var(--focus-ring)]",
+        "focus-visible:shadow-none",
+      ]),
+    );
+    expect(classes.filter((c) => /^focus-visible:(outline-none|shadow-\[)/.test(c))).toEqual([]);
+  });
+});

@@ -34,6 +34,34 @@ export function turnStageOf({
   return blocks?.[blocks.length - 1]?.type === "text" ? "responding" : "working";
 }
 
+/** What a session's page may draw. Only `answering` spins, streams a caret or makes the composer
+ *  busy; `live` (answering or quiet) offers Stop; `quiet` holds a send. */
+export interface SessionActivity {
+  live: boolean;
+  answering: boolean;
+  quiet: boolean;
+}
+
+export function sessionActivity(display: AgentSessionDisplayStatus): SessionActivity {
+  return {
+    live: display === "running" || display === "stalled",
+    answering: display === "running",
+    quiet: display === "stalled",
+  };
+}
+
+/** Why a quiet session's composer takes no message: a send starts a new turn on the box. */
+export const QUIET_HOLD = "Sending waits until this session is heard from again.";
+
+/** The composer's state on a session's page: busy only while answering or sending, held while quiet. */
+export function sessionComposerState(
+  display: AgentSessionDisplayStatus,
+  sending: boolean,
+): { busy: boolean; held?: string } {
+  const { answering, quiet } = sessionActivity(display);
+  return quiet && !sending ? { busy: false, held: QUIET_HOLD } : { busy: answering || sending };
+}
+
 /**
  * The stage a runner session's newest turn is in, off the facts the session screen already holds.
  */

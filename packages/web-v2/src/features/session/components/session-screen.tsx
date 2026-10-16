@@ -54,7 +54,7 @@ import { ContextRail } from "./context-rail";
 import { Conversation } from "./conversation";
 import { NewOutput } from "./new-output";
 import { DisclosureScope } from "../disclosure";
-import { TurnStage, sessionTurnStage } from "./turn-stage";
+import { TurnStage, sessionActivity, sessionComposerState, sessionTurnStage } from "./turn-stage";
 import { tailOutputSize, useStickToBottom } from "./use-stick-to-bottom";
 
 interface SessionScreenProps {
@@ -163,7 +163,7 @@ export function SessionScreen({
   const streamedChars = useMemo(() => tailOutputSize(items), [items]);
 
   const display = session ? deriveSessionDisplayStatus(session) : "queued";
-  const live = display === "running" || display === "stalled";
+  const { live, answering } = sessionActivity(display);
   const startMs = session?.startedAt
     ? new Date(session.startedAt).getTime()
     : undefined;
@@ -191,7 +191,7 @@ export function SessionScreen({
     ready: turnsQ.isSuccess,
     itemCount: items.length,
     live,
-    streaming: live && !fromMessages,
+    streaming: answering && !fromMessages,
     streamedChars,
   });
 
@@ -384,7 +384,7 @@ export function SessionScreen({
               ) : (
                 <Conversation
                   items={items}
-                  streaming={live && !fromMessages}
+                  streaming={answering && !fromMessages}
                   readOnly={fromMessages}
                   busy={
                     live ||
@@ -417,7 +417,7 @@ export function SessionScreen({
               onSend={async (message, files) => {
                 await send.mutateAsync({ sessionId, message, files });
               }}
-              busy={live || send.isPending}
+              {...sessionComposerState(display, send.isPending)}
               disabled={!session.deviceId}
               attachments={SESSION_ATTACHMENTS}
             />

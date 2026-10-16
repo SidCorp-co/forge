@@ -290,3 +290,29 @@ function doingCell(root: ParentNode): string | undefined {
   const cell = [...root.querySelectorAll("div")].find((el) => el.firstElementChild?.textContent === "Doing");
   return cell?.textContent?.replace(/^Doing/, "");
 }
+
+describe("the sessions list's count of working sessions (ISS-1228 criterion 36)", () => {
+  /** The header figure under a label, and the filter tab whose label opens with it. */
+  function readCounts(list: HTMLElement, label: string) {
+    const stat = [...list.querySelectorAll(".fg-overline")].find((el) => el.textContent === label);
+    const tab = [...list.querySelectorAll("button")]
+      .map((b) => b.textContent ?? "")
+      .find((t) => t.startsWith(`${label} `));
+    return { figure: stat?.nextElementSibling?.textContent, tab: tab?.slice(label.length).trim() };
+  }
+
+  it("counts a quiet session in neither the Working figure nor the Working filter", () => {
+    listed = row;
+    const { container } = render(<SessionsScreen scope={{ projectId: "p1" }} />);
+    expect(readCounts(container, WORKING_WORD)).toEqual({ figure: "0", tab: "0" });
+    cleanup();
+  });
+
+  it("counts a session that keeps checking in once in both", () => {
+    listed = { ...row, lastHeartbeatAt: HEARD_AT, updatedAt: HEARD_AT };
+    const { container } = render(<SessionsScreen scope={{ projectId: "p1" }} />);
+    expect(readCounts(container, WORKING_WORD)).toEqual({ figure: "1", tab: "1" });
+    listed = row;
+    cleanup();
+  });
+});
