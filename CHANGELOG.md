@@ -3204,7 +3204,7 @@
 - **A held reason of a sentence or two is shown whole.** More appears only past three lines. (ISS-1228)
 - **When the Pipeline page cannot read, it says why in plain words.** The server's own message sits under Technical details. (ISS-1228)
 - **Opening a project link right after switching organizations stays on that project.** It no longer jumps to the projects list. (ISS-1228)
-- **A session that keeps checking in reads Working on every screen.** The session page and sessions list said Running where the Pipeline page and dashboard said Working. (ISS-1228)
+- **A session that checks in and reports itself working reads Working on every screen.** The session page and sessions list said Running where the Pipeline page and dashboard said Working. (ISS-1228)
 - **A quiet session no longer claims to be working.** Its row says what it last reported, and its session page shows how long it has been silent instead of a spinner. (ISS-1228)
 - **An issue dropped after Awaiting release no longer counts as shipped.** The dashboard, insights and admin figures leave it out. (ISS-1228)
 - **The Agents runs tab lists a project's closed runs when nothing is running.** It said the project had no runs. (ISS-1228)

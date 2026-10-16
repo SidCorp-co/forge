@@ -51,6 +51,7 @@ function NothingRunning({ projectId, slug, now }: { projectId: string; slug: str
   const runsQ = useProjectRuns(projectId);
   const closed = useMemo(() => closedRuns(runsQ.data?.items), [runsQ.data]);
   const worked = workedRuns(runsQ.data?.items, now).length;
+  const readWhole = !runsQ.isError && runsQ.data !== undefined && runsQ.data.totalCount <= runsQ.data.items.length;
   const read = runsQ.data?.items.length ?? 0;
   const total = runsQ.data?.totalCount ?? read;
 
@@ -78,9 +79,11 @@ function NothingRunning({ projectId, slug, now }: { projectId: string; slug: str
   return (
     <section className="flex flex-col gap-2">
       <p className="fg-body-sm text-fg">
-        {worked === 0
-          ? "No run is working on this project right now."
-          : `No box reports a run here, though ${worked} open ${worked === 1 ? "run has" : "runs have"} work behind ${worked === 1 ? "it" : "them"}.`}
+        {worked > 0
+          ? `No box reports a run here, though ${worked} open ${worked === 1 ? "run has" : "runs have"} work behind ${worked === 1 ? "it" : "them"}.`
+          : readWhole
+            ? "No run is working on this project right now."
+            : "No box reports a run on this project right now."}
       </p>
       {closed.length > 0 && (
         <>

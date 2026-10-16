@@ -15,6 +15,7 @@ const state = vi.hoisted(() => ({
   runs: [] as unknown[],
   total: 0,
   ledger: [] as unknown[],
+  failed: false,
 }));
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/projects/qa/agents" }));
@@ -32,9 +33,9 @@ vi.mock("../hooks", () => ({
 }));
 vi.mock("@/features/runs/hooks", () => ({
   useProjectRuns: () => ({
-    data: { items: state.runs, totalCount: state.total },
+    data: state.failed ? undefined : { items: state.runs, totalCount: state.total },
     isLoading: false,
-    isError: false,
+    isError: state.failed,
     error: null,
     refetch: vi.fn(),
   }),
@@ -45,6 +46,7 @@ afterEach(() => {
   state.runs = [];
   state.total = 0;
   state.ledger = [];
+  state.failed = false;
 });
 
 const run = (over: Partial<PipelineRunListItem>): PipelineRunListItem =>
@@ -125,6 +127,23 @@ describe("the Agents runs tab with nothing running on a box", () => {
     expect(screen.queryByText("No run is working on this project right now.")).not.toBeInTheDocument();
     expect(screen.getByText("No box reports a run here, though 1 open run has work behind it.")).toBeInTheDocument();
     expect(within(screen.getByRole("list", { name: "Closed runs" })).getAllByRole("listitem")).toHaveLength(1);
+  });
+
+  it("claims no run is working only off a whole reading of the project's runs", () => {
+    state.runs = [run({ id: "a" }), run({ id: "b", issueRef: "ISS-2" })];
+    state.total = 250;
+    pane();
+    expect(screen.queryByText("No run is working on this project right now.")).not.toBeInTheDocument();
+    expect(screen.getByText("No box reports a run on this project right now.")).toBeInTheDocument();
+  });
+
+  it("claims nothing about the project's runs when they could not be read", () => {
+    state.failed = true;
+    pane();
+    expect(screen.queryByText("No run is working on this project right now.")).not.toBeInTheDocument();
+    expect(screen.queryByText("No runs on this project")).not.toBeInTheDocument();
+    expect(screen.getByText("No box reports a run on this project right now.")).toBeInTheDocument();
+    expect(screen.getByText(/Couldn.t read this project.s runs/)).toBeInTheDocument();
   });
 
   it("says the project has no runs only when the project has none at all", () => {
