@@ -153,10 +153,13 @@ function matchesFilter(
       // A chat awaiting the owner's reply (ISS-664), and every session the Pipeline page calls
       // Waiting for input (ISS-1228): both wait on a person's next message.
       return isAwaitingReply(row) || isWaitingForInput(row, now);
-    case "running":
+    case "running": {
       // The sessions this list calls Working, which the header's Working figure counts too: never a
-      // quiet one, nor one doing something it has its own word for.
-      return sessionWord(row, now)?.label === WORKING_WORD;
+      // quiet one, nor one doing something it has its own word for. A chat has no session word,
+      // and its chip says Working while it runs.
+      const word = sessionWord(row, now);
+      return word ? word.label === WORKING_WORD : display === "running";
+    }
     case "queued":
       return row.status === "queued" || row.status === "idle";
     case "attention":

@@ -8,6 +8,7 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionRow } from "@/features/sessions/types";
+import { WORKING_WORD } from "@/design";
 import { SessionScreen } from "./session-screen";
 import { BLOCKED_HOLD } from "./turn-stage";
 
@@ -127,5 +128,26 @@ describe("a session page's header at phone width", () => {
     const actions = screen.getByRole("button", { name: "Stop" }).parentElement;
     expect(actions?.className.split(/\s+/)).toContain("basis-full");
     expect(actions?.parentElement?.className.split(/\s+/)).toContain("flex-wrap");
+  });
+});
+
+// ISS-1228 round 10: the page's chip and turn line said Working while the Pipeline page said what the
+// session was doing; the page reads `sessionWord` like every other surface (criterion 62).
+describe("a session's own page says what it is doing (ISS-1228 round 10)", () => {
+  it.each([
+    ["starting", "Starting"],
+    ["awaiting_input", "Waiting for input"],
+    ["checkpointing", "Checkpointing"],
+    ["closed", "Closing"],
+  ])("at %s, its chip and its turn line both say %s, and nothing says Working", (runtimeState, word) => {
+    page.session = { ...session, runtimeState, report: null };
+    try {
+      render(<SessionScreen sessionId="s1" projectSlug="qa" />);
+      expect(screen.getByTestId("turn-stage")).toHaveTextContent(word);
+      expect(screen.getAllByText(word).length).toBeGreaterThan(1);
+      expect(screen.queryByText(new RegExp(WORKING_WORD))).not.toBeInTheDocument();
+    } finally {
+      page.session = session;
+    }
   });
 });

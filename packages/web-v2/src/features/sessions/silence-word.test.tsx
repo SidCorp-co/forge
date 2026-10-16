@@ -467,6 +467,7 @@ describe("one word for a session, on every surface (ISS-1228 round 10)", () => {
     ["closed", "Closing"],
   ];
 
+  // The session's own page is read through `SessionScreen` in session-screen-blocked.test.tsx.
   it.each(ACTIVITIES)("calls a heard-from session at %s %s on every surface", (runtimeState, word) => {
     const heardLive = { ...live, runtimeState, lastHeartbeatAt: HEARD_AT };
     const heardRow = { ...row, runtimeState, lastHeartbeatAt: HEARD_AT, updatedAt: HEARD_AT };
@@ -481,11 +482,6 @@ describe("one word for a session, on every surface (ISS-1228 round 10)", () => {
     listed = heardRow;
     surfaces.list = render(<SessionsScreen scope={{ projectId: "p1" }} />).container.querySelector("tbody")?.textContent ?? "";
     listed = row;
-    cleanup();
-    surfaces.page =
-      render(
-        <SessionChip status={statusToChip(deriveSessionDisplayStatus(heardRow, NOW))} session={heardRow} now={NOW} />,
-      ).container.textContent ?? "";
     cleanup();
     surfaces.runs =
       render(
@@ -521,6 +517,21 @@ describe("one word for a session, on every surface (ISS-1228 round 10)", () => {
     cleanup();
     expect(checkpointing).toContain(`${WORKING_WORD} 0`);
     expect(working).toContain(`${WORKING_WORD} 1`);
+  });
+
+  it("counts a running chat under Working, as its chip says Working", () => {
+    listed = {
+      ...row,
+      kind: "chat",
+      metadata: { type: "chat" },
+      lastHeartbeatAt: HEARD_AT,
+      updatedAt: HEARD_AT,
+    } as SessionRow;
+    const { container } = render(<SessionsScreen scope={{ projectId: "p1" }} />);
+    const text = container.textContent ?? "";
+    listed = row;
+    cleanup();
+    expect(text).toContain(`${WORKING_WORD} 1`);
   });
 
   it("says a quiet blocked run last reported blocked on the runs tab, never that it is blocked now", () => {
