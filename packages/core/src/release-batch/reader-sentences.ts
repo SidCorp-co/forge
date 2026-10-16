@@ -8,6 +8,7 @@
 import type { ReleaseBlockerCode } from '@forge/contracts';
 import {
   namedHere,
+  type RefusedDeclaration,
   type ReleaseBlocker,
   type ReleaseWarning,
   type ReleaseWarningCode,
@@ -85,13 +86,15 @@ function unmergedForReader(details: Details): string | null {
   return `${namedHere(details)} ${w('has', 'have')} no mark saying where ${w('its', 'their')} work landed. ${w('Its', 'Their')} work lands outside git, so mark ${w('it', 'each one')} merged naming where the work now is — the live URL, CMS entry or storefront resource — first: a release records what shipped, and a mark naming nothing does not say that anything did.`;
 }
 
-const UNREADABLE_DECLARATION_FOR_READER =
-  'a verify step Forge cannot read: it names no probe with a url, and a declared verify step takes no project default, so no release can be proved there and none closes past it. Give its probe a full url, scheme included, or remove the verify step: the live commit endpoint recorded for this project then answers, and with neither the release is recorded unverified.';
+const unreadableDeclarationForReader: RefusedDeclaration = (n) => {
+  const w = (one: string, many: string) => agree(n, one, many);
+  return `a verify step Forge cannot read: ${w('it names no probe', 'none of them names a probe')} with a url, and a declared verify step takes no project default, so no release can be proved ${w('there', 'at any of them')} and none closes past ${w('it', 'them')}. Give ${w('its probe', 'each probe')} a full url, scheme included, or remove ${w('the verify step', 'those verify steps')}: the live commit endpoint recorded for this project then answers, and with neither the release is recorded unverified.`;
+};
 
 function unreadableForReader(details: Details): string | null {
   if (!Array.isArray(details?.bindings) || details.bindings.length === 0) return null;
   const remedy = releaseBlockerSentence('RELEASE_PROBES_UNREADABLE');
-  return unreadableSentence(remedy, details, UNREADABLE_DECLARATION_FOR_READER);
+  return unreadableSentence(remedy, details, unreadableDeclarationForReader);
 }
 
 function unclosableForReader(details: Details): string | null {

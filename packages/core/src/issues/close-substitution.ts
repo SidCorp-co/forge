@@ -68,7 +68,7 @@ export interface NoOpSentenceInput {
 export function noOpSentence(input: NoOpSentenceInput): string {
   const { projectId, requested, final } = input;
   const rule = rewriteRule(input);
-  if (!rule) return `issue already in status ${final}`;
+  if (!rule) return `issue already in status ${statusForCaller(final)}`;
 
   const said =
     `${statusForCaller(requested)} was rewritten to ${statusForCaller(final)} ${RULE_CLAUSE[rule]}. ` +

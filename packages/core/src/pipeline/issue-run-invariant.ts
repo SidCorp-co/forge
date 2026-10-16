@@ -1,10 +1,9 @@
 import { and, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import type { IssueStatus } from '../db/schema.js';
 import { notifications } from '../db/schema.js';
 import { issueWorkInFlightSql } from '../issues/issue-lease.js';
 import { lastWorkedAtSql } from '../issues/status-entered-at.js';
-import { ASSERTS_WORK_IN_PROGRESS, ISSUE_STATUS_LABELS } from '../issues/status-sets.js';
+import { ASSERTS_WORK_IN_PROGRESS, statusLabel } from '../issues/status-sets.js';
 import { elapsedWords } from '../lib/elapsed-words.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
@@ -101,11 +100,10 @@ export function orphanNotice(args: {
   since: string;
   now: Date;
 }): { title: string; body: string } {
-  const status = ISSUE_STATUS_LABELS[args.status as IssueStatus] ?? args.status;
   return {
     title: `${args.ref} says work is in progress with no run behind it — ${args.projectName}`,
     body:
-      `${args.ref} reads ${status}, and nothing has worked it for ${elapsedWords(args.since, args.now)}: ` +
+      `${args.ref} reads ${statusLabel(args.status)}, and nothing has worked it for ${elapsedWords(args.since, args.now)}: ` +
       'no job, issue run or run session is live for it.',
   };
 }

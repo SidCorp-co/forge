@@ -485,7 +485,7 @@ describe('POST /api/issues/:id/transition — a refusal answers in its own words
     expect(res.status).toBe(409);
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('NO_OP');
-    expect(body.message).toContain('already in status open');
+    expect(body.message).toBe('issue already in status Open (open)');
   });
 
   it('422 CLOSE_REQUIRES_SHIPPED for a close on an issue with no merged_at (ISS-1108)', async () => {

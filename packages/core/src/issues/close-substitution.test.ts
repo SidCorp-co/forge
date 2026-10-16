@@ -12,7 +12,7 @@ describe('noOpSentence', () => {
         parked: 'developed',
         final: 'developed',
       }),
-    ).toBe('issue already in status developed');
+    ).toBe('issue already in status Developed (developed)');
   });
 
   it('names both statuses when the release gate rewrote the close', () => {
@@ -25,7 +25,7 @@ describe('noOpSentence', () => {
 
     expect(sentence).toContain('Closed (closed)');
     expect(sentence).toContain('Awaiting release (awaiting_release)');
-    expect(sentence).not.toBe('issue already in status awaiting_release');
+    expect(sentence).not.toBe('issue already in status Awaiting release (awaiting_release)');
   });
 
   it('says the issue is not in the status the caller asked for', () => {

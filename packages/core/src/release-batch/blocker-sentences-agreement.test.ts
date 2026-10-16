@@ -129,6 +129,22 @@ describe('a live deploy binding whose verify Forge cannot read', () => {
       'The live deploy bindings `coolify-a`, `coolify-b` each declare a `verify` Forge cannot read',
     );
   });
+
+  // Judge-22 at 2734783: "each declare…" went on in the singular, "Correct it… remove it".
+  it('says what it names and what to correct in the singular, at one', () => {
+    const one = sentence(['coolify-a']);
+    expect(one).toContain('— it names no probe with a url —');
+    expect(one).toContain('proved there and none closes past it. Correct it to');
+    expect(one).toContain(', or remove it: the project');
+  });
+
+  it('says what they name and what to correct in the plural, at two', () => {
+    const two = sentence(['coolify-a', 'coolify-b']);
+    expect(two).toContain('— none of them names a probe with a url —');
+    expect(two).toContain('proved at any of them and none closes past them. Correct each to');
+    expect(two).toContain(', or remove them: the project');
+    expect(two).not.toMatch(/\bit\b/);
+  });
 });
 
 describe('the warning about criteria earned at a runtime nothing could re-read', () => {

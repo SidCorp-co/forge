@@ -8,6 +8,7 @@
  * thoroughly.
  */
 
+import { statusForCaller } from '../issues/status-sets.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import type { MessageRule, RuleBreak } from './contract.js';
 import { extractIssueClaims, turnCreatedIssue } from './issue-tokens.js';
@@ -55,8 +56,8 @@ export const ISSUE_REFERENCES_EXIST: MessageRule = {
 };
 
 const HELD = {
-  merged: 'a merge',
-  closed: 'a closure',
+  merged: 'merge',
+  closed: 'closure',
 } as const;
 
 /**
@@ -79,7 +80,7 @@ export const STATUS_MATCHES_THE_ROW: MessageRule = {
       const ref = formatIssueRef(f.prefix, a.seq);
       breaks.push({
         quote: a.quote,
-        why: `the message says ${ref} is ${a.claim}, and the tracker holds no ${HELD[a.claim]} for it — ${ref} is ${row.status}${row.merged ? ' and merged' : ' and unmerged'}`,
+        why: `the message says ${ref} is ${a.claim}, and the tracker holds no ${HELD[a.claim]} for it — ${ref} is ${statusForCaller(row.status)}${row.merged ? ' and merged' : ' and unmerged'}`,
       });
     }
     return breaks;
