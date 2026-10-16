@@ -74,6 +74,20 @@ const PLANTED = {
   { moves: ReadonlyArray<readonly [string, string, Date]>; countsOn: number }
 >;
 
+/**
+ * Issues that reached a shipped status and were then dropped: the work will not happen, so nothing
+ * shipped. Each lands on day 6 back, a day no planted issue counts on, so a count that takes one in
+ * reads 1 where the card says 0.
+ */
+const NEVER_SHIPPED = {
+  droppedFromAwaitingRelease: {
+    moves: [
+      ['testing', 'awaiting_release', at(6, 9)],
+      ['awaiting_release', 'dropped', at(6, 15)],
+    ],
+  },
+} as const satisfies Record<string, { moves: ReadonlyArray<readonly [string, string, Date]> }>;
+
 /** The seven-day card, oldest day first: one issue on each of days 5, 4, 2 and 1 back. */
 const CARD = [0, 1, 1, 0, 1, 1, 0];
 
@@ -139,6 +153,25 @@ describe('ISS-1270 · a shipped issue counts once, on its first shipped day', ()
         `);
       }
     }
+    for (const [key, spec] of Object.entries(NEVER_SHIPPED)) {
+      seq += 1;
+      const issueId = randomUUID();
+      await harness.db.execute(sql`
+        INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id, created_at)
+        VALUES (${issueId}, ${projectId}, ${seq}, ${key}, 'dropped', 'medium', ${ownerId},
+                ${new Date(spec.moves[0][2].getTime() - DAY_MS).toISOString()}::timestamptz)
+      `);
+      for (const [from, to, when] of spec.moves) {
+        await harness.db.execute(sql`
+          INSERT INTO activity_log (id, issue_id, actor_type, actor_id, action, payload, created_at)
+          VALUES (${randomUUID()}, ${issueId}, 'user', ${ownerId}, 'issue.statusChanged',
+                  ${JSON.stringify({ from, to })}::jsonb, ${when.toISOString()}::timestamptz)
+        `);
+      }
+      await harness.db.execute(sql`
+        INSERT INTO issue_labels (issue_id, label_id) VALUES (${issueId}, ${labelId})
+      `);
+    }
   }, 120_000);
 
   afterAll(async () => {
@@ -173,6 +206,10 @@ describe('ISS-1270 · a shipped issue counts once, on its first shipped day', ()
 
     it('counts two shipped transitions at the same instant as one issue', async () => {
       expect(await countOn(PLANTED.sameInstant.countsOn)).toBe(1);
+    });
+
+    it('counts nothing for an issue that reached awaiting_release and was then dropped', async () => {
+      expect(await countOn(6)).toBe(0);
     });
 
     it('totals the distinct issues whose first shipped day is in the window, on a dense seven-day calendar', async () => {

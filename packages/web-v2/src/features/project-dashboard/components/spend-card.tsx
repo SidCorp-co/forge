@@ -1,4 +1,4 @@
-// 7-day spend by step (ISS-379, AC#4). Pure-CSS stacked bar of the three costliest steps + other, a
+// 7-day spend by kind of work (ISS-379, AC#4). Pure-CSS stacked bar of the three costliest + Other, a
 // legend, `+$X in flight` where runs are still spending, and the figure against its own normal.
 import { formatUsd } from "@/lib/utils/format";
 import type { SpendByStepData } from "../derive";
@@ -41,7 +41,7 @@ export function SpendCard({
         {segments.map((s) => (
           <li key={s.key} className="flex items-center gap-2">
             <span className="size-2.5 flex-none rounded-sm" style={{ background: s.color }} />
-            <span className="fg-body-sm min-w-0 flex-1 truncate lowercase text-fg">{s.label}</span>
+            <span className="fg-body-sm min-w-0 flex-1 truncate text-fg">{s.label}</span>
             <span className="font-mono text-sm font-semibold tabular-nums text-fg">{formatUsd(s.cost)}</span>
           </li>
         ))}

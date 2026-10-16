@@ -32,7 +32,7 @@ function SessionRow({
   slug: string;
   now: number;
 }) {
-  const doing = doingOf(session);
+  const doing = doingOf(session, now);
   const waiting = waitingOnOf(session);
   const checkIn = checkInOf(session, now);
   const name = sessionName(session);

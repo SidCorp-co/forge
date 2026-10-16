@@ -340,7 +340,7 @@ describe("attentionCut (ISS-1156)", () => {
   });
 });
 
-describe("spendByStep — the steps the rows name, no stage fold (ISS-1228)", () => {
+describe("spendByStep — the kinds of work the rows name, in the Overview's words (ISS-1228)", () => {
   const row = (step: string, costUsd: number) => ({
     runId: "r",
     issueId: null,
@@ -352,24 +352,36 @@ describe("spendByStep — the steps the rows name, no stage fold (ISS-1228)", ()
     costUsd,
   });
 
-  it("keeps each step under its own name, costliest first, in neutral ink", () => {
-    const out = spendByStep([row("drive", 1), row("drive", 2), row("pm", 1)]);
+  it("keeps each kind of work apart, costliest first, named as the Overview names it, in neutral ink", () => {
+    const out = spendByStep([row("drive", 1), row("drive", 2), row("release_batch", 1)]);
     expect(out.total).toBe(4);
-    expect(out.segments.map((s) => [s.label, s.cost, s.color])).toEqual([
-      ["drive", 3, "var(--fg-default)"],
-      ["pm", 1, "var(--fg-muted)"],
+    expect(out.segments.map((s) => [s.key, s.label, s.cost, s.color])).toEqual([
+      ["drive", "Issue work", 3, "var(--fg-default)"],
+      ["release_batch", "Releases", 1, "var(--fg-muted)"],
     ]);
   });
 
-  it("folds everything past the three costliest into other", () => {
-    const out = spendByStep([row("a", 4), row("b", 3), row("c", 2), row("d", 1), row("e", 0.5)]);
-    expect(out.segments.map((s) => s.label)).toEqual(["a", "b", "c", "other"]);
+  it("prints no stored step name for any kind the Overview names", () => {
+    const out = spendByStep([row("reconcile", 3), row("pm", 2), row("smoke", 1)]);
+    expect(out.segments.map((s) => s.label)).toEqual(["Skill updates", "Project manager", "Skill trial runs"]);
+    expect(out.segments.some((s) => s.label.includes("_"))).toBe(false);
+  });
+
+  it("folds everything past the three costliest into Other", () => {
+    const out = spendByStep([
+      row("drive", 4),
+      row("release_batch", 3),
+      row("reconcile", 2),
+      row("pm", 1),
+      row("smoke", 0.5),
+    ]);
+    expect(out.segments.map((s) => s.label)).toEqual(["Issue work", "Releases", "Skill updates", "Other"]);
     expect(out.segments[3]?.cost).toBe(1.5);
   });
 
-  it("names no stage: a staged job type is a step like any other", () => {
-    const out = spendByStep([row("code", 1), row("fix", 1)]);
-    expect(out.segments.map((s) => s.label).sort()).toEqual(["code", "fix"]);
+  it("says a step no kind of work names is unrecognised, keeping the name the row carries", () => {
+    const out = spendByStep([row("code", 1)]);
+    expect(out.segments.map((s) => [s.key, s.label])).toEqual([["code", "Unrecognised work (code)"]]);
     expect(out.segments.every((s) => !s.color.includes("stage"))).toBe(true);
   });
 

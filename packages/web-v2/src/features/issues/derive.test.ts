@@ -833,6 +833,19 @@ describe("deriveCommentKind", () => {
 		}
 	});
 
+	// ISS-1228: the kind is read off the comment's opening line, so a word met further down a body
+	// that is about something else stamps nothing. The judge saw a Released badge on a Draft issue.
+	it.each([
+		["Moving this to draft until the plan is settled.\nNothing here has been released yet.", "comment"],
+		["Parking: the previous fix shipped with a typo, see below.", "comment"],
+		["Not released: the deploy was rolled back.", "comment"],
+		["Note on the plan\nThe reviewer approved the plan written above.", "comment"],
+		["## Release note\nThe Pipeline page now lists live sessions.", "released"],
+		["Released v1.2.0 to prod", "released"],
+	])("reads %j by its opening as %s", (body, kind) => {
+		expect(deriveCommentKind({ body })).toEqual({ kind, form: "prefix" });
+	});
+
 	it("classifies a stored component body by its prose, not by its markup", () => {
 		expect(
 			deriveCommentKind({

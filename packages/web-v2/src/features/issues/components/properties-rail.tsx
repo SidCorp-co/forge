@@ -15,7 +15,7 @@ import { LandingShapeControl } from "./landing-shape-control";
 import { LiveReachValue } from "./live-reach-row";
 import { MergeMarkerControl } from "./merge-marker-control";
 import { InlineSelect, StatusEdit } from "./inline-edit-cell";
-import { creatorLabelOf, initials, runStatusChip } from "../derive";
+import { creatorLabelOf, initials, runStatusChip, splitBlockedBy } from "../derive";
 import { AGENT_HOLDS_EDIT, heldByAgent } from "../edit-lock";
 import type {
   IssueComplexity,
@@ -226,7 +226,7 @@ export function PropertiesRail({
   const incoming = deps?.incoming ?? [];
   const outgoing = deps?.outgoing ?? [];
   const isDecompose = (e: IssueDependencyEdge) => e.kind === "decomposes" || e.kind === "parent";
-  const blockedBy = incoming.filter((e) => e.kind === "blocks");
+  const { holding: blockedBy, settled: wasBlockedBy } = splitBlockedBy(incoming);
   const blocks = outgoing.filter((e) => e.kind === "blocks");
   const parents = incoming.filter(isDecompose);
   const subtasks = outgoing.filter(isDecompose);
@@ -403,6 +403,7 @@ export function PropertiesRail({
         </Row>
       )}
       <DepList edges={blockedBy} self={issue.id} slug={slug} label="Blocked by" />
+      <DepList edges={wasBlockedBy} self={issue.id} slug={slug} label="Was blocked by" />
       <DepList edges={blocks} self={issue.id} slug={slug} label="Blocks" />
       <DepList edges={parents} self={issue.id} slug={slug} label="Parent" />
       <DepList edges={subtasks} self={issue.id} slug={slug} label="Subtasks" />

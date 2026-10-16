@@ -178,7 +178,7 @@ export function DepBadges({
     ) : (
       <RelationChip
         icon="lock"
-        label={`Blocked by ${blockedBy.length}`}
+        label={`Was blocked by ${blockedBy.length}`}
         items={blockedBy.map((e) => edgeToMenuItem(e, "in", navigate))}
       />
     );

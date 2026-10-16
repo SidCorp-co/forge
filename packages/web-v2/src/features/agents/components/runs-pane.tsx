@@ -1,13 +1,16 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
-import { EmptyState, ErrorState, Input, Skeleton } from "@/design";
+import { EmptyState, ErrorState, Input, MonoTag, Skeleton } from "@/design";
 import { useNow } from "@/design/hooks/use-now";
 import { useProjectRuns } from "@/features/runs/hooks";
+import type { PipelineRunListItem } from "@/features/runs/types";
 import { formatApiError } from "@/lib/api/error";
+import { formatRelativeTime } from "@/lib/utils/format";
 import { applyFilters, type StateFilter } from "../filter";
 import { useRunSessions } from "../hooks";
-import { stalledRuns } from "../stalled-runs";
+import { stalledRuns, workedRuns } from "../stalled-runs";
 import { RunRow } from "./run-row";
 
 const FILTERS: Array<{ value: StateFilter; label: string }> = [
@@ -17,7 +20,101 @@ const FILTERS: Array<{ value: StateFilter; label: string }> = [
 ];
 
 export interface RunsPaneProps {
-  scope: { projectId: string };
+  scope: { projectId: string; slug: string };
+}
+
+const CLOSED_STATUS_WORD: Record<string, string> = {
+  completed: "Completed",
+  failed: "Failed",
+  cancelled: "Cancelled",
+};
+
+const RUN_KIND_WORD: Record<string, string> = {
+  issue: "Issue run",
+  pm: "Project manager run",
+  interactive: "Chat run",
+  system: "System run",
+};
+
+/** The project's runs that have closed, newest first: what the tab offers where no box reports a run. */
+function closedRuns(runs: readonly PipelineRunListItem[] | undefined): PipelineRunListItem[] {
+  return (runs ?? [])
+    .filter((r) => Object.hasOwn(CLOSED_STATUS_WORD, r.status))
+    .sort((a, b) => (b.finishedAt ?? b.startedAt).localeCompare(a.finishedAt ?? a.startedAt));
+}
+
+/**
+ * What the tab says where no box reports a run: whether any run is working, and the runs that have
+ * closed, so a project whose runs all ended is never said to have none.
+ */
+function NothingRunning({ projectId, slug, now }: { projectId: string; slug: string; now: number }) {
+  const runsQ = useProjectRuns(projectId);
+  const closed = useMemo(() => closedRuns(runsQ.data?.items), [runsQ.data]);
+  const worked = workedRuns(runsQ.data?.items, now).length;
+  const read = runsQ.data?.items.length ?? 0;
+  const total = runsQ.data?.totalCount ?? read;
+
+  if (runsQ.isLoading) {
+    return (
+      <div className="flex flex-col gap-2" aria-busy="true">
+        {[0, 1, 2].map((i) => (
+          <Skeleton key={i} className="h-9 w-full" />
+        ))}
+      </div>
+    );
+  }
+
+  if (!runsQ.isError && total === 0) {
+    return (
+      <div className="grid min-h-[40vh] place-items-center">
+        <EmptyState
+          title="No runs on this project"
+          message="A run appears here as soon as a master opens one on a box serving this project."
+        />
+      </div>
+    );
+  }
+
+  return (
+    <section className="flex flex-col gap-2">
+      <p className="fg-body-sm text-fg">
+        {worked === 0
+          ? "No run is working on this project right now."
+          : `No box reports a run here, though ${worked} open ${worked === 1 ? "run has" : "runs have"} work behind ${worked === 1 ? "it" : "them"}.`}
+      </p>
+      {closed.length > 0 && (
+        <>
+          <h3 className="fg-caption mt-2">
+            Closed runs · {closed.length}
+            {total > read ? ` — from the newest ${read} of ${total} runs` : ""}
+          </h3>
+          <ul aria-label="Closed runs" className="flex flex-col divide-y divide-line border-y border-line">
+            {closed.map((r) => (
+              <li key={r.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2">
+                {r.issueId && r.issueRef ? (
+                  <Link
+                    href={`/projects/${slug}/issues/${r.issueId}`}
+                    className="flex-none hover:underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+                  >
+                    <MonoTag>{r.issueRef}</MonoTag>
+                  </Link>
+                ) : (
+                  <span className="fg-body-sm flex-none text-fg">{RUN_KIND_WORD[r.kind] ?? r.kind}</span>
+                )}
+                <span className="fg-body-sm min-w-0 flex-1 basis-40 truncate text-muted">{r.issueTitle ?? ""}</span>
+                <span data-run-status className="fg-body-sm flex-none text-fg">
+                  {CLOSED_STATUS_WORD[r.status]}
+                </span>
+                <span className="fg-caption flex-none tabular-nums">
+                  {formatRelativeTime(r.finishedAt ?? r.startedAt)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
+  );
 }
 
 /**
@@ -90,12 +187,7 @@ export function RunsPane({ scope }: RunsPaneProps) {
           <ErrorState message={formatApiError(error)} onRetry={() => refetch()} />
         </div>
       ) : all.length === 0 ? (
-        <div className="grid min-h-[40vh] place-items-center">
-          <EmptyState
-            title="No runs on this project"
-            message="A run appears here as soon as a master opens one on a box serving this project."
-          />
-        </div>
+        <NothingRunning projectId={scope.projectId} slug={scope.slug} now={now} />
       ) : (
         <>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">

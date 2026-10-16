@@ -40,6 +40,13 @@ export const TONE_META: Record<SemanticTone, ColorMeta> = {
 export const SILENCE_WORD = "Quiet";
 export const SILENCE_TONE: SemanticTone = "attention";
 
+export const WORKING_WORD = "Working";
+
+/** A silent session says what it last reported, never that it is doing it. */
+export function lastReported(activity: string): string {
+  return `Last reported ${activity.toLowerCase()}`;
+}
+
 export type StatusKey =
   | "running"
   | "queued"

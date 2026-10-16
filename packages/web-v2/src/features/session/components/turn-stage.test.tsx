@@ -77,9 +77,12 @@ describe("what a runner session's newest turn says", () => {
     expect(sessionTurnStage({ live: true, display: "running" })).toBe("working");
   });
 
-  // A session whose heartbeat is overdue is still running, and the sweeper is about to recover it.
-  it("keeps the working line on a session whose heartbeat has lapsed", () => {
-    expect(sessionTurnStage({ live: true, display: "stalled" })).toBe("working");
+  // A session whose heartbeat is overdue is still running, but nobody has heard it working: the
+  // line says it is quiet rather than spinning a working line over the silence.
+  it("says a session whose heartbeat has lapsed is quiet, whatever its transcript holds", () => {
+    expect(sessionTurnStage({ live: true, display: "stalled" })).toBe("quiet");
+    expect(sessionTurnStage({ live: true, display: "stalled", tail: agent })).toBe("quiet");
+    expect(sessionTurnStage({ live: true, display: "stalled", fromMessages: true })).toBe("quiet");
   });
 
   // Criterion 19. `live` is false by the time the status is failed, which is exactly why the failed
@@ -121,6 +124,20 @@ describe("the line a reader sees", () => {
     const line = screen.getByTestId("turn-stage");
     expect(line).toHaveTextContent("Working…");
     expect(line).toHaveAttribute("data-stage", "working");
+  });
+
+  it("spins nothing on a quiet session, and says what it last reported and how long ago", () => {
+    render(<TurnStage stage="quiet" elapsed="31m" silentForMs={101_000} />);
+    const line = screen.getByTestId("turn-stage");
+    expect(line).toHaveTextContent("Quiet · last reported working 1m ago");
+    expect(line).not.toHaveTextContent("Working…");
+    expect(line).toHaveAttribute("data-stage", "quiet");
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("says a quiet session's line without a time where none was measured", () => {
+    render(<TurnStage stage="quiet" />);
+    expect(screen.getByTestId("turn-stage")).toHaveTextContent(/^Quiet · last reported working$/);
   });
 
   it("spins while the turn is running and does not once it has failed", () => {

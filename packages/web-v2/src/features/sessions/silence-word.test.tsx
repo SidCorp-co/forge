@@ -1,17 +1,21 @@
 // @vitest-environment jsdom
 //
-// One running session, silent ninety seconds: every surface that shows it names that silence with
-// the Pipeline page's word, in the Pipeline page's tone, so a surface with its own goes red here.
+// One running session, in each of its two states. Silent ninety seconds, every surface that shows it
+// names that silence with the Pipeline page's word, in the Pipeline page's tone, and none of them
+// claims it is working. Checking in, every surface calls it Working. A surface with its own word for
+// either state goes red here.
 
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { StatusChip } from "@/design";
+import { lastReported, WORKING_WORD } from "@/design";
 import { RunRow } from "@/features/agents/components/run-row";
 import type { RunSessionRow } from "@/features/agents/types";
 import { SessionsList } from "@/features/pipeline/components/sessions-list";
 import type { LiveSession } from "@/features/pipeline/types";
 import { LiveSessionsCard } from "@/features/project-dashboard/components/live-sessions-card";
+import { TurnStage, sessionTurnStage } from "@/features/session/components/turn-stage";
 import { FleetStrip } from "./components/fleet-strip";
+import { SessionChip } from "./components/session-chip";
 import { SessionsScreen } from "./components/sessions-screen";
 import { deriveSessionDisplayStatus, type SessionRow, statusToChip } from "./types";
 
@@ -31,7 +35,7 @@ vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));
 const { mutation } = vi.hoisted(() => ({ mutation: () => ({ mutate: () => {}, isPending: false }) }));
 vi.mock("./hooks", () => ({
   useQueueStats: () => ({ data: { devices: [] } }),
-  useSessions: () => ({ data: { items: [row], totalCount: 1 }, isLoading: false, isError: false }),
+  useSessions: () => ({ data: { items: [listed], totalCount: 1 }, isLoading: false, isError: false }),
   useCancelSession: mutation,
   useRetrySession: mutation,
   useRerunSession: mutation,
@@ -41,6 +45,7 @@ vi.mock("./hooks", () => ({
 
 const NOW = Date.parse("2026-10-15T10:00:00.000Z");
 const SILENT_SINCE = new Date(NOW - 90_000).toISOString();
+const HEARD_AT = new Date(NOW - 10_000).toISOString();
 const STARTED = new Date(NOW - 30 * 60_000).toISOString();
 
 const live: LiveSession = {
@@ -88,7 +93,7 @@ const run: RunSessionRow = {
   worktreePath: "/w/iss-3",
   bootId: "b1",
   incarnation: "live",
-  work: "working",
+  work: "runnable",
   blockerKind: null,
   waitingOn: null,
   sessionTerminalAt: null,
@@ -102,6 +107,9 @@ const run: RunSessionRow = {
   lastActivityAt: SILENT_SINCE,
   masterTitle: null,
 };
+
+/** The session row the sessions list is handed; each case sets it before rendering the list. */
+let listed: SessionRow = row;
 
 /** What a surface says of the silence: its word (before any " · " qualifier) and the ink it is drawn in. */
 interface Reading {
@@ -136,7 +144,7 @@ describe("a running session gone silent", () => {
     cleanup();
 
     const { container: chipBox } = render(
-      <StatusChip status={statusToChip(deriveSessionDisplayStatus(row, NOW))} domain="session" />,
+      <SessionChip status={statusToChip(deriveSessionDisplayStatus(row, NOW))} />,
     );
     const chip = readingOf(chipBox.firstElementChild);
     cleanup();
@@ -154,10 +162,11 @@ describe("a running session gone silent", () => {
     );
     cleanup();
 
+    listed = row;
     const { container: list } = render(<SessionsScreen scope={{ projectId: "p1" }} />);
     // The list's summary counts the silent session under the state's word, its figure in the state's ink.
     const stat = [...list.querySelectorAll(".fg-overline")].find(
-      (el) => el.nextElementSibling?.textContent === "1" && el.textContent !== "Active",
+      (el) => el.nextElementSibling?.textContent === "1" && el.textContent !== WORKING_WORD,
     );
     const listStat = readingOf(stat, stat?.nextElementSibling);
     const listChip = readingOf(list.querySelector("tbody span.rounded-md.font-semibold"));
@@ -182,4 +191,102 @@ describe("a running session gone silent", () => {
       agentsRuns: reference,
     });
   });
+
+  it("claims no current activity on any surface that shows what it is doing", () => {
+    const quietDoing = lastReported(WORKING_WORD);
+
+    const { container: pipeline } = render(<SessionsList sessions={[live]} slug="pair" now={NOW} />);
+    const pipelineDoing = doingCell(pipeline);
+    cleanup();
+
+    const { container: card } = render(<LiveSessionsCard sessions={[live]} slug="pair" now={NOW} read={{ read: "ok" }} />);
+    const dashboardDoing = card.querySelector("li > span")?.textContent;
+    cleanup();
+
+    const { container: runs } = render(
+      <ul>
+        <RunRow row={run} now={NOW} />
+      </ul>,
+    );
+    const runChip = runs.querySelector("li > span")?.textContent;
+    cleanup();
+
+    const stage = sessionTurnStage({ live: true, display: deriveSessionDisplayStatus(row, NOW) });
+    const { container: page } = render(
+      stage ? <TurnStage stage={stage} silentForMs={NOW - Date.parse(SILENT_SINCE)} /> : <span />,
+    );
+    const pageLine = page.querySelector("[data-testid=turn-stage]");
+    const spinning = page.querySelector("[role=status]") !== null;
+    cleanup();
+
+    expect({ pipelineDoing, dashboardDoing, runChip, spinning }).toEqual({
+      pipelineDoing: quietDoing,
+      dashboardDoing: quietDoing,
+      runChip: quietDoing,
+      spinning: false,
+    });
+    expect(pageLine?.textContent).toBe("Quiet · last reported working 1m ago");
+  });
 });
+
+describe("a running session that keeps checking in", () => {
+  const beatingLive: LiveSession = { ...live, lastHeartbeatAt: HEARD_AT };
+  const beatingRow: SessionRow = { ...row, lastHeartbeatAt: HEARD_AT, updatedAt: HEARD_AT };
+  const beatingRun: RunSessionRow = { ...run, lastActivityAt: HEARD_AT, observedAt: HEARD_AT };
+
+  it("is called Working on every surface that shows it", () => {
+    const { container: pipeline } = render(<SessionsList sessions={[beatingLive]} slug="pair" now={NOW} />);
+    const reference = doingCell(pipeline);
+    cleanup();
+
+    const { container: card } = render(
+      <LiveSessionsCard sessions={[beatingLive]} slug="pair" now={NOW} read={{ read: "ok" }} />,
+    );
+    const dashboard = card.querySelector("li > span")?.textContent;
+    cleanup();
+
+    const { container: chipBox } = render(
+      <SessionChip status={statusToChip(deriveSessionDisplayStatus(beatingRow, NOW))} />,
+    );
+    const chip = chipBox.firstElementChild?.textContent;
+    cleanup();
+
+    listed = beatingRow;
+    const { container: list } = render(<SessionsScreen scope={{ projectId: "p1" }} />);
+    const listChip = list.querySelector("tbody span.rounded-md.font-semibold")?.textContent;
+    const listStat = [...list.querySelectorAll(".fg-overline")].find(
+      (el) => el.nextElementSibling?.textContent === "1",
+    )?.textContent;
+    const listTab = [...list.querySelectorAll("button")]
+      .map((b) => b.textContent ?? "")
+      .find((t) => /^(Running|Working)/.test(t))
+      ?.replace(/\d+$/, "")
+      .trim();
+    listed = row;
+    cleanup();
+
+    const { container: runs } = render(
+      <ul>
+        <RunRow row={beatingRun} now={NOW} />
+      </ul>,
+    );
+    const agentsRuns = runs.querySelector("li > span")?.textContent;
+    cleanup();
+
+    expect(reference).toBe(WORKING_WORD);
+    expect({ dashboard, chip, listChip, listStat, listTab, agentsRuns }).toEqual({
+      dashboard: reference,
+      chip: reference,
+      listChip: reference,
+      listStat: reference,
+      listTab: reference,
+      agentsRuns: reference,
+    });
+  });
+});
+
+/** The Pipeline row's Doing cell, without the field name a phone shows in place of a column header. */
+function doingCell(root: ParentNode): string | undefined {
+  const cell = [...root.querySelectorAll("div")].find((el) => el.firstElementChild?.textContent === "Doing");
+  return cell?.textContent?.replace(/^Doing/, "");
+}

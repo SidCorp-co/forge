@@ -25,7 +25,6 @@ import {
   SessionRowSkeleton,
   SILENCE_TONE,
   SILENCE_WORD,
-  StatusChip,
   Table,
   TBody,
   TD,
@@ -36,8 +35,10 @@ import {
   type MenuItem,
   type SegmentOption,
   useElapsed,
+  WORKING_WORD,
 } from "@/design";
 import { TONE_META } from "@/design/status";
+import { SessionChip } from "./session-chip";
 import { useOrgScopedProjects, useProject, useProjects } from "@/features/projects/hooks";
 import { useDevices } from "@/features/runners/hooks";
 import { IssueRefBadge } from "@/features/issues/components/issue-ref-badge";
@@ -127,7 +128,7 @@ const FILTERS: SessionFilter[] = ["all", "waiting", "running", "queued", "attent
 const FILTER_LABEL: Record<SessionFilter, string> = {
   all: "All",
   waiting: "Waiting for me",
-  running: "Running",
+  running: WORKING_WORD,
   queued: "Queued",
   attention: "Attention",
 };
@@ -333,7 +334,7 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
         <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5">
           <PageTitle className="fg-h2">Sessions</PageTitle>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <StatPill label="Active" value={String(stats.active)} />
+            <StatPill label={WORKING_WORD} value={String(stats.active)} />
             <StatPill label="Queued" value={String(stats.queued)} />
             <StatPill
               label={SILENCE_WORD}
@@ -699,10 +700,10 @@ function StatusCell({
     <div className="flex flex-col items-start gap-1">
       {!awaitingReply && outcome.tooltip ? (
         <Tooltip label={outcome.tooltip}>
-          <StatusChip status={chipStatus} stage={stage} domain="session" />
+          <SessionChip status={chipStatus} stage={stage} />
         </Tooltip>
       ) : (
-        <StatusChip status={chipStatus} stage={stage} domain="session" />
+        <SessionChip status={chipStatus} stage={stage} />
       )}
       {subLine && (
         <span className="fg-caption" style={{ color: reasonColor }}>

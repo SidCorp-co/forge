@@ -1,12 +1,14 @@
 "use client";
 
-import { Icon, Spinner } from "@/design";
+import { Icon, lastReported, SILENCE_TONE, SILENCE_WORD, Spinner, WORKING_WORD } from "@/design";
+import { TONE_META } from "@/design/status";
+import { formatElapsed } from "@/lib/utils/format";
 import type { AgentSessionDisplayStatus } from "@/features/sessions/types";
 import type { ConversationItem, RenderBlock } from "../types";
 
-export type TurnStage = "working" | "responding" | "failed";
+export type TurnStage = "working" | "responding" | "quiet" | "failed";
 
-const LABEL: Record<TurnStage, string> = {
+const LABEL: Record<Exclude<TurnStage, "quiet">, string> = {
   working: "Working…",
   responding: "Responding…",
   failed: "Failed",
@@ -49,6 +51,7 @@ export function sessionTurnStage({
   /** The thread's last item, whichever kind it is. */
   tail?: Pick<ConversationItem, "kind" | "blocks"> | undefined;
 }): TurnStage | null {
+  if (live && display === "stalled") return "quiet";
   return turnStageOf({
     live,
     failed: display === "failed",
@@ -57,9 +60,36 @@ export function sessionTurnStage({
 }
 
 /**
- * One line, one position, for the whole turn.
+ * One line, one position, for the whole turn. A quiet session's line spins nothing and claims no
+ * activity: it says what the turn last reported and how long ago that was.
  */
-export function TurnStage({ stage, elapsed }: { stage: TurnStage; elapsed?: string }) {
+export function TurnStage({
+  stage,
+  elapsed,
+  silentForMs,
+}: {
+  stage: TurnStage;
+  elapsed?: string;
+  /** How long a quiet session has gone unheard; read only on the `quiet` stage. */
+  silentForMs?: number;
+}) {
+  if (stage === "quiet") {
+    const since = silentForMs != null ? ` ${formatElapsed(Math.max(0, silentForMs))} ago` : "";
+    return (
+      <div
+        data-testid="turn-stage"
+        data-stage={stage}
+        className="flex items-center gap-1.5"
+        style={{ fontSize: "var(--text-12)", color: TONE_META[SILENCE_TONE].fg }}
+        aria-live="polite"
+      >
+        <span className="flex h-[14px] w-[14px] flex-none items-center justify-center">
+          <Icon name="clock" size={12} />
+        </span>
+        <span>{`${SILENCE_WORD} · ${lastReported(WORKING_WORD).toLowerCase()}${since}`}</span>
+      </div>
+    );
+  }
   return (
     <div
       data-testid="turn-stage"

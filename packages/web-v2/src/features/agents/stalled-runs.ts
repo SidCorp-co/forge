@@ -26,6 +26,16 @@ function runIsStartingUp(
   return nowMs - started <= HEARTBEAT_REAP_MS;
 }
 
+/** Open runs with a live job or a heartbeating session behind them. */
+export function workedRuns(
+  runs: readonly PipelineRunListItem[] | undefined,
+  nowMs: number,
+): PipelineRunListItem[] {
+  return (runs ?? []).filter(
+    (r) => LIVE_RUN_STATUSES.has(r.status) && ((r.liveJobs ?? 0) > 0 || sessionIsBeating(r, nowMs)),
+  );
+}
+
 /**
  * Live runs with neither a live job nor a heartbeating session.
  */

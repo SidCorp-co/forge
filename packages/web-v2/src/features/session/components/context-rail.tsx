@@ -19,9 +19,9 @@ import {
   Icon,
   MonoTag,
   Stat,
-  StatusChip,
   useElapsed,
 } from "@/design";
+import { SessionChip } from "@/features/sessions/components/session-chip";
 import {
   deriveSessionDisplayStatus,
   sessionStep,
@@ -226,13 +226,13 @@ export function ContextRail({
 
       {isPipeline && (
         <Section title="Pipeline">
-          <StatusChip status={statusToChip(display)} stage={stage} size="sm" domain="session" />
+          <SessionChip status={statusToChip(display)} stage={stage} size="sm" />
         </Section>
       )}
 
       <Section title="Run stats">
         <div className="flex flex-col gap-2.5">
-          {!isPipeline && <StatusChip status={statusToChip(display)} stage={stage} size="sm" domain="session" />}
+          {!isPipeline && <SessionChip status={statusToChip(display)} stage={stage} size="sm" />}
           <Stat icon="activity" title="Turns">{usage.turns ?? "—"} turns</Stat>
           <Stat icon="clock" title="Duration">{duration}</Stat>
           <Stat icon="cpu" title="Context window used">{fmtNum(usage.contextUsed)} ctx</Stat>
@@ -368,7 +368,7 @@ function SiblingRow({ row, onOpen }: { row: SessionRow; onOpen?: () => void }) {
       <span className={`flex-1 truncate fg-body-sm${slug ? " capitalize" : ""}`} title={label}>
         {label}
       </span>
-      <StatusChip status={statusToChip(display)} stage={stage} size="sm" domain="session" />
+      <SessionChip status={statusToChip(display)} stage={stage} size="sm" />
     </>
   );
 

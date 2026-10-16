@@ -1,4 +1,4 @@
-import { SILENCE_WORD, type SemanticTone } from "@/design/status";
+import { lastReported, SILENCE_WORD, type SemanticTone, WORKING_WORD } from "@/design/status";
 import { failureReasonLabel, sessionSilence, TERMINAL_SESSION_STATUSES } from "@/features/sessions/types";
 import { formatElapsed } from "@/lib/utils/format";
 import type { RunSessionRow } from "./types";
@@ -35,7 +35,7 @@ export function runState(row: {
 
 const LABELS: Record<RunState, StateLabel> = {
   "live-runnable": {
-    label: "Working",
+    label: WORKING_WORD,
     detail: "An agent is running in this worktree.",
     tone: "active",
   },
@@ -66,7 +66,6 @@ const LABELS: Record<RunState, StateLabel> = {
   },
 };
 
-export const stateLabel = (s: RunState): StateLabel => LABELS[s];
 
 /** The three close-loop marks, as three. */
 export interface CloseMarks {
@@ -137,6 +136,22 @@ export function pulseText(p: Pulse): string | null {
   return p.state === "silent"
     ? `${SILENCE_WORD} · no report for ${since}`
     : `${SILENCE_WORD} · past the automatic-recovery threshold · no report for ${since}`;
+}
+
+/** The chip a run's row shows at `nowMs`: a run the box calls working that core has not heard from
+ *  past the silence line says what it last reported, so the row never claims work nobody has seen. */
+export function stateLabelAt(
+  row: Pick<RunSessionRow, "incarnation" | "work" | "lastActivityAt">,
+  nowMs: number,
+): StateLabel {
+  const state = runState(row);
+  const meta = LABELS[state];
+  if (state !== "live-runnable" || !pulseIsStalling(pulse(row, nowMs))) return meta;
+  return {
+    label: lastReported(meta.label),
+    detail: "The box last said an agent was running here, and core has heard nothing from it since.",
+    tone: "neutral",
+  };
 }
 
 /** Whether the box claims a process exists for this run. */

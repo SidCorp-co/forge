@@ -426,8 +426,8 @@ export interface AttachmentRow {
 }
 
 /**
- * Lifecycle comment kind. Read from `template` when the body is in component
- * form, and matched against the prose otherwise — `derive.ts:deriveCommentKind`.
+ * Lifecycle comment kind, matched against the comment's opening line —
+ * `derive.ts:deriveCommentKind`.
  */
 export type CommentKind =
   | "triage"

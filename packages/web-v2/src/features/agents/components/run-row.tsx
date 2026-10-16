@@ -12,14 +12,13 @@ import {
   disagreementText,
   endReasonText,
   pendingReasonText,
-  runState,
   silenceText,
-  stateLabel,
+  stateLabelAt,
 } from "../run-state";
 import type { RunSessionRow } from "../types";
 
-function StateChip({ row }: { row: RunSessionRow }) {
-  const meta = stateLabel(runState(row));
+function StateChip({ row, now }: { row: RunSessionRow; now: number }) {
+  const meta = stateLabelAt(row, now);
   const tone = TONE_META[meta.tone];
   return (
     <span
@@ -97,7 +96,7 @@ export function RunRow({ row, now }: RunRowProps) {
   const pathname = usePathname() || "";
   return (
     <li className="flex flex-col gap-2 rounded-md border border-line bg-surface px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3">
-      <StateChip row={row} />
+      <StateChip row={row} now={now} />
       <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
         {issues.length === 0 ? (
           <span className="fg-caption text-subtle">no issues on this run</span>

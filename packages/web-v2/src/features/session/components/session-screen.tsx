@@ -11,16 +11,18 @@ import {
   PageTitle,
   ProjectLoader,
   SlideOver,
-  StatusChip,
   useElapsed,
 } from "@/design";
+import { SessionChip } from "@/features/sessions/components/session-chip";
 import { useProjects } from "@/features/projects/hooks";
 import { isJobDriven } from "@/features/sessions/types";
 import {
   deriveSessionDisplayStatus,
+  sessionSilence,
   sessionStep,
   statusToChip,
 } from "@/features/sessions/types";
+import { useNow } from "@/design/hooks/use-now";
 import { buildShareLink, useRecents } from "@/features/shell";
 import { formatApiError } from "@/lib/api/error";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
@@ -166,6 +168,8 @@ export function SessionScreen({
     ? new Date(session.startedAt).getTime()
     : undefined;
   const elapsed = useElapsed(startMs, live);
+  const now = useNow(1000, display === "stalled");
+  const silentForMs = session ? (sessionSilence(session, now).sinceHeartbeatMs ?? undefined) : undefined;
 
   const lastTurnId = items.length ? items[items.length - 1].turnId : undefined;
 
@@ -281,11 +285,10 @@ export function SessionScreen({
               <MonoTag hue="cobalt">{session.id.slice(0, 8)}</MonoTag>
             </div>
             <div className="mt-1 flex items-center gap-2">
-              <StatusChip
+              <SessionChip
                 status={statusToChip(display)}
                 stage={sessionStep(session.metadata) ?? undefined}
                 size="sm"
-                domain="session"
               />
               {taskCount > 0 && (
                 <Badge tone="neutral">
@@ -398,7 +401,11 @@ export function SessionScreen({
               )}
               {stage && (
                 <div className="mt-3">
-                  <TurnStage stage={stage} {...(elapsed ? { elapsed } : {})} />
+                  <TurnStage
+                    stage={stage}
+                    {...(elapsed ? { elapsed } : {})}
+                    {...(silentForMs != null ? { silentForMs } : {})}
+                  />
                 </div>
               )}
               {newOutput && <NewOutput onGo={toBottom} />}
