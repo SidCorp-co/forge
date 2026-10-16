@@ -9,6 +9,19 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.252] - 2026-10-16
+
+Your own token answers owed questions; Approvals loads; Questions lists only real questions
+
+### Changed
+
+- **A person answers the questions they owe with their own token.** A personal access token or Claude Code's MCP sign-in answers them over REST and MCP; agent-blocked questions stay with agents, and the answer records token and client.
+
+### Fixed
+
+- **Approvals no longer fails on a long title, and Questions lists only what is owed.** Each approval shows its short title; a question on an ended issue reads closed, and each shows one short line.
+- **Approval titles line up, and a suggestion revise says Summary.** The key now follows the title, and the summary field no longer reads Tldr.
+
 ## [0.4.0-dev.251] - 2026-10-16
 
 A BA works requirements, feedback, releases and approvals from Claude Code and the web
