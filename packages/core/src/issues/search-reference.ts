@@ -67,7 +67,7 @@ export const pipelineHealthSchema = z.object({
       id: z.string(),
       status: z.enum(['queued', 'running']),
       skill: z.string(),
-      jobType: z.string(),
+      jobType: z.string().nullable(),
     })
     .optional(),
   waitingOn: z

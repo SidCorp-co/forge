@@ -284,7 +284,7 @@ export interface PipelineHealthQueuedStep {
  *  projection (do not re-derive a second mapping). */
 export interface PipelineHealth {
   stage: string;
-  activeSession?: { id: string; status: "queued" | "running"; skill: string; jobType?: string };
+  activeSession?: { id: string; status: "queued" | "running"; skill: string; jobType?: string | null };
   waitingOn?: { reason: WaitingReason; since: string; details: Record<string, unknown> };
   queuedAt?: string;
   queuedStep?: PipelineHealthQueuedStep;

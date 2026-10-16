@@ -22,7 +22,7 @@ export interface PipelineHealth {
    * of the status column the caller already had, and an absent field reads as a quiet system.
    */
   worker: IssueWorker;
-  activeSession?: { id: string; status: 'queued' | 'running'; skill: string; jobType: string };
+  activeSession?: { id: string; status: 'queued' | 'running'; skill: string; jobType: string | null };
   waitingOn?: {
     reason: PipelineWaitingReason;
     since: string;

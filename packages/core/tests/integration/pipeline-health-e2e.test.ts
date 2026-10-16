@@ -211,6 +211,7 @@ describe('ISS-164 pipelineHealth E2E', () => {
       id: sessionId,
       status: 'running',
       skill: 'forge-code',
+      jobType: null,
     });
   });
 

@@ -509,7 +509,7 @@ export type CommentAnnouncement = "release";
 
 /** The live step in the dashboard's words: its job kind, else the skill it runs. */
 export function liveStepWords(
-  active: { skill: string; jobType?: string } | null | undefined,
+  active: { skill: string; jobType?: string | null } | null | undefined,
 ): string | null {
   const kind = active?.jobType || active?.skill;
   return kind ? jobKindLabel(kind) : null;

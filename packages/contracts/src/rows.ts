@@ -19,7 +19,7 @@ export type WaitingCause = 'needs_decision' | 'needs_resource';
 
 export interface PipelineHealth {
   stage: schema.IssueStatus;
-  activeSession?: { id: string; status: 'queued' | 'running'; skill: string; jobType: string };
+  activeSession?: { id: string; status: 'queued' | 'running'; skill: string; jobType: string | null };
   waitingOn?: {
     reason: PipelineWaitingReason;
     since: string;
