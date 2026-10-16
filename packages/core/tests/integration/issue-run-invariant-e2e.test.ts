@@ -268,11 +268,18 @@ describe('how long an orphan notice says nothing has worked the issue', () => {
       issueKeys: ['ISS-14'],
       name: 'run-r',
     });
+    const before = Date.now();
     await mods.releaseIssueLease({
       deviceId: device.id,
       issueKey: 'ISS-14',
       projectId: project.id,
     });
+    const stamped = (await harness.db.execute(sql`
+      SELECT metadata -> 'runReleasedAt' ->> 'ISS-14' AS at FROM pipeline_runs WHERE project_id = ${project.id}
+    `)) as unknown as { at: string | null }[];
+    const at = Date.parse(stamped[0]?.at ?? '');
+    expect(at, 'the give-back writes when it happened').toBeGreaterThanOrEqual(before - 1000);
+    expect(at).toBeLessThanOrEqual(Date.now() + 1000);
     await harness.db.execute(
       sql`UPDATE issues SET updated_at = ${ago(PAST_GRACE)} WHERE id = ${issueId}`,
     );
