@@ -3,7 +3,9 @@
 // doors: the Assistant's forge_requirement_draft and the REST draft an Agent session posts, so a
 // draft held for the person's agreement lands linked whichever door proposed it.
 
+import { logger } from '../lib/logger.js';
 import { designIdsOf, linkWorkflow } from './issue-links.js';
+import { proposePlacement } from './placement.js';
 import type { RequirementActor } from './read.js';
 import type { RevisionWrite } from './revision-write.js';
 import type { RequirementRefusal } from './rules.js';
@@ -46,4 +48,28 @@ export async function draftLinked(input: {
   return latest.ok && drafted.ok && drafted.created !== undefined
     ? { ...latest, created: drafted.created }
     : latest;
+}
+
+/**
+ * A new requirement as `POST /api/projects/:id/requirements` writes it, for every door that drafts
+ * one from a person's own words (REST, /mcp): the designs it names resolved, the draft written and
+ * linked, then the assistant asked for its area and short name, which a person accepts.
+ */
+export async function draftRequirement(input: {
+  projectId: string;
+  actor: RequirementActor;
+  title: string;
+  write: RevisionWrite;
+  designs: readonly string[];
+}): Promise<RequirementOutcome> {
+  const { projectId, actor, title, write } = input;
+  const linked = await designsNamed(projectId, input.designs);
+  if (!linked.ok) return { ok: false, refusals: [linked.refusal] };
+  const outcome = await draftLinked({ projectId, actor, title, write, workflowIds: linked.ids });
+  if (outcome.ok) {
+    void proposePlacement(projectId, outcome.requirement.id).catch((err: unknown) =>
+      logger.warn({ err }, 'requirement placement: the proposal on create failed'),
+    );
+  }
+  return outcome;
 }

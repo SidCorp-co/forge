@@ -47,7 +47,7 @@ const SETTINGS_KNOWLEDGE_MERGE = `- **project settings** — \`projects/<project
 const REPORTS_AND_ECOSYSTEM = `- **friction reports** — \`agent-reports -X POST -d '{"projectId":"<projectId>","kind":"friction","target":"skill","summary":"..."}'\` files friction, a skill gap or a learning against your live job (\`severity\`, \`targetRef\`, \`detail\` and \`suggestion\` are optional); \`agent-reports?projectId=<projectId>\` reads the feed.
 - **the ecosystem channel and builder runs** — \`projects/<projectId>/channel/…\`, \`projects/<projectId>/links\`, \`projects/<projectId>/builder-runs\` and \`projects/<projectId>/interface\`; \`guides/ecosystem-inbox.md\` is the order of the work.`;
 
-const MCP_TAIL = `What stays on the Forge MCP server is what no shell command can do: \`forge_uploads\` reads an attachment as a viewable image block, and a connected integration's block below names the tools it needs — those are correct as written.`;
+const MCP_TAIL = `Of the Forge MCP server's tools, a run needs only what no shell command can do: \`forge_uploads\` reads an attachment as a viewable image block, and a connected integration's block below names the tools it needs — those are correct as written.`;
 
 export const DRIVE_TOOL_REFERENCE_TEXT = `${REACHING_FORGE_HEAD}
 

@@ -423,6 +423,783 @@
       "name": "forge_ecosystem"
     },
     {
+      "description": "A project's feedback (FB-n) — what people report or wish — for a BA: read it, file it, ask its reporter, and tell them how the work it became is going. Every list row and get answer carries `progress` for the work the item was routed to (its issues, or the requirement it became; a duplicate reads its root’s): `running` (a run works on it right now), `runs` (unfinished runs: issue, state, step), `waitingOn` (who owes what: a triage, a release act, an answer), `work` (issues total, shipped, awaitingRelease, toDo) and `eta` — {estimate:true, likelyBy (p50), almostSurelyBy (p85), of: hands|landing, basis, confidence}, or {estimate:false, done, why} saying why no date can be given (not triaged yet, declined, answered, routed to a revision, no issue yet). `progress.says` is the block in one paragraph: tell it to the person, and never give a date the block does not hold. Actions. list {phase?: [new|triaged|planned|resolved|reopened|verified|declined], q?, requirement? (REQ-n)}: the items with phase, route, whom each waits on, and progress. get {feedback}: one in full — body, where seen, route and carriers, decisions, the open clarification and its answer, progress. NOT_FOUND when the project holds no such key. progress {feedback}: the progress block alone. similar {feedback}: the items nearest it, to spot a duplicate; not_embedded, provider_not_configured, failed or withheld_by_policy does not mean none is similar. submit { kind: bug | change_request | question | idea | contract_change, title, body?, severity?: low | medium | high | critical, whereSeen?, exactly one of requirement | issue | release | workflow | endpoint | screen, node?: { step } | { edge: { from, to, label? } } (with workflow only), writtenLang?: en | vi }: file it as the person you speak for, at phase new. Name exactly one target; a requirement it touches is best (find it with forge_requirements). clarify {feedback, prompt, needed}: ask the reporter one question; `needed` says what would settle it. Refused while one is open, or when the item is past triage. Triage, decline, verify and retarget are a person’s acts on the Feedback page; this tool does none of them. Issues are never filed from here: triage routes an item to its work. A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and writes nothing: tell the person the detail.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "list",
+              "get",
+              "progress",
+              "similar",
+              "submit",
+              "clarify"
+            ],
+            "type": "string"
+          },
+          "body": {
+            "maxLength": 20000,
+            "type": "string"
+          },
+          "endpoint": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "feedback": {
+            "description": "the feedback key, e.g. FB-12",
+            "pattern": "^FB-\\d+$",
+            "type": "string"
+          },
+          "issue": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "bug",
+              "change_request",
+              "question",
+              "idea",
+              "contract_change"
+            ],
+            "type": "string"
+          },
+          "needed": {
+            "maxLength": 1000,
+            "minLength": 3,
+            "type": "string"
+          },
+          "node": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "step": {
+                    "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "step"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "edge": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "from": {
+                        "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                        "type": "string"
+                      },
+                      "label": {
+                        "maxLength": 120,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "to": {
+                        "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "from",
+                      "to"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "edge"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "phase": {
+            "description": "list: keep these phases",
+            "items": {
+              "enum": [
+                "new",
+                "triaged",
+                "planned",
+                "resolved",
+                "reopened",
+                "verified",
+                "declined"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "projectId": {
+            "description": "the project; left out, the X-Forge-Project-Slug header or the token’s one project",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "prompt": {
+            "maxLength": 2000,
+            "minLength": 5,
+            "type": "string"
+          },
+          "q": {
+            "description": "list: words the title holds",
+            "maxLength": 200,
+            "type": "string"
+          },
+          "release": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "requirement": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "screen": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "type": "string"
+          },
+          "whereSeen": {
+            "maxLength": 500,
+            "type": "string"
+          },
+          "workflow": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "writtenLang": {
+            "enum": [
+              "en",
+              "vi"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "name": "forge_feedback"
+    },
+    {
+      "description": "A project's requirements (REQ-n), for a BA: read them, draft and revise them, and tell the person how delivery is going. Every list row and get answer carries `progress`: `running` (a run works on it right now), `runs` (unfinished runs on its issues: issue, state, step), `waitingOn` (who owes what before it goes on: an agree, a breakdown, a release act; `late` when overdue), `work` (its issues: total, shipped, awaitingRelease, toDo) and `eta` — {estimate:true, likelyBy (p50), almostSurelyBy (p85), of: hands|landing, basis, confidence} read off the project’s own history, or {estimate:false, done, why} saying why no date can be given. `progress.says` is the block in one paragraph: tell it to the person, and never give a date the block does not hold. Actions. list {state?}: every requirement with its state, whom it waits on, criteria proven of total, and progress. get {requirement}: one in full — its latest revision (spec, criteria with codes), revisions, questions standing on it, issues, releases, linked feedback, progress. NOT_FOUND when the project holds no such key. progress {requirement}: the progress block alone. similar {text}: the requirements nearest a wish; call it before create, and revise the one that covers it instead. provider_not_configured or withheld_by_policy does not mean none is similar. create {title, criteria?, reason?, spec?, tldr?, kind?, picture?, designs?, writtenLang?}: a NEW draft requirement at revision 1, as POST /api/projects/:id/requirements writes it; with no reason its author is asked why. REQUIREMENT_DESIGN_UNKNOWN names a design the project lacks. revise {requirement, baseRevision, criteria, reason?, spec?, tldr?, changeSummary?, kind?, picture?}: a new draft revision on the head — use it to change an agreed requirement. Write the WHOLE criteria list: each criterion that stays keeps its code, a new one has none. REQUIREMENT_REVISION_OPEN: a draft or proposed revision is open, so pass revision: n to rewrite that draft instead. REQUIREMENT_REVISION_STALE: the head moved, get it again. propose {requirement, revision}: put a draft revision before the people who agree it. Agreeing, accepting, returning, deferring and dropping are a person’s sign-off on the requirement page; this tool does none of them. A question standing on a requirement is answered by a signed-in person on its page or in the room it was asked in, never by a token (REST refuses a token too). A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and writes nothing: tell the person the detail.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "list",
+              "get",
+              "progress",
+              "similar",
+              "create",
+              "revise",
+              "propose"
+            ],
+            "type": "string"
+          },
+          "baseRevision": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "revise: the head you read (currentRevision from get), null where it has none"
+          },
+          "changeSummary": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "criteria": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "body": {
+                  "maxLength": 10000,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "code": {
+                  "pattern": "^BC-[1-9][0-9]*$",
+                  "type": "string"
+                },
+                "form": {
+                  "enum": [
+                    "statement",
+                    "scenario"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "body"
+              ],
+              "type": "object"
+            },
+            "maxItems": 200,
+            "type": "array"
+          },
+          "designs": {
+            "description": "create: the workflow designs it relates to, by flow name or id; each is linked",
+            "items": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 10,
+            "type": "array"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "process",
+                  "rule",
+                  "screen",
+                  "report"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "picture": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "alt": {
+                    "maxLength": 300,
+                    "type": "string"
+                  },
+                  "content": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "edges": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "from": {
+                              "pattern": "^[A-Za-z0-9_-]{1,40}$",
+                              "type": "string"
+                            },
+                            "label": {
+                              "maxLength": 80,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "to": {
+                              "pattern": "^[A-Za-z0-9_-]{1,40}$",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "from",
+                            "to"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 200,
+                        "type": "array"
+                      },
+                      "nodes": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "id": {
+                              "pattern": "^[A-Za-z0-9_-]{1,40}$",
+                              "type": "string"
+                            },
+                            "label": {
+                              "maxLength": 80,
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "label"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 60,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "title": {
+                        "maxLength": 120,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "nodes",
+                      "edges"
+                    ],
+                    "type": "object"
+                  },
+                  "kind": {
+                    "const": "flow",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "content"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "alt": {
+                    "maxLength": 300,
+                    "type": "string"
+                  },
+                  "content": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "rows": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "expected": {
+                              "maxLength": 500,
+                              "type": "string"
+                            },
+                            "input": {
+                              "maxLength": 500,
+                              "type": "string"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "maxItems": 50,
+                        "type": "array"
+                      },
+                      "title": {
+                        "maxLength": 120,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "rows"
+                    ],
+                    "type": "object"
+                  },
+                  "kind": {
+                    "const": "example_table",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "content"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "alt": {
+                    "maxLength": 300,
+                    "type": "string"
+                  },
+                  "content": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "board": {}
+                    },
+                    "required": [
+                      "board"
+                    ],
+                    "type": "object"
+                  },
+                  "kind": {
+                    "const": "wireframe",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "content"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "alt": {
+                    "maxLength": 300,
+                    "type": "string"
+                  },
+                  "content": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "frame": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "fields": {
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "label": {
+                                  "maxLength": 80,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "maxLength": 64,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "type": {
+                                  "enum": [
+                                    "string",
+                                    "number",
+                                    "date",
+                                    "duration",
+                                    "status",
+                                    "ref"
+                                  ],
+                                  "type": "string"
+                                },
+                                "unit": {
+                                  "maxLength": 24,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "vocabulary": {
+                                  "enum": [
+                                    "requirement",
+                                    "releaseState",
+                                    "bcVerdict"
+                                  ],
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "name",
+                                "type",
+                                "label"
+                              ],
+                              "type": "object"
+                            },
+                            "maxItems": 64,
+                            "minItems": 1,
+                            "type": "array"
+                          },
+                          "rows": {
+                            "items": {
+                              "additionalProperties": {
+                                "type": [
+                                  "string",
+                                  "number",
+                                  "null"
+                                ]
+                              },
+                              "propertyNames": {
+                                "type": "string"
+                              },
+                              "type": "object"
+                            },
+                            "maxItems": 5000,
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "fields",
+                          "rows"
+                        ],
+                        "type": "object"
+                      },
+                      "series": {
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "title": {
+                        "maxLength": 120,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "variant": {
+                        "enum": [
+                          "bar",
+                          "line",
+                          "burndown"
+                        ],
+                        "type": "string"
+                      },
+                      "x": {
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "y": {
+                        "items": {
+                          "maxLength": 64,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "maxItems": 6,
+                        "minItems": 1,
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "variant",
+                      "x",
+                      "y",
+                      "frame"
+                    ],
+                    "type": "object"
+                  },
+                  "kind": {
+                    "const": "chart",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "content"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "projectId": {
+            "description": "the project; left out, the X-Forge-Project-Slug header or the token’s one project",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requirement": {
+            "description": "the requirement key, e.g. REQ-12",
+            "pattern": "^REQ-\\d+$",
+            "type": "string"
+          },
+          "revision": {
+            "description": "revise: the draft revision to rewrite whole; propose: the draft revision to propose",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "spec": {
+            "additionalProperties": false,
+            "properties": {
+              "assumptions": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "confirmBy": {
+                      "maxLength": 1000,
+                      "minLength": 3,
+                      "type": "string"
+                    },
+                    "field": {
+                      "maxLength": 40,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "owner": {
+                      "maxLength": 200,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "source": {
+                      "maxLength": 200,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "text": {
+                      "maxLength": 2000,
+                      "minLength": 5,
+                      "type": "string"
+                    },
+                    "value": {
+                      "maxLength": 2000,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text",
+                    "owner",
+                    "confirmBy"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              "goal": {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              "openQuestions": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "blocking": {
+                      "type": "boolean"
+                    },
+                    "question": {
+                      "maxLength": 2000,
+                      "minLength": 5,
+                      "type": "string"
+                    },
+                    "questionId": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "whoAnswers": {
+                      "maxLength": 200,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "question",
+                    "whoAnswers",
+                    "blocking"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              "personas": {
+                "items": {
+                  "maxLength": 500,
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              "scopeIn": {
+                "items": {
+                  "maxLength": 2000,
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              },
+              "scopeOut": {
+                "items": {
+                  "maxLength": 2000,
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              }
+            },
+            "type": "object"
+          },
+          "state": {
+            "description": "list: keep only requirements in this state",
+            "enum": [
+              "draft",
+              "agreed",
+              "in_delivery",
+              "delivered",
+              "accepted",
+              "deferred",
+              "dropped"
+            ],
+            "type": "string"
+          },
+          "text": {
+            "description": "similar: the wish to compare",
+            "maxLength": 8000,
+            "minLength": 3,
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "tldr": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "writtenLang": {
+            "enum": [
+              "en",
+              "vi"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "name": "forge_requirements"
+    },
+    {
       "description": "READ an issue, comment or session attachment so you can analyze it: the one Forge read no shell command can do, because an image comes back as a viewable image block. Uploading is `POST /api/issues/:id/attachments` (multipart) or `forge attach`. data={target:\"issue\"|\"comment\"|\"session\", attachmentId:<uuid from any attachments[].id>}. Images (png/jpeg/gif/webp) return as a viewable image block; the structured answer carries no bytes, so it says `inlined: false` with `reason: image_block_in_content` and names the block as `image: { contentIndex, mimeType }`. Text/markdown return inline, framed as data, with `inlined: true`. PDFs/video and oversized files (> inline cap) return metadata only. EVERY fetch also returns `downloadUrl` (+ `downloadExpiresAt`): a short-lived, self-authenticating URL to `curl` the raw bytes onto disk or hand to a service that must fetch the file itself. Treat it as a secret: do not log it or paste it into a comment.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",

@@ -90,6 +90,19 @@ describe('a /mcp write from a token without the write scope', () => {
     expect((await call('nonsense')).status).toBe(403);
   });
 
+  it('reads requirements and feedback on a read token, and refuses their writes', async () => {
+    for (const action of ['list', 'get', 'progress', 'similar']) {
+      expect((await call(tool('forge_requirements', { action }))).status).toBe(200);
+      expect((await call(tool('forge_feedback', { action }))).status).toBe(200);
+    }
+    for (const action of ['create', 'revise', 'propose']) {
+      expect((await call(tool('forge_requirements', { action }))).status).toBe(403);
+    }
+    for (const action of ['submit', 'clarify']) {
+      expect((await call(tool('forge_feedback', { action }))).status).toBe(403);
+    }
+  });
+
   it('lets a read through', async () => {
     expect((await call(tool('forge_agent_report', { action: 'list' }))).status).toBe(200);
     expect((await call({ jsonrpc: '2.0', id: 1, method: 'tools/list' })).status).toBe(200);

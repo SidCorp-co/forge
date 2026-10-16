@@ -192,8 +192,11 @@ function publicGuidesUrl(): string {
 
 /** Built per call so `env` is read lazily and this module stays side-effect free. */
 function forgeMcpInstructions(): string {
-  return `You are connected to a Forge-managed project — Forge is the control plane for this repo's issues, pipeline, and durable memory. The REST API (\`<host>/api/...\`, a personal access token as \`Authorization: Bearer\`) is the primary door and the \`forge\` CLI sits on it; this server carries only what neither covers:
+  return `You are connected to a Forge-managed project — Forge is the control plane for this repo's issues, pipeline, and durable memory. The REST API (\`<host>/api/...\`, a personal access token as \`Authorization: Bearer\`) is the primary door and the \`forge\` CLI sits on it; this server carries the product layer a BA works in, and what neither covers:
 
+- \`forge_requirements\` — list, read, draft and revise requirements (REQ-n), and propose a draft revision; agreeing and accepting stay a person's act on the requirement page.
+- \`forge_feedback\` — list, read and file feedback (FB-n), find similar items, and ask a reporter a clarification; triage stays a person's act.
+- Every requirement and feedback answer carries \`progress\`: whether work is running now, what waits on whom, and the forecast ETA, or why there is none. Tell the person \`progress.says\`; never give a date it does not hold.
 - \`forge_uploads\` — read an issue, comment or session attachment; an image comes back as a viewable block.
 
 Everything else is REST or the CLI:
