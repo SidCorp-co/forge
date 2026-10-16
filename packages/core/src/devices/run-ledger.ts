@@ -13,7 +13,8 @@ import { agentSessions, devices, runners } from '../db/schema.js';
 import { deviceRunLedger } from '../db/schema-run-ledger.js';
 import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
 import { logger } from '../logger.js';
-import { loadSilenceLimits } from './session-silence-read.js';
+import { silenceLimitFrom } from './session-silence.js';
+import { loadSilenceDeadlines } from './session-silence-read.js';
 
 export interface RunLedgerIssue {
   issueKey: string;
@@ -204,10 +205,14 @@ export async function readProjectRunSessions(projectId: string): Promise<Project
     .leftJoin(devices, eq(devices.id, deviceRunLedger.deviceId))
     .where(eq(deviceRunLedger.projectId, projectId))
     .orderBy(sql`${deviceRunLedger.observedAt} DESC`);
-  const limits = await loadSilenceLimits(rows.flatMap((r) => (r.sessionId ? [r.sessionId] : [])));
+  const deadlines = await loadSilenceDeadlines(
+    rows.flatMap((r) => (r.sessionId ? [r.sessionId] : [])),
+  );
   return rows.map((r) => ({
     ...r,
-    silenceLimitMs: r.sessionId ? (limits.get(r.sessionId) ?? null) : null,
+    silenceLimitMs: r.sessionId
+      ? silenceLimitFrom(deadlines.get(r.sessionId) ?? null, r.lastActivityAt)
+      : null,
     issues: (r.issues ?? []) as RunLedgerIssue[],
     observedAt: new Date(r.observedAt).toISOString(),
     lastActivityAt: r.lastActivityAt ? new Date(r.lastActivityAt).toISOString() : null,

@@ -3,9 +3,12 @@ import {
   CHAT_IDLE_CLOSE_MS,
   ONE_SHOT_DEVICE_GRACE_FLOOR_MS,
 } from '../jobs/loop-monitor-thresholds.js';
-import { type SilenceSubject, silenceLimitMs } from './session-silence.js';
+import { type SilenceSubject, silenceDeadline, silenceLimitFrom } from './session-silence.js';
 
 const MIN = 60_000;
+
+const silenceLimitMs = (s: SilenceSubject) =>
+  silenceLimitFrom(silenceDeadline(s), s.lastHeartbeatAt, s.startedAt, s.updatedAt);
 const T = Date.parse('2026-10-16T12:00:00Z');
 
 /** A running session heard at T, started a minute before, with nothing else about it. */
@@ -160,6 +163,14 @@ describe('silenceLimitMs', () => {
       startedAt: T,
     });
     expect(silenceLimitMs(late)).toBe(0);
+  });
+
+  it('counts from the row the screen is served, so a beat landing after it only lengthens the limit', () => {
+    const deadline = silenceDeadline(subject({ kind: 'pipeline', lastHeartbeatAt: T + MIN }));
+    expect(silenceLimitFrom(deadline, new Date(T))).toBe(4 * MIN);
+    expect(silenceLimitFrom(deadline, null, new Date(T - MIN).toISOString())).toBe(5 * MIN);
+    expect(silenceLimitFrom(deadline, null, undefined)).toBeNull();
+    expect(silenceLimitFrom(null, T)).toBeNull();
   });
 
   it('states no limit where no reaper ends the session for silence', () => {

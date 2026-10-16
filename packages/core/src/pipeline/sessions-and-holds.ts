@@ -15,7 +15,8 @@ import {
 } from '../agent-sessions/box-report.js';
 import { db } from '../db/client.js';
 import { type IssueStatus, terminalAgentSessionStatuses } from '../db/schema.js';
-import { loadSilenceLimits } from '../devices/session-silence-read.js';
+import { silenceLimitFrom } from '../devices/session-silence.js';
+import { loadSilenceDeadlines } from '../devices/session-silence-read.js';
 import { issueArchiveSide } from '../issues/archive.js';
 import { loadIssuePark } from '../issues/park-view.js';
 import { HUMAN_PARK_STATUSES, ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
@@ -99,8 +100,8 @@ export interface SessionRow {
   started_at: Date | string | null;
   last_heartbeat_at: Date | string | null;
   created_at: Date | string;
-  /** From `loadSilenceLimits`; absent reads as no limit. */
-  silence_limit_ms?: number | null;
+  /** From `loadSilenceDeadlines`, epoch ms; absent reads as no limit. */
+  silence_deadline?: number | null;
 }
 
 export interface LeaseRow {
@@ -227,7 +228,11 @@ export function projectSessionsAndHolds(input: {
       createdAt: iso(s.created_at) as string,
       issues: issuesOf.get(s.id) ?? [],
       report: reportOf.get(s.id) ?? null,
-      silenceLimitMs: s.silence_limit_ms ?? null,
+      silenceLimitMs: silenceLimitFrom(
+        s.silence_deadline ?? null,
+        s.last_heartbeat_at,
+        s.started_at,
+      ),
     }),
   );
 
@@ -281,8 +286,8 @@ export async function readSessionsAndHolds(
 
   const ids = sessions.map((s) => s.id);
   const ledger = await loadLedgerRows(ids);
-  const limits = await loadSilenceLimits(ids);
-  for (const s of sessions) s.silence_limit_ms = limits.get(s.id) ?? null;
+  const deadlines = await loadSilenceDeadlines(ids);
+  for (const s of sessions) s.silence_deadline = deadlines.get(s.id) ?? null;
 
   const leases = (await db.execute(sql`
     SELECT l.session_id, s.title AS session_title, s.kind AS session_kind, d.name AS device_name,

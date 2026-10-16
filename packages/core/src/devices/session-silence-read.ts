@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/session-vocabulary.js';
 import { parkedOnAHuman, residencySeconds } from '../jobs/park-deadline.js';
-import { silenceLimitMs } from './session-silence.js';
+import { silenceDeadline } from './session-silence.js';
 
 const TERMINAL = sql.raw(terminalAgentSessionStatuses.map((s) => `'${s}'`).join(', '));
 
@@ -33,13 +33,13 @@ interface SilenceRow {
 }
 
 const ms = (v: Ms): number | null => (v === null ? null : Number(v));
-const epoch = (col: string) => sql.raw(`EXTRACT(EPOCH FROM ${col}) * 1000`);
+const epoch = (col: string) => sql.raw(`FLOOR(EXTRACT(EPOCH FROM ${col}) * 1000)`);
 
 /**
- * Each session's silence limit, read from the rows every reaper's eligibility reads, so the sessions
- * list, the session page, the Pipeline page and the runs tab all count to the one number core keeps.
+ * When core ends each session if nothing more is heard, read from the rows every reaper's eligibility
+ * reads, so the sessions list, the session page, the Pipeline page and the runs tab count to one time.
  */
-export async function loadSilenceLimits(
+export async function loadSilenceDeadlines(
   ids: readonly string[],
 ): Promise<Map<string, number | null>> {
   if (ids.length === 0) return new Map();
@@ -81,7 +81,7 @@ export async function loadSilenceLimits(
       const runStartedAt = ms(r.run_started_at);
       return [
         r.id,
-        silenceLimitMs({
+        silenceDeadline({
           kind: r.kind,
           status: r.status,
           runtimeState: r.runtime_state,

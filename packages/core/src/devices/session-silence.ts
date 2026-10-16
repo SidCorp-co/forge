@@ -121,10 +121,17 @@ export function silenceDeadline(s: SilenceSubject): number | null {
   return known.length === 0 ? null : Math.min(...known);
 }
 
-/** Counted from where the screens count: the heartbeat, else the start, else the last update. */
-export function silenceLimitMs(s: SilenceSubject): number | null {
-  const deadline = silenceDeadline(s);
-  if (deadline === null) return null;
-  const counted = s.lastHeartbeatAt ?? s.startedAt ?? s.updatedAt ?? s.createdAt;
-  return Math.max(0, Math.round(deadline - counted));
+type Moment = Date | string | number | null | undefined;
+
+/**
+ * The silence a screen may count from the first moment it has (its heartbeat, else its start, else its
+ * last update) to `deadline`: taken against the row the screen is served, so a beat landing between
+ * the two reads only lengthens it.
+ */
+export function silenceLimitFrom(deadline: number | null, ...counted: Moment[]): number | null {
+  const from = counted.find((m) => m !== null && m !== undefined);
+  if (deadline === null || from === undefined || from === null) return null;
+  const at =
+    from instanceof Date ? from.getTime() : typeof from === 'number' ? from : Date.parse(from);
+  return Number.isNaN(at) ? null : Math.max(0, Math.round(deadline - at));
 }
