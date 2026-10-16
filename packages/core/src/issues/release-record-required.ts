@@ -30,13 +30,19 @@ export async function refuseUnrecordedClose(
   issueId: string,
   toStatus: IssueStatus,
   actor: { type: 'user' | 'device'; agency?: ActorAgency | undefined },
-  options: { viaReleasePath?: boolean },
+  options: { viaReleasePath?: boolean; releaseNotesWritten?: unknown },
 ): Promise<ReleaseRecordRefusal | null> {
   if (toStatus !== 'closed') return null;
   if (actorAgency(actor) !== 'agent') return null;
   if (options.viaReleasePath === true) return null;
 
-  const missing = await issuesMissingReleaseRecord([issueId]);
+  // Notes the move's own transaction writes are the notes the close stands on (ISS-1229 r10).
+  const missing =
+    options.releaseNotesWritten !== undefined
+      ? options.releaseNotesWritten
+        ? []
+        : [issueId]
+      : await issuesMissingReleaseRecord([issueId]);
   if (missing.length === 0) return null;
 
   return {

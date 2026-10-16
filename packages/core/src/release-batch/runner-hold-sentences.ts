@@ -3,20 +3,14 @@
  * long, and the act that clears it. `blocker-sentences.ts` re-exports `runnerHoldClause`.
  */
 
+import { durationWords } from '../lib/elapsed-words.js';
 import { AGENT_NAMING_MIN_RUNNER } from '../runners/device-cap.js';
 import type { RunnerHold, RunnerHoldReason } from '../runners/ineligible.js';
 
 export const RUNNERS_TAB = 'Settings → Runners';
 
 function durationPhrase(seconds: number | undefined): string {
-  if (seconds === undefined) return 'longer than a provision takes';
-  const [n, unit] =
-    seconds < 3600
-      ? [Math.max(1, Math.round(seconds / 60)), 'minute']
-      : seconds < 172800
-        ? [Math.round(seconds / 3600), 'hour']
-        : [Math.round(seconds / 86400), 'day'];
-  return `${n} ${unit}${n === 1 ? '' : 's'}`;
+  return seconds === undefined ? 'longer than a provision takes' : durationWords(seconds * 1000);
 }
 
 /**
@@ -58,7 +52,7 @@ const HOLD_STATES_ITS_OWN_AGE: ReadonlySet<RunnerHoldReason> = new Set([
 
 function lastSeenPhrase(hold: RunnerHold): string {
   if (hold.lastSeenSeconds === null) return ' It has never reported.';
-  const ago = `${hold.lastSeenSeconds}s ago`;
+  const ago = `${durationWords(hold.lastSeenSeconds * 1000)} ago`;
   return hold.reporting
     ? ` It is up and reporting, last seen ${ago}.`
     : ` It last reported ${ago}.`;
@@ -69,7 +63,7 @@ export function runnerHoldClause(hold: RunnerHold): string {
   const age = HOLD_STATES_ITS_OWN_AGE.has(hold.reason)
     ? hold.lastSeenSeconds === null
       ? ''
-      : ` Last seen ${hold.lastSeenSeconds}s ago.`
+      : ` Last seen ${durationWords(hold.lastSeenSeconds * 1000)} ago.`
     : lastSeenPhrase(hold);
   return `\`${hold.deviceName}\` ${act}${age}`;
 }

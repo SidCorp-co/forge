@@ -23,7 +23,7 @@ export const GAP_TEXT: Record<ReleaseReadiness["gaps"][number], string> = {
   "release-procedure":
     "No release instructions written — a release follows generic instructions written for another project.",
   "release-runner-ambiguous":
-    "Two live bindings name different release runners — a release is refused rather than sent to whichever was created first. Give them the same label, or retire one.",
+    "Live bindings name different release runners — a release is refused rather than sent to whichever was created first. Give them the same label, or retire all but one.",
   "release-target":
     "This project declares a release but has no live deploy target to send it to — every issue would wait for a release nobody can cut. Add one, or, if this project ships nothing, choose \"Repository, no release\" below.",
   rollback:
@@ -76,11 +76,38 @@ const setting = (tab: string, label: string, add?: string) => (): BlockerLink =>
   ...(add ? { add } : {}),
 });
 
-const AT_AWAITING_RELEASE = (): BlockerLink => ({
-  kind: "statuses",
-  statuses: ["awaiting_release"],
-  label: `Open the issues at ${ISSUE_STATUS_LABELS.awaiting_release}`,
-});
+/** How many of something the sentence counts, where its details carry them as a list or a number;
+ *  null where they carry neither, and the sentence then speaks of them in the plural. */
+function countOf(v: unknown): number | null {
+  if (Array.isArray(v)) return v.length;
+  return typeof v === "number" ? v : null;
+}
+
+/** The singular where the sentence counts exactly one, so a link refers back to what it names. */
+const one = (n: number | null, single: string, many: string) => (n === 1 ? single : many);
+
+/** The issues at Awaiting release, counted by whichever detail the sentence counts them by. */
+const AT_AWAITING_RELEASE =
+  (key: string) =>
+  (b: Blocker): BlockerLink => ({
+    kind: "statuses",
+    statuses: ["awaiting_release"],
+    label: `Open ${one(countOf(b.details?.[key]), "the issue", "the issues")} at ${ISSUE_STATUS_LABELS.awaiting_release}`,
+  });
+
+/** A refused `verify` names its bindings and a probe url no request could reach names the url, so
+ *  the label names each that the sentence names, each agreeing with its own count. */
+function probesLink(b: Blocker): BlockerLink {
+  const bindings = countOf(b.details?.bindings) ?? 0;
+  const urls = countOf(b.details?.urls) ?? 0;
+  const steps = one(bindings, "the live binding's verify step", "the live bindings' verify steps");
+  const probes = one(urls, "the probe's url", "the probes' urls");
+  const label =
+    bindings === 0
+      ? `Correct ${urls === 0 ? "the probe's url" : probes}`
+      : `Check ${steps}${urls > 0 ? ` and correct ${probes}` : ""}`;
+  return setting("integrations", label)();
+}
 
 const NO_LINK = (): BlockerLink => null;
 
@@ -103,21 +130,21 @@ const BLOCKER_LINK: Record<ReleaseBlockerCode, (b: Blocker) => BlockerLink> = {
   NO_RELEASE_GATE: NO_LINK,
   RELEASE_TARGET_UNDECLARED: setting(ADD_LIVE_TARGET.tab, ADD_LIVE_TARGET.label, ADD_LIVE_TARGET.add),
   RELEASE_RUNNER_AMBIGUOUS: setting("integrations", "Reconcile the release runner labels"),
-  RELEASE_PROBES_UNREADABLE: setting("integrations", "Check the live binding's probes"),
+  RELEASE_PROBES_UNREADABLE: probesLink,
   RELEASE_POOL_EMPTY: setting("runners", "Assign a runner"),
-  NO_RUNNER_ONLINE: setting("runners", "See the runners"),
+  NO_RUNNER_ONLINE: (b) => setting("runners", one(countOf(b.details?.runners), "See the runner", "See the runners"))(),
   RELEASE_ROSTER_EMPTY: (b) => {
     const nearGate = b.details?.nearGate;
     if (typeof nearGate !== "number" || nearGate === 0) return null;
     return {
       kind: "statuses",
       statuses: ["testing", "tested"],
-      label: `Open the issues at ${ISSUE_STATUS_LABELS.testing} or ${ISSUE_STATUS_LABELS.tested}`,
+      label: `Open ${one(nearGate, "the issue", "the issues")} at ${ISSUE_STATUS_LABELS.testing} or ${ISSUE_STATUS_LABELS.tested}`,
     };
   },
-  RELEASE_ROSTER_OVERSIZE: AT_AWAITING_RELEASE,
-  RELEASE_CRITERIA_UNEARNED: AT_AWAITING_RELEASE,
-  RELEASE_RUNTIME_UNROUTED: AT_AWAITING_RELEASE,
+  RELEASE_ROSTER_OVERSIZE: AT_AWAITING_RELEASE("waiting"),
+  RELEASE_CRITERIA_UNEARNED: AT_AWAITING_RELEASE("held"),
+  RELEASE_RUNTIME_UNROUTED: AT_AWAITING_RELEASE("held"),
   CLAIM_CONFLICT: (b) => named(idsAt(b.details?.conflicts, "key")),
   RELEASE_RECORD_MISSING: NAMED_HERE,
   RELEASE_WORK_UNMERGED: NAMED_HERE,

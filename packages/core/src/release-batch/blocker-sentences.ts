@@ -151,7 +151,7 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
   RELEASE_WORK_UNMERGED: namedSentence('RELEASE_WORK_UNMERGED', null),
   RELEASE_ISSUES_UNCLOSABLE: namedSentence('RELEASE_ISSUES_UNCLOSABLE', null),
   RELEASE_RUNNER_AMBIGUOUS:
-    'Two live deploy bindings name different release runners, so there is no one box the release job may be offered to. Make the labels agree, or clear all but one.',
+    'Live deploy bindings name different release runners, so there is no one box the release job may be offered to. Make the labels agree, or clear all but one.',
   RELEASE_PROBES_UNREADABLE:
     'A declared verification probe holds a url that is not a url, so no request could ever be made to it and the release would fail while reading what production is serving. Correct the probe, including its scheme.',
   RELEASE_POOL_EMPTY:
@@ -352,7 +352,7 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   }
   if (code === 'RELEASE_RUNNER_AMBIGUOUS' && Array.isArray(details?.labels)) {
     const labels = details.labels as string[];
-    return `Two live deploy bindings name different release runners (${labels.join(', ')}), so there is no one box the release job may be offered to. Make the labels agree, or clear all but one.`;
+    return `Live deploy bindings name ${counted(labels.length, 'different release runner')} (${labels.join(', ')}), so there is no one box the release job may be offered to. Make the labels agree, or clear all but one.`;
   }
   const standings = code === 'CLAIM_CONFLICT' ? readClaimConflictDetails(details) : null;
   if (standings) {
@@ -439,6 +439,12 @@ const refusedDeclarationSentence: RefusedDeclaration = (n) => {
   return `a \`verify\` Forge cannot read — ${w('it names no probe', 'none of them names a probe')} with a url — and a declared \`verify\` takes NO project default, so no release can be proved ${w('there', 'at any of them')} and none closes past ${w('it', 'them')}. Correct ${w('it', 'each')} to \`{"probes":[{"url":"https://<host>/api/health","commitPath":"commit"}]}\`, or remove ${w('it', 'them')}: the project's \`environments.live.commitUrl\` then answers, and with neither the release is recorded unverified.`;
 };
 
+/** The probes whose url is not a url, counted, since the remedy alone speaks of one. */
+function unreadableUrls(n: number): string {
+  const w = (one: string, many: string) => agree(n, one, many);
+  return `${w('A declared verification probe holds a url that is', `${n} declared verification probes hold urls that are`)} not ${w('a url', 'urls')}, so no request could ever be made to ${w('it', 'them')} and the release would fail while reading what production is serving. Correct ${w('the probe', 'each probe')}, including its scheme.`;
+}
+
 export function unreadableSentence(
   remedy: string,
   details?: Record<string, unknown>,
@@ -447,7 +453,7 @@ export function unreadableSentence(
   const urls = Array.isArray(details?.urls) ? (details.urls as string[]) : [];
   const bindings = Array.isArray(details?.bindings) ? (details.bindings as string[]) : [];
   const parts: string[] = [];
-  if (urls.length > 0) parts.push(`${urls.join(', ')} — ${remedy}`);
+  if (urls.length > 0) parts.push(`${urls.join(', ')} — ${unreadableUrls(urls.length)}`);
   if (bindings.length > 0) {
     const which = bindings.map((b) => `\`${b}\``).join(', ');
     const w = (one: string, many: string) => agree(bindings.length, one, many);

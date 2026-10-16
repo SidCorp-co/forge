@@ -318,10 +318,10 @@ const SELF_CLEARING: Readonly<Record<string, string>> = {
  * tick while the refusal stands still, so kept in, it would read as a new reason each sweep and
  * comment every minute of an outage; stored, it would be false a minute later.
  */
+const AGED =
+  / (It is up and reporting), last seen [\w ]+ ago\.| (?:It last reported|Last seen) [\w ]+ ago\./g;
 export function withoutAges(text: string): string {
-  return text
-    .replace(/ It is up and reporting, last seen \d+s ago\./g, ' It is up and reporting.')
-    .replace(/ (?:It last reported|Last seen) \d+s ago\./g, '');
+  return text.replace(AGED, (_aged, up: string | undefined) => (up ? ` ${up}.` : ''));
 }
 
 export function refusalHold(code: string, reasons: readonly string[]): ReleaseHold {

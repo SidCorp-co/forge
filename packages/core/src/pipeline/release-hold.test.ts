@@ -361,7 +361,7 @@ describe('a standing refusal is one reason however long it stands (ISS-1215)', (
   ] as const)('drops the heartbeat age from a %s box (reporting: %s)', (reason, reporting) => {
     const first = refusal(box({ reason, reporting, lastSeenSeconds: 60 }));
     const later = refusal(box({ reason, reporting, lastSeenSeconds: 120 }));
-    expect(first.reason).not.toMatch(/\d+s ago/);
+    expect(first.reason).not.toMatch(/ ago\./);
     expect(sameReleaseHold(first, later)).toBe(true);
   });
 

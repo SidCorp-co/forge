@@ -64,6 +64,8 @@ type TransitionTx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
 export interface ApplyStatusTransitionOptions {
   beforeStatusWrite?: (tx: TransitionTx) => Promise<void>;
+  /** The release notes `beforeStatusWrite` stores, which the close is judged on. */
+  releaseNotesWritten?: unknown;
   /**
    * Bypass `canTransitionFree`. In practice that guard forbids `draft` and the
    * retired rungs as a target and restricts `draft`'s own exits, so this flag

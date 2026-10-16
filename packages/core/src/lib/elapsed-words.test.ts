@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { elapsedWords } from './elapsed-words.js';
+import { durationWords, elapsedWords } from './elapsed-words.js';
 
 const now = new Date('2026-10-15T12:00:00.000Z');
 
@@ -26,5 +26,16 @@ describe('elapsedWords', () => {
 
   it('refuses a value that is not a time, naming it', () => {
     expect(() => elapsedWords('yesterday-ish', now)).toThrow(/"yesterday-ish" is not a time/);
+  });
+});
+
+describe('durationWords', () => {
+  it.each([
+    [30_000, 'less than a minute'],
+    [900_000, '15 minutes'],
+    [3 * 3_600_000, '3 hours'],
+    [2 * 86_400_000, '2 days'],
+  ])('says %i ms as %s, the words elapsedWords uses', (ms, words) => {
+    expect(durationWords(ms)).toBe(words);
   });
 });

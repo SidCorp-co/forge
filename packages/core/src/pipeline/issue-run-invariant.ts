@@ -47,8 +47,8 @@ export function orphanedAssertionResolutionKey(issueId: string): string {
 const ORPHAN_KEY_SUFFIX = ':run-assertion-orphaned';
 
 /**
- * Resolve every named orphan whose cause has ended: the issue left the asserting statuses, or a
- * job, run or lease is behind it again. The detector's predicate without its grace, so a write
+ * Resolve every named orphan whose cause has ended: the issue left the asserting statuses, its
+ * project was archived, or a job, run or lease is behind it again. The detector's predicate without its grace, so a write
  * that only moves the issue's clock ends nothing.
  */
 export async function resolveEndedOrphanAssertions(): Promise<number> {
@@ -65,6 +65,8 @@ export async function resolveEndedOrphanAssertions(): Promise<number> {
            ASSERTS_WORK_IN_PROGRESS.map((s) => sql`${s}`),
            sql`, `,
          )})
+         -- An archived project raises no stuck-issue notice (archived-project-notices.ts).
+         OR p.archived_at IS NOT NULL
          OR ${issueWorkInFlightSql({
            issueId: sql`i.id`,
            projectId: sql`i.project_id`,
@@ -136,6 +138,7 @@ async function orphanedAssertions(now: Date): Promise<OrphanRow[]> {
      )})
        -- Which issues are named is unchanged; only what the notice counts from is ORPHAN_SINCE.
        AND i.updated_at < ${cutoff}
+       AND p.archived_at IS NULL
        -- the same predicate the admissible read uses (ISS-1109). This pass and that one
        -- were verbatim twins, and a sweep that drifts from the pool reports as orphaned
        -- exactly the issues a box is working. Matching on issue_prefix here would make a
