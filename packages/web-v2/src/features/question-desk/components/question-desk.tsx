@@ -65,7 +65,7 @@ function Raised({ projectId, slug }: { projectId: string; slug: string }) {
       {q.data ? (
         <>
           <p className="text-13 text-muted" data-testid="question-desk-counts">
-            {t("questionDesk.counts", { owed: q.data.owed, answered: q.data.answered })}
+            {t("questionDesk.counts", { owed: q.data.owed, answered: q.data.answered, closed: q.data.closed })}
           </p>
           {q.data.questions.length === 0 ? (
             <EmptyState message={t("questionDesk.raisedEmpty")} />

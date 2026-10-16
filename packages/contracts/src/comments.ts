@@ -197,41 +197,58 @@ export const RAISED_QUESTION_ASKERS = ["me", "people"] as const;
 export type RaisedQuestionAsker = (typeof RAISED_QUESTION_ASKERS)[number];
 
 /**
- * Who owes a raised question its reply. `agent`: a question on a live issue, which the project's
- * master is owed and takes on its next pass (`core devices/comment-inbox.ts:readOwedComments`).
- * `members`: a question on a requirement, workflow or feedback item, which no agent sweeps, so a
- * project member answers it in its thread. `nobody`: a question on an issue that has ended, which
- * no pass reads until the issue reopens.
+ * Who owes an owed question its reply. `agent`: a question on a live issue, which the project's
+ * master takes on its next pass (`core devices/comment-inbox.ts:readOwedComments`). `members`: a
+ * question on a requirement, workflow or feedback item, which no agent sweeps, so a project member
+ * answers it in its thread.
  */
-export const RAISED_QUESTION_OWERS = ["agent", "members", "nobody"] as const;
+export const RAISED_QUESTION_OWERS = ["agent", "members"] as const;
 export type RaisedQuestionOwer = (typeof RAISED_QUESTION_OWERS)[number];
 
 /**
- * A question a person raised as a `question` comment, owed until somebody other than its asker
- * replies under it: then it reads answered, with that first reply.
+ * Where a raised question stands. `owed`: nobody but its asker has replied and what it sits on is
+ * live. `answered`: somebody other than its asker replied under it. `closed`: unanswered on an issue
+ * that has ended (closed, dropped or archived), which nobody takes until the issue reopens.
+ */
+export const RAISED_QUESTION_STATES = ["owed", "answered", "closed"] as const;
+export type RaisedQuestionState = (typeof RAISED_QUESTION_STATES)[number];
+
+/** The longest short form a raised question or its answer is listed with. */
+export const RAISED_QUESTION_SUMMARY_MAX = 200;
+
+/**
+ * A question a person raised as a `question` comment, listed by its short form
+ * (`./title-text.ts:shortForm`): its first sentence, cut to `RAISED_QUESTION_SUMMARY_MAX`. The body
+ * is never listed; it stays on the thread the question was asked in.
  */
 export interface RaisedQuestionView {
 	id: string;
 	target: CommentTargetView;
-	body: string | null;
+	/** The question's short form; null where the reader's door withholds the text. */
+	summary: string | null;
 	author: CommentAuthorView;
 	askedAt: string;
-	/** Null while owed. */
+	state: RaisedQuestionState;
+	/** The first reply by somebody other than the asker, by its short form; null unless answered. */
 	answer: {
 		id: string;
-		body: string | null;
+		summary: string | null;
 		author: CommentAuthorView;
 		at: string;
 	} | null;
-	/** Who owes the reply while it is owed; null once answered. */
+	/** Who owes the reply; null unless owed. */
 	owedBy: RaisedQuestionOwer | null;
 	withheld: boolean;
 }
 
-/** `GET /api/projects/:id/raised-questions?by=me|people`: owed first, oldest first, then answered, newest first. */
+/**
+ * `GET /api/projects/:id/raised-questions?by=me|people`: owed first, oldest first, then answered,
+ * then closed, each newest first. The three counts cover every question, listed or not.
+ */
 export interface RaisedQuestionsResponse {
 	questions: RaisedQuestionView[];
 	owed: number;
 	answered: number;
+	closed: number;
 	by: RaisedQuestionAsker;
 }

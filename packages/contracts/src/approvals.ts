@@ -9,6 +9,7 @@ import { z } from "zod";
 import { MOCKUP_KINDS } from "./mockups.js";
 import { DECISION_ACT_NAMES } from "./needs-you-decisions.js";
 import { SUGGESTION_KINDS } from "./suggestions.js";
+import { cutAtWord } from "./title-text.js";
 
 /**
  * What waits on an approve-type decision. `revision`: a requirement revision proposed for sign-off.
@@ -77,7 +78,11 @@ export const approvalItemSchema = z
 		id: z.string().min(1).max(300),
 		/** What a reader calls it: MK-n, REQ-n, a design's flow, a release version, the issue a preview serves, the record a suggestion is on. */
 		key: z.string().min(1).max(LIMITS.key),
-		/** The asker's own words where they wrote some (a title, a caption, a note); empty where none. */
+		/**
+		 * The record's short title, never a prose field: a requirement's short name or title, the title
+		 * of the record a suggestion is on, a design's title, a release's name, a mockup's name, the
+		 * issue a preview serves; empty where the record has none. Cut by {@link approvalTitle}.
+		 */
 		title: z.string().max(LIMITS.title),
 		/** A suggestion's kind; null on every other row. */
 		suggestionKind: z.enum(SUGGESTION_KINDS).nullable(),
@@ -123,16 +128,41 @@ export const approvalItemSchema = z
 	});
 export type ApprovalItem = z.infer<typeof approvalItemSchema>;
 
+/**
+ * A pending record the read could not make a row of: listed by name, so it is seen and opened on its
+ * own page, never dropped from the inbox and never the reason the rest of it fails.
+ */
+export const approvalUnreadableSchema = z.strictObject({
+	kind: z.enum(APPROVAL_KINDS),
+	/** The kind and the record's own id, as a row's `id` would be. */
+	id: z.string().min(1).max(300),
+	key: z.string().min(1).max(LIMITS.key),
+	opens: z
+		.strictObject({
+			kind: z.enum(APPROVAL_OPENS),
+			key: z.string().min(1).max(LIMITS.key),
+		})
+		.nullable(),
+	/** What could not be read: each field and the rule it broke, in words. */
+	problem: z.string().min(1).max(1000),
+});
+export type ApprovalUnreadable = z.infer<typeof approvalUnreadableSchema>;
+
 export const approvalInboxSchema = z.strictObject({
 	generatedAt: z.iso.datetime(),
 	/** Oldest first, so what has waited longest leads; the first `LIMITS.items`. */
 	items: z.array(approvalItemSchema).max(LIMITS.items),
-	/** How many rows there are in all; the nav's count. */
+	/** The pending records no row could be made of; the first `LIMITS.items`. */
+	unreadable: z.array(approvalUnreadableSchema).max(LIMITS.items),
+	/** How many records wait in all, readable or not; the nav's count. */
 	total: z.int().min(0),
 });
 export type ApprovalInbox = z.infer<typeof approvalInboxSchema>;
 
 export const APPROVAL_INBOX_MAX = LIMITS.items;
+
+/** A record's title as its row shows it: cut at a whole word to the row's bound. */
+export const approvalTitle = (title: string): string => cutAtWord(title, LIMITS.title);
 
 /** Oldest first; a row with no time last, then by id so the order is total. */
 export function byWaitedLongest(a: ApprovalItem, b: ApprovalItem): number {

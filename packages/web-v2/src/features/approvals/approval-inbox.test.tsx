@@ -1,9 +1,12 @@
 // The approval inbox (REQ-8, REQ-11): one list of what waits on the viewer's approve-type decision,
 // drawn from core's one approvals read. Each row says what it is, who asked and since when; Approve
 // confirms and posts the row's own body to the record's route, a reason only where the route keeps
-// one; Decline will not send without the reason its asker reads; a row decided elsewhere opens there.
+// one; Decline will not send without the reason its asker reads; a row decided elsewhere opens there;
+// a record core could not make a row of is named after the rows, with the way to its page.
+//
+// @direct-test-of packages/web-v2/src/features/approvals/components/approval-entry.tsx
 
-import { type ApprovalInbox as Inbox, type ApprovalItem, approvalInboxSchema } from "@forge/contracts/approvals";
+import { type ApprovalInbox as Inbox, type ApprovalItem, type ApprovalUnreadable, approvalInboxSchema } from "@forge/contracts/approvals";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
@@ -75,7 +78,8 @@ const repin: ApprovalItem = {
   decline: null,
 };
 
-const inbox = (items: ApprovalItem[]): Inbox => approvalInboxSchema.parse({ generatedAt: "2026-10-16T00:00:00.000Z", items, total: items.length });
+const inbox = (items: ApprovalItem[], unreadable: ApprovalUnreadable[] = []): Inbox =>
+  approvalInboxSchema.parse({ generatedAt: "2026-10-16T00:00:00.000Z", items, unreadable, total: items.length + unreadable.length });
 
 function core(read: Inbox, answer: (path: string) => { status?: number; body: unknown } = () => ({ body: {} })) {
   return fakeCore((c) => (c.method === "GET" && c.path === `/projects/${P}/approvals` ? { body: read } : answer(c.path)));
@@ -120,6 +124,25 @@ describe("the approval inbox", () => {
     renderWithQuery(<ApprovalInbox projectId={P} slug="hop" />);
     expect(await screen.findByText("Nothing waiting")).toBeInTheDocument();
     expect(screen.queryByTestId("approval-kinds")).toBeNull();
+  });
+
+  it("names a record core could not make a row of, beside the rows that answer, with the way to its page", async () => {
+    const broken: ApprovalUnreadable = {
+      kind: "suggestion",
+      id: "suggestion:s-9",
+      key: "ISS-12",
+      opens: { kind: "issue", key: "ISS-12" },
+      problem: "askedBy.name: Too big: expected string to have <=200 characters",
+    };
+    core(inbox([mockup], [broken]));
+    renderWithQuery(<ApprovalInbox projectId={P} slug="hop" />);
+    const entry = await screen.findByTestId("approval-unreadable");
+    expect(entry).toHaveTextContent("Suggestion ISS-12 could not be read here");
+    expect(within(entry).getByTestId("approval-unreadable-problem")).toHaveTextContent("askedBy.name");
+    expect(within(entry).getByTestId("approval-open")).toHaveAttribute("href", "/projects/hop/issues/ISS-12");
+    expect(within(entry).queryByTestId("approval-approve")).toBeNull();
+    expect(await rowOf("MK-3")).toBeInTheDocument();
+    expect(screen.getByTestId("approval-kind-suggestion")).toHaveTextContent("Suggestion1");
   });
 
   it("narrows to one kind by its chip, with a count per kind", async () => {

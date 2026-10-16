@@ -1,19 +1,23 @@
 /**
  * The questions people raised on a project, as `question` comments on its issues, requirements,
- * workflows and feedback, each read as owed or answered. A question is owed until somebody other
- * than its asker replies under it: a reply threaded on it, or, for a question that is itself a reply,
- * a later reply beside it in the same thread (the rule `devices/comment-inbox.ts:readOwedComments`
- * reads an issue's owed questions by, where only an agent's reply clears one for the master).
+ * workflows and feedback, each read as owed, answered or closed. A question is answered once
+ * somebody other than its asker replies under it: a reply threaded on it, or, for a question that is
+ * itself a reply, a later reply beside it in the same thread. Unanswered, it is owed while what it
+ * sits on is live, and closed on an issue that has ended (closed, dropped or archived): nobody takes
+ * it there, the rule `devices/comment-inbox.ts:readOwedComments` reads the master's owed questions by.
+ * A row carries the question's short form, never its body (`@forge/contracts/title-text:shortForm`).
  */
 
-import type {
-  CommentAuthorView,
-  RaisedQuestionAsker,
-  RaisedQuestionOwer,
-  RaisedQuestionsResponse,
-  RaisedQuestionView,
+import {
+  type CommentAuthorView,
+  RAISED_QUESTION_SUMMARY_MAX,
+  type RaisedQuestionAsker,
+  type RaisedQuestionOwer,
+  type RaisedQuestionsResponse,
+  type RaisedQuestionView,
 } from '@forge/contracts/comments';
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
+import { shortForm } from '@forge/contracts/title-text';
 import { and, desc, eq, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
@@ -35,16 +39,22 @@ import {
 } from './entity-read.js';
 import { scopeOfArc } from './entity-rules.js';
 
-/** The most raised questions one read lists; `owed` and `answered` still count them all. */
+/** The most raised questions one read lists; `owed`, `answered` and `closed` still count them all. */
 export const RAISED_QUESTIONS_LIMIT = 200;
 
-/** Who owes a question its reply while it is owed, by what it sits on. */
-export function owerOf(scope: string, issueStatus: string | null): RaisedQuestionOwer {
-  if (scope !== 'issue') return 'members';
-  return (ISSUE_TERMINAL_STATUSES as readonly string[]).includes(issueStatus ?? '')
-    ? 'nobody'
-    : 'agent';
+/** Whether the issue a question sits on has ended: closed, dropped, or archived. */
+export function issueEnded(issue: { status: string | null; archivedAt: Date | null }): boolean {
+  return (
+    issue.archivedAt !== null ||
+    (ISSUE_TERMINAL_STATUSES as readonly string[]).includes(issue.status ?? '')
+  );
 }
+
+/** Who owes an owed question its reply, by what it sits on. */
+export const owerOf = (scope: string): RaisedQuestionOwer =>
+  scope === 'issue' ? 'agent' : 'members';
+
+const summaryOf = (text: string) => shortForm(text, RAISED_QUESTION_SUMMARY_MAX);
 
 interface AnswerRow {
   question_id: string;
@@ -97,6 +107,7 @@ export async function listRaisedQuestionsAs(
       issueSeq: issues.issSeq,
       issueTitle: issues.title,
       issueStatus: issues.status,
+      issueArchivedAt: issues.archivedAt,
       reqSeq: requirements.reqSeq,
       reqTitle: requirements.title,
       flow: projectWorkflows.flow,
@@ -139,31 +150,37 @@ export async function listRaisedQuestionsAs(
       throw new Error(`comment ${r.id} breaks comments_scope_chk: it names no single target`);
     const view = entityCommentView(r, targetOfRow(scope, r, prefix), authors, egress[scope]);
     const a = answers.get(r.id);
+    const ended =
+      scope === 'issue' && issueEnded({ status: r.issueStatus, archivedAt: r.issueArchivedAt });
+    const state = a ? 'answered' : ended ? 'closed' : 'owed';
     return {
       id: r.id,
       target: view.target,
-      body: view.body,
+      summary: view.body === null ? null : summaryOf(view.body),
       author: view.author,
       askedAt: view.createdAt,
+      state,
       answer: a
         ? {
             id: a.id,
-            body: view.withheld ? null : a.body,
+            summary: view.withheld ? null : summaryOf(a.body),
             author: authorOf(a.author_id, a.by_device),
             at: new Date(a.created_at).toISOString(),
           }
         : null,
-      owedBy: a ? null : owerOf(scope, r.issueStatus),
+      owedBy: state === 'owed' ? owerOf(scope) : null,
       withheld: view.withheld,
     };
   });
-  // owed first, oldest first (the longest waiting leads), then answered, newest first
-  const owed = all.filter((q) => !q.answer).reverse();
-  const answered = all.filter((q) => q.answer);
+  // owed first, oldest first (the longest waiting leads), then answered, then closed, newest first
+  const owed = all.filter((q) => q.state === 'owed').reverse();
+  const answered = all.filter((q) => q.state === 'answered');
+  const closed = all.filter((q) => q.state === 'closed');
   return {
-    questions: [...owed, ...answered].slice(0, RAISED_QUESTIONS_LIMIT),
+    questions: [...owed, ...answered, ...closed].slice(0, RAISED_QUESTIONS_LIMIT),
     owed: owed.length,
     answered: answered.length,
+    closed: closed.length,
     by,
   };
 }

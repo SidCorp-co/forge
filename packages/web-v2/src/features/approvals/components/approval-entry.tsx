@@ -12,7 +12,7 @@ import { Link } from "@/lib/navigation/router";
 import { formatElapsed } from "@/lib/utils/format";
 import { usePressApproval } from "../hooks";
 import { approvalOpensHref } from "../routes";
-import type { ApprovalItem } from "../types";
+import type { ApprovalItem, ApprovalUnreadable } from "../types";
 
 type Step = "approve" | "decline" | null;
 
@@ -145,5 +145,31 @@ export function ApprovalEntry({ item, slug }: { item: ApprovalItem; slug: string
       ) : null}
       {press.error ? <RefusalLine error={press.error} /> : null}
     </RowItem>
+  );
+}
+
+/**
+ * A pending record core could not make a row of: named, with what broke, and opened on its own page,
+ * where it is decided. It is never dropped from the list, and never the reason the list fails.
+ */
+export function UnreadableEntry({ entry, slug }: { entry: ApprovalUnreadable; slug: string }) {
+  const t = useCopy();
+  const href = approvalOpensHref(slug, entry.opens);
+  return (
+    <RowItem
+      testId="approval-unreadable"
+      rowKey={entry.id}
+      wrap
+      title={t("approvals.unreadable.title", { kind: t(`approvals.kind.${entry.kind}`), key: entry.key })}
+      facts={[<MonoTag key="key">{entry.key}</MonoTag>]}
+      note={<span data-testid="approval-unreadable-problem">{t("approvals.unreadable.problem", { problem: entry.problem })}</span>}
+      trailing={
+        href ? (
+          <Link href={href} className="text-12-5 font-semibold text-link underline-offset-2 hover:underline" data-testid="approval-open">
+            {t("approvals.act.open")}
+          </Link>
+        ) : null
+      }
+    />
   );
 }

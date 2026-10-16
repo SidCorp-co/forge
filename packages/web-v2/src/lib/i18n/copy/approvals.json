@@ -42,7 +42,9 @@
     "approvals.consequence.repin": "Re-pins the designs on its page.",
     "approvals.consequence.revision": "Revision {r} becomes the current one.",
     "approvals.consequence.agreement": "{key} is agreed and goes to delivery.",
-    "approvals.consequence.release": "The release may go to production."
+    "approvals.consequence.release": "The release may go to production.",
+    "approvals.unreadable.title": "{kind} {key} could not be read here",
+    "approvals.unreadable.problem": "Decide it on its own page. Unreadable: {problem}"
   },
   "vi": {
     "approvals.title": "Phê duyệt",
@@ -87,6 +89,8 @@
     "approvals.consequence.repin": "Ghim lại các thiết kế ở trang của nó.",
     "approvals.consequence.revision": "Bản sửa {r} trở thành bản hiện hành.",
     "approvals.consequence.agreement": "{key} được chốt và chuyển sang triển khai.",
-    "approvals.consequence.release": "Bản phát hành được phép lên production."
+    "approvals.consequence.release": "Bản phát hành được phép lên production.",
+    "approvals.unreadable.title": "Không đọc được {kind} {key} ở đây",
+    "approvals.unreadable.problem": "Quyết định trên trang của nó. Không đọc được: {problem}"
   }
 }

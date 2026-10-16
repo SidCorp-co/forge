@@ -3,6 +3,7 @@ import {
 	type ApprovalItem,
 	approvalInboxSchema,
 	approvalItemSchema,
+	approvalTitle,
 	byWaitedLongest,
 } from "./approvals.js";
 
@@ -80,8 +81,45 @@ describe("the inbox order: what has waited longest leads", () => {
 	});
 
 	it("holds an empty inbox and caps the rows one answer carries", () => {
-		expect(approvalInboxSchema.safeParse({ generatedAt: "2026-10-16T00:00:00.000Z", items: [], total: 0 }).success).toBe(true);
+		expect(approvalInboxSchema.safeParse({ generatedAt: "2026-10-16T00:00:00.000Z", items: [], unreadable: [], total: 0 }).success).toBe(true);
 		const many = Array.from({ length: 301 }, (_, i) => row({ id: `m-${i}` }));
-		expect(approvalInboxSchema.safeParse({ generatedAt: "2026-10-16T00:00:00.000Z", items: many, total: 301 }).success).toBe(false);
+		expect(approvalInboxSchema.safeParse({ generatedAt: "2026-10-16T00:00:00.000Z", items: many, unreadable: [], total: 301 }).success).toBe(false);
+	});
+});
+
+describe("a row's title", () => {
+	const prose = Array.from({ length: 120 }, (_, i) => `because${i}`).join(" ");
+
+	it("refuses a title past its bound, so a row is never built from one uncut", () => {
+		expect(approvalItemSchema.safeParse(row({ title: prose })).success).toBe(false);
+	});
+
+	it("is cut at a whole word to fit, and the cut row is taken", () => {
+		const title = approvalTitle(prose);
+		expect(title.length).toBeLessThanOrEqual(500);
+		expect(title.endsWith("…")).toBe(true);
+		expect(approvalItemSchema.safeParse(row({ title })).success).toBe(true);
+	});
+});
+
+describe("a record no row could be made of", () => {
+	it("is carried by name beside the rows, and counts in the total", () => {
+		const r = approvalInboxSchema.safeParse({
+			generatedAt: "2026-10-16T00:00:00.000Z",
+			items: [row()],
+			unreadable: [{ kind: "suggestion", id: "suggestion:s-1", key: "ISS-4", opens: { kind: "issue", key: "ISS-4" }, problem: "askedBy.name: longer than 200 characters" }],
+			total: 2,
+		});
+		expect(r.success).toBe(true);
+	});
+
+	it("is refused with no words saying what could not be read", () => {
+		const r = approvalInboxSchema.safeParse({
+			generatedAt: "2026-10-16T00:00:00.000Z",
+			items: [],
+			unreadable: [{ kind: "suggestion", id: "suggestion:s-1", key: "ISS-4", opens: null, problem: "" }],
+			total: 1,
+		});
+		expect(r.success).toBe(false);
 	});
 });

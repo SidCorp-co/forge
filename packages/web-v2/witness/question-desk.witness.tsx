@@ -1,11 +1,14 @@
 // The Questions page witnessed as drawn at phone and desktop width, light and dark: the question
 // waiting on the reader, the questions raised, each owed one naming who owes it whole inside the
 // window, and the form that raises one. jsdom lays nothing out, so a line cut off at 390 px goes red
-// here.
+// here. The raised rows carry the bodies a live project held (dev.251: a merge claim, a run's
+// landing note and a requirement digest, each hundreds of words), cut by the same short form core
+// cuts them by, so a row that grows past a few lines goes red too.
 //
 //   pnpm --filter web-v2 witness witness/question-desk.witness.tsx --out <dir>
 
-import type { RaisedQuestionsResponse } from "@forge/contracts/comments";
+import { RAISED_QUESTION_SUMMARY_MAX, type RaisedQuestionsResponse } from "@forge/contracts/comments";
+import { shortForm } from "@forge/contracts/title-text";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
 import { QuestionDesk } from "@/features/question-desk";
@@ -39,15 +42,26 @@ const DECISIONS = {
   notDecisions: [],
 };
 
+const short = (body: string) => shortForm(body, RAISED_QUESTION_SUMMARY_MAX);
+const filler = Array.from({ length: 300 }, (_, i) => `clause${i}`).join(" ");
+const MERGE_CLAIM = `mark_merged target=dev commit=b2b572519ae1c4f79298d0094b9583b7acfa7a67 — Landed directly on the dev branch of github.com/SidCorp-co/forge; see the commits named in the description.\nthis mark is a CLAIM Forge did not observe, not a merge it witnessed: commit b2b572519ae1c4f79298d0094b9583b7acfa7a67 is recorded here as this call's claim and is NOT in \`merged_commit_sha\`. ${filler}`;
+const LANDING = `Landed on \`dev\` at 940ea1103 after the gate went green on every job the change selected, with the integration suite, the whole-tree job and the image build all passing on the merge commit and the release notes written ${filler}\n\n## What changed\n\n${filler}`;
+const DIGEST = `## Requirement REQ-12 — what it asks and what is built\n\n${filler}`;
+const LONG_QUESTION = `Which file formats does the registry accept today, does it need the header row, and does the nightly import read the old column order for the reports the clinics already file every week ${filler}?`;
+
 const RAISED: RaisedQuestionsResponse = {
   by: "me",
-  owed: 3,
+  owed: 2,
   answered: 1,
+  closed: 4,
   questions: [
-    { id: "q1", target: { scope: "requirement", id: "r7", key: "REQ-7", title: "Bulk export of patient referrals to the regional registry" }, body: "Which file formats does the registry accept today, and does it need the header row?", author: ANA, askedAt: AT, answer: null, owedBy: "members", withheld: false },
-    { id: "q2", target: { scope: "issue", id: "i9", key: "ISS-9", title: "Nightly sync" }, body: "Is the sync nightly or hourly?", author: ANA, askedAt: AT, answer: null, owedBy: "agent", withheld: false },
-    { id: "q3", target: { scope: "issue", id: "i4", key: "ISS-4", title: "Old importer" }, body: "Can we drop the old importer?", author: ANA, askedAt: AT, answer: null, owedBy: "nobody", withheld: false },
-    { id: "q4", target: { scope: "feedback", id: "f2", key: "FB-2", title: "Search misses accents" }, body: "Does this affect names only?", author: ANA, askedAt: AT, answer: { id: "a4", body: "Names and addresses both; the index folds neither.", author: { id: "u2", name: "Minh Tran", agency: "human" }, at: AT }, owedBy: null, withheld: false },
+    { id: "q1", target: { scope: "requirement", id: "r7", key: "REQ-7", title: "Bulk export of patient referrals to the regional registry" }, summary: short(LONG_QUESTION), author: ANA, askedAt: AT, state: "owed", answer: null, owedBy: "members", withheld: false },
+    { id: "q2", target: { scope: "issue", id: "i9", key: "ISS-9", title: "Nightly sync" }, summary: short("Is the sync nightly or hourly?"), author: ANA, askedAt: AT, state: "owed", answer: null, owedBy: "agent", withheld: false },
+    { id: "q4", target: { scope: "feedback", id: "f2", key: "FB-2", title: "Search misses accents" }, summary: short("Does this affect names only?"), author: ANA, askedAt: AT, state: "answered", answer: { id: "a4", summary: short(`Names and addresses both; the index folds neither. ${filler}`), author: { id: "u2", name: "Minh Tran", agency: "human" }, at: AT }, owedBy: null, withheld: false },
+    { id: "q3", target: { scope: "issue", id: "i4", key: "ISS-4", title: "Old importer" }, summary: short("Can we drop the old importer?"), author: ANA, askedAt: AT, state: "closed", answer: null, owedBy: null, withheld: false },
+    { id: "q5", target: { scope: "issue", id: "i1", key: "ISS-1", title: "Project config v1 is five strict documents with a JSON Schema and cross-field refusals by name" }, summary: short(MERGE_CLAIM), author: ANA, askedAt: AT, state: "closed", answer: null, owedBy: null, withheld: false },
+    { id: "q6", target: { scope: "issue", id: "i2", key: "ISS-2", title: "A project's config documents are stored in core behind one API" }, summary: short(LANDING), author: ANA, askedAt: AT, state: "closed", answer: null, owedBy: null, withheld: false },
+    { id: "q7", target: { scope: "issue", id: "i3", key: "ISS-3", title: "What an environment runs is read off its deployment record" }, summary: short(DIGEST), author: ANA, askedAt: AT, state: "closed", answer: null, owedBy: null, withheld: false },
   ],
 };
 
@@ -83,12 +97,19 @@ function drawn(): string[] {
   for (const row of all("[data-testid=raised-question], [data-testid=needs-you-decision]")) {
     if (row.getBoundingClientRect().right > width) wrong.push(`a question row runs past the window (${row.dataset.id ?? row.dataset.key})`);
   }
+  // a short form is a few lines at most, at any width: the body never reaches the page
+  for (const text of all("[data-testid=raised-question-summary]")) {
+    const lines = text.getBoundingClientRect().height / Number.parseFloat(getComputedStyle(text).lineHeight);
+    if (lines > 6) wrong.push(`a question's short form runs ${Math.round(lines)} lines (${text.textContent?.slice(0, 40)}…)`);
+  }
   return wrong;
 }
 
 async function light(): Promise<string[]> {
   const wrong = drawn();
-  if (all("[data-testid=raised-question][data-owed=true]").length !== 3) wrong.push("the three owed questions are not drawn as owed");
+  if (all("[data-testid=raised-question][data-state=owed]").length !== 2) wrong.push("the two owed questions are not drawn as owed");
+  if (all("[data-testid=raised-question][data-state=closed]").length !== 4) wrong.push("the four questions on ended issues are not drawn as closed");
+  if (all("[data-testid=raised-question-owed-by]").length !== 2) wrong.push("a closed question names somebody as owing it");
   return wrong;
 }
 
@@ -116,7 +137,7 @@ window.__witness = {
     { name: "phone", width: 390 },
     { name: "desktop", width: 1440 },
   ],
-  ready: () => all("[data-testid=raised-question]").length === 4 && all("[data-testid=needs-you-decision]").length === 1,
+  ready: () => all("[data-testid=raised-question]").length === 7 && all("[data-testid=needs-you-decision]").length === 1,
   stages: [
     { name: "1-light", run: light },
     { name: "2-asking", run: asking },

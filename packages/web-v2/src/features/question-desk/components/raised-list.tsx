@@ -1,8 +1,10 @@
 // The questions raised on the project, as core reads them (`GET …/raised-questions`): owed first, the
 // longest waiting at the top, each naming who owes the reply; then the answered ones with the first
-// answer and who gave it. A question stays owed until somebody other than its asker replies.
+// answer and who gave it; then the closed ones, unanswered on an issue that has ended. Each is its
+// short form, one line, never its body: the whole text stays on the record it was asked on.
 
-import type { RaisedQuestionOwer, RaisedQuestionView } from "@forge/contracts/comments";
+import type { RaisedQuestionOwer, RaisedQuestionState, RaisedQuestionView } from "@forge/contracts/comments";
+import type { LegendTone } from "@/design";
 import { Link } from "@/lib/navigation/router";
 import { ActorChip, ToneBadge } from "@/design";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
@@ -15,7 +17,12 @@ import { workflowHref } from "@/lib/routes/workflows";
 const OWED_BY: Record<RaisedQuestionOwer, ProductCopyKey> = {
   agent: "questionDesk.owedBy.agent",
   members: "questionDesk.owedBy.members",
-  nobody: "questionDesk.owedBy.nobody",
+};
+
+const STATE: Record<RaisedQuestionState, { label: ProductCopyKey; tone: LegendTone }> = {
+  owed: { label: "questionDesk.owed", tone: "you" },
+  answered: { label: "questionDesk.answered", tone: "done" },
+  closed: { label: "questionDesk.closed", tone: "neutral" },
 };
 
 function hrefOf(slug: string, target: RaisedQuestionView["target"]): string {
@@ -34,12 +41,12 @@ function hrefOf(slug: string, target: RaisedQuestionView["target"]): string {
 function RaisedQuestion({ q, slug, showAsker }: { q: RaisedQuestionView; slug: string; showAsker: boolean }) {
   const t = useCopy();
   const time = useTimeFormat();
-  const owed = q.answer === null;
-  const state = owed ? t("questionDesk.owed") : t("questionDesk.answered");
+  const state = STATE[q.state];
+  const label = t(state.label);
   return (
-    <li className="grid gap-1.5 py-3" data-testid="raised-question" data-owed={owed} data-id={q.id}>
+    <li className="grid gap-1.5 py-3" data-testid="raised-question" data-state={q.state} data-id={q.id}>
       <p className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-12 text-muted">
-        <ToneBadge tone={owed ? (q.owedBy === "nobody" ? "err" : "you") : "done"} label={state} title={state} value={owed ? "owed" : "answered"} />
+        <ToneBadge tone={state.tone} label={label} title={label} value={q.state} />
         <Link href={hrefOf(slug, q.target)} className="font-mono font-semibold text-link hover:underline">
           {q.target.key}
         </Link>
@@ -47,12 +54,16 @@ function RaisedQuestion({ q, slug, showAsker }: { q: RaisedQuestionView; slug: s
         <span title={time.dateTime(q.askedAt)}>· {time.relative(q.askedAt)}</span>
         {showAsker ? <ActorChip name={q.author.name ?? t("questionDesk.someone")} kind={q.author.agency} size={16} /> : null}
       </p>
-      <p className="whitespace-pre-wrap text-14 text-fg" data-testid="raised-question-body">
-        {q.body ?? t("questionDesk.withheld")}
+      <p className="min-w-0 break-words text-14 text-fg" data-testid="raised-question-summary">
+        {q.summary ?? t("questionDesk.withheld")}
       </p>
-      {owed ? (
+      {q.state === "owed" ? (
         <p className="text-13 text-muted" data-testid="raised-question-owed-by" data-owed-by={q.owedBy}>
           {t(OWED_BY[q.owedBy ?? "members"], { key: q.target.key })}
+        </p>
+      ) : q.state === "closed" ? (
+        <p className="text-13 text-muted" data-testid="raised-question-closed">
+          {t("questionDesk.closedOn", { key: q.target.key })}
         </p>
       ) : (
         <div className="grid gap-1 border-l-2 border-line pl-3" data-testid="raised-question-answer">
@@ -60,7 +71,7 @@ function RaisedQuestion({ q, slug, showAsker }: { q: RaisedQuestionView; slug: s
             <ActorChip name={q.answer?.author.name ?? t("questionDesk.someone")} kind={q.answer?.author.agency ?? "human"} size={16} />
             {q.answer ? <span title={time.dateTime(q.answer.at)}>{time.relative(q.answer.at)}</span> : null}
           </p>
-          <p className="line-clamp-4 whitespace-pre-wrap text-13 text-fg">{q.answer?.body ?? t("questionDesk.withheld")}</p>
+          <p className="min-w-0 break-words text-13 text-fg">{q.answer?.summary ?? t("questionDesk.withheld")}</p>
         </div>
       )}
     </li>
