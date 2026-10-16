@@ -11,7 +11,6 @@ import {
   PageTitle,
   ProjectLoader,
   ProjectMark,
-  useNow,
 } from "@/design";
 import { AttentionQueue } from "@/features/project-dashboard/components/attention-queue";
 import { AwaitingReleaseCard } from "@/features/project-dashboard/components/awaiting-release-card";
@@ -37,14 +36,15 @@ import {
   activeSpend,
   awaitingReleaseRuns,
   projectAttention,
-  runnersSummary,
   spendByStep,
   statusDonut,
 } from "@/features/project-dashboard/derive";
+import { useRunnerFleet } from "@/features/project-dashboard/runner-fleet";
 import {
   type ReadState,
   parkedAges,
   projectShape,
+  readOf,
   secondsSince,
   spendComparison,
   stuckRuns,
@@ -56,24 +56,10 @@ import { useSessionsAndHolds } from "@/features/pipeline/hooks";
 import { useProjectRuns, useStepDurations, useThroughput } from "@/features/runs/hooks";
 import { useProjectHealth, useProjects } from "@/features/projects/hooks";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
-import { useActiveRunners, useProjectRunners } from "@/features/runners/hooks";
 import { useSchedules } from "@/features/schedules/hooks";
-import { useQueueStats } from "@/features/sessions/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-
-/** Where one query stands, in the page's own words: a read that failed (even over an earlier answer) or has not arrived is never an empty one. */
-function readOf(q: { isError: boolean; error: unknown; data: unknown }): ReadState {
-  if (q.isError) return { read: "failed", reason: formatApiError(q.error) };
-  return q.data === undefined ? { read: "pending" } : { read: "ok" };
-}
-
-/** One state for several queries a figure depends on: failed if any failed, else pending if any is. */
-function readOfAll(...qs: Array<{ isError: boolean; error: unknown; data: unknown }>): ReadState {
-  const states = qs.map(readOf);
-  return states.find((r) => r.read === "failed") ?? states.find((r) => r.read === "pending") ?? { read: "ok" };
-}
 
 /** The window the spend and where-time-goes sections read; the throughput section's is its own. */
 const METRICS_WINDOW_DAYS = 7;
@@ -99,9 +85,7 @@ export default function ProjectOverviewPage() {
   const sessionsQ = useSessionsAndHolds(projectId);
   const durationsQ = useStepDurations({ days: METRICS_WINDOW_DAYS, projectId }, !!projectId);
   const throughputQ = useThroughput({ days: THROUGHPUT_WINDOW_DAYS, projectId }, !!projectId);
-  const queueQ = useQueueStats(projectId);
-  const projectRunnersQ = useProjectRunners(projectId ?? null);
-  const activeRunnersQ = useActiveRunners(projectId ?? null);
+  const fleet = useRunnerFleet(projectId, Date.now());
   const schedulesQ = useSchedules(projectId);
 
   // The health row lists at most five parked issues, with no time on them. Their ages come from the
@@ -112,12 +96,6 @@ export default function ProjectOverviewPage() {
     sort: "updatedAt:desc",
     pageSize: 50,
   });
-
-  // Tick once a second while some runner is limited (live reset countdown);
-  // the active-runner card's busy state refreshes via its own 10s poll + WS,
-  // so it does not need the per-second tick.
-  const anyLimited = (projectRunnersQ.data ?? []).some((r) => r.limitReason);
-  const tick = useNow(1000, anyLimited);
 
   const isLoading = projectsQ.isLoading || healthQ.isLoading;
   const isError = projectsQ.isError || healthQ.isError;
@@ -206,20 +184,11 @@ export default function ProjectOverviewPage() {
   const liveSessions = sessionsQ.data?.sessions ?? [];
   const durationsState = readOf(durationsQ);
   const throughputState = readOf(throughputQ);
-  const runnersState = readOf(projectRunnersQ);
-  // A runner hosting a live session is busy, so the sessions read is part of what says busy or idle.
-  const activityState = readOfAll(queueQ, activeRunnersQ, sessionsQ);
+  const { summary: runners, runners: runnersState, activity: activityState } = fleet;
   const schedulesState = readOf(schedulesQ);
   const runsIdle = idleRuns(runItems);
   const runsAwaitingRelease = awaitingReleaseRuns(runItems);
   const inFlight = activeSpend(runItems);
-  const runners = runnersSummary(
-    projectRunnersQ.data,
-    activityState.read === "ok" ? queueQ.data : undefined,
-    anyLimited ? tick : now,
-    activityState.read === "ok" ? activeRunnersQ.data?.runners : undefined,
-    activityState.read === "ok" ? liveSessions : undefined,
-  );
   const donut = statusDonut(health?.work);
   const awaitingReleaseIssues = health?.work.awaiting_release ?? 0;
   const spend = spendByStep(durationsQ.data);
@@ -318,6 +287,7 @@ export default function ProjectOverviewPage() {
             activityUnread={activityState.read !== "ok"}
             busyRunners={runners.busyCount}
             onlineRunners={runners.onlineCount}
+            totalRunners={runners.total}
             needsYou={attention.length}
             needsYouCaption={attentionCaption(attention, attentionLeftOut)}
             oldestWait={oldestSeconds === null ? null : formatElapsed(oldestSeconds)}

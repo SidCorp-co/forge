@@ -8,6 +8,7 @@
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { lastReported, WORKING_WORD } from "@/design";
+import type { StatusKey } from "@/design/status";
 import { RunRow } from "@/features/agents/components/run-row";
 import type { RunSessionRow } from "@/features/agents/types";
 import { SessionsList } from "@/features/pipeline/components/sessions-list";
@@ -30,7 +31,18 @@ vi.mock("@/features/projects/hooks", () => ({
   useProjects: () => ({ data: [{ id: "p1", slug: "pair", name: "Pair", role: "owner" }] }),
   useOrgScopedProjects: () => ({ projects: [], projectIds: new Set(["p1"]) }),
 }));
-vi.mock("@/features/runners/hooks", () => ({ useDevices: () => ({ data: [] }) }));
+vi.mock("@/features/runners/hooks", () => ({
+  useDevices: () => ({ data: [] }),
+  useProjectRunners: () => ({
+    data: [{ runnerId: "r-d1", deviceId: "d1", deviceName: "box-a", platform: "linux", deviceStatus: "online", runnerStatus: "online", limitReason: null }],
+    isError: false,
+    error: null,
+  }),
+  useActiveRunners: () => ({ data: { runners: [], busy: 0 }, isError: false, error: null }),
+}));
+vi.mock("@/features/pipeline/hooks", () => ({
+  useSessionsAndHolds: () => ({ data: { sessions: [], holds: [], readAt: "" }, isError: false, error: null }),
+}));
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));
 const { mutation } = vi.hoisted(() => ({ mutation: () => ({ mutate: () => {}, isPending: false }) }));
 vi.mock("./hooks", () => ({
@@ -555,3 +567,71 @@ describe("one word for a session, on every surface (ISS-1228 round 10)", () => {
     }
   });
 });
+
+// ISS-1228 round 10: on the sessions list "Waiting for input" and "Checkpointing" wore the Working
+// sparkle, because a chip's mark followed its status and every activity is the running status.
+describe("every word a session chip shows has a mark of its own (ISS-1228 criterion 65)", () => {
+  const heard = { ...row, lastHeartbeatAt: HEARD_AT, updatedAt: HEARD_AT };
+  const shown: Array<{ session: SessionRow; status?: StatusKey }> = [
+    { session: { ...heard, runtimeState: "working" } },
+    { session: { ...heard, runtimeState: "awaiting_input" } },
+    { session: { ...heard, runtimeState: "starting" } },
+    { session: { ...heard, runtimeState: "checkpointing" } },
+    { session: { ...heard, runtimeState: "closed" } },
+    {
+      session: {
+        ...heard,
+        report: {
+          incarnation: "live",
+          work: "blocked",
+          blockerKind: "human",
+          waitingOn: "a decision",
+          observedAt: HEARD_AT,
+          since: HEARD_AT,
+        },
+      },
+    },
+    { session: { ...heard, status: "queued" } },
+    { session: { ...heard, status: "idle" } },
+    { session: row },
+    { session: { ...row, status: "completed" } },
+    { session: { ...row, status: "failed", failureReason: "crashed" } },
+    { session: { ...row, status: "cancelled" } },
+    { session: { ...row, status: "cancelled_stale" } },
+    { session: { ...heard, kind: "chat", metadata: { type: "chat" }, status: "idle" } },
+    { session: { ...heard, kind: "chat", metadata: { type: "chat" } }, status: "waiting" },
+  ];
+
+  function chipOf({ session, status }: { session: SessionRow; status?: StatusKey }): [string, string] {
+    const { container } = render(
+      <SessionChip status={status ?? statusToChip(deriveSessionDisplayStatus(session, NOW))} session={session} now={NOW} />,
+    );
+    const svg = container.querySelector("svg");
+    const mark = svg ? [...svg.children].map((c) => c.outerHTML).join("") : "";
+    const word = container.textContent ?? "";
+    cleanup();
+    return [word, mark];
+  }
+
+  it("draws a different mark for every word, Waiting for input sharing only the bell of Waiting for me", () => {
+    const chips = shown.map(chipOf);
+    const words = chips.map(([word]) => word);
+    expect(new Set(words).size, words.join(" | ")).toBe(chips.length);
+    const byMark = new Map<string, string[]>();
+    for (const [word, mark] of chips) byMark.set(mark, [...(byMark.get(mark) ?? []), word]);
+    const shared = [...byMark.values()].filter((w) => w.length > 1).map((w) => w.sort());
+    expect(shared).toEqual([["Waiting for input", "Waiting for me"]]);
+    expect(chips.every(([, mark]) => mark !== "")).toBe(true);
+  });
+
+  it("pulses only the Working word's mark", () => {
+    for (const runtimeState of ["awaiting_input", "starting", "checkpointing", "closed"]) {
+      const { container } = render(
+        <SessionChip status="running" session={{ ...heard, runtimeState }} now={NOW} />,
+      );
+      expect(container.querySelector("svg")?.getAttribute("class") ?? "").not.toMatch(/forge-pulse/);
+      cleanup();
+    }
+  });
+});
+

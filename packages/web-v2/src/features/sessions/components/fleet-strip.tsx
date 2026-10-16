@@ -9,15 +9,17 @@
 // work is queued AND zero runners are online (the silent no_worker_online mode)
 // — never when runners are merely all-busy (healthy backpressure).
 //
-// Data: useProject(projectId).devicePool + defaultDeviceId (project-scoped) ×
-// useQueueStats(projectId) (per-device queued/running). Liveness is the shared
-// deriveLiveness threshold so the strip, list, and detail never diverge.
+// Data: `useRunnerFleet`, the one summary the dashboard's Sessions live caption and Runners card
+// read too, so the strip and the dashboard never disagree about which boxes are online or busy
+// (ISS-1228); the project's defaultDeviceId; and the listed rows for the step a busy box is on.
+// Liveness is the shared deriveLiveness threshold so the strip, list, and detail never diverge.
 import { useMemo } from "react";
 import { Banner, HealthDot, Icon, MonoTag, SILENCE_TONE, SILENCE_WORD, Tooltip } from "@/design";
 import { TONE_META } from "@/design/status";
+import type { RunnerLine } from "@/features/project-dashboard/derive";
+import { useRunnerFleet } from "@/features/project-dashboard/runner-fleet";
+import { plural } from "@/features/project-dashboard/shape";
 import { useProject } from "@/features/projects/hooks";
-import { deviceHealth } from "@/features/runners/types";
-import { useQueueStats } from "../hooks";
 import {
   deriveLiveness,
   isLiveDisplay,
@@ -49,20 +51,21 @@ interface FleetStripProps {
   now: number;
 }
 
+/** A box's state in words: busy and free are said only of a box online, as the dashboard counts them. */
+function boxWord(line: RunnerLine, activityRead: boolean): string {
+  const hosting = line.sessions > 0 ? ` · ${plural(line.sessions, "live session", "live sessions")}` : "";
+  if (line.draining) return `Draining${hosting}`;
+  if (!line.online) return `Offline${hosting}`;
+  if (!activityRead) return "activity not read";
+  return line.busy ? "Busy · 1/1" : "Free · 0/1";
+}
+
 export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) {
   const projectQ = useProject(projectId);
-  const queueQ = useQueueStats(projectId);
-
-  const devicePool = projectQ.data?.devicePool ?? [];
+  const fleet = useRunnerFleet(projectId, now);
+  const lines = fleet.summary.lines;
   const defaultDeviceId = projectQ.data?.defaultDeviceId ?? null;
-
-  // Per-device queue depth from queue-stats (queued sessions waiting on that
-  // device). Sessions with no device assigned bucket under the null key.
-  const queuedByDevice = useMemo(() => {
-    const m = new Map<string | null, number>();
-    for (const d of queueQ.data?.devices ?? []) m.set(d.deviceId, d.queued);
-    return m;
-  }, [queueQ.data]);
+  const activityRead = fleet.activity.read === "ok";
 
   const boundByDevice = useMemo(() => {
     const m = new Map<string, { row: SessionRow; display: AgentSessionDisplayStatus }>();
@@ -75,9 +78,9 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
     return m;
   }, [rows, displays]);
 
-  const onlineRunners = devicePool.filter((d) => d.status === "online").length;
   const queuedCount = rows.filter((r) => r.status === "queued" || r.status === "idle").length;
-  const dispatchStalled = queuedCount > 0 && onlineRunners === 0;
+  const dispatchStalled =
+    fleet.runners.read === "ok" && queuedCount > 0 && fleet.summary.onlineCount === 0;
 
   return (
     <div className="flex flex-col gap-3">
@@ -89,18 +92,22 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
         </Banner>
       )}
 
-      {devicePool.length === 0 ? (
+      {fleet.runners.read !== "ok" ? (
+        <p className="fg-body-sm border-y border-line py-3 text-muted">
+          {fleet.runners.read === "failed" ? `Runners not read: ${fleet.runners.reason}` : "Reading runners…"}
+        </p>
+      ) : lines.length === 0 ? (
         <p className="fg-body-sm border-y border-line py-3 text-muted">No runners paired to this project yet.</p>
       ) : (
         <ul aria-label="Boxes" className="flex flex-col divide-y divide-line border-y border-line">
-          {devicePool.map((d) => {
-            const bound = boundByDevice.get(d.id);
-            const busy = !!bound;
+          {lines.map((d) => {
+            const bound = d.deviceId ? boundByDevice.get(d.deviceId) : undefined;
+            const busy = d.online && d.busy;
             const liveness = bound ? deriveLiveness(bound.row, now) : null;
             const stale = liveness?.state === "stale" || liveness?.state === "reaping";
-            const health = busy && stale ? "attention" : deviceHealth(d.status as never);
-            const isPrimary = d.id === defaultDeviceId;
-            const queued = queuedByDevice.get(d.id) ?? 0;
+            const health = d.online ? (busy && stale ? "attention" : "healthy") : d.sessions > 0 ? "attention" : "idle";
+            const isPrimary = d.deviceId !== null && d.deviceId === defaultDeviceId;
+            const queued = d.queued;
             const step = bound ? sessionStep(bound.row.metadata) : null;
             const issueRef = bound ? issueRefFromTitle(bound.row.title) : null;
 
@@ -130,17 +137,18 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
 
                 <div className="flex items-center gap-3">
                   <span
+                    data-testid="box-word"
                     className="fg-caption font-semibold"
                     style={{ color: busy ? "var(--cobalt-700)" : "var(--fg-subtle)" }}
                   >
-                    {busy ? "Busy · 1/1" : "Free · 0/1"}
+                    {boxWord(d, activityRead)}
                   </span>
                   <span className="fg-caption text-subtle" title={`${queued} queued behind this runner`}>
                     {queued > 0 ? `${queued} queued` : "no queue"}
                   </span>
                 </div>
 
-                {busy && (step || issueRef || stale) && (
+                {bound && (step || issueRef || stale) && (
                   <div className="flex items-center gap-1.5 overflow-hidden">
                     {step && <span className="fg-caption capitalize text-muted">{step}</span>}
                     {issueRef && (

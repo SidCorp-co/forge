@@ -1,8 +1,8 @@
 /**
  * One project's live agent sessions and what is held on it (ISS-1228): the pipeline surface's
  * whole read. No new state — sessions are `agent_sessions`, a session's issues are its
- * `issue_leases` or its job's `metadata.issueId` (`held-issues.ts`, which the sessions list reads
- * too), what it waits on is the box's own `device_run_ledger` entry, a claim is
+ * `issue_leases`, its job's `metadata.issueId` or its run's ledger entry (`held-issues.ts`, which the
+ * sessions list reads too), what it waits on is the box's own `device_run_ledger` entry, a claim is
  * `issues.session_context.lease` read by `readClaim`, and a person's hold is the park record.
  */
 
@@ -186,6 +186,8 @@ export function projectSessionsAndHolds(input: {
   for (const l of input.leases) {
     const issue = ref(l);
     issuesOf.set(l.session_id, [...(issuesOf.get(l.session_id) ?? []), issue]);
+    // A lease its run reports returned names the issue the session worked, and holds nothing.
+    if (!l.held) continue;
     holdOn({ ...issue, status: l.status }).holders.push({
       by: 'session',
       sessionId: l.session_id,

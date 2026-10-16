@@ -1,3 +1,5 @@
+import type { IconName } from "@/design/icons/icon";
+import { SESSION_ICONS } from "@/design/primitives/status-chip";
 import {
   BLOCKED_TONE,
   BLOCKED_WORD,
@@ -25,6 +27,7 @@ export interface SessionWord {
   /** Silent past the one-minute line, so the label says what it last reported. */
   quiet: boolean;
   activity: string;
+  icon: IconName;
 }
 
 export interface SessionWordInput extends SilenceInput {
@@ -36,19 +39,23 @@ export interface SessionWordInput extends SilenceInput {
 
 export const WAITING_FOR_INPUT_WORD = "Waiting for input";
 
-const ACTIVITY: Record<string, { label: string; tone: SemanticTone }> = {
-  starting: { label: "Starting", tone: "neutral" },
-  working: { label: WORKING_WORD, tone: "active" },
-  awaiting_input: { label: WAITING_FOR_INPUT_WORD, tone: "attention" },
-  checkpointing: { label: "Checkpointing", tone: "neutral" },
-  closed: { label: "Closing", tone: "neutral" },
+type Doing = { label: string; tone: SemanticTone; icon: IconName };
+
+/** Waiting for input is a wait on a person, so it takes the bell Waiting for me wears. */
+const ACTIVITY: Record<string, Doing> = {
+  starting: { label: "Starting", tone: "neutral", icon: "play" },
+  working: { label: WORKING_WORD, tone: "active", icon: SESSION_ICONS.running },
+  awaiting_input: { label: WAITING_FOR_INPUT_WORD, tone: "attention", icon: SESSION_ICONS.waiting },
+  checkpointing: { label: "Checkpointing", tone: "neutral", icon: "save" },
+  closed: { label: "Closing", tone: "neutral", icon: "logOut" },
 };
 
-const still = (label: string, tone: SemanticTone): SessionWord => ({
+const still = ({ label, tone, icon }: Doing): SessionWord => ({
   label,
   tone,
   quiet: false,
   activity: label,
+  icon,
 });
 
 function isQuiet(session: SilenceInput, now: number): boolean {
@@ -62,16 +69,23 @@ function isQuiet(session: SilenceInput, now: number): boolean {
  * running session gone quiet says what it last reported instead.
  */
 export function liveSessionWord(session: SessionWordInput, now: number): SessionWord {
-  if (session.status === "queued") return still("Waiting for a box", "neutral");
-  if (session.status === "idle") return still("Not started", "neutral");
+  if (session.status === "queued")
+    return still({ label: "Waiting for a box", tone: "neutral", icon: SESSION_ICONS.queued });
+  if (session.status === "idle") return still({ label: "Not started", tone: "neutral", icon: "dashed" });
   const activity = session.runtimeState ? ACTIVITY[session.runtimeState] : undefined;
-  const doing =
+  const doing: Doing =
     session.report?.work === "blocked"
-      ? { label: BLOCKED_WORD, tone: BLOCKED_TONE }
-      : (activity ?? { label: WORKING_WORD, tone: "active" as const });
+      ? { label: BLOCKED_WORD, tone: BLOCKED_TONE, icon: SESSION_ICONS.blocked }
+      : (activity ?? ACTIVITY.working);
   return isQuiet(session, now)
-    ? { label: lastReported(doing.label), tone: "neutral", quiet: true, activity: doing.label }
-    : still(doing.label, doing.tone);
+    ? {
+        label: lastReported(doing.label),
+        tone: "neutral",
+        quiet: true,
+        activity: doing.label,
+        icon: SESSION_ICONS.zombie,
+      }
+    : still(doing);
 }
 
 /** The word for any session: `null` for one that has ended, and for a chat, whose idle is a turn

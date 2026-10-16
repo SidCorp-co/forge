@@ -24,7 +24,18 @@ vi.mock("@/features/projects/hooks", () => ({
   useProjects: () => ({ data: [{ id: "p1", slug: "pair", name: "Pair", role: "owner" }] }),
   useOrgScopedProjects: () => ({ projects: [], projectIds: new Set(["p1"]) }),
 }));
-vi.mock("@/features/runners/hooks", () => ({ useDevices: () => ({ data: [] }) }));
+vi.mock("@/features/runners/hooks", () => ({
+  useDevices: () => ({ data: [] }),
+  useProjectRunners: () => ({
+    data: [{ runnerId: "r-d1", deviceId: "d1", deviceName: "box-a", platform: "linux", deviceStatus: "online", runnerStatus: "online", limitReason: null }],
+    isError: false,
+    error: null,
+  }),
+  useActiveRunners: () => ({ data: { runners: [], busy: 0 }, isError: false, error: null }),
+}));
+vi.mock("@/features/pipeline/hooks", () => ({
+  useSessionsAndHolds: () => ({ data: { sessions: [], holds: [], readAt: "" }, isError: false, error: null }),
+}));
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));
 const { mutation } = vi.hoisted(() => ({ mutation: () => ({ mutate: () => {}, isPending: false }) }));
 vi.mock("./hooks", () => ({

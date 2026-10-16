@@ -1,8 +1,9 @@
 /**
  * ISS-1228 — the sessions list names every issue a session holds by its key and title. Round 9: a
  * step session's chip read "Issue" for a session the Pipeline page showed on ISS-2. Round 10: a run
- * session the Pipeline page showed on its leased issues named none on the list. Read through the
- * route the web reads, against a live database.
+ * session the Pipeline page showed on its leased issues named none on the list, and one whose run's
+ * ledger entry reported ISS-3 named none either. Read through the route the web reads, and the
+ * Pipeline page's read, against a live database.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -95,6 +96,24 @@ async function lease(sessionId: string, seq: number): Promise<void> {
   `);
 }
 
+/** The run's own report of the issues it holds: `[seq, returned]` each, as the box's snapshot sends them. */
+async function ledger(
+  sessionId: string,
+  runId: string,
+  issues: Array<[number, boolean]>,
+): Promise<void> {
+  const reported = issues.map(([seq, leaseReturned]) => ({
+    issueKey: `ISS-${seq}`,
+    leaseReturned,
+  }));
+  await harness.db.execute(sql`
+    INSERT INTO device_run_ledger (device_id, run_id, project_id, session_id, worktree_path, boot_id,
+                                   incarnation, work, blocker_kind, waiting_on, issues, observed_at)
+    VALUES (${deviceId}::uuid, ${runId}, ${projectId}::uuid, ${sessionId}::uuid, '/w', 'boot-1', 'live',
+            'blocked', 'human', 'a decision on the schema', ${JSON.stringify(reported)}::jsonb, now())
+  `);
+}
+
 async function prefix(): Promise<string | null> {
   const [project] = (await harness.db.execute(sql`
     SELECT issue_prefix FROM projects WHERE id = ${projectId}::uuid
@@ -158,5 +177,50 @@ describe("the sessions list names a session's issues (ISS-1228)", () => {
     const rows = await listed();
     expect(rows.get(foreign)).toEqual([]);
     expect(rows.get(junk)).toEqual([]);
+  });
+
+  // ISS-1228 round 10: "run: quiet india" named no issue on the list while its Needs you row and
+  // the runs tab showed it waiting on ISS-3 — the run's ledger entry named it, and no lease did.
+  it('gives a run session the issues its ledger entry reports, held or returned, once each', async () => {
+    const three = await issue(projectId, 3, 'Three');
+    const six = await issue(projectId, 6, 'Six');
+    const run = await runSession();
+    await ledger(run, 'run-india', [
+      [3, false],
+      [6, true],
+    ]);
+    await ledger(run, 'run-india-again', [[3, false]]);
+    const { formatIssueRef } = await import('../../src/lib/issue-ref.js');
+    const p = await prefix();
+    expect((await listed()).get(run)).toEqual([
+      { id: three, displayId: formatIssueRef(p, 3), title: 'Three' },
+      { id: six, displayId: formatIssueRef(p, 6), title: 'Six' },
+    ]);
+
+    const { readSessionsAndHolds } = await import('../../src/pipeline/sessions-and-holds.js');
+    const pipeline = await readSessionsAndHolds(projectId, new Date());
+    expect(pipeline.sessions.find((s) => s.id === run)?.issues.map((i) => i.issueId)).toEqual([
+      three,
+      six,
+    ]);
+    // A lease the run has returned is no hold, though the run worked that issue.
+    expect(pipeline.holds.map((h) => [h.issueId, h.holders.map((x) => x.by)])).toEqual([
+      [three, ['session']],
+    ]);
+  });
+
+  it('names an issue a lease and the ledger both name once, and none the ledger names in another project', async () => {
+    await issue(projectId, 3, 'Three');
+    const elsewhere = (await createTestProject(harness.db, ownerId)).id;
+    await issue(elsewhere, 7, 'Not yours');
+    const run = await runSession();
+    await lease(run, 3);
+    await ledger(run, 'run-1', [
+      [3, false],
+      [7, false],
+    ]);
+    expect(((await listed()).get(run) as Array<{ title: string }>).map((i) => i.title)).toEqual([
+      'Three',
+    ]);
   });
 });

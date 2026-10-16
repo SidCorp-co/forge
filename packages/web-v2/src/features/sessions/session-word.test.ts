@@ -37,6 +37,7 @@ describe("liveSessionWord — what a session is doing, in words", () => {
       tone: "neutral",
       quiet: true,
       activity: "Working",
+      icon: "quiet",
     });
     expect(liveSessionWord({ ...silent, runtimeState: "awaiting_input" }, AT).label).toBe(
       "Last reported waiting for input",
@@ -51,6 +52,7 @@ describe("liveSessionWord — what a session is doing, in words", () => {
       tone: "attention",
       quiet: false,
       activity: "Blocked",
+      icon: "pause",
     });
     expect(liveSessionWord({ ...heard, lastHeartbeatAt: SILENT }, AT).label).toBe("Last reported blocked");
     expect(liveSessionWord({ ...heard, lastHeartbeatAt: HEARD, report: { work: "runnable" } }, AT).label).toBe(

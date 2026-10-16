@@ -3,6 +3,7 @@
 // project unread, never quiet.
 
 import { formatElapsed } from "@/features/overview/derive";
+import { formatApiError } from "@/lib/api/error";
 import type { IssueRow } from "@/features/issues/types";
 import type { PipelineRunListItem, ThroughputRow } from "@/features/runs/types";
 import type { AttentionCut, DashboardAttentionItem } from "./derive";
@@ -51,6 +52,18 @@ export function stuckRuns(idle: readonly PipelineRunListItem[], now: number): Pi
 
 /** One read the page depends on: where it stands, and why when it did not arrive. */
 export type ReadState = { read: "pending" } | { read: "failed"; reason: string } | { read: "ok" };
+
+/** Where one query stands: a read that failed (even over an earlier answer) or has not arrived is never an empty one. */
+export function readOf(q: { isError: boolean; error: unknown; data: unknown }): ReadState {
+  if (q.isError) return { read: "failed", reason: formatApiError(q.error) };
+  return q.data === undefined ? { read: "pending" } : { read: "ok" };
+}
+
+/** One state for several queries a figure depends on: failed if any failed, else pending if any is. */
+export function readOfAll(...qs: Array<{ isError: boolean; error: unknown; data: unknown }>): ReadState {
+  const states = qs.map(readOf);
+  return states.find((r) => r.read === "failed") ?? states.find((r) => r.read === "pending") ?? { read: "ok" };
+}
 
 export type ProjectShape = "quiet" | "working" | "degraded" | "unread";
 

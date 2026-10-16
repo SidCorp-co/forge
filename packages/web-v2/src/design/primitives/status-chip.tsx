@@ -11,6 +11,8 @@ export interface StatusChipProps {
   /** Status vocabulary this chip belongs to. Defaults to `issue`. */
   domain?: StatusDomain;
   label?: string;
+  /** A session chip's mark where its word is not its status's: one mark per word a session shows. */
+  icon?: IconName;
 }
 
 /** Execution-vocabulary overrides for the `session` domain so an agent run reads
@@ -47,7 +49,7 @@ export const SESSION_ICONS: Readonly<Record<StatusKey, IconName>> = {
   swept: "archive",
 };
 
-export function StatusChip({ status, stage, size = "md", domain = "issue", label }: StatusChipProps) {
+export function StatusChip({ status, stage, size = "md", domain = "issue", label, icon }: StatusChipProps) {
   const base = STATUS_META[status] ?? STATUS_META.queued;
   const tone = domain === "session" ? SESSION_TONES[status] : undefined;
   const m = tone ? { ...base, fg: tone.fg, bg: tone.bg, dot: tone.dot } : base;
@@ -56,6 +58,7 @@ export function StatusChip({ status, stage, size = "md", domain = "issue", label
   const baseLabel = isSession ? (label ?? SESSION_LABELS[status] ?? m.label) : (label ?? m.label);
   const text = stage && isRunning ? `${baseLabel} · ${stage}` : baseLabel;
   const mono = isSession || (stage && isRunning);
+  const mark = icon ?? SESSION_ICONS[status] ?? SESSION_ICONS.queued;
   return (
     <span
       className={`inline-flex items-center gap-1.5 whitespace-nowrap font-semibold ${
@@ -72,9 +75,9 @@ export function StatusChip({ status, stage, size = "md", domain = "issue", label
     >
       {isSession ? (
         <Icon
-          name={SESSION_ICONS[status] ?? SESSION_ICONS.queued}
+          name={mark}
           size={size === "sm" ? 11 : 12}
-          className={isRunning ? "forge-pulse" : ""}
+          className={isRunning && mark === SESSION_ICONS.running ? "forge-pulse" : ""}
           style={{ color: m.dot }}
         />
       ) : (

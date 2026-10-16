@@ -408,6 +408,7 @@ export function attentionCaption(
 
 export interface RunnerLine {
   id: string;
+  deviceId: string | null;
   name: string;
   platform: NonNullable<ProjectRunner["platform"]>;
   online: boolean;
@@ -464,6 +465,7 @@ export function runnersSummary(
       const busy = hosted > 0 || (act ? !!act.current : online && q.running > 0);
       return {
         id: r.runnerId,
+        deviceId: r.deviceId ?? null,
         name: r.deviceName ?? act?.name ?? "unnamed runner",
         platform: r.platform ?? "linux",
         online,

@@ -14,6 +14,14 @@ export interface SessionChipProps extends Omit<StatusChipProps, "domain" | "labe
 /** A session's chip on every screen: `sessionWord`'s word while it is heard from, else Quiet. */
 export function SessionChip({ session, now, ...props }: SessionChipProps) {
   const word = session ? sessionWord(session, now ?? Date.now()) : null;
-  const label = word && !word.quiet ? word.label : SESSION_WORD[props.status];
-  return <StatusChip {...props} domain="session" {...(label ? { label } : {})} />;
+  const heard = word && !word.quiet ? word : null;
+  const label = heard ? heard.label : SESSION_WORD[props.status];
+  return (
+    <StatusChip
+      {...props}
+      domain="session"
+      {...(label ? { label } : {})}
+      {...(heard ? { icon: heard.icon } : {})}
+    />
+  );
 }
