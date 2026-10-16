@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { FRESH_SIGHTING_LIMIT, pendingSightingLimit, withOwed } from './owed-sighting.js';
+import {
+  FRESH_SIGHTING_LIMIT,
+  pendingSightingLimit,
+  RELEASED_PER_PASS,
+  withOwed,
+} from './owed-sighting.js';
 
 const row = (id: string, from: string) => ({ id, from });
 
@@ -22,6 +27,6 @@ describe('the rows a paged sweep reads in one pass (ISS-1229 r12)', () => {
   });
 
   it('re-sights every condition three passes can have left pending', () => {
-    expect(pendingSightingLimit(200)).toBe(3 * (200 + FRESH_SIGHTING_LIMIT));
+    expect(pendingSightingLimit(200)).toBe(3 * (200 + FRESH_SIGHTING_LIMIT + RELEASED_PER_PASS));
   });
 });

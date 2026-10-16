@@ -314,4 +314,45 @@ describe('the rows a pass owes a sighting, on a board that is hard to read', () 
 
     expect((await noticesOf(issueId)).map((n) => n.state)).toEqual(['pending']);
   }, 60_000);
+
+  it('releases a backlog in batches a pass can see again, holding the rest rather than dropping it', async () => {
+    const w = await world();
+    const t0 = Date.now();
+    await board(w, 'open', t0, false);
+    const long = new Date(t0 - HOUR).toISOString();
+    const [wedge] = (await harness.db.execute(sql`
+      INSERT INTO notifications (project_id, type, kind, tier, state, title, resolution_key, created_at, resolved_at)
+      VALUES (${w.projectId}::uuid, 'pipeline_wedge', 'condition', 'page', 'resolved', 'wedge',
+              'wedge:cleared', ${long}::timestamptz, ${new Date(t0).toISOString()}::timestamptz)
+      RETURNING id
+    `)) as unknown as Array<{ id: string }>;
+    await harness.db.execute(sql`
+      INSERT INTO notifications (project_id, issue_id, type, kind, tier, state, title, resolution_key,
+                                 inhibited_by, pending_since, last_seen_at, created_at)
+      SELECT i.project_id, i.id, 'issue_stranded', 'condition', 'ticket', 'inhibited', 'held',
+             'issue:' || i.id || ':idle', ${wedge?.id}::uuid,
+             ${long}::timestamptz, ${long}::timestamptz, ${long}::timestamptz
+        FROM issues i
+    `);
+    // Each was raised by an idle pass, which writes its finding on the row before it raises.
+    await harness.db.execute(
+      sql`UPDATE issues SET session_context = jsonb_build_object('strand', '{}'::jsonb)`,
+    );
+    const states = async () =>
+      (await harness.db.execute(sql`
+        SELECT state, count(*)::int AS n FROM notifications
+         WHERE type = 'issue_stranded' GROUP BY state ORDER BY state
+      `)) as unknown as Array<{ state: string; n: number }>;
+
+    await reevaluate(new Date(t0));
+    expect(await states()).toEqual([
+      { state: 'inhibited', n: BOARD - 200 },
+      { state: 'pending', n: 200 },
+    ]);
+
+    for (let t = t0 + MINUTE; t <= t0 + 20 * MINUTE; t += MINUTE)
+      await tick(sweeps.idle, new Date(t));
+
+    expect(await states()).toEqual([{ state: 'firing', n: BOARD }]);
+  }, 600_000);
 });
