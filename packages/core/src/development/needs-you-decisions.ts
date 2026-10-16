@@ -26,12 +26,11 @@ import { type OpenPersonQuestion, readOpenPersonQuestions } from '../questions/i
 import { type AttentionRow, type NeedsYouViewer, owedOf, readAttention } from './needs-you.js';
 import {
   agreeDecision,
-  type Built,
-  feedbackDecision,
-  questionDecision,
+  designDecision,
   releaseDecision,
   revisionDecision,
-} from './needs-you-decision-builders.js';
+} from './needs-you-approve-builders.js';
+import { type Built, feedbackDecision, questionDecision } from './needs-you-decision-builders.js';
 import { releaseApprovalsOfRuns } from './ports.js';
 
 /** How many decisions one answer carries; `total` counts them all. */
@@ -53,6 +52,9 @@ const AWAITING_PROPOSAL: ReadonlySet<string> = new Set(['issues.standing.act.tak
 /** A draft Forge asked to merge, drop or keep (BC-12): its question is the decision. */
 const MERGE_OR_DROP = 'standing.act.mergeOrDrop';
 
+/** A design revision proposed to its approver (`workflows/design-standing.ts:proposedWait`). */
+const DESIGN_PROPOSED = 'designs.act.approveOrReturn';
+
 /** The issue acts a person owes as the answer to a run's question. */
 const ANSWER_ACTS: ReadonlySet<string> = new Set([
   'issues.standing.act.answer',
@@ -69,6 +71,8 @@ interface Facts {
   releaseOf: ReadonlyMap<string, { runId: string | null; failing: number; total: number }>;
   approvalOf: ReadonlyMap<string, string>;
   feedbackAnswerOf: ReadonlyMap<string, string | null>;
+  /** Each design whose proposed revision waits on a person, by flow. */
+  designOf: ReadonlyMap<string, { workflowId: string; revision: number }>;
   projectId: string;
 }
 
@@ -146,19 +150,35 @@ function classify(row: AttentionRow, area: NeedsYouAreaKey, f: Facts): Classifie
       approvalId,
     );
   }
+  if (row.entity === 'workflow' && act.key === DESIGN_PROPOSED) {
+    const design = f.designOf.get(row.key);
+    if (!design || row.standing.waitingOn.kind !== 'you') return { reason: 'work' };
+    return designDecision(row, area, f.projectId, design);
+  }
   if (row.entity === 'feedback' && act.key === 'standing.act.confirmAnswer') {
     return feedbackDecision(row, area, f.projectId, f.feedbackAnswerOf.get(row.key) ?? null);
   }
   return { reason: 'work' };
 }
 
-export async function readNeedsYouDecisions(
+/** One row the viewer owes, built into the decision it is. */
+export interface OwedDecision {
+  area: NeedsYouAreaKey;
+  row: AttentionRow;
+  decision: NeedsYouDecision;
+}
+
+type Attention = Awaited<ReturnType<typeof readAttention>>;
+
+/**
+ * The viewer's owed rows of one attention read, each a decision or counted under why it is not one:
+ * the one classification the needs-me read and the approval inbox both take.
+ */
+export async function decisionsOf(
   projectId: string,
-  viewer: NeedsYouViewer,
-  now: Date = new Date(),
-): Promise<NeedsYouDecisions> {
-  const attention = await readAttention(projectId, viewer, now);
-  const owed = owedOf(attention.rows);
+  attention: Attention,
+): Promise<{ owed: OwedDecision[]; left: Map<NeedsYouNotDecisionReason, string[]> }> {
+  const owedRows = owedOf(attention.rows);
   const runIds = attention.releases.releases.flatMap((r) =>
     r.state === 'awaiting_approval' && r.runId ? [r.runId] : [],
   );
@@ -188,12 +208,17 @@ export async function readNeedsYouDecisions(
     ),
     approvalOf: new Map(approvals.filter((a) => a.decision === null).map((a) => [a.runId, a.id])),
     feedbackAnswerOf: new Map(attention.feedback.map((f) => [f.key, f.route?.answer ?? null])),
+    designOf: new Map(
+      [...attention.health.values()].flatMap((h) =>
+        h.proposal ? [[h.flow, { workflowId: h.workflowId, revision: h.proposal.revision }]] : [],
+      ),
+    ),
   };
-  const decisions: NeedsYouDecision[] = [];
+  const owed: OwedDecision[] = [];
   const asked = new Set<string>();
   const left = new Map<NeedsYouNotDecisionReason, string[]>();
   const asks = NEEDS_YOU_AREAS.filter((a) => NEEDS_YOU_AREA_SPACE[a] === 'asks').flatMap((area) =>
-    owed[area].map((row) => ({ area, row })),
+    owedRows[area].map((row) => ({ area, row })),
   );
   // an issue's own row answers its question before a requirement it holds up names the same one
   const heldUp = (r: AttentionRow) => actOf(r).key === 'standing.act.onIssue';
@@ -209,9 +234,18 @@ export async function readNeedsYouDecisions(
     // a requirement held up by an issue's question and the issue itself are one decision
     if (c.questionId && asked.has(c.questionId)) continue;
     if (c.questionId) asked.add(c.questionId);
-    decisions.push(c.decision);
+    owed.push({ area, row, decision: c.decision });
   }
-  decisions.sort(byDecisionOrder);
+  return { owed, left };
+}
+
+export async function readNeedsYouDecisions(
+  projectId: string,
+  viewer: NeedsYouViewer,
+  now: Date = new Date(),
+): Promise<NeedsYouDecisions> {
+  const { owed, left } = await decisionsOf(projectId, await readAttention(projectId, viewer, now));
+  const decisions = owed.map((o) => o.decision).sort(byDecisionOrder);
   return needsYouDecisionsSchema.parse({
     generatedAt: now.toISOString(),
     decisions: decisions.slice(0, DECISIONS_MAX),

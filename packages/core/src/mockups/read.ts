@@ -201,3 +201,19 @@ export async function mockupRowsOn(
     .where(and(eq(mockups.projectId, projectId), on))
     .orderBy(asc(mockups.mockupSeq));
 }
+
+/**
+ * The proposed mockups of `projectId` the viewer may accept, oldest first, for the approval inbox. A
+ * requirement's mockup is decided with its revision (REQ-35), so it never waits here on its own.
+ */
+export async function waitingMockupsAs(
+  projectId: string,
+  viewer: MockupActor,
+): Promise<MockupView[]> {
+  const rows = await db
+    .select()
+    .from(mockups)
+    .where(and(eq(mockups.projectId, projectId), eq(mockups.status, 'proposed')))
+    .orderBy(asc(mockups.createdAt));
+  return (await mockupViews(projectId, rows, viewer)).filter((m) => m.can.accept);
+}

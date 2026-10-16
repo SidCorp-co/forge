@@ -300,11 +300,16 @@
         "issues",
         "labels",
         "masterPasses",
+        "mockups",
+        "previews",
+        "projectWorkflowDesigns",
         "projects",
         "releaseApprovals",
-        "requirements"
+        "requirementRevisions",
+        "requirements",
+        "suggestions"
       ],
-      "serves": ["REQ-11", "REQ-14", "automation#needs_you"]
+      "serves": ["REQ-8", "REQ-11", "REQ-14", "automation#needs_you"]
     },
     "devices": {
       "kind": "kernel",
@@ -1224,6 +1229,9 @@
     },
     "agents": {
       "serves": ["REQ-15", "agent-run-standing"]
+    },
+    "approvals": {
+      "serves": ["REQ-8", "REQ-11", "REQ-41"]
     },
     "attachments": {
       "serves": ["via:issues", "via:feedback"]

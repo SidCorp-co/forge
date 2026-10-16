@@ -2,7 +2,7 @@
 import { type QueryKey, useQuery } from "@tanstack/react-query";
 import { readOf, useWrite } from "@/lib/api/query-kit";
 import { type SuggestionTargetFilter, suggestionsApi } from "./api";
-import type { SuggestionDecision } from "./types";
+import type { SuggestionAuthorAct, SuggestionDecision } from "./types";
 
 /** The suggestions waiting on a requirement or feedback item for a person to accept or reject. */
 export const useWaitingSuggestions = (projectId: string | undefined, target: SuggestionTargetFilter | undefined, enabled = true) =>
@@ -24,3 +24,9 @@ export const requirementAffected = (projectId: string, requirement: string): Que
   ["requirement", projectId, requirement],
   ["requirements", projectId],
 ];
+
+/** Its author revises or withdraws a suggestion; what it was on is read again, and the approval inbox with it. */
+export const useSuggestionAuthorAct = (projectId: string, affected: readonly QueryKey[]) =>
+  useWrite((a: SuggestionAuthorAct) => suggestionsApi.author(projectId, a), {
+    touches: [["suggestions", projectId], ["approvals"], ...affected],
+  });

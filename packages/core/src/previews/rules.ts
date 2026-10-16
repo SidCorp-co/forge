@@ -115,6 +115,9 @@ export function previewPlan(
 }
 
 /** The states a preview leaves only by a move: a run's one preview stands at one of these. */
+/** The states an issue's preview is approved from: serving, or closed idle with its change kept. */
+export const APPROVABLE_STATES: readonly PreviewState[] = ['live', 'idle_closed'];
+
 export const OPEN_STATES: readonly PreviewState[] = PREVIEW_MACHINE.states.filter(
   (s) => !(PREVIEW_MACHINE.terminal as readonly string[]).includes(s),
 );

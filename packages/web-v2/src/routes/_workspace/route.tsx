@@ -48,6 +48,7 @@ import { useRecents } from "@/lib/navigation/recents";
 import { usePinnedViews } from "@/lib/navigation/pinned-views";
 import { ChatDock } from "@/features/conversations/components/chat-dock";
 import { ChatDockProvider, useChatDockState } from "@/features/chat-dock";
+import { useApprovals } from "@/features/approvals";
 import { useNeedsYou } from "@/features/needs-you";
 import { WorkspaceSidebar } from "@/features/shell/components/workspace-sidebar";
 import { SidebarSearch } from "@/features/shell/components/sidebar-search";
@@ -163,6 +164,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const releases = useReleases(railRef).data?.releases;
   const tourRelease = (releases?.find((r) => r.current) ?? releases?.[0])?.version ?? null; // any release carries a tour's anchors
   const needsYou = useNeedsYou(railRef).data;
+  const approvals = useApprovals(railRef).data;
   const slug = activeSlug(pathname);
 
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -216,7 +218,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
           attentionCount={attentionCount}
           railSlug={railSlug}
           rail={rail}
-          badges={{ needsYou }}
+          badges={{ needsYou, approvals }}
           onNavigate={navigate}
           onRoute={(href) => router.push(href)}
           onSignOut={() => void logout()}
@@ -234,7 +236,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         railProjectName={railProject?.name}
         activeKey={activeKey}
         attentionCount={attentionCount}
-        badges={{ needsYou }}
+        badges={{ needsYou, approvals }}
         scopedProjects={scopedProjects}
         onNavigate={navigate}
         onOpenProject={(s) => router.push(`/projects/${s}`)}

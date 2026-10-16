@@ -34,7 +34,7 @@ describe("the nav model", () => {
 
   it("groups the product record under Product, open, and the build machinery under Delivery (REQ-34 BC-23)", () => {
     const menu = projectMenu({});
-    expect(menu.map((e) => e.label)).toEqual(["Dashboard", "Product", "Delivery"]);
+    expect(menu.map((e) => e.label)).toEqual(["Dashboard", "Approvals", "Product", "Delivery"]);
     const groups = menu.filter(isNavGroup);
     expect(groups.map((g) => [g.key, g.defaultOpen])).toEqual([
       ["product", true],
@@ -51,6 +51,17 @@ describe("the nav model", () => {
     const delivery = projectMenu({ needsYou }).filter(isNavGroup).find((g) => g.key === "delivery");
     expect(delivery?.items.find((it) => it.key === "proj-issues")).toMatchObject({ badge: 2 });
     expect(delivery?.items.find((it) => it.key === "proj-modules")?.badge).toBeUndefined();
+  });
+
+  it("puts Approvals beside the Dashboard, counted by the inbox's own read, and lights it on its page", () => {
+    const approvals = { generatedAt: "2026-10-16T00:00:00.000Z", items: [], total: 4 };
+    const row = projectMenu({ approvals }).find((e) => e.key === "proj-approvals");
+    expect(row).toMatchObject({ label: "Approvals", badge: 4, badgeHint: "4 waiting on your decision" });
+    expect(PROJECT_ITEMS.find((it) => it.key === "proj-approvals")?.sub).toBe("/approvals");
+    expect(buildActiveKey("/projects/hop/approvals", "hop")).toBe("proj-approvals");
+    // nothing read yet: no count rather than a zero that is not known
+    expect(projectMenu({}).find((e) => e.key === "proj-approvals")?.badge).toBeUndefined();
+    expect(projectMenu({ approvals: { ...approvals, total: 0 } }).find((e) => e.key === "proj-approvals")).toMatchObject({ badge: 0 });
   });
 
   it("lights a Product row on its own page", () => {
