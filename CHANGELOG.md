@@ -3249,6 +3249,7 @@
 - **A release reason about two live deploy bindings speaks of both,** "none of them names a probe… remove them", where it went on as if there were one. (ISS-1229)
 - **A link under a release reason agrees with what it counts:** "Check the live bindings' verify steps" beside two bindings, "Open the issue at Awaiting release" beside one. Three release runner labels are no longer called two. (ISS-1229)
 - **An agent's issue update whose status move is refused writes nothing,** whether the issue already has that status, the move is illegal or nothing shipped; the refusal says so, where fields used to land anyway. (ISS-1229)
+- **Changing many issues at once writes nothing for an issue whose status move is refused:** its priority and category stay as they were, and it is listed as skipped with the reason and a line saying nothing else was written. (ISS-1229)
 - **An archived project sends no more stuck-issue notices,** and the ones it had open are resolved. (ISS-1229)
 - **Shape & release no longer says a project ships nothing because its base branch is empty.** Under a shape that releases, the Live block says no deploy connection serves it and asks for the base branch. (ISS-1171)
 - **A refused test credential is named by its label, every time.** The form and a refused save name each row the same way, and by its number only where it has no label. (ISS-1171)

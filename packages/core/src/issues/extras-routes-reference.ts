@@ -58,11 +58,19 @@ export const batchResultSchema = z.object({
     z.object({
       id: z.string(),
       displayId: z.string(),
-      skipReason: skipReasonSchema.optional(),
       rewritten: rewrittenSchema.optional(),
     }),
   ),
-  skipped: z.array(z.object({ id: z.string(), reason: skipReasonSchema })),
+  skipped: z.array(
+    z.object({
+      id: z.string(),
+      reason: skipReasonSchema,
+      detail: z
+        .string()
+        .optional()
+        .describe('Set when a refused status move left the fields sent beside it unwritten.'),
+    }),
+  ),
   failed: z.array(z.object({ id: z.string(), error: z.string() })),
 });
 
@@ -101,7 +109,7 @@ export const runPipelineStepAnswerSchema = z.object({
 export const patchIssuesBatch = describeOperation({
   summary: 'Change the status, priority or category of up to 100 issues at once',
   description:
-    'Never refused as a whole: each issue lands in `updated`, `skipped` or `failed`. A status move the state machine refused is named in `skipReason` when other fields were still written.',
+    'Never refused as a whole: each issue lands in `updated`, `skipped` or `failed`. The priority and category of an issue are written in the same transaction as its status move: a move the state machine refused skips that issue under its reason and writes nothing else for it.',
   responses: { 200: json(batchResultSchema), 404: NO_SUCH_PROJECT },
 });
 

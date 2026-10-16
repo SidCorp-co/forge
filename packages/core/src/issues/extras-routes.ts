@@ -61,6 +61,99 @@ const noEnrichPrompt = () =>
     cause: { code: POOL_JOB_NO_PROMPT, lane: 'enrich' },
   });
 
+type BatchRow = {
+  id: string;
+  issSeq: number;
+  projectId: string;
+  status: string;
+  priority: string;
+  category: string | null;
+  reopenCount: number;
+};
+type TerminalTransition = Parameters<typeof triggerTerminalDispatch>[0][number];
+type BatchRowOutcome =
+  | { kind: 'skipped'; reason: BatchSkipReason; detail?: string }
+  | { kind: 'updated'; rewritten: TransitionRewrite | null; terminal: TerminalTransition | null };
+
+const NOTHING_ELSE_WRITTEN =
+  'The status move was refused, so nothing else this update carried was written for this issue: send it again without `status` to write the rest.';
+
+/** One issue of a batch. Its priority and category are written inside its status move's own
+ *  transaction, so a move the state machine refuses leaves the issue exactly as it was. */
+async function patchBatchRow(
+  row: BatchRow,
+  data: z.infer<typeof batchPatchBodySchema>['data'],
+  actor: ReturnType<typeof restActor>,
+): Promise<BatchRowOutcome> {
+  const before: Record<string, unknown> = {};
+  const after: Record<string, unknown> = {};
+  for (const [key, next, current] of [
+    ['priority', data.priority, row.priority],
+    ['category', data.category, row.category],
+  ] as const) {
+    if (next === undefined || next === current) continue;
+    before[key] = current;
+    after[key] = next;
+  }
+  const fields = Object.keys(after);
+  const set = { ...after, updatedAt: sql`now()` };
+
+  let rewritten: TransitionRewrite | null = null;
+  let terminal: TerminalTransition | null = null;
+  if (data.status === undefined) {
+    if (fields.length === 0) return { kind: 'skipped', reason: 'no_op' };
+    await db.update(issues).set(set).where(eq(issues.id, row.id));
+  } else {
+    const toStatus = data.status;
+    try {
+      const moved = await transitionIssueStatus(
+        {
+          id: row.id,
+          projectId: row.projectId,
+          status: row.status as IssueStatus,
+          reopenCount: row.reopenCount,
+        },
+        toStatus,
+        actor,
+        {
+          reason: data.reason || undefined,
+          transitionReason: data.reason || undefined,
+          beforeStatusWrite: async (tx) => {
+            if (fields.length > 0) await tx.update(issues).set(set).where(eq(issues.id, row.id));
+          },
+        },
+      );
+      rewritten = moved.rewritten;
+      if (moved.terminal) {
+        terminal = {
+          issueId: row.id,
+          projectId: row.projectId,
+          issSeq: row.issSeq,
+          at: moved.updatedAt,
+          ...(toStatus === 'dropped' ? { dependents: moved.unblockedDependents } : {}),
+        };
+      }
+    } catch (err) {
+      if (!(err instanceof TransitionError)) throw err;
+      const reason = BATCH_SKIP_BY_CODE[err.code];
+      return fields.length > 0
+        ? { kind: 'skipped', reason, detail: NOTHING_ELSE_WRITTEN }
+        : { kind: 'skipped', reason };
+    }
+  }
+  if (fields.length > 0) {
+    await hooks.emit('issueUpdated', {
+      issueId: row.id,
+      projectId: row.projectId,
+      actor,
+      fields,
+      before,
+      after,
+    });
+  }
+  return { kind: 'updated', rewritten, terminal };
+}
+
 export const issueExtrasRoutes = new Hono<{ Variables: AuthVars }>();
 issueExtrasRoutes.use('*', requireAuth(), assertEmailVerified());
 
@@ -140,80 +233,9 @@ issueExtrasRoutes.patch(
         continue;
       }
 
-      let touched = false;
-      let skipReason: BatchSkipReason | null = null;
-      let rewritten: TransitionRewrite | null = null;
-
+      let outcome: BatchRowOutcome;
       try {
-        if (data.status !== undefined) {
-          const fromStatus = row.status as IssueStatus;
-          const toStatus = data.status;
-          try {
-            const transitioned = await transitionIssueStatus(
-              {
-                id: row.id,
-                projectId: row.projectId,
-                status: fromStatus,
-                reopenCount: row.reopenCount,
-              },
-              toStatus,
-              actor,
-              { reason: data.reason || undefined, transitionReason: data.reason || undefined },
-            );
-            touched = true;
-            row.status = transitioned.status;
-            row.reopenCount = transitioned.reopenCount;
-            rewritten = transitioned.rewritten;
-            if (transitioned.terminal) {
-              terminalTransitions.push({
-                issueId: row.id,
-                projectId: row.projectId,
-                issSeq: row.issSeq,
-                at: transitioned.updatedAt,
-                ...(toStatus === 'dropped' ? { dependents: transitioned.unblockedDependents } : {}),
-              });
-            }
-          } catch (err) {
-            if (!(err instanceof TransitionError)) throw err;
-            // Single-issue `/transition` 409s/422s on these. The batch
-            // surfaces them via skipReason instead so callers can see that
-            // the status request was rejected even when other fields
-            // succeeded.
-            skipReason = BATCH_SKIP_BY_CODE[err.code];
-          }
-        }
-
-        const plainUpdates: Record<string, unknown> = {};
-        const before: Record<string, unknown> = {};
-        const after: Record<string, unknown> = {};
-        const changedFields: string[] = [];
-        const plainFields = [
-          { key: 'priority' as const, next: data.priority, current: row.priority },
-          { key: 'category' as const, next: data.category, current: row.category },
-        ];
-        for (const f of plainFields) {
-          if (f.next !== undefined && f.next !== f.current) {
-            plainUpdates[f.key] = f.next;
-            before[f.key] = f.current;
-            after[f.key] = f.next;
-            changedFields.push(f.key);
-          }
-        }
-        if (changedFields.length > 0) {
-          await db
-            .update(issues)
-            .set({ ...plainUpdates, updatedAt: sql`now()` })
-            .where(eq(issues.id, row.id));
-          touched = true;
-          await hooks.emit('issueUpdated', {
-            issueId: row.id,
-            projectId: row.projectId,
-            actor,
-            fields: changedFields,
-            before,
-            after,
-          });
-        }
+        outcome = await patchBatchRow(row, data, actor);
       } catch (err) {
         result.failed.push({
           id: row.id,
@@ -221,24 +243,17 @@ issueExtrasRoutes.patch(
         });
         continue;
       }
-
-      if (touched) {
-        const entry: BatchResult['updated'][number] = {
-          id: row.id,
-          displayId: formatIssueRef(prefixMap.get(row.projectId) ?? null, row.issSeq),
-        };
-        // A status request that was rejected for this issue (no_op, illegal,
-        // reopen-cap, stale) must not be silently swallowed when other fields
-        // (priority/category) succeeded. Surface it on the updated
-        // entry so the caller can show a partial-success diagnostic.
-        if (skipReason) entry.skipReason = skipReason;
-        if (rewritten) entry.rewritten = rewritten;
-        result.updated.push(entry);
-      } else if (skipReason) {
-        result.skipped.push({ id: row.id, reason: skipReason });
-      } else {
-        result.skipped.push({ id: row.id, reason: 'no_op' });
+      if (outcome.kind === 'skipped') {
+        const { reason, detail } = outcome;
+        result.skipped.push({ id: row.id, reason, ...(detail ? { detail } : {}) });
+        continue;
       }
+      if (outcome.terminal) terminalTransitions.push(outcome.terminal);
+      result.updated.push({
+        id: row.id,
+        displayId: formatIssueRef(prefixMap.get(row.projectId) ?? null, row.issSeq),
+        ...(outcome.rewritten ? { rewritten: outcome.rewritten } : {}),
+      });
     }
 
     if (terminalTransitions.length > 0) {
