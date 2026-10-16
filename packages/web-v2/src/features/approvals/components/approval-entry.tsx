@@ -53,7 +53,12 @@ export function ApprovalEntry({ item, slug }: { item: ApprovalItem; slug: string
       testId="approval-entry"
       rowKey={item.id}
       wrap
-      title={title}
+      title={
+        // two lines at most: a long title is read whole on the record's own page, and on hover here
+        <span data-testid="approval-title" className="line-clamp-2" title={title}>
+          {title}
+        </span>
+      }
       facts={[
         // After the title, not before it: keys differ in width, and a lead column of them staggers every title.
         <MonoTag key="key">{item.key}</MonoTag>,

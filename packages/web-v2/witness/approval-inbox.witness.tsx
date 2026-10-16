@@ -35,7 +35,7 @@ const READ: Inbox = approvalInboxSchema.parse({
       id: "suggestion:s9",
       key: "ISS-77",
       opens: { kind: "issue", key: "ISS-77" },
-      problem: "askedBy.name: Too big: expected string to have <=200 characters",
+      problem: "the asker's name is longer than 200 characters",
     },
   ],
   items: [
