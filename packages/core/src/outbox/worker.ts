@@ -36,6 +36,11 @@ async function runDelivery(consumerName: string, job: JobWithMetadata<DeliveryJo
   };
 
   const consumer = consumerOf(type, consumerName);
+  // one line per delivery, so the last thing a process did before it died is in our own log
+  logger.info(
+    { queue, consumer: consumerName, type, eventId: job.data.eventId, attempt: delivery.attempt },
+    'outbox.deliver',
+  );
   try {
     if (!consumer) throw new Error(`no consumer \`${consumerName}\` is registered for \`${type}\``);
     await consumer.handle(payload, delivery);
