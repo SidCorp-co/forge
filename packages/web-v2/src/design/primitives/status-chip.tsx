@@ -1,5 +1,5 @@
-import { STATUS_META, type StatusKey } from "@/design/status";
-import { Icon } from "@/design/icons/icon";
+import { BLOCKED_TONE, STATUS_META, type StatusKey, TONE_META } from "@/design/status";
+import { Icon, type IconName } from "@/design/icons/icon";
 
 export type StatusDomain = "issue" | "session";
 
@@ -23,8 +23,34 @@ const SESSION_LABELS: Partial<Record<StatusKey, string>> = {
   waiting: "Waiting for me",
 };
 
+/** In the session domain `blocked` is a running session its box reports blocked: it waits on
+ *  someone, so it takes the blocked-session tone rather than a parked issue's. */
+const SESSION_TONES: Partial<Record<StatusKey, (typeof TONE_META)[keyof typeof TONE_META]>> = {
+  blocked: TONE_META[BLOCKED_TONE],
+};
+
+/** A session chip's mark says which state it is in, one mark per status, so no two are told apart
+ *  by colour alone. */
+const SESSION_ICONS: Record<StatusKey, IconName> = {
+  running: "agent",
+  queued: "clock",
+  blocked: "pause",
+  waiting: "bell",
+  passed: "shield",
+  failed: "alert",
+  paused: "dot",
+  done: "check",
+  shipped: "arrowRight",
+  archived: "stop",
+  review: "search",
+  zombie: "quiet",
+  swept: "archive",
+};
+
 export function StatusChip({ status, stage, size = "md", domain = "issue", label }: StatusChipProps) {
-  const m = STATUS_META[status] ?? STATUS_META.queued;
+  const base = STATUS_META[status] ?? STATUS_META.queued;
+  const tone = domain === "session" ? SESSION_TONES[status] : undefined;
+  const m = tone ? { ...base, fg: tone.fg, bg: tone.bg, dot: tone.dot } : base;
   const isRunning = status === "running";
   const isSession = domain === "session";
   const baseLabel = isSession ? (label ?? SESSION_LABELS[status] ?? m.label) : (label ?? m.label);
@@ -46,7 +72,7 @@ export function StatusChip({ status, stage, size = "md", domain = "issue", label
     >
       {isSession ? (
         <Icon
-          name="agent"
+          name={SESSION_ICONS[status] ?? SESSION_ICONS.queued}
           size={size === "sm" ? 11 : 12}
           className={isRunning ? "forge-pulse" : ""}
           style={{ color: m.dot }}

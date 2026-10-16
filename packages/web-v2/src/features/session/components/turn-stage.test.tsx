@@ -12,7 +12,15 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatComposer } from "@/features/chat/components/chat-composer";
 import type { RenderBlock } from "../types";
-import { QUIET_HOLD, TurnStage, sessionActivity, sessionComposerState, sessionTurnStage, turnStageOf } from "./turn-stage";
+import {
+  BLOCKED_HOLD,
+  QUIET_HOLD,
+  TurnStage,
+  sessionActivity,
+  sessionComposerState,
+  sessionTurnStage,
+  turnStageOf,
+} from "./turn-stage";
 
 expect.extend(matchers);
 
@@ -188,9 +196,9 @@ describe("the line a reader sees", () => {
 
 describe("what a quiet session's page draws (ISS-1228 criterion 29)", () => {
   it("calls a running session answering and a quiet one live but not answering", () => {
-    expect(sessionActivity("running")).toEqual({ live: true, answering: true, quiet: false });
-    expect(sessionActivity("stalled")).toEqual({ live: true, answering: false, quiet: true });
-    expect(sessionActivity("completed")).toEqual({ live: false, answering: false, quiet: false });
+    expect(sessionActivity("running")).toEqual({ live: true, answering: true, quiet: false, blocked: false });
+    expect(sessionActivity("stalled")).toEqual({ live: true, answering: false, quiet: true, blocked: false });
+    expect(sessionActivity("completed")).toEqual({ live: false, answering: false, quiet: false, blocked: false });
   });
 
   it("draws no spinner on a quiet session's composer and says why it takes no message", () => {
@@ -209,5 +217,40 @@ describe("what a quiet session's page draws (ISS-1228 criterion 29)", () => {
 
   it("spins for this browser's own send even on a quiet session", () => {
     expect(sessionComposerState("stalled", true)).toEqual({ busy: true });
+  });
+});
+
+describe("what a blocked session's page draws (ISS-1228 criteria 40, 41)", () => {
+  const agentTail = { kind: "agent" as const, blocks: [tool()] };
+
+  it("calls a session its box reports blocked live, but neither answering nor quiet", () => {
+    expect(sessionActivity("blocked")).toEqual({ live: true, answering: false, quiet: false, blocked: true });
+    expect(sessionTurnStage({ live: true, display: "blocked", tail: agentTail })).toBe("blocked");
+  });
+
+  it("says Blocked in the box's own words and spins nothing", () => {
+    render(<TurnStage stage="blocked" waitingOn="A person — approve the database restore in Coolify" />);
+    const line = screen.getByTestId("turn-stage");
+    expect(line).toHaveTextContent("Blocked · A person — approve the database restore in Coolify");
+    expect(line).not.toHaveTextContent(/Working/);
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("says what a quiet session last reported, blocked included", () => {
+    render(<TurnStage stage="quiet" silentForMs={101_000} reported="Blocked" />);
+    expect(screen.getByTestId("turn-stage")).toHaveTextContent("Quiet · last reported blocked 1m ago");
+  });
+
+  it("takes no message from a blocked session's composer, by key or by button, and says why", () => {
+    const onSend = vi.fn();
+    render(<ChatComposer onSend={onSend} {...sessionComposerState("blocked", false)} />);
+    const box = screen.getByLabelText("Message");
+    fireEvent.change(box, { target: { value: "are you there?" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    fireEvent.click(screen.getByLabelText("Send message"));
+    expect(onSend).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Send message")).toBeDisabled();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByText(BLOCKED_HOLD)).toBeVisible();
   });
 });

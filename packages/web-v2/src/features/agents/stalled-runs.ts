@@ -26,6 +26,11 @@ function runIsStartingUp(
   return nowMs - started <= HEARTBEAT_REAP_MS;
 }
 
+/** The project's runs that are still open, worked or not. */
+export function openRuns(runs: readonly PipelineRunListItem[] | undefined): PipelineRunListItem[] {
+  return (runs ?? []).filter((r) => LIVE_RUN_STATUSES.has(r.status));
+}
+
 /** Open runs with a live job or a heartbeating session behind them. */
 export function workedRuns(
   runs: readonly PipelineRunListItem[] | undefined,

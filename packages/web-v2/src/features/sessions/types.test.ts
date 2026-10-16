@@ -108,6 +108,26 @@ describe("deriveSessionDisplayStatus (single-sourced on deriveLiveness)", () => 
   it("passes through non-running statuses", () => {
     expect(deriveSessionDisplayStatus(running(0, { status: "failed" }), NOW)).toBe("failed");
   });
+
+  // ISS-1228 round 8: what the box says of the session decides between Working and Blocked; silence
+  // still outranks both, since nobody has heard either for a minute.
+  const report = (work: string) => ({
+    incarnation: "live",
+    work,
+    blockerKind: "human",
+    waitingOn: "approve the restore",
+    observedAt: new Date(NOW - 5_000).toISOString(),
+  });
+  it("calls a running session its box reports blocked blocked, and a quiet one quiet", () => {
+    expect(deriveSessionDisplayStatus(running(5_000, { report: report("blocked") }), NOW)).toBe("blocked");
+    expect(deriveSessionDisplayStatus(running(5_000, { report: report("runnable") }), NOW)).toBe("running");
+    expect(deriveSessionDisplayStatus(running(90_000, { report: report("blocked") }), NOW)).toBe("stalled");
+    expect(deriveSessionDisplayStatus(running(0, { status: "failed", report: report("blocked") }), NOW)).toBe("failed");
+  });
+
+  it("gives a blocked session the blocked chip, never the running one", () => {
+    expect(statusToChip("blocked")).toBe("blocked");
+  });
 });
 
 describe("statusToChip (ISS-322 — cancelled_stale is neutral, not red)", () => {

@@ -14,11 +14,14 @@ function newer(a: string | null, b: string | null): string | null {
   return Date.parse(b) > Date.parse(a) ? b : a;
 }
 
-/** The row with the newer of its own check-in and the live read's; the row itself where neither moves it. */
+/** The row with the newer of its own and the live read's check-in and box report. */
 function withLiveCheckIn<T extends SessionRow>(row: T, live: LiveSession | undefined): T {
   if (!live) return row;
   const lastHeartbeatAt = newer(row.lastHeartbeatAt, live.lastHeartbeatAt);
-  return lastHeartbeatAt === row.lastHeartbeatAt ? row : { ...row, lastHeartbeatAt };
+  const own = row.report?.observedAt ?? null;
+  const report = newer(own, live.report?.observedAt ?? null) === own ? row.report : live.report;
+  if (lastHeartbeatAt === row.lastHeartbeatAt && report === row.report) return row;
+  return { ...row, lastHeartbeatAt, report };
 }
 
 export function useLiveSessionRow<T extends SessionRow>(row: T | undefined): T | undefined {

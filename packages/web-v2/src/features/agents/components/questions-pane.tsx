@@ -102,7 +102,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col gap-3 p-4" aria-busy="true">
+      <div className="flex flex-col gap-3 py-4" aria-busy="true">
         {[0, 1].map((i) => (
           <Skeleton key={i} variant="rect" className="h-40 w-full" />
         ))}
@@ -112,7 +112,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
 
   if (isError) {
     return (
-      <div className="grid min-h-[40vh] place-items-center p-4">
+      <div className="grid min-h-[40vh] place-items-center py-4">
         <ErrorState
           title="Couldn't load this project's decisions"
           message={formatApiError(error)}
@@ -124,7 +124,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
 
   if (onIssue) {
     return (
-      <p className="fg-caption p-4 text-muted" role="status" data-testid="decision-on-issue">
+      <p className="fg-caption py-4 text-muted" role="status" data-testid="decision-on-issue">
         That decision is on its issue — opening it.
       </p>
     );
@@ -132,7 +132,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
 
   if (questions.length === 0) {
     return (
-      <div className="grid min-h-[40vh] place-items-center p-4">
+      <div className="grid min-h-[40vh] place-items-center py-4">
         <EmptyState
           titleId={EMPTY_TITLE_ID}
           title="No master is waiting on a person"
@@ -143,7 +143,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
   }
 
   return (
-    <div ref={listRef} className="flex flex-col gap-3 p-4">
+    <div ref={listRef} className="flex flex-col gap-3 py-4">
       {questions.map((question) => (
         <QuestionCard
           key={question.id}

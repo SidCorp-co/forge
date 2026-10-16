@@ -67,3 +67,14 @@ describe("the busy device's detail row (ISS-999)", () => {
     expect(screen.queryByText("stalled")).toBeNull();
   });
 });
+
+describe("the box strip is flat (ISS-1228 criterion 51)", () => {
+  it("lists each box as a flush row under a hairline, not a bordered card", async () => {
+    await renderStrip(row({ metadata: { type: "pipeline" } }));
+    const list = screen.getByRole("list", { name: "Boxes" });
+    expect(list.className).toMatch(/divide-y/);
+    for (const item of screen.getAllByRole("listitem")) {
+      expect(item.className).not.toMatch(/rounded|(^|\s)border(\s|$)|border-dashed/);
+    }
+  });
+});

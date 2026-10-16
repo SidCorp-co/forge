@@ -1,4 +1,4 @@
-import { lastReported, type SemanticTone, WORKING_WORD } from "@/design/status";
+import { BLOCKED_TONE, BLOCKED_WORD, lastReported, type SemanticTone, WORKING_WORD } from "@/design/status";
 import { STALLED_THRESHOLD_MS, sessionSilence } from "@/features/sessions/types";
 import { formatElapsed } from "@/lib/utils/format";
 import type { HeldIssue, Holder, LiveSession, PersonOwes } from "./types";
@@ -36,7 +36,7 @@ const RUNTIME_DOING: Record<string, Doing> = {
   closed: { label: "Closing", tone: "neutral" },
 };
 
-const BLOCKED: Doing = { label: "Blocked", tone: "attention" };
+const BLOCKED: Doing = { label: BLOCKED_WORD, tone: BLOCKED_TONE };
 
 /** What the session is doing, from its status first, then the box's report of a block, then its
  *  runtime state. A running session gone quiet is doing nothing anyone has heard of, so it says what

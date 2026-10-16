@@ -1,12 +1,12 @@
-import { StatusChip, type StatusChipProps, WORKING_WORD } from "@/design";
+import { BLOCKED_WORD, StatusChip, type StatusChipProps, WORKING_WORD } from "@/design";
 
-/** A session's status chip on every screen: a running one is called Working, as on the Pipeline page. */
+const SESSION_WORD: Partial<Record<StatusChipProps["status"], string>> = {
+  running: WORKING_WORD,
+  blocked: BLOCKED_WORD,
+};
+
+/** A session's status chip on every screen, in the Pipeline page's words. */
 export function SessionChip(props: Omit<StatusChipProps, "domain" | "label">) {
-  return (
-    <StatusChip
-      {...props}
-      domain="session"
-      {...(props.status === "running" ? { label: WORKING_WORD } : {})}
-    />
-  );
+  const word = SESSION_WORD[props.status];
+  return <StatusChip {...props} domain="session" {...(word ? { label: word } : {})} />;
 }
