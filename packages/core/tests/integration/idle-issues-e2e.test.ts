@@ -577,3 +577,39 @@ describe('An automatic release hold decides what an awaiting_release strand says
     expect(note?.body).not.toContain('..');
   });
 });
+
+// Judge-22 archived its scratch project with ISS-1 at In progress and the notice kept coming
+// (ISS-1229 r10): an archived project raises no stuck-issue notice, and one already raised resolves.
+describe('an issue of an archived project', () => {
+  const archive = () =>
+    fx.db.execute(sql`UPDATE projects SET archived_at = now() WHERE id = ${fx.projectId}`);
+
+  it('is not read as stranded, and raises no notice', async () => {
+    await addRunner('online');
+    const issueId = await seedIssue({ status: 'in_progress' });
+    await archive();
+
+    const result = await mods.reconcileIdleIssues(NOW);
+
+    expect(result.detected).toBe(0);
+    expect(emitted).toEqual([]);
+    expect(await strandOf(issueId)).toBeNull();
+  });
+
+  it('has the idle notice it already raised resolved', async () => {
+    const issueId = await seedIssue({ status: 'in_progress' });
+    await fx.db.execute(sql`
+      INSERT INTO notifications (id, project_id, issue_id, type, kind, tier, state, title, resolution_key)
+      VALUES (${randomUUID()}, ${fx.projectId}, ${issueId}, 'issue_stranded', 'condition', 'ticket',
+              'firing', 'idle', ${`issue:${issueId}:idle`})
+    `);
+    await archive();
+
+    await mods.reconcileIdleIssues(NOW);
+
+    const open = (await fx.db.execute(
+      sql`SELECT 1 FROM notifications WHERE issue_id = ${issueId} AND resolved_at IS NULL`,
+    )) as unknown as unknown[];
+    expect(open).toHaveLength(0);
+  });
+});

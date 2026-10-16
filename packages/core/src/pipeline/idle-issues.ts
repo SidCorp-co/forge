@@ -24,6 +24,7 @@ import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
 import { sweepGroup } from '../notifications/explanations.js';
 import { projectAdminUserIdsFor } from '../notifications/project-admins.js';
+import { resolveArchivedProjectNotices } from './archived-project-notices.js';
 import { holderFanout, readClaim } from './lease-fanout.js';
 import { readReleaseHold } from './release-hold.js';
 import {
@@ -56,8 +57,10 @@ const NOTHING_LIVE_ON_THIS_ISSUE = sql`NOT ${issueWorkInFlightSql({
 /** How many rows one arm reads per pass, matching the other sweep axes. */
 export const IDLE_SCAN_LIMIT = 200;
 
+const IDLE_KEY_SUFFIX = ':idle';
+
 export function strandResolutionKey(issueId: string): string {
-  return `issue:${issueId}:idle`;
+  return `issue:${issueId}${IDLE_KEY_SUFFIX}`;
 }
 
 export interface IdleIssuesResult {
@@ -155,6 +158,7 @@ export async function reconcileIdleIssues(
   }
 
   result.cleared = await clearRecovered(now, scope);
+  await resolveArchivedProjectNotices(IDLE_KEY_SUFFIX);
   return result;
 }
 
@@ -291,6 +295,7 @@ async function readCandidates(now: Date, scope: { projectId?: string }): Promise
       FROM issues i
       JOIN projects p ON p.id = i.project_id
      WHERE i.status NOT IN (${excluded})
+       AND p.archived_at IS NULL
        AND i.updated_at < ${window.until}::timestamptz
        AND ${NOTHING_LIVE_ON_THIS_ISSUE}
        ${scoped}

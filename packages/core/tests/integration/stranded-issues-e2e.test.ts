@@ -31,6 +31,8 @@ type Mods = {
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   STRANDED_GRACE_MS: typeof import('../../src/pipeline/stranded-issues.js').STRANDED_GRACE_MS;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
+  detectOwedCloses: typeof import('../../src/pipeline/stranded-issues.js').detectOwedCloses;
+  // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
 };
 
 type NotifRow = { user_id: string; type: string; resolution_key: string; read: boolean };
@@ -288,5 +290,50 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
       sql`SELECT status FROM issues WHERE id = ${s.issueId}`,
     )) as unknown as { status: string }[];
     expect(r[0]?.status).toBe('waiting');
+  });
+
+  // Judge-22 archived its scratch project with live issues and their notices kept coming
+  // (ISS-1229 r10): an archived project raises no stuck-issue notice, and one already raised resolves.
+  describe('an issue of an archived project', () => {
+    const archive = (projectId: string) =>
+      harness.db.execute(sql`UPDATE projects SET archived_at = now() WHERE id = ${projectId}`);
+    const open = async (issueId: string) =>
+      (
+        (await harness.db.execute(
+          sql`SELECT 1 FROM notifications WHERE issue_id = ${issueId} AND resolved_at IS NULL`,
+        )) as unknown as unknown[]
+      ).length;
+
+    it('raises no waiting-park notice', async () => {
+      const s = await seed();
+      await archive(s.projectId);
+      await expect(mods.detectStrandedIssues()).resolves.toMatchObject({ detected: 0 });
+      expect(await open(s.issueId)).toBe(0);
+    });
+
+    it('resolves the waiting-park notice it raised before the archive', async () => {
+      const s = await seed();
+      await announce(harness, mods.detectStrandedIssues);
+      expect(await open(s.issueId)).toBe(1);
+      await archive(s.projectId);
+      await mods.detectStrandedIssues();
+      expect(await open(s.issueId)).toBe(0);
+    });
+
+    it('raises no owed-close notice for merged work still open', async () => {
+      const s = await seed({ status: 'developed' });
+      await archive(s.projectId);
+      await expect(mods.detectOwedCloses()).resolves.toMatchObject({ detected: 0 });
+      expect(await open(s.issueId)).toBe(0);
+    });
+
+    it('resolves the owed-close notice it raised before the archive', async () => {
+      const s = await seed({ status: 'developed' });
+      await announce(harness, mods.detectOwedCloses);
+      expect(await open(s.issueId)).toBe(1);
+      await archive(s.projectId);
+      await mods.detectOwedCloses();
+      expect(await open(s.issueId)).toBe(0);
+    });
   });
 });

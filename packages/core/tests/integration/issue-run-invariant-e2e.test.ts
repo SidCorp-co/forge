@@ -415,3 +415,53 @@ async function deliveriesFor(issueId: string): Promise<number> {
   `)) as unknown as { n: number }[];
   return rows[0]?.n ?? 0;
 }
+
+// Judge-22 archived its scratch project with ISS-1 at In progress and the notice kept coming
+// (ISS-1229 r10): an archived project raises no stuck-issue notice, and one already raised resolves.
+describe('an issue of an archived project', () => {
+  async function openNotices(issueId: string): Promise<number> {
+    const rows = (await harness.db.execute(sql`
+      SELECT 1 FROM notifications WHERE issue_id = ${issueId} AND resolved_at IS NULL
+    `)) as unknown as unknown[];
+    return rows.length;
+  }
+
+  it('is not named, though it asserts work with nothing behind it', async () => {
+    const user = await createTestUser(harness.db);
+    const project = await createTestProject(harness.db, user.id);
+    await harness.db.execute(sql`UPDATE projects SET archived_at = now() WHERE id = ${project.id}`);
+    const issueId = await anIssueAt({
+      projectId: project.id,
+      createdById: user.id,
+      issSeq: 1,
+      status: 'in_progress',
+      agoMs: PAST_GRACE,
+    });
+
+    const result = await mods.detectOrphanedRunAssertions();
+
+    expect(result.detected).toBe(0);
+    expect(await openNotices(issueId)).toBe(0);
+  });
+
+  it('has the notice it already raised resolved once its project is archived', async () => {
+    const user = await createTestUser(harness.db);
+    const project = await createTestProject(harness.db, user.id);
+    const issueId = await anIssueAt({
+      projectId: project.id,
+      createdById: user.id,
+      issSeq: 1,
+      status: 'in_progress',
+      agoMs: PAST_GRACE,
+    });
+    expect((await mods.detectOrphanedRunAssertions()).reported).toBe(1);
+    expect(await openNotices(issueId)).toBe(1);
+
+    await harness.db.execute(sql`UPDATE projects SET archived_at = now() WHERE id = ${project.id}`);
+    const after = await mods.detectOrphanedRunAssertions();
+
+    expect(after.resolved).toBe(1);
+    expect(await openNotices(issueId)).toBe(0);
+    expect(await statusOf(issueId)).toBe('in_progress');
+  });
+});

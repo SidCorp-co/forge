@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, notInArray, sql } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, isNull, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueStatuses, issues, projects } from '../db/schema.js';
 import { statusEnteredAtSql } from '../issues/status-entered-at.js';
@@ -9,6 +9,7 @@ import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
 import { type SweepDetector, sweepGroup } from '../notifications/explanations.js';
 import { projectAdminUserIdsFor } from '../notifications/project-admins.js';
+import { resolveArchivedProjectNotices } from './archived-project-notices.js';
 import { isTerminalPlacement } from './status-assertions.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
 
@@ -41,12 +42,15 @@ export interface StrandedIssuesResult {
   notified: number;
 }
 
+const STRANDED_KEY_SUFFIX = ':stranded';
+const OWED_CLOSE_KEY_SUFFIX = ':owed-close';
+
 export function strandedResolutionKey(issueId: string): string {
-  return `issue:${issueId}:stranded`;
+  return `issue:${issueId}${STRANDED_KEY_SUFFIX}`;
 }
 
 export function owedCloseResolutionKey(issueId: string): string {
-  return `issue:${issueId}:owed-close`;
+  return `issue:${issueId}${OWED_CLOSE_KEY_SUFFIX}`;
 }
 
 /**
@@ -90,6 +94,7 @@ export async function detectStrandedIssues(
   scope: { projectId?: string } = {},
 ): Promise<StrandedIssuesResult> {
   try {
+    await resolveArchivedProjectNotices(STRANDED_KEY_SUFFIX);
     const cutoff = new Date(now.getTime() - STRANDED_GRACE_MS);
 
     const cursorKey = `stranded:${scope.projectId ?? '*'}`;
@@ -120,6 +125,7 @@ export async function detectStrandedIssues(
       .where(
         and(
           eq(issues.status, 'waiting'),
+          isNull(projects.archivedAt),
           sql`"issues"."updated_at" < ${window.until}::timestamptz`,
           ...(scope.projectId ? [eq(issues.projectId, scope.projectId)] : []),
           ...(window.after
@@ -188,6 +194,7 @@ export async function detectOwedCloses(
   scope: { projectId?: string } = {},
 ): Promise<StrandedIssuesResult> {
   try {
+    await resolveArchivedProjectNotices(OWED_CLOSE_KEY_SUFFIX);
     const cutoff = new Date(now.getTime() - STRANDED_GRACE_MS);
     const terminal = issueStatuses.filter(isTerminalPlacement);
 
@@ -211,6 +218,7 @@ export async function detectOwedCloses(
       .where(
         and(
           isNotNull(issues.mergedAt),
+          isNull(projects.archivedAt),
           sql`"issues"."merged_at" < ${window.until}::timestamptz`,
           notInArray(issues.status, terminal),
           ...(window.after

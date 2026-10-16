@@ -10,6 +10,7 @@ vi.mock('../notifications/project-admins.js', () => ({
 }));
 
 const emitNotification = vi.fn(async () => ({ delivered: 1 }));
+vi.mock('./archived-project-notices.js', () => ({ resolveArchivedProjectNotices: async () => 0 }));
 vi.mock('../notifications/emit.js', () => ({
   emitNotification: (...args: unknown[]) => emitNotification(...(args as [])),
 }));

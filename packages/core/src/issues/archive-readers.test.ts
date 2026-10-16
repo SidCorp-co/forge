@@ -114,6 +114,7 @@ const NOT_DISCOVERY: Record<string, string> = {
   'pipeline/analytics-routes.ts':
     'run timings carrying an issue id and no content; the issue page reads its own through here',
   'pipeline/answer-resume.ts': 'reads only the question status',
+  'pipeline/archived-project-notices.ts': 'resolves open notices by their key, whatever the issue',
   'pipeline/autonomous-rescue-cap.ts': 'by issue id',
   'pipeline/ci-fix-pattern-learn.ts': 'by issue id',
   'pipeline/driver-comparison.ts': 'per-project and per-driver counts, no issue identity',
