@@ -1,22 +1,20 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { heldIssuePrefixes } from '../issues/index.js';
-import { loadProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { holds, requireHeld } from '../permissions/index.js';
 import { readFeedbackForecasts } from './feedback.js';
 import { readIssueForecast, readProjectForecast } from './read.js';
-import type { ForecastViewer } from './release.js';
 import {
   readComingNext,
   readDraftReleaseForecast,
   readRequirementForecast,
   readRequirementForecasts,
 } from './scope.js';
+import { forecastViewerOf } from './viewer.js';
 
 const projectParam = z.object({ id: z.uuid() });
 const issueParam = z.object({
@@ -25,18 +23,6 @@ const issueParam = z.object({
 });
 const requirementParam = z.object({ id: z.uuid(), key: z.string().regex(/^REQ-\d+$/) });
 const noQuery = z.strictObject({});
-
-/** The reader, with the grants that make a person's act it names theirs; refused without project.read. */
-async function forecastViewerOf(projectId: string, userId: string): Promise<ForecastViewer> {
-  const access = await loadProjectAccess(projectId, userId);
-  requireHeld(access, 'project.read');
-  return {
-    userId,
-    isAdmin: holds(access, 'project.admin'),
-    mayApprove: holds(access, 'releases.approve'),
-    canWrite: holds(access, 'project.write'),
-  };
-}
 
 export const forecastRoutes = new Hono<{ Variables: AuthVars }>();
 forecastRoutes.use('*', requireAuth(), assertEmailVerified());

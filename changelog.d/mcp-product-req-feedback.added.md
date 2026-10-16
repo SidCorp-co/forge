@@ -1,0 +1,1 @@
+**A BA works requirements and feedback from an MCP client.** forge_requirements and forge_feedback read, draft, revise, file and clarify, and every answer says whether work is running and its forecast ETA, or why there is none.

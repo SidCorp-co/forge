@@ -8,6 +8,8 @@ import { forgeAgentReportTool } from '../agent-reports/tool.js';
 import { forgeChannelTool, forgeEcosystemTool } from '../ecosystem/tool.js';
 import type { ContextScopedMcpToolFactory } from '../lib/tool.js';
 import { forgeUploadsTool } from '../uploads/tool.js';
+import { forgeFeedbackMcpTool } from './feedback-tool.js';
+import { forgeRequirementsMcpTool } from './requirements-tool.js';
 
 // Each entry defers to its factory, so reading this table never touches a module still loading.
 export const MCP_TOOLS = {
@@ -24,4 +26,8 @@ export const MCP_TOOLS = {
   // whose CLI has no REST verbs for them, under the same amnesty `mcp-tools-with-rest-twins`.
   forge_channel: (ctx) => forgeChannelTool(ctx),
   forge_ecosystem: (ctx) => forgeEcosystemTool(ctx),
+  // The product layer (owner, 2026-10-16): a BA works requirements and feedback from an MCP client,
+  // each answer telling whether work runs and when it is forecast done.
+  forge_requirements: (ctx) => forgeRequirementsMcpTool(ctx),
+  forge_feedback: (ctx) => forgeFeedbackMcpTool(ctx),
 } satisfies Record<McpToolName, ContextScopedMcpToolFactory>;

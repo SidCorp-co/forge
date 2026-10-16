@@ -14,4 +14,5 @@ export {
   listReportQueries,
   registerReportQuery,
 } from './registry.js';
+export { etaOf } from './roadmap-eta.js';
 export { type ReportAsker, runReportQuery } from './run.js';

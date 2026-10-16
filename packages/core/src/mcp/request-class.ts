@@ -4,6 +4,8 @@ import type { MiddlewareHandler } from 'hono';
 import { ECOSYSTEM_READS } from '../ecosystem/index.js';
 import type { PatRequestClass } from '../lib/rate-limits.js';
 import type { PrincipalVars } from '../middleware/require-pat.js';
+import { FEEDBACK_READ_ACTIONS } from './feedback-tool.js';
+import { REQUIREMENT_READ_ACTIONS } from './requirements-tool.js';
 
 /**
  * JSON-RPC methods that read. `tools/call` is absent deliberately — it is the
@@ -33,6 +35,8 @@ const READ_ACTIONS = {
   forge_uploads: new Set(['fetch']),
   forge_channel: new Set<string>(CHANNEL_READS),
   forge_ecosystem: new Set<string>(ECOSYSTEM_READS),
+  forge_requirements: new Set(REQUIREMENT_READ_ACTIONS),
+  forge_feedback: new Set(FEEDBACK_READ_ACTIONS),
 } satisfies Record<McpToolName, ReadonlySet<string>>;
 
 /** The action a tool takes when the call names none — its schema's own default. */
