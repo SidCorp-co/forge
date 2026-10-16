@@ -14,8 +14,10 @@ import {
   type DashboardAttentionItem,
   projectAttention,
   runnersSummary,
+  sessionsWaitingOnYou,
   statusDonut,
 } from "./derive";
+import type { LiveSession } from "@/features/pipeline/types";
 import type { AttentionItem, AttentionView } from "@/features/attention/types";
 import type { PipelineRunListItem } from "@/features/runs/types";
 
@@ -378,9 +380,9 @@ describe("spendByStep — the kinds of work the rows name, in the Overview's wor
     expect(out.segments[3]?.cost).toBe(1.5);
   });
 
-  it("says a step no kind of work names is unrecognised, keeping the name the row carries", () => {
+  it("names a step no kind of work names in its own words, keeping the name the row carries as its key", () => {
     const out = spendByStep([row("code", 1)]);
-    expect(out.segments.map((s) => [s.key, s.label])).toEqual([["code", "Unrecognised work (code)"]]);
+    expect(out.segments.map((s) => [s.key, s.label])).toEqual([["code", "Code"]]);
     expect(out.segments.every((s) => !s.color.includes("stage"))).toBe(true);
   });
 
@@ -450,5 +452,83 @@ describe("runnersSummary — a runner hosting a live session is busy (ISS-1228)"
 
   it("ignores a session with no device", () => {
     expect(runnersSummary(runners, queue, 0, [], [{ deviceId: null }]).busyCount).toBe(0);
+  });
+});
+
+// ISS-1228 round 9: a session its box reports blocked on a person is something a person has to act
+// on, so Needs you counts it and lists it, in the box's own words; one blocked on anything else is not.
+describe("sessions waiting on you", () => {
+  const NOW = Date.parse("2026-10-16T10:00:00.000Z");
+  const heard = new Date(NOW - 10_000).toISOString();
+  function session(over: Partial<LiveSession>): LiveSession {
+    return {
+      id: "s1",
+      kind: "run_session",
+      title: "run: ISS-3",
+      status: "running",
+      runtimeState: "working",
+      deviceId: "d1",
+      deviceName: "box-a",
+      parentSessionId: null,
+      startedAt: heard,
+      lastHeartbeatAt: heard,
+      createdAt: heard,
+      issues: [{ issueId: "doc-3", displayId: "ISS-3", title: "Three" }],
+      report: null,
+      ...over,
+    };
+  }
+  const blockedOn = (blockerKind: string) => ({
+    incarnation: "live",
+    work: "blocked",
+    blockerKind,
+    waitingOn: "approve the database restore",
+    observedAt: heard,
+  });
+
+  it("lists a session blocked on a person, naming what it waits on and linking to its page", () => {
+    const [item, ...rest] = sessionsWaitingOnYou([session({ report: blockedOn("human") })], "sable");
+    expect(rest).toEqual([]);
+    expect(item).toMatchObject({
+      actionKind: "session",
+      issueRef: "ISS-3",
+      link: "/projects/sable/agents/s1",
+      since: heard,
+    });
+    expect(item?.title).toContain("approve the database restore");
+  });
+
+  it("does not list a session blocked on a machine, another agent or nobody, nor one working", () => {
+    expect(
+      sessionsWaitingOnYou(
+        [
+          session({ id: "a", report: blockedOn("machine") }),
+          session({ id: "b", report: blockedOn("master_or_peer") }),
+          session({ id: "c", report: blockedOn("nobody") }),
+          session({ id: "d", report: { ...blockedOn("human"), work: "runnable" } }),
+          session({ id: "e" }),
+        ],
+        "sable",
+      ),
+    ).toEqual([]);
+  });
+
+  it("counts it in the Needs you caption and in how much the list holds", () => {
+    const items = sessionsWaitingOnYou([session({ report: blockedOn("human") })], "sable");
+    expect(attentionCaption(items)).toBe("to act on: 1 session waiting on you");
+    const view: AttentionView = {
+      needsReview: [],
+      awaitingInput: [],
+      mentions: [],
+      failedJobs: [],
+      pendingSkillUpdates: [],
+      unseenDrafts: [],
+      unseenDraftsTotal: 0,
+      projectTotals: { sable: { needsReview: 0, awaitingInput: 1, awaitingOutsideBlockers: 0, failedJobs: 0 } },
+      offlineRunners: [],
+    } as unknown as AttentionView;
+    // One person is owed an answer the list did not reach: the session listed beside it does not
+    // stand in for that person, so the list says it holds one of at least two.
+    expect(attentionCut(items, view, "sable", 0)).toEqual({ shown: 1, atLeast: 2, peopleCut: true });
   });
 });

@@ -11,7 +11,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Card, CardContent, Icon, MonoTag } from "@/design";
+import { Card, CardContent, Icon, MonoTag, SILENCE_TONE, SILENCE_WORD } from "@/design";
+import { TONE_META } from "@/design/status";
 import { useElapsed } from "@/design/hooks/use-elapsed";
 import { heartbeatState } from "../derive";
 import type { QueuedStepView } from "../waiting";
@@ -35,7 +36,7 @@ const HEARTBEAT_META: Record<
   { dot: string; label: string }
 > = {
   alive: { dot: "var(--green-500)", label: "Heartbeat alive" },
-  stale: { dot: "var(--red-500)", label: "Heartbeat stale" },
+  stale: { dot: TONE_META[SILENCE_TONE].dot, label: SILENCE_WORD },
   unknown: { dot: "var(--ink-400)", label: "No heartbeat" },
 };
 

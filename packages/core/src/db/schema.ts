@@ -1073,6 +1073,10 @@ export const projectWebhooksRelations = relations(projectWebhooks, ({ one }) => 
   project: one(projects, { fields: [projectWebhooks.projectId], references: [projects.id] }),
 }));
 
+/** What a comment core wrote can say it records (ISS-1228). */
+export const COMMENT_ANNOUNCEMENTS = ['release'] as const;
+export type CommentAnnouncement = (typeof COMMENT_ANNOUNCEMENTS)[number];
+
 export const comments = pgTable(
   'comments',
   {
@@ -1089,12 +1093,16 @@ export const comments = pgTable(
     body: text('body').notNull(),
     format: text('format', { enum: BODY_FORMATS }).notNull().default('markdown'),
     stage: text('stage'),
+    /** What core's own writer said this comment records, set as it writes it (ISS-1228). Only the
+     *  release flow sets it, to `release`; no caller's door can, so typed words never earn it. */
+    announces: text('announces', { enum: COMMENT_ANNOUNCEMENTS }),
     parentId: uuid('parent_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     formatChk: check('comments_format_chk', sql`${t.format} IN ('markdown', 'html')`),
+    announcesChk: check('comments_announces_chk', sql`${t.announces} IN ('release')`),
     issueIdx: index('comments_issue_id_idx').on(t.issueId),
     issueCreatedIdx: index('comments_issue_created_idx').on(t.issueId, t.createdAt, t.id),
     parentIdx: index('comments_parent_id_idx').on(t.parentId),

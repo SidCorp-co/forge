@@ -30,6 +30,7 @@ import {
   attentionReadFailure,
   attentionRefusal,
   attentionCut,
+  sessionsWaitingOnYou,
   idleRuns,
   joblessRuns,
   liveRuns,
@@ -175,7 +176,12 @@ export default function ProjectOverviewPage() {
         ? { read: "pending" }
         : { read: "ok" };
   const ages = parkedState.read === "ok" ? parkedAges(parkedQ.data?.items) : undefined;
-  const attention = attentionRead ? projectAttention(attentionQ.view, project.slug, health?.blockers, ages) : [];
+  const attention = attentionRead
+    ? [
+        ...projectAttention(attentionQ.view, project.slug, health?.blockers, ages),
+        ...sessionsWaitingOnYou(sessionsQ.data?.sessions, project.slug),
+      ]
+    : [];
   // A response that cannot say how much the list leaves out is refused where the figure and the list
   // are, so the rest of the dashboard stands rather than the whole page failing.
   const attentionRefused = readFailure ?? (attentionRead ? attentionRefusal(attentionQ.view, project.slug) : null);

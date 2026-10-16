@@ -370,6 +370,8 @@ export interface CommentNode {
   nodes: BodyNode[] | null;
   /** ISS-1089 — the `forge-record` block core parsed, with the project's lens. */
   record: (ForgeRecordView & { lens: RecordLens }) | null;
+  /** ISS-1228 — what core's own writer stamped this comment as recording; `null` for any other comment. */
+  announces?: "release" | null;
   /** ISS-932 wave 4 — the BOX a credential was issued to. Answers *where*, never *who*. */
   authorDeviceId?: string | null;
   body: string;
@@ -428,8 +430,8 @@ export interface AttachmentRow {
 }
 
 /**
- * Lifecycle comment kind, matched against the comment's opening line —
- * `derive.ts:deriveCommentKind`.
+ * Lifecycle comment kind: Released from core's stamp, the rest matched against the comment's
+ * opening line — `derive.ts:deriveCommentKind`.
  */
 export type CommentKind =
   | "triage"

@@ -50,6 +50,7 @@ const reading = {
       createdAt: '2026-10-15T01:00:00.000Z',
       issues: [{ issueId: 'i-7', displayId: 'ISS-7', title: 'Seven' }],
       report: null,
+      silenceLimitMs: 600_000,
     },
   ],
   holds: [

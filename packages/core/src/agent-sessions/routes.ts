@@ -14,6 +14,7 @@ import {
   terminalAgentSessionStatuses,
   usageRecords,
 } from '../db/schema.js';
+import { silenceLimitMs } from '../devices/session-silence.js';
 import { isPipelineSessionKind } from '../jobs/session-kinds.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
@@ -386,6 +387,7 @@ agentSessionRoutes.get(
       estimatedCost: costById.get(r.id) ?? 0,
       lastMessagePreview: previewById.get(r.id) ?? null,
       report: reportById.get(r.id) ?? null,
+      silenceLimitMs: silenceLimitMs(r),
     }));
     return c.json(
       answer(
@@ -461,7 +463,13 @@ agentSessionRoutes.get(
     }
 
     const reports = await loadSessionReports([row.id]);
-    return c.json(answer(ref.sessionReadSchema, { ...row, report: reports.get(row.id) ?? null }));
+    return c.json(
+      answer(ref.sessionReadSchema, {
+        ...row,
+        report: reports.get(row.id) ?? null,
+        silenceLimitMs: silenceLimitMs(row),
+      }),
+    );
   },
 );
 

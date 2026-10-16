@@ -27,6 +27,7 @@ import {
 	STATUS_KEY_TONE,
 	type StatusKey,
 } from "@/design/status";
+import { STALLED_THRESHOLD_MS } from "@/features/sessions/types";
 import { gateView, pausedRunView } from "./waiting";
 import type {
 	CommentKind,
@@ -469,34 +470,10 @@ function openingLine(body: string): string {
 	return text.split("\n").map((line) => line.trim()).find((line) => line !== "") ?? "";
 }
 
-const RELEASE_HEADING = /^(#+\s*)?release notes?(\s*$|\s*[:—–-]|\s+for\b)/;
-/** Released / Shipped / Published release, then what went out (a version) or where or how it went. */
-const RELEASE_STATEMENT =
-	/^(released|shipped|published release)(\s*[:—–-]|\s+(v?\d+|in|to|as|on|at|into|onto|outside|via|with|through|by|from|for)\b)/;
-/** A clause that asks, denies or says something of its own about the word announces nothing. */
-const NOT_AN_ANNOUNCEMENT =
-	/\?|\b(not|no|never|yet|n't|is|are|was|were|be|been|will|would|should|could|can|may(?!\s+\d)|might|must)\b/;
-
-/** An opening line announces a release as core's stamp ("Released outside a release batch, …") and
- *  "Released v1.2.0 to prod" do: its first clause states what went out or where it went. */
-function announcesRelease(line: string): boolean {
-	if (RELEASE_HEADING.test(line)) return true;
-	const statement = line.replace(/^#+\s*/, "");
-	if (!RELEASE_STATEMENT.test(statement)) return false;
-	const rest = statement.replace(/^(released|shipped|published release)\s*[:—–-]?\s*/, "");
-	const clause = rest.split(/[;,—–]|\.(?!\d)|\s-\s/)[0] ?? "";
-	return !NOT_AN_ANNOUNCEMENT.test(clause);
-}
-
 /**
- * Lifecycle-kind for a comment, read from the prose markers the pipeline
- * writes. Order matters — more specific markers first.
- *
- * It read `template` (the root component name) first until 2026-09-14, when
- * the component vocabulary and that column were removed. The prose regex this
- * was meant to replace is the only reader again.
- *
- * Only the opening line is read, markup stripped: a badge says what the comment IS.
+ * Lifecycle-kind for a comment other than Released, read from the prose markers the pipeline
+ * writes. Order matters — more specific markers first. Only the opening line is read, markup
+ * stripped: a badge says what the comment IS.
  */
 function prefixKind(body: string): CommentKind {
 	const b = openingLine(body).toLowerCase();
@@ -513,7 +490,6 @@ function prefixKind(body: string): CommentKind {
 		)
 	)
 		return "qa";
-	if (announcesRelease(b)) return "released";
 	if (
 		/forge-code|plan implemented|implementation complete|code complete|pushed .* branch/.test(
 			b,
@@ -527,21 +503,20 @@ function prefixKind(body: string): CommentKind {
 	return "comment";
 }
 
+/** What a comment says it records, as core's own writer stamped it (`comments.announces`). */
+export type CommentAnnouncement = "release";
+
 /**
- * Which body form answered. `component` was the other value until the
- * vocabulary was removed on 2026-09-14; the union is kept at one member rather
- * than deleted because callers report it, and a field that silently stops
- * being reported is harder to notice than one that reports the same thing.
+ * The comment's lifecycle badge. Released is a fact core records when its release flow writes the
+ * comment (ISS-1228): no words a person or agent types earn it, and a comment the release flow
+ * marked carries it whatever it says. Every other kind is read off the opening line.
  */
-export type CommentBodyForm = "prefix";
-
-export interface DerivedCommentKind {
-	kind: CommentKind;
-	form: CommentBodyForm;
-}
-
-export function deriveCommentKind(comment: { body: string }): DerivedCommentKind {
-	return { kind: prefixKind(comment.body), form: "prefix" };
+export function deriveCommentKind(comment: {
+	body: string;
+	announces?: CommentAnnouncement | null;
+}): CommentKind {
+	if (comment.announces === "release") return "released";
+	return prefixKind(comment.body);
 }
 
 export interface ChecklistItem {
@@ -581,12 +556,8 @@ export function parseChecklist(
 	return items;
 }
 
-/** Heartbeat staleness threshold. Mirrors core's sweeper
- *  `HEARTBEAT_TIMEOUT_MS_DEFAULT = 3*60_000` (`pipeline/sweeper.ts`, env
- *  `PIPELINE_HEARTBEAT_TIMEOUT_MS`). Not env-readable from the FE, so kept in
- *  lockstep here; a session whose last heartbeat is older than this is the same
- *  "stale" the server uses before marking it failed. */
-export const HEARTBEAT_STALE_MS = 3 * 60_000;
+/** A session unheard past this reads as quiet: the one line every screen draws (ISS-1228). */
+export const HEARTBEAT_STALE_MS = STALLED_THRESHOLD_MS;
 
 export type HeartbeatState = "alive" | "stale" | "unknown";
 

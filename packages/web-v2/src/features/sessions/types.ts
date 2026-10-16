@@ -38,11 +38,8 @@ export interface SessionBoxReport {
   observedAt: string;
 }
 
-/** Warning band between a fresh heartbeat and the sweeper's heartbeat_timeout
- *  cutoff — promote `running` → `stalled` past this. */
+/** A running session silent past this reads as quiet on every screen: `running` → `stalled`. */
 export const STALLED_THRESHOLD_MS = 60_000;
-
-export const HEARTBEAT_REAP_MS = 3 * 60_000;
 
 /** A heartbeat moves no event, so every screen showing a running session re-reads it on this period. */
 export const LIVE_READ_POLL_MS = 20_000;
@@ -53,8 +50,8 @@ export interface LivenessResult {
   state: Liveness;
   /** Time since the last heartbeat signal, or null when not gradable. */
   sinceHeartbeatMs: number | null;
-  /** Milliseconds until the server auto-reaps (`stale` only); 0 once `reaping`,
-   *  null when not gradable. */
+  /** Milliseconds until core ends the session (`stale` only); 0 once `reaping`; null where core
+   *  states no limit for it, or the session is not gradable. */
   reapInMs: number | null;
 }
 
@@ -124,6 +121,8 @@ export interface SessionRow {
   estimatedCost?: number;
   /** What the box last reported about this session, off its ledger; `null` where it reported nothing. */
   report?: SessionBoxReport | null;
+  /** How long core lets this session go unheard before ending it; `null` where nothing does. */
+  silenceLimitMs?: number | null;
   /** One-line preview of the last user/assistant turn, attached by the list
    *  endpoint (ISS-698). Null when no previewable turn exists yet (e.g. a
    *  brand-new session, or a legacy row with only the jsonb transcript). */
@@ -335,12 +334,15 @@ export interface SilenceInput {
   lastHeartbeatAt: string | null;
   startedAt: string | null;
   updatedAt?: string | null;
+  /** The silence after which core ends this session, as core states it on the row. */
+  silenceLimitMs?: number | null;
 }
 
 /**
  * How long a running session has been silent — since its last check-in, else since it started —
- * and which side of the one-minute line that is. The session page, the sessions list and the
- * Pipeline page all judge a session quiet or stalled here, so no two of them disagree about one.
+ * which side of the one-minute line that is, and how far that is from the silence core ends the
+ * session after, read off the row (ISS-1228). The session page, the sessions list, the runs tab and
+ * the Pipeline page all judge a session here, so no two of them disagree about one.
  */
 export function sessionSilence(session: SilenceInput, nowMs: number = Date.now()): LivenessResult {
   if (session.status !== "running") return { state: "na", sinceHeartbeatMs: null, reapInMs: null };
@@ -351,16 +353,16 @@ export function sessionSilence(session: SilenceInput, nowMs: number = Date.now()
 
   const since = nowMs - lastMs;
   if (since <= STALLED_THRESHOLD_MS) return { state: "alive", sinceHeartbeatMs: since, reapInMs: null };
-  if (since <= HEARTBEAT_REAP_MS) {
-    return { state: "stale", sinceHeartbeatMs: since, reapInMs: HEARTBEAT_REAP_MS - since };
-  }
+  const limit = session.silenceLimitMs ?? null;
+  if (limit === null) return { state: "stale", sinceHeartbeatMs: since, reapInMs: null };
+  if (since <= limit) return { state: "stale", sinceHeartbeatMs: since, reapInMs: limit - since };
   return { state: "reaping", sinceHeartbeatMs: since, reapInMs: 0 };
 }
 
 export function deriveLiveness(
   session: Pick<
     SessionRow,
-    "status" | "lastHeartbeatAt" | "startedAt" | "updatedAt" | "metadata"
+    "status" | "lastHeartbeatAt" | "startedAt" | "updatedAt" | "metadata" | "silenceLimitMs"
   >,
   nowMs: number = Date.now(),
 ): LivenessResult {
@@ -371,7 +373,7 @@ export function deriveLiveness(
 export function deriveSessionDisplayStatus(
   session: Pick<
     SessionRow,
-    "status" | "lastHeartbeatAt" | "startedAt" | "updatedAt" | "metadata" | "report"
+    "status" | "lastHeartbeatAt" | "startedAt" | "updatedAt" | "metadata" | "report" | "silenceLimitMs"
   >,
   nowMs: number = Date.now(),
 ): AgentSessionDisplayStatus {

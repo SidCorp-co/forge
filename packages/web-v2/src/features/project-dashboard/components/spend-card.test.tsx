@@ -30,14 +30,23 @@ describe("the 7-day spend legend", () => {
     const data = spendByStep([row("forge-code", 3), row("forge-test", 2), row("drive", 1)]);
     render(<SpendCard data={data} inFlightUsd={0} read={{ read: "ok" }} />);
     const labels = [...document.querySelectorAll<HTMLElement>("[data-spend-label]")];
-    expect(labels.map((l) => l.textContent)).toEqual([
-      "Unrecognised work (forge-code)",
-      "Unrecognised work (forge-test)",
-      "Issue work",
-    ]);
+    expect(labels.map((l) => l.textContent)).toEqual(["Forge code", "Forge test", "Issue work"]);
     for (const l of labels) {
       expect(l.className).not.toMatch(/\b(truncate|line-clamp-\d|whitespace-nowrap)\b/);
       expect(l.className).toMatch(/\bbreak-words\b/);
+      expect(l.className).not.toMatch(/\bbreak-all\b/);
     }
+  });
+
+  // ISS-1228 round 9 (criteria 55, 56): a retired kind still in the window reads in words, so its
+  // label breaks between them at 390 rather than through a stored name with no spaces.
+  it("names a retired kind in words, with no stored name anywhere on the card", () => {
+    const stored = "review_followup_rework_after_codex_consult";
+    const data = spendByStep([row(stored, 3), row("triage", 2)]);
+    const { container } = render(<SpendCard data={data} inFlightUsd={0} read={{ read: "ok" }} />);
+    const labels = [...document.querySelectorAll<HTMLElement>("[data-spend-label]")].map((l) => l.textContent);
+    expect(labels).toEqual(["Review followup rework after codex consult", "Triage"]);
+    expect(container.innerHTML).not.toContain(stored);
+    expect(container.innerHTML).not.toContain("Unrecognised");
   });
 });

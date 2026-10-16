@@ -41,7 +41,7 @@ export function SpendCard({
         {segments.map((s) => (
           <li key={s.key} className="flex items-baseline gap-2">
             <span className="size-2.5 flex-none translate-y-px rounded-sm" style={{ background: s.color }} />
-            {/* Wrapped, never clipped: two labels sharing an opening ("Unrecognised work (…)") each read whole. */}
+            {/* Wrapped between its words, never clipped, so two labels sharing an opening each read whole. */}
             <span data-spend-label className="fg-body-sm min-w-0 flex-1 break-words text-fg">
               {s.label}
             </span>

@@ -22,6 +22,7 @@ const ACTION_TONE: Record<AttentionActionKind, SemanticTone> = {
   diff: "active",
   input: "attention",
   parked: "blocked",
+  session: "attention",
 };
 
 const ACTION_META: Record<AttentionActionKind, { tag: string; icon: IconName }> = {
@@ -29,6 +30,7 @@ const ACTION_META: Record<AttentionActionKind, { tag: string; icon: IconName }> 
   diff: { tag: "Review", icon: "check" },
   input: { tag: "Awaiting", icon: "clock" },
   parked: { tag: "Blocked", icon: "clock" },
+  session: { tag: "Waiting", icon: "agent" },
 };
 
 const TITLE = "Needs your attention";

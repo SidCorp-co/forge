@@ -293,7 +293,7 @@ function CommentItem({
   readOnly?: boolean;
 }) {
   const [replying, setReplying] = useState(false);
-  const { kind } = deriveCommentKind(node);
+  const kind = deriveCommentKind(node);
   const meta = COMMENT_KIND_META[kind];
   const isAgent = node.author?.isAgent ?? false;
   const author = node.author?.displayName ?? memberLabel(node.authorId, members);

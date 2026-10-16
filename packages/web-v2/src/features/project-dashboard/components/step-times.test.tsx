@@ -34,7 +34,7 @@ describe("StepTimes", () => {
     mount({
       durations: [duration("drive", 600, 1.5), duration("drive", 1200, 2), duration("release_batch", 60, 0.25)],
     });
-    const steps = screen.getAllByTitle(/^(drive|release_batch)$/).map((n) => n.textContent);
+    const steps = screen.getAllByTitle(/^(Issue work|Releases)$/).map((n) => n.textContent);
     expect(steps).toEqual(["Issue work", "Releases"]);
     expect(screen.getByText(/Slowest step:/)).toHaveTextContent(
       "Slowest step: Issue work at a 15m 00s median over 2 runs, 15.0× slower than Releases.",
@@ -51,9 +51,14 @@ describe("StepTimes", () => {
     );
   });
 
-  it("says a step no kind of work names is unrecognised, keeping the stored name as its title", () => {
-    mount({ durations: [duration("code", 600, 1.5)] });
-    expect(screen.getByTitle("code")).toHaveTextContent("Unrecognised work (code)");
+  // ISS-1228 round 9 (criterion 55): a retired kind reads in words, on the row and in its title.
+  it("names a step the registry no longer has in words, its title included", () => {
+    const stored = "review_followup_rework_after_codex_consult";
+    const { container } = mount({ durations: [duration(stored, 600, 1.5)] });
+    const label = document.querySelector<HTMLElement>("[data-step-label]");
+    expect(label).toHaveTextContent("Review followup rework after codex consult");
+    expect(label?.title).toBe("Review followup rework after codex consult");
+    expect(container.innerHTML).not.toContain(stored);
   });
 
   it("says no step finished, in one flat line, when the window holds nothing", () => {
@@ -85,10 +90,7 @@ describe("StepTimes — every step label reads whole (ISS-1228 criterion 38)", (
   it("wraps a label rather than clipping it, so two unrecognised steps never read alike", () => {
     mount({ durations: [duration("forge-code", 600, 1), duration("forge-test", 300, 1)] });
     const labels = [...document.querySelectorAll<HTMLElement>("[data-step-label]")];
-    expect(labels.map((l) => l.textContent)).toEqual([
-      "Unrecognised work (forge-code)",
-      "Unrecognised work (forge-test)",
-    ]);
+    expect(labels.map((l) => l.textContent)).toEqual(["Forge code", "Forge test"]);
     for (const l of labels) {
       expect(l.className).not.toMatch(/\b(truncate|line-clamp-\d|whitespace-nowrap)\b/);
       expect(l.className).toMatch(/\bbreak-words\b/);

@@ -29,6 +29,9 @@ export interface LiveSession {
   createdAt: string;
   issues: HeldIssueRef[];
   report: SessionReport | null;
+  /** How long core lets this session go unheard before it ends it; `null` where no silence does;
+   *  absent on a read that predates it. */
+  silenceLimitMs?: number | null;
 }
 
 export type PersonOwes = "information" | "decision" | "resource";

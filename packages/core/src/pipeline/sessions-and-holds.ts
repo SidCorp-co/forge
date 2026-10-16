@@ -15,6 +15,7 @@ import {
 } from '../agent-sessions/box-report.js';
 import { db } from '../db/client.js';
 import { type IssueStatus, terminalAgentSessionStatuses } from '../db/schema.js';
+import { silenceLimitMs } from '../devices/session-silence.js';
 import { issueArchiveSide } from '../issues/archive.js';
 import { loadIssuePark } from '../issues/park-view.js';
 import { HUMAN_PARK_STATUSES, ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
@@ -45,6 +46,8 @@ export interface LiveSession {
   createdAt: string;
   issues: HeldIssueRef[];
   report: SessionReport | null;
+  /** How long core lets this session go unheard before it ends it; `null` where no silence does. */
+  silenceLimitMs: number | null;
 }
 
 export type Holder =
@@ -96,6 +99,8 @@ export interface SessionRow {
   started_at: Date | string | null;
   last_heartbeat_at: Date | string | null;
   created_at: Date | string;
+  /** The metadata keys the silence limit reads; absent reads as none. */
+  metadata?: unknown;
 }
 
 export interface LeaseRow {
@@ -222,6 +227,11 @@ export function projectSessionsAndHolds(input: {
       createdAt: iso(s.created_at) as string,
       issues: issuesOf.get(s.id) ?? [],
       report: reportOf.get(s.id) ?? null,
+      silenceLimitMs: silenceLimitMs({
+        kind: s.kind,
+        runtimeState: s.runtime_state,
+        metadata: s.metadata,
+      }),
     }),
   );
 
@@ -265,7 +275,11 @@ export async function readSessionsAndHolds(
 
   const sessions = (await db.execute(sql`
     SELECT s.id, s.kind, s.title, s.status, s.runtime_state, s.device_id, d.name AS device_name,
-           s.parent_session_id, s.started_at, s.last_heartbeat_at, s.created_at
+           s.parent_session_id, s.started_at, s.last_heartbeat_at, s.created_at,
+           jsonb_strip_nulls(jsonb_build_object(
+             'escalation', s.metadata -> 'escalation',
+             'agentChat', s.metadata -> 'agentChat'
+           )) AS metadata
       FROM agent_sessions s
       LEFT JOIN devices d ON d.id = s.device_id
      WHERE s.project_id = ${projectId}::uuid

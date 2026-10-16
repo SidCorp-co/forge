@@ -401,3 +401,52 @@ describe("the sessions list at a phone's width (ISS-1228 criterion 51)", () => {
     cleanup();
   });
 });
+
+describe("a quiet session read against core's own silence limit (ISS-1228 round 9)", () => {
+  const FOUR_MIN_AGO = new Date(NOW - 4 * 60_000).toISOString();
+  const ELEVEN_MIN_AGO = new Date(NOW - 11 * 60_000).toISOString();
+  const TEN_MIN = 10 * 60_000;
+  const blockedReport = {
+    incarnation: "live",
+    work: "blocked",
+    blockerKind: "human",
+    waitingOn: "a decision on the schema",
+    observedAt: FOUR_MIN_AGO,
+  };
+
+  it("reads Last reported blocked on the sessions list, as the session page and the Pipeline page do", () => {
+    listed = { ...row, lastHeartbeatAt: FOUR_MIN_AGO, updatedAt: FOUR_MIN_AGO, report: blockedReport, silenceLimitMs: TEN_MIN };
+    const { container } = render(<SessionsScreen scope={{ projectId: "p1" }} />);
+    const cell = container.querySelector("tbody")?.textContent ?? "";
+    listed = row;
+    cleanup();
+    expect(cell).toContain(lastReported("Blocked"));
+    expect(cell).not.toContain("awaiting auto-recovery");
+  });
+
+  it("counts the sessions list's countdown to core's ten minutes for a run session", () => {
+    listed = { ...row, lastHeartbeatAt: FOUR_MIN_AGO, updatedAt: FOUR_MIN_AGO, silenceLimitMs: TEN_MIN };
+    const { container } = render(<SessionsScreen scope={{ projectId: "p1" }} />);
+    const cell = container.querySelector("tbody")?.textContent ?? "";
+    listed = row;
+    cleanup();
+    expect(cell).toContain("auto-recovers in 6m 00s");
+  });
+
+  it("calls a run past the recovery threshold on the runs tab only once core's limit has passed", () => {
+    const before = render(
+      <ul>
+        <RunRow row={{ ...run, lastActivityAt: FOUR_MIN_AGO, silenceLimitMs: TEN_MIN }} now={NOW} slug="pair" />
+      </ul>,
+    ).container.textContent;
+    cleanup();
+    const after = render(
+      <ul>
+        <RunRow row={{ ...run, lastActivityAt: ELEVEN_MIN_AGO, silenceLimitMs: TEN_MIN }} now={NOW} slug="pair" />
+      </ul>,
+    ).container.textContent;
+    cleanup();
+    expect(before).not.toContain("past the automatic-recovery threshold");
+    expect(after).toContain("past the automatic-recovery threshold");
+  });
+});

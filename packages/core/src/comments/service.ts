@@ -3,7 +3,7 @@ import type { BodyFormat } from '../body/formats.js';
 import { decodeEntities } from '../body/parse.js';
 import { type PreparedBody, prepareBody } from '../body/prepare.js';
 import { db, type Tx } from '../db/client.js';
-import { comments, issues, users } from '../db/schema.js';
+import { type CommentAnnouncement, comments, issues, users } from '../db/schema.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 import { MessageRefusedError } from '../messaging/contract.js';
 import {
@@ -26,6 +26,7 @@ export type CommentThreadRow = {
   body: string;
   format: BodyFormat;
   stage: string | null;
+  announces: CommentAnnouncement | null;
   parentId: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -40,6 +41,7 @@ export const commentThreadColumns = {
   body: comments.body,
   format: comments.format,
   stage: comments.stage,
+  announces: comments.announces,
   parentId: comments.parentId,
   createdAt: comments.createdAt,
   updatedAt: comments.updatedAt,

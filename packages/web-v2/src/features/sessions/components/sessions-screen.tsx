@@ -35,7 +35,7 @@ import {
   useElapsed,
   WORKING_WORD,
 } from "@/design";
-import { TONE_META } from "@/design/status";
+import { BLOCKED_WORD, lastReported, TONE_META } from "@/design/status";
 import { SessionChip } from "./session-chip";
 import { useOrgScopedProjects, useProject, useProjects } from "@/features/projects/hooks";
 import { useDevices } from "@/features/runners/hooks";
@@ -710,13 +710,18 @@ function StatusCell({
           {subLine}
         </span>
       )}
+      {(liveness.state === "stale" || liveness.state === "reaping") && (
+        <span className="fg-caption text-subtle">
+          {lastReported(row.report?.work === "blocked" ? BLOCKED_WORD : WORKING_WORD)}
+        </span>
+      )}
       {liveness.state === "stale" && liveness.reapInMs != null && (
-        <span className="fg-caption text-subtle" title="Time until the server auto-recovers this session">
+        <span className="fg-caption text-subtle" title="Time until core ends this session if it stays silent">
           auto-recovers in {formatCountdown(liveness.reapInMs)}
         </span>
       )}
       {liveness.state === "reaping" && (
-        <span className="fg-caption text-subtle">awaiting auto-recovery…</span>
+        <span className="fg-caption text-subtle">past the automatic-recovery threshold</span>
       )}
     </div>
   );

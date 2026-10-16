@@ -8,7 +8,6 @@ import {
   FAILURE_REASON_LABEL,
   failureReasonAction,
   failureReasonLabel,
-  HEARTBEAT_REAP_MS,
   STALLED_THRESHOLD_MS,
   deriveLiveness,
   deriveSessionDisplayStatus,
@@ -53,25 +52,45 @@ describe("deriveLiveness", () => {
     expect(deriveLiveness(running(59_000), NOW).state).toBe("alive");
   });
 
-  it("is stale just over the stale threshold (61s) with a reap countdown", () => {
-    const r = deriveLiveness(running(61_000), NOW);
+  // ISS-1228 round 9: the countdown and the "past" line count to the silence after which core ends
+  // this session, which core states on the row; the screen holds no number of its own.
+  const PIPELINE_LIMIT = 3 * 60_000;
+  const RUN_LIMIT = 10 * 60_000;
+
+  it("is stale just over the stale threshold (61s) with a countdown to core's limit", () => {
+    const r = deriveLiveness(running(61_000, { silenceLimitMs: PIPELINE_LIMIT }), NOW);
     expect(r.state).toBe("stale");
-    expect(r.reapInMs).toBe(HEARTBEAT_REAP_MS - 61_000);
+    expect(r.reapInMs).toBe(PIPELINE_LIMIT - 61_000);
   });
 
-  it("is still stale just under the reap bound (179s)", () => {
-    expect(deriveLiveness(running(179_000), NOW).state).toBe("stale");
+  it("is still stale just under core's limit (179s of 180s)", () => {
+    expect(deriveLiveness(running(179_000, { silenceLimitMs: PIPELINE_LIMIT }), NOW).state).toBe("stale");
   });
 
-  it("is reaping past the reap bound (181s)", () => {
-    const r = deriveLiveness(running(181_000), NOW);
+  it("is reaping past core's limit (181s of 180s)", () => {
+    const r = deriveLiveness(running(181_000, { silenceLimitMs: PIPELINE_LIMIT }), NOW);
     expect(r.state).toBe("reaping");
     expect(r.reapInMs).toBe(0);
   });
 
+  it("counts a run session to its own ten minutes, not to another kind's three", () => {
+    const r = deriveLiveness(running(4 * 60_000, { kind: "run_session", silenceLimitMs: RUN_LIMIT }), NOW);
+    expect(r.state).toBe("stale");
+    expect(r.reapInMs).toBe(6 * 60_000);
+    expect(deriveLiveness(running(RUN_LIMIT + 1_000, { silenceLimitMs: RUN_LIMIT }), NOW).state).toBe("reaping");
+  });
+
+  it("states no countdown and never past where core ends the session on no silence", () => {
+    for (const silenceLimitMs of [null, undefined]) {
+      const r = deriveLiveness(running(60 * 60_000, { silenceLimitMs }), NOW);
+      expect(r.state).toBe("stale");
+      expect(r.reapInMs).toBeNull();
+    }
+  });
+
   it("treats the exact thresholds as the lower band (boundaries inclusive)", () => {
     expect(deriveLiveness(running(STALLED_THRESHOLD_MS), NOW).state).toBe("alive");
-    expect(deriveLiveness(running(HEARTBEAT_REAP_MS), NOW).state).toBe("stale");
+    expect(deriveLiveness(running(PIPELINE_LIMIT, { silenceLimitMs: PIPELINE_LIMIT }), NOW).state).toBe("stale");
   });
 
   it("returns na for an interactive chat session even when long-running", () => {

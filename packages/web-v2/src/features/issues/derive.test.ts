@@ -818,16 +818,15 @@ describe("deriveCommentKind", () => {
 		["Verdict: APPROVE", "approved"],
 		["forge-fix applied the patch", "fix"],
 		["## QA Test Report\nall green", "qa"],
-		["Released v1.2.0 to prod", "released"],
 		["forge-code complete; pushed ISS-1 branch", "code"],
 		["Plan written and ready for review", "plan"],
 		["Just a normal note here", "comment"],
 	];
 	it.each(cases)("classifies %j as %s", (body, kind) => {
-		expect(deriveCommentKind({ body })).toEqual({ kind, form: "prefix" });
+		expect(deriveCommentKind({ body, announces: null })).toBe(kind);
 	});
 	it("has badge meta for every kind it returns", () => {
-		for (const [, kind] of cases) {
+		for (const kind of [...cases.map(([, k]) => k), "released"]) {
 			expect(
 				COMMENT_KIND_META[kind as keyof typeof COMMENT_KIND_META],
 			).toBeDefined();
@@ -839,50 +838,54 @@ describe("deriveCommentKind", () => {
 	it.each([
 		["Moving this to draft until the plan is settled.\nNothing here has been released yet.", "comment"],
 		["Parking: the previous fix shipped with a typo, see below.", "comment"],
-		["Not released: the deploy was rolled back.", "comment"],
 		["Note on the plan\nThe reviewer approved the plan written above.", "comment"],
-		["## Release note\nThe Pipeline page now lists live sessions.", "released"],
-		["Released v1.2.0 to prod", "released"],
 	])("reads %j by its opening as %s", (body, kind) => {
-		expect(deriveCommentKind({ body })).toEqual({ kind, form: "prefix" });
+		expect(deriveCommentKind({ body, announces: null })).toBe(kind);
 	});
 
-	// ISS-1228 round 8: a Released badge marks a comment that announces a release, the way core's own
-	// release stamp and a person's "Released v1.2.0 to prod" do: it says what went out or where. A line
-	// that only starts with the word — a question, a denial, talk about the word — announces nothing.
+	// ISS-1228 round 9: Released is a fact core records as its release flow writes the comment, never
+	// a reading of the words. Judge-21's four denials, and every line rounds 7 and 8 badged by its
+	// words, typed by a person or an agent carry no badge.
 	it.each([
-		["Released? Not yet — this is still blocked on the vendor.", "comment"],
-		["Shipped is the wrong word here: nothing has gone out.", "comment"],
-		["Released to production is the wording we should use once deployment finishes.", "comment"],
-		["Released to prod yet?", "comment"],
-		["Released v1.2.0 to prod yet?", "comment"],
-		["Released v1.2.0 is the wording we should use.", "comment"],
-		["Released v10.2.0 to prod", "released"],
-		["Released — not yet", "comment"],
-		["Released — to production yet?", "comment"],
-		["Released — v1.2.0 to production", "released"],
-		["Released v1.2.0 on May 3", "released"],
-		["Released to production may be the wording.", "comment"],
-		["Released 2026.10 to production", "released"],
-		["Shipped not yet, the deploy was rolled back.", "comment"],
-		["**Released** in v0.4.3 — the picker went out.", "released"],
-		["__Shipped__ to production this morning.", "released"],
-		["Released in v0.4.2 — the picker went out.", "released"],
-		["Released outside a release batch, and recorded from what production is serving.", "released"],
-		["Released: the new picker.", "released"],
-		["Published release v2.0.1", "released"],
-		["## Release notes\nThe picker is new.", "released"],
-		["**Release note**\nThe picker is new.", "released"],
-	])("badges %j as %s by whether its opening announces a release", (body, kind) => {
-		expect(deriveCommentKind({ body })).toEqual({ kind, form: "prefix" });
+		"Released: nothing this week.",
+		"Shipped to QA failed — the build broke before upload.",
+		"Released to production got pushed to Monday, nothing went out today.",
+		"Released to production doesn't describe this one; it never left staging.",
+		"Released v1.2.0 to prod",
+		"Released v10.2.0 to prod",
+		"Released — v1.2.0 to production",
+		"Released v1.2.0 on May 3",
+		"Released 2026.10 to production",
+		"**Released** in v0.4.3 — the picker went out.",
+		"__Shipped__ to production this morning.",
+		"Released in v0.4.2 — the picker went out.",
+		"Released outside a release batch, and recorded from what production is serving.",
+		"Released: the new picker.",
+		"Published release v2.0.1",
+		"## Release notes\nThe picker is new.",
+		"**Release note**\nThe picker is new.",
+		"## Release note\nThe Pipeline page now lists live sessions.",
+	])("badges the typed comment %j with nothing", (body) => {
+		expect(deriveCommentKind({ body, announces: null })).toBe("comment");
+		expect(deriveCommentKind({ body })).toBe("comment");
+	});
+
+	it.each([
+		"Released outside a release batch, and recorded on the account of whoever released it.",
+		"**This issue is being closed by a release that was not verified.**",
+		"Not released: the deploy was rolled back.",
+		"Just a normal note here",
+	])("badges %j Released where core's release flow marked it, whatever its words", (body) => {
+		expect(deriveCommentKind({ body, announces: "release" })).toBe("released");
 	});
 
 	it("classifies a stored component body by its prose, not by its markup", () => {
 		expect(
 			deriveCommentKind({
 				body: "<forge-symptom><forge-opening><p>Plan written</p></forge-opening></forge-symptom>",
+				announces: null,
 			}),
-		).toEqual({ kind: "plan", form: "prefix" });
+		).toBe("plan");
 	});
 });
 
