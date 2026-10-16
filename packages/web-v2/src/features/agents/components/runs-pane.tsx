@@ -43,6 +43,36 @@ function closedRuns(runs: readonly PipelineRunListItem[] | undefined): PipelineR
     .sort((a, b) => (b.finishedAt ?? b.startedAt).localeCompare(a.finishedAt ?? a.startedAt));
 }
 
+function IssueLink({ slug, href, label }: { slug: string; href: string; label: string }) {
+  return (
+    <Link
+      href={`/projects/${slug}/issues/${href}`}
+      className="flex-none hover:underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+    >
+      <MonoTag>{label}</MonoTag>
+    </Link>
+  );
+}
+
+/**
+ * What a closed run worked: its one issue, or each issue a box opened it over (an issue page takes a
+ * display key as its id, ISS-1160), and only where it names neither, the kind of run it was.
+ */
+function ClosedRunWork({ run, slug }: { run: PipelineRunListItem; slug: string }) {
+  if (run.issueId && run.issueRef) return <IssueLink slug={slug} href={run.issueId} label={run.issueRef} />;
+  const group = run.group.issues;
+  if (group.length > 0) {
+    return (
+      <span className="flex flex-none flex-wrap items-baseline gap-1.5">
+        {group.map((key) => (
+          <IssueLink key={key} slug={slug} href={encodeURIComponent(key)} label={key} />
+        ))}
+      </span>
+    );
+  }
+  return <span className="fg-body-sm flex-none text-fg">{RUN_KIND_WORD[run.kind] ?? run.kind}</span>;
+}
+
 /**
  * What the tab says where no box reports a run: whether any run is working, and the runs that have
  * closed, so a project whose runs all ended is never said to have none.
@@ -94,16 +124,7 @@ function NothingRunning({ projectId, slug, now }: { projectId: string; slug: str
           <ul aria-label="Closed runs" className="flex flex-col divide-y divide-line border-y border-line">
             {closed.map((r) => (
               <li key={r.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2">
-                {r.issueId && r.issueRef ? (
-                  <Link
-                    href={`/projects/${slug}/issues/${r.issueId}`}
-                    className="flex-none hover:underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-                  >
-                    <MonoTag>{r.issueRef}</MonoTag>
-                  </Link>
-                ) : (
-                  <span className="fg-body-sm flex-none text-fg">{RUN_KIND_WORD[r.kind] ?? r.kind}</span>
-                )}
+                <ClosedRunWork run={r} slug={slug} />
                 <span className="fg-body-sm min-w-0 flex-1 basis-40 truncate text-muted">{r.issueTitle ?? ""}</span>
                 <span data-run-status className="fg-body-sm flex-none text-fg">
                   {CLOSED_STATUS_WORD[r.status]}

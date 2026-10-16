@@ -36,16 +36,20 @@ const RUNTIME_DOING: Record<string, Doing> = {
   closed: { label: "Closing", tone: "neutral" },
 };
 
-/** What the session is doing, from its status first and its runtime state second. A running session
- *  gone quiet is doing nothing anyone has heard of, so it says what it last reported instead. */
+const BLOCKED: Doing = { label: "Blocked", tone: "attention" };
+
+/** What the session is doing, from its status first, then the box's report of a block, then its
+ *  runtime state. A running session gone quiet is doing nothing anyone has heard of, so it says what
+ *  it last reported instead. */
 export function doingOf(
-  session: Pick<LiveSession, "status" | "runtimeState" | "lastHeartbeatAt" | "startedAt">,
+  session: Pick<LiveSession, "status" | "runtimeState" | "lastHeartbeatAt" | "startedAt"> &
+    Partial<Pick<LiveSession, "report">>,
   now: number,
 ): Doing {
   if (session.status === "queued") return { label: "Waiting for a box", tone: "neutral" };
   if (session.status === "idle") return { label: "Not started", tone: "neutral" };
   const runtime = session.runtimeState ? RUNTIME_DOING[session.runtimeState] : undefined;
-  const doing = runtime ?? { label: WORKING_WORD, tone: "active" };
+  const doing = session.report?.work === "blocked" ? BLOCKED : (runtime ?? { label: WORKING_WORD, tone: "active" });
   return isQuiet(session, now) ? { label: lastReported(doing.label), tone: "neutral" } : doing;
 }
 
@@ -143,13 +147,26 @@ function clock(iso: string | null): string | null {
   return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
 }
 
-/** One holder of an issue, as three short lines: who holds it, why, and since when. */
-export function holderLine(holder: Holder, now: number): HolderLine {
+/** Why a session holds an issue: what that session is doing, in its Live sessions row's words, and
+ *  for a quiet one how long it has been unheard. A session the read did not return claims nothing. */
+function sessionWhy(session: LiveSession | undefined, now: number): string {
+  if (!session) return "What its session is doing was not read";
+  const doing = doingOf(session, now).label;
+  const checkIn = checkInOf(session, now);
+  return checkIn.quiet ? `${doing} · ${checkIn.text}` : doing;
+}
+
+/** One holder of an issue, as three short lines: who holds it, why, and since when. `sessions` is the
+ *  same read's live sessions, which a session holder is said through. */
+export function holderLine(holder: Holder, now: number, sessions: readonly LiveSession[] = []): HolderLine {
   switch (holder.by) {
     case "session":
       return {
         who: `${holder.sessionTitle?.trim() || sessionKindLabel(holder.sessionKind)} on ${holder.deviceName ?? "an unnamed box"}`,
-        why: "A live session is working it",
+        why: sessionWhy(
+          sessions.find((s) => s.id === holder.sessionId),
+          now,
+        ),
         since: ago(holder.since, now) ?? "Start not recorded",
       };
     case "claim": {

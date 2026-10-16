@@ -6,7 +6,7 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { HeldIssue } from "../types";
+import type { HeldIssue, LiveSession } from "../types";
 import { HoldsList } from "./holds-list";
 
 expect.extend(matchers);
@@ -53,7 +53,7 @@ afterEach(() => {
 describe("a held row's reason", () => {
   it("is held to three lines, with the whole reason in its title", () => {
     layOut(CLIPS);
-    render(<HoldsList holds={[held(LONG)]} slug="pair" now={NOW} />);
+    render(<HoldsList holds={[held(LONG)]} sessions={[]} slug="pair" now={NOW} />);
     const reason = screen.getByText(LONG);
     expect(reason.className).toMatch(/\bline-clamp-3\b/);
     expect(reason).toHaveAttribute("title", LONG);
@@ -61,7 +61,7 @@ describe("a held row's reason", () => {
 
   it("opens the whole reason in place where three lines clip it, and closes it again", () => {
     layOut(CLIPS);
-    render(<HoldsList holds={[held(LONG)]} slug="pair" now={NOW} />);
+    render(<HoldsList holds={[held(LONG)]} sessions={[]} slug="pair" now={NOW} />);
     const more = screen.getByRole("button", { name: "More" });
     expect(more).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(more);
@@ -74,7 +74,7 @@ describe("a held row's reason", () => {
 
   it("shows a reason wider than one line and inside three whole, with no toggle", () => {
     layOut(FITS_THREE_LINES);
-    render(<HoldsList holds={[held(SHORT)]} slug="pair" now={NOW} />);
+    render(<HoldsList holds={[held(SHORT)]} sessions={[]} slug="pair" now={NOW} />);
     expect(screen.getByText(SHORT)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "More" })).toBeNull();
   });
@@ -82,7 +82,47 @@ describe("a held row's reason", () => {
 
 describe("a held row's issue", () => {
   it("keeps its key on one line beside a long title", () => {
-    render(<HoldsList holds={[held("Short reason")]} slug="pair" now={NOW} />);
+    render(<HoldsList holds={[held("Short reason")]} sessions={[]} slug="pair" now={NOW} />);
     expect(screen.getByText("ISS-1").parentElement?.className).toMatch(/\bwhitespace-nowrap\b/);
+  });
+});
+
+describe("a Held row a session holds (ISS-1228 criterion 35)", () => {
+  const quiet: LiveSession = {
+    id: "s9",
+    kind: "run_session",
+    title: "run: ISS-1",
+    status: "running",
+    runtimeState: "working",
+    deviceId: "d1",
+    deviceName: "box-a",
+    parentSessionId: null,
+    startedAt: "2026-10-15T04:00:00Z",
+    lastHeartbeatAt: "2026-10-15T04:57:00Z",
+    createdAt: "2026-10-15T04:00:00Z",
+    issues: [],
+    report: null,
+  };
+  const bySession: HeldIssue = {
+    issueId: "i1",
+    displayId: "ISS-1",
+    title: "An issue",
+    status: "in_progress",
+    holders: [
+      {
+        by: "session",
+        sessionId: "s9",
+        sessionTitle: "run: ISS-1",
+        sessionKind: "run_session",
+        deviceName: "box-a",
+        since: "2026-10-15T04:00:00Z",
+      },
+    ],
+  };
+
+  it("says what its quiet session last reported and how long ago, never that a session is working it", () => {
+    render(<HoldsList holds={[bySession]} sessions={[quiet]} slug="pair" now={NOW} />);
+    expect(screen.getByText("Last reported working · 3m ago")).toBeInTheDocument();
+    expect(screen.queryByText(/is working it/)).not.toBeInTheDocument();
   });
 });

@@ -39,9 +39,12 @@ export function SpendCard({
       </div>
       <ul className="mt-2 grid grid-cols-2 gap-x-5 gap-y-1">
         {segments.map((s) => (
-          <li key={s.key} className="flex items-center gap-2">
-            <span className="size-2.5 flex-none rounded-sm" style={{ background: s.color }} />
-            <span className="fg-body-sm min-w-0 flex-1 truncate text-fg">{s.label}</span>
+          <li key={s.key} className="flex items-baseline gap-2">
+            <span className="size-2.5 flex-none translate-y-px rounded-sm" style={{ background: s.color }} />
+            {/* Wrapped, never clipped: two labels sharing an opening ("Unrecognised work (…)") each read whole. */}
+            <span data-spend-label className="fg-body-sm min-w-0 flex-1 break-words text-fg">
+              {s.label}
+            </span>
             <span className="font-mono text-sm font-semibold tabular-nums text-fg">{formatUsd(s.cost)}</span>
           </li>
         ))}

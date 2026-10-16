@@ -186,3 +186,51 @@ describe("ChatComposer — one attach control, announced once", () => {
     expect(screen.getAllByRole("button", { name: /attach|upload/i })).toHaveLength(1);
   });
 });
+
+describe("ChatComposer — held", () => {
+  it("refuses a send and an attachment without spinning, and says why at every width", () => {
+    const onSend = vi.fn();
+    render(<ChatComposer onSend={onSend} attachments={SESSION_ATTACHMENTS} held="Sending waits." />);
+    type("hello");
+    fireEvent.click(screen.getByLabelText("Send message"));
+    expect(onSend).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Send message")).toBeDisabled();
+    expect(screen.getByLabelText("Attach files")).toBeDisabled();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    const line = screen.getByText("Sending waits.");
+    expect(line.className).not.toMatch(/\bhidden\b/);
+  });
+
+  it("stages no file however it arrives while held: picked, dropped or pasted", async () => {
+    render(<ChatComposer onSend={vi.fn()} attachments={SESSION_ATTACHMENTS} held="Sending waits." />);
+    pick([fileOf("picked.png", "image/png")]);
+    const shot = fileOf("pasted.png", "image/png");
+    fireEvent.paste(screen.getByLabelText("Message"), {
+      clipboardData: { items: [{ kind: "file", type: "image/png", getAsFile: () => shot }] },
+    });
+    const dropped = fileOf("dropped.png", "image/png");
+    const root = screen.getByLabelText("Message").closest("[tabindex], [role=presentation]") ?? document.body;
+    fireEvent.drop(root, {
+      dataTransfer: { files: [dropped], items: [{ kind: "file", type: "image/png", getAsFile: () => dropped }], types: ["Files"] },
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByText("picked.png")).not.toBeInTheDocument();
+    expect(screen.queryByText("pasted.png")).not.toBeInTheDocument();
+    expect(screen.queryByText("dropped.png")).not.toBeInTheDocument();
+  });
+
+  it("stages a dropped file when not held, so the drop above reaches the dropzone", async () => {
+    render(<ChatComposer onSend={vi.fn()} attachments={SESSION_ATTACHMENTS} />);
+    const dropped = fileOf("dropped.png", "image/png");
+    const root = screen.getByLabelText("Message").closest("[tabindex], [role=presentation]") ?? document.body;
+    fireEvent.drop(root, {
+      dataTransfer: { files: [dropped], items: [{ kind: "file", type: "image/png", getAsFile: () => dropped }], types: ["Files"] },
+    });
+    expect(await screen.findByText("dropped.png")).toBeInTheDocument();
+  });
+
+  it("spins for nothing it was told is held, even when busy is passed beside it", () => {
+    render(<ChatComposer onSend={vi.fn()} busy held="Sending waits." />);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+});

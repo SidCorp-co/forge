@@ -8,10 +8,11 @@
 // Matchers are extended on vitest's OWN `expect` for the reason `thinking-line.test.tsx` gives.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { ChatComposer } from "@/features/chat/components/chat-composer";
 import type { RenderBlock } from "../types";
-import { TurnStage, sessionTurnStage, turnStageOf } from "./turn-stage";
+import { QUIET_HOLD, TurnStage, sessionActivity, sessionComposerState, sessionTurnStage, turnStageOf } from "./turn-stage";
 
 expect.extend(matchers);
 
@@ -182,5 +183,31 @@ describe("the line a reader sees", () => {
   it("is announced without stealing focus", () => {
     render(<TurnStage stage="working" />);
     expect(screen.getByTestId("turn-stage")).toHaveAttribute("aria-live", "polite");
+  });
+});
+
+describe("what a quiet session's page draws (ISS-1228 criterion 29)", () => {
+  it("calls a running session answering and a quiet one live but not answering", () => {
+    expect(sessionActivity("running")).toEqual({ live: true, answering: true, quiet: false });
+    expect(sessionActivity("stalled")).toEqual({ live: true, answering: false, quiet: true });
+    expect(sessionActivity("completed")).toEqual({ live: false, answering: false, quiet: false });
+  });
+
+  it("draws no spinner on a quiet session's composer and says why it takes no message", () => {
+    render(<ChatComposer onSend={vi.fn()} {...sessionComposerState("stalled", false)} />);
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "still there?" } });
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Send message")).toBeDisabled();
+    expect(screen.getByText(QUIET_HOLD)).toBeVisible();
+  });
+
+  it("keeps the spinner for a session that is answering", () => {
+    render(<ChatComposer onSend={vi.fn()} {...sessionComposerState("running", false)} />);
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    expect(screen.queryByText(QUIET_HOLD)).not.toBeInTheDocument();
+  });
+
+  it("spins for this browser's own send even on a quiet session", () => {
+    expect(sessionComposerState("stalled", true)).toEqual({ busy: true });
   });
 });

@@ -79,3 +79,18 @@ describe("StepTimes", () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("StepTimes — every step label reads whole (ISS-1228 criterion 38)", () => {
+  it("wraps a label rather than clipping it, so two unrecognised steps never read alike", () => {
+    mount({ durations: [duration("forge-code", 600, 1), duration("forge-test", 300, 1)] });
+    const labels = [...document.querySelectorAll<HTMLElement>("[data-step-label]")];
+    expect(labels.map((l) => l.textContent)).toEqual([
+      "Unrecognised work (forge-code)",
+      "Unrecognised work (forge-test)",
+    ]);
+    for (const l of labels) {
+      expect(l.className).not.toMatch(/\b(truncate|line-clamp-\d|whitespace-nowrap)\b/);
+      expect(l.className).toMatch(/\bbreak-words\b/);
+    }
+  });
+});

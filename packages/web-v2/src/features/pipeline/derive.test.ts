@@ -67,6 +67,25 @@ describe("doingOf — what a session is doing, in words", () => {
     expect(doingOf({ ...silent, runtimeState: null }, AT).label).toBe("Last reported working");
   });
 
+  it("calls a session its box reports blocked Blocked, never Working, and a quiet one Last reported blocked", () => {
+    const report = {
+      incarnation: "live",
+      work: "blocked",
+      blockerKind: "human",
+      waitingOn: "the owner's answer",
+      observedAt: HEARD,
+    };
+    const heard = { status: "running", runtimeState: "working", startedAt: HEARD, report };
+    expect(doingOf({ ...heard, lastHeartbeatAt: HEARD }, AT)).toEqual({ label: "Blocked", tone: "attention" });
+    expect(doingOf({ ...heard, lastHeartbeatAt: SILENT }, AT)).toEqual({
+      label: "Last reported blocked",
+      tone: "neutral",
+    });
+    expect(doingOf({ ...heard, lastHeartbeatAt: HEARD, report: { ...report, work: "runnable" } }, AT).label).toBe(
+      "Working",
+    );
+  });
+
   it("calls a session heard from exactly a minute ago working, and one a second past that quiet", () => {
     const at = (ms: number) => new Date(AT - ms).toISOString();
     const base = { status: "running", runtimeState: "working" };
@@ -173,7 +192,35 @@ describe("holderLine — who holds an issue, why, and since when", () => {
       deviceName: "box-a",
       since: "2026-10-15T01:00:00.000Z",
     };
-    expect(holderLine(h, NOW)).toEqual({ who: "run: ISS-7 on box-a", why: "A live session is working it", since: "1h ago" });
+    expect(holderLine(h, NOW, [session()])).toEqual({ who: "run: ISS-7 on box-a", why: "Working", since: "1h ago" });
+  });
+
+  it("says what a quiet session holding an issue last reported and how long ago, never that it is working it", () => {
+    const h: Holder = {
+      by: "session",
+      sessionId: "s1",
+      sessionTitle: "run: ISS-7",
+      sessionKind: "run_session",
+      deviceName: "box-a",
+      since: "2026-10-15T01:00:00.000Z",
+    };
+    const quiet = session({ lastHeartbeatAt: "2026-10-15T01:58:00.000Z" });
+    expect(holderLine(h, NOW, [quiet]).why).toBe("Last reported working · 2m ago");
+    const waiting = session({ runtimeState: "awaiting_input" });
+    expect(holderLine(h, NOW, [waiting]).why).toBe("Waiting for input");
+  });
+
+  it("claims nothing for a session holder whose session the read did not return", () => {
+    const h: Holder = {
+      by: "session",
+      sessionId: "gone",
+      sessionTitle: null,
+      sessionKind: "run_session",
+      deviceName: null,
+      since: "2026-10-15T01:00:00.000Z",
+    };
+    expect(holderLine(h, NOW, [session()]).why).toBe("What its session is doing was not read");
+    expect(holderLine(h, NOW).why).not.toMatch(/working/i);
   });
 
   it("names a claim with its holder and expiry, and calls its time a renewal", () => {
