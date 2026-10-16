@@ -51,14 +51,16 @@ case "$arch" in
 esac
 target="$cpu-$plat"
 dest="$HOME/.local/bin"
-mkdir -p "$dest"
 # Read what core publishes first: a platform with no build is refused by name, never a bare 404.
 manifest=$(curl -fsSL "$BASE$PREFIX/install/latest.json" | tr -d ' \\n')
-published=$(printf '%s' "$manifest" | grep -o '"[^"]*":{"url"' | sed 's/":{"url"//; s/"//g' | tr '\\n' ' ')
-case " $published " in
-  *" $target "*) ;;
+published=$(printf '%s' "$manifest" | grep -o '"[^"]*":{"url"' | sed 's/":{"url"//; s/"//g' | paste -sd, - | sed 's/,/, /g')
+[ -n "$published" ] || published=none
+case ", $published, " in
+  *", $target, "*) ;;
   *) echo "INSTALL_PLATFORM_UNPUBLISHED: no forge-runner build is published for $target ($os $arch); published: $published. Nothing was installed." >&2; exit 1;;
 esac
+# Made only once the platform is known to be published, so a refusal leaves nothing behind.
+mkdir -p "$dest"
 echo "Downloading forge-runner ($target)..."
 curl -fsSL "$BASE$PREFIX/install/bin/$target" -o "$dest/forge-runner.new"
 # Refuse by name unless the download matches the sha256 core publishes for this target.
