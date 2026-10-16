@@ -32,7 +32,7 @@ const liveSessionSchema = z.object({
       observedAt: z.string(),
     })
     .nullable(),
-  silenceLimitMs: z.number().int().positive().nullable(),
+  silenceLimitMs: z.number().int().nonnegative().nullable(),
 });
 
 const holderSchema = z.discriminatedUnion('by', [

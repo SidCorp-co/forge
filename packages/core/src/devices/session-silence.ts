@@ -1,61 +1,127 @@
-import { getLoopThresholds, oneShotDeviceGraceMs } from '../jobs/loop-monitor-thresholds.js';
-import { PIPELINE_SESSION_KINDS } from '../jobs/session-kinds.js';
+import { terminalAgentSessionStatuses } from '../db/session-vocabulary.js';
+import {
+  CHAT_IDLE_CLOSE_MS,
+  getLoopThresholds,
+  oneShotDeviceGraceMs,
+} from '../jobs/loop-monitor-thresholds.js';
+import { CLIENT_SESSION_KINDS, PIPELINE_SESSION_KINDS } from '../jobs/session-kinds.js';
+import { LIVE_SESSION_STATUSES } from '../lifecycle/status-sets.js';
 import { MASTER_SESSION_METADATA_TYPE, RUN_SESSION_METADATA_TYPE } from './run-session-keys.js';
 
 export const SESSION_SILENCE_TIMEOUT_MS = 10 * 60 * 1000;
 
 export const SESSION_SILENCE_TIMEOUT_S = Math.floor(SESSION_SILENCE_TIMEOUT_MS / 1000);
 
-const HEARTBEAT_REAPED_KINDS: ReadonlySet<string> = new Set(PIPELINE_SESSION_KINDS);
+const PIPELINE_KINDS: ReadonlySet<string> = new Set(PIPELINE_SESSION_KINDS);
+const CLIENT_KINDS: ReadonlySet<string> = new Set(CLIENT_SESSION_KINDS);
+const LIVE: ReadonlySet<string> = new Set(LIVE_SESSION_STATUSES);
+const TERMINAL: ReadonlySet<string> = new Set(terminalAgentSessionStatuses);
 
-/** A live session on the same jobless one-shot run (the subject at `leadMs` 0), `leadMs` after it. */
+/** A live session on the same jobless one-shot run, the subject included. */
 export interface OneShotSibling {
-  leadMs: number;
+  beatAt: number;
   runnerAnswers: boolean;
   parked: boolean;
 }
 
+/** Times are epoch milliseconds, as the reapers' own rows hold them. */
 export interface SilenceSubject {
   kind: string;
+  status: string;
   runtimeState?: string | null;
+  /** The keys the reapers read: `escalation`, `agentChat`, `acked`, `source`. */
   metadata?: unknown;
-  childLeadMs?: number | null;
-  /** Where its run is a running one-shot run with no job: when that run began, and its live sessions. */
-  oneShot?: { runStartLeadMs: number; sessions: readonly OneShotSibling[] } | null;
+  hasClient?: boolean;
+  lastHeartbeatAt: number | null;
+  startedAt: number | null;
+  updatedAt: number;
+  createdAt: number;
+  dispatchedAt?: number | null;
+  parked?: boolean;
+  hasJob?: boolean;
+  /** The project's residency, park grace included. */
+  residencyMs?: number;
+  latestChildBeatAt?: number | null;
+  oneShot?: { runStartedAt: number; sessions: readonly OneShotSibling[] } | null;
 }
 
-/** As the loop monitor's `metadata -> key IS NOT NULL` reads it: the key present, a JSON null included. */
-function carries(metadata: unknown, key: string): boolean {
-  return metadata !== null && typeof metadata === 'object' && Object.hasOwn(metadata, key);
+function field(metadata: unknown, key: string): { present: boolean; value: unknown } {
+  if (metadata === null || typeof metadata !== 'object' || !Object.hasOwn(metadata, key)) {
+    return { present: false, value: undefined };
+  }
+  return { present: true, value: (metadata as Record<string, unknown>)[key] };
+}
+
+/** The loop monitor's heartbeat hop, with the baseline it falls back to when no heartbeat came. */
+function heartbeatHop(s: SilenceSubject, hb: number): number | null {
+  const reaped =
+    PIPELINE_KINDS.has(s.kind) ||
+    field(s.metadata, 'escalation').present ||
+    field(s.metadata, 'agentChat').present;
+  if (s.status !== 'running' || s.runtimeState === 'awaiting_input' || !reaped) return null;
+  if (s.lastHeartbeatAt !== null) return s.lastHeartbeatAt + hb;
+  return Math.max(s.startedAt ?? s.createdAt, s.updatedAt) + hb;
+}
+
+function queueHop(s: SilenceSubject, queueMs: number, hb: number): number | null {
+  if (s.status !== 'queued' || !PIPELINE_KINDS.has(s.kind)) return null;
+  if (s.lastHeartbeatAt !== null) return s.lastHeartbeatAt + hb;
+  return (s.dispatchedAt ?? s.createdAt) + queueMs;
+}
+
+function noClientHop(s: SilenceSubject, hb: number, ackFastMs: number): number | null {
+  if (s.status !== 'running' || s.hasClient !== false || !CLIENT_KINDS.has(s.kind)) return null;
+  const acked = field(s.metadata, 'acked').value;
+  const ends = [s.lastHeartbeatAt === null ? s.createdAt + hb : s.lastHeartbeatAt + hb];
+  if (acked === true || acked === 'true') ends.push((s.dispatchedAt ?? s.createdAt) + ackFastMs);
+  return Math.min(...ends);
+}
+
+function oneShotSweep(s: SilenceSubject, hb: number): number | null {
+  const run = s.oneShot;
+  if (!run || !LIVE.has(s.status) || run.sessions.some((t) => t.parked)) return null;
+  const grace = oneShotDeviceGraceMs(hb);
+  return Math.max(
+    run.runStartedAt + hb,
+    ...run.sessions.map((t) => t.beatAt + (t.runnerAnswers ? grace : hb)),
+  );
+}
+
+/** When core ends this session if nothing is heard from it, or `null` where silence never does. */
+export function silenceDeadline(s: SilenceSubject): number | null {
+  const { heartbeatMs: hb, queueMs, ackFastMs } = getLoopThresholds();
+  const ownBeat = s.lastHeartbeatAt ?? s.startedAt ?? s.createdAt;
+  const lastHeard = s.lastHeartbeatAt ?? s.startedAt ?? s.updatedAt ?? s.createdAt;
+  const ends: Array<number | null> = [
+    heartbeatHop(s, hb),
+    queueHop(s, queueMs, hb),
+    noClientHop(s, hb, ackFastMs),
+    oneShotSweep(s, hb),
+  ];
+  if (s.kind === RUN_SESSION_METADATA_TYPE && s.status === 'running') {
+    ends.push(ownBeat + SESSION_SILENCE_TIMEOUT_MS);
+  }
+  if (s.kind === MASTER_SESSION_METADATA_TYPE && !TERMINAL.has(s.status)) {
+    ends.push(Math.max(ownBeat, s.latestChildBeatAt ?? ownBeat) + SESSION_SILENCE_TIMEOUT_MS);
+  }
+  if (s.status === 'running' && s.runtimeState === 'awaiting_input' && !s.parked) {
+    if (s.residencyMs !== undefined) ends.push((s.lastHeartbeatAt ?? s.createdAt) + s.residencyMs);
+  }
+  if (LIVE.has(s.status) && s.startedAt !== null && !s.hasJob) {
+    if (field(s.metadata, 'source').value !== 'schedule.run')
+      ends.push(lastHeard + CHAT_IDLE_CLOSE_MS);
+  }
+  const known = ends.filter((e): e is number => e !== null);
+  return known.length === 0 ? null : Math.min(...known);
 }
 
 /**
- * How long a running session may go unheard before core ends it, or `null` where no silence does:
- * built on the constants the reapers read, so a screen counting to it says what core will do.
+ * How long after it was last heard core ends this session, counted from where the screens count:
+ * its heartbeat, else its start, else its last update.
  */
-export function silenceLimitMs(session: SilenceSubject): number | null {
-  const { heartbeatMs } = getLoopThresholds();
-  const limits: number[] = [];
-  if (session.kind === RUN_SESSION_METADATA_TYPE) limits.push(SESSION_SILENCE_TIMEOUT_MS);
-  if (session.kind === MASTER_SESSION_METADATA_TYPE) {
-    limits.push(SESSION_SILENCE_TIMEOUT_MS + Math.max(0, session.childLeadMs ?? 0));
-  }
-  const heartbeatReaped =
-    session.runtimeState !== 'awaiting_input' &&
-    (HEARTBEAT_REAPED_KINDS.has(session.kind) ||
-      carries(session.metadata, 'escalation') ||
-      carries(session.metadata, 'agentChat'));
-  if (heartbeatReaped) limits.push(heartbeatMs);
-  const siblings = session.oneShot?.sessions ?? [];
-  if (session.oneShot && siblings.length > 0 && !siblings.some((t) => t.parked)) {
-    limits.push(
-      Math.max(
-        session.oneShot.runStartLeadMs + heartbeatMs,
-        ...siblings.map(
-          (t) => t.leadMs + (t.runnerAnswers ? oneShotDeviceGraceMs(heartbeatMs) : heartbeatMs),
-        ),
-      ),
-    );
-  }
-  return limits.length === 0 ? null : Math.round(Math.min(...limits));
+export function silenceLimitMs(s: SilenceSubject): number | null {
+  const deadline = silenceDeadline(s);
+  if (deadline === null) return null;
+  const counted = s.lastHeartbeatAt ?? s.startedAt ?? s.updatedAt ?? s.createdAt;
+  return Math.max(0, Math.round(deadline - counted));
 }

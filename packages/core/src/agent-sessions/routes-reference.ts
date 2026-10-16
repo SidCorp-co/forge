@@ -60,7 +60,7 @@ export const sweepQuerySchema = z.object({ projectId: z.uuid() }).strict();
 export const sessionSchema = tableRow(agentSessions);
 
 /** How long core lets this session go unheard before it ends it; `null` where no silence does. */
-const silenceLimitMsSchema = z.number().int().positive().nullable();
+const silenceLimitMsSchema = z.number().int().nonnegative().nullable();
 
 /** A session as a reader sees it: the row, what its box last reported about it, and core's silence limit. */
 export const sessionReadSchema = sessionSchema.extend({

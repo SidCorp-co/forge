@@ -94,7 +94,7 @@ async function statusOf(id: string): Promise<unknown> {
 }
 
 describe("a session read carries core's own silence limit (ISS-1228 round 9)", () => {
-  it('answers ten minutes for a run session and three for a pipeline session on the sessions list', async () => {
+  it('answers ten minutes for a run session, three for a pipeline session and its residency for a waiting one on the sessions list', async () => {
     await runnerAnswers();
     const run = await session('run_session');
     const pool = await session('pipeline', { runKind: 'pm' });
@@ -109,7 +109,8 @@ describe("a session read carries core's own silence limit (ISS-1228 round 9)", (
     );
     expect(byId.get(run.id)).toBe(TEN_MIN);
     expect(byId.get(pool.id)).toBe(THREE_MIN);
-    expect(byId.get(waiting.id)).toBeNull();
+    // A waiting session is not the heartbeat hop's, but its residency ends it: ten minutes and the grace.
+    expect(byId.get(waiting.id)).toBe(15 * 60_000);
   });
 
   it('answers it on the one-session read the session page reads', async () => {
@@ -215,6 +216,49 @@ describe("a session read carries core's own silence limit (ISS-1228 round 9)", (
     const { reapOrphanedOneShotRuns } = await import('../../src/pipeline/sweeper.js');
     await reapOrphanedOneShotRuns(new Date());
     expect(await statusOf(id)).toBe('running');
+  });
+
+  it("counts the loop monitor's own baseline for a session that never beat, which it leaves running at four minutes", async () => {
+    const { id } = await session('pipeline', { runKind: 'pm' });
+    await harness.db.execute(sql`
+      UPDATE agent_sessions SET last_heartbeat_at = NULL, started_at = now() - interval '4 minutes',
+             updated_at = now() - interval '1 minute' WHERE id = ${id}
+    `);
+
+    const limit = (await get(`/agent-sessions/${id}`)).silenceLimitMs as number;
+    expect(Math.abs(limit - 6 * 60_000)).toBeLessThan(10_000);
+    const { reapZombieSessions } = await import('../../src/jobs/loop-monitor.js');
+    await reapZombieSessions(new Date());
+    expect(await statusOf(id)).toBe('running');
+  });
+
+  it('reports the residency of a waiting session nobody was asked about, which ends it once past', async () => {
+    const { id } = await session('pipeline', { runtimeState: 'awaiting_input', runKind: 'pm' });
+    await harness.db.execute(sql`
+      UPDATE agent_sessions SET last_heartbeat_at = now() - interval '16 minutes' WHERE id = ${id}
+    `);
+
+    expect((await get(`/agent-sessions/${id}`)).silenceLimitMs).toBe(15 * 60_000);
+    const { reapExpiredParks } = await import('../../src/jobs/park-deadline.js');
+    await reapExpiredParks(new Date());
+    expect(await statusOf(id)).toBe('failed');
+  });
+
+  it('reports two hours for a parked session no job names, which the idle close ends once past', async () => {
+    const { id } = await session('chat', { runKind: 'pm' });
+    await harness.db.execute(sql`
+      UPDATE agent_sessions SET claude_session_id = 'claude-3', started_at = now() - interval '3 hours',
+             last_heartbeat_at = now() - interval '121 minutes' WHERE id = ${id}
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO agent_questions (id, project_id, agent_session_id, status, blocker_kind, steps)
+      VALUES (${randomUUID()}, ${projectId}::uuid, ${id}, 'open', 'human', '[]'::jsonb)
+    `);
+
+    expect((await get(`/agent-sessions/${id}`)).silenceLimitMs).toBe(2 * 60 * 60_000);
+    const { closeIdleChatSessions } = await import('../../src/pipeline/sweeper.js');
+    await closeIdleChatSessions(new Date());
+    expect(await statusOf(id)).toBe('completed');
   });
 
   it('keeps ten minutes while the runner answers or a person is asked, and the one-shot sweep leaves the session be', async () => {
