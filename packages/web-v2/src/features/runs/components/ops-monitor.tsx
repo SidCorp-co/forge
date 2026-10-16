@@ -207,7 +207,7 @@ function MonitorTab({
         <CardHeader>
           <CardTitle>Runs open now</CardTitle>
           <Stat icon="activity" mono={false}>
-            {recent} steps · last 7d
+            {recent} steps finished · last 7d
           </Stat>
         </CardHeader>
         <CardContent>

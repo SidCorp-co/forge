@@ -42,7 +42,7 @@ export function StepTimes({ durations, windowDays, isLoading, error, onRetry }: 
       aside={
         !error ? (
           <>
-            {samples} step{samples === 1 ? "" : "s"} · {windowDays}d
+            {steps.length} step{steps.length === 1 ? "" : "s"} · {samples} finished · {windowDays}d
           </>
         ) : undefined
       }

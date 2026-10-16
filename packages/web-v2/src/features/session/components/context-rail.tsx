@@ -24,6 +24,7 @@ import {
 import { SessionChip } from "@/features/sessions/components/session-chip";
 import {
   deriveSessionDisplayStatus,
+  isLiveDisplay,
   sessionStep,
   statusToChip,
   failureReasonAction,
@@ -111,7 +112,7 @@ export function ContextRail({
   const router = useRouter();
   const display = deriveSessionDisplayStatus(session);
   const stage = sessionStep(session.metadata) ?? undefined;
-  const live = display === "running" || display === "stalled";
+  const live = isLiveDisplay(display);
   const startMs = session.startedAt ? new Date(session.startedAt).getTime() : undefined;
   const elapsed = useElapsed(startMs, live);
   const duration = !startMs

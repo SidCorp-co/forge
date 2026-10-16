@@ -2,6 +2,7 @@
 
 import {
   Badge,
+  BLOCKED_WORD,
   Button,
   EmptyState,
   ErrorState,
@@ -12,7 +13,9 @@ import {
   ProjectLoader,
   SlideOver,
   useElapsed,
+  WORKING_WORD,
 } from "@/design";
+import { waitingOnOf } from "@/features/pipeline/derive";
 import { SessionChip } from "@/features/sessions/components/session-chip";
 import { useProjects } from "@/features/projects/hooks";
 import { isJobDriven } from "@/features/sessions/types";
@@ -170,6 +173,10 @@ export function SessionScreen({
   const elapsed = useElapsed(startMs, live);
   const now = useNow(1000, display === "stalled");
   const silentForMs = session ? (sessionSilence(session, now).sinceHeartbeatMs ?? undefined) : undefined;
+  // What the box said last: a quiet session says it last reported blocked where its box did, and a
+  // blocked one says, in the box's words, who can end the wait (ISS-1228).
+  const boxBlocked = session?.report?.work === "blocked";
+  const waitingOn = boxBlocked ? waitingOnOf({ report: session?.report ?? null }).text : undefined;
 
   const lastTurnId = items.length ? items[items.length - 1].turnId : undefined;
 
@@ -405,6 +412,8 @@ export function SessionScreen({
                     stage={stage}
                     {...(elapsed ? { elapsed } : {})}
                     {...(silentForMs != null ? { silentForMs } : {})}
+                    reported={boxBlocked ? BLOCKED_WORD : WORKING_WORD}
+                    {...(waitingOn ? { waitingOn } : {})}
                   />
                 </div>
               )}

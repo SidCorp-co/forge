@@ -7,6 +7,7 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PipelineRunListItem } from "@/features/runs/types";
+import type { RunSessionRow } from "../types";
 import { RunsPane } from "./runs-pane";
 
 expect.extend(matchers);
@@ -192,5 +193,86 @@ describe("a closed run a box opened over issues (ISS-1228 criterion 37)", () => 
     state.total = 1;
     pane();
     expect(within(screen.getByRole("list", { name: "Closed runs" })).getByText("System run")).toBeInTheDocument();
+  });
+});
+
+/** A run a box reports, as the ledger read returns it. */
+const ledgerRow = (over: Partial<RunSessionRow>): RunSessionRow => ({
+  runId: "lr1",
+  projectId: "p1",
+  sessionId: "s1",
+  masterSessionId: null,
+  pid: 4242,
+  worktreePath: "/w/iss-1",
+  bootId: "b1",
+  incarnation: "live",
+  work: "runnable",
+  blockerKind: null,
+  waitingOn: null,
+  sessionTerminalAt: null,
+  worktreeGoneAt: null,
+  issues: [{ issueKey: "ISS-1", leaseReturned: false }],
+  deviceId: "d1",
+  deviceName: "box-a",
+  observedAt: new Date().toISOString(),
+  sessionStatus: "running",
+  sessionFailureReason: null,
+  lastActivityAt: new Date().toISOString(),
+  masterTitle: null,
+  ...over,
+});
+
+describe("the runs a box reports (ISS-1228 round 8)", () => {
+  it("shows what a blocked run waits on in the box's own words", () => {
+    state.ledger = [
+      ledgerRow({ work: "blocked", blockerKind: "human", waitingOn: "approve the database restore in Coolify" }),
+    ];
+    pane();
+    const row = within(screen.getByRole("list", { name: "Runs a box reports" })).getByRole("listitem");
+    expect(row).toHaveTextContent("Waiting on a person — approve the database restore in Coolify");
+    expect(row).not.toHaveTextContent(/read the decision/);
+  });
+
+  it("links every issue key on a run a box still reports, an exited one included", () => {
+    state.ledger = [
+      ledgerRow({
+        runId: "x",
+        incarnation: "exited",
+        work: "done",
+        issues: [
+          { issueKey: "ISS-9", leaseReturned: true },
+          { issueKey: "ISS-12", leaseReturned: true },
+        ],
+      }),
+    ];
+    pane();
+    const list = screen.getByRole("list", { name: "Runs a box reports" });
+    expect(within(list).getByRole("link", { name: "ISS-9" })).toHaveAttribute("href", "/projects/qa/issues/ISS-9");
+    expect(within(list).getByRole("link", { name: "ISS-12" })).toHaveAttribute("href", "/projects/qa/issues/ISS-12");
+  });
+
+  it("draws each run as a flush row under a hairline, not a bordered card", () => {
+    state.ledger = [ledgerRow({})];
+    pane();
+    const list = screen.getByRole("list", { name: "Runs a box reports" });
+    expect(list.className).toMatch(/divide-y/);
+    expect(within(list).getByRole("listitem").className).not.toMatch(/rounded|(^|\s)border(\s|$)/);
+  });
+});
+
+describe("the band over the runs tab (ISS-1228 criterion 49)", () => {
+  it("says nothing about open runs when no run is open", () => {
+    state.runs = [run({ id: "c", status: "completed" })];
+    state.total = 1;
+    pane();
+    expect(screen.queryByText(/open run/i)).not.toBeInTheDocument();
+    expect(screen.getByText("No run is working on this project right now.")).toBeInTheDocument();
+  });
+
+  it("still says every open run has work behind it when one is open and worked", () => {
+    state.runs = [run({ id: "o", status: "running", finishedAt: null, liveJobs: 1 })];
+    state.total = 1;
+    pane();
+    expect(screen.getByText("Every open run has a job or a live agent behind it.")).toBeInTheDocument();
   });
 });

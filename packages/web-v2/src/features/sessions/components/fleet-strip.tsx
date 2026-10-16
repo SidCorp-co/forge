@@ -20,6 +20,7 @@ import { deviceHealth } from "@/features/runners/types";
 import { useQueueStats } from "../hooks";
 import {
   deriveLiveness,
+  isLiveDisplay,
   sessionStep,
   type AgentSessionDisplayStatus,
   type SessionRow,
@@ -67,7 +68,7 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
     const m = new Map<string, { row: SessionRow; display: AgentSessionDisplayStatus }>();
     rows.forEach((row, i) => {
       const d = displays[i];
-      if ((d === "running" || d === "stalled") && row.deviceId && !m.has(row.deviceId)) {
+      if (isLiveDisplay(d) && row.deviceId && !m.has(row.deviceId)) {
         m.set(row.deviceId, { row, display: d });
       }
     });
@@ -89,11 +90,9 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
       )}
 
       {devicePool.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-line px-4 py-3 fg-body-sm text-muted">
-          No runners paired to this project yet.
-        </div>
+        <p className="fg-body-sm border-y border-line py-3 text-muted">No runners paired to this project yet.</p>
       ) : (
-        <div className="flex gap-2.5 overflow-x-auto pb-1">
+        <ul aria-label="Boxes" className="flex flex-col divide-y divide-line border-y border-line">
           {devicePool.map((d) => {
             const bound = boundByDevice.get(d.id);
             const busy = !!bound;
@@ -106,24 +105,19 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
             const issueRef = bound ? issueRefFromTitle(bound.row.title) : null;
 
             return (
-              <div
+              <li
                 key={d.id}
-                className="min-w-[200px] flex-none rounded-lg border bg-surface px-3 py-2.5"
-                style={{
-                  borderColor: isPrimary ? "var(--cobalt-100)" : "var(--color-line)",
-                }}
+                className="flex flex-col gap-1 py-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4"
               >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex min-w-0 items-center gap-1.5">
-                    <Icon name="server" size={13} className="flex-none text-subtle" />
-                    <span className="truncate fg-body-sm text-fg" title={d.name}>
-                      {d.name}
-                    </span>
-                  </div>
+                <div className="flex min-w-0 items-center gap-1.5 sm:w-56">
                   <HealthDot health={health} withLabel={false} />
+                  <Icon name="server" size={13} className="flex-none text-subtle" />
+                  <span className="truncate fg-body-sm font-medium text-fg" title={d.name}>
+                    {d.name}
+                  </span>
                 </div>
 
-                <div className="mt-1.5 flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5">
                   <Tooltip label={isPrimary ? "Primary runner (pinned default)" : "Cold spare — idle is normal"}>
                     <MonoTag hue={isPrimary ? "cobalt" : "neutral"}>
                       {isPrimary ? "Primary" : "Spare"}
@@ -134,7 +128,7 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
                   </span>
                 </div>
 
-                <div className="mt-2 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-3">
                   <span
                     className="fg-caption font-semibold"
                     style={{ color: busy ? "var(--cobalt-700)" : "var(--fg-subtle)" }}
@@ -147,7 +141,7 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
                 </div>
 
                 {busy && (step || issueRef || stale) && (
-                  <div className="mt-1.5 flex items-center gap-1.5 overflow-hidden">
+                  <div className="flex items-center gap-1.5 overflow-hidden">
                     {step && <span className="fg-caption capitalize text-muted">{step}</span>}
                     {issueRef && (
                       <>
@@ -162,10 +156,10 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
                     )}
                   </div>
                 )}
-              </div>
+              </li>
             );
           })}
-        </div>
+        </ul>
       )}
     </div>
   );

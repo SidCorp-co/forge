@@ -31,6 +31,7 @@ import {
   usageSessionMatch,
   usageTotalsSelection,
 } from '../usage-records/rollup.js';
+import { loadSessionReports } from './box-report.js';
 import { broadcastSession, broadcastTurnAppended, broadcastTurnTruncated } from './broadcast.js';
 import { extractTurnPreview } from './chat-preview.js';
 import { syncRunnerHealthFromChatTerminal } from './chat-runner-health.js';
@@ -379,10 +380,12 @@ agentSessionRoutes.get(
       }
     }
 
+    const reportById = await loadSessionReports(pageIds);
     const items = rows.map((r) => ({
       ...r,
       estimatedCost: costById.get(r.id) ?? 0,
       lastMessagePreview: previewById.get(r.id) ?? null,
+      report: reportById.get(r.id) ?? null,
     }));
     return c.json(
       answer(
@@ -457,7 +460,8 @@ agentSessionRoutes.get(
       assertAgentChatOwner(row, access, userId);
     }
 
-    return c.json(answer(ref.sessionSchema, row));
+    const reports = await loadSessionReports([row.id]);
+    return c.json(answer(ref.sessionReadSchema, { ...row, report: reports.get(row.id) ?? null }));
   },
 );
 

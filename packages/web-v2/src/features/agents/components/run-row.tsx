@@ -22,7 +22,7 @@ function StateChip({ row, now }: { row: RunSessionRow; now: number }) {
   const tone = TONE_META[meta.tone];
   return (
     <span
-      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-pill px-2 py-0.5 font-semibold"
+      className="inline-flex items-center gap-1.5 self-start whitespace-nowrap rounded-pill px-2 py-0.5 font-semibold sm:self-auto"
       style={{ color: tone.fg, background: tone.bg, fontSize: "var(--text-11-5)" }}
       title={meta.detail}
     >
@@ -88,35 +88,54 @@ export interface RunRowProps {
   row: RunSessionRow;
   /** One clock for the whole list, so two rows never grade the same instant differently. */
   now: number;
+  /** The project the run belongs to, so each issue key links to its page. */
+  slug: string;
 }
 
-export function RunRow({ row, now }: RunRowProps) {
-  const waiting = blockerText(row.blockerKind);
-  const issues = row.issues ?? [];
+/** Who can end the wait and what the run waits on, in the box's own words; the questions tab is a
+ *  link beside it rather than a paraphrase in its place. */
+function WaitingOn({ row }: { row: RunSessionRow }) {
+  const who = blockerText(row.blockerKind);
   const pathname = usePathname() || "";
+  if (!who) return null;
   return (
-    <li className="flex flex-col gap-2 rounded-md border border-line bg-surface px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3">
+    <span className="fg-caption flex min-w-0 flex-wrap items-baseline gap-x-2 text-muted sm:max-w-[24rem]">
+      <span className="min-w-0 break-words">
+        {row.waitingOn ? `Waiting on ${who} — ${row.waitingOn}` : `Waiting on ${who}`}
+      </span>
+      {row.waitingOn && row.blockerKind === "human" && (
+        <Link
+          href={`${pathname}?tab=questions&q=${encodeURIComponent(row.waitingOn)}`}
+          className="flex-none underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+        >
+          Open questions
+        </Link>
+      )}
+    </span>
+  );
+}
+
+export function RunRow({ row, now, slug }: RunRowProps) {
+  const issues = row.issues ?? [];
+  return (
+    <li className="flex flex-col gap-2 py-2.5 sm:flex-row sm:items-center sm:gap-3">
       <StateChip row={row} now={now} />
       <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
         {issues.length === 0 ? (
           <span className="fg-caption text-subtle">no issues on this run</span>
         ) : (
-          issues.map((i) => <MonoTag key={i.issueKey}>{i.issueKey}</MonoTag>)
+          issues.map((i) => (
+            <Link
+              key={i.issueKey}
+              href={`/projects/${slug}/issues/${encodeURIComponent(i.issueKey)}`}
+              className="flex-none hover:underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            >
+              <MonoTag>{i.issueKey}</MonoTag>
+            </Link>
+          ))
         )}
       </span>
-      {waiting &&
-        (row.waitingOn ? (
-          <Link
-            href={`${pathname}?tab=questions&q=${encodeURIComponent(row.waitingOn)}`}
-            className="fg-caption flex-none whitespace-nowrap text-muted underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-          >
-            waiting on {waiting} — read the decision
-          </Link>
-        ) : (
-          <span className="fg-caption flex-none whitespace-nowrap text-muted">
-            waiting on {waiting}
-          </span>
-        ))}
+      <WaitingOn row={row} />
       <CoreReading row={row} now={now} />
       <Marks row={row} />
       <span className="fg-caption hidden flex-none truncate text-subtle sm:inline sm:max-w-[9rem]">

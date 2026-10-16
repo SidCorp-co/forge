@@ -7,6 +7,12 @@
 
 import type { IssuePark } from '@forge/contracts';
 import { sql } from 'drizzle-orm';
+import {
+  type LedgerRow,
+  loadLedgerRows,
+  newestReports,
+  type SessionReport,
+} from '../agent-sessions/box-report.js';
 import { db } from '../db/client.js';
 import { type IssueStatus, terminalAgentSessionStatuses } from '../db/schema.js';
 import { issueArchiveSide } from '../issues/archive.js';
@@ -17,19 +23,12 @@ import { holderFanout, readClaim } from './lease-fanout.js';
 import { liveSessionWhere } from './live-session.js';
 import { type LeaseReading, leaseIsWorkInProgress } from './session-claim.js';
 
+export type { LedgerRow, SessionReport };
+
 export interface HeldIssueRef {
   issueId: string;
   displayId: string;
   title: string;
-}
-
-/** What the box itself last reported about the session, `null` where it reported nothing. */
-export interface SessionReport {
-  incarnation: string;
-  work: string;
-  blockerKind: string | null;
-  waitingOn: string | null;
-  observedAt: string;
 }
 
 export interface LiveSession {
@@ -97,15 +96,6 @@ export interface SessionRow {
   started_at: Date | string | null;
   last_heartbeat_at: Date | string | null;
   created_at: Date | string;
-}
-
-export interface LedgerRow {
-  session_id: string;
-  incarnation: string;
-  work: string;
-  blocker_kind: string | null;
-  waiting_on: string | null;
-  observed_at: Date | string;
 }
 
 export interface LeaseRow {
@@ -177,19 +167,7 @@ export function projectSessionsAndHolds(input: {
     title: row.title,
   });
 
-  const reportOf = new Map<string, SessionReport>();
-  for (const l of input.ledger) {
-    const seen = reportOf.get(l.session_id);
-    const observedAt = iso(l.observed_at) as string;
-    if (seen && seen.observedAt >= observedAt) continue;
-    reportOf.set(l.session_id, {
-      incarnation: l.incarnation,
-      work: l.work,
-      blockerKind: l.blocker_kind,
-      waitingOn: l.waiting_on,
-      observedAt,
-    });
-  }
+  const reportOf = newestReports(input.ledger);
 
   const issuesOf = new Map<string, HeldIssueRef[]>();
   const held = new Map<string, HeldIssue>();
@@ -296,18 +274,7 @@ export async function readSessionsAndHolds(
   `)) as unknown as SessionRow[];
 
   const ids = sessions.map((s) => s.id);
-  const ledger =
-    ids.length === 0
-      ? []
-      : ((await db.execute(sql`
-          SELECT session_id, incarnation, work, blocker_kind, waiting_on, observed_at
-            FROM device_run_ledger
-           WHERE project_id = ${projectId}::uuid
-             AND session_id IN (${sql.join(
-               ids.map((id) => sql`${id}::uuid`),
-               sql`, `,
-             )})
-        `)) as unknown as LedgerRow[]);
+  const ledger = await loadLedgerRows(ids);
 
   const leases = (await db.execute(sql`
     SELECT l.session_id, s.title AS session_title, s.kind AS session_kind, d.name AS device_name,

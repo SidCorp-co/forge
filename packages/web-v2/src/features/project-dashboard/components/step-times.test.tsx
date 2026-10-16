@@ -39,7 +39,8 @@ describe("StepTimes", () => {
     expect(screen.getByText(/Slowest step:/)).toHaveTextContent(
       "Slowest step: Issue work at a 15m 00s median over 2 runs, 15.0× slower than Releases.",
     );
-    expect(screen.getByText("3 steps · 7d")).toBeInTheDocument();
+    // ISS-1228 round 8: the header counts the steps it lists, and says what its other figure counts.
+    expect(screen.getByText("2 steps · 3 finished · 7d")).toBeInTheDocument();
     expect(screen.queryByText("release_batch")).toBeNull();
   });
 
@@ -92,5 +93,24 @@ describe("StepTimes — every step label reads whole (ISS-1228 criterion 38)", (
       expect(l.className).not.toMatch(/\b(truncate|line-clamp-\d|whitespace-nowrap)\b/);
       expect(l.className).toMatch(/\bbreak-words\b/);
     }
+  });
+});
+
+describe("StepTimes — the header counts what it lists (ISS-1228 criterion 46)", () => {
+  it("names as many steps as it draws rows, however many times each finished", () => {
+    mount({
+      durations: [
+        duration("drive", 600, 1),
+        duration("drive", 700, 1),
+        duration("release_batch", 60, 0.1),
+        duration("skill_check", 30, 0.1),
+        duration("skill_update", 20, 0.1),
+        duration("review_followup_rework_after_codex_consult", 900, 1),
+        duration("review_followup_rework_after_human_feedback", 800, 1),
+      ],
+    });
+    const listed = document.querySelectorAll("[data-step-label]").length;
+    expect(listed).toBe(6);
+    expect(screen.getByText(`${listed} steps · 7 finished · 7d`)).toBeInTheDocument();
   });
 });
