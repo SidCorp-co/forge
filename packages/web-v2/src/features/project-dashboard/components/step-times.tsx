@@ -4,6 +4,7 @@
 // step-durations window, slowest median first. Both figures come from the same rows the spend tile
 // reads, folded onto the job type each row carries.
 
+import { jobKindLabel } from "@/features/overview/job-kinds";
 import { useMemo } from "react";
 import { ErrorState } from "@/design";
 import { aggregateStepCosts } from "@/features/runs/derive";
@@ -58,11 +59,8 @@ export function StepTimes({ durations, windowDays, isLoading, error, onRetry }: 
           <div className="flex flex-col gap-2.5">
             {steps.map((s) => (
               <div key={s.step} className="flex items-center gap-2.5">
-                <span
-                  className="max-w-[96px] flex-none truncate font-mono text-12 lowercase text-muted"
-                  title={s.step}
-                >
-                  {s.step}
+                <span className="w-28 flex-none truncate text-12 text-muted" title={s.step}>
+                  {jobKindLabel(s.step)}
                 </span>
                 <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-sunken">
                   <span
@@ -80,13 +78,13 @@ export function StepTimes({ durations, windowDays, isLoading, error, onRetry }: 
             ))}
           </div>
           <p className="fg-body-sm mt-3 border-t border-line-subtle pt-2 text-muted">
-            Slowest step: <span className="font-mono lowercase text-fg">{slowest.step}</span> at a{" "}
+            Slowest step: <span className="text-fg">{jobKindLabel(slowest.step)}</span> at a{" "}
             <span className="font-mono text-fg">{formatDurationSec(slowest.medianSec)}</span> median
             over {slowest.samples} run{slowest.samples === 1 ? "" : "s"}
             {versus ? (
               <>
                 , <span className="font-mono text-fg">{versus.ratio.toFixed(1)}×</span> slower than{" "}
-                <span className="font-mono lowercase text-fg">{versus.next}</span>
+                <span className="text-fg">{jobKindLabel(versus.next)}</span>
               </>
             ) : null}
             .

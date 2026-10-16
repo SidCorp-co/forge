@@ -3208,7 +3208,7 @@
 - **A quiet session no longer claims to be working.** Its row says what it last reported, and its session page shows how long it has been silent instead of a spinner. (ISS-1228)
 - **An issue dropped after Awaiting release no longer counts as shipped.** The dashboard, insights and admin figures leave it out. (ISS-1228)
 - **The Agents runs tab lists a project's closed runs when nothing is running.** It said the project had no runs. (ISS-1228)
-- **The dashboard's 7-day spend names each kind of work in words,** as the Overview does, not by stored step names. (ISS-1228)
+- **The dashboard's 7-day spend and Where time goes name each kind of work in words,** as the Overview does, not by stored step names. (ISS-1228)
 - **A closed blocker is no longer shown as blocking.** The issue rail and rows list it as one the issue was blocked by. (ISS-1228)
 - **A comment is badged Released only when it opens by announcing a release.** A comment that only mentions the word further down carries no badge. (ISS-1228)
 - **The pipeline help page says what Settings holds, and that a gated draft is dropped, not closed.** It described a per-stage Auto/Manual/Skip setting that does not exist, and told readers to close a draft, which is refused. (ISS-1229)
