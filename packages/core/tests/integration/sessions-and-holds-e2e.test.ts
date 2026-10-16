@@ -94,9 +94,13 @@ describe('readSessionsAndHolds — sessions (ISS-1228)', () => {
        WHERE id = ${step}
     `);
     const out = await read();
-    expect(out.sessions.find((s) => s.id === step)?.issues.map((i) => i.issueId)).toEqual([issueId]);
+    expect(out.sessions.find((s) => s.id === step)?.issues.map((i) => i.issueId)).toEqual([
+      issueId,
+    ]);
     expect(out.holds.map((h) => h.issueId)).toEqual([issueId]);
-    expect(out.holds[0]?.holders).toMatchObject([{ by: 'session', sessionId: step, sessionKind: 'pipeline' }]);
+    expect(out.holds[0]?.holders).toMatchObject([
+      { by: 'session', sessionId: step, sessionKind: 'pipeline' },
+    ]);
   });
 
   it('names a run session and its lease once, where it also records the issue', async () => {
