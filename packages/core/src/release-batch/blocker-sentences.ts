@@ -151,7 +151,7 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
   RELEASE_WORK_UNMERGED: namedSentence('RELEASE_WORK_UNMERGED', null),
   RELEASE_ISSUES_UNCLOSABLE: namedSentence('RELEASE_ISSUES_UNCLOSABLE', null),
   RELEASE_RUNNER_AMBIGUOUS:
-    'Two live deploy bindings name different release runners, so there is no one box the release job may be offered to. Make the labels agree, or clear all but one.',
+    'Live deploy bindings name different release runners, so there is no one box the release job may be offered to. Make the labels agree, or clear all but one.',
   RELEASE_PROBES_UNREADABLE:
     'A declared verification probe holds a url that is not a url, so no request could ever be made to it and the release would fail while reading what production is serving. Correct the probe, including its scheme.',
   RELEASE_POOL_EMPTY:
@@ -352,7 +352,7 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   }
   if (code === 'RELEASE_RUNNER_AMBIGUOUS' && Array.isArray(details?.labels)) {
     const labels = details.labels as string[];
-    return `Two live deploy bindings name different release runners (${labels.join(', ')}), so there is no one box the release job may be offered to. Make the labels agree, or clear all but one.`;
+    return `Live deploy bindings name ${counted(labels.length, 'different release runner')} (${labels.join(', ')}), so there is no one box the release job may be offered to. Make the labels agree, or clear all but one.`;
   }
   const standings = code === 'CLAIM_CONFLICT' ? readClaimConflictDetails(details) : null;
   if (standings) {
@@ -430,24 +430,35 @@ function unroutedSentence(
   return held.length === 0 ? lead : heldIssuesSentence(lead, held);
 }
 
+/** What follows the bindings a refused `verify` names, agreeing with how many there are. */
+export type RefusedDeclaration = (bindings: number) => string;
+
 /** A `verify` Forge refused takes no project default, so removing it is a repair and not silence. */
-const REFUSED_DECLARATION_SENTENCE =
-  'a `verify` Forge cannot read — it names no probe with a url — and a declared `verify` takes NO project default, so no release can be proved there and none closes past it. Correct it to `{"probes":[{"url":"https://<host>/api/health","commitPath":"commit"}]}`, or remove it: the project\'s `environments.live.commitUrl` then answers, and with neither the release is recorded unverified.';
+const refusedDeclarationSentence: RefusedDeclaration = (n) => {
+  const w = (one: string, many: string) => agree(n, one, many);
+  return `a \`verify\` Forge cannot read — ${w('it names no probe', 'none of them names a probe')} with a url — and a declared \`verify\` takes NO project default, so no release can be proved ${w('there', 'at any of them')} and none closes past ${w('it', 'them')}. Correct ${w('it', 'each')} to \`{"probes":[{"url":"https://<host>/api/health","commitPath":"commit"}]}\`, or remove ${w('it', 'them')}: the project's \`environments.live.commitUrl\` then answers, and with neither the release is recorded unverified.`;
+};
+
+/** The probes whose url is not a url, counted, since the remedy alone speaks of one. */
+function unreadableUrls(n: number): string {
+  const w = (one: string, many: string) => agree(n, one, many);
+  return `${w('A declared verification probe holds a url that is', `${n} declared verification probes hold urls that are`)} not ${w('a url', 'urls')}, so no request could ever be made to ${w('it', 'them')} and the release would fail while reading what production is serving. Correct ${w('the probe', 'each probe')}, including its scheme.`;
+}
 
 export function unreadableSentence(
   remedy: string,
   details?: Record<string, unknown>,
-  refused = REFUSED_DECLARATION_SENTENCE,
+  refused: RefusedDeclaration = refusedDeclarationSentence,
 ): string {
   const urls = Array.isArray(details?.urls) ? (details.urls as string[]) : [];
   const bindings = Array.isArray(details?.bindings) ? (details.bindings as string[]) : [];
   const parts: string[] = [];
-  if (urls.length > 0) parts.push(`${urls.join(', ')} — ${remedy}`);
+  if (urls.length > 0) parts.push(`${urls.join(', ')} — ${unreadableUrls(urls.length)}`);
   if (bindings.length > 0) {
     const which = bindings.map((b) => `\`${b}\``).join(', ');
     const w = (one: string, many: string) => agree(bindings.length, one, many);
     parts.push(
-      `The live deploy ${w('binding', 'bindings')} ${which} ${w('declares', 'each declare')} ${refused}`,
+      `The live deploy ${w('binding', 'bindings')} ${which} ${w('declares', 'each declare')} ${refused(bindings.length)}`,
     );
   }
   return parts.length > 0 ? parts.join(' ') : remedy;

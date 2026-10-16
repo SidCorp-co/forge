@@ -1,14 +1,15 @@
-import { and, asc, eq, isNotNull, notInArray, sql } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, isNull, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueStatuses, issues, projects } from '../db/schema.js';
 import { statusEnteredAtSql } from '../issues/status-entered-at.js';
-import { ISSUE_STATUS_LABELS } from '../issues/status-sets.js';
+import { statusLabel } from '../issues/status-sets.js';
 import { elapsedWords } from '../lib/elapsed-words.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
 import { type SweepDetector, sweepGroup } from '../notifications/explanations.js';
 import { projectAdminUserIdsFor } from '../notifications/project-admins.js';
+import { resolveArchivedProjectNotices } from './archived-project-notices.js';
 import { isTerminalPlacement } from './status-assertions.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
 
@@ -41,12 +42,15 @@ export interface StrandedIssuesResult {
   notified: number;
 }
 
+const STRANDED_KEY_SUFFIX = ':stranded';
+const OWED_CLOSE_KEY_SUFFIX = ':owed-close';
+
 export function strandedResolutionKey(issueId: string): string {
-  return `issue:${issueId}:stranded`;
+  return `issue:${issueId}${STRANDED_KEY_SUFFIX}`;
 }
 
 export function owedCloseResolutionKey(issueId: string): string {
-  return `issue:${issueId}:owed-close`;
+  return `issue:${issueId}${OWED_CLOSE_KEY_SUFFIX}`;
 }
 
 /**
@@ -90,6 +94,7 @@ export async function detectStrandedIssues(
   scope: { projectId?: string } = {},
 ): Promise<StrandedIssuesResult> {
   try {
+    await resolveArchivedProjectNotices(STRANDED_KEY_SUFFIX);
     const cutoff = new Date(now.getTime() - STRANDED_GRACE_MS);
 
     const cursorKey = `stranded:${scope.projectId ?? '*'}`;
@@ -120,6 +125,7 @@ export async function detectStrandedIssues(
       .where(
         and(
           eq(issues.status, 'waiting'),
+          isNull(projects.archivedAt),
           sql`"issues"."updated_at" < ${window.until}::timestamptz`,
           ...(scope.projectId ? [eq(issues.projectId, scope.projectId)] : []),
           ...(window.after
@@ -188,6 +194,7 @@ export async function detectOwedCloses(
   scope: { projectId?: string } = {},
 ): Promise<StrandedIssuesResult> {
   try {
+    await resolveArchivedProjectNotices(OWED_CLOSE_KEY_SUFFIX);
     const cutoff = new Date(now.getTime() - STRANDED_GRACE_MS);
     const terminal = issueStatuses.filter(isTerminalPlacement);
 
@@ -211,6 +218,7 @@ export async function detectOwedCloses(
       .where(
         and(
           isNotNull(issues.mergedAt),
+          isNull(projects.archivedAt),
           sql`"issues"."merged_at" < ${window.until}::timestamptz`,
           notInArray(issues.status, terminal),
           ...(window.after
@@ -239,7 +247,6 @@ export async function detectOwedCloses(
       const ref = row.issSeq !== null ? formatIssueRef(row.issuePrefix, row.issSeq) : 'An issue';
       // The query admits only rows carrying a merge mark, so `mergedAt` is never null here.
       const age = elapsedWords(row.mergedAt as Date, now);
-      const status = ISSUE_STATUS_LABELS[row.status];
       const sent = await surfaceOnce({
         now,
         admins,
@@ -248,7 +255,7 @@ export async function detectOwedCloses(
         issueId: row.id,
         resolutionKey: owedCloseResolutionKey(row.id),
         title: `${ref} shipped but never closed — ${row.projectName}`,
-        body: `${ref} "${row.title}" has carried a merge mark for ${age} while it still reads ${status}, with nothing running on it.`,
+        body: `${ref} "${row.title}" has carried a merge mark for ${age} while it still reads ${statusLabel(row.status)}, with nothing running on it.`,
       });
       if (sent < 0) unreachable += 1;
       else notified += sent;

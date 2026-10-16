@@ -49,7 +49,7 @@ import { ISSUE_ACTIONS, refuseUnservedIssueAction } from './forge-issues-actions
 import { refuseStrayArchiveFields, runArchiveAction } from './forge-issues-archive.js';
 import { forgeIssuesDescription } from './forge-issues-description.js';
 import { toMcpIssueError } from './forge-issues-errors.js';
-import { transitionByData } from './forge-issues-transition.js';
+import { moveWithWrites, transitionByData } from './forge-issues-transition.js';
 import { ISSUE_REF_CLAUSE, issueRefSchema, refsFor } from './issue-ref-input.js';
 import {
   assertPrincipalIsMember,
@@ -642,38 +642,48 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           );
         }
 
-        if (willWriteFields) {
-          updates.updatedAt = new Date();
-          try {
-            await updateIssueFields({
+        if (willWriteFields) updates.updatedAt = new Date();
+        const fields = willWriteFields
+          ? {
               issueId: issue.id,
               updates,
               labelIds,
               ...(input.data.expect ? { expect: input.data.expect } : {}),
               actor: principalHookActor(principal),
-            });
-          } catch (err) {
-            throw toMcpIssueError(err);
-          }
-        }
-
-        const r = await applyIssueRelations(
-          { actor: principalHookActor(principal), createdById: principal.userId },
-          issue.projectId,
-          issue.id,
-          input.data.relations,
-        );
+            }
+          : null;
+        const writer = { actor: principalHookActor(principal), createdById: principal.userId };
 
         let unasked: string | null = null;
         let rewritten: TransitionRewrite | null | undefined;
-        if (input.data.status && input.data.status !== issue.status) {
-          ({ rewritten } = await transitionByData(issue, input.data.status, principal, input.data));
+        let r: Awaited<ReturnType<typeof applyIssueRelations>>;
+        if (input.data.status) {
+          try {
+            ({ rewritten, relations: r } = await moveWithWrites(
+              issue,
+              input.data.status,
+              principal,
+              input.data,
+              { fields, relations: input.data.relations, writer },
+            ));
+          } catch (err) {
+            throw toMcpIssueError(err);
+          }
           unasked = parkQuestionNotMinted({
             issue,
             toStatus: input.data.status,
             actor: principalActor(principal),
             options: { needs: input.data.needs },
           });
+        } else {
+          if (fields) {
+            try {
+              await updateIssueFields(fields);
+            } catch (err) {
+              throw toMcpIssueError(err);
+            }
+          }
+          r = await applyIssueRelations(writer, issue.projectId, issue.id, input.data.relations);
         }
 
         const fresh = await loadIssue(issue.id);

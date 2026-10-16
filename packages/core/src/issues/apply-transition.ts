@@ -64,6 +64,8 @@ type TransitionTx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
 export interface ApplyStatusTransitionOptions {
   beforeStatusWrite?: (tx: TransitionTx) => Promise<void>;
+  /** The release notes `beforeStatusWrite` stores, which the close is judged on. */
+  releaseNotesWritten?: unknown;
   /**
    * Bypass `canTransitionFree`. In practice that guard forbids `draft` and the
    * retired rungs as a target and restricts `draft`'s own exits, so this flag
@@ -254,9 +256,14 @@ export async function transitionIssueStatus(
   const [archived] = await archivedAmong(db, [issue.id]);
   if (archived) throw new TransitionError('ISSUE_ARCHIVED', archived.message, { from: fromStatus });
   if (fromStatus === requestedStatus) {
-    throw new TransitionError('NO_OP', `issue already in status ${requestedStatus}`, {
-      status: fromStatus,
-    });
+    const same = { projectId: issue.projectId, requested: requestedStatus };
+    throw new TransitionError(
+      'NO_OP',
+      noOpSentence({ ...same, parked: requestedStatus, final: fromStatus }),
+      {
+        status: fromStatus,
+      },
+    );
   }
   const options = await withholdTransitionText(issue.id, sent);
 

@@ -1,10 +1,9 @@
 import { and, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import type { IssueStatus } from '../db/schema.js';
 import { notifications } from '../db/schema.js';
 import { issueWorkInFlightSql } from '../issues/issue-lease.js';
 import { lastWorkedAtSql } from '../issues/status-entered-at.js';
-import { ASSERTS_WORK_IN_PROGRESS, ISSUE_STATUS_LABELS } from '../issues/status-sets.js';
+import { ASSERTS_WORK_IN_PROGRESS, statusLabel } from '../issues/status-sets.js';
 import { elapsedWords } from '../lib/elapsed-words.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
@@ -48,8 +47,8 @@ export function orphanedAssertionResolutionKey(issueId: string): string {
 const ORPHAN_KEY_SUFFIX = ':run-assertion-orphaned';
 
 /**
- * Resolve every named orphan whose cause has ended: the issue left the asserting statuses, or a
- * job, run or lease is behind it again. The detector's predicate without its grace, so a write
+ * Resolve every named orphan whose cause has ended: the issue left the asserting statuses, its
+ * project was archived, or a job, run or lease is behind it again. The detector's predicate without its grace, so a write
  * that only moves the issue's clock ends nothing.
  */
 export async function resolveEndedOrphanAssertions(): Promise<number> {
@@ -66,6 +65,8 @@ export async function resolveEndedOrphanAssertions(): Promise<number> {
            ASSERTS_WORK_IN_PROGRESS.map((s) => sql`${s}`),
            sql`, `,
          )})
+         -- An archived project raises no stuck-issue notice (archived-project-notices.ts).
+         OR p.archived_at IS NOT NULL
          OR ${issueWorkInFlightSql({
            issueId: sql`i.id`,
            projectId: sql`i.project_id`,
@@ -101,11 +102,10 @@ export function orphanNotice(args: {
   since: string;
   now: Date;
 }): { title: string; body: string } {
-  const status = ISSUE_STATUS_LABELS[args.status as IssueStatus] ?? args.status;
   return {
     title: `${args.ref} says work is in progress with no run behind it — ${args.projectName}`,
     body:
-      `${args.ref} reads ${status}, and nothing has worked it for ${elapsedWords(args.since, args.now)}: ` +
+      `${args.ref} reads ${statusLabel(args.status)}, and nothing has worked it for ${elapsedWords(args.since, args.now)}: ` +
       'no job, issue run or run session is live for it.',
   };
 }
@@ -138,6 +138,7 @@ async function orphanedAssertions(now: Date): Promise<OrphanRow[]> {
      )})
        -- Which issues are named is unchanged; only what the notice counts from is ORPHAN_SINCE.
        AND i.updated_at < ${cutoff}
+       AND p.archived_at IS NULL
        -- the same predicate the admissible read uses (ISS-1109). This pass and that one
        -- were verbatim twins, and a sweep that drifts from the pool reports as orphaned
        -- exactly the issues a box is working. Matching on issue_prefix here would make a

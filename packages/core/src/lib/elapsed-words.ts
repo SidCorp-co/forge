@@ -11,9 +11,13 @@ function counted(n: number, unit: string): string {
 export function elapsedWords(since: Date | string, now: Date): string {
   const at = since instanceof Date ? since.getTime() : Date.parse(since);
   if (Number.isNaN(at)) throw new Error(`elapsedWords: "${String(since)}" is not a time`);
-  const ms = Math.max(0, now.getTime() - at);
-  if (ms < MINUTE_MS) return 'less than a minute';
-  if (ms < HOUR_MS) return counted(Math.floor(ms / MINUTE_MS), 'minute');
-  if (ms < DAY_MS) return counted(Math.floor(ms / HOUR_MS), 'hour');
-  return counted(Math.floor(ms / DAY_MS), 'day');
+  return durationWords(now.getTime() - at);
+}
+
+export function durationWords(ms: number): string {
+  const span = Math.max(0, ms);
+  if (span < MINUTE_MS) return 'less than a minute';
+  if (span < HOUR_MS) return counted(Math.floor(span / MINUTE_MS), 'minute');
+  if (span < DAY_MS) return counted(Math.floor(span / HOUR_MS), 'hour');
+  return counted(Math.floor(span / DAY_MS), 'day');
 }

@@ -17,7 +17,6 @@ const SELF = 'issues/reader-status-words.test.ts';
 /** Where the stored value IS the text: what an agent or API caller sends, not what a person reads. */
 const CONTRACTS: Array<[RegExp, string]> = [
   [/^prompt\//, 'agent prompts and prompt facts name the value a transition sends'],
-  [/^mcp\/tools\//, 'tool descriptions name the value a tool call sends'],
   [/^guides\//, 'the guides are written for agents and name the values they send'],
   [/^assistant\//, 'the assistant prompt names the values its tools send'],
   [
@@ -35,6 +34,28 @@ const CONTRACTS: Array<[RegExp, string]> = [
   ],
 ];
 
+/** A tool's description names the values a call sends, so a stored value written there is the
+ *  contract; its runtime answer is a sentence a caller reads and is held like any other. */
+const TOOL_FILE = /^mcp\/tools\//;
+/** A line that opens a description: the tool's own, or one a schema field carries. */
+const OPENS_DESCRIPTION = /\bdescription:|\.describe\(/;
+/** A line holding nothing but a string, which continues the statement above it. */
+const STRING_ONLY = /^\s*(?:\+\s*)?['"`]/;
+
+/** A tool file with its description lines blanked, numbering kept, so what is left is the code and
+ *  the answers it sends. A string-only line belongs to the statement that opened above it. */
+function withoutDescriptions(file: string, source: string): string {
+  if (!TOOL_FILE.test(file)) return source;
+  let describing = false;
+  return source
+    .split('\n')
+    .map((text) => {
+      if (!STRING_ONLY.test(text)) describing = OPENS_DESCRIPTION.test(text);
+      return describing ? '' : text;
+    })
+    .join('\n');
+}
+
 /** Lines a reader sees that keep the stored value, each for a stated reason. */
 const KEPT_LINES: Array<[string, RegExp, string]> = [
   [
@@ -46,6 +67,32 @@ const KEPT_LINES: Array<[string, RegExp, string]> = [
     'projects/stranded-work.ts',
     /kind from \\`\$\{args\.from\}\\` to \\`\$\{args\.to\}\\`/,
     'a project kind, not an issue status',
+  ],
+  [
+    'questions/write.ts',
+    /this question is \$\{row\.status\}|this question is needs_info/,
+    "a question's status, not an issue's",
+  ],
+  [
+    'release-batch/decision-hold.ts',
+    /The release ended \$\{toStatus\}/,
+    "a release run's status, not an issue's",
+  ],
+  ['skills/smoke-verify.ts', /`job \$\{row\.status\}`/, "a job's status, not an issue's"],
+  [
+    'pm/graph-service.ts',
+    /const edgeKey = /,
+    'a map key built from two issue ids, which no one reads',
+  ],
+  [
+    'integrations/sentry/admission.ts',
+    /`status \$\{issue\.status\}`/,
+    "a Sentry issue's status, not a Forge issue's",
+  ],
+  [
+    'mcp/tools/forge-issues.ts',
+    /throw new Error\(`\$\{status\}: \$\{err\.code\}/,
+    'the HTTP status word a tool error leads with',
   ],
 ];
 
@@ -68,10 +115,16 @@ const READS: Record<string, 'person' | 'caller'> = {
   'issues/transition-evidence.ts': 'caller',
   'issues/transition-reason.ts': 'caller',
   'issues/work-state.ts': 'caller',
+  'mcp/tools/forge-step-start.ts': 'caller',
+  'messaging/claim-rules.ts': 'caller',
+  'notifications/notify-transitions.ts': 'person',
   'pipeline/answer-resume.ts': 'person',
   'pipeline/autonomous-dispatch.ts': 'caller',
   'pipeline/autonomous-rescue-comment.ts': 'person',
   'pipeline/idle-issues.ts': 'person',
+  'pipeline/issue-run-invariant.ts': 'person',
+  'pipeline/outbox-worker.ts': 'person',
+  'pipeline/stranded-issues.ts': 'person',
   'pipeline/release-hold.ts': 'person',
   'pipeline/wedge-lease.ts': 'person',
   'pm/dispatch-service.ts': 'caller',
@@ -139,10 +192,11 @@ type Source = { file: string; source: string };
 /** A file that names a status, by a helper or by a label where a status stands, and says nothing
  *  of who reads it. */
 function unplaced(sources: Source[]): string[] {
-  const names = ({ source }: Source) =>
+  const names = ({ file, source }: Source) =>
     HELPER.test(source) ||
     (REFUSES.test(source) &&
-      source.split('\n').some((line) => !isComment(line) && STATUS_WORD.test(line)));
+      source.split('\n').some((line) => !isComment(line) && STATUS_WORD.test(line))) ||
+    (TOUCHES_ISSUE_STATUS.test(source) && bareValueOffences(file, source).length > 0);
   return sources
     .filter(names)
     .map(({ file }) => file)
@@ -168,6 +222,33 @@ const LITERAL = new RegExp(`\\\\?\`(?:${STATUSES})\\\\?\``);
 /** An interpolated value named as a status, in code inside a template. */
 const INTERPOLATED =
   /\\`\$\{[\w.?]*(?:[sS]tatus|STATUS(?:ES\[\d+\])?|\bfrom|\bto|requested|final|destination|left|replacement|ASKS_WITH_NEEDS)\}\\`|(?:STATUSES|TARGETS)\.map\(\(\w+\) => `\\`\$\{\w+\}\\``\)/;
+
+/** A status interpolated into a string with no helper naming it, so the reader gets the stored value
+ *  alone: `already in status ${requested}`, `Issue is at '${issue.status}'`. */
+const BARE_INTERPOLATED =
+  /(?<!\\`)\$\{[\w.?]*(?:[sS]tatus|\bfrom|\bto|requested|final|destination|replacement)\}/;
+/** The word status followed by a value as stored: `already in status open`. */
+const STATUS_THEN_VALUE = new RegExp(`['\`"][^'\`"]*\\bstatus(?:es)?\\s+(?:${STATUSES})\\b(?!\\))`);
+/** A query, whose interpolations are parameters and not words anybody reads. */
+const SQL_LINE = /\bsql(?:<[^>]*>)?`|^\s*(?:VALUES|AND|OR|WHERE|SELECT|SET|FROM)\b/i;
+/** A file that touches an issue's status: by its type, its column, or a row read as `issue`. */
+const TOUCHES_ISSUE_STATUS =
+  /\bIssueStatus\b|\bissues\.status\b|\bissueStatuses\b|\bissue\??\.status\b/;
+
+/** Lines handing any reader the stored value with nothing beside it: a person wants the label, a
+ *  caller the label and then the value to send back. */
+function bareValueOffences(file: string, source: string): string[] {
+  return source
+    .split('\n')
+    .map((line, i) => ({ line, n: i + 1 }))
+    .filter(({ line }) => !isComment(line) && !SQL_LINE.test(line))
+    .filter(({ line }) => !KEPT_LINES.some(([f, re]) => f === file && re.test(line)))
+    .filter(
+      ({ line }) =>
+        BARE_INTERPOLATED.test(line) || STATUS_THEN_VALUE.test(line) || STORED_IN_PROSE.test(line),
+    )
+    .map(({ line, n }) => `${file}:${n}: ${line.trim().slice(0, 120)}`);
+}
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
@@ -197,7 +278,9 @@ describe('a status a person reads is named by its label (ISS-1229)', () => {
     const found = walk(SRC)
       .map((full) => relative(SRC, full))
       .filter((file) => file !== SELF && !CONTRACTS.some(([re]) => re.test(file)))
-      .flatMap((file) => offences(file, readFileSync(join(SRC, file), 'utf8')));
+      .flatMap((file) =>
+        offences(file, withoutDescriptions(file, readFileSync(join(SRC, file), 'utf8'))),
+      );
     expect(found).toEqual([]);
   });
 
@@ -206,7 +289,10 @@ describe('a status a person reads is named by its label (ISS-1229)', () => {
       .map((full) => relative(SRC, full))
       .filter((file) => file !== SELF && file !== 'issues/status-sets.ts')
       .filter((file) => !CONTRACTS.some(([re]) => re.test(file)))
-      .map((file) => ({ file, source: readFileSync(join(SRC, file), 'utf8') }));
+      .map((file) => ({
+        file,
+        source: withoutDescriptions(file, readFileSync(join(SRC, file), 'utf8')),
+      }));
 
   it('says who reads every file that names a status', () => {
     expect(unplaced(sources())).toEqual([]);
@@ -239,6 +325,73 @@ describe('a status a person reads is named by its label (ISS-1229)', () => {
       .filter(({ file }) => READS[file] === 'person')
       .flatMap(({ file, source }) => personOffences(file, source));
     expect(found).toEqual([]);
+  });
+
+  // Judge-22 at 2734783: NO_OP answered 'issue already in status open', the stored value alone.
+  it('writes no status bare into a sentence anybody reads', () => {
+    const found = sources()
+      .filter(({ file }) => file in READS)
+      .flatMap(({ file, source }) => bareValueOffences(file, source));
+    expect(found).toEqual([]);
+  });
+
+  it('sees a status written bare, by interpolation or in prose', () => {
+    const at = (text: string) => bareValueOffences('x.ts', line(text));
+    expect(
+      at("throw new TransitionError('NO_OP', `issue already in status #{requestedStatus}`, {"),
+    ).toHaveLength(1);
+    expect(at('  if (!rule) return `issue already in status #{final}`;')).toHaveLength(1);
+    expect(
+      at("const note = `the driver writes its own status. Issue is at '#{issue.status}'.`;"),
+    ).toHaveLength(1);
+    expect(at('title: `#{label} moved to #{p.to}`,')).toHaveLength(1);
+    expect(at("detail: 'the issue is already in status closed',")).toHaveLength(1);
+    expect(at('detail: `issue already in status #{statusForCaller(requestedStatus)}`,')).toEqual(
+      [],
+    );
+    expect(at("detail: 'the issue is already in status Closed (closed)',")).toEqual([]);
+    expect(at('  AND status = #{gateStatus}')).toEqual([]);
+    expect(at('    status: sql`#{issues.status}`,')).toEqual([]);
+  });
+
+  it('asks who reads a file that writes an issue status bare, however the status reached it', () => {
+    const inferred = {
+      file: 'x/inferred.ts',
+      source: line(
+        'const issue = await loadIssue(id);\nthrow new Error(`the issue is at #{issue.status}, so nothing moves`);',
+      ),
+    };
+    expect(unplaced([inferred])).toEqual(['x/inferred.ts']);
+    const http = {
+      file: 'x/http.ts',
+      source: line('throw new Error(`GitHub answered HTTP #{res.status}`);'),
+    };
+    expect(unplaced([http])).toEqual([]);
+  });
+
+  it("holds a tool's runtime answer and leaves its description the contract it is", () => {
+    const tool = sources().find(({ file }) => file === 'mcp/tools/forge-step-start.ts');
+    expect(tool && READS[tool.file]).toBe('caller');
+    const file = 'mcp/tools/forge-x.ts';
+    const description = [
+      '  description:',
+      "    'Moves the issue. `toStatus` takes `awaiting_release` or ' +",
+      "    '`closed`, and the answer says which.',",
+      "  status: z.enum(issueStatuses).describe('`needs_info` parks it'),",
+    ].join('\n');
+    expect(offences(file, withoutDescriptions(file, description))).toEqual([]);
+    // Codex review of f556a27: a runtime answer in code form was exempt with its whole file.
+    const answer = line('    throw new Error(`Issue is at \\`#{issue.status}\\``);');
+    const both = withoutDescriptions(file, [description, answer].join('\n'));
+    expect(offences(file, both)).toHaveLength(1);
+    const split = line(
+      [
+        '    const note =',
+        "      `the driver writes its own status. Issue is at '#{issue.status}'.`;",
+      ].join('\n'),
+    );
+    expect(bareValueOffences(file, withoutDescriptions(file, split))).toHaveLength(1);
+    expect(unplaced([{ file, source: withoutDescriptions(file, split) }])).toEqual([file]);
   });
 
   // The codex consult on the r5e plan: one file can hold a notice and a refusal, and one sentence

@@ -2,6 +2,7 @@ import { redactedMessage } from '@forge/observability';
 import { inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, users } from '../db/schema.js';
+import { statusLabel } from '../issues/status-sets.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import type { Actor } from './activity.js';
@@ -166,11 +167,11 @@ export async function drainOutboxOnce(): Promise<{ processed: number; failed: nu
           hop: 'dispatch',
           entity: 'outbox',
           entityId: row.id,
-          reason: `transition ${row.from_status} → ${row.to_status} failed after ${MAX_REDELIVERIES} redeliveries: ${message}`,
+          reason: `transition ${statusLabel(row.from_status)} → ${statusLabel(row.to_status)} failed after ${MAX_REDELIVERIES} redeliveries: ${message}`,
           action:
             'Inspect the pipeline_outbox row + subscriber logs; the issue may be sitting at its trigger status with no job.',
           title: 'Status change not processed',
-          summary: `An issue's move to "${row.to_status}" could not be handed to the pipeline after ${MAX_REDELIVERIES} retries, so no next step was started.`,
+          summary: `An issue's move to ${statusLabel(row.to_status)} could not be handed to the pipeline after ${MAX_REDELIVERIES} retries, so no next step was started.`,
           nextStep:
             'Open the issue and re-apply the status change, or check the server logs for the failing subscriber.',
         });

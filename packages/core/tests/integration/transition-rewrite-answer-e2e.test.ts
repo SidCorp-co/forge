@@ -287,7 +287,7 @@ describe('the refusals stay as they were', () => {
     expect(res.status).toBe(409);
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('NO_OP');
-    expect(body.message).toBe('issue already in status confirmed');
+    expect(body.message).toBe('issue already in status Confirmed (confirmed)');
   });
 });
 

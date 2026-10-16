@@ -114,6 +114,26 @@ describe('the issues whose close this release would be refused', () => {
   });
 });
 
+describe('a probe whose url is not a url', () => {
+  const sentence = (urls: string[]) =>
+    releaseBlockerSentence('RELEASE_PROBES_UNREADABLE', { urls });
+
+  it('speaks of the one probe, at one', () => {
+    expect(sentence(['htp//a'])).toBe(
+      'htp//a — A declared verification probe holds a url that is not a url, so no request could ever be made to it and the release would fail while reading what production is serving. Correct the probe, including its scheme.',
+    );
+  });
+
+  it('counts the probes and speaks of them, at two', () => {
+    const two = sentence(['htp//a', 'ftp:/b']);
+    expect(two).toContain(
+      'htp//a, ftp:/b — 2 declared verification probes hold urls that are not urls',
+    );
+    expect(two).toContain('could ever be made to them');
+    expect(two).toContain('Correct each probe, including its scheme.');
+  });
+});
+
 describe('a live deploy binding whose verify Forge cannot read', () => {
   const sentence = (bindings: string[]) =>
     releaseBlockerSentence('RELEASE_PROBES_UNREADABLE', { urls: [], bindings });
@@ -128,6 +148,22 @@ describe('a live deploy binding whose verify Forge cannot read', () => {
     expect(sentence(['coolify-a', 'coolify-b'])).toContain(
       'The live deploy bindings `coolify-a`, `coolify-b` each declare a `verify` Forge cannot read',
     );
+  });
+
+  // Judge-22 at 2734783: "each declare…" went on in the singular, "Correct it… remove it".
+  it('says what it names and what to correct in the singular, at one', () => {
+    const one = sentence(['coolify-a']);
+    expect(one).toContain('— it names no probe with a url —');
+    expect(one).toContain('proved there and none closes past it. Correct it to');
+    expect(one).toContain(', or remove it: the project');
+  });
+
+  it('says what they name and what to correct in the plural, at two', () => {
+    const two = sentence(['coolify-a', 'coolify-b']);
+    expect(two).toContain('— none of them names a probe with a url —');
+    expect(two).toContain('proved at any of them and none closes past them. Correct each to');
+    expect(two).toContain(', or remove them: the project');
+    expect(two).not.toMatch(/\bit\b/);
   });
 });
 
@@ -184,5 +220,22 @@ describe('the warning about a roster cut in parts', () => {
     expect(rosterInPartsWarningSentence(52, 50, 2)).toContain(
       'the remaining 2 wait for a later release',
     );
+  });
+});
+
+describe('live bindings naming different release runners', () => {
+  const sentence = (labels: string[]) =>
+    releaseBlockerSentence('RELEASE_RUNNER_AMBIGUOUS', { labels });
+
+  it('counts the labels it names, at two', () => {
+    expect(sentence(['box-a', 'box-b'])).toContain(
+      'Live deploy bindings name 2 different release runners (box-a, box-b), so there is no one box',
+    );
+  });
+
+  it('counts the labels it names, at three, never saying two', () => {
+    const three = sentence(['box-a', 'box-b', 'box-c']);
+    expect(three).toContain('name 3 different release runners (box-a, box-b, box-c)');
+    expect(three).not.toMatch(/\bTwo\b/);
   });
 });

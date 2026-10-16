@@ -132,7 +132,7 @@ describe('POST /api/issues/:id/transition — a NO_OP the release gate caused', 
     expect(res.status).toBe(409);
     const body = (await res.json()) as { code?: string; message?: string };
     expect(body.code).toBe('NO_OP');
-    expect(body.message).toContain('already in status in_progress');
+    expect(body.message).toContain('already in status In progress (in_progress)');
     expect(body.message).not.toContain('release gate');
   });
 });

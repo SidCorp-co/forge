@@ -13,17 +13,18 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, issueStatuses } from '../db/schema.js';
+import { issueStatuses } from '../db/schema.js';
 import { ADMITTED_RUNNER } from '../devices/pool-admission.js';
 import { issueWorkInFlightSql } from '../issues/issue-lease.js';
 import { statusEnteredAtSql } from '../issues/status-entered-at.js';
-import { ISSUE_STATUS_LABELS, statusLabel } from '../issues/status-sets.js';
+import { statusLabel } from '../issues/status-sets.js';
 import { elapsedWords } from '../lib/elapsed-words.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
 import { sweepGroup } from '../notifications/explanations.js';
 import { projectAdminUserIdsFor } from '../notifications/project-admins.js';
+import { resolveArchivedProjectNotices } from './archived-project-notices.js';
 import { holderFanout, readClaim } from './lease-fanout.js';
 import { readReleaseHold } from './release-hold.js';
 import {
@@ -56,8 +57,10 @@ const NOTHING_LIVE_ON_THIS_ISSUE = sql`NOT ${issueWorkInFlightSql({
 /** How many rows one arm reads per pass, matching the other sweep axes. */
 export const IDLE_SCAN_LIMIT = 200;
 
+const IDLE_KEY_SUFFIX = ':idle';
+
 export function strandResolutionKey(issueId: string): string {
-  return `issue:${issueId}:idle`;
+  return `issue:${issueId}${IDLE_KEY_SUFFIX}`;
 }
 
 export interface IdleIssuesResult {
@@ -155,6 +158,7 @@ export async function reconcileIdleIssues(
   }
 
   result.cleared = await clearRecovered(now, scope);
+  await resolveArchivedProjectNotices(IDLE_KEY_SUFFIX);
   return result;
 }
 
@@ -291,6 +295,7 @@ async function readCandidates(now: Date, scope: { projectId?: string }): Promise
       FROM issues i
       JOIN projects p ON p.id = i.project_id
      WHERE i.status NOT IN (${excluded})
+       AND p.archived_at IS NULL
        AND i.updated_at < ${window.until}::timestamptz
        AND ${NOTHING_LIVE_ON_THIS_ISSUE}
        ${scoped}
@@ -515,15 +520,15 @@ export function idleNotice(args: {
   now: Date;
 }): { title: string; body: string } {
   const { ref, projectName, record, now } = args;
-  const status = ISSUE_STATUS_LABELS[record.status as IssueStatus] ?? record.status;
+  const label = statusLabel(record.status);
   const age = elapsedWords(record.since, now);
   const unconfirmed = record.lease === 'shared' || record.lease === 'malformed';
   const title = unconfirmed
-    ? `${ref} reads ${status} and no live work could be confirmed — ${projectName}`
-    : `${ref} reads ${status} and nothing is working it — ${projectName}`;
+    ? `${ref} reads ${label} and no live work could be confirmed — ${projectName}`
+    : `${ref} reads ${label} and nothing is working it — ${projectName}`;
   const opening = unconfirmed
-    ? `${ref} has read ${status} for ${age} with no live job or run behind it, and a lease that establishes nothing either way.`
-    : `${ref} has read ${status} for ${age} with no live job, run or lease behind it.`;
+    ? `${ref} has read ${label} for ${age} with no live job or run behind it, and a lease that establishes nothing either way.`
+    : `${ref} has read ${label} for ${age} with no live job, run or lease behind it.`;
   return {
     title,
     body:
