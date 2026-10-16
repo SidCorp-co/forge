@@ -860,6 +860,8 @@ describe("deriveCommentKind", () => {
 		["Released — not yet", "comment"],
 		["Released — to production yet?", "comment"],
 		["Released — v1.2.0 to production", "released"],
+		["Released v1.2.0 on May 3", "released"],
+		["Released to production may be the wording.", "comment"],
 		["Released 2026.10 to production", "released"],
 		["Shipped not yet, the deploy was rolled back.", "comment"],
 		["**Released** in v0.4.3 — the picker went out.", "released"],

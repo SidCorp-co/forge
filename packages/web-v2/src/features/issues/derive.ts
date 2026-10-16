@@ -475,7 +475,7 @@ const RELEASE_STATEMENT =
 	/^(released|shipped|published release)(\s*[:—–-]|\s+(v?\d+|in|to|as|on|at|into|onto|outside|via|with|through|by|from|for)\b)/;
 /** A clause that asks, denies or says something of its own about the word announces nothing. */
 const NOT_AN_ANNOUNCEMENT =
-	/\?|\b(not|no|never|yet|n't|is|are|was|were|be|been|will|would|should|could|can|may|might|must)\b/;
+	/\?|\b(not|no|never|yet|n't|is|are|was|were|be|been|will|would|should|could|can|may(?!\s+\d)|might|must)\b/;
 
 /** An opening line announces a release as core's stamp ("Released outside a release batch, …") and
  *  "Released v1.2.0 to prod" do: its first clause states what went out or where it went. */
