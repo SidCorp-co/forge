@@ -46,6 +46,8 @@ const input = (over: Partial<ShapeInput> = {}): ShapeInput => ({
   failedJobs: 0,
   releaseRuns: 0,
   releaseIssues: 0,
+  stuck: { read: "ok" },
+  stuckIssues: 0,
   now: NOW,
   ...over,
 });
@@ -151,6 +153,33 @@ describe("a degraded project", () => {
     expect(at(STUCK_RUN_SECONDS - 1)).toBe(0);
     expect(at(STUCK_RUN_SECONDS)).toBe(1);
     expect(stuckRuns([run({ startedAt: ago(5 * DAY), lastSessionBeatAt: ago(60) })], NOW)).toHaveLength(0);
+  });
+});
+
+describe("a project with stuck issues (ISS-1229 r12)", () => {
+  it("is degraded, never quiet, by one issue a stuck-issue notice stands for, and offers it", () => {
+    const r = projectShape(input({ stuckIssues: 1 }));
+    expect(r.shape).toBe("degraded");
+    expect(r.headline).toBe("Work is blocked — 1 issue stuck, nothing working it");
+    expect(r.band?.entry).toEqual({ label: "Action needed — open the stuck issue", href: "/projects/p/issues" });
+  });
+
+  it("counts two in the plural, the link with them", () => {
+    const r = projectShape(input({ stuckIssues: 2 }));
+    expect(r.headline).toBe("Work is blocked — 2 issues stuck, nothing working them");
+    expect(r.band?.entry?.label).toBe("Action needed — open the stuck issues");
+  });
+
+  it("words stuck issues beside a failed job as blocked and failing", () => {
+    const r = projectShape(input({ failedJobs: 1, stuckIssues: 3 }));
+    expect(r.headline).toBe("Work is blocked and failing — 1 failed job · 3 issues stuck, nothing working them");
+  });
+
+  it("is unread, never quiet, where the stuck-issue count did not arrive", () => {
+    const r = projectShape(input({ stuck: { read: "failed", reason: "no row" } }));
+    expect(r.shape).toBe("unread");
+    expect(r.headline).not.toMatch(/Nothing needs anyone/);
+    expect(r.unread).toEqual(["The stuck-issue count could not be read: no row"]);
   });
 });
 

@@ -68,6 +68,8 @@ export interface ProjectHealthRow {
   members: string[];
   /** ISO timestamp of the most recent issue/run activity, or `null`. */
   lastActivityAt: string | null;
+  /** Issues with a stuck-issue notice standing, each counted once whichever sweep raised it. */
+  stuckIssues: number;
 }
 
 export interface CreateProjectInput {

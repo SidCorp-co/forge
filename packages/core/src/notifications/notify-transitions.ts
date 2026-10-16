@@ -8,6 +8,7 @@ import { ASSERTS_WORK_IN_PROGRESS, statusLabel } from '../issues/status-sets.js'
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import type { HooksBus } from '../pipeline/hooks.js';
+import { strandResolutionKey } from '../pipeline/idle-candidates.js';
 import { orphanedAssertionResolutionKey } from '../pipeline/issue-run-invariant.js';
 import { isTerminalPlacement } from '../pipeline/status-assertions.js';
 import { owedCloseResolutionKey, strandedResolutionKey } from '../pipeline/stranded-issues.js';
@@ -100,6 +101,10 @@ export function transitionTitle(issue: string, to: IssueStatus): string {
  */
 export function registerTransitionNotifications(bus: HooksBus): void {
   bus.on('transition', async (p) => {
+    // An idle notice names the status it was raised at, so any move ends it; a row still idle at
+    // its new status is raised again once that status's own clock is spent.
+    if (p.from !== p.to) await resolveNotifications(strandResolutionKey(p.issueId));
+
     if (p.to !== 'waiting') {
       await resolveNotifications(strandedResolutionKey(p.issueId));
     }

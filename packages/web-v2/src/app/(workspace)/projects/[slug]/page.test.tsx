@@ -36,6 +36,7 @@ let attentionView: unknown;
 let attentionRead: "pending" | "failed" | "read";
 let attentionError: unknown;
 let blockers: unknown[];
+let stuckIssues: number;
 let work: Record<string, number>;
 let runs: unknown[] | undefined;
 let runsError: unknown;
@@ -64,6 +65,7 @@ function reset() {
   attentionRead = "read";
   attentionError = null;
   blockers = [];
+  stuckIssues = 0;
   work = QUIET_WORK;
   runs = [];
   runsError = null;
@@ -134,7 +136,7 @@ vi.mock("@/features/projects/hooks", () => ({
   useProjects: () => ({ ...noQuery, data: [{ id: "p1", slug: "pair", name: "Pair" }] }),
   useProjectHealth: () => ({
     ...noQuery,
-    data: [{ projectSlug: "pair", blockers, blockersTotal: blockers.length, work, spend24hUsd: 0 }],
+    data: [{ projectSlug: "pair", blockers, blockersTotal: blockers.length, work, spend24hUsd: 0, stuckIssues }],
   }),
 }));
 vi.mock("@/features/runners/hooks", () => ({
@@ -403,6 +405,25 @@ describe("a degraded project", () => {
     work = BUSY_WORK;
     const { container } = mount();
     expect(shape(container)).toBe("degraded");
+  });
+});
+
+describe("a project with an issue a stuck-issue notice stands for (ISS-1229 r12)", () => {
+  it("says how many are stuck rather than that nothing needs anyone, and offers them", () => {
+    stuckIssues = 1;
+    const { container } = mount();
+    expect(shape(container)).toBe("degraded");
+    expect(screen.queryByText(/Nothing needs anyone/)).toBeNull();
+    const band = screen.getByTestId("degraded-band");
+    expect(band).toHaveTextContent("Work is blocked — 1 issue stuck, nothing working it");
+    expect(within(band).getByRole("link")).toHaveTextContent("Action needed — open the stuck issue");
+    expect(within(band).getByRole("link")).toHaveAttribute("href", "/projects/pair/issues");
+  });
+
+  it("counts two in the plural", () => {
+    stuckIssues = 2;
+    mount();
+    expect(screen.getByTestId("degraded-band")).toHaveTextContent("Work is blocked — 2 issues stuck, nothing working them");
   });
 });
 

@@ -368,3 +368,30 @@ describe('GET /api/projects/health, the parked list', () => {
     expect(body[0]?.blockersTotal).toBe(9);
   });
 });
+
+describe('GET /api/projects/health, the stuck issues (ISS-1229 r12)', () => {
+  it('counts each project issue with a stuck-issue notice standing, as every stuck-issue sweep raises it', async () => {
+    authVerified();
+    queryQueue.push([{ id: PROJECT_A_ID }, { id: PROJECT_B_ID }]); // loadVisibleProjectIds
+    queryQueue.push([
+      { id: PROJECT_A_ID, slug: 'alpha', name: 'Alpha', agentConfig: null },
+      { id: PROJECT_B_ID, slug: 'beta', name: 'Beta', agentConfig: null },
+    ]); // visibleProjects
+    for (let i = 0; i < 11; i++) queryQueue.push([]); // the eleven reads before it
+    queryQueue.push([{ projectId: PROJECT_A_ID, n: 2 }]); // stuckIssueRows
+
+    const res = await buildApp().request('/api/projects/health', {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ projectSlug: string; stuckIssues: number }>;
+    expect(body.find((p) => p.projectSlug === 'alpha')?.stuckIssues).toBe(2);
+    expect(body.find((p) => p.projectSlug === 'beta')?.stuckIssues).toBe(0);
+    const stuckRead = JSON.stringify(executedSql).replace(/\\n\s*/g, ' ');
+    expect(stuckRead).toContain("n.type = 'issue_stranded'");
+    expect(stuckRead).toContain("n.state = 'firing'");
+    expect(stuckRead).toContain('n.resolved_at IS NULL');
+    expect(stuckRead).toContain('count(DISTINCT n.issue_id)');
+  });
+});

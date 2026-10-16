@@ -67,64 +67,87 @@ describe('a bounded notify-only sweep reaches every candidate (ISS-1021)', () =>
     });
 
     const total = mods.STRANDED_SCAN_LIMIT + OVERFLOW;
-    // Every row is equally and permanently eligible: parked at `waiting`, well past the grace, and
-    // nothing in this pass will ever change that. `updated_at` is strictly increasing so the
-    // traversal order is total and the assertions below can name pages by it.
+    // Every row is equally and permanently eligible: parked at `waiting` since it was made, well
+    // past the grace, and nothing in this pass will ever change that. The park time is strictly
+    // increasing so the traversal order is total and the assertions below can name pages by it.
     await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, title, status, created_by_id, iss_seq, updated_at)
+      INSERT INTO issues (id, project_id, title, status, created_by_id, iss_seq, created_at, updated_at)
       SELECT gen_random_uuid(), ${projectId}, 'strand ' || g, 'waiting', ${owner.id}, g,
+             now() - interval '30 days' + (g || ' seconds')::interval,
              now() - interval '30 days' + (g || ' seconds')::interval
       FROM generate_series(1, ${total}) g
     `);
   }, 60_000);
 
-  async function pageIds(): Promise<string[]> {
-    // The detector returns counts, not ids, so the page is read back off what it surfaced this
-    // tick: `sweep_group_key` is minute-truncated, so instead the notification rows carry the
-    // issue each strand named.
-    const rows = await harness.db.execute<{ issue_id: string }>(
-      sql`SELECT DISTINCT issue_id FROM notifications WHERE type = 'issue_stranded'`,
-    );
-    return rows.map((r) => r.issue_id);
+  /**
+   * Every row already told about, so no row is owed a sighting beside the page (owed-sighting.ts)
+   * and what a pass reads is its page alone: the cursor is what these cases measure.
+   */
+  async function everyRowTold(): Promise<void> {
+    await harness.db.execute(sql`
+      INSERT INTO notifications (project_id, issue_id, type, kind, tier, state, title, resolution_key,
+                                 pending_since, last_seen_at, created_at)
+      SELECT i.project_id, i.id, 'issue_stranded', 'condition', 'ticket', 'firing', 'told',
+             'issue:' || i.id || ':stranded', now(), now(), now()
+        FROM issues i
+    `);
   }
 
+  /** How many rows a pass at `at` saw: each condition it saw carries that pass's clock. */
+  async function seenAt(at: Date): Promise<number> {
+    const rows = await harness.db.execute<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM notifications WHERE last_seen_at = ${at.toISOString()}::timestamptz`,
+    );
+    return rows[0]?.n ?? 0;
+  }
+
+  const T = (minute: number) => new Date(Date.UTC(2030, 0, 1, 0, minute));
+
   it('reads one bounded page rather than the whole candidate set', async () => {
-    const res = await mods.detectStrandedIssues();
+    await everyRowTold();
+    const res = await mods.detectStrandedIssues(T(1));
 
     expect(res.detected).toBe(mods.STRANDED_SCAN_LIMIT);
-    expect(res.detected).toBeLessThan(mods.STRANDED_SCAN_LIMIT + OVERFLOW);
+    expect(await seenAt(T(1))).toBe(mods.STRANDED_SCAN_LIMIT);
   });
 
-  it('surfaces the rows past its bound on the very next pass', async () => {
-    await mods.detectStrandedIssues();
-    const afterFirst = new Set(await pageIds());
-    expect(afterFirst.size).toBe(mods.STRANDED_SCAN_LIMIT);
+  it('sees the rows past its bound on the very next pass', async () => {
+    await everyRowTold();
+    await mods.detectStrandedIssues(T(1));
 
-    const second = await mods.detectStrandedIssues();
+    const second = await mods.detectStrandedIssues(T(2));
 
     expect(second.detected).toBe(OVERFLOW);
-    const afterSecond = await pageIds();
-    // Every one of the 205 candidates has now been named, so nothing sat behind the bound.
-    expect(new Set(afterSecond).size).toBe(mods.STRANDED_SCAN_LIMIT + OVERFLOW);
+    // Every one of the 205 candidates has now been seen, so nothing sat behind the bound.
+    expect((await seenAt(T(1))) + (await seenAt(T(2)))).toBe(mods.STRANDED_SCAN_LIMIT + OVERFLOW);
   });
 
   it('wraps back to the oldest candidate once the traversal has run out', async () => {
-    await mods.detectStrandedIssues();
-    await mods.detectStrandedIssues();
+    await everyRowTold();
+    await mods.detectStrandedIssues(T(1));
+    await mods.detectStrandedIssues(T(2));
 
     // The short second page ends the traversal, so the third starts again at the oldest row.
-    const third = await mods.detectStrandedIssues();
+    const third = await mods.detectStrandedIssues(T(3));
 
     expect(third.detected).toBe(mods.STRANDED_SCAN_LIMIT);
   });
 
   it('keeps each pass proportional to its bound, not to the table', async () => {
-    const first = await mods.detectStrandedIssues();
-    const second = await mods.detectStrandedIssues();
-    const third = await mods.detectStrandedIssues();
+    await everyRowTold();
+    const first = await mods.detectStrandedIssues(T(1));
+    const second = await mods.detectStrandedIssues(T(2));
+    const third = await mods.detectStrandedIssues(T(3));
 
     for (const pass of [first, second, third]) {
       expect(pass.detected).toBeLessThanOrEqual(mods.STRANDED_SCAN_LIMIT);
     }
+  });
+
+  it('reads, beside its page, the rows not yet told about, newest first (ISS-1229 r12)', async () => {
+    const first = await mods.detectStrandedIssues(T(1));
+
+    // The page holds the 200 oldest; the five newest are owed a sighting beside it.
+    expect(first.detected).toBe(mods.STRANDED_SCAN_LIMIT + OVERFLOW);
   });
 });

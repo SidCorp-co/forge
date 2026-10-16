@@ -207,6 +207,8 @@ export default function ProjectOverviewPage() {
     failedJobs: attentionState.read === "ok" ? (attentionQ.view?.projectTotals[project.slug]?.failedJobs ?? 0) : 0,
     releaseRuns: runsAwaitingRelease.length,
     releaseIssues: awaitingReleaseIssues,
+    stuck: health ? { read: "ok" } : { read: "failed", reason: "the health read returned no row for this project" },
+    stuckIssues: health?.stuckIssues ?? 0,
     now,
   });
 

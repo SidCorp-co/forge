@@ -197,3 +197,38 @@ describe.each([
     expect(await told(w.ownerId, control)).toEqual([]);
   });
 });
+
+describe('the waiting-park sweep counts from the park, not from the last write (ISS-1229 r12)', () => {
+  /** An issue made two days ago, parked at Waiting `parked` ago, and last written `edited` ago. */
+  async function park(w: World, parked: number, edited: number): Promise<string> {
+    const id = await agedIssue(w, w.live, 'waiting', 48 * HOUR, false);
+    await harness.db.execute(sql`
+      INSERT INTO kernel_transitions (entity, entity_id, from_status, to_status, actor_type, source, created_at)
+      VALUES ('issue', ${id}::uuid, 'in_progress', 'waiting', 'user', 'test',
+              ${new Date(Date.now() - parked).toISOString()}::timestamptz)
+    `);
+    await harness.db.execute(sql`
+      UPDATE issues SET updated_at = ${new Date(Date.now() - edited).toISOString()}::timestamptz
+       WHERE id = ${id}::uuid
+    `);
+    return id;
+  }
+
+  it('tells the admin about a park of seven hours that was edited an hour ago', async () => {
+    const w = await world();
+    const control = await park(w, 7 * HOUR, HOUR);
+
+    await twoTicks(sweeps['waiting-park'], new Date());
+
+    expect(await told(w.ownerId, control)).toEqual([expect.stringContaining('is waiting on you')]);
+  });
+
+  it('tells nobody about a park of five hours whose issue was last written a day ago', async () => {
+    const w = await world();
+    const control = await park(w, 5 * HOUR, 24 * HOUR);
+
+    await twoTicks(sweeps['waiting-park'], new Date());
+
+    expect(await told(w.ownerId, control)).toEqual([]);
+  });
+});

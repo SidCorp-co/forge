@@ -41,3 +41,33 @@ export function unwrittenRefusal(err: unknown, sentStatus: boolean): unknown {
     leadWith(message, sentStatus ? `${UNWRITTEN}, the status move included` : UNWRITTEN),
   );
 }
+
+/** Whether the call sent a status, read off its raw arguments: the input check may be what refused it. */
+function sentStatusIn(args: unknown): boolean {
+  const data = (args as { data?: unknown } | null)?.data;
+  return (
+    typeof data === 'object' && data !== null && (data as { status?: unknown }).status !== undefined
+  );
+}
+
+/** Run a step that writes nothing; where the call is an update, a refusal from it says so first. */
+export function unwrittenIfUpdate<T>(args: unknown, step: () => T): T {
+  try {
+    return step();
+  } catch (err) {
+    if ((args as { action?: unknown } | null)?.action !== 'update') throw err;
+    throw unwrittenRefusal(err, sentStatusIn(args));
+  }
+}
+
+/** An update's step before its write, its refusal saying that nothing the update carried was written. */
+export async function unwrittenOnRefusal<T>(
+  sentStatus: boolean,
+  step: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await step();
+  } catch (err) {
+    throw unwrittenRefusal(err, sentStatus);
+  }
+}

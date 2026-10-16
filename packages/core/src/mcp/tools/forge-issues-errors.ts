@@ -27,7 +27,9 @@ function relationRefusal(err: IssueDependencyError): Error {
         'BAD_REQUEST: SELF_DEP: a relation names the issue itself; `dependsOnId` or `blocksId` names another issue of this project',
       );
     case 'NOT_FOUND':
-      return new Error('NOT_FOUND: a relation names an issue that does not exist');
+      return new Error(
+        `NOT_FOUND: RELATION_TARGET_NOT_FOUND: ${err.detail ?? 'a relation names an issue that does not exist'}; \`dependsOnId\` or \`blocksId\` names an issue of this project`,
+      );
     case 'CROSS_PROJECT':
       return new Error(
         "BAD_REQUEST: CROSS_PROJECT: a relation names an issue of another project; both sides of a relation belong to this issue's project",

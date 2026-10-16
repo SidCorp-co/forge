@@ -8,7 +8,7 @@ import { readLiveSessionCounts } from '../pipeline/live-session.js';
 import { firstShipped } from '../pipeline/shipped-at.js';
 
 /**
- * The eleven independent per-project reads behind `GET /api/projects/health`, and
+ * The twelve independent per-project reads behind `GET /api/projects/health`, and
  * the bound they run under, so the latency is a few waves rather than one round
  * trip per read.
  */
@@ -169,8 +169,23 @@ const readRunActivityRows = (projectIds: string[]) =>
     .where(inArray(pipelineRuns.projectId, projectIds))
     .groupBy(pipelineRuns.projectId);
 
+export type StuckIssueRow = { projectId: string; n: number };
+
+/** Issues with a stuck-issue notice standing: what every stuck-issue sweep raises, counted once per issue. */
+const readStuckIssueRows = (projectIds: string[]) =>
+  db.execute(sql`
+    SELECT n.project_id AS "projectId", count(DISTINCT n.issue_id)::int AS n
+      FROM notifications n
+     WHERE n.type = 'issue_stranded'
+       AND n.state = 'firing'
+       AND n.resolved_at IS NULL
+       AND n.issue_id IS NOT NULL
+       AND n.project_id IN (${idList(projectIds)})
+     GROUP BY n.project_id
+  `) as unknown as Promise<StuckIssueRow[]>;
+
 /**
- * Run the eleven reads concurrently under the module bound.
+ * Run the twelve reads concurrently under the module bound.
  *
  * The array order is load-bearing for the unit test's mock, which answers each
  * awaited query with the next row-set from a queue: the limiter starts parked
@@ -190,6 +205,7 @@ export async function readHealthAggregates(projectIds: string[]) {
     issueActivityRows,
     runActivityRows,
     liveSessionRows,
+    stuckIssueRows,
   ] = await Promise.all([
     run(() => readStatusRows(projectIds)),
     run(() => readBlockerRows(projectIds)),
@@ -202,6 +218,7 @@ export async function readHealthAggregates(projectIds: string[]) {
     run(() => readIssueActivityRows(projectIds)),
     run(() => readRunActivityRows(projectIds)),
     run(() => readLiveSessionCounts(projectIds)),
+    run(() => readStuckIssueRows(projectIds)),
   ]);
 
   return {
@@ -216,5 +233,6 @@ export async function readHealthAggregates(projectIds: string[]) {
     issueActivityRows,
     runActivityRows,
     liveSessionRows,
+    stuckIssueRows,
   };
 }
