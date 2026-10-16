@@ -43,7 +43,7 @@ createRoot(document.getElementById("root") as HTMLElement).render(
             <CreateRequirementForm projectId="p1" onDone={noop} />
           </section>
           <section data-witness="feedback">
-            <FeedbackForm projectId="p1" onDone={noop} />
+            <FeedbackForm projectId="p1" slug="hop" onDone={noop} />
           </section>
         </div>
     </QueryClientProvider>

@@ -9,6 +9,8 @@ import type {
   FeedbackPromoteEffect,
   FeedbackResponse,
   PromoteAgentReportRequest,
+  SimilarFeedbackDraft,
+  SimilarFeedbackResponse,
 } from "./types";
 
 const base = (projectId: string) => `/projects/${projectId}/feedback`;
@@ -22,6 +24,7 @@ function actionRequest(projectId: string, key: string, a: FeedbackAction): [stri
   if (a.kind === "snooze") return [`${one(projectId, key)}/snooze`, post({ until: a.until, reason: a.reason })];
   if (a.kind === "verify-ask") return [`${one(projectId, key)}/verify-ask`, post({})];
   if (a.kind === "verify") return [`${one(projectId, key)}/verify`, post(a.note ? { note: a.note } : {})];
+  if (a.kind === "clarify") return [`${one(projectId, key)}/clarification`, post({ prompt: a.prompt, needed: a.needed })];
   return [`${one(projectId, key)}/${a.kind}`, post({ reason: a.reason })];
 }
 
@@ -71,6 +74,10 @@ export const feedbackApi = {
     const r = await apiClient<{ releases: { version: string }[] }>(`/projects/${projectId}/releases`);
     return r.releases.map((v) => ({ key: v.version, title: v.version }));
   },
+  /** The filed items most like this one, by their stored vectors, or why none were compared. */
+  similar: (projectId: string, key: string) => apiClient<SimilarFeedbackResponse>(`${one(projectId, key)}/similar`),
+  /** The filed items most like a draft not yet sent; nothing is written. */
+  similarToDraft: (projectId: string, draft: SimilarFeedbackDraft) => apiClient<SimilarFeedbackResponse>(`${base(projectId)}/similar`, post(draft)),
   endpoints: (projectId: string) => apiClient<FeedbackEndpointsResponse>(`${base(projectId)}/endpoints`),
   create: (projectId: string, body: CreateFeedbackRequest) => apiClient<FeedbackResponse>(base(projectId), post(body)),
   promote: (projectId: string, body: PromoteAgentReportRequest) =>

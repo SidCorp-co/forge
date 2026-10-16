@@ -5,14 +5,14 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
-import { forecastWait, say, waitingOn } from "@/test/said";
+import { say, waitingOn } from "@/test/said";
 import type { FeedbackView } from "../types";
 import { FeedbackActions, issueKeysOf } from "./feedback-actions";
 import { LinkedFeedback } from "./feedback-facts";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
-const NONE = { triage: false, drop: false, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, snooze: false, message: false, tellShipped: false, note: false, attach: false };
+const NONE = { triage: false, drop: false, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, snooze: false, message: false, tellShipped: false, note: false, attach: false, clarify: false };
 
 const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
   ({
@@ -72,31 +72,6 @@ describe("the issues that carry an item", () => {
     renderWithQuery(<LinkedFeedback f={view({ route: { route: "answer", carriers: [], answer: "Yes." } })} slug="hop" />);
     expect(screen.queryByTestId("facts-route-carriers")).toBeNull();
     expect(screen.getByText("Yes.")).toBeInTheDocument();
-  });
-});
-
-describe("the item's line as its reporter means done", () => {
-  const stamp = { label: "forecast" as const, asOf: new Date().toISOString() };
-
-  it("says a fixed item still unreleased waits on whoever cuts the release", () => {
-    const forecast = {
-      key: "FB-1",
-      triage: null,
-      delivery: {
-        ...stamp,
-        landing: { ...stamp, kind: "landed" as const, landedAt: stamp.asOf },
-        release: { kind: "person" as const, mode: "manual" as const, ...forecastWait(say("standing.who.holderOf", { perm: "project.admin" }), say("standing.act.cut", { v: "0.4.0", more: null }), say("forecast.reason.manual")), version: "0.4.0", holders: [] },
-        inHands: null,
-        shipped: null,
-      },
-    };
-    renderWithQuery(<LinkedFeedback f={view()} slug="hop" forecast={forecast} />);
-    expect(screen.getByTestId("feedback-forecast-line").textContent).toBe("Fixed · waits on A holder of project.admin to cut 0.4.0");
-  });
-
-  it("draws no forecast fact where the item carries no work that ships", () => {
-    renderWithQuery(<LinkedFeedback f={view()} slug="hop" forecast={{ key: "FB-1", triage: null, delivery: null }} />);
-    expect(screen.queryByTestId("facts-feedback-forecast")).toBeNull();
   });
 });
 

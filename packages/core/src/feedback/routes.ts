@@ -26,6 +26,8 @@ import {
   listFeedbackQuerySchema,
   PROMOTE_AGENT_REPORT_SHAPE,
   promoteAgentReportRequestSchema,
+  SIMILAR_FEEDBACK_DRAFT_SHAPE,
+  similarFeedbackDraftSchema,
 } from '@forge/contracts/feedback';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -36,7 +38,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { addAttachment, askClarification, attachmentBytes } from './attachments.js';
-import { similarFeedbackAs } from './embeddings.js';
+import { similarFeedbackAs, similarToDraftAs } from './embeddings.js';
 import { servedEndpointsAs } from './endpoints.js';
 import { listFeedbackAs } from './list-read.js';
 import { previewMessage, sendMessage } from './messages.js';
@@ -144,6 +146,15 @@ feedbackRoutes.post(
     if (!out.ok) return refused(c, out.refusals, 'FEEDBACK_REFUSED');
     return c.json({ feedback: out.feedback, effect: out.effect }, 201);
   },
+);
+
+// a draft not yet filed: before `/:fb`, which would read `similar` as an item key
+feedbackRoutes.post(
+  '/:id/feedback/similar',
+  projectParam,
+  strictBody(similarFeedbackDraftSchema, SIMILAR_FEEDBACK_DRAFT_SHAPE),
+  async (c) =>
+    c.json(await similarToDraftAs(actorOf(c), c.req.valid('param').id, c.req.valid('json'))),
 );
 
 // before `/:fb`, which would read `endpoints` as an item key

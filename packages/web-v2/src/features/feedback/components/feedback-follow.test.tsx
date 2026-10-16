@@ -1,12 +1,10 @@
-// Feedback follows its work to the release: an ETA row, the person who owes the cut, the release as a link,
-// and whether the reporter was told it shipped, or why nobody could be.
+// Feedback follows its work to the release (the ETA, who owes the cut and the release link are the
+// progress block's, `feedback-progress.test.tsx`): whether the reporter was told it shipped, or why nobody could be.
 
-import type { FeedbackForecast } from "@forge/contracts/forecast";
 import { screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { EtaClock } from "@/features/forecast";
 import { renderWithQuery } from "@/test/render";
-import { forecastWait, RULE, say, sentence, waitingOn } from "@/test/said";
+import { RULE, say, sentence, waitingOn } from "@/test/said";
 import type { FeedbackView } from "../types";
 import { LinkedFeedback } from "./feedback-facts";
 
@@ -14,18 +12,6 @@ vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation"
 
 const NOW = Date.parse("2026-10-07T12:00:00Z");
 const at = (min: number) => new Date(NOW + min * 60_000).toISOString();
-const stamp = { label: "forecast" as const, asOf: at(0) };
-const clock: EtaClock = { lang: "en", now: NOW, timeZone: "UTC" };
-const landed = { ...stamp, kind: "landed" as const, landedAt: at(-30) };
-const approval = {
-  kind: "person" as const,
-  mode: "approval" as const,
-  ...forecastWait(say("standing.who.named", { name: "Dana Lee" }), say("standing.act.cutThenApprove", { v: "0.1.0" }), say("forecast.reason.approval", { holders: null })),
-  version: "0.1.0",
-  holders: [{ id: "u1", name: "Dana Lee", kind: "human" as const }],
-};
-const delivery = { ...stamp, landing: landed, release: approval, inHands: null, shipped: null };
-
 const NONE = { triage: false, drop: false, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, snooze: false, message: false, note: false };
 const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
   ({
@@ -56,17 +42,8 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
     shipNotice: null,
     ...over,
   }) as FeedbackView;
-const forecast: FeedbackForecast = { key: "FB-4", triage: null, delivery };
 
 describe("feedback follows its work to the release", () => {
-  it("shows the ETA row, links the release and names who owes the cut", () => {
-    renderWithQuery(<LinkedFeedback f={view()} slug="hop" forecast={forecast} clock={clock} />);
-    expect(screen.getByTestId("facts-feedback-eta").textContent).toContain("ETA");
-    const line = screen.getByTestId("feedback-forecast-line");
-    expect(line.textContent).toBe("Fixed · waits on Dana Lee to cut 0.1.0, then approve it");
-    expect(within(line).getByRole("link", { name: "0.1.0" }).getAttribute("href")).toBe("/projects/hop/releases/0.1.0");
-  });
-
   it("says when the reporter was told; the release is the answer line's, said once (REQ-43 BC-5)", () => {
     const f = view({ shipNotice: { state: "told", how: "notice", at: at(-5), release: "0.1.0", by: null, shipped: { at: at(-6), release: "0.1.0" }, told: null, says: { told: null } } });
     renderWithQuery(<LinkedFeedback f={f} slug="hop" />);

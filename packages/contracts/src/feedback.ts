@@ -499,6 +499,17 @@ export const feedbackClarificationRequestSchema = z.strictObject({
 });
 export const FEEDBACK_CLARIFICATION_SHAPE = "{ prompt, needed }";
 
+/**
+ * `POST …/feedback/similar`: the items most like a draft not yet filed, read the way an item's own
+ * Similar is (`SimilarFeedbackResponse`), so a person sees likely duplicates before sending.
+ */
+export const similarFeedbackDraftSchema = z.strictObject({
+	title: titleText(FEEDBACK_LIMITS.title),
+	body: z.string().max(FEEDBACK_LIMITS.body).optional(),
+});
+export type SimilarFeedbackDraft = z.infer<typeof similarFeedbackDraftSchema>;
+export const SIMILAR_FEEDBACK_DRAFT_SHAPE = "{ title, body? }";
+
 /** `POST …/feedback/:fb/attachments`: bytes as base64, flagged on a sensitive project. */
 export const feedbackAttachmentRequestSchema = z.strictObject({
 	name: z.string().trim().min(1).max(200),
@@ -785,6 +796,8 @@ export interface FeedbackView extends FeedbackSummary {
 		note: boolean;
 		/** Add an attachment: a project writer, while the reporter's data stands. */
 		attach: boolean;
+		/** Ask the reporter one clarification: a project writer, before it is routed, while none is open. */
+		clarify: boolean;
 	};
 	sensitive: boolean;
 }

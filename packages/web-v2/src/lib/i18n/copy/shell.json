@@ -292,6 +292,7 @@
     "shell.thread.tryAgain": "Try again",
     "shell.thread.withdrawn": "A draft was replaced by the reply check and answered below.",
     "nav.proj-approvals": "Approvals",
+    "nav.proj-questions": "Questions",
     "shell.approvalsCount": "{n} waiting on your decision"
   },
   "vi": {

@@ -29,6 +29,10 @@ export const feedbackForecastKey = (projectId: string) => [...KEY, "feedback", p
 
 export const useFeedbackForecasts = (projectId: string | undefined) => useQuery(forecastRead("feedback", [projectId], () => forecastApi.feedback(projectId as string)));
 
+/** One item's progress, under the feedback forecast's key so every feedback write refreshes it too. */
+export const useFeedbackProgress = (projectId: string | undefined, key: string | undefined) =>
+  useQuery(forecastRead("feedback", [projectId, key], () => forecastApi.feedbackItem(projectId as string, key as string)));
+
 export const useComingNext = (projectId: string | undefined) => useQuery(forecastRead("coming-next", [projectId], () => forecastApi.comingNext(projectId as string)));
 
 const ETA_SORTS = ["default", "eta"] as const;

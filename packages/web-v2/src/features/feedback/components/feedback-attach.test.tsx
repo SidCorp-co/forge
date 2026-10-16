@@ -94,7 +94,7 @@ describe("attaching while filing", () => {
               : undefined,
     );
     const onDone = vi.fn();
-    const { container } = renderWithQuery(<FeedbackForm projectId="p1" onDone={onDone} />);
+    const { container } = renderWithQuery(<FeedbackForm projectId="p1" slug="hop" onDone={onDone} />);
     await screen.findByTestId("feedback-choices");
     fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), { target: { value: "Cards vanish" } });
     fireEvent.change(screen.getByLabelText("Target"), { target: { value: "The board keeps its cards" } });
@@ -125,7 +125,7 @@ describe("attaching while filing", () => {
               : undefined,
     );
     const onDone = vi.fn();
-    const { container } = renderWithQuery(<FeedbackForm projectId="p1" onDone={onDone} />);
+    const { container } = renderWithQuery(<FeedbackForm projectId="p1" slug="hop" onDone={onDone} />);
     await screen.findByTestId("feedback-choices");
     fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), { target: { value: "Cards vanish" } });
     fireEvent.change(screen.getByLabelText("Target"), { target: { value: "The board keeps its cards" } });

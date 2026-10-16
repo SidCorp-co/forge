@@ -1282,7 +1282,9 @@
         "feedback-triage#decide",
         "feedback-triage#decline",
         "feedback-triage#verify",
-        "feedback-triage#verify-ask"
+        "feedback-triage#verify-ask",
+        "feedback-triage#ask",
+        "feedback-triage#dedup"
       ]
     },
     "forecast": {
@@ -1373,6 +1375,9 @@
     },
     "projects": {
       "serves": ["project-onboarding#created"]
+    },
+    "question-desk": {
+      "serves": ["REQ-41", "agent-run-standing#waiting_person"]
     },
     "questions": {
       "serves": ["REQ-2", "agent-run-standing#waiting_person"]
