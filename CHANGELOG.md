@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.255] - 2026-10-16
+
+Runner install refuses an unbuilt platform cleanly and leaves no empty folder
+
+### Fixed
+
+- **An alert with no operator to tell now says so.** When an alert reaches warn or crit and ADMIN_EMAILS names no user with a verified email, the alert sweep logs a warning naming the alerts.
+- **The runner install script lists unpublished platforms cleanly and leaves nothing behind when it refuses.** A refused platform no longer creates ~/.local/bin, and the unserved copy of the script in the runner package is gone.
+
 ## [0.4.0-dev.254] - 2026-10-16
 
 Embeddable feedback chat lets client-site visitors file Feedback into a Forge project
