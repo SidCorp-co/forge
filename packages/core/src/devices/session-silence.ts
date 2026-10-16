@@ -115,10 +115,7 @@ export function silenceDeadline(s: SilenceSubject): number | null {
   return known.length === 0 ? null : Math.min(...known);
 }
 
-/**
- * How long after it was last heard core ends this session, counted from where the screens count:
- * its heartbeat, else its start, else its last update.
- */
+/** Counted from where the screens count: the heartbeat, else the start, else the last update. */
 export function silenceLimitMs(s: SilenceSubject): number | null {
   const deadline = silenceDeadline(s);
   if (deadline === null) return null;

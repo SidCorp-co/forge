@@ -10,7 +10,6 @@ const ACK_FAST_MS_DEFAULT = 90_000;
  *  between emissions. The demoted stale-detector alarm derives its margin from it. */
 export const RESULT_QUIET_MINUTES = 60;
 
-/** A live session no job names, quiet this long, is closed (`pipeline/sweeper.ts:closeIdleChatSessions`). */
 export const CHAT_IDLE_CLOSE_MS = 2 * 60 * 60_000;
 
 /** The least the one-shot sweep waits on a session whose box's runner still answers. */
