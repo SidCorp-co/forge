@@ -1,5 +1,6 @@
 // The requirement vocabulary and response shapes are core's own, declared once in @forge/contracts.
 import type { RequirementSpec, RequirementSummary } from '@forge/contracts/requirements';
+import type { WrittenLang } from '@forge/contracts/written-lang';
 
 export type {
   RequirementAreaRef,
@@ -41,3 +42,18 @@ export type RequirementAction =
   | { kind: 'undefer'; reason: string }
   | { kind: 'accept-delivery'; revision: number; reason?: string }
   | { kind: 'drop'; reason: string };
+
+/** A revision write: what a new draft or an edit of the open one sends (`revision-draft.ts:revisionWrite`). */
+export interface RevisionWriteBody {
+  reason: string | null;
+  tldr: string | null;
+  changeSummary: string | null;
+  writtenLang?: WrittenLang;
+  criteria: { code?: string; body: string; form: 'statement' | 'scenario' }[];
+}
+
+/** `GET /projects/:id/interface`, read for the contracts a requirement may link: those it publishes and consumes. */
+export interface ProjectInterfaceRead {
+  declared: boolean;
+  document: { publishes: Record<string, unknown>; consumes: { contract: string }[] } | null;
+}

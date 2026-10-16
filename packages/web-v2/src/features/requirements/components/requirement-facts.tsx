@@ -6,11 +6,10 @@
 // shared FactsGroup/Fact rows, so the main column never repeats a fact and both surfaces read the same.
 
 import { Link } from "@/lib/navigation/router";
-import { ActorChip, Fact, FactsEmpty, FactsGroup, LEGEND, StatusBadge, Tooltip } from "@/design";
+import { ActorChip, Fact, FactsEmpty, FactsGroup, LEGEND, StatusBadge } from "@/design";
 import { FeedbackRailItem } from "@/features/feedback";
 import { feedbackHref } from "@/lib/routes/feedback";
 import { issueHref } from "@/lib/routes/issues";
-import { workflowHref } from "@/lib/routes/workflows";
 import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { releaseHref } from "@/lib/routes/releases";
@@ -18,6 +17,7 @@ import { requirementHref } from "@/lib/routes/requirements";
 import type { FeedbackRoute } from "@forge/contracts/feedback";
 import type { RequirementDetail, RequirementFeedbackItem } from "../types";
 import { LinkIssueControl } from "./link-issue";
+import { RequirementContracts, RequirementDesigns } from "./requirement-links";
 import { PromotableDraft } from "./promote-drafts";
 import { Placement } from "./requirement-placement";
 import { agreedTitle } from "./standing-bits";
@@ -196,6 +196,8 @@ export function RequirementProperties({
   const baseline = d.baselines[0];
   const needs = baseline?.pins.filter((p) => p.kind === "contract-version") ?? [];
   const open = f.proposedRevision ?? f.draftRevision;
+  // what it builds on is linked from the full page while it is not done; the peek reads it only
+  const editable = onOpenRevisions !== undefined && s.attentionGroup !== "done";
   return (
     <div data-testid="requirement-facts">
       <FactsGroup title={t("requirements.facts.status")}>
@@ -256,28 +258,8 @@ export function RequirementProperties({
 
       <LinkedFeedback items={d.feedback} slug={slug} />
 
-      <FactsGroup title={t("requirements.facts.design")} testId="facts-design">
-        {d.workflows.length === 0 ? (
-          <FactsEmpty>{t("requirements.facts.noDesign")}</FactsEmpty>
-        ) : (
-          <ul className="grid gap-1">
-            {d.workflows.map((w) => (
-              <li key={w.workflowId} className="flex min-w-0 items-center gap-1.5 text-13">
-                <Link href={workflowHref(slug, w.flow)} className="min-w-0 flex-1 truncate text-link hover:underline">
-                  {w.title}
-                </Link>
-                {w.designStatus ? (
-                  <Tooltip label={w.approvedRevision !== null ? t("requirements.facts.newestApproved", { r: w.approvedRevision }) : t("requirements.facts.noApproved")}>
-                    <span className="inline-flex">
-                      <StatusBadge family="design" value={w.designStatus} />
-                    </span>
-                  </Tooltip>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        )}
-      </FactsGroup>
+      <RequirementDesigns projectId={projectId} slug={slug} d={d} editable={editable} />
+      <RequirementContracts projectId={projectId} slug={slug} d={d} editable={editable} />
 
       <RequirementBindings d={d} slug={slug} />
 

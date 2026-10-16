@@ -39,12 +39,14 @@ import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useRequirement } from "../hooks";
 import type { RequirementDetail, RequirementRevision } from "../types";
 import { ProposalDecision, ProposeChange } from "./requirement-actions";
+import { CriteriaTrace } from "./criteria-trace";
 import { RequirementProperties } from "./requirement-facts";
 import { CriteriaChanges, CriteriaChecklist, History, Readiness, RevisionDiff, RevisionList } from "./requirement-proof";
 import { RequirementDecisions } from "./requirement-decisions";
 import { RequirementMemory, useRequirementMemoryCount } from "./requirement-memory";
 import { RequirementOverview } from "./requirement-overview";
 import { RequirementPicture } from "./requirement-picture";
+import { DraftRevisionEditor, NewRevision } from "./revision-editor";
 import { RequirementProgress } from "./standing-bits";
 
 const REQUIREMENT_TABS = ["overview", "criteria", "revisions", "mockups", "activity", "memory"] as const;
@@ -56,7 +58,8 @@ export const useRequirementTab = () => useUrlTab(REQUIREMENT_TABS);
 /**
  * The criteria as a checklist under their verdict pills. "k/n verified" is the strip's, above the tabs,
  * so the view does not say it again; the developer view adds the assistant's readiness advice and the
- * revision the wording is read at.
+ * revision the wording is read at. Under it, while the requirement is not done, the steps of each
+ * linked design that serve each criterion, traced by hand.
  */
 function Criteria({ d, projectId, slug, developer }: { d: RequirementDetail; projectId: string; slug: string; developer: boolean }) {
   const t = useCopy();
@@ -71,6 +74,7 @@ function Criteria({ d, projectId, slug, developer }: { d: RequirementDetail; pro
         </div>
       ) : null}
       <CriteriaChecklist d={d} slug={slug} developer={developer} />
+      {d.standing.attentionGroup !== "done" ? <CriteriaTrace projectId={projectId} d={d} /> : null}
     </section>
   );
 }
@@ -113,12 +117,19 @@ function OpenRevision({ d, projectId, open }: { d: RequirementDetail; projectId:
         <div className="mt-4">
           <ProposalDecision projectId={projectId} d={d} revision={open.revision} />
         </div>
-      ) : null}
+      ) : (
+        <div className="mt-4">
+          <DraftRevisionEditor projectId={projectId} d={d} draft={open} />
+        </div>
+      )}
     </section>
   );
 }
 
-/** The open revision, and the act that proposes the next; the revisions that stood before are Activity's. */
+/**
+ * The open revision, written in place while it is a draft; with none open, the act that opens the
+ * next on the head, by hand or through the assistant. The revisions that stood before are Activity's.
+ */
 function Revisions({ d, projectId }: { d: RequirementDetail; projectId: string }) {
   const t = useCopy();
   const open = d.revisions.find((r) => r.state === "proposed" || r.state === "draft");
@@ -127,7 +138,8 @@ function Revisions({ d, projectId }: { d: RequirementDetail; projectId: string }
     <div className="grid gap-8" data-testid="view-revisions">
       {open ? <OpenRevision d={d} projectId={projectId} open={open} /> : null}
       {canPropose ? (
-        <div className="flex justify-end" data-testid="revision-propose">
+        <div className="flex flex-wrap items-start justify-end gap-2" data-testid="revision-propose">
+          {!open && d.currentRevision !== null ? <NewRevision projectId={projectId} d={d} /> : null}
           <ProposeChange projectId={projectId} reqKey={d.key} />
         </div>
       ) : null}

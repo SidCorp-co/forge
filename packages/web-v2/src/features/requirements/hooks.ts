@@ -1,11 +1,13 @@
 
 import type { DecisionMaker } from "@forge/contracts/comments";
 import type { RequirementKind, WritePictureRequest } from "@forge/contracts/requirement-pictures";
+import type { PutCriterionStepsRequest } from "@forge/contracts/workflow-health";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { questionsApi } from "@/features/questions";
 import { readOf, useWrite } from "@/lib/api/query-kit";
 import { requirementsApi } from "./api";
-import type { CreateRequirementBody, RequirementAction } from "./types";
+import { linkableContracts } from "./revision-draft";
+import type { CreateRequirementBody, ProjectInterfaceRead, RequirementAction, RevisionWriteBody } from "./types";
 
 /** Every query key the requirements feature reads under. */
 export const requirementKeys = {
@@ -15,6 +17,7 @@ export const requirementKeys = {
   detail: (projectId: string | undefined, req: string | undefined) => ["requirement", projectId, req] as const,
   decisions: (projectId: string | undefined, req?: string) => ["requirement-decisions", projectId, req] as const,
   areas: (projectId: string | undefined) => ["requirement-areas", projectId] as const,
+  contracts: (projectId: string | undefined) => ["requirement-contracts", projectId] as const,
 };
 
 const requirementQueries = {
@@ -106,3 +109,36 @@ export const useAcceptAllPlacements = (projectId: string) =>
   );
 
 export const useProposePlacements = (projectId: string) => useMutation({ mutationFn: () => requirementsApi.proposePlacements(projectId) });
+
+/** Where a revision write lands: a new draft on the head it was read at, or the open draft by number. */
+export type RevisionTarget = { kind: "new"; baseRevision: number | null } | { kind: "draft"; revision: number };
+
+/** A new draft on the head, or the open draft rewritten; the requirement core answers with is shown at once. */
+export const useWriteRevision = (projectId: string, req: string, target: RevisionTarget) =>
+  useWrite(
+    (write: RevisionWriteBody) =>
+      target.kind === "new" ? requirementsApi.openRevision(projectId, req, target.baseRevision, write) : requirementsApi.writeRevision(projectId, req, target.revision, write),
+    { shows: requirementKeys.detail(projectId, req), touches: oneAndList(projectId, req) },
+  );
+
+/** Links or unlinks a design or a contract; the requirement, the list and the designs it reads read again. */
+export const useRequirementLink = (projectId: string, req: string) =>
+  useWrite(
+    (a: { to: "workflow" | "contract"; ref: string; unlink?: boolean }) =>
+      a.to === "workflow" ? requirementsApi.linkWorkflow(projectId, req, a.ref, a.unlink === true) : requirementsApi.linkContract(projectId, req, a.ref, a.unlink === true),
+    { shows: requirementKeys.detail(projectId, req), touches: [...oneAndList(projectId, req), ["workflows", projectId], ["workflow-design", projectId]] },
+  );
+
+/** The contracts this project publishes and consumes, as `<project>/<contract>`: what a requirement may link. */
+export const useLinkableContracts = (projectId: string | undefined, projectSlug: string) =>
+  useQuery({
+    ...readOf(requirementKeys.contracts(projectId), () => requirementsApi.projectInterface(projectId as string), 60_000),
+    select: (read: ProjectInterfaceRead) => linkableContracts(read, projectSlug),
+  });
+
+/** Writes one criterion's trace onto one linked design; the requirement core answers with is shown, and the design's health reads again. */
+export const useTraceCriterion = (projectId: string, req: string) =>
+  useWrite((a: { code: string; body: PutCriterionStepsRequest }) => requirementsApi.traceCriterion(projectId, req, a.code, a.body), {
+    shows: requirementKeys.detail(projectId, req),
+    touches: [...oneAndList(projectId, req), ["workflow-health", projectId], ["workflow-design", projectId]],
+  });

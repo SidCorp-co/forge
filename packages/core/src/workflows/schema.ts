@@ -1,4 +1,3 @@
-import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import {
   BAND_ID,
   EDGE_KIND_ID,
@@ -7,10 +6,11 @@ import {
   TEMPLATE_LIMITS,
   templateRefSchema,
 } from '@forge/contracts/workflow-templates';
+import { WORKFLOW_V2_SCHEMA_ID } from '@forge/contracts/workflows';
 import { z } from 'zod';
 import { slug, uuid } from '../project-config/index.js';
 
-export const WORKFLOW_V2_SCHEMA_ID = `${SCHEMA_BASE}/workflow-v2.json`;
+export { WORKFLOW_V2_SCHEMA_ID };
 
 export const WORKFLOW_KINDS = ['flow', 'state'] as const;
 

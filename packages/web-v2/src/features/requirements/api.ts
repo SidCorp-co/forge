@@ -1,14 +1,16 @@
 import type { DecisionMaker } from "@forge/contracts/comments";
 import type { RequirementKind, WritePictureRequest } from "@forge/contracts/requirement-pictures";
 import type { PromoteDraftsAnswer, RequirementDecisionsResponse } from "@forge/contracts/requirements";
+import type { PutCriterionStepsRequest } from "@forge/contracts/workflow-health";
 import { apiClient } from "@/lib/api/client";
 import type {
   CreateRequirementBody,
   RequirementAction,
   RequirementAreaRef,
   RequirementDetail,
+  ProjectInterfaceRead,
   RequirementList,
-  RequirementRevision,
+  RevisionWriteBody,
 } from "./types";
 
 const base = (projectId: string) => `/projects/${projectId}/requirements`;
@@ -69,31 +71,29 @@ export const requirementsApi = {
   /** Draws or replaces a revision's one picture, shown at once with no accept (REQ-35). */
   writePicture: (projectId: string, req: string, revision: number, body: WritePictureRequest) =>
     apiClient<RequirementDetail>(`${one(projectId, req)}/revisions/${revision}/picture`, put(body)),
-  /**
-   * Rewrites a draft revision whole: its summary and one criterion per line. The write replaces the
-   * revision, so everything the editor does not change goes back as it is held: its spec, reason,
-   * change summary and language, and each kept criterion's code and form.
-   */
-  writeDraft: (
-    projectId: string,
-    req: string,
-    revision: Pick<RequirementRevision, "revision" | "spec" | "reason" | "changeSummary" | "writtenLang" | "criteria">,
-    write: { tldr: string; criteria: string[] },
-  ) =>
+  /** Opens a new draft revision on the head it was read at (`baseRevision`); its kind, spec and picture are the head's. */
+  openRevision: (projectId: string, req: string, baseRevision: number | null, write: RevisionWriteBody) =>
+    apiClient<RequirementDetail>(`${one(projectId, req)}/revisions`, post({ baseRevision, ...write })),
+  /** Rewrites a draft revision whole; core refuses any revision that is not a draft. */
+  writeRevision: (projectId: string, req: string, revision: number, write: RevisionWriteBody) =>
+    apiClient<RequirementDetail>(`${one(projectId, req)}/revisions/${revision}`, put(write)),
+  /** Links a design of this project, or (`unlink`) takes the link away. */
+  linkWorkflow: (projectId: string, req: string, workflowId: string, unlink: boolean) =>
     apiClient<RequirementDetail>(
-      `${one(projectId, req)}/revisions/${revision.revision}`,
-      put({
-        reason: revision.reason,
-        spec: revision.spec,
-        tldr: write.tldr,
-        changeSummary: revision.changeSummary,
-        ...(revision.writtenLang ? { writtenLang: revision.writtenLang } : {}),
-        criteria: write.criteria.map((body) => {
-          const held = revision.criteria.find((c) => c.body === body);
-          return held ? { code: held.code, body, form: held.form } : { body };
-        }),
-      }),
+      unlink ? `${one(projectId, req)}/workflows/${workflowId}` : `${one(projectId, req)}/workflows`,
+      unlink ? { method: "DELETE" } : post({ workflowId }),
     ),
+  /** Links a contract by `<project>/<contract>`, or (`unlink`) takes the link away. */
+  linkContract: (projectId: string, req: string, contract: string, unlink: boolean) =>
+    apiClient<RequirementDetail>(
+      unlink ? `${one(projectId, req)}/contracts/${contract.split("/").map(encodeURIComponent).join("/")}` : `${one(projectId, req)}/contracts`,
+      unlink ? { method: "DELETE" } : post({ contract }),
+    ),
+  /** One criterion's whole trace onto one linked design: the steps and lines that serve it. */
+  traceCriterion: (projectId: string, req: string, code: string, body: PutCriterionStepsRequest) =>
+    apiClient<RequirementDetail>(`${one(projectId, req)}/criteria/${encodeURIComponent(code)}/steps`, put(body)),
+  /** The project's interface, which names the contracts it publishes and consumes. */
+  projectInterface: (projectId: string) => apiClient<ProjectInterfaceRead>(`/projects/${projectId}/interface`),
   /** Opens (or hands back) the viewer's BA assistant room about one requirement (ISS-58). */
   openAssistant: (projectId: string, req: string) =>
     apiClient<{ conversation: { id: string }; reused: boolean }>(`${one(projectId, req)}/assistant`, post({})),
