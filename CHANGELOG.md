@@ -3230,6 +3230,7 @@
 - **A quiet session its box last reported blocked says so in the sessions list,** as on its own page and the Pipeline page, instead of "awaiting auto-recovery". (ISS-1228)
 - **The time before Forge ends a silent session is the time Forge actually uses.** The sessions list and the Agents runs tab counted three minutes for every session; an agent run is given ten. (ISS-1228)
 - **Needs you counts a session waiting on you,** listing what it waits on and linking to the session. (ISS-1228)
+- **On a phone each Needs you row reads whole,** its title wrapping under the kind, key and age instead of being cut off. (ISS-1228)
 - **The live agent on an issue page reads Quiet, in amber, once it has been silent a minute,** as every other screen does. It said "Heartbeat stale" in red only after three. (ISS-1228)
 - **Every kind of work on the dashboard reads in words.** A kind Forge no longer runs shows as its name in plain words instead of "Unrecognised work (…)" with a code, and wraps between words on a phone. (ISS-1228)
 - **The pipeline help page says what Settings holds, and that a gated draft is dropped, not closed.** It described a per-stage Auto/Manual/Skip setting that does not exist, and told readers to close a draft, which is refused. (ISS-1229)

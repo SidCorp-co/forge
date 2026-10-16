@@ -58,3 +58,31 @@ describe("the Needs your attention list with nothing in it", () => {
     expect(screen.getByText("No item is waiting on you")).toBeInTheDocument();
   });
 });
+
+// ISS-1228 round 9 (judge-22): at 390 a row was cut short and showed no age. Each row reads whole,
+// wrapping rather than truncating, with its age beside it.
+describe("a Needs you row at a phone's width", () => {
+  const NOW = Date.parse("2026-10-16T10:00:00.000Z");
+  const title = "run: ISS-9 waits on you — approve the database restore in Coolify before the window closes";
+  const items = [
+    {
+      key: "session-s9",
+      actionKind: "session" as const,
+      actionLabel: "Open session",
+      title,
+      issueRef: "ISS-9",
+      link: "/projects/pair/agents/s9",
+      since: new Date(NOW - 3 * 3_600_000).toISOString(),
+    },
+  ];
+
+  it("shows the whole title, wrapping instead of truncating, and its age", () => {
+    render(<AttentionQueue items={items} cut={null} slug="pair" now={NOW} />);
+    const row = screen.getByText(title);
+    expect(row.className).not.toMatch(/\b(truncate|line-clamp-\d|whitespace-nowrap|overflow-hidden)\b/);
+    expect(row.className).toMatch(/\bbreak-words\b/);
+    const li = row.closest("li");
+    expect(li?.className).toMatch(/\bflex-wrap\b/);
+    expect(li?.querySelector("[data-testid=age-chip]")).toHaveTextContent("3h");
+  });
+});
