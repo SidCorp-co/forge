@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.250] - 2026-10-16
+
+Deploys, source reviews, Sentry and storefront move from core's MCP server to REST
+
+### Fixed
+
+- **A read-only token reads every MCP tool.** Channel, ecosystem and upload reads were refused as writes; each tool now declares its own reads.
+
+### Removed
+
+- **Delivery leaves the MCP server.** Coolify, the source host, Sentry and the storefront target are REST under `/api/projects/:id/integrations/…`, with Coolify logs added. A policy still denying a removed tool stops the deploy by name.
+
 ## [0.4.0-dev.249] - 2026-10-16
 
 Claude Code connects to Forge by signing in through the browser, no copied token
