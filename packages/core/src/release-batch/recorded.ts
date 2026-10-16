@@ -12,7 +12,7 @@
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { postSystemComment } from '../comments/system-write.js';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
 import { releaseAttempts } from '../db/schema-release-ledger.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
@@ -43,6 +43,9 @@ export interface RecordPerformedReleaseArgs {
   /** Who the closes are recorded as; the person `userId` names where absent. A sweep that records
    *  a release nobody pressed passes its own agent actor, so the move is not charged to a person. */
   actor?: TransitionActor | undefined;
+  /** Run inside each issue's close transaction before it writes; throws to refuse that issue's close,
+   *  the throw's message becoming its `failed` reason. */
+  beforeClose?: ((tx: Tx, issueId: string) => Promise<void>) | undefined;
 }
 
 /** One issue as the record found it, so the claim stays checkable afterwards. */
@@ -113,7 +116,7 @@ function issueNote(args: {
 export async function recordPerformedRelease(
   args: RecordPerformedReleaseArgs,
 ): Promise<RecordPerformedReleaseResult> {
-  const { projectId, commit, account, userId } = args;
+  const { projectId, commit, account, userId, beforeClose } = args;
   const providerRef = args.providerRef ?? null;
 
   // ONE pass before anything refuses, so probes, notes and merges arrive together (ISS-1127).
@@ -207,7 +210,11 @@ export async function recordPerformedRelease(
         { id: issue.id, projectId, status: gateStatus, reopenCount: 0 },
         'closed',
         args.actor ?? { type: 'user', id: userId },
-        { viaReleasePath: true, reason: account },
+        {
+          viaReleasePath: true,
+          reason: account,
+          ...(beforeClose && { beforeStatusWrite: (tx: Tx) => beforeClose(tx, issue.id) }),
+        },
       );
       closed.push(issue.id);
     } catch (err) {

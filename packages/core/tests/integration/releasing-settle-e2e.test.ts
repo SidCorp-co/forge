@@ -16,6 +16,7 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { TERMINAL_PIPELINE_RUN_STATUSES } from '../../src/pipeline/status-sets.js';
+import type { ProductionReading } from '../../src/release-batch/releasing-settle-reading.js';
 import { type GitHubDouble, startGitHubDouble } from '../helpers/github-double.js';
 import {
   createTestProject,
@@ -302,6 +303,65 @@ describe('what the sweep holds to (criteria 18, 19, 20, 21)', () => {
       { actor_type: 'user', actor_id: ownerId, to: 'awaiting_release' },
       { actor_type: 'user', actor_id: ownerId, to: 'closed' },
     ]);
+  });
+});
+
+describe('a landing marked while the sweep judges it (criterion 15)', () => {
+  async function settleWith(production: ProductionReading['forLanding']) {
+    const { settleStrandedReleasing } = await import('../../src/release-batch/releasing-settle.js');
+    return settleStrandedReleasing({ production: async () => ({ forLanding: production }) });
+  }
+
+  async function closes(id: string): Promise<number> {
+    const rows = await harness.db.execute<{ n: number }>(sql`
+      SELECT count(*)::int AS n FROM kernel_transitions
+      WHERE entity = 'issue' AND entity_id = ${id} AND to_status = 'closed'
+    `);
+    return Number(rows[0]?.n ?? 0);
+  }
+
+  it('leaves the row untouched where its landing moves while production is read, and judges the new one next pass', async () => {
+    await production();
+    const id = await plant();
+    const { readProductionFinding } = await import(
+      '../../src/release-batch/releasing-settle-reading.js'
+    );
+
+    const result = await settleWith(async (landing) => {
+      await harness.db.execute(
+        sql`UPDATE issues SET merged_commit_sha = ${UNSHIPPED} WHERE id = ${id}`,
+      );
+      return (await readProductionFinding(projectId)).forLanding(landing);
+    });
+
+    expect(result).toEqual({ settled: 0, closed: 0, failed: 0 });
+    expect(await fx.stored(id)).toMatchObject({ status: 'releasing', claim: null });
+    expect(await bodies(id)).toEqual([]);
+
+    expect(await settle()).toEqual({ settled: 1, closed: 0, failed: 0 });
+    expect(await fx.stored(id)).toMatchObject({ status: 'awaiting_release' });
+    expect(await closes(id)).toBe(0);
+  });
+
+  it('refuses the close where the landing at close is not the one production was judged to carry', async () => {
+    await production();
+    const id = await plant();
+    const judged = 'c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00';
+
+    const result = await settleWith(async () => ({
+      kind: 'carried',
+      serving: SERVING,
+      servingWhole: SERVING,
+      landing: judged,
+    }));
+
+    expect(result).toEqual({ settled: 1, closed: 0, failed: 0 });
+    expect(await fx.stored(id)).toMatchObject({ status: 'awaiting_release', claim: null });
+    expect(await closes(id)).toBe(0);
+    const said = await bodies(id);
+    expect(said.at(-1)).toContain(
+      `The release record that would close this issue was refused: its landing commit is now ${SHIPPED}, not ${judged}, which production was read as carrying`,
+    );
   });
 });
 

@@ -256,7 +256,7 @@ whether that identity descends from the row's landing commit. It posts one comme
 was carrying the row and what it found, returns the row to `awaiting_release` with the dead claim
 cleared in the same transaction — without re-reading the gate's entry records, which would otherwise
 hold the row at `releasing` for good — and, where production carries the landing commit, closes it
-through a release record naming the serving commit. An unverified project, an unreadable probe or
+through a release record naming the serving commit; that close is refused, under a lock on the row, where the issue's landing commit is no longer the one production was read as carrying. An unverified project, an unreadable probe or
 repository, a missing landing commit, or a record the release door refuses leaves the row at the gate
 with a comment saying which. A row a running or paused run carries is never touched. The moves are
 written as the project's creator with agent agency.

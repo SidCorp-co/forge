@@ -46,6 +46,9 @@ interface StrandedRow extends Record<string, unknown> {
   created_by: string;
 }
 
+/** The commit an issue landed at, as the sweep judges carriage against it. */
+const LANDING = sql`NULLIF(btrim(COALESCE(i.merged_commit_sha, i.merged_claimed_commit, '')), '')`;
+
 async function strandedRows(): Promise<StrandedRow[]> {
   const live = sql.join(
     LIVE_RUN_STATUSES.map((s) => sql`${s}`),
@@ -54,7 +57,7 @@ async function strandedRows(): Promise<StrandedRow[]> {
   return (await db.execute<StrandedRow>(sql`
     SELECT i.id, i.project_id, i.reopen_count, i.release_batch_run_id,
            r.status AS run_status, (r.id IS NOT NULL) AS run_exists,
-           NULLIF(btrim(COALESCE(i.merged_commit_sha, i.merged_claimed_commit, '')), '') AS landing,
+           ${LANDING} AS landing,
            p.created_by
     FROM issues i
     JOIN projects p ON p.id = i.project_id
@@ -111,13 +114,19 @@ class SettleFenceLost extends Error {}
 
 /** The row still stands as read, its claim is still dead; then the claim goes with the move. */
 async function fenceAndRelease(tx: Tx, row: StrandedRow): Promise<void> {
-  const [now] = (await tx.execute<{ status: IssueStatus; claim: string | null; live: boolean }>(sql`
-    SELECT i.status, i.release_batch_run_id AS claim,
+  type Now = { status: IssueStatus; claim: string | null; live: boolean; landing: string | null };
+  const [now] = (await tx.execute<Now>(sql`
+    SELECT i.status, i.release_batch_run_id AS claim, ${LANDING} AS landing,
            EXISTS (SELECT 1 FROM pipeline_runs r WHERE r.id = i.release_batch_run_id
                    AND r.status IN ('running', 'paused')) AS live
     FROM issues i WHERE i.id = ${row.id} FOR UPDATE
-  `)) as unknown as Array<{ status: IssueStatus; claim: string | null; live: boolean }>;
-  if (now?.status !== 'releasing' || now.claim !== row.release_batch_run_id || now.live) {
+  `)) as unknown as Now[];
+  if (
+    now?.status !== 'releasing' ||
+    now.claim !== row.release_batch_run_id ||
+    now.live ||
+    now.landing !== row.landing
+  ) {
     throw new SettleFenceLost(`issue ${row.id} moved while the releasing sweep read it`);
   }
   await tx.execute(sql`
@@ -170,6 +179,7 @@ async function closeByRecord(
       account,
       userId: row.created_by,
       actor: sweepActor(row),
+      beforeClose: (tx, issueId) => landingStill(tx, issueId, finding.landing),
     });
     if (result.closed.includes(row.id)) return true;
     const failed = result.failed.find((f) => f.id === row.id)?.reason ?? 'it named no reason';
@@ -178,6 +188,19 @@ async function closeByRecord(
   } catch (err) {
     await sayRecordRefused(row, err instanceof Error ? err.message : String(err));
     return false;
+  }
+}
+
+/** The close is judged on the landing production was read as carrying; a landing marked since is
+ *  not, and the issue stays at the gate saying so. */
+export async function landingStill(tx: Tx, issueId: string, judged: string): Promise<void> {
+  const [now] = (await tx.execute<{ landing: string | null }>(sql`
+    SELECT ${LANDING} AS landing FROM issues i WHERE i.id = ${issueId} FOR UPDATE
+  `)) as unknown as Array<{ landing: string | null }>;
+  if (now?.landing !== judged) {
+    throw new Error(
+      `its landing commit is now ${now?.landing ?? 'unmarked'}, not ${judged}, which production was read as carrying`,
+    );
   }
 }
 
