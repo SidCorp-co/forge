@@ -1,7 +1,8 @@
 /**
- * ISS-1228 round 9 — the sessions list names the issue a step session works by its key and title,
- * not only its id: the list's issue chip read "Issue" for a session the Pipeline page showed on
- * ISS-2. Read through the route the web reads, against a live database.
+ * ISS-1228 — the sessions list names every issue a session holds by its key and title. Round 9: a
+ * step session's chip read "Issue" for a session the Pipeline page showed on ISS-2. Round 10: a run
+ * session the Pipeline page showed on its leased issues named none on the list. Read through the
+ * route the web reads, against a live database.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -73,33 +74,81 @@ async function stepSession(metadata: Record<string, unknown>): Promise<string> {
   return id;
 }
 
+async function runSession(): Promise<string> {
+  const runId = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO pipeline_runs (id, project_id, kind, status) VALUES (${runId}, ${projectId}::uuid, 'system', 'running')
+  `);
+  const id = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO agent_sessions (id, project_id, device_id, pipeline_run_id, kind, status, title)
+    VALUES (${id}, ${projectId}::uuid, ${deviceId}::uuid, ${runId}, 'run_session', 'running', 'run: grp-1')
+  `);
+  return id;
+}
+
+async function lease(sessionId: string, seq: number): Promise<void> {
+  await harness.db.execute(sql`
+    INSERT INTO issue_leases (project_id, issue_key, session_id, device_id, run_id)
+    SELECT ${projectId}::uuid, ${`ISS-${seq}`}, s.id, ${deviceId}::uuid, s.pipeline_run_id
+      FROM agent_sessions s WHERE s.id = ${sessionId}::uuid
+  `);
+}
+
+async function prefix(): Promise<string | null> {
+  const [project] = (await harness.db.execute(sql`
+    SELECT issue_prefix FROM projects WHERE id = ${projectId}::uuid
+  `)) as unknown as Array<{ issue_prefix: string | null }>;
+  return project?.issue_prefix ?? null;
+}
+
 async function listed(): Promise<Map<string, unknown>> {
   const res = await fetch(`${server.baseUrl}/api/agent-sessions?projectId=${projectId}`, {
     headers: { authorization: `Bearer ${jwt}` },
   });
   expect(res.status).toBe(200);
-  const body = (await res.json()) as { items: Array<{ id: string; issue: unknown }> };
-  return new Map(body.items.map((i) => [i.id, i.issue]));
+  const body = (await res.json()) as { items: Array<{ id: string; issues: unknown }> };
+  return new Map(body.items.map((i) => [i.id, i.issues]));
 }
 
-describe("the sessions list names a session's issue (ISS-1228 round 9)", () => {
+describe("the sessions list names a session's issues (ISS-1228)", () => {
   it('gives a step session the key and title of the issue its job works', async () => {
     const issueId = await issue(projectId, 2, 'Rename the export column');
     const step = await stepSession({ jobType: 'drive', issueId });
-    const [project] = (await harness.db.execute(sql`
-      SELECT issue_prefix FROM projects WHERE id = ${projectId}::uuid
-    `)) as unknown as Array<{ issue_prefix: string | null }>;
     const { formatIssueRef } = await import('../../src/lib/issue-ref.js');
-    expect((await listed()).get(step)).toEqual({
-      id: issueId,
-      displayId: formatIssueRef(project?.issue_prefix, 2),
-      title: 'Rename the export column',
-    });
+    expect((await listed()).get(step)).toEqual([
+      {
+        id: issueId,
+        displayId: formatIssueRef(await prefix(), 2),
+        title: 'Rename the export column',
+      },
+    ]);
+  });
+
+  it('gives a run session every issue it leases, in issue order', async () => {
+    const four = await issue(projectId, 4, 'Four');
+    const three = await issue(projectId, 3, 'Three');
+    const run = await runSession();
+    await lease(run, 4);
+    await lease(run, 3);
+    const { formatIssueRef } = await import('../../src/lib/issue-ref.js');
+    const p = await prefix();
+    expect((await listed()).get(run)).toEqual([
+      { id: three, displayId: formatIssueRef(p, 3), title: 'Three' },
+      { id: four, displayId: formatIssueRef(p, 4), title: 'Four' },
+    ]);
+  });
+
+  it('names an issue a step session both leases and works once', async () => {
+    const issueId = await issue(projectId, 5, 'Five');
+    const step = await stepSession({ jobType: 'drive', issueId });
+    await lease(step, 5);
+    expect(((await listed()).get(step) as unknown[]).length).toBe(1);
   });
 
   it('names no issue for a session that records none', async () => {
     const step = await stepSession({ jobType: 'release_batch' });
-    expect((await listed()).get(step)).toBeNull();
+    expect((await listed()).get(step)).toEqual([]);
   });
 
   it('names no issue another project holds, nor one for an id that matches no issue', async () => {
@@ -107,7 +156,7 @@ describe("the sessions list names a session's issue (ISS-1228 round 9)", () => {
     const foreign = await stepSession({ issueId: await issue(elsewhere, 9, 'Not yours') });
     const junk = await stepSession({ issueId: 'not-a-uuid' });
     const rows = await listed();
-    expect(rows.get(foreign)).toBeNull();
-    expect(rows.get(junk)).toBeNull();
+    expect(rows.get(foreign)).toEqual([]);
+    expect(rows.get(junk)).toEqual([]);
   });
 });

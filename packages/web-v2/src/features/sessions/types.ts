@@ -37,6 +37,8 @@ export interface SessionBoxReport {
   blockerKind: string | null;
   waitingOn: string | null;
   observedAt: string;
+  /** When the box first reported this work, blocker and wait; every report restamps `observedAt`. */
+  since: string;
 }
 
 /** A running session silent past this reads as quiet on every screen: `running` → `stalled`. */
@@ -124,8 +126,9 @@ export interface SessionRow {
   report?: SessionBoxReport | null;
   /** How long core lets this session go unheard before ending it; `null` where nothing does. */
   silenceLimitMs?: number | null;
-  /** The issue the session works, as the list names it; `null` where core named none. */
-  issue?: { id: string; displayId: string; title: string } | null;
+  /** Every issue the session holds — its leases and its job's issue — as the list names them. */
+  issues?: Array<{ id: string; displayId: string; title: string }>;
+  runtimeState?: string | null;
   /** One-line preview of the last user/assistant turn, attached by the list
    *  endpoint (ISS-698). Null when no previewable turn exists yet (e.g. a
    *  brand-new session, or a legacy row with only the jsonb transcript). */
@@ -360,6 +363,24 @@ export function sessionSilence(session: SilenceInput, nowMs: number = Date.now()
   if (since <= STALLED_THRESHOLD_MS) return { state: "alive", sinceHeartbeatMs: since, reapInMs: null };
   if (limit === null) return { state: "stale", sinceHeartbeatMs: since, reapInMs: null };
   return { state: "stale", sinceHeartbeatMs: since, reapInMs: limit - since };
+}
+
+function countdown(ms: number): string {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  const m = Math.floor(s / 60);
+  if (m > 0) return `${m}m ${String(s % 60).padStart(2, "0")}s`;
+  return `${s}s`;
+}
+
+export const ENDING_AS_FAILED = "core is ending it as failed";
+
+/** A quiet session's end in words: core fails it, it never "recovers" (ISS-1228). */
+export function quietEndText(liveness: LivenessResult): string | null {
+  if (liveness.state === "reaping") return ENDING_AS_FAILED;
+  if (liveness.state === "stale" && liveness.reapInMs != null) {
+    return `core ends it as failed in ${countdown(liveness.reapInMs)}`;
+  }
+  return null;
 }
 
 export function deriveLiveness(

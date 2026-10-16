@@ -284,8 +284,9 @@ export function projectAttention(
 
 /**
  * The live sessions whose box reports them blocked on a person (ISS-1228): a person has to act for
- * each to go on, so each is one item to act on, in the box's own words. A session blocked on a
- * machine, another agent or nobody waits on no person and is not listed.
+ * each to go on, so each is one item to act on, in the box's own words, aged from when the box first
+ * reported that wait. A session blocked on a machine, another agent or nobody waits on no person and
+ * is not listed.
  */
 export function sessionsWaitingOnYou(
   sessions: readonly LiveSession[] | undefined,
@@ -302,7 +303,7 @@ export function sessionsWaitingOnYou(
         : `${sessionName(s)} waits on you`,
       ...(s.issues[0] ? { issueRef: s.issues[0].displayId } : {}),
       link: `/projects/${slug}/agents/${s.id}`,
-      ...ageOf(s.report?.observedAt),
+      ...ageOf(s.report?.since),
     }));
 }
 

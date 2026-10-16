@@ -63,13 +63,20 @@ function step(id: string, title: string, metadata: SessionRow["metadata"]): Sess
 }
 
 const rows: SessionRow[] = [
-  { ...step("s0", "run: ISS-4", { type: "run_session" }), kind: "run_session" },
+  {
+    ...step("s0", "run: ISS-4", { type: "run_session" }),
+    kind: "run_session",
+    issues: [
+      { id: "i4", displayId: "ISS-4", title: "Four" },
+      { id: "i6", displayId: "ISS-6", title: "Six" },
+    ],
+  } as SessionRow,
   step("s1", "release_batch", { jobType: "release_batch" }),
   {
     ...step("s2", "forge-code: Fix the export", { jobType: "drive", skillName: "forge-code", issueId: "i2" }),
-    issue: { id: "i2", displayId: "ISS-2", title: "Fix the export" },
+    issues: [{ id: "i2", displayId: "ISS-2", title: "Fix the export" }],
   } as SessionRow,
-  { ...step("s5", "triage: Gone", { jobType: "triage", issueId: "i-gone" }), issue: null } as SessionRow,
+  { ...step("s5", "triage: Gone", { jobType: "triage", issueId: "i-gone" }), issues: [] } as SessionRow,
   step("s3", "review_followup_rework_after_codex_consult", { jobType: "review_followup_rework_after_codex_consult" }),
 ];
 
@@ -129,6 +136,19 @@ describe("a session's step kind, wherever it is named", () => {
     for (const key of keys) expect(key.getAttribute("href")).toBe("/projects/pair/issues/i2");
     expect(container.textContent).not.toMatch(/\bIssue\b(?! work| ·)/);
     expect(container.textContent).not.toContain("i-gone");
+  });
+
+  // ISS-1228 r10: a run session named no issue on the list, where the Pipeline page named its leases.
+  it("names every issue a run session holds, each linking to that issue's page", () => {
+    render(<SessionsScreen scope={{ projectId: "p1" }} />);
+    for (const [key, id] of [
+      ["ISS-4", "i4"],
+      ["ISS-6", "i6"],
+    ]) {
+      const links = screen.getAllByRole("link", { name: key });
+      expect(links.length).toBeGreaterThan(0);
+      for (const link of links) expect(link.getAttribute("href")).toBe(`/projects/pair/issues/${id}`);
+    }
   });
 
   it("names no step kind by its stored name on the Pipeline page", () => {

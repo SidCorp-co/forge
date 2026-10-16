@@ -1,5 +1,11 @@
-import { lastReported, SILENCE_WORD, type SemanticTone, WORKING_WORD } from "@/design/status";
-import { failureReasonLabel, sessionSilence, TERMINAL_SESSION_STATUSES } from "@/features/sessions/types";
+import { SILENCE_WORD, type SemanticTone, WORKING_WORD } from "@/design/status";
+import { liveSessionWord } from "@/features/sessions/session-word";
+import {
+  ENDING_AS_FAILED,
+  failureReasonLabel,
+  sessionSilence,
+  TERMINAL_SESSION_STATUSES,
+} from "@/features/sessions/types";
 import { formatElapsed } from "@/lib/utils/format";
 import type { RunSessionRow } from "./types";
 
@@ -135,23 +141,42 @@ export function pulseText(p: Pulse): string | null {
   const since = formatElapsed(p.sinceMs);
   return p.state === "silent"
     ? `${SILENCE_WORD} · no report for ${since}`
-    : `${SILENCE_WORD} · past the automatic-recovery threshold · no report for ${since}`;
+    : `${SILENCE_WORD} · ${ENDING_AS_FAILED} · no report for ${since}`;
 }
 
-/** The chip a run's row shows at `nowMs`: a run the box calls working that core has not heard from
- *  past the silence line says what it last reported, so the row never claims work nobody has seen. */
+const QUIET_DETAIL =
+  "The box last reported this, and core has heard nothing from the run's session since.";
+
+/**
+ * The chip a run's row shows at `nowMs`. Where the box claims a process, the row says what its
+ * session is doing in the one word every screen uses (`liveSessionWord`), and once core has heard
+ * nothing past the silence line, what it last reported — never that it is working or blocked now.
+ * A run with no process keeps its own words: parked, answered, closed.
+ */
 export function stateLabelAt(
-  row: Pick<RunSessionRow, "incarnation" | "work" | "lastActivityAt" | "silenceLimitMs">,
+  row: Pick<
+    RunSessionRow,
+    "incarnation" | "work" | "lastActivityAt" | "silenceLimitMs" | "sessionStatus" | "sessionRuntimeState"
+  >,
   nowMs: number,
 ): StateLabel {
   const state = runState(row);
   const meta = LABELS[state];
-  if (state !== "live-runnable" || !pulseIsStalling(pulse(row, nowMs))) return meta;
-  return {
-    label: lastReported(meta.label),
-    detail: "The box last said an agent was running here, and core has heard nothing from it since.",
-    tone: "neutral",
-  };
+  if (state !== "live-runnable" && state !== "live-blocked") return meta;
+  const coreLive = row.sessionStatus != null && !TERMINAL_SESSION_STATUSES.has(row.sessionStatus);
+  const word = liveSessionWord(
+    {
+      status: coreLive ? (row.sessionStatus as string) : "running",
+      runtimeState: coreLive ? (row.sessionRuntimeState ?? null) : null,
+      report: { work: row.work },
+      lastHeartbeatAt: row.lastActivityAt,
+      startedAt: null,
+      silenceLimitMs: row.silenceLimitMs ?? null,
+    },
+    nowMs,
+  );
+  if (word.quiet) return { label: word.label, detail: QUIET_DETAIL, tone: word.tone };
+  return coreLive ? { label: word.label, detail: meta.detail, tone: word.tone } : meta;
 }
 
 /** Whether the box claims a process exists for this run. */

@@ -1,5 +1,5 @@
-import { BLOCKED_TONE, BLOCKED_WORD, lastReported, type SemanticTone, WORKING_WORD } from "@/design/status";
 import { storedNameInWords } from "@/features/overview/job-kinds";
+import { liveSessionWord } from "@/features/sessions/session-word";
 import { STALLED_THRESHOLD_MS, sessionSilence, sessionTitle } from "@/features/sessions/types";
 import { formatElapsed } from "@/lib/utils/format";
 import type { HeldIssue, Holder, LiveSession, PersonOwes } from "./types";
@@ -28,36 +28,6 @@ export function sessionName(
     metadata: { jobType: session.jobType, skillName: session.skillName },
   });
   return title?.trim() || sessionKindLabel(session.kind);
-}
-
-export interface Doing {
-  label: string;
-  tone: SemanticTone;
-}
-
-const RUNTIME_DOING: Record<string, Doing> = {
-  starting: { label: "Starting", tone: "neutral" },
-  working: { label: WORKING_WORD, tone: "active" },
-  awaiting_input: { label: "Waiting for input", tone: "attention" },
-  checkpointing: { label: "Checkpointing", tone: "neutral" },
-  closed: { label: "Closing", tone: "neutral" },
-};
-
-const BLOCKED: Doing = { label: BLOCKED_WORD, tone: BLOCKED_TONE };
-
-/** What the session is doing, from its status first, then the box's report of a block, then its
- *  runtime state. A running session gone quiet is doing nothing anyone has heard of, so it says what
- *  it last reported instead. */
-export function doingOf(
-  session: Pick<LiveSession, "status" | "runtimeState" | "lastHeartbeatAt" | "startedAt"> &
-    Partial<Pick<LiveSession, "report">>,
-  now: number,
-): Doing {
-  if (session.status === "queued") return { label: "Waiting for a box", tone: "neutral" };
-  if (session.status === "idle") return { label: "Not started", tone: "neutral" };
-  const runtime = session.runtimeState ? RUNTIME_DOING[session.runtimeState] : undefined;
-  const doing = session.report?.work === "blocked" ? BLOCKED : (runtime ?? { label: WORKING_WORD, tone: "active" });
-  return isQuiet(session, now) ? { label: lastReported(doing.label), tone: "neutral" } : doing;
 }
 
 function isQuiet(session: Pick<LiveSession, "status" | "lastHeartbeatAt" | "startedAt">, now: number): boolean {
@@ -158,7 +128,7 @@ function clock(iso: string | null): string | null {
  *  for a quiet one how long it has been unheard. A session the read did not return claims nothing. */
 function sessionWhy(session: LiveSession | undefined, now: number): string {
   if (!session) return "What its session is doing was not read";
-  const doing = doingOf(session, now).label;
+  const doing = liveSessionWord(session, now).label;
   const checkIn = checkInOf(session, now);
   return checkIn.quiet ? `${doing} · ${checkIn.text}` : doing;
 }

@@ -21,7 +21,9 @@ export const runSessionRowSchema = z.object({
   deviceId: z.string(),
   deviceName: z.string().nullable(),
   observedAt: z.string(),
+  workSince: z.string(),
   sessionStatus: z.string().nullable(),
+  sessionRuntimeState: z.string().nullable(),
   sessionFailureReason: z.string().nullable(),
   lastActivityAt: z.string().nullable(),
   silenceLimitMs: z.number().int().nonnegative().nullable(),
@@ -35,7 +37,8 @@ export const runSessionsSchema = z.object({
 
 export const listProjectRunSessions = describeOperation({
   summary: 'List the agent runs the fleet has reported for a project, newest report first',
-  description: "`sessionStatus` is core's own reading of the session, never the box's claim.",
+  description:
+    "`sessionStatus` is core's own reading of the session, never the box's claim. `workSince` is when core first saw the run's current work, blocker and wait.",
   responses: {
     200: json(runSessionsSchema),
     403: fail('FORBIDDEN', 'the caller is not a member of the project'),

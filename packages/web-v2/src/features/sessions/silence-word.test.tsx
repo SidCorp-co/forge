@@ -324,6 +324,7 @@ describe("a running session its box reports blocked (ISS-1228 criteria 34, 40, 4
     blockerKind: "human",
     waitingOn: "approve the database restore in Coolify",
     observedAt: HEARD_AT,
+    since: HEARD_AT,
   };
   const blockedLive: LiveSession = { ...live, lastHeartbeatAt: HEARD_AT, report };
   const blockedRow: SessionRow = { ...row, lastHeartbeatAt: HEARD_AT, updatedAt: HEARD_AT, report };
@@ -412,6 +413,7 @@ describe("a quiet session read against core's own silence limit (ISS-1228 round 
     blockerKind: "human",
     waitingOn: "a decision on the schema",
     observedAt: FOUR_MIN_AGO,
+    since: FOUR_MIN_AGO,
   };
 
   it("reads Last reported blocked on the sessions list, as the session page and the Pipeline page do", () => {
@@ -424,16 +426,17 @@ describe("a quiet session read against core's own silence limit (ISS-1228 round 
     expect(cell).not.toContain("awaiting auto-recovery");
   });
 
-  it("counts the sessions list's countdown to core's ten minutes for a run session", () => {
+  it("counts the sessions list's countdown to core's ten minutes for a run session, saying core ends it as failed", () => {
     listed = { ...row, lastHeartbeatAt: FOUR_MIN_AGO, updatedAt: FOUR_MIN_AGO, silenceLimitMs: TEN_MIN };
     const { container } = render(<SessionsScreen scope={{ projectId: "p1" }} />);
     const cell = container.querySelector("tbody")?.textContent ?? "";
     listed = row;
     cleanup();
-    expect(cell).toContain("auto-recovers in 6m 00s");
+    expect(cell).toContain("core ends it as failed in 6m 00s");
+    expect(cell).not.toMatch(/recover/i);
   });
 
-  it("calls a run past the recovery threshold on the runs tab only once core's limit has passed", () => {
+  it("says core is ending a run as failed on the runs tab only once core's limit has passed", () => {
     const before = render(
       <ul>
         <RunRow row={{ ...run, lastActivityAt: FOUR_MIN_AGO, silenceLimitMs: TEN_MIN }} now={NOW} slug="pair" />
@@ -446,7 +449,86 @@ describe("a quiet session read against core's own silence limit (ISS-1228 round 
       </ul>,
     ).container.textContent;
     cleanup();
-    expect(before).not.toContain("past the automatic-recovery threshold");
-    expect(after).toContain("past the automatic-recovery threshold");
+    expect(before).not.toContain("core is ending it as failed");
+    expect(after).toContain("core is ending it as failed");
+    expect(after).not.toMatch(/recover/i);
+  });
+});
+
+// ISS-1228 round 10: a running session doing something specific read its activity on the Pipeline page
+// and the dashboard and Working on the sessions list, its own page and the runs tab; Waiting for me
+// stayed 0 while the Pipeline page said Waiting for input; and a quiet blocked run said "Blocked,
+// holding the box" in the present tense on the runs tab.
+describe("one word for a session, on every surface (ISS-1228 round 10)", () => {
+  const ACTIVITIES: Array<[string, string]> = [
+    ["starting", "Starting"],
+    ["awaiting_input", "Waiting for input"],
+    ["checkpointing", "Checkpointing"],
+    ["closed", "Closing"],
+  ];
+
+  it.each(ACTIVITIES)("calls a heard-from session at %s %s on every surface", (runtimeState, word) => {
+    const heardLive = { ...live, runtimeState, lastHeartbeatAt: HEARD_AT };
+    const heardRow = { ...row, runtimeState, lastHeartbeatAt: HEARD_AT, updatedAt: HEARD_AT };
+    const surfaces: Record<string, string> = {};
+
+    surfaces.pipeline = render(<SessionsList sessions={[heardLive]} slug="pair" now={NOW} />).container.textContent ?? "";
+    cleanup();
+    surfaces.dashboard =
+      render(<LiveSessionsCard sessions={[heardLive]} slug="pair" now={NOW} read={{ read: "ok" }} />).container
+        .textContent ?? "";
+    cleanup();
+    listed = heardRow;
+    surfaces.list = render(<SessionsScreen scope={{ projectId: "p1" }} />).container.querySelector("tbody")?.textContent ?? "";
+    listed = row;
+    cleanup();
+    surfaces.page =
+      render(
+        <SessionChip status={statusToChip(deriveSessionDisplayStatus(heardRow, NOW))} session={heardRow} now={NOW} />,
+      ).container.textContent ?? "";
+    cleanup();
+    surfaces.runs =
+      render(
+        <ul>
+          <RunRow row={{ ...run, lastActivityAt: HEARD_AT, sessionRuntimeState: runtimeState }} now={NOW} slug="pair" />
+        </ul>,
+      ).container.textContent ?? "";
+    cleanup();
+
+    for (const [surface, text] of Object.entries(surfaces)) {
+      expect({ surface, says: text.includes(word) }).toEqual({ surface, says: true });
+      expect({ surface, working: text.includes(WORKING_WORD) }).toEqual({ surface, working: false });
+    }
+  });
+
+  it("counts a session the Pipeline page calls Waiting for input under Waiting for me, and not under Working", () => {
+    listed = { ...row, runtimeState: "awaiting_input", lastHeartbeatAt: HEARD_AT, updatedAt: HEARD_AT };
+    const { container } = render(<SessionsScreen scope={{ projectId: "p1" }} />);
+    const text = container.textContent ?? "";
+    listed = row;
+    cleanup();
+    expect(text).toContain("Waiting for me 1");
+    expect(text).toContain(`${WORKING_WORD} 0`);
+  });
+
+  it("says a quiet blocked run last reported blocked on the runs tab, never that it is blocked now", () => {
+    const quietBlocked = {
+      ...run,
+      work: "blocked",
+      blockerKind: "human",
+      waitingOn: "approve the restore",
+      lastActivityAt: SILENT_SINCE,
+    };
+    for (const sessionStatus of ["running", "failed"]) {
+      const text =
+        render(
+          <ul>
+            <RunRow row={{ ...quietBlocked, sessionStatus }} now={NOW} slug="pair" />
+          </ul>,
+        ).container.textContent ?? "";
+      cleanup();
+      expect(text).toContain(lastReported("Blocked"));
+      expect(text).not.toContain("Blocked, holding the box");
+    }
   });
 });

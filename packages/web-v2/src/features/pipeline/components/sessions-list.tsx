@@ -5,12 +5,12 @@ import { MonoTag, SILENCE_TONE, SILENCE_WORD } from "@/design";
 import { TONE_META } from "@/design/status";
 import {
   checkInOf,
-  doingOf,
   orderSessions,
   sessionKindLabel,
   sessionName,
   waitingOnOf,
 } from "../derive";
+import { liveSessionWord } from "@/features/sessions/session-word";
 import type { LiveSession } from "../types";
 
 const COLUMNS =
@@ -32,7 +32,7 @@ function SessionRow({
   slug: string;
   now: number;
 }) {
-  const doing = doingOf(session, now);
+  const doing = liveSessionWord(session, now);
   const waiting = waitingOnOf(session);
   const checkIn = checkInOf(session, now);
   const name = sessionName(session);

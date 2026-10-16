@@ -2,7 +2,6 @@
 
 import {
   Badge,
-  BLOCKED_WORD,
   Button,
   EmptyState,
   ErrorState,
@@ -17,6 +16,7 @@ import {
 } from "@/design";
 import { waitingOnOf } from "@/features/pipeline/derive";
 import { SessionChip } from "@/features/sessions/components/session-chip";
+import { sessionWord } from "@/features/sessions/session-word";
 import { useProjects } from "@/features/projects/hooks";
 import { isJobDriven, sessionTitle } from "@/features/sessions/types";
 import {
@@ -298,6 +298,8 @@ export function SessionScreen({
                 status={statusToChip(display)}
                 stage={sessionStep(session.metadata) ?? undefined}
                 size="sm"
+                session={session}
+                now={now}
               />
               {taskCount > 0 && (
                 <Badge tone="neutral">
@@ -415,7 +417,7 @@ export function SessionScreen({
                     stage={stage}
                     {...(elapsed ? { elapsed } : {})}
                     {...(silentForMs != null ? { silentForMs } : {})}
-                    reported={boxBlocked ? BLOCKED_WORD : WORKING_WORD}
+                    reported={session ? (sessionWord(session, now)?.activity ?? WORKING_WORD) : WORKING_WORD}
                     {...(waitingOn ? { waitingOn } : {})}
                   />
                 </div>

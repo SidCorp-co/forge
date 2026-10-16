@@ -42,6 +42,16 @@ export interface RunLedgerEntry {
 const fromEpochSeconds = (s: number | null | undefined): Date | null =>
   s == null ? null : new Date(s * 1000);
 
+/** A snapshot repeating the run's work, blocker and wait keeps the time core first saw them; one
+ *  changing any of the three starts it again at this snapshot. */
+const sameWaitKeepsItsStart = sql`CASE
+  WHEN ${deviceRunLedger.work} IS NOT DISTINCT FROM excluded.work
+   AND ${deviceRunLedger.blockerKind} IS NOT DISTINCT FROM excluded.blocker_kind
+   AND ${deviceRunLedger.waitingOn} IS NOT DISTINCT FROM excluded.waiting_on
+  THEN ${deviceRunLedger.workSince}
+  ELSE excluded.work_since
+END`;
+
 export async function applyRunLedgerSnapshot(args: {
   deviceId: string;
   entries: RunLedgerEntry[];
@@ -137,10 +147,10 @@ export async function applyRunLedgerSnapshot(args: {
       };
       await tx
         .insert(deviceRunLedger)
-        .values({ deviceId: args.deviceId, runId: e.runId, ...values })
+        .values({ deviceId: args.deviceId, runId: e.runId, ...values, workSince: observedAt })
         .onConflictDoUpdate({
           target: [deviceRunLedger.deviceId, deviceRunLedger.runId],
-          set: values,
+          set: { ...values, workSince: sameWaitKeepsItsStart },
         });
     }
   });
@@ -155,8 +165,12 @@ export interface ProjectRunSessionRow
   deviceId: string;
   deviceName: string | null;
   observedAt: string;
+  /** When core first saw this run's current work, blocker and wait. */
+  workSince: string;
   /** Core's own reading of the session, never the box's claim. */
   sessionStatus: string | null;
+  /** What the session last told core it is doing (`agent_sessions.runtime_state`). */
+  sessionRuntimeState: string | null;
   /** Why core failed the session, where it did. `null` both on a clean end and on a session that
    *  has not ended — `sessionStatus` is what separates those two, never this field's absence. */
   sessionFailureReason: string | null;
@@ -187,10 +201,14 @@ export async function readProjectRunSessions(projectId: string): Promise<Project
       worktreeGoneAt: deviceRunLedger.worktreeGoneAt,
       issues: deviceRunLedger.issues,
       observedAt: deviceRunLedger.observedAt,
+      workSince: deviceRunLedger.workSince,
       deviceName: devices.name,
       sessionStatus: sql<
         string | null
       >`(SELECT s.status FROM agent_sessions s WHERE s.id = ${deviceRunLedger.sessionId})`,
+      sessionRuntimeState: sql<
+        string | null
+      >`(SELECT s.runtime_state FROM agent_sessions s WHERE s.id = ${deviceRunLedger.sessionId})`,
       sessionFailureReason: sql<
         string | null
       >`(SELECT s.failure_reason FROM agent_sessions s WHERE s.id = ${deviceRunLedger.sessionId})`,
@@ -215,6 +233,7 @@ export async function readProjectRunSessions(projectId: string): Promise<Project
       : null,
     issues: (r.issues ?? []) as RunLedgerIssue[],
     observedAt: new Date(r.observedAt).toISOString(),
+    workSince: new Date(r.workSince).toISOString(),
     lastActivityAt: r.lastActivityAt ? new Date(r.lastActivityAt).toISOString() : null,
     sessionTerminalAt: r.sessionTerminalAt ? new Date(r.sessionTerminalAt).toISOString() : null,
     worktreeGoneAt: r.worktreeGoneAt ? new Date(r.worktreeGoneAt).toISOString() : null,

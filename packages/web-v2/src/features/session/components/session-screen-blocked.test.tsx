@@ -44,6 +44,7 @@ const session: SessionRow = {
     blockerKind: "human",
     waitingOn: "approve the database restore in Coolify",
     observedAt: new Date(NOW - 5_000).toISOString(),
+    since: new Date(NOW - 5_000).toISOString(),
   },
 };
 page.session = session;
