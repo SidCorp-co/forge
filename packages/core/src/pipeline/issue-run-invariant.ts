@@ -136,10 +136,8 @@ async function orphanedAssertions(now: Date): Promise<OrphanRow[]> {
        ASSERTS_WORK_IN_PROGRESS.map((s) => sql`${s}`),
        sql`, `,
      )})
-       -- A write to the row still defers the notice, as it always has: it is the one sign of a
-       -- run the three predicates below cannot see. What the notice counts is ORPHAN_SINCE.
+       -- Which issues are named is unchanged; only what the notice counts from is ORPHAN_SINCE.
        AND i.updated_at < ${cutoff}
-       AND ${ORPHAN_SINCE} < ${cutoff}
        -- the same predicate the admissible read uses (ISS-1109). This pass and that one
        -- were verbatim twins, and a sweep that drifts from the pool reports as orphaned
        -- exactly the issues a box is working. Matching on issue_prefix here would make a

@@ -344,7 +344,8 @@ export async function isIssueLeaseHeld(args: {
  *
  * Two writes, because there are two records: the lease row, which says who is
  * holding the issue, and the run's membership array, which says what this run
- * was carrying and is what `returnIssuesForRun` reads to give statuses back.
+ * was carrying and is what `returnIssuesForRun` reads to give statuses back,
+ * beside `runReleasedAt`, the only record of when the issue was given back.
  * Dropping the key from membership without dropping the lease would leave the
  * issue held by a run that no longer claims it.
  *

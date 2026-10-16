@@ -276,15 +276,13 @@ describe('how long an orphan notice says nothing has worked the issue', () => {
     await harness.db.execute(
       sql`UPDATE issues SET updated_at = ${ago(PAST_GRACE)} WHERE id = ${issueId}`,
     );
-
-    const justReleased = await mods.detectOrphanedRunAssertions();
-    expect(justReleased.detected, 'given back a moment ago is inside the grace').toBe(0);
-
+    // Given back two hours ago: the stamp is the only trace, the lease row having gone with it.
     await harness.db.execute(sql`
       UPDATE pipeline_runs
          SET metadata = jsonb_set(metadata, '{runReleasedAt,ISS-14}', to_jsonb(${ago(2 * HOUR + 60_000)}::text))
        WHERE project_id = ${project.id}
     `);
+
     await mods.detectOrphanedRunAssertions();
 
     expect(await noticeBodies(issueId)).toEqual([
@@ -292,7 +290,7 @@ describe('how long an orphan notice says nothing has worked the issue', () => {
     ]);
   });
 
-  it('waits out the grace from the end of the last run, as it does from the status write', async () => {
+  it('says so where its last run ended a minute ago, however long ago the row was written', async () => {
     const user = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, user.id);
     const issueId = await anIssueAt({
@@ -302,10 +300,16 @@ describe('how long an orphan notice says nothing has worked the issue', () => {
       status: 'in_progress',
       agoMs: PAST_GRACE,
     });
-    await runEndedAt(project.id, issueId, ago(60_000));
+    await runEndedAt(project.id, issueId, ago(90_000));
 
     const result = await mods.detectOrphanedRunAssertions();
 
-    expect(result.detected, 'a run ended a minute ago is the race the grace exists for').toBe(0);
+    expect(
+      result.detected,
+      'which issues are named does not move: the grace runs from the row',
+    ).toBe(1);
+    expect(await noticeBodies(issueId)).toEqual([
+      'ISS-13 reads In progress, and nothing has worked it for 1 minute: no job, issue run or run session is live for it.',
+    ]);
   });
 });
