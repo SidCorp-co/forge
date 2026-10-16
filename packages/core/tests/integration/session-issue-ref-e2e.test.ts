@@ -101,6 +101,7 @@ async function ledger(
   sessionId: string,
   runId: string,
   issues: Array<[number, boolean]>,
+  filedUnder = projectId,
 ): Promise<void> {
   const reported = issues.map(([seq, leaseReturned]) => ({
     issueKey: `ISS-${seq}`,
@@ -109,7 +110,7 @@ async function ledger(
   await harness.db.execute(sql`
     INSERT INTO device_run_ledger (device_id, run_id, project_id, session_id, worktree_path, boot_id,
                                    incarnation, work, blocker_kind, waiting_on, issues, observed_at)
-    VALUES (${deviceId}::uuid, ${runId}, ${projectId}::uuid, ${sessionId}::uuid, '/w', 'boot-1', 'live',
+    VALUES (${deviceId}::uuid, ${runId}, ${filedUnder}::uuid, ${sessionId}::uuid, '/w', 'boot-1', 'live',
             'blocked', 'human', 'a decision on the schema', ${JSON.stringify(reported)}::jsonb, now())
   `);
 }
@@ -222,5 +223,18 @@ describe("the sessions list names a session's issues (ISS-1228)", () => {
     expect(((await listed()).get(run) as Array<{ title: string }>).map((i) => i.title)).toEqual([
       'Three',
     ]);
+  });
+
+  it('names no issue from a ledger entry filed under another project than its session', async () => {
+    await issue(projectId, 3, 'Three');
+    const elsewhere = (await createTestProject(harness.db, ownerId)).id;
+    await issue(elsewhere, 3, 'Their three');
+    const run = await runSession();
+    await ledger(run, 'run-astray', [[3, false]], elsewhere);
+    expect((await listed()).get(run)).toEqual([]);
+    const { readSessionsAndHolds } = await import('../../src/pipeline/sessions-and-holds.js');
+    const pipeline = await readSessionsAndHolds(projectId, new Date());
+    expect(pipeline.sessions.find((s) => s.id === run)?.issues).toEqual([]);
+    expect(pipeline.holds).toEqual([]);
   });
 });

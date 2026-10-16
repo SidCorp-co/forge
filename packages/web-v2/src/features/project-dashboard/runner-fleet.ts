@@ -10,6 +10,7 @@ import { type ReadState, readOf, readOfAll } from "./shape";
 export interface RunnerFleet {
   summary: RunnersSummary;
   runners: ReadState;
+  queue: ReadState;
   /** The queue, active-runner and live-session reads: until all are in, no runner is called busy or free. */
   activity: ReadState;
 }
@@ -24,15 +25,17 @@ export function useRunnerFleet(projectId: string | undefined, now: number): Runn
   const tick = useNow(1000, anyLimited);
   const activity = readOfAll(queueQ, activeRunnersQ, sessionsQ);
   const heard = activity.read === "ok";
+  const queue = readOf(queueQ);
   return {
     summary: runnersSummary(
       projectRunnersQ.data,
-      heard ? queueQ.data : undefined,
+      queue.read === "ok" ? queueQ.data : undefined,
       anyLimited ? tick : now,
       heard ? activeRunnersQ.data?.runners : undefined,
       heard ? sessionsQ.data?.sessions : undefined,
     ),
     runners: readOf(projectRunnersQ),
+    queue,
     activity,
   };
 }

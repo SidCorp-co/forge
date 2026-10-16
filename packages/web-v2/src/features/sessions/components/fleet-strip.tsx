@@ -18,7 +18,7 @@ import { Banner, HealthDot, Icon, MonoTag, SILENCE_TONE, SILENCE_WORD, Tooltip }
 import { TONE_META } from "@/design/status";
 import type { RunnerLine } from "@/features/project-dashboard/derive";
 import { useRunnerFleet } from "@/features/project-dashboard/runner-fleet";
-import { plural } from "@/features/project-dashboard/shape";
+import { plural, type ReadState } from "@/features/project-dashboard/shape";
 import { useProject } from "@/features/projects/hooks";
 import {
   deriveLiveness,
@@ -58,6 +58,12 @@ function boxWord(line: RunnerLine, activityRead: boolean): string {
   if (!line.online) return `Offline${hosting}`;
   if (!activityRead) return "activity not read";
   return line.busy ? "Busy · 1/1" : "Free · 0/1";
+}
+
+function queueWord(queued: number, read: ReadState): string {
+  if (read.read === "failed") return "queue not read";
+  if (read.read === "pending") return "reading the queue";
+  return queued > 0 ? `${queued} queued` : "no queue";
 }
 
 export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) {
@@ -143,8 +149,8 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
                   >
                     {boxWord(d, activityRead)}
                   </span>
-                  <span className="fg-caption text-subtle" title={`${queued} queued behind this runner`}>
-                    {queued > 0 ? `${queued} queued` : "no queue"}
+                  <span data-testid="box-queue" className="fg-caption text-subtle" title={`${queued} queued behind this runner`}>
+                    {queueWord(queued, fleet.queue)}
                   </span>
                 </div>
 

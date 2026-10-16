@@ -60,7 +60,7 @@ export function heldIssueRowsSql(where: SQL): SQL {
            issues.id, issues.iss_seq, issues.title, issues.status, p.issue_prefix,
            bool_or(NOT coalesce((e.item ->> 'leaseReturned')::boolean, false))
       FROM device_run_ledger lr
-      JOIN agent_sessions s ON s.id = lr.session_id
+      JOIN agent_sessions s ON s.id = lr.session_id AND s.project_id = lr.project_id
       CROSS JOIN LATERAL jsonb_array_elements(lr.issues) AS e(item)
       JOIN issues ON issues.project_id = s.project_id
                  AND e.item ->> 'issueKey' = 'ISS-' || issues.iss_seq -- ISS-992:canonical
