@@ -22,9 +22,9 @@ function sources(dir: string): string[] {
 }
 
 describe("the library behind the design layer", () => {
-  it("is declared at exactly 3.14.13, with no range", () => {
+  it("is declared at exactly 3.14.15, with no range", () => {
     const manifest = JSON.parse(readFileSync(resolve(process.cwd(), "package.json"), "utf8"));
-    expect(manifest.dependencies["@tanstack/react-virtual"]).toBe("3.14.13");
+    expect(manifest.dependencies["@tanstack/react-virtual"]).toBe("3.14.15");
   });
 
   it("is imported by nothing outside src/design, and by this one hook inside it", () => {
@@ -63,6 +63,24 @@ function Rows({ count, enabled = true }: { count: number; enabled?: boolean }) {
         </button>
       ))}
     </div>
+  );
+}
+
+function Jump({ to }: { to: number }) {
+  const virtual = useVirtualRows({ count: 1000, estimateSize: ROW, overscan: 2 });
+  return (
+    <>
+      <button type="button" onClick={() => virtual.focusRow(to)}>
+        jump
+      </button>
+      <div ref={virtual.scrollerRef} data-testid="scroller" {...virtual.scrollerEvents}>
+        {virtual.rows.map((row) => (
+          <button type="button" key={row.key} ref={virtual.measureRow} data-index={row.index}>
+            {`row ${row.index}`}
+          </button>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -142,6 +160,17 @@ describe("useVirtualRows", () => {
     });
     expect(scroller.scrollTop).toBe(ROW * 400);
     expect(drawn()).not.toContain(999);
+  });
+
+  it("draws and focuses the row it is asked for when the scroll aimed at it does not move the scroller", async () => {
+    const still = vi.spyOn(Element.prototype, "scrollTo").mockImplementation(() => {});
+    render(<Jump to={700} />);
+    await act(async () => {});
+    expect(drawn()).not.toContain(700);
+    await act(async () => void fireEvent.click(screen.getByRole("button", { name: "jump" })));
+    expect(drawn()).toContain(700);
+    expect((document.activeElement as HTMLElement).dataset.index).toBe("700");
+    still.mockRestore();
   });
 
   it("aims a scroll at the last row on End, without moving focus, and leaves Shift+End and a text field's End to the browser", async () => {

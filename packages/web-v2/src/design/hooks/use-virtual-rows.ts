@@ -11,6 +11,7 @@ import {
   type UIEvent,
   useCallback,
   useLayoutEffect,
+  useReducer,
   useRef,
 } from "react";
 
@@ -96,6 +97,7 @@ export function useVirtualRows({
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const held = useRef<{ key: string | number; index: number } | null>(null);
   const pending = useRef<number | null>(null);
+  const [, redraw] = useReducer((n: number) => n + 1, 0);
 
   const virtualizer = useVirtualizer<HTMLDivElement, Element>({
     count: enabled ? count : 0,
@@ -145,6 +147,8 @@ export function useVirtualRows({
       pending.current = index;
       held.current = { key: getKey?.(index) ?? index, index };
       virtualizer.scrollToIndex(index, { align: "auto" });
+      // A scroll that does not move the offset renders nothing, and the held row is drawn only by a render.
+      redraw();
       settle();
     },
     [virtualizer, settle, getKey],
