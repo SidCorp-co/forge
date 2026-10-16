@@ -319,9 +319,13 @@ const SELF_CLEARING: Readonly<Record<string, string>> = {
  * comment every minute of an outage; stored, it would be false a minute later.
  */
 export function withoutAges(text: string): string {
+  const age = '(?:less than a minute|\\d+ (?:minute|hour|day)s?) ago';
   return text
-    .replace(/ It is up and reporting, last seen \d+s ago\./g, ' It is up and reporting.')
-    .replace(/ (?:It last reported|Last seen) \d+s ago\./g, '');
+    .replace(
+      new RegExp(` It is up and reporting, last seen ${age}\\.`, 'g'),
+      ' It is up and reporting.',
+    )
+    .replace(new RegExp(` (?:It last reported|Last seen) ${age}\\.`, 'g'), '');
 }
 
 export function refusalHold(code: string, reasons: readonly string[]): ReleaseHold {

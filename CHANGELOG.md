@@ -3251,6 +3251,7 @@
 - **An agent's issue update whose status move is refused writes nothing,** whether the issue already has that status, the move is illegal or nothing shipped; the refusal says so, where fields used to land anyway. (ISS-1229)
 - **Changing many issues at once writes nothing for an issue whose status move is refused:** its priority and category stay put, and it is listed as skipped with the reason and a line saying so. (ISS-1229)
 - **An archived project sends no more stuck-issue notices,** and the ones it had open are resolved. (ISS-1229)
+- **A runner a release cannot use says when it was last seen in words,** "Last seen 15 minutes ago", where it gave a count of seconds. (ISS-1229)
 - **Shape & release no longer says a project ships nothing because its base branch is empty.** Under a shape that releases, the Live block says no deploy connection serves it and asks for the base branch. (ISS-1171)
 - **A refused test credential is named by its label, every time.** The form and a refused save name each row the same way, and by its number only where it has no label. (ISS-1171)
 - **Shape & release refuses a test credential with no password, or one listed twice, by name.** The row is marked where it is wrong and nothing is saved; an agent writing the same is refused too. (ISS-1171)

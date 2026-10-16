@@ -72,7 +72,18 @@ describe('NO_RUNNER_ONLINE', () => {
 
     expect(reporting).toContain('up and reporting');
     expect(silent).not.toContain('reporting');
-    expect(silent).toContain('400s ago');
+    expect(silent).toContain('It last reported 6 minutes ago.');
+    expect(reporting).toContain('last seen less than a minute ago.');
+  });
+
+  it('says how long ago a silent box was last seen in words, never as a count of seconds', () => {
+    const clause = (lastSeenSeconds: number) =>
+      runnerHoldClause(hold({ reason: 'stale', lastSeenSeconds }));
+
+    expect(clause(900)).toContain('Last seen 15 minutes ago.');
+    expect(clause(3 * 3600)).toContain('Last seen 3 hours ago.');
+    expect(clause(2 * 86400)).toContain('Last seen 2 days ago.');
+    expect(clause(900)).not.toMatch(/\d+s ago/);
   });
 
   it('gives every reading an act or the condition it waits out, and no two share one', () => {
