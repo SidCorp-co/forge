@@ -8,12 +8,15 @@ import { type SQL, sql } from 'drizzle-orm';
 
 export const FRESH_SIGHTING_LIMIT = 200;
 
+/** The rows that came due most recently, read whole every pass beside a cursored fresh read. */
+export const DUE_PROBE_LIMIT = 50;
+
 export const RELEASED_PER_PASS = 200;
 
-/** A row stays pending three passes, and a pass raises at most its page and its fresh rows and
- *  releases at most `RELEASED_PER_PASS` from inhibition (reevaluate-conditions.ts). */
+/** A row stays pending three passes, and a pass raises at most its page, its fresh and probed rows,
+ *  and releases at most `RELEASED_PER_PASS` from inhibition (reevaluate-conditions.ts). */
 export function pendingSightingLimit(pageLimit: number): number {
-  return 3 * (pageLimit + FRESH_SIGHTING_LIMIT + RELEASED_PER_PASS);
+  return 3 * (pageLimit + FRESH_SIGHTING_LIMIT + DUE_PROBE_LIMIT + RELEASED_PER_PASS);
 }
 
 function conditionKey(issueId: SQL, keySuffix: string): SQL {

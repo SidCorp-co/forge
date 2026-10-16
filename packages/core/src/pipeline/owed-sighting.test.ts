@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DUE_PROBE_LIMIT,
   FRESH_SIGHTING_LIMIT,
   pendingSightingLimit,
   RELEASED_PER_PASS,
@@ -27,6 +28,8 @@ describe('the rows a paged sweep reads in one pass (ISS-1229 r12)', () => {
   });
 
   it('re-sights every condition three passes can have left pending', () => {
-    expect(pendingSightingLimit(200)).toBe(3 * (200 + FRESH_SIGHTING_LIMIT + RELEASED_PER_PASS));
+    expect(pendingSightingLimit(200)).toBe(
+      3 * (200 + FRESH_SIGHTING_LIMIT + DUE_PROBE_LIMIT + RELEASED_PER_PASS),
+    );
   });
 });

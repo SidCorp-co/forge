@@ -11,6 +11,7 @@ import { statusEnteredAtSql } from '../issues/status-entered-at.js';
 import { logger } from '../logger.js';
 import { projectHasAdminSql } from '../notifications/project-admins.js';
 import {
+  DUE_PROBE_LIMIT,
   FRESH_SIGHTING_LIMIT,
   pendingConditionSql,
   pendingSightingLimit,
@@ -110,6 +111,16 @@ function dueBeforeSql(now: Date): SQL {
   return sql`(CASE i.status ${sql.join(arms, sql` `)} ELSE ${now.toISOString()}::timestamptz END)`;
 }
 
+/** When a row at its status spends that status's grace: what the probe orders by, newest first. */
+function dueAtSql(): SQL {
+  const arms = WATCHED_STATUSES.map((status) => {
+    const rule = STRAND_RULES[status];
+    const ms = rule.watch ? rule.graceMs : 0;
+    return sql`WHEN ${status} THEN i.updated_at + (${ms} * interval '1 millisecond')`;
+  });
+  return sql`(CASE i.status ${sql.join(arms, sql` `)} ELSE i.updated_at END)`;
+}
+
 export async function readCandidates(
   now: Date,
   scope: { projectId?: string },
@@ -148,6 +159,16 @@ export async function readCandidates(
   });
   // Newest first, resuming past the rows read last pass: one the judge declines to raise (a live
   // claim) stays unraised, and without the cursor those rows would hold every fresh slot.
+  const unraisedDue = sql`${unraisedConditionSql(sql`i.id`, IDLE_KEY_SUFFIX)} AND i.updated_at < ${dueBeforeSql(now)}
+      AND ${projectHasAdminSql(sql`i.project_id`)}`;
+  // The cursor below passes a position once a traversal, so a row coming due behind it would wait
+  // for the wrap; the rows that came due last are read every pass instead.
+  const probe = await selectCandidates({
+    scope,
+    where: unraisedDue,
+    order: sql`${dueAtSql()} DESC, i.id DESC`,
+    limit: DUE_PROBE_LIMIT,
+  });
   const freshKey = `idle-fresh:${scope.projectId ?? '*'}`;
   const freshWindow = sweepWindow(freshKey, now.toISOString());
   const older = freshWindow.after
@@ -155,8 +176,7 @@ export async function readCandidates(
     : sql``;
   const fresh = await selectCandidates({
     scope,
-    where: sql`${unraisedConditionSql(sql`i.id`, IDLE_KEY_SUFFIX)} AND i.updated_at < ${dueBeforeSql(now)}
-      AND ${projectHasAdminSql(sql`i.project_id`)} ${older}`,
+    where: sql`${unraisedDue} ${older}`,
     order: sql`i.updated_at DESC, i.id DESC`,
     limit: FRESH_SIGHTING_LIMIT,
   });
@@ -167,5 +187,5 @@ export async function readCandidates(
     lastFresh ? { ts: lastFresh.cursor_ts, id: lastFresh.id } : null,
     fresh.length === FRESH_SIGHTING_LIMIT,
   );
-  return withOwed(rows, pending, fresh);
+  return withOwed(rows, pending, probe, fresh);
 }

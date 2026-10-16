@@ -317,6 +317,30 @@ describe('the rows a pass owes a sighting, on a board that is hard to read', () 
     expect((seen.deliveredAt ?? 0) - t0).toBeLessThanOrEqual(20 * MINUTE);
   }, 600_000);
 
+  it('reaches an issue that comes due while the fresh read is part way through 1,000 it cannot raise', async () => {
+    const w = await world();
+    const t0 = Date.now();
+    const claimed = new Date(t0 + 10 * MINUTE).toISOString();
+    await board(w, 'open', t0, false);
+    await harness.db.execute(sql`
+      UPDATE issues SET session_context = jsonb_build_object('lease', jsonb_build_object(
+        'holder', 'holder-' || iss_seq, 'minutes', 600, 'renewedAt', ${claimed}::text,
+        'history', jsonb_build_array(jsonb_build_object('at', ${claimed}::text, 'how', 'claim'))))
+    `);
+    const watched = await target(w, 'open', t0, false);
+
+    const seen = await follow({
+      sweep: sweeps.idle,
+      from: t0 + 14 * MINUTE,
+      to: t0 + 25 * MINUTE,
+      ownerId: w.ownerId,
+      issueId: watched,
+    });
+
+    expect(seen.deliveredAt, 'delivered at all').not.toBeNull();
+    expect((seen.deliveredAt ?? 0) - t0).toBeLessThanOrEqual(20 * MINUTE);
+  }, 600_000);
+
   it('keeps a backlog a cleared wedge releases pending until it is seen again', async () => {
     const w = await world();
     const t0 = Date.now();
