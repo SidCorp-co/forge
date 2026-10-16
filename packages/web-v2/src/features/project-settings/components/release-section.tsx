@@ -191,8 +191,21 @@ function BlockerLinkView({ link, slug }: { link: BlockerLink; slug?: string }) {
   }
 }
 
-/** The answer line and every reason under it, each with a link to where it is set. */
-export function ReleaseAnswer({ projectId, slug }: { projectId: string; slug?: string }) {
+/** What follows the answer: joined to a list the answer ends on, so the two share one divider. */
+function After({ node, joined }: { node: ReactNode; joined: boolean }) {
+  return node ? <div className={joined ? "-mt-px" : "mt-3"}>{node}</div> : null;
+}
+
+/** The answer line and every reason under it, each with a link to where it is set, then `after`. */
+export function ReleaseAnswer({
+  projectId,
+  slug,
+  after,
+}: {
+  projectId: string;
+  slug?: string;
+  after?: ReactNode;
+}) {
   const q = useReleaseReadiness(projectId);
   const tab = (t: string, add?: string) =>
     slug ? `/projects/${slug}/settings?tab=${t}${add ? `&add=${add}` : ""}` : undefined;
@@ -200,25 +213,30 @@ export function ReleaseAnswer({ projectId, slug }: { projectId: string; slug?: s
 
   if (q.isLoading) {
     return (
-      <div className="space-y-2" data-testid="release-answer">
-        <Skeleton className="h-6 w-2/3 rounded-md" />
-      </div>
+      <>
+        <div className="space-y-2" data-testid="release-answer">
+          <Skeleton className="h-6 w-2/3 rounded-md" />
+        </div>
+        <After node={after} joined={false} />
+      </>
     );
   }
   if (q.isError) {
     return (
       <div data-testid="release-answer">
         <ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} />
+        <After node={after} joined={false} />
       </div>
     );
   }
   const r = q.data;
-  if (!r) return null;
+  if (!r) return <After node={after} joined={false} />;
   const a = releaseAnswer(r);
   const listed = a.kind === "blocked" || a.kind === "undeclared" || a.kind === "unread";
   // A gap its own blocker already lists would be said twice, once as not stopping a release.
   const blocked = new Set(r.blockers.map((b) => BLOCKER_GAP[b.code]).filter(Boolean));
   const gaps = r.gaps.filter((g) => !blocked.has(g));
+  const endsInList = listed && (r.blockers.length > 0 || gaps.length > 0);
 
   return (
     <div data-testid="release-answer" data-answer={a.kind}>
@@ -280,6 +298,7 @@ export function ReleaseAnswer({ projectId, slug }: { projectId: string; slug?: s
           </ul>
         </>
       )}
+      <After node={after} joined={endsInList} />
     </div>
   );
 }

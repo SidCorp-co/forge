@@ -343,7 +343,9 @@ describe('judgeRecordedReadings — the readings the database holds, judged by t
 
     const out = await judgeRecordedReadings(args(moved));
 
-    expect(out.ok === false && out.reason).toContain('are not the ones its 2 recorded reading(s)');
+    expect(out.ok === false && out.reason).toContain(
+      'are not the ones its 2 recorded readings were',
+    );
   });
 
   it('is judged at the time it is handed, defaulting to now', async () => {

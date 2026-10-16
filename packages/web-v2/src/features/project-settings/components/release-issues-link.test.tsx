@@ -20,6 +20,7 @@ vi.mock("../hooks", async (importActual) => {
 });
 
 const { ReleaseAnswer } = await import("./release-section");
+const { StrandedNotice } = await import("./shape-sections");
 
 function blockedBy(blocker: ReleaseReadiness["blockers"][number]): ReleaseReadiness {
 	return {
@@ -214,9 +215,41 @@ describe("a link beside a release sentence opens exactly the set that sentence n
 		const { container } = drawWith({
 			code: "RELEASE_RECORD_MISSING",
 			evaluated: true,
-			message: "2 issue(s) named here have no release note.",
+			message: "2 issues named here have no release note.",
 			details: { issueIds: ["u-4", "u-7"], displayIds: ["ISS-4", "ISS-7"] },
 		});
 		expect(container.querySelector("li [data-testid='release-named-issues']")?.textContent).toBe("Open ISS-4, ISS-7");
+	});
+});
+
+// The coordinator saw an empty band and a second hairline between the last reason and the stranded
+// notice under it (ISS-1229 r7): the notice joins the list it follows, one divider between them.
+describe("a notice after the release answer", () => {
+	function drawAnswer(data: ReleaseReadiness) {
+		readiness.mockReturnValue({ isLoading: false, isError: false, data });
+		const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+		return render(
+			<QueryClientProvider client={client}>
+				<ReleaseAnswer projectId="p-1" slug="desk" after={<StrandedNotice waiting={2} slug="desk" />} />
+			</QueryClientProvider>,
+		);
+	}
+
+	it("follows a list of reasons with no gap, its top hairline laid on the list's last one", () => {
+		const { container } = drawAnswer(
+			blockedBy({ code: "BATCH_IN_FLIGHT", evaluated: true, message: "A release is already running." }),
+		);
+		const notice = screen.getByTestId("stranded-notice");
+		const holder = notice.parentElement as HTMLElement;
+		expect(holder.previousElementSibling?.tagName).toBe("UL");
+		expect(holder.className.split(" ")).toContain("-mt-px");
+		expect(holder.className.split(" ")).not.toContain("mt-3");
+		expect(container.querySelectorAll("[data-testid=stranded-notice]")).toHaveLength(1);
+	});
+
+	it("keeps its own space under an answer that lists nothing", () => {
+		drawAnswer({ ...blockedBy({ code: "X", evaluated: true, message: "x" }), blockers: [], hasReleaseGate: false });
+		const holder = screen.getByTestId("stranded-notice").parentElement as HTMLElement;
+		expect(holder.className.split(" ")).toContain("mt-3");
 	});
 });

@@ -469,7 +469,7 @@ describe("issues the release would ship without naming them", () => {
 // sight, rows known only by number, and three choices nobody explained.
 const REFUSED_REVERT = {
   code: "RELEASE_CARRIED_DECISION_REFUSED",
-  message: "1 decision(s) sent with this batch do not hold — `ISS-7` `revert`: no revert.",
+  message: "1 decision sent with this batch does not hold — `ISS-7` `revert`: no revert.",
   details: {
     refused: [
       { issueId: "iss-7", displayId: "ISS-7", decision: "revert", why: "its landing bbbbbbbbbbbb was reverted by dddddddddddd, and that revert was reverted by eeeeeeeeeeee" },

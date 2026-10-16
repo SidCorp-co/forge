@@ -1,4 +1,5 @@
 import type { ClaimConflictDetails } from './claim-conflicts.js';
+import { agree, counted } from './counted.js';
 
 export class NoReleaseGateError extends Error {
   constructor() {
@@ -205,7 +206,9 @@ export class ClaimConflictError extends Error {
  */
 export class ReleaseRecordMissingError extends Error {
   constructor(public readonly issueIds: string[]) {
-    super(`RELEASE_RECORD_MISSING: ${issueIds.length} issue(s) have no release note`);
+    super(
+      `RELEASE_RECORD_MISSING: ${counted(issueIds.length, 'issue')} ${agree(issueIds.length, 'has', 'have')} no release note`,
+    );
     this.name = 'ReleaseRecordMissingError';
   }
 }
@@ -293,7 +296,9 @@ export class ReleaseVersionExhaustedError extends Error {
 /** One or more issues a release names would be refused their close at its finish (ISS-1337). */
 export class ReleaseIssuesUnclosableError extends Error {
   constructor(public readonly issueIds: string[]) {
-    super(`RELEASE_ISSUES_UNCLOSABLE: ${issueIds.length} issue(s) would be refused their close`);
+    super(
+      `RELEASE_ISSUES_UNCLOSABLE: ${counted(issueIds.length, 'issue')} would be refused ${agree(issueIds.length, 'its', 'their')} close`,
+    );
     this.name = 'ReleaseIssuesUnclosableError';
   }
 }
@@ -308,7 +313,9 @@ export class ReleaseIssuesUnclosableError extends Error {
  */
 export class ReleaseWorkUnmergedError extends Error {
   constructor(public readonly issueIds: string[]) {
-    super(`RELEASE_WORK_UNMERGED: ${issueIds.length} issue(s) have no merge Forge watched land`);
+    super(
+      `RELEASE_WORK_UNMERGED: ${counted(issueIds.length, 'issue')} ${agree(issueIds.length, 'has', 'have')} no merge Forge watched land`,
+    );
     this.name = 'ReleaseWorkUnmergedError';
   }
 }

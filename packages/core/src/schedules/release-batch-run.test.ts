@@ -94,10 +94,27 @@ describe('cutWaitingRelease', () => {
     expect(createReleaseBatchMock).not.toHaveBeenCalled();
   });
 
+  it('counts two issues it cut in the plural', async () => {
+    createReleaseBatchMock.mockResolvedValueOnce({
+      runId: 'run-2',
+      jobId: 'job-2',
+      issueIds: ['iss-1', 'iss-2'],
+      gateStatus: 'awaiting_release',
+      version: '1.0.1',
+      ownerDeadlineAt: new Date().toISOString(),
+    });
+    const outcome = await cutWaitingRelease({
+      projectId: 'p1',
+      userId: 'u1',
+      issueIds: ['iss-1', 'iss-2'],
+    });
+    expect(outcome.output).toBe('cut 2 issues as run run-2');
+  });
+
   it('reports success naming the run it cut', async () => {
     const outcome = await cutWaitingRelease({ projectId: 'p1', userId: 'u1', issueIds: ['iss-1'] });
     expect(outcome.status).toBe('success');
-    expect(outcome.output).toBe('cut 1 issue(s) as run run-1');
+    expect(outcome.output).toBe('cut 1 issue as run run-1');
     expect(createReleaseBatchMock).toHaveBeenCalledWith({
       projectId: 'p1',
       issueIds: ['iss-1'],
@@ -142,7 +159,7 @@ describe('cutWaitingRelease', () => {
   // `releaseBlockerError` throws a class per readiness code, most of them outside the list above
   // (`RELEASE_WORK_UNMERGED` among them); what makes one a refusal is the blockers it carries.
   it('classifies any error carrying readiness blockers as a refusal under the first code', async () => {
-    const sentence = '2 issue(s) named here have no merge Forge watched land.';
+    const sentence = '2 issues named here have no merge Forge watched land.';
     const err = Object.assign(new Error('RELEASE_WORK_UNMERGED'), {
       releaseBlockers: [{ code: 'RELEASE_WORK_UNMERGED', message: sentence }],
     });
@@ -312,7 +329,7 @@ describe('runScheduledReleaseCut — a row the finish could not close (ISS-1337)
     expect(outcome.leftOff).toEqual([
       'ISS-2: holds 1 open question. Answer it, or void it with the reason it died with the work.',
     ]);
-    expect(outcome.output).toContain('left off 1 issue(s)');
+    expect(outcome.output).toContain('left off 1 issue whose close');
     expect(outcome.output).toContain('ISS-2: holds 1 open question');
   });
 
@@ -325,7 +342,7 @@ describe('runScheduledReleaseCut — a row the finish could not close (ISS-1337)
     const outcome = await runScheduledReleaseCut({ projectId: 'p1', userId: 'u1' });
     expect(createReleaseBatchMock).not.toHaveBeenCalled();
     expect(outcome.status).toBe('skipped');
-    expect(outcome.output).toMatch(/^nothing this cut can close: left off 1 issue\(s\)/);
+    expect(outcome.output).toMatch(/^nothing this cut can close: left off 1 issue whose close/);
     expect(outcome.named).toEqual([]);
   });
 });

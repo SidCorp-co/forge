@@ -298,7 +298,7 @@ describe('a release still ships every row whose close stands', () => {
       expect.stringMatching(new RegExp(`^${askedKey}: holds 1 open question`)),
       expect.stringMatching(new RegExp(`^${unplannedKey}: missing what this project requires`)),
     ]);
-    expect(outcome.output).toContain('left off 3 issue(s)');
+    expect(outcome.output).toContain('left off 3 issues whose close');
     for (const id of [rows.unmarked, rows.asked, rows.unplanned]) {
       expect(await fx.stored(id)).toMatchObject({ status: 'awaiting_release', claim: null });
     }

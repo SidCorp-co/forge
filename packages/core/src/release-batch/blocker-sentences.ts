@@ -9,6 +9,7 @@ import { ISSUE_STATUS_LABELS, statusLabel } from '../issues/status-sets.js';
 import type { RunnerHold } from '../runners/ineligible.js';
 import type { CarriedCheck, CarriedDecision, CarriedReading } from './carried.js';
 import { claimConflictSentence, readClaimConflictDetails } from './claim-conflicts.js';
+import { agree, counted } from './counted.js';
 import type { ReleaseDeclaration } from './gate.js';
 import type { ReleaseChannel } from './plan.js';
 import { RUNNERS_TAB, runnerHoldClause } from './runner-hold-sentences.js';
@@ -106,22 +107,51 @@ const CRITERIA_UNEARNED_LEAD = `Every issue at ${ISSUE_STATUS_LABELS.awaiting_re
 const CARRIED_WAYS_OUT =
   'None of them ships without a decision. Send one per issue with the batch: `ship-unverified` with what is unverified; `revert` once its landing is reverted on the branch being promoted; or `cut-below`, which releases only what landed before it. Or move the issue to the release gate and name it on the roster.';
 
+type NamedCode =
+  | 'CLAIM_CONFLICT'
+  | 'RELEASE_RECORD_MISSING'
+  | 'RELEASE_WORK_UNMERGED'
+  | 'RELEASE_ISSUES_UNCLOSABLE';
+
+/** A refusal about issues the call named, in the number it names; with none read, it counts none. */
+const NAMED_CODES = new Set<string>([
+  'CLAIM_CONFLICT',
+  'RELEASE_RECORD_MISSING',
+  'RELEASE_WORK_UNMERGED',
+  'RELEASE_ISSUES_UNCLOSABLE',
+]);
+
+function isNamedCode(code: ReleaseBlockerCode): code is NamedCode {
+  return NAMED_CODES.has(code);
+}
+
+function namedSentence(code: NamedCode, details: Record<string, unknown> | null): string {
+  const n = details && Array.isArray(details.issueIds) ? details.issueIds.length : null;
+  const who = n === null ? 'The issues named here' : namedHere(details as Record<string, unknown>);
+  const w = (one: string, many: string) => agree(n ?? 2, one, many);
+  switch (code) {
+    case 'CLAIM_CONFLICT':
+      return `${who} ${w('is', 'are')} not at the release gate, ${w('is', 'are')} not on this project, or ${w('is', 'are')} already claimed by a batch. Read the roster and send the issues it lists.`;
+    case 'RELEASE_RECORD_MISSING':
+      return `${who} ${w('has', 'have')} no release note, and closing ${w('it', 'them')} would claim a ship nobody wrote anything about. ${RELEASE_RECORD_REMEDY}`;
+    case 'RELEASE_WORK_UNMERGED':
+      return `${who} ${w('has', 'have')} no merge Forge watched land, so nothing says ${w('its', 'their')} work is on the branch this release deployed. Mark the merge on ${w('it', 'each of them')} first — a release records what shipped, and an issue nobody merged did not.`;
+    case 'RELEASE_ISSUES_UNCLOSABLE':
+      return `${who} would be refused ${w('its', 'their')} close when this release finishes, so it would release ${w('it', 'them')} and hand ${w('it', 'them')} back to the gate. Clear what ${w('it is', 'each one is')} refused for, or leave ${w('it', 'each')} off this release.`;
+  }
+}
+
 const REMEDY: Record<ReleaseBlockerCode, string> = {
   NO_RELEASE_GATE:
     'This project has no release step, so Forge has no release to start or record: here, closing an issue is what ships it. To release through Forge instead, declare a release chain under Settings → Shape & release and give it a live deploy binding under Settings → Integrations.',
   RELEASE_TARGET_UNDECLARED:
     'This project declares a release chain and has no active deploy binding carrying the `live` stage, so there is nowhere for a release to land. Add one on the integrations screen, or, if this project ships nothing, choose "Repository, no release" under Shape & release in its settings.',
-  CLAIM_CONFLICT:
-    '{n} issue(s) named here are not at the release gate, are not on this project, or are already claimed by a batch. Read the roster and send the issues it lists.',
+  CLAIM_CONFLICT: namedSentence('CLAIM_CONFLICT', null),
   RELEASE_ROSTER_EMPTY: `Nothing is ready to release: no issue is at ${ISSUE_STATUS_LABELS.awaiting_release}.`,
   RELEASE_ROSTER_OVERSIZE: `More issues are waiting than one release may carry. A release names at most ${RELEASE_ROSTER_LIMIT} issues, so cut this roster in parts, oldest merge first.`,
-  RELEASE_RECORD_MISSING:
-    '{n} issue(s) named here have no release note, and closing them would claim a ship ' +
-    `nobody wrote anything about. ${RELEASE_RECORD_REMEDY}`,
-  RELEASE_WORK_UNMERGED:
-    '{n} issue(s) named here have no merge Forge watched land, so nothing says their work is on the branch this release deployed. Mark the merge on each of them first — a release records what shipped, and an issue nobody merged did not.',
-  RELEASE_ISSUES_UNCLOSABLE:
-    '{n} issue(s) named here would be refused their close when this release finishes, so it would release them and hand them back to the gate. Clear what each one is refused for, or leave it off this release.',
+  RELEASE_RECORD_MISSING: namedSentence('RELEASE_RECORD_MISSING', null),
+  RELEASE_WORK_UNMERGED: namedSentence('RELEASE_WORK_UNMERGED', null),
+  RELEASE_ISSUES_UNCLOSABLE: namedSentence('RELEASE_ISSUES_UNCLOSABLE', null),
   RELEASE_RUNNER_AMBIGUOUS:
     'Two live deploy bindings name different release runners, so there is no one box the release job may be offered to. Make the labels agree, or clear all but one.',
   RELEASE_PROBES_UNREADABLE:
@@ -311,7 +341,8 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
     return unroutedSentence(remedy, details.missing, details);
   }
   if (code === 'RELEASE_WORK_UNMERGED' && details?.shape === 'outside_git') {
-    return `${namedHere(details)} have no mark saying where their work landed. Their work lands outside git, so mark each one merged with its \`landing\` — the live URL, CMS entry or storefront resource the work now is — first: a release records what shipped, and a mark naming nothing does not say that anything did.`;
+    const n = Array.isArray(details.issueIds) ? details.issueIds.length : 0;
+    return `${namedHere(details)} ${agree(n, 'has', 'have')} no mark saying where ${agree(n, 'its', 'their')} work landed. ${agree(n, 'Its', 'Their')} work lands outside git, so mark ${agree(n, 'it', 'each one')} merged with its \`landing\` — the live URL, CMS entry or storefront resource the work now is — first: a release records what shipped, and a mark naming nothing does not say that anything did.`;
   }
   if (code === 'RELEASE_ISSUES_UNCLOSABLE' && Array.isArray(details?.refused)) {
     return unclosableSentence(details.refused as UnclosableIssueRef[]);
@@ -329,8 +360,7 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   if (standings) {
     return claimConflictSentence(standings.projectId, standings.gateStatus, standings.conflicts);
   }
-  if (Array.isArray(details?.issueIds))
-    return remedy.replace('{n} issue(s) named here', namedHere(details));
+  if (Array.isArray(details?.issueIds) && isNamedCode(code)) return namedSentence(code, details);
   if (code === 'RELEASE_PROBES_UNREADABLE') return unreadableSentence(remedy, details);
   const urls = details?.urls;
   if (Array.isArray(urls) && urls.length > 0) return `${urls.join(', ')} — ${remedy}`;
@@ -361,16 +391,17 @@ function carriedSentence(
   if (code === 'RELEASE_CARRIES_UNDECIDED' && Array.isArray(details?.carried)) {
     const carried = details.carried as Array<{ displayId: string; status: string }>;
     const each = carried.map((i) => `\`${i.displayId}\` at ${statusLabel(i.status)}`).join(', ');
-    return `This release promotes \`${String(details.start)}\` at ${short(details.cut)} onto \`${String(details.live)}\`, and that range carries the landing of ${carried.length} issue(s) this batch does not name: ${each}. ${CARRIED_WAYS_OUT}`;
+    return `This release promotes \`${String(details.start)}\` at ${short(details.cut)} onto \`${String(details.live)}\`, and that range carries the landing of ${counted(carried.length, 'issue')} this batch does not name: ${each}. ${CARRIED_WAYS_OUT}`;
   }
   if (code === 'RELEASE_CARRIED_DECISION_REFUSED' && Array.isArray(details?.refused)) {
     const refused = details.refused as Array<{ displayId: string; decision: string; why: string }>;
     const each = refused.map((r) => `\`${r.displayId}\` \`${r.decision}\`: ${r.why}`).join('; ');
-    return `${refused.length} decision(s) sent with this batch do not hold — ${each}. Correct each one and send the batch again.`;
+    return `${counted(refused.length, 'decision')} sent with this batch ${agree(refused.length, 'does', 'do')} not hold — ${each}. Correct ${agree(refused.length, 'it', 'each one')} and send the batch again.`;
   }
   if (code === 'RELEASE_CUT_DROPS_ROSTER' && Array.isArray(details?.displayIds)) {
-    const named = (details.displayIds as string[]).map((id) => `\`${id}\``).join(', ');
-    return `A \`cut-below\` moves this release to ${short(details.cut)}, which leaves the landing of roster issue(s) ${named} above the cut, so the batch would name issues it does not ship. Take them off the roster, or decide the carried issue another way.`;
+    const ids = details.displayIds as string[];
+    const named = ids.map((id) => `\`${id}\``).join(', ');
+    return `A \`cut-below\` moves this release to ${short(details.cut)}, which leaves the landing of roster ${agree(ids.length, 'issue', 'issues')} ${named} above the cut, so the batch would name issues it does not ship. Take them off the roster, or decide the carried issue another way.`;
   }
   return null;
 }
@@ -406,7 +437,7 @@ function namedHere(details: Record<string, unknown>): string {
   const ids = Array.isArray(details.issueIds) ? details.issueIds : [];
   const shown = Array.isArray(details.displayIds) ? (details.displayIds as string[]) : [];
   const which = shown.length === 0 ? '' : ` (${shown.map((id) => `\`${id}\``).join(', ')})`;
-  return `${ids.length} issue(s) named here${which}`;
+  return `${counted(ids.length, 'issue')} named here${which}`;
 }
 
 /** The route is read off the bindings the project has, so a provider that cannot report a commit is
