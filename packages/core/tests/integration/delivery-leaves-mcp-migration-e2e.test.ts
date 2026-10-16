@@ -50,11 +50,13 @@ async function projectDenying(db: postgres.Sql, deny: string[]): Promise<string>
   return id;
 }
 
+/** The migrator's refusal with the database's own message, which drizzle carries as the cause. */
 async function refusal(migrate: Promise<void>): Promise<string> {
   try {
     await migrate;
-  } catch (err) {
-    return String((err as Error).message);
+  } catch (e) {
+    const err = e as Error & { cause?: { message?: string } };
+    return `${err.message} ${err.cause?.message ?? ''}`;
   }
   throw new Error('the migration applied');
 }

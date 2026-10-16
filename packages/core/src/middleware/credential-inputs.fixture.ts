@@ -152,7 +152,8 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:sessionId field:json:slug field:json:sourceRef field:json:subjectId
     field:json:targetProjectSlug field:json:targetRef field:json:templateId field:json:turnId
     field:json:userId field:json:workflowId field:json:signalKey field:json:detectorKey
-    field:json:operationId field:json:issuePrefix`,
+    field:json:operationId field:json:issuePrefix field:query:deploymentUuid field:query:target
+    field:query:provider field:query:requestId field:json:reviewers field:json:teamReviewers`,
   'prose a person or an agent writes: a title, a body, a message, a note': words`
     field:json:about field:json:acceptanceCriteria field:json:alt field:json:answer
     field:json:assistantInstructions field:json:assumed field:json:body field:json:brief
@@ -222,7 +223,9 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:query:cites field:query:cursor field:query:includeFiles field:query:intent
     field:query:key field:query:kind field:query:label field:query:metadataType
     field:query:module field:query:party field:query:q field:query:search field:query:status
-    field:query:step field:query:steps field:query:verb field:query:view field:query:error`,
+    field:query:step field:query:steps field:query:verb field:query:view field:query:error
+    field:query:errorCode field:query:method field:query:path field:query:query field:query:release
+    field:query:window`,
   'a value core’s own middleware set once it admitted the caller, never the secret': words`
     var:agency var:agentUserId var:authUserResolution var:chatWriteAdmitted var:device
     var:deviceId var:onBehalfOf var:patDeviceId var:patRequestClass var:patRequestResolution

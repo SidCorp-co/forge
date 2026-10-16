@@ -461,7 +461,7 @@ describe('a web-only deploy (BC-7)', () => {
   });
 
   it('is no longer an MCP tool: the server refuses the name it was served under', async () => {
-    const pat = await patToken(ownerId, [declared]);
+    const pat = await patToken(ownerId, [declared], 'mcp-door');
     const res = await api(
       pat,
       'POST',
