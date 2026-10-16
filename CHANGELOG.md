@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.254] - 2026-10-16
+
+Embeddable feedback chat lets client-site visitors file Feedback into a Forge project
+
+### Added
+
+- **A client site can embed a feedback chat that files Feedback.** Visitors confirm the drafted report and get a private status link. Light caps only: captcha is deferred, a priced amnesty until abuse beyond the caps appears.
+- **Client sites can embed a feedback chat with one script tag.** Visitors pin the problem down with a limited assistant, confirm the draft, and keep a private status link; projects set origins, identity mode and limits under Integrations.
+
 ## [0.4.0-dev.253] - 2026-10-16
 
 Questions lists only what is owed; a job-queue failure is logged and counted
