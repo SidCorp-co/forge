@@ -10,6 +10,7 @@ import { approvalsSchema } from '@forge/contracts/person-gates';
 import { previewSettingsSchema } from '@forge/contracts/preview';
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { REQUIREMENT_READINESS_GATES } from '@forge/contracts/requirements';
+import { widgetBindingConfigSchema } from '@forge/contracts/widget';
 import { rewriteThresholdSchema } from '@forge/contracts/workflow-health';
 import {
   projectWorkflowTemplateSchema,
@@ -364,6 +365,12 @@ const BINDING_TARGETS = [
   targetOf('sentry', {}),
   targetOf('rocketchat', { rids: z.array(z.string().min(1).max(200)).min(1).max(20).optional() }),
   targetOf('agent', {}),
+  // the site key is minted on bind (`integrations/widget/site-key.ts`): a document leaves it out or
+  // sends back the one it read
+  targetOf('widget', {
+    ...widgetBindingConfigSchema.shape,
+    siteKey: widgetBindingConfigSchema.shape.siteKey.optional(),
+  }),
 ] as const;
 
 const BINDING_TARGET_PROVIDERS: readonly string[] = BINDING_TARGETS.map(

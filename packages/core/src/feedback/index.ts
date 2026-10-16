@@ -10,6 +10,12 @@ export {
   nearestFeedbackOf,
   similarFeedbackAs,
 } from './embeddings.js';
+export {
+  type ExternalFeedbackStatus,
+  type ExternalReporter,
+  externalFeedbackStatus,
+  fileExternalFeedback,
+} from './external.js';
 export { listFeedbackAs } from './list-read.js';
 export { sweepResolvedFeedback } from './loop-check.js';
 export { owedTriages } from './owed-triage.js';

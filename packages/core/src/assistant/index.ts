@@ -21,3 +21,11 @@ export { runTranscriptIndexSweepOnce } from './conversation-index-drain.js';
 export { composeLayers } from './prompt/layer.js';
 export { METHOD_LAYERS } from './prompt/layers.js';
 export { provideChatTools } from './tools/registry.js';
+export type { WidgetDraftParams } from './tools/widget-draft-tool.js';
+export {
+  runWidgetTurn,
+  WIDGET_DRAFT_TOOL,
+  WIDGET_VISITOR_SOURCE,
+  type WidgetTurnLine,
+  widgetTurnMessages,
+} from './widget-turn.js';

@@ -38,6 +38,15 @@ interface BindEffects {
     /** The connection itself, where it is not stored yet. */
     connection?: IntegrationConnectionRow;
   }): Promise<ApiRefusal[]>;
+  /** The config as it is stored: the provider's `settleBindingConfig`, where it declares one. */
+  settleConfig(input: {
+    bindingId: string;
+    provider: string;
+    config: Record<string, unknown>;
+    held: Record<string, unknown> | null;
+  }): Promise<
+    { ok: true; config: Record<string, unknown> } | { ok: false; refusals: ApiRefusal[] }
+  >;
   afterWrite(input: {
     bindingId: string;
     projectId: string;
@@ -93,6 +102,17 @@ export const bindEffects: BindEffects = {
     if (!connection) return [];
     const refused = await verify({ projectId, connection, config, held });
     return refused.map((r) => ({ ...r, path: `/target${r.path}` }));
+  },
+
+  async settleConfig({ bindingId, provider, config, held }) {
+    const settle = getAdapter(provider)?.settleBindingConfig;
+    if (!settle) return { ok: true, config };
+    const settled = await settle({ bindingId, config, held });
+    if (settled.ok) return settled;
+    return {
+      ok: false,
+      refusals: settled.refusals.map((r) => ({ ...r, path: `/target${r.path}` })),
+    };
   },
 
   async afterWrite({ bindingId, projectId, connectionId, provider, role, config, created }) {

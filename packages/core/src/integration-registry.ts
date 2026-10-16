@@ -11,6 +11,7 @@ import {
 } from './integrations/index.js';
 import { rocketchatIntegration } from './integrations/rocketchat/index.js';
 import { sentryIntegration } from './integrations/sentry/index.js';
+import { widgetIntegration } from './integrations/widget/index.js';
 
 const ALL: readonly IntegrationDeclaration[] = [
   coolifyIntegration as IntegrationDeclaration,
@@ -21,6 +22,7 @@ const ALL: readonly IntegrationDeclaration[] = [
   gitlabIntegration as IntegrationDeclaration,
   agentIntegration,
   autoflowIntegration as IntegrationDeclaration,
+  widgetIntegration as IntegrationDeclaration,
 ];
 
 /**

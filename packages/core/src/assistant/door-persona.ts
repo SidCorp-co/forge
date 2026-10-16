@@ -5,6 +5,7 @@ import {
   ROCKETCHAT_DOOR_LAYERS,
   WEB_AGENT_DOOR_LAYERS,
   WEB_DOOR_LAYERS,
+  WIDGET_DOOR_LAYERS,
 } from './prompt/layers.js';
 
 /** What a door tells `assistantOpening` about itself. */
@@ -110,4 +111,12 @@ export function rocketChatDoorPersona(
     authorUsername: room.authorUsername ?? null,
     midConversation: room.midConversation ?? null,
   });
+}
+
+/**
+ * The feedback widget's voice: a site's help assistant talking to its visitor. It is told the
+ * binding's title and greeting and nothing of the project, not even its name in Forge.
+ */
+export function widgetDoorPersona(site: { title: string; greeting: string | null }): string {
+  return composeLayers(WIDGET_DOOR_LAYERS, { siteTitle: site.title, greeting: site.greeting });
 }

@@ -10,6 +10,7 @@ const LAYER_IDS = [
   'door-rocketchat',
   'door-ba',
   'door-ba-first',
+  'door-widget',
 ] as const;
 export type LayerId = (typeof LAYER_IDS)[number];
 

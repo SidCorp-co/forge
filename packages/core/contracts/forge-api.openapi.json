@@ -45420,6 +45420,402 @@
         "x-forge-validated": []
       }
     },
+    "/api/widget/session/drafts/{draftId}/confirm": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draftId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [],
+        "x-forge-validated": [
+          "param"
+        ]
+      }
+    },
+    "/api/widget/session/drafts/{draftId}/discard": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draftId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [],
+        "x-forge-validated": [
+          "param"
+        ]
+      }
+    },
+    "/api/widget/session/messages": {
+      "get": {
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [],
+        "x-forge-input": "none",
+        "x-forge-validated": []
+      },
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "context": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "appVersion": {
+                        "maxLength": 100,
+                        "type": "string"
+                      },
+                      "extra": {
+                        "additionalProperties": {
+                          "maxLength": 500,
+                          "type": "string"
+                        },
+                        "propertyNames": {
+                          "maxLength": 60,
+                          "type": "string"
+                        },
+                        "type": "object"
+                      },
+                      "locale": {
+                        "maxLength": 35,
+                        "type": "string"
+                      },
+                      "productId": {
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      "title": {
+                        "maxLength": 300,
+                        "type": "string"
+                      },
+                      "url": {
+                        "format": "uri",
+                        "maxLength": 2000,
+                        "type": "string"
+                      },
+                      "userAgent": {
+                        "maxLength": 500,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "type": "object"
+                  },
+                  "text": {
+                    "maxLength": 8000,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [],
+        "x-forge-validated": [
+          "json"
+        ]
+      }
+    },
+    "/api/widget/session/stream": {
+      "get": {
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [],
+        "x-forge-input": "none",
+        "x-forge-validated": []
+      }
+    },
+    "/api/widget/status/{token}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [],
+        "x-forge-validated": [
+          "param"
+        ]
+      }
+    },
+    "/api/widget/{siteKey}/config": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "siteKey",
+            "required": true,
+            "schema": {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [],
+        "x-forge-validated": [
+          "param"
+        ]
+      }
+    },
+    "/api/widget/{siteKey}/sessions": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "siteKey",
+            "required": true,
+            "schema": {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "context": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "appVersion": {
+                        "maxLength": 100,
+                        "type": "string"
+                      },
+                      "extra": {
+                        "additionalProperties": {
+                          "maxLength": 500,
+                          "type": "string"
+                        },
+                        "propertyNames": {
+                          "maxLength": 60,
+                          "type": "string"
+                        },
+                        "type": "object"
+                      },
+                      "locale": {
+                        "maxLength": 35,
+                        "type": "string"
+                      },
+                      "productId": {
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      "title": {
+                        "maxLength": 300,
+                        "type": "string"
+                      },
+                      "url": {
+                        "format": "uri",
+                        "maxLength": 2000,
+                        "type": "string"
+                      },
+                      "userAgent": {
+                        "maxLength": 500,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "type": "object"
+                  },
+                  "embeddedAt": {
+                    "maxLength": 300,
+                    "pattern": "^https?:\\/\\/[a-z0-9.-]+(?::\\d{1,5})?$",
+                    "type": "string"
+                  },
+                  "signed": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "email": {
+                        "format": "email",
+                        "maxLength": 320,
+                        "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
+                        "type": "string"
+                      },
+                      "name": {
+                        "maxLength": 120,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "sig": {
+                        "pattern": "^[0-9a-f]{64}$",
+                        "type": "string"
+                      },
+                      "ts": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "userId": {
+                        "maxLength": 200,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "userId",
+                      "ts",
+                      "sig"
+                    ],
+                    "type": "object"
+                  },
+                  "visitor": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "email": {
+                        "format": "email",
+                        "maxLength": 320,
+                        "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
+                        "type": "string"
+                      },
+                      "name": {
+                        "maxLength": 120,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "visitorId": {
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [],
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
     "/api/workflow-templates": {
       "get": {
         "parameters": [

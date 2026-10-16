@@ -41,6 +41,7 @@ import { STATE_MACHINE_REFUSAL_STATUSES } from "./state-machine.js";
 import { STATUS_REPORT_REFUSAL_STATUSES } from "./status-reports.js";
 import { SUGGESTION_REFUSAL_STATUSES } from "./suggestions.js";
 import { WHATS_NEW_REFUSAL_STATUSES } from "./whats-new.js";
+import { WIDGET_REFUSAL_STATUSES } from "./widget.js";
 import { DESIGN_REFUSAL_STATUSES } from "./workflows.js";
 
 /** The request-shape answer core builds from a failed validator. */
@@ -90,6 +91,7 @@ const DECLARED: ReadonlyArray<
 	SUGGESTION_REFUSAL_STATUSES,
 	DESIGN_REFUSAL_STATUSES,
 	WHATS_NEW_REFUSAL_STATUSES,
+	WIDGET_REFUSAL_STATUSES,
 ];
 
 function collect(): ReadonlyMap<string, Exclude<RefusalStatus, 422>> {

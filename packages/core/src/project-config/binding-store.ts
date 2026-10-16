@@ -9,7 +9,7 @@ import {
 import { encryptSecret, isVaultConfigured } from '../integrations/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { projectOrgOf } from '../lib/authz.js';
-import { isUniqueViolation } from '../lib/db-errors.js';
+import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.js';
 import { actorFor, can, orgResource } from '../permissions/index.js';
 
 export interface StoredBinding {
@@ -51,7 +51,17 @@ export type BindingCasResult =
   | { ok: true; stored: StoredBinding; created: boolean; changed: boolean }
   | { ok: false; reason: 'stale'; storedRevision: number | null }
   | { ok: false; reason: 'foreign' }
-  | { ok: false; reason: 'service-clash' };
+  | { ok: false; reason: 'service-clash' }
+  | { ok: false; reason: 'site-key-taken' };
+
+/** The one-key-one-widget index (`schema-project-config.ts`), a clash on it named apart. */
+const SITE_KEY_INDEX = 'integration_bindings_widget_site_key_uq';
+
+/** A unique violation as the write that was not taken: a site key held twice, or a service clash. */
+const clashOf = (err: unknown): Extract<BindingCasResult, { ok: false }> =>
+  uniqueViolationConstraint(err) === SITE_KEY_INDEX
+    ? { ok: false, reason: 'site-key-taken' }
+    : { ok: false, reason: 'service-clash' };
 
 const bindingColumns = {
   id: integrationBindings.id,
@@ -190,7 +200,7 @@ export const drizzleBindingStore = {
     try {
       return await db.transaction((tx) => casIn(tx, write));
     } catch (err) {
-      if (isUniqueViolation(err)) return { ok: false, reason: 'service-clash' };
+      if (isUniqueViolation(err)) return clashOf(err);
       throw err;
     }
   },
@@ -217,7 +227,7 @@ export const drizzleBindingStore = {
             result = await tx.transaction((sp) => casIn(sp, write));
           } catch (err) {
             if (!isUniqueViolation(err)) throw err;
-            result = { ok: false, reason: 'service-clash' };
+            result = clashOf(err);
           }
           if (!result.ok) throw notTaken(index, result);
           taken.push(result);

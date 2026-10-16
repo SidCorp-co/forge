@@ -22,6 +22,7 @@ const FIELDS: Readonly<Record<string, readonly string[]>> = {
   sentry: [],
   rocketchat: ['rids'],
   agent: [],
+  widget: ['siteKey', 'allowedOrigins', 'identity', 'title', 'greeting', 'accent', 'limits'],
 };
 
 const RELEASE_RUNNER_LABEL = 'releaseRunnerLabel';
