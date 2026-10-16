@@ -202,3 +202,20 @@ describe('the warning about a roster cut in parts', () => {
     );
   });
 });
+
+describe('live bindings naming different release runners', () => {
+  const sentence = (labels: string[]) =>
+    releaseBlockerSentence('RELEASE_RUNNER_AMBIGUOUS', { labels });
+
+  it('counts the labels it names, at two', () => {
+    expect(sentence(['box-a', 'box-b'])).toContain(
+      'Live deploy bindings name 2 different release runners (box-a, box-b), so there is no one box',
+    );
+  });
+
+  it('counts the labels it names, at three, never saying two', () => {
+    const three = sentence(['box-a', 'box-b', 'box-c']);
+    expect(three).toContain('name 3 different release runners (box-a, box-b, box-c)');
+    expect(three).not.toMatch(/\bTwo\b/);
+  });
+});

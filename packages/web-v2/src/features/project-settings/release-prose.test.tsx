@@ -191,10 +191,10 @@ describe("the Release section's prose", () => {
 
 		const stops = screen.getByRole("list", { name: "What stops a release" });
 		expect(stops.querySelector("li")?.getAttribute("data-code")).toBe("RELEASE_RUNNER_AMBIGUOUS");
-		expect(stops.textContent).toContain("Two live bindings name different release runners");
+		expect(stops.textContent).toContain("Live bindings name different release runners");
 		expect(stops.textContent).not.toContain("RELEASE_RUNNER_AMBIGUOUS");
 		expect(screen.getByRole("list", { name: "What is not declared" }).textContent).not.toContain(
-			"Two live bindings name different release runners",
+			"Live bindings name different release runners",
 		);
 	});
 

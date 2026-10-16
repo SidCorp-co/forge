@@ -79,7 +79,7 @@ describe("the issue link beside a release sentence opens what that sentence coun
 
 		expect(issueLinks(container)).toEqual([
 			{
-				text: "Open the issues at Testing or Tested",
+				text: "Open the issue at Testing or Tested",
 				href: "/projects/desk/issues?status=testing,tested",
 			},
 		]);
@@ -163,7 +163,7 @@ const EVERY_CODE: Record<ReleaseBlockerCode, Planted> = {
 		links: [{ text: "Reconcile the release runner labels", href: "/projects/desk/settings?tab=integrations" }],
 	},
 	RELEASE_PROBES_UNREADABLE: {
-		links: [{ text: "Check the live binding's probes", href: "/projects/desk/settings?tab=integrations" }],
+		links: [{ text: "Correct the probe's url", href: "/projects/desk/settings?tab=integrations" }],
 	},
 	RELEASE_POOL_EMPTY: { links: [{ text: "Assign a runner", href: "/projects/desk/settings?tab=runners" }] },
 	NO_RUNNER_ONLINE: { links: [{ text: "See the runners", href: "/projects/desk/settings?tab=runners" }] },
@@ -230,6 +230,109 @@ describe("a link beside a release sentence opens exactly the set that sentence n
 			details: { issueIds: ["u-4", "u-7"], displayIds: ["ISS-4", "ISS-7"] },
 		});
 		expect(container.querySelector("li [data-testid='release-named-issues']")?.textContent).toBe("Open ISS-4, ISS-7");
+	});
+});
+
+// Judge-23 read "Check the live binding's probes" under a sentence naming two bindings (ISS-1229
+// r10): a link refers back to what its sentence counts, so its label follows that count too.
+type Counted = { one: Record<string, unknown>; two: Record<string, unknown>; labels: [string, string] };
+
+const SETTINGS = "/projects/desk/settings";
+
+/** Every code, with the details its sentence counts by at one and at two and the label each draws;
+ *  a code whose sentence counts nothing its link names says why instead. */
+const EVERY_COUNT: Record<ReleaseBlockerCode, Counted | string> = {
+	NO_RELEASE_GATE: "no link",
+	RELEASE_TARGET_UNDECLARED: "the sentence counts no target; the link adds one",
+	CLAIM_CONFLICT: "links each issue by its own name",
+	RELEASE_ROSTER_EMPTY: {
+		one: { nearGate: 1 },
+		two: { nearGate: 2 },
+		labels: ["Open the issue at Testing or Tested", "Open the issues at Testing or Tested"],
+	},
+	RELEASE_ROSTER_OVERSIZE: "the sentence counts more than a release carries, never one",
+	RELEASE_RECORD_MISSING: "links each issue by its own name",
+	RELEASE_WORK_UNMERGED: "links each issue by its own name",
+	RELEASE_ISSUES_UNCLOSABLE: "links each issue by its own name",
+	RELEASE_RUNNER_AMBIGUOUS: "the sentence names two labels or more, never one",
+	RELEASE_PROBES_UNREADABLE: {
+		one: { urls: [], bindings: ["coolify-a"] },
+		two: { urls: [], bindings: ["coolify-a", "coolify-b"] },
+		labels: ["Check the live binding's verify step", "Check the live bindings' verify steps"],
+	},
+	RELEASE_POOL_EMPTY: "the sentence counts no runner; the link pairs one",
+	NO_RUNNER_ONLINE: {
+		one: { runners: [{ deviceName: "box-a" }] },
+		two: { runners: [{ deviceName: "box-a" }, { deviceName: "box-b" }] },
+		labels: ["See the runner", "See the runners"],
+	},
+	BATCH_IN_FLIGHT: "links the issue its question is open on, by name",
+	RELEASE_CRITERIA_UNEARNED: {
+		one: { held: [{ issueId: "u-4", displayId: "ISS-4", criteria: [1] }] },
+		two: {
+			held: [
+				{ issueId: "u-4", displayId: "ISS-4", criteria: [1] },
+				{ issueId: "u-5", displayId: "ISS-5", criteria: [2] },
+			],
+		},
+		labels: ["Open the issue at Awaiting release", "Open the issues at Awaiting release"],
+	},
+	RELEASE_RUNTIME_UNROUTED: {
+		one: { missing: "a live commit endpoint", held: [{ issueId: "u-4", displayId: "ISS-4", criteria: [1] }] },
+		two: {
+			missing: "a live commit endpoint",
+			held: [
+				{ issueId: "u-4", displayId: "ISS-4", criteria: [1] },
+				{ issueId: "u-5", displayId: "ISS-5", criteria: [2] },
+			],
+		},
+		labels: ["Open the issue at Awaiting release", "Open the issues at Awaiting release"],
+	},
+	RELEASE_CARRIES_UNDECIDED: "links each issue by its own name",
+	RELEASE_CARRIED_DECISION_REFUSED: "links each issue by its own name",
+	RELEASE_CUT_DROPS_ROSTER: "links each issue by its own name",
+	RELEASE_CHECK_UNEVALUATED: "no link",
+};
+
+describe("a link beside a counted release sentence agrees with that count", () => {
+	const linkText = (code: string, details: Record<string, unknown>) =>
+		linksOf(
+			drawWith({ code, evaluated: true, message: CALLER_SENTENCE, reader: `The sentence for ${code}.`, details })
+				.container,
+		).map((l) => l.text);
+
+	for (const [code, counted] of Object.entries(EVERY_COUNT)) {
+		if (typeof counted === "string") continue;
+		it(`${code}: "${counted.labels[0]}" at one`, () => {
+			expect(linkText(code, counted.one)).toEqual([counted.labels[0]]);
+		});
+		it(`${code}: "${counted.labels[1]}" at two`, () => {
+			expect(linkText(code, counted.two)).toEqual([counted.labels[1]]);
+		});
+	}
+
+	it("names the probe url where the sentence names no binding, at one and at two", () => {
+		expect(linkText("RELEASE_PROBES_UNREADABLE", { urls: ["api/version"] })).toEqual(["Correct the probe's url"]);
+		expect(linkText("RELEASE_PROBES_UNREADABLE", { urls: ["api/version", "health"] })).toEqual([
+			"Correct the probes' urls",
+		]);
+	});
+
+	it("counts a binding beside a bad probe url as two places to look", () => {
+		expect(linkText("RELEASE_PROBES_UNREADABLE", { urls: ["api/version"], bindings: ["coolify-a"] })).toEqual([
+			"Check the live bindings' verify steps",
+		]);
+	});
+
+	it("opens the runners tab and the integrations tab whatever the count", () => {
+		const hrefs = (code: string, details: Record<string, unknown>) =>
+			linksOf(
+				drawWith({ code, evaluated: true, message: CALLER_SENTENCE, reader: "x", details }).container,
+			).map((l) => l.href);
+		expect(hrefs("NO_RUNNER_ONLINE", { runners: [{ deviceName: "box-a" }] })).toEqual([`${SETTINGS}?tab=runners`]);
+		expect(hrefs("RELEASE_PROBES_UNREADABLE", { urls: [], bindings: ["a", "b"] })).toEqual([
+			`${SETTINGS}?tab=integrations`,
+		]);
 	});
 });
 
