@@ -20,6 +20,13 @@ import {
 } from '../helpers/index.js';
 
 const TEN_MIN = 10 * 60_000;
+/** A run session heard four minutes ago on a jobless run whose runner answered just now: the
+ *  one-shot sweep may take it once the runner's word is three minutes old. */
+const RUNNER_LAPSES = 7 * 60_000;
+
+function near(actual: unknown, expected: number): void {
+  expect(Math.abs((actual as number) - expected)).toBeLessThan(10_000);
+}
 const THREE_MIN = 3 * 60_000;
 
 let harness: TestDatabase;
@@ -94,7 +101,7 @@ async function statusOf(id: string): Promise<unknown> {
 }
 
 describe("a session read carries core's own silence limit (ISS-1228 round 9)", () => {
-  it('answers ten minutes for a run session, three for a pipeline session and its residency for a waiting one on the sessions list', async () => {
+  it("answers a run session's limit, three for a pipeline session and its residency for a waiting one on the sessions list", async () => {
     await runnerAnswers();
     const run = await session('run_session');
     const pool = await session('pipeline', { runKind: 'pm' });
@@ -107,7 +114,7 @@ describe("a session read carries core's own silence limit (ISS-1228 round 9)", (
         i.silenceLimitMs,
       ]),
     );
-    expect(byId.get(run.id)).toBe(TEN_MIN);
+    near(byId.get(run.id), RUNNER_LAPSES);
     expect(byId.get(pool.id)).toBe(THREE_MIN);
     // A waiting session is not the heartbeat hop's, but its residency ends it: ten minutes and the grace.
     expect(byId.get(waiting.id)).toBe(15 * 60_000);
@@ -117,7 +124,7 @@ describe("a session read carries core's own silence limit (ISS-1228 round 9)", (
     await runnerAnswers();
     const run = await session('run_session');
     const body = await get(`/agent-sessions/${run.id}`);
-    expect(body.silenceLimitMs).toBe(TEN_MIN);
+    near(body.silenceLimitMs, RUNNER_LAPSES);
   });
 
   it("answers it on the Pipeline page's live sessions", async () => {
@@ -127,7 +134,7 @@ describe("a session read carries core's own silence limit (ISS-1228 round 9)", (
     const live = (body.sessions as Array<{ id: string; silenceLimitMs: number | null }>).find(
       (s) => s.id === run.id,
     );
-    expect(live?.silenceLimitMs).toBe(TEN_MIN);
+    near(live?.silenceLimitMs, RUNNER_LAPSES);
   });
 
   it("answers it on the runs tab's row for the run, and null where core holds no session for it", async () => {
@@ -147,7 +154,7 @@ describe("a session read carries core's own silence limit (ISS-1228 round 9)", (
 
     const body = await get(`/projects/${projectId}/run-sessions`);
     const rows = body.items as Array<{ sessionId: string | null; silenceLimitMs: number | null }>;
-    expect(rows.find((r) => r.sessionId === run.id)?.silenceLimitMs).toBe(TEN_MIN);
+    near(rows.find((r) => r.sessionId === run.id)?.silenceLimitMs, RUNNER_LAPSES);
     expect(rows.find((r) => r.sessionId === null)?.silenceLimitMs).toBeNull();
   });
 
@@ -261,7 +268,25 @@ describe("a session read carries core's own silence limit (ISS-1228 round 9)", (
     expect(await statusOf(id)).toBe('completed');
   });
 
-  it('keeps ten minutes while the runner answers or a person is asked, and the one-shot sweep leaves the session be', async () => {
+  it("ends the runner's grace when the runner itself goes quiet, as the one-shot sweep does", async () => {
+    const { id } = await session('chat');
+    await harness.db.execute(
+      sql`UPDATE agent_sessions SET claude_session_id = 'claude-4' WHERE id = ${id}`,
+    );
+    await bindTestRunner(harness.db, { projectId, deviceId });
+    await harness.db.execute(sql`
+      UPDATE runners SET last_seen_at = now() - interval '2 minutes' WHERE device_id = ${deviceId}::uuid
+    `);
+
+    // Heard four minutes ago, its runner two: the runner's word lapses a minute from now.
+    const limit = (await get(`/agent-sessions/${id}`)).silenceLimitMs as number;
+    expect(Math.abs(limit - 5 * 60_000)).toBeLessThan(10_000);
+    const { reapOrphanedOneShotRuns } = await import('../../src/pipeline/sweeper.js');
+    await reapOrphanedOneShotRuns(new Date(Date.now() + 90_000));
+    expect(await statusOf(id)).toBe('failed');
+  });
+
+  it('holds the one-shot sweep while the runner answers or a person is asked, and the sweep leaves the session be', async () => {
     const quiet = await session('run_session');
     const asked = await session('run_session');
     await harness.db.execute(sql`
@@ -270,9 +295,12 @@ describe("a session read carries core's own silence limit (ISS-1228 round 9)", (
     `);
     await runnerAnswers();
 
-    for (const { id } of [quiet, asked]) {
-      expect((await get(`/agent-sessions/${id}`)).silenceLimitMs).toBe(TEN_MIN);
-    }
+    near((await get(`/agent-sessions/${quiet.id}`)).silenceLimitMs, RUNNER_LAPSES);
+    expect((await get(`/agent-sessions/${asked.id}`)).silenceLimitMs).toBe(TEN_MIN);
+    const { reapOrphanedOneShotRuns } = await import('../../src/pipeline/sweeper.js');
+    await reapOrphanedOneShotRuns(new Date());
+    expect(await statusOf(quiet.id)).toBe('running');
+
     await harness.db.execute(sql`DELETE FROM runners WHERE device_id = ${deviceId}::uuid`);
     const body = await get(`/agent-sessions?projectId=${projectId}`);
     const listed = new Map(
@@ -284,15 +312,18 @@ describe("a session read carries core's own silence limit (ISS-1228 round 9)", (
     expect(listed.get(quiet.id)).toBe(THREE_MIN);
     expect(listed.get(asked.id)).toBe(TEN_MIN);
 
-    const { reapOrphanedOneShotRuns } = await import('../../src/pipeline/sweeper.js');
     await reapOrphanedOneShotRuns(new Date());
     expect(await statusOf(quiet.id)).toBe('failed');
     expect(await statusOf(asked.id)).toBe('running');
   });
 
   it('waits a master out while a child it owns is heard, as the master reaper does', async () => {
-    await runnerAnswers();
     const master = await session('master');
+    // Asked a person, so the one-shot sweep holds off and the master reaper alone sets the limit.
+    await harness.db.execute(sql`
+      INSERT INTO agent_questions (id, project_id, agent_session_id, status, blocker_kind, steps)
+      VALUES (${randomUUID()}, ${projectId}::uuid, ${master.id}, 'open', 'human', '[]'::jsonb)
+    `);
     await harness.db.execute(sql`
       UPDATE agent_sessions SET last_heartbeat_at = now() - interval '9 minutes' WHERE id = ${master.id}
     `);

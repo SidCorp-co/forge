@@ -20,7 +20,8 @@ const TERMINAL: ReadonlySet<string> = new Set(terminalAgentSessionStatuses);
 /** A live session on the same jobless one-shot run, the subject included. */
 export interface OneShotSibling {
   beatAt: number;
-  runnerAnswers: boolean;
+  /** When its box's runner was last heard, `null` where the box has none. */
+  runnerSeenAt: number | null;
   parked: boolean;
 }
 
@@ -83,7 +84,12 @@ function oneShotSweep(s: SilenceSubject, hb: number): number | null {
   const grace = oneShotDeviceGraceMs(hb);
   return Math.max(
     run.runStartedAt + hb,
-    ...run.sessions.map((t) => t.beatAt + (t.runnerAnswers ? grace : hb)),
+    ...run.sessions.map((t) =>
+      Math.max(
+        t.beatAt + hb,
+        t.runnerSeenAt === null ? 0 : Math.min(t.beatAt + grace, t.runnerSeenAt + hb),
+      ),
+    ),
   );
 }
 

@@ -1,7 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/session-vocabulary.js';
-import { getLoopThresholds } from '../jobs/loop-monitor-thresholds.js';
 import { parkedOnAHuman, residencySeconds } from '../jobs/park-deadline.js';
 import { silenceLimitMs } from './session-silence.js';
 
@@ -26,7 +25,11 @@ interface SilenceRow {
   residency_s: number | string;
   latest_child_beat_at: Ms;
   run_started_at: Ms;
-  one_shot: Array<{ beatAt: number | string; runnerAnswers: boolean; parked: boolean }> | null;
+  one_shot: Array<{
+    beatAt: number | string;
+    runnerSeenAt: number | string | null;
+    parked: boolean;
+  }> | null;
 }
 
 const ms = (v: Ms): number | null => (v === null ? null : Number(v));
@@ -38,10 +41,8 @@ const epoch = (col: string) => sql.raw(`EXTRACT(EPOCH FROM ${col}) * 1000`);
  */
 export async function loadSilenceLimits(
   ids: readonly string[],
-  now: Date = new Date(),
 ): Promise<Map<string, number | null>> {
   if (ids.length === 0) return new Map();
-  const runnerCutoff = new Date(now.getTime() - getLoopThresholds().heartbeatMs).toISOString();
   const rows = (await db.execute(sql`
     SELECT s.id, s.kind, s.status, s.runtime_state, s.claude_session_id IS NOT NULL AS has_client,
            (SELECT jsonb_object_agg(m.key, m.value)
@@ -59,8 +60,8 @@ export async function loadSilenceLimits(
            ${epoch('r.started_at')} AS run_started_at,
            (SELECT jsonb_agg(jsonb_build_object(
                      'beatAt', ${epoch('COALESCE(t.last_heartbeat_at, t.started_at, t.updated_at, t.created_at)')},
-                     'runnerAnswers', EXISTS (SELECT 1 FROM runners rn
-                                               WHERE rn.device_id = t.device_id AND rn.last_seen_at >= ${runnerCutoff}),
+                     'runnerSeenAt', (SELECT ${epoch('MAX(rn.last_seen_at)')}
+                                        FROM runners rn WHERE rn.device_id = t.device_id),
                      'parked', ${parkedOnAHuman(sql`t.id`)}))
               FROM agent_sessions t
              WHERE t.pipeline_run_id = r.id AND t.status IN ('queued', 'running', 'idle')) AS one_shot
@@ -100,7 +101,11 @@ export async function loadSilenceLimits(
               ? null
               : {
                   runStartedAt,
-                  sessions: (r.one_shot ?? []).map((t) => ({ ...t, beatAt: Number(t.beatAt) })),
+                  sessions: (r.one_shot ?? []).map((t) => ({
+                    parked: t.parked,
+                    beatAt: Number(t.beatAt),
+                    runnerSeenAt: t.runnerSeenAt === null ? null : Number(t.runnerSeenAt),
+                  })),
                 },
         }),
       ];

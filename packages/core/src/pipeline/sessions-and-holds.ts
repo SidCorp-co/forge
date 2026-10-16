@@ -281,7 +281,7 @@ export async function readSessionsAndHolds(
 
   const ids = sessions.map((s) => s.id);
   const ledger = await loadLedgerRows(ids);
-  const limits = await loadSilenceLimits(ids, now);
+  const limits = await loadSilenceLimits(ids);
   for (const s of sessions) s.silence_limit_ms = limits.get(s.id) ?? null;
 
   const leases = (await db.execute(sql`

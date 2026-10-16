@@ -26,12 +26,10 @@ function subject(over: Partial<SilenceSubject>): SilenceSubject {
 }
 
 const alone = (
-  over: { runnerAnswers?: boolean; parked?: boolean; runStartedAt?: number } = {},
+  over: { runnerSeenAt?: number | null; parked?: boolean; runStartedAt?: number } = {},
 ) => ({
   runStartedAt: over.runStartedAt ?? T - 60 * MIN,
-  sessions: [
-    { beatAt: T, runnerAnswers: over.runnerAnswers ?? false, parked: over.parked ?? false },
-  ],
+  sessions: [{ beatAt: T, runnerSeenAt: over.runnerSeenAt ?? null, parked: over.parked ?? false }],
 });
 
 // ISS-1228 round 9: the limit a screen counts to is the earliest moment any reaper ends the session,
@@ -119,12 +117,23 @@ describe('silenceLimitMs', () => {
 
   it('ends a session on a jobless one-shot run at the heartbeat timeout unless its runner answers', () => {
     expect(silenceLimitMs(subject({ kind: 'run_session', oneShot: alone() }))).toBe(3 * MIN);
-    expect(silenceLimitMs(subject({ oneShot: alone({ runnerAnswers: true }) }))).toBe(
+    expect(silenceLimitMs(subject({ oneShot: alone({ runnerSeenAt: T + 60 * MIN }) }))).toBe(
       ONE_SHOT_DEVICE_GRACE_FLOOR_MS,
     );
     expect(
-      silenceLimitMs(subject({ kind: 'run_session', oneShot: alone({ runnerAnswers: true }) })),
+      silenceLimitMs(
+        subject({ kind: 'run_session', oneShot: alone({ runnerSeenAt: T + 60 * MIN }) }),
+      ),
     ).toBe(10 * MIN);
+  });
+
+  it("holds the runner's grace only while the runner's own last word is within the heartbeat timeout", () => {
+    expect(silenceLimitMs(subject({ oneShot: alone({ runnerSeenAt: T + 2 * MIN }) }))).toBe(
+      5 * MIN,
+    );
+    expect(silenceLimitMs(subject({ oneShot: alone({ runnerSeenAt: T - 10 * MIN }) }))).toBe(
+      3 * MIN,
+    );
   });
 
   it('counts the one-shot sweep from the run start and the latest live session on it, never while a person is asked', () => {
@@ -133,7 +142,7 @@ describe('silenceLimitMs', () => {
     );
     const two = {
       runStartedAt: T - 60 * MIN,
-      sessions: [...alone().sessions, { beatAt: T + 90_000, runnerAnswers: false, parked: false }],
+      sessions: [...alone().sessions, { beatAt: T + 90_000, runnerSeenAt: null, parked: false }],
     };
     expect(silenceLimitMs(subject({ oneShot: two }))).toBe(3 * MIN + 90_000);
     expect(silenceLimitMs(subject({ oneShot: alone({ parked: true }) }))).toBeNull();
