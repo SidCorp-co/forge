@@ -158,6 +158,9 @@ describe("a session read carries core's own silence limit (ISS-1228 round 9)", (
     expect(rows.find((r) => r.sessionId === null)?.silenceLimitMs).toBeNull();
   });
 
+});
+
+describe('the limit against each reaper that ends a session for silence (ISS-1228 round 9)', () => {
   it('reports the limit the loop monitor enforces on a chat whose escalation key holds a JSON null', async () => {
     const id = randomUUID();
     const runId = randomUUID();
@@ -268,6 +271,9 @@ describe("a session read carries core's own silence limit (ISS-1228 round 9)", (
     expect(await statusOf(id)).toBe('completed');
   });
 
+});
+
+describe('the one-shot sweep, as the limit reads it (ISS-1228 round 9)', () => {
   it("ends the runner's grace when the runner itself goes quiet, as the one-shot sweep does", async () => {
     const { id } = await session('chat');
     await harness.db.execute(
