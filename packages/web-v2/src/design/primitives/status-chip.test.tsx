@@ -6,6 +6,7 @@
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { StatusKey } from "@/design/status";
+import { JOB_KIND_LABEL } from "@/features/overview/job-kinds";
 import { StatusChip } from "./status-chip";
 
 afterEach(cleanup);
@@ -44,5 +45,19 @@ describe("a session chip's mark (ISS-1228 criterion 50)", () => {
   it("pulses only the working chip's mark", () => {
     const { container } = render(<StatusChip domain="session" status="zombie" />);
     expect(container.querySelector("svg")?.getAttribute("class") ?? "").not.toMatch(/forge-pulse/);
+  });
+});
+
+// ISS-1228 r9: a step now reads in words, and the chip cut "running · Issue work" at sixteen characters.
+describe("a running chip's step", () => {
+  it("has room for every kind of work's words, whole", () => {
+    for (const words of Object.values(JOB_KIND_LABEL)) {
+      const { container } = render(<StatusChip domain="session" status="running" stage={words} />);
+      const text = container.querySelector("[title]") as HTMLElement;
+      expect(text.textContent).toBe(`running · ${words}`);
+      const room = Number(/max-w-\[(\d+)ch\]/.exec(text.className)?.[1] ?? Number.POSITIVE_INFINITY);
+      expect(room, `"${text.textContent}" is cut at ${room} characters`).toBeGreaterThanOrEqual(text.textContent?.length ?? 0);
+      cleanup();
+    }
   });
 });

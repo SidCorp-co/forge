@@ -89,7 +89,7 @@ export function StatusChip({ status, stage, size = "md", domain = "issue", label
           }}
         />
       )}
-      <span className="max-w-[16ch] truncate" title={text}>
+      <span className="max-w-[28ch] truncate" title={text}>
         {text}
       </span>
     </span>

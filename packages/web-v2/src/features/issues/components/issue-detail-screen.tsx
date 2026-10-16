@@ -302,7 +302,7 @@ export function IssueDetailScreen({
                 domain="session"
               />
             )}
-            {liveStep && <span className="fg-caption">{liveStep}</span>}
+            {liveStep && runChip !== "running" && <span className="fg-caption">{liveStep}</span>}
           </div>
           <PageTitle className="fg-h3 mt-1.5 break-words">{issue.title}</PageTitle>
         </div>
