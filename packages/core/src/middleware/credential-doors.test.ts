@@ -30,6 +30,7 @@
 // The scan reads src by path, not by import, so the doors it guards declare it (ISS-530: a renamed
 // read in github-connect-routes.ts reached dev unselected and went red only in the whole suite).
 // @direct-test-of packages/core/src/integration-door/
+// @direct-test-of packages/core/src/middleware/zod-validator.ts
 
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';

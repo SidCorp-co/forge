@@ -41,7 +41,7 @@ export const SURFACE: Surface = {
     query: 'query queries',
     param: 'param',
     fields: 'valid',
-    whole: 'json text parseBody formData arrayBuffer blob url',
+    whole: 'json text parseBody formData arrayBuffer blob url bodyCache',
     none: 'method path routePath matchedRoutes',
   }),
   Request: members({
@@ -370,7 +370,8 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     middleware/route-refs.ts Request handed to lib:set in resolveRouteRefs
     previews/tunnel.ts WebSocket handed to lib:get in acceptTunnelUpgrade
     previews/tunnel.ts WebSocket handed to lib:set in acceptTunnelUpgrade`,
-  'whether a body arrived where a route declares none; it is refused unread': lines`
+  'a body read only to refuse one that is not JSON, or to hand an empty one on as `{}`; the route’s schema reads its fields': lines`
+    middleware/zod-validator.ts HonoRequest.bodyCache in refuseUndeclaredBodyType
     middleware/zod-validator.ts HonoRequest.text in refuseUndeclaredBodyType
     middleware/zod-validator.ts Request.body in refuseUndeclaredBodyType`,
   'x-forge-capabilities, the one header clientCapabilities reads': lines`
