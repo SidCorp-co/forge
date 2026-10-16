@@ -104,8 +104,11 @@ export function alsoBlocking(err: unknown, thrown: ReleaseBlockerCode): ReleaseB
 
 const CRITERIA_UNEARNED_LEAD = `Every issue at ${ISSUE_STATUS_LABELS.awaiting_release} still owes a verdict on an acceptance criterion, so the automatic release cuts nothing until each is recorded`;
 
-const CARRIED_WAYS_OUT =
-  'None of them ships without a decision. Send one per issue with the batch: `ship-unverified` with what is unverified; `revert` once its landing is reverted on the branch being promoted; or `cut-below`, which releases only what landed before it. Or move the issue to the release gate and name it on the roster.';
+/** What the caller sends for the issues a range carries, in the number it carries. */
+function carriedWaysOut(n: number): string {
+  const w = (one: string, many: string) => agree(n, one, many);
+  return `${w('It does not', 'None of them')} ship${w('', 's')} without a decision. Send one${w('', ' per issue')} with the batch: \`ship-unverified\` with what is unverified; \`revert\` once its landing is reverted on the branch being promoted; or \`cut-below\`, which releases only what landed before it. Or move ${w('it', 'each')} to the release gate and name it on the roster.`;
+}
 
 type NamedCode =
   | 'CLAIM_CONFLICT'
@@ -165,7 +168,7 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
   RELEASE_CRITERIA_UNEARNED: `${CRITERIA_UNEARNED_LEAD}.`,
   RELEASE_RUNTIME_UNROUTED:
     'This project releases without a person acting, only an issue whose every acceptance criterion is earned at what it is serving, and nothing here can read what it is serving — so no verdict a run records can earn one, and every issue waiting at the gate is held on that one reason. Give it a way to be read, and the next sweep weighs every waiting issue again.',
-  RELEASE_CARRIES_UNDECIDED: `This release promotes a range that carries the landing of issues this batch does not name. ${CARRIED_WAYS_OUT}`,
+  RELEASE_CARRIES_UNDECIDED: `This release promotes a range that carries the landing of issues this batch does not name. ${carriedWaysOut(2)}`,
   RELEASE_CARRIED_DECISION_REFUSED:
     'A decision sent with this batch for an issue its range carries does not hold. Correct each one named and send the batch again.',
   RELEASE_CUT_DROPS_ROSTER:
@@ -247,8 +250,8 @@ const CONNECTIONS_DIRECTORY = 'Integrations in the workspace rail';
 
 function runnersHeldSentence(holds: RunnerHold[]): string | null {
   if (holds.length === 0) return null;
-  const count = `${holds.length} runner${holds.length === 1 ? '' : 's'}`;
-  const head = `This project has ${count} registered and not one of them can take a release right now.`;
+  const can = agree(holds.length, 'it cannot', 'not one of them can');
+  const head = `This project has ${counted(holds.length, 'runner')} registered and ${can} take a release right now.`;
   return `${head} ${holds.map(runnerHoldClause).join(' ')}`;
 }
 
@@ -301,8 +304,8 @@ function nearGateSentence(nearGate: number): string {
   if (nearGate === 0) {
     return `Nothing is ready to release: no issue is at ${TESTING}, ${TESTED} or ${AWAITING_RELEASE}.`;
   }
-  const issues = nearGate === 1 ? '1 issue is' : `${nearGate} issues are`;
-  return `Nothing is ready to release: ${issues} at ${TESTING} or ${TESTED}, and each moves to ${AWAITING_RELEASE} once it records where its change now runs.`;
+  const issues = `${counted(nearGate, 'issue')} ${agree(nearGate, 'is', 'are')}`;
+  return `Nothing is ready to release: ${issues} at ${TESTING} or ${TESTED}, and ${agree(nearGate, 'it', 'each')} moves to ${AWAITING_RELEASE} once it records where its change now runs.`;
 }
 
 /**
@@ -382,16 +385,25 @@ function waitingOnDecisionSentence(displayId: string | null | undefined): string
   return `A release is already running for this project and is waiting on a decision: its agent stopped on a question, ${where}. Answer it there and that release goes on; or abort it with what you found. A second release would claim the same issues, so it is not started.`;
 }
 
+const shortSha = (sha: unknown) => `\`${String(sha).slice(0, 12)}\``;
+
+/** The range and the issues it carries unnamed, then what to do about them in `waysOut`'s words. */
+export function carriedUndecidedSentence(
+  details: Record<string, unknown>,
+  waysOut: (n: number) => string,
+): string {
+  const carried = details.carried as Array<{ displayId: string; status: string }>;
+  const each = carried.map((i) => `\`${i.displayId}\` at ${statusLabel(i.status)}`).join(', ');
+  return `This release promotes \`${String(details.start)}\` at ${shortSha(details.cut)} onto \`${String(details.live)}\`, and that range carries the landing of ${counted(carried.length, 'issue')} this batch does not name: ${each}. ${waysOut(carried.length)}`;
+}
+
 /** The three carried codes, composed from the range and the issues the check named (ISS-1386). */
 function carriedSentence(
   code: ReleaseBlockerCode,
   details: Record<string, unknown> | undefined,
 ): string | null {
-  const short = (sha: unknown) => `\`${String(sha).slice(0, 12)}\``;
   if (code === 'RELEASE_CARRIES_UNDECIDED' && Array.isArray(details?.carried)) {
-    const carried = details.carried as Array<{ displayId: string; status: string }>;
-    const each = carried.map((i) => `\`${i.displayId}\` at ${statusLabel(i.status)}`).join(', ');
-    return `This release promotes \`${String(details.start)}\` at ${short(details.cut)} onto \`${String(details.live)}\`, and that range carries the landing of ${counted(carried.length, 'issue')} this batch does not name: ${each}. ${CARRIED_WAYS_OUT}`;
+    return carriedUndecidedSentence(details, carriedWaysOut);
   }
   if (code === 'RELEASE_CARRIED_DECISION_REFUSED' && Array.isArray(details?.refused)) {
     const refused = details.refused as Array<{ displayId: string; decision: string; why: string }>;
@@ -401,7 +413,8 @@ function carriedSentence(
   if (code === 'RELEASE_CUT_DROPS_ROSTER' && Array.isArray(details?.displayIds)) {
     const ids = details.displayIds as string[];
     const named = ids.map((id) => `\`${id}\``).join(', ');
-    return `A \`cut-below\` moves this release to ${short(details.cut)}, which leaves the landing of roster ${agree(ids.length, 'issue', 'issues')} ${named} above the cut, so the batch would name issues it does not ship. Take them off the roster, or decide the carried issue another way.`;
+    const w = (one: string, many: string) => agree(ids.length, one, many);
+    return `A \`cut-below\` moves this release to ${shortSha(details.cut)}, which leaves the landing of roster ${w('issue', 'issues')} ${named} above the cut, so the batch would name ${w('an issue', 'issues')} it does not ship. Take ${w('it', 'them')} off the roster, or decide the carried issue another way.`;
   }
   return null;
 }
@@ -422,18 +435,20 @@ export interface UnclosableIssueRef {
   shortfalls: Array<{ code: string; reason: string; clears: string }>;
 }
 
-function unclosableSentence(refused: readonly UnclosableIssueRef[]): string {
+/** `codes` is false for a person, who acts on the reason and has no use for the code it is filed under. */
+export function unclosableSentence(refused: readonly UnclosableIssueRef[], codes = true): string {
+  const reason = (s: UnclosableIssueRef['shortfalls'][number]) =>
+    codes ? `${s.reason} (${s.code}): ${s.clears}` : `${s.reason}: ${s.clears}`;
   const each = refused
-    .map(
-      (r) =>
-        `\`${r.displayId}\` ${r.shortfalls.map((s) => `${s.reason} (${s.code}): ${s.clears}`).join(' ')}`,
-    )
+    .map((r) => `\`${r.displayId}\` ${r.shortfalls.map(reason).join(' ')}`)
     .join(' ');
   const n = refused.length;
-  return `${n} issue${n === 1 ? '' : 's'} named here would be refused ${n === 1 ? 'its' : 'their'} close when this release finishes, so it would release ${n === 1 ? 'it' : 'them'} and hand ${n === 1 ? 'it' : 'them'} back to the gate. ${each} Clear each reason, or leave the issue off this release.`;
+  const w = (one: string, many: string) => agree(n, one, many);
+  const reasons = refused.reduce((sum, r) => sum + r.shortfalls.length, 0);
+  return `${counted(n, 'issue')} named here would be refused ${w('its', 'their')} close when this release finishes, so it would release ${w('it', 'them')} and hand ${w('it', 'them')} back to the gate. ${each} Clear ${agree(reasons, 'that', 'each')} reason, or leave ${w('it', 'each such issue')} off this release.`;
 }
 
-function namedHere(details: Record<string, unknown>): string {
+export function namedHere(details: Record<string, unknown>): string {
   const ids = Array.isArray(details.issueIds) ? details.issueIds : [];
   const shown = Array.isArray(details.displayIds) ? (details.displayIds as string[]) : [];
   const which = shown.length === 0 ? '' : ` (${shown.map((id) => `\`${id}\``).join(', ')})`;
@@ -456,17 +471,22 @@ function unroutedSentence(
 
 /** A `verify` Forge refused takes no project default, so removing it is a repair and not silence. */
 const REFUSED_DECLARATION_SENTENCE =
-  'declares a `verify` Forge cannot read — it names no probe with a url — and a declared `verify` takes NO project default, so no release can be proved there and none closes past it. Correct it to `{"probes":[{"url":"https://<host>/api/health","commitPath":"commit"}]}`, or remove it: the project\'s `environments.live.commitUrl` then answers, and with neither the release is recorded unverified.';
+  'a `verify` Forge cannot read — it names no probe with a url — and a declared `verify` takes NO project default, so no release can be proved there and none closes past it. Correct it to `{"probes":[{"url":"https://<host>/api/health","commitPath":"commit"}]}`, or remove it: the project\'s `environments.live.commitUrl` then answers, and with neither the release is recorded unverified.';
 
-function unreadableSentence(remedy: string, details?: Record<string, unknown>): string {
+export function unreadableSentence(
+  remedy: string,
+  details?: Record<string, unknown>,
+  refused = REFUSED_DECLARATION_SENTENCE,
+): string {
   const urls = Array.isArray(details?.urls) ? (details.urls as string[]) : [];
   const bindings = Array.isArray(details?.bindings) ? (details.bindings as string[]) : [];
   const parts: string[] = [];
   if (urls.length > 0) parts.push(`${urls.join(', ')} — ${remedy}`);
   if (bindings.length > 0) {
     const which = bindings.map((b) => `\`${b}\``).join(', ');
+    const w = (one: string, many: string) => agree(bindings.length, one, many);
     parts.push(
-      `The live deploy binding${bindings.length === 1 ? '' : 's'} ${which} ${REFUSED_DECLARATION_SENTENCE}`,
+      `The live deploy ${w('binding', 'bindings')} ${which} ${w('declares', 'each declare')} ${refused}`,
     );
   }
   return parts.length > 0 ? parts.join(' ') : remedy;
@@ -474,11 +494,11 @@ function unreadableSentence(remedy: string, details?: Record<string, unknown>): 
 
 /** The sweep is cutting a release and leaving these behind, which stops nothing. */
 export function uncorroboratedWarningSentence(held: HeldIssueRef[], why: string): string {
-  const issues = `${held.length} issue${held.length === 1 ? '' : 's'}`;
+  const issues = `${counted(held.length, 'issue')} ${agree(held.length, 'carries', 'carry')}`;
   const each = held.map((h) => `\`${h.displayId}\` on ${criteriaPhrase(h.criteria)}`).join('; ');
   return withCosts(
     'RELEASE_CRITERIA_UNCORROBORATED',
-    `${issues} carry a criterion earned at a runtime nothing here could re-read: ${why} Those verdicts count — absence of a reading is not a failure — and they are weaker evidence than a reading would have made them. Whether each issue ships is decided by its own criteria, not by this. ${each}.`,
+    `${issues} a criterion earned at a runtime nothing here could re-read: ${why} Those verdicts count — absence of a reading is not a failure — and they are weaker evidence than a reading would have made them. Whether each issue ships is decided by its own criteria, not by this. ${each}.`,
   );
 }
 
@@ -489,20 +509,20 @@ export function heldBackWarningSentence(
   serving: ServingReading,
   clears: readonly string[] = [],
 ): string {
-  const issues = `${held.length} issue${held.length === 1 ? '' : 's'}`;
-  const lead = `A release will still be cut, without ${issues} the sweep is holding back`;
+  const lead = `A release will still be cut, without ${counted(held.length, 'issue')} the sweep is holding back`;
+  const each = agree(held.length, 'it', 'each');
   const why =
     serving.kind === 'undeclared'
-      ? `${lead}: each owes an acceptance criterion, and nothing here can read what this project is serving, so no judging run can earn one until the project can be read. What is missing: ${serving.missing}. The way to give it one: ${serving.route}.`
+      ? `${lead}: ${each} owes an acceptance criterion, and nothing here can read what this project is serving, so no judging run can earn one until the project can be read. What is missing: ${serving.missing}. The way to give it one: ${serving.route}.`
       : clears.length > 0
-        ? `${lead}: each still owes an acceptance criterion, and at least one could not be weighed because the repository could not be read. ${readableFirst(clears, 'that')} Otherwise each stays at the gate until a judging run earns it.`
-        : `${lead}: each still owes a judging run on an acceptance criterion, and stays at the gate until it is earned.`;
+        ? `${lead}: ${each} still owes an acceptance criterion, and at least one could not be weighed because the repository could not be read. ${readableFirst(clears, 'that')} Otherwise ${each} stays at the gate until a judging run earns it.`
+        : `${lead}: ${each} still owes a judging run on an acceptance criterion, and stays at the gate until it is earned.`;
   return withCosts('RELEASE_CRITERIA_HELD_BACK', heldIssuesSentence(why, held));
 }
 
 /** The sweep cuts an over-cap roster in parts, so there is nothing here for a person to cut (ISS-1360). */
 export function rosterInPartsWarningSentence(waiting: number, part: number, later: number): string {
-  const text = `${waiting} issues are waiting at the release gate and one release carries at most ${RELEASE_ROSTER_LIMIT}. This project releases without a person acting, so the automatic sweep cuts them in parts, the oldest merge first, setting aside any it is holding back: this answer is judged on the oldest ${part}, and the ${later} behind ${later === 1 ? 'it' : 'them'} wait for a later release. Nothing here is for a person to cut.`;
+  const text = `${waiting} issues are waiting at the release gate and one release carries at most ${RELEASE_ROSTER_LIMIT}. This project releases without a person acting, so the automatic sweep cuts them in parts, the oldest merge first, setting aside any it is holding back: this answer is judged on the oldest ${part}, and the ${later} behind ${agree(later, 'it waits', 'them wait')} for a later release. Nothing here is for a person to cut.`;
   return withCosts('RELEASE_ROSTER_IN_PARTS', text);
 }
 
@@ -510,9 +530,12 @@ export function rosterInPartsWarningSentence(waiting: number, part: number, late
  *  sentence a door prints (ISS-1127). Each act names the screen it is taken on, the free one
  *  having been offered for a round with none. The label matches `runners.labels`, the box a
  *  release RUNS on, not the one holding the deploy credential — on Coolify, Forge (ISS-1275). */
-export function runnerPreferenceUnmetSentence(label: string): string {
+export function runnerPreferenceUnmetSentence(
+  label: string,
+  field = '`releaseRunnerLabel`',
+): string {
   return withCosts(
     'RELEASE_RUNNER_PREFERENCE_UNMET',
-    `No box on this project carries the declared release label \`${label}\`, so this release goes to the pool this project has. Two ways out, either one complete. Label the box you want this project's releases to run on with \`${label}\` under ${RUNNERS_TAB}. Or clear \`releaseRunnerLabel\` from the live deploy binding under ${INTEGRATIONS_TAB} AND from the connection behind it under ${CONNECTIONS_DIRECTORY}, which asks for no box and stops nothing: a project declaring no release runner releases on the pool it has, and this warning goes with the label. Clearing it from the binding alone falls back to the connection's label rather than to none.`,
+    `No box on this project carries the declared release label \`${label}\`, so this release goes to the pool this project has. Two ways out, either one complete. Label the box you want this project's releases to run on with \`${label}\` under ${RUNNERS_TAB}. Or clear ${field} from the live deploy binding under ${INTEGRATIONS_TAB} AND from the connection behind it under ${CONNECTIONS_DIRECTORY}, which asks for no box and stops nothing: a project declaring no release runner releases on the pool it has, and this warning goes with the label. Clearing it from the binding alone falls back to the connection's label rather than to none.`,
   );
 }
