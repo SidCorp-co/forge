@@ -1,7 +1,5 @@
-import type { CommentRefusalCode, DecisionFields } from '@forge/contracts/comments';
 import { type CommentIntent, isCommentIntent } from '@forge/contracts/record-events';
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import type { ActorRef } from '../issues/index.js';
 import {
@@ -13,9 +11,7 @@ import {
 } from '../issues/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
-import { pgConstraintName, pgErrorCode } from '../lib/db-errors.js';
 import { cursorList, listResponse, paginationSchema } from '../lib/pagination.js';
-import { refuser } from '../lib/refusal.js';
 import { projectLens } from '../messaging/record-screen.js';
 import {
   type AuthVars,
@@ -34,32 +30,13 @@ import { badRequest, forbidden, idParamSchema, notFound } from '../middleware/ro
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { commentAttachmentRoutes } from './attachment-routes.js';
-import {
-  bodyRefusalHttp,
-  commentBodySchema,
-  commentCreateSchema,
-  rethrowBodyInvalid,
-} from './body-input.js';
+import { commentBodySchema, commentCreateSchema, rethrowBodyInvalid } from './body-input.js';
 import { type CommentCursor, decodeCommentCursor } from './cursor.js';
-import {
-  attachmentsByComment,
-  countIssueComments,
-  issueProjectOf,
-  listReplies,
-  locateComment,
-  parentCommentOf,
-} from './read.js';
-import {
-  decisionBody,
-  deleteComment,
-  insertComment,
-  intentRefusal,
-  updateCommentBody,
-} from './service.js';
+import { postIssueComment } from './issue-comment.js';
+import { attachmentsByComment, countIssueComments, listReplies, locateComment } from './read.js';
+import { deleteComment, intentRefusal, updateCommentBody } from './service.js';
 import { listIssueCommentPage } from './thread-read.js';
 import { attachAuthors, buildCommentTree } from './tree.js';
-
-const refuse = refuser<CommentRefusalCode>('COMMENT_REFUSED');
 
 /** The comment projection every REST response here shares. */
 
@@ -68,12 +45,6 @@ const threadQuerySchema = paginationSchema.extend({
   projectId: projectScopeQuerySchema.shape.projectId,
   intent: z.string().max(64).optional(),
 });
-
-export async function loadIssue(issueId: string) {
-  const row = await issueProjectOf(issueId);
-  if (!row) throw notFound('issue not found');
-  return row;
-}
 
 async function loadComment(commentId: string) {
   const located = await locateComment(commentId);
@@ -94,36 +65,6 @@ const commentsShown = <T>(
   rows: T,
   what: string,
 ) => egressForRequest(restActor(c).agency, projectId, 'issue.comments', rows, what);
-
-async function assertParentOnIssue(parentId: string, issueId: string): Promise<void> {
-  const parent = await parentCommentOf(parentId);
-  if (!parent) throw notFound('parent comment not found');
-  if (parent.issueId !== issueId) {
-    throw new HTTPException(400, {
-      message: 'parent comment belongs to a different issue',
-      cause: { code: 'PARENT_MISMATCH' },
-    });
-  }
-}
-
-/** A failed comment insert as the answer it owes: a body refusal, a reply nested too deep, a parent
- *  gone under it, or the error itself (a message refusal is answered by the shared error handler). */
-function commentWriteRefusal(err: unknown, parentId: string | undefined): unknown {
-  const refusal = bodyRefusalHttp(err);
-  if (refusal) return refusal;
-  const pgCode = pgErrorCode(err);
-  if (pgCode === '23514') {
-    return refuse(
-      'COMMENT_DEPTH_EXCEEDED',
-      'a reply sits at most 3 deep; reply to a comment higher in the thread',
-      '/parentId',
-    );
-  }
-  if (pgCode === '23503' && parentId && pgConstraintName(err) === 'comments_parent_id_fk') {
-    return notFound('parent comment not found');
-  }
-  return err;
-}
 
 /** One page of an issue's thread, shaped for its reader: egress, attachments, lens, authors. */
 async function issueThreadPage(
@@ -149,33 +90,6 @@ async function issueThreadPage(
   return { tree, total: Number(total), nextCursor: read.nextCursor };
 }
 
-/**
- * The body an issue comment is stored with: the one sent, or for a decision sent as fields only,
- * the fields written out, so every reader of the body (the thread, MCP, the CLI) reads the ruling.
- */
-function issueCommentBody(
-  sent: string | undefined,
-  intent: string | undefined,
-  decision: DecisionFields | undefined,
-): string {
-  if (decision && intent !== 'decision') {
-    throw refuse(
-      'COMMENT_DECISION_INTENT_MISMATCH',
-      `decision fields belong to intent decision; this comment is ${intent ? `a ${intent}` : 'sent with no intent'}. Send intent: decision, or drop the decision fields`,
-      '/decision',
-    );
-  }
-  if (sent !== undefined) return sent;
-  if (!decision) {
-    throw refuse(
-      'COMMENT_BODY_REQUIRED',
-      'a comment carries a body: the sentence somebody is meant to read (a decision may send decision: { decision, reason } instead)',
-      '/body',
-    );
-  }
-  return decisionBody(decision);
-}
-
 export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>): void {
   router.post(
     '/:id/comments',
@@ -184,29 +98,19 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
     holdChatWrite('comment'),
     async (c) => {
       const { id: issueId } = c.req.valid('param');
-      const { body: sent, format, parentId, intent, decision, writtenLang } = c.req.valid('json');
-      const userId = c.get('userId');
-      const body = issueCommentBody(sent, intent, decision);
-
-      const issue = await loadIssue(issueId);
-      const access = await loadProjectAccess(issue.projectId, userId);
-      requireHeld(access, 'project.write');
-
-      if (parentId) await assertParentOnIssue(parentId, issueId);
-      const written = await insertComment({
+      const { body, format, parentId, intent, decision, writtenLang } = c.req.valid('json');
+      const written = await postIssueComment({
         issueId,
-        authorId: userId,
+        authorId: c.get('userId'),
         authorDeviceId: c.get('patDeviceId') ?? null,
         body,
         format,
-        parentId: parentId ?? null,
-        declaresRecordRoute: declares(clientCapabilities(c), RECORD_ROUTE_CAPABILITY),
+        parentId,
         intent,
-        decision: decision ?? null,
+        decision,
         writtenLang,
+        declaresRecordRoute: declares(clientCapabilities(c), RECORD_ROUTE_CAPABILITY),
         announce: { actor: restActor(c), authored: restAuthored(c) },
-      }).catch((err: unknown) => {
-        throw commentWriteRefusal(err, parentId);
       });
       const inserted = written.row;
 

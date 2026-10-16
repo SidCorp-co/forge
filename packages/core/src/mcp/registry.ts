@@ -7,6 +7,12 @@ import type { McpToolName } from '@forge/contracts/mcp-tools';
 import { forgeAgentReportTool } from '../agent-reports/tool.js';
 import { forgeChannelTool, forgeEcosystemTool } from '../ecosystem/tool.js';
 import type { ContextScopedMcpToolFactory } from '../lib/tool.js';
+import {
+  forgeDesignTool,
+  forgeIssuesTool,
+  forgeQuestionsTool,
+  forgeReleasesProductTool,
+} from '../product-door/tool.js';
 import { forgeUploadsTool } from '../uploads/tool.js';
 import { forgeFeedbackMcpTool } from './feedback-tool.js';
 import { forgeRequirementsMcpTool } from './requirements-tool.js';
@@ -30,4 +36,10 @@ export const MCP_TOOLS = {
   // each answer telling whether work runs and when it is forecast done.
   forge_requirements: (ctx) => forgeRequirementsMcpTool(ctx),
   forge_feedback: (ctx) => forgeFeedbackMcpTool(ctx),
+  // The product layer, so a person works from an MCP client: each action calls what its REST route
+  // calls, and every answer about work in motion says whether it runs and when it is likely done.
+  forge_releases: (ctx) => forgeReleasesProductTool(ctx),
+  forge_design: (ctx) => forgeDesignTool(ctx),
+  forge_questions: (ctx) => forgeQuestionsTool(ctx),
+  forge_issues: (ctx) => forgeIssuesTool(ctx),
 } satisfies Record<McpToolName, ContextScopedMcpToolFactory>;

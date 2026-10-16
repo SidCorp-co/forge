@@ -1,3 +1,5 @@
+export { assertTokenMayAnswer } from './answer-door.js';
+export { ANSWER_SHAPE, answerBody, givenAnswerOf } from './answer-input.js';
 export {
   type AnsweredOnIssue,
   type AnsweredSince,
@@ -28,7 +30,10 @@ export {
   answerAs,
   answerOf,
   openGateQuestionsOf,
+  projectQuestionsFor,
   questionnaireSurface,
+  readQuestionFor,
+  readQuestionsForIssue,
   registerWaiter,
   waiterFor,
 } from './read.js';
@@ -39,6 +44,7 @@ export {
   type RequirementQuestionRow,
 } from './requirement-read.js';
 export { agentAuthoredSegments } from './screen.js';
+export { type ShownQuestion, shownQuestion } from './shown.js';
 export {
   registerQuestionSuggest,
   type SuggestResult,

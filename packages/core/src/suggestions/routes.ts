@@ -18,7 +18,7 @@ import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { listSuggestions } from './list.js';
-import type { SuggestionActor, SuggestionTargetRef } from './read.js';
+import type { SuggestionActor } from './read.js';
 import {
   acceptSuggestion,
   createSuggestion,
@@ -27,6 +27,7 @@ import {
   type SuggestionOutcome,
   withdrawSuggestion,
 } from './service.js';
+import { targetRefOf } from './target.js';
 
 export const suggestionRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -65,22 +66,6 @@ function answer(c: Context, outcome: SuggestionOutcome) {
   return c.json(body, outcome.created ? 201 : 200);
 }
 
-function targetOf(v: {
-  requirement?: string | undefined;
-  issue?: string | undefined;
-  feedback?: string | undefined;
-  workflow?: string | undefined;
-}): SuggestionTargetRef | undefined {
-  if ([v.requirement, v.issue, v.feedback, v.workflow].filter(Boolean).length > 1) {
-    throw badRequest('name one target: `requirement`, `issue`, `feedback` or `workflow`');
-  }
-  if (v.workflow) return { workflow: v.workflow };
-  if (v.requirement) return { requirement: v.requirement };
-  if (v.issue) return { issue: v.issue };
-  if (v.feedback) return { feedback: v.feedback };
-  return undefined;
-}
-
 suggestionRoutes.get(
   '/:id/suggestions',
   projectParam,
@@ -96,7 +81,7 @@ suggestionRoutes.get(
     const listed = await listSuggestions({
       projectId: c.req.valid('param').id,
       userId: c.get('userId'),
-      target: targetOf(q),
+      target: targetRefOf(q),
       statuses: q.status,
     });
     if (q.view !== 'summary') return c.json(listed);
@@ -110,7 +95,7 @@ suggestionRoutes.post(
   strictBody(createSuggestionRequestSchema, CREATE_SUGGESTION_SHAPE),
   async (c) => {
     const body = c.req.valid('json');
-    const target = targetOf(body);
+    const target = targetRefOf(body);
     if (!target) throw badRequest(`invalid body: ${CREATE_SUGGESTION_SHAPE}`);
     const actor = actorOf(c);
     return answer(

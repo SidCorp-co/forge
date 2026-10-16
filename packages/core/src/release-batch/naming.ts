@@ -8,6 +8,8 @@ import { type ReleaseNaming, ReleaseNamingSchema } from '@forge/contracts/releas
 import { and, asc, desc, eq, isNotNull, isNull, ne, notInArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { pipelineRuns, releaseDraftNamings } from '../db/schema.js';
+import { loadProjectAccess } from '../lib/authz.js';
+import { requireHeld } from '../permissions/index.js';
 import { writeRunMetadata } from '../pipeline/index.js';
 import { draftedVersion } from './draft-version.js';
 import { refuseRelease } from './refuse.js';
@@ -37,7 +39,12 @@ function namingStamp(
 }
 
 /** The latest run cut as `version`, other than `except`: the attempt a re-cut of it follows. */
-async function runCutAs(projectId: string, version: string, executor: Tx = db, except?: string) {
+export async function runCutAs(
+  projectId: string,
+  version: string,
+  executor: Tx = db,
+  except?: string,
+) {
   const [run] = await executor
     .select({ id: pipelineRuns.id, metadata: pipelineRuns.metadata })
     .from(pipelineRuns)
@@ -113,6 +120,17 @@ export async function nameRelease(
   }
   await writeRunMetadata(run.id, { merge: namingStamp(naming, by), touch: true });
   return { version, state: 'cut', runId: run.id, ...naming };
+}
+
+/** `nameRelease` as `userId`, who names a release only where they may cut one (project.admin). */
+export async function nameReleaseAs(
+  projectId: string,
+  version: string,
+  naming: ReleaseNaming,
+  userId: string,
+): ReturnType<typeof nameRelease> {
+  requireHeld(await loadProjectAccess(projectId, userId), 'project.admin');
+  return nameRelease(projectId, version, naming, userId);
 }
 
 /**

@@ -192,12 +192,17 @@ function publicGuidesUrl(): string {
 
 /** Built per call so `env` is read lazily and this module stays side-effect free. */
 function forgeMcpInstructions(): string {
-  return `You are connected to a Forge-managed project — Forge is the control plane for this repo's issues, pipeline, and durable memory. The REST API (\`<host>/api/...\`, a personal access token as \`Authorization: Bearer\`) is the primary door and the \`forge\` CLI sits on it; this server carries the product layer a BA works in, and what neither covers:
+  return `You are connected to a Forge-managed project — Forge is the control plane for this repo's issues, pipeline, and durable memory. The REST API (\`<host>/api/...\`, a personal access token as \`Authorization: Bearer\`) is the primary door and the \`forge\` CLI sits on it; this server carries the product layer a BA works in, so a person can work from an MCP client, and what neither covers:
 
 - \`forge_requirements\` — list, read, draft and revise requirements (REQ-n), and propose a draft revision; agreeing and accepting stay a person's act on the requirement page.
 - \`forge_feedback\` — list, read and file feedback (FB-n), find similar items, and ask a reporter a clarification; triage stays a person's act.
-- Every requirement and feedback answer carries \`progress\`: whether work is running now, what waits on whom, and the forecast ETA, or why there is none. Tell the person \`progress.says\`; never give a date it does not hold.
+- \`forge_releases\` — releases: what shipped, what is drafted, what waits on approval; name one, and decide its approval where you hold releases.approve.
+- \`forge_design\` — workflow designs, suggestions and mockups: read them, write and propose a design, and approve, return, accept, reject, revise or withdraw where you hold the permission.
+- \`forge_questions\` — questions waiting on a person, one read in full, an answer, and your own question on an issue.
+- \`forge_issues\` — delivery work read: each issue's status, whether an agent works on it now and when it is likely done. It files no issue: \`create\` is refused MCP_FILES_FEEDBACK_NOT_ISSUES and says where the record goes instead (Feedback, a Requirement, or a question).
 - \`forge_uploads\` — read an issue, comment or session attachment; an image comes back as a viewable block.
+
+Every answer about work in motion carries \`progress\`: whether work is running now, what waits on whom, and the forecast date, or plainly why there is none. Tell the person \`progress.says\`; never give a date it does not hold.
 
 Everything else is REST or the CLI:
 - Delivery has no tool here. A connected integration's credential stays in core and the call is made from core: Coolify deploys and logs under \`/api/projects/:id/integrations/coolify/…\`, the source host's change requests under \`/api/projects/:id/integrations/source/…\`, Sentry under \`/api/projects/:id/integrations/sentry/issues\`, and the storefront target at \`GET /api/projects/:id/integrations/storefront/target\`.

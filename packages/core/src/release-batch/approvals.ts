@@ -13,6 +13,7 @@ import { emitEvent } from '../outbox/index.js';
 import { actorFor, permissionRefusalFor, projectResource } from '../permissions/index.js';
 import { approvalRequired, environmentsOf, readReleasePath } from '../project-config/index.js';
 import { approvalChecklistRefusals } from './approval-checklist.js';
+import { runCutAs } from './naming.js';
 import { refuseRelease } from './refuse.js';
 
 // The issues kernel still reads the approval fact here; it is project-config's (`release-path.ts`).
@@ -253,6 +254,43 @@ export async function decideApproval(input: {
   }
   const [view] = await approvalViews([row]);
   return view as ApprovalView;
+}
+
+/**
+ * The approval request waiting on the release cut as `version`, decided: the door that names a
+ * release by its version, where a person reads it, rather than by its run and request ids. A version
+ * nobody cut, or one with no request waiting, is refused by name.
+ */
+export async function decideApprovalOfVersion(input: {
+  projectId: string;
+  version: string;
+  userId: string;
+  decision: Decision;
+}): Promise<ApprovalView> {
+  const { projectId, version } = input;
+  const run = await runCutAs(projectId, version);
+  if (!run) {
+    throw refuseRelease(
+      'RELEASE_VERSION_UNKNOWN',
+      `${version} is not cut in this project, and only a cut release waits on an approval`,
+      '/version',
+    );
+  }
+  const pending = (await approvalsOfRuns([run.id])).find((a) => a.decision === null);
+  if (!pending) {
+    throw refuseRelease(
+      'RELEASE_APPROVAL_NOT_PENDING',
+      `release ${version} holds no approval request waiting on a decision: one is asked by the release run before its production act, and decided once`,
+      '/version',
+    );
+  }
+  return decideApproval({
+    projectId,
+    runId: run.id,
+    approvalId: pending.id,
+    userId: input.userId,
+    decision: input.decision,
+  });
 }
 
 /**
