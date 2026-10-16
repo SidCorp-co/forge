@@ -36,6 +36,7 @@ import { sweepDeliveredRequirements, sweepStaleDrafts } from './requirements/ind
 import { reapGhostRunners, runRunnerStaleSweep } from './runners/index.js';
 import type { Timer } from './schedules/index.js';
 import { sweepSuggestions } from './suggestions/index.js';
+import { drainWidgetConversationWindows } from './widget/index.js';
 
 /** The memory half of the re-embed sweep, then the knowledge half unless the provider is down. */
 async function embeddingBackfillTick(): Promise<void> {
@@ -123,6 +124,38 @@ function requirementTimers(): Timer[] {
           return asked > 0 || refused > 0;
         },
       ),
+    },
+  ];
+}
+
+/** Each conversation adapter's drain: what a window its sender's core left behind is still owed. */
+function conversationDrains(): Timer[] {
+  return [
+    {
+      kind: 'process',
+      name: 'web-conversation-drain',
+      everyMs: 15_000,
+      run: drainWebConversationWindows,
+    },
+    {
+      kind: 'process',
+      name: 'widget-conversation-drain',
+      everyMs: 15_000,
+      run: drainWidgetConversationWindows,
+    },
+    {
+      kind: 'process',
+      name: 'rocketchat.window-drain',
+      everyMs: 1_500,
+      runAtStart: true,
+      run: drainRoomWindows,
+    },
+    {
+      kind: 'process',
+      name: 'rocketchat.question-drain',
+      everyMs: 30_000,
+      runAtStart: true,
+      run: drainRoomQuestions,
     },
   ];
 }
@@ -320,26 +353,7 @@ export function coreTimers(): Timer[] {
       everyMs: 15_000,
       run: logged('preview-sweep: moved', sweepPreviews, (r) => (r as { moved: number }).moved > 0),
     },
-    {
-      kind: 'process',
-      name: 'web-conversation-drain',
-      everyMs: 15_000,
-      run: drainWebConversationWindows,
-    },
-    {
-      kind: 'process',
-      name: 'rocketchat.window-drain',
-      everyMs: 1_500,
-      runAtStart: true,
-      run: drainRoomWindows,
-    },
-    {
-      kind: 'process',
-      name: 'rocketchat.question-drain',
-      everyMs: 30_000,
-      runAtStart: true,
-      run: drainRoomQuestions,
-    },
+    ...conversationDrains(),
     ...(servesRunnerReleases()
       ? [
           {

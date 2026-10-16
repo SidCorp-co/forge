@@ -38,11 +38,13 @@ import { Route as GuidesSlugIndexRouteImport } from './routes/guides/$slug/index
 import { Route as InviteAcceptIndexRouteImport } from './routes/invite/accept/index'
 import { Route as OauthAuthorizeIndexRouteImport } from './routes/oauth/authorize/index'
 import { Route as STokenIndexRouteImport } from './routes/s/$token/index'
+import { Route as WSiteKeyIndexRouteImport } from './routes/w/$siteKey/index'
 import { Route as WorkspaceDevDesignIndexRouteImport } from './routes/_workspace/dev/design/index'
 import { Route as WorkspaceEcosystemsIdIndexRouteImport } from './routes/_workspace/ecosystems/$id/index'
 import { Route as WorkspaceEcosystemsNewIndexRouteImport } from './routes/_workspace/ecosystems/new/index'
 import { Route as WorkspaceEcosystemsThreadsIndexRouteImport } from './routes/_workspace/ecosystems/threads/index'
 import { Route as WorkspaceProjectsSlugIndexRouteImport } from './routes/_workspace/projects/$slug/index'
+import { Route as WStatusTokenIndexRouteImport } from './routes/w/status/$token/index'
 import { Route as WorkspaceEcosystemsIdSettingsIndexRouteImport } from './routes/_workspace/ecosystems/$id/settings/index'
 import { Route as WorkspaceProjectsSlugAgentsIndexRouteImport } from './routes/_workspace/projects/$slug/agents/index'
 import { Route as WorkspaceProjectsSlugApprovalsIndexRouteImport } from './routes/_workspace/projects/$slug/approvals/index'
@@ -227,6 +229,11 @@ const STokenIndexRoute = STokenIndexRouteImport.update({
   path: '/s/$token/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const WSiteKeyIndexRoute = WSiteKeyIndexRouteImport.update({
+  id: '/w/$siteKey/',
+  path: '/w/$siteKey/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const WorkspaceDevDesignIndexRoute = WorkspaceDevDesignIndexRouteImport.update({
   id: '/dev/design/',
   path: '/dev/design/',
@@ -256,6 +263,11 @@ const WorkspaceProjectsSlugIndexRoute =
     path: '/',
     getParentRoute: () => WorkspaceProjectsSlugRouteRoute,
   } as any)
+const WStatusTokenIndexRoute = WStatusTokenIndexRouteImport.update({
+  id: '/w/status/$token/',
+  path: '/w/status/$token/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const WorkspaceEcosystemsIdSettingsIndexRoute =
   WorkspaceEcosystemsIdSettingsIndexRouteImport.update({
     id: '/ecosystems/$id/settings/',
@@ -507,11 +519,13 @@ export interface FileRoutesByFullPath {
   '/invite/accept/': typeof InviteAcceptIndexRoute
   '/oauth/authorize/': typeof OauthAuthorizeIndexRoute
   '/s/$token/': typeof STokenIndexRoute
+  '/w/$siteKey/': typeof WSiteKeyIndexRoute
   '/dev/design/': typeof WorkspaceDevDesignIndexRoute
   '/ecosystems/$id/': typeof WorkspaceEcosystemsIdIndexRoute
   '/ecosystems/new/': typeof WorkspaceEcosystemsNewIndexRoute
   '/ecosystems/threads/': typeof WorkspaceEcosystemsThreadsIndexRoute
   '/projects/$slug/': typeof WorkspaceProjectsSlugIndexRoute
+  '/w/status/$token/': typeof WStatusTokenIndexRoute
   '/ecosystems/$id/settings/': typeof WorkspaceEcosystemsIdSettingsIndexRoute
   '/projects/$slug/agents/': typeof WorkspaceProjectsSlugAgentsIndexRoute
   '/projects/$slug/approvals/': typeof WorkspaceProjectsSlugApprovalsIndexRoute
@@ -576,11 +590,13 @@ export interface FileRoutesByTo {
   '/invite/accept': typeof InviteAcceptIndexRoute
   '/oauth/authorize': typeof OauthAuthorizeIndexRoute
   '/s/$token': typeof STokenIndexRoute
+  '/w/$siteKey': typeof WSiteKeyIndexRoute
   '/dev/design': typeof WorkspaceDevDesignIndexRoute
   '/ecosystems/$id': typeof WorkspaceEcosystemsIdIndexRoute
   '/ecosystems/new': typeof WorkspaceEcosystemsNewIndexRoute
   '/ecosystems/threads': typeof WorkspaceEcosystemsThreadsIndexRoute
   '/projects/$slug': typeof WorkspaceProjectsSlugIndexRoute
+  '/w/status/$token': typeof WStatusTokenIndexRoute
   '/ecosystems/$id/settings': typeof WorkspaceEcosystemsIdSettingsIndexRoute
   '/projects/$slug/agents': typeof WorkspaceProjectsSlugAgentsIndexRoute
   '/projects/$slug/approvals': typeof WorkspaceProjectsSlugApprovalsIndexRoute
@@ -650,11 +666,13 @@ export interface FileRoutesById {
   '/invite/accept/': typeof InviteAcceptIndexRoute
   '/oauth/authorize/': typeof OauthAuthorizeIndexRoute
   '/s/$token/': typeof STokenIndexRoute
+  '/w/$siteKey/': typeof WSiteKeyIndexRoute
   '/_workspace/dev/design/': typeof WorkspaceDevDesignIndexRoute
   '/_workspace/ecosystems/$id/': typeof WorkspaceEcosystemsIdIndexRoute
   '/_workspace/ecosystems/new/': typeof WorkspaceEcosystemsNewIndexRoute
   '/_workspace/ecosystems/threads/': typeof WorkspaceEcosystemsThreadsIndexRoute
   '/_workspace/projects/$slug/': typeof WorkspaceProjectsSlugIndexRoute
+  '/w/status/$token/': typeof WStatusTokenIndexRoute
   '/_workspace/ecosystems/$id/settings/': typeof WorkspaceEcosystemsIdSettingsIndexRoute
   '/_workspace/projects/$slug/agents/': typeof WorkspaceProjectsSlugAgentsIndexRoute
   '/_workspace/projects/$slug/approvals/': typeof WorkspaceProjectsSlugApprovalsIndexRoute
@@ -723,11 +741,13 @@ export interface FileRouteTypes {
     | '/invite/accept/'
     | '/oauth/authorize/'
     | '/s/$token/'
+    | '/w/$siteKey/'
     | '/dev/design/'
     | '/ecosystems/$id/'
     | '/ecosystems/new/'
     | '/ecosystems/threads/'
     | '/projects/$slug/'
+    | '/w/status/$token/'
     | '/ecosystems/$id/settings/'
     | '/projects/$slug/agents/'
     | '/projects/$slug/approvals/'
@@ -792,11 +812,13 @@ export interface FileRouteTypes {
     | '/invite/accept'
     | '/oauth/authorize'
     | '/s/$token'
+    | '/w/$siteKey'
     | '/dev/design'
     | '/ecosystems/$id'
     | '/ecosystems/new'
     | '/ecosystems/threads'
     | '/projects/$slug'
+    | '/w/status/$token'
     | '/ecosystems/$id/settings'
     | '/projects/$slug/agents'
     | '/projects/$slug/approvals'
@@ -865,11 +887,13 @@ export interface FileRouteTypes {
     | '/invite/accept/'
     | '/oauth/authorize/'
     | '/s/$token/'
+    | '/w/$siteKey/'
     | '/_workspace/dev/design/'
     | '/_workspace/ecosystems/$id/'
     | '/_workspace/ecosystems/new/'
     | '/_workspace/ecosystems/threads/'
     | '/_workspace/projects/$slug/'
+    | '/w/status/$token/'
     | '/_workspace/ecosystems/$id/settings/'
     | '/_workspace/projects/$slug/agents/'
     | '/_workspace/projects/$slug/approvals/'
@@ -919,6 +943,8 @@ export interface RootRouteChildren {
   InviteAcceptIndexRoute: typeof InviteAcceptIndexRoute
   OauthAuthorizeIndexRoute: typeof OauthAuthorizeIndexRoute
   STokenIndexRoute: typeof STokenIndexRoute
+  WSiteKeyIndexRoute: typeof WSiteKeyIndexRoute
+  WStatusTokenIndexRoute: typeof WStatusTokenIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -1126,6 +1152,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof STokenIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/w/$siteKey/': {
+      id: '/w/$siteKey/'
+      path: '/w/$siteKey'
+      fullPath: '/w/$siteKey/'
+      preLoaderRoute: typeof WSiteKeyIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_workspace/dev/design/': {
       id: '/_workspace/dev/design/'
       path: '/dev/design'
@@ -1160,6 +1193,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/projects/$slug/'
       preLoaderRoute: typeof WorkspaceProjectsSlugIndexRouteImport
       parentRoute: typeof WorkspaceProjectsSlugRouteRoute
+    }
+    '/w/status/$token/': {
+      id: '/w/status/$token/'
+      path: '/w/status/$token'
+      fullPath: '/w/status/$token/'
+      preLoaderRoute: typeof WStatusTokenIndexRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_workspace/ecosystems/$id/settings/': {
       id: '/_workspace/ecosystems/$id/settings/'
@@ -1636,6 +1676,8 @@ const rootRouteChildren: RootRouteChildren = {
   InviteAcceptIndexRoute: InviteAcceptIndexRoute,
   OauthAuthorizeIndexRoute: OauthAuthorizeIndexRoute,
   STokenIndexRoute: STokenIndexRoute,
+  WSiteKeyIndexRoute: WSiteKeyIndexRoute,
+  WStatusTokenIndexRoute: WStatusTokenIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

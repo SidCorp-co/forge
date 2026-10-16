@@ -224,6 +224,14 @@ export function casRefusal(
   },
 ): ApiRefusal {
   if (result.reason === 'stale') return staleBase(ctx.baseRevision, result.storedRevision);
+  if (result.reason === 'site-key-taken') {
+    // two creates naming one key at once: the index took the first, and this is the second
+    return {
+      code: 'WIDGET_SITE_KEY_TAKEN',
+      path: '/target/siteKey',
+      detail: 'another widget binding holds this site key; mint a new key for this one.',
+    };
+  }
   if (result.reason === 'foreign') {
     return {
       code: 'BINDING_ID_MISMATCH',
@@ -275,7 +283,15 @@ export async function planBinding(input: {
   if (!parsed.ok) return parsed;
   const doc = parsed.value;
 
-  const encoded = encodeTarget(doc.target);
+  const settled = await bindEffects.settleConfig({
+    bindingId,
+    provider: doc.target.provider,
+    config: encodeTarget(doc.target).config,
+    held:
+      current?.provider === doc.target.provider && isRecord(current.config) ? current.config : null,
+  });
+  if (!settled.ok) return settled;
+  const encoded = { ...encodeTarget(doc.target), config: settled.config };
   const agentAccess = doc.agentAccess ?? 'none';
   const active = doc.active ?? true;
   const refusals = await documentRefusals({
@@ -301,6 +317,24 @@ export async function planBinding(input: {
   return {
     ok: true,
     plan: { projectId, bindingId, baseRevision, doc, encoded, agentAccess, active },
+  };
+}
+
+/**
+ * The document a write answers with: what was sent, with the target read back off the config as it
+ * is stored, so a value the provider settled on bind (a widget's minted site key) is in the answer.
+ */
+export function writtenDocumentOf(plan: PlannedBinding): BindingDocument {
+  const decoded = decodeTarget({
+    provider: plan.encoded.provider,
+    config: plan.encoded.config,
+    label: plan.encoded.label,
+  });
+  return {
+    ...plan.doc,
+    agentAccess: plan.agentAccess,
+    active: plan.active,
+    target: decoded.ok ? decoded.target : plan.doc.target,
   };
 }
 
@@ -367,7 +401,7 @@ export async function writeBinding(input: {
     ok: true,
     held: {
       revision: result.stored.revision,
-      document: { ...plan.doc, agentAccess: plan.agentAccess, active: plan.active },
+      document: writtenDocumentOf(plan),
     },
     created: result.created,
     effects: await effectsOf(plan, result),

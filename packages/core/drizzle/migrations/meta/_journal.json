@@ -3235,6 +3235,13 @@
       "when": 1826409600000,
       "tag": "0503_delivery_leaves_the_mcp_server",
       "breakpoints": true
+    },
+    {
+      "idx": 505,
+      "version": "7",
+      "when": 1826582400000,
+      "tag": "0505_a_widget_visitor_files_feedback_behind_a_session",
+      "breakpoints": true
     }
   ]
 }

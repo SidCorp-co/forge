@@ -65,7 +65,13 @@ export async function lookupSpeakerProfile(args: {
       'a web speaker is a signed-in session and already carries a Forge userId; there is no external directory to link against.',
     );
   }
-  if (source === 'widget' || source === 'telegram') {
+  if (source === 'widget') {
+    return unsupported(
+      source,
+      'a widget visitor is a person on a client site, identified by their session; a visitor is never linked to a Forge account, so there is no directory to read one from.',
+    );
+  }
+  if (source === 'telegram') {
     return unsupported(
       source,
       'this channel has no implementation yet, so there is no directory to read a speaker from. Link speakers on a channel that is connected.',

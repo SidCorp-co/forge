@@ -99,6 +99,9 @@ export const CREDENTIAL_INPUTS: Readonly<Record<string, string>> = {
   'field:form:code': 'an MCP client’s authorization code, redeemed once by its digest',
   'field:form:code_verifier': 'the PKCE verifier that code’s challenge was made from',
   'field:form:refresh_token': 'an MCP client’s refresh token, looked up by its digest and rotated',
+  'field:param:token': 'a feedback widget status link token, looked up by its SHA-256',
+  'field:json:signed':
+    'a client backend’s HMAC over a widget visitor’s id, checked against the binding’s signing secret',
 };
 
 const ROW_KEYS = 'an id, key, number or slug naming a row, checked under the caller’s permissions';
@@ -115,12 +118,14 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     query:session`,
   'a header core’s own clients send: what they render, the project an /mcp call names': words`
     header:x-forge-capabilities header:x-forge-project-slug header:x-forge-unresolved-ref`,
+  'a widget visitor, the page they are on and the origin that framed it, as the frame says, stored as data; the site key is public': words`
+    field:json:context field:json:embeddedAt field:json:visitor field:json:visitorId field:param:siteKey`,
   [ROW_KEYS]: words`
     param:bindingId param:file param:id param:projectId param:provider param:questionId param:slug param:target
     param:templateId param:version query:projectId
     field:param:agentUserId field:param:aid field:param:approvalId field:param:at
     field:param:attachmentId field:param:bid field:param:bindingId field:param:code
-    field:param:commentId field:param:contract field:param:did field:param:doc field:param:edgeId
+    field:param:commentId field:param:contract field:param:did field:param:doc field:param:draftId field:param:edgeId
     field:param:executionId field:param:fb field:param:fireId field:param:id field:param:issue
     field:param:issueId field:param:issueKey field:param:itemId field:param:key field:param:link
     field:param:memoryId field:param:mk field:param:module field:param:name field:param:number
@@ -267,6 +272,8 @@ export const CREDENTIAL_READS: Readonly<Record<string, string>> = {
 
 /** Every whole read no credential arrives in, grouped by why. */
 export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
+  'a widget session’s event stream, opened once its token was checked; it reads nothing of the request': lines`
+    widget/stream.ts Context handed to hono:streamSSE in widgetStream`,
   'an outbound URL, header set or module URL core builds, never a request to core': lines`
     assistant/identity/link-url.ts URLSearchParams.toString in speakerLinkUrl
     integrations/autoflow/refresh.ts URLSearchParams.toString in requestRefresh
@@ -405,6 +412,7 @@ export const FRAMEWORK_IMPORTS: Readonly<Record<string, { credential: boolean; w
   'hono/cookie:setCookie': { credential: false, why: 'writes a cookie on the answer' },
   'hono/cookie:deleteCookie': { credential: false, why: 'clears a cookie on the answer' },
   'hono/cors:cors': { credential: false, why: 'reads Origin, admits nobody' },
+  'hono/streaming:streamSSE': { credential: false, why: 'writes server-sent events on the answer' },
   'hono/body-limit:bodyLimit': { credential: false, why: 'counts body bytes' },
   'hono/route:matchedRoutes': { credential: false, why: 'which routes matched' },
   'hono/utils/constants:COMPOSED_HANDLER': { credential: false, why: 'a marker constant' },

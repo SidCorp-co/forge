@@ -158,6 +158,15 @@ const SECRET_DOORS: Readonly<Record<string, string>> = {
     'POST /open opens one share for whoever holds its token, with no session; a PAT is never a share token',
   'shares/service.ts': 'openShare looks a share up by its token’s SHA-256',
   'shares/token.ts': 'defines hashShareToken, the SHA-256 a share token is looked up by',
+  'widget/routes.ts':
+    'the feedback widget’s public door: a visitor session token in Authorization and a status link token in the path, each looked up by its SHA-256, and a site key naming a binding; a PAT is none of them',
+  'widget/sessions.ts':
+    'sessionOf looks a visitor session up by its token’s SHA-256; openSession checks a signed visitor identity',
+  'widget/status.ts': 'statusOfLink looks a status link up by its token’s SHA-256',
+  'widget/tokens.ts':
+    'mints the widget’s session and status tokens and digests them for their lookup',
+  'widget/rules.ts':
+    'signatureRefusal checks a client backend’s HMAC over a visitor’s id against the binding’s signing secret, in constant time',
   'integration-door/mcp-relay-routes.ts':
     'the storefront MCP relay admits only the relay ticket core minted for one binding, read by readRelayTicket; a PAT verifies as none',
   'integrations/mcp-relay.ts':
@@ -178,6 +187,7 @@ const ADMITS_NOTHING: Readonly<Record<string, string>> = {
   'projects/members-routes.ts':
     'issues a project invitation token behind requireAuth; it checks none',
   'shares/forge-link.ts': 'publishes a share, minting its token; it checks none',
+  'widget/drafts.ts': 'confirming a visitor’s draft mints its status link token; it checks none',
   'root-routes.ts': 'GET /pair passes a pairing code on to the web app’s pair page unread',
   'web-host/host.ts':
     'the /admin page gate hands every forge_auth value to core’s own /api/admin/whoami, where requireAuth decides',

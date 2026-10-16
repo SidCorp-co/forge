@@ -68,6 +68,8 @@ const BINDING_TARGET_REFUSAL_CODES = [
 	"SOURCE_HOST_MISMATCH",
 	"SOURCE_REPOSITORY_LOCAL",
 	"GITHUB_INSTALLATION_NOT_RECORDED",
+	"WIDGET_SITE_KEY_MINTED",
+	"WIDGET_SITE_KEY_TAKEN",
 ] as const;
 
 /** Every code a project-config document write answers with. */

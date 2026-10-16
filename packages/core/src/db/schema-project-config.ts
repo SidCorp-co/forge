@@ -68,6 +68,10 @@ export const integrationBindings = pgTable(
     serviceUq: uniqueIndex('integration_bindings_service_uq')
       .on(t.projectId, t.provider, t.label)
       .where(axes.SERVICE_ROLE_PRED),
+    // a widget's site key names one binding across every project, so a page's key never reaches two
+    widgetSiteKeyUq: uniqueIndex('integration_bindings_widget_site_key_uq')
+      .on(sql`(${t.config} ->> 'siteKey')`)
+      .where(sql`${t.provider} = 'widget'`),
     ...axes.bindingShapeChecks,
   }),
 );

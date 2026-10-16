@@ -16,6 +16,21 @@ const CORE_ONLY = /^\/(api|ws|mcp)(\/|$)/;
 
 const FORGE_CONFIG = new Set(['/forge-config', '/.well-known/forge-config.json']);
 
+/** A page whose path carries a token — a share link, a widget status link — is kept out of every cache, referrer and index. */
+const SEALED = /^\/(s|w\/status)\//;
+
+/** The feedback widget's frame, `/w/<site key>`: a page only its binding's own sites may frame. */
+const WIDGET_FRAME = /^\/w\/(?!status\/)([^/]+)\/?$/;
+
+/** What the host asks of the rest of core, wired at the composition root. */
+export interface WebHostPorts {
+  /**
+   * The origins allowed to frame the widget whose site key this is, or null for a key no active
+   * binding holds. Absent, every widget frame answers `frame-ancestors 'none'`.
+   */
+  widgetFrameAncestors?: (siteKey: string) => Promise<readonly string[] | null>;
+}
+
 /** The origin the reader addressed: the proxy's forwarded scheme over the one it spoke to core. */
 function publicOrigin(c: Context): string {
   const url = new URL(c.req.url);
@@ -39,7 +54,11 @@ const isPageRequest = (c: Context, rel: string): boolean =>
  * this instance, and its page for every route the web declares, after the checks a page request
  * answers before the page loads. Anything else falls through to core's own routes.
  */
-export function webHost(build: WebBuild, fetch: AppFetch): MiddlewareHandler {
+export function webHost(
+  build: WebBuild,
+  fetch: AppFetch,
+  ports: WebHostPorts = {},
+): MiddlewareHandler {
   const base = build.basePath;
   const serve = serveStatic({
     root: build.dir,
@@ -62,21 +81,37 @@ export function webHost(build: WebBuild, fetch: AppFetch): MiddlewareHandler {
     return c.res;
   };
 
-  const page = (status: 200 | 404, rel: string): Response =>
+  const page = (status: 200 | 404, rel: string, more: Record<string, string> = {}): Response =>
     new Response(build.indexHtml, {
       status,
       headers: {
         'content-type': 'text/html; charset=utf-8',
-        // a share link's token is in the path: no referrer carries it on, and no cache or index keeps it
-        ...(rel.startsWith('/s/')
+        // a share or status link's token is in the path: no referrer carries it on, and no cache or index keeps it
+        ...(SEALED.test(rel)
           ? {
               'cache-control': 'no-store',
               'referrer-policy': 'no-referrer',
               'x-robots-tag': 'noindex, nofollow',
             }
           : { 'cache-control': 'no-cache' }),
+        ...more,
       },
     });
+
+  // The widget's frame is where embedding is enforced: the browser refuses to show it inside any
+  // page but one of its binding's allowed origins. The frame's own API calls carry Forge's web
+  // origin, so this header, not an Origin check, is the boundary; a key no binding holds may be
+  // framed by nobody. The answer follows the binding as it is now, so it is never cached.
+  const framing = async (rel: string): Promise<Record<string, string>> => {
+    const siteKey = WIDGET_FRAME.exec(rel)?.[1];
+    if (siteKey === undefined) return {};
+    const allowed = (await ports.widgetFrameAncestors?.(decodeURIComponent(siteKey))) ?? [];
+    return {
+      'cache-control': 'no-store',
+      'content-security-policy': `frame-ancestors ${allowed.length ? allowed.join(' ') : "'none'"}`,
+      'x-robots-tag': 'noindex, nofollow',
+    };
+  };
 
   const gate = async (c: Context, rel: string, url: URL): Promise<GateAnswer> => {
     if (rel === '/guides' || rel.startsWith('/guides/'))
@@ -118,6 +153,6 @@ export function webHost(build: WebBuild, fetch: AppFetch): MiddlewareHandler {
       return;
     }
     const url = new URL(c.req.url);
-    return (await gate(c, rel, url)) ?? squeezed(c, async () => page(200, rel));
+    return (await gate(c, rel, url)) ?? squeezed(c, async () => page(200, rel, await framing(rel)));
   };
 }

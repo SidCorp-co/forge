@@ -185,6 +185,7 @@ import {
 import { coreTimers } from './timer-registry.js';
 import { servedWebBuild } from './web-host/index.js';
 import { readServing } from './whats-new/index.js';
+import { registerWidgetConversationAdapter, widgetCors } from './widget/index.js';
 import { provideWorkPorts } from './work-ports.js';
 import { workflowDesign, workflowFlowsOf } from './workflows/index.js';
 import { attachWs, closeWs, publishEphemeralFrame } from './ws/index.js';
@@ -359,6 +360,8 @@ app.use(
 app.use('*', readMemo());
 app.use('*', requestId());
 app.use('*', requestLogger());
+// the widget's site-key routes answer a binding's own origins, ahead of the global list
+app.use('/api/widget/*', widgetCors());
 app.use('/api/*', corsMiddleware);
 app.use('/mcp', corsMiddleware);
 app.use('/api/*', refuseUnresolvedRefs());
@@ -434,6 +437,7 @@ if (isMain) {
   await sweepPolicyLanded();
   bootstrapChatProviders();
   registerWebConversationAdapter();
+  registerWidgetConversationAdapter();
   registerRoomChat();
   registerRoomBridges();
   bootstrapRunnerAdapters();

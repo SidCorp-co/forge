@@ -177,7 +177,8 @@
         "github",
         "gitlab",
         "google",
-        "autoflow"
+        "autoflow",
+        "widget"
       ],
       "unscannable": [
         {
@@ -293,6 +294,26 @@
         {
           "glob": "packages/core/src/assistant/chat-room/**",
           "why": "The assistant's chat-room door (ISS-167, split out of `integrations/rocketchat/`): the escalation and agent-chat bridges, the question and comment lanes of a Rocket.Chat room, and its conversation ports, window drain and turn inputs (moved from `conversations/chat-room/` by ISS-203). `rocketchat` here is the `conversations.source` and question-origin `adapter` value rows already carry, and the provider a room binding is looked up under; the vendor itself is reached only through the `integrations/rocketchat` port."
+        },
+        {
+          "glob": "packages/core/src/integrations/widget/**",
+          "why": "The provider's own directory — the one place ISS-1071 puts a provider's name. Everything here is ABOUT the widget and no generic path reads it."
+        },
+        {
+          "glob": "packages/core/src/widget/**",
+          "why": "The feedback widget's own domain module: its public door, its visitor sessions and drafts. Every line is about the widget, and `widget` is also the conversation adapter its venues open on."
+        },
+        {
+          "glob": "packages/contracts/src/widget.ts",
+          "why": "The widget's own contract: `widget` names the channel an external reporter files through, the vocabulary the feedback_external_reporters CHECK is built from."
+        },
+        {
+          "glob": "packages/web-v2/src/features/widget/**",
+          "why": "The feedback widget's own web module: the frame a client page embeds, its visitor session and status page. Every line is about the widget, and `widget` here keys its own query cache."
+        },
+        {
+          "glob": "packages/core/src/assistant/identity/directory.ts",
+          "why": "The speaker directory switches on the conversation adapter, whose `widget` value is the visitor channel; it says by name that a widget visitor is never linked to a Forge account."
         }
       ],
       "egress": {
