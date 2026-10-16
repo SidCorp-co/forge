@@ -16,7 +16,7 @@ import {
 } from "@/design";
 import { waitingOnOf } from "@/features/pipeline/derive";
 import { SessionChip } from "@/features/sessions/components/session-chip";
-import { sessionWord } from "@/features/sessions/session-word";
+import { sessionWord, WAITING_FOR_INPUT_WORD } from "@/features/sessions/session-word";
 import { useProjects } from "@/features/projects/hooks";
 import { isJobDriven, sessionTitle } from "@/features/sessions/types";
 import {
@@ -178,6 +178,7 @@ export function SessionScreen({
   // What the box said last: a quiet session says it last reported blocked where its box did, and a
   // blocked one says, in the box's words, who can end the wait (ISS-1228).
   const boxBlocked = session?.report?.work === "blocked";
+  const word = session ? sessionWord(session, now) : null;
   const waitingOn = boxBlocked ? waitingOnOf({ report: session?.report ?? null }).text : undefined;
 
   const lastTurnId = items.length ? items[items.length - 1].turnId : undefined;
@@ -417,7 +418,8 @@ export function SessionScreen({
                     stage={stage}
                     {...(elapsed ? { elapsed } : {})}
                     {...(silentForMs != null ? { silentForMs } : {})}
-                    reported={session ? (sessionWord(session, now)?.activity ?? WORKING_WORD) : WORKING_WORD}
+                    reported={word?.activity ?? WORKING_WORD}
+                    {...(word ? { activity: word.activity } : {})}
                     {...(waitingOn ? { waitingOn } : {})}
                   />
                 </div>
@@ -431,7 +433,7 @@ export function SessionScreen({
               onSend={async (message, files) => {
                 await send.mutateAsync({ sessionId, message, files });
               }}
-              {...sessionComposerState(display, send.isPending)}
+              {...sessionComposerState(display, send.isPending, word?.label === WAITING_FOR_INPUT_WORD)}
               disabled={!session.deviceId}
               attachments={SESSION_ATTACHMENTS}
             />

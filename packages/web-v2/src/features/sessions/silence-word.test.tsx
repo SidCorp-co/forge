@@ -511,6 +511,18 @@ describe("one word for a session, on every surface (ISS-1228 round 10)", () => {
     expect(text).toContain(`${WORKING_WORD} 0`);
   });
 
+  it("counts under Working only the sessions it calls Working", () => {
+    listed = { ...row, runtimeState: "checkpointing", lastHeartbeatAt: HEARD_AT, updatedAt: HEARD_AT };
+    const checkpointing = render(<SessionsScreen scope={{ projectId: "p1" }} />).container.textContent ?? "";
+    cleanup();
+    listed = { ...row, runtimeState: "working", lastHeartbeatAt: HEARD_AT, updatedAt: HEARD_AT };
+    const working = render(<SessionsScreen scope={{ projectId: "p1" }} />).container.textContent ?? "";
+    listed = row;
+    cleanup();
+    expect(checkpointing).toContain(`${WORKING_WORD} 0`);
+    expect(working).toContain(`${WORKING_WORD} 1`);
+  });
+
   it("says a quiet blocked run last reported blocked on the runs tab, never that it is blocked now", () => {
     const quietBlocked = {
       ...run,

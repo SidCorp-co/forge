@@ -154,10 +154,9 @@ function matchesFilter(
       // Waiting for input (ISS-1228): both wait on a person's next message.
       return isAwaitingReply(row) || isWaitingForInput(row, now);
     case "running":
-      // Heard from and running: the one reading the header's Working figure counts too. A quiet
-      // session is counted under Quiet and Attention, and one waiting for input under Waiting for
-      // me, never here.
-      return display === "running" && !isWaitingForInput(row, now);
+      // The sessions this list calls Working, which the header's Working figure counts too: never a
+      // quiet one, nor one doing something it has its own word for.
+      return sessionWord(row, now)?.label === WORKING_WORD;
     case "queued":
       return row.status === "queued" || row.status === "idle";
     case "attention":
