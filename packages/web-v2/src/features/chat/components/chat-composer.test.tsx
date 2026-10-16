@@ -208,9 +208,25 @@ describe("ChatComposer — held", () => {
     fireEvent.paste(screen.getByLabelText("Message"), {
       clipboardData: { items: [{ kind: "file", type: "image/png", getAsFile: () => shot }] },
     });
+    const dropped = fileOf("dropped.png", "image/png");
+    const root = screen.getByLabelText("Message").closest("[tabindex], [role=presentation]") ?? document.body;
+    fireEvent.drop(root, {
+      dataTransfer: { files: [dropped], items: [{ kind: "file", type: "image/png", getAsFile: () => dropped }], types: ["Files"] },
+    });
     await new Promise((r) => setTimeout(r, 50));
     expect(screen.queryByText("picked.png")).not.toBeInTheDocument();
     expect(screen.queryByText("pasted.png")).not.toBeInTheDocument();
+    expect(screen.queryByText("dropped.png")).not.toBeInTheDocument();
+  });
+
+  it("stages a dropped file when not held, so the drop above reaches the dropzone", async () => {
+    render(<ChatComposer onSend={vi.fn()} attachments={SESSION_ATTACHMENTS} />);
+    const dropped = fileOf("dropped.png", "image/png");
+    const root = screen.getByLabelText("Message").closest("[tabindex], [role=presentation]") ?? document.body;
+    fireEvent.drop(root, {
+      dataTransfer: { files: [dropped], items: [{ kind: "file", type: "image/png", getAsFile: () => dropped }], types: ["Files"] },
+    });
+    expect(await screen.findByText("dropped.png")).toBeInTheDocument();
   });
 
   it("spins for nothing it was told is held, even when busy is passed beside it", () => {
