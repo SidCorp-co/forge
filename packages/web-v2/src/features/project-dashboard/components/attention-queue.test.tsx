@@ -5,6 +5,7 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { StatusChip } from "@/design/primitives/status-chip";
 import { AttentionQueue } from "./attention-queue";
 
 expect.extend(matchers);
@@ -56,5 +57,66 @@ describe("the Needs your attention list with nothing in it", () => {
     render(<AttentionQueue items={[]} cut={null} shape="degraded" slug="pair" now={0} />);
     expect(screen.queryByText("All caught up")).toBeNull();
     expect(screen.getByText("No item is waiting on you")).toBeInTheDocument();
+  });
+});
+
+// ISS-1228 round 9 (judge-22): at 390 a row was cut short and showed no age. Each row reads whole,
+// wrapping rather than truncating, with its age beside it.
+describe("a Needs you row at a phone's width", () => {
+  const NOW = Date.parse("2026-10-16T10:00:00.000Z");
+  const title = "run: ISS-9 waits on you — approve the database restore in Coolify before the window closes";
+  const items = [
+    {
+      key: "session-s9",
+      actionKind: "session" as const,
+      actionLabel: "Open session",
+      title,
+      issueRef: "ISS-9",
+      link: "/projects/pair/agents/s9",
+      since: new Date(NOW - 3 * 3_600_000).toISOString(),
+    },
+  ];
+
+  it("shows the whole title, wrapping instead of truncating, and its age", () => {
+    render(<AttentionQueue items={items} cut={null} slug="pair" now={NOW} />);
+    const row = screen.getByText(title);
+    expect(row.className).not.toMatch(/\b(truncate|line-clamp-\d|whitespace-nowrap|overflow-hidden)\b/);
+    expect(row.className).toMatch(/\bbreak-words\b/);
+    const li = row.closest("li");
+    expect(li?.className).toMatch(/\bflex-wrap\b/);
+    expect(li?.querySelector("[data-testid=age-chip]")).toHaveTextContent("3h");
+  });
+});
+
+// ISS-1228 round 9 (coordinator): the Waiting chip wore the Working sparkle. A chip that shows a
+// session's status draws the mark the session chips give that status.
+describe("the Needs you chip of a session waiting on you", () => {
+  const drawing = (root: ParentNode | null) => {
+    const svg = root?.querySelector("svg");
+    return svg ? [...svg.children].map((c) => c.outerHTML).join("") : "";
+  };
+  const chipMark = (status: "waiting" | "running") => {
+    const { container } = render(<StatusChip domain="session" status={status} />);
+    const mark = drawing(container);
+    cleanup();
+    return mark;
+  };
+
+  it("draws the session chips' Waiting mark, never the Working sparkle", () => {
+    const waiting = chipMark("waiting");
+    const working = chipMark("running");
+    const item = {
+      key: "session-s1",
+      actionKind: "session" as const,
+      actionLabel: "Open session",
+      title: "run: ISS-1 waits on you",
+      issueRef: "ISS-1",
+      link: "/projects/pair/agents/s1",
+      since: new Date(0).toISOString(),
+    };
+    render(<AttentionQueue items={[item]} cut={null} slug="pair" now={60_000} />);
+    const tag = screen.getByText("Waiting").parentElement;
+    expect(drawing(tag)).toBe(waiting);
+    expect(drawing(tag)).not.toBe(working);
   });
 });

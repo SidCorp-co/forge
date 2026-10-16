@@ -59,7 +59,7 @@ export function StepTimes({ durations, windowDays, isLoading, error, onRetry }: 
           <div className="flex flex-col gap-2.5">
             {steps.map((s) => (
               <div key={s.step} className="flex items-center gap-2.5">
-                <span data-step-label className="w-28 flex-none break-words text-12 text-muted" title={s.step}>
+                <span data-step-label className="w-28 flex-none break-words text-12 text-muted" title={jobKindLabel(s.step)}>
                   {jobKindLabel(s.step)}
                 </span>
                 <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-sunken">

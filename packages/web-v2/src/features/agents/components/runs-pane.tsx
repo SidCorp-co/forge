@@ -77,10 +77,10 @@ function ClosedRunWork({ run, slug }: { run: PipelineRunListItem; slug: string }
  * What the tab says where no box reports a run: whether any run is working, and the runs that have
  * closed, so a project whose runs all ended is never said to have none.
  */
-function NothingRunning({ projectId, slug, now }: { projectId: string; slug: string; now: number }) {
+function NothingRunning({ projectId, slug }: { projectId: string; slug: string }) {
   const runsQ = useProjectRuns(projectId);
   const closed = useMemo(() => closedRuns(runsQ.data?.items), [runsQ.data]);
-  const worked = workedRuns(runsQ.data?.items, now).length;
+  const worked = workedRuns(runsQ.data?.items).length;
   const readWhole = !runsQ.isError && runsQ.data !== undefined && runsQ.data.totalCount <= runsQ.data.items.length;
   const read = runsQ.data?.items.length ?? 0;
   const total = runsQ.data?.totalCount ?? read;
@@ -215,7 +215,7 @@ export function RunsPane({ scope }: RunsPaneProps) {
           <ErrorState message={formatApiError(error)} onRetry={() => refetch()} />
         </div>
       ) : all.length === 0 ? (
-        <NothingRunning projectId={scope.projectId} slug={scope.slug} now={now} />
+        <NothingRunning projectId={scope.projectId} slug={scope.slug} />
       ) : (
         <>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">

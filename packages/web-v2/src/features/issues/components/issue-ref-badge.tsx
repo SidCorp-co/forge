@@ -11,8 +11,8 @@ export interface IssueRefBadgeProps {
   id: string;
   /** Project slug for the link target. */
   slug: string;
-  /** Friendly `ISS-<seq>` identifier. When absent, the badge reads "Issue". */
-  displayId?: string | null;
+  /** Friendly `ISS-<seq>` identifier: the badge names its issue, so a caller without one draws none. */
+  displayId: string;
   /** Optional issue title, surfaced as the link tooltip. */
   title?: string | null;
   /** Optional related-issue status — rendered as a small tone dot before the
@@ -34,7 +34,7 @@ export function IssueRefBadge({
   return (
     <Link
       href={`/projects/${slug}/issues/${id}`}
-      title={title ?? displayId ?? "Open issue"}
+      title={title ?? displayId}
       className={`${withTitle ? "flex w-full" : "inline-flex"} max-w-full items-center gap-1 transition-opacity hover:opacity-80 focus-visible:outline-none`}
     >
       {dot && (
@@ -45,7 +45,7 @@ export function IssueRefBadge({
         />
       )}
       <span className="flex-none">
-        <MonoTag hue="cobalt">{displayId ?? "Issue"}</MonoTag>
+        <MonoTag hue="cobalt">{displayId}</MonoTag>
       </span>
       {withTitle && (
         <span className="fg-caption min-w-0 flex-1 truncate text-left text-xs">{title}</span>

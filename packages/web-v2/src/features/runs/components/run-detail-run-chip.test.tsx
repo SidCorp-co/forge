@@ -111,13 +111,13 @@ describe("the Ops drawer, which opens a run with no issue row (ISS-1297)", () =>
   it("still reads a running live job as running", () => {
     run = summary("running", { attempts: [attempt("running")] });
     open();
-    expect(within(opsHeader()).getByText("running · drive")).toBeInTheDocument();
+    expect(within(opsHeader()).getByText("Running · Issue work")).toBeInTheDocument();
   });
 
   it("still reads a job handed to a runner as running", () => {
     run = summary("running", { attempts: [attempt("dispatched")] });
     open();
-    expect(within(opsHeader()).getByText("running · drive")).toBeInTheDocument();
+    expect(within(opsHeader()).getByText("Running · Issue work")).toBeInTheDocument();
   });
 
   it("reads a queued retry behind a failed attempt as Queued, not running", () => {
@@ -131,7 +131,7 @@ describe("the Ops drawer, which opens a run with no issue row (ISS-1297)", () =>
   it("reads a run a session has beat for as running even while its job row still says queued", () => {
     run = summary("running", { attempts: [attempt("queued")], lastSessionBeatAt: "2026-09-05T14:20:00Z" });
     open();
-    expect(within(opsHeader()).getByText("running · drive")).toBeInTheDocument();
+    expect(within(opsHeader()).getByText("Running · Issue work")).toBeInTheDocument();
   });
 
   it("names the run's issue by ref and title, and a run with none still reads Pipeline run", () => {

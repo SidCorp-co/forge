@@ -1,7 +1,7 @@
 /**
  * One project's live agent sessions and what is held on it (ISS-1228): the pipeline surface's
  * whole read. No new state — sessions are `agent_sessions`, a session's issues are its
- * `issue_leases`, what it waits on is the box's own `device_run_ledger` entry, a claim is
+ * `issue_leases` or its job's `metadata.issueId`, what it waits on is the box's own `device_run_ledger` entry, a claim is
  * `issues.session_context.lease` read by `readClaim`, and a person's hold is the park record.
  */
 
@@ -15,6 +15,8 @@ import {
 } from '../agent-sessions/box-report.js';
 import { db } from '../db/client.js';
 import { type IssueStatus, terminalAgentSessionStatuses } from '../db/schema.js';
+import { silenceLimitFrom } from '../devices/session-silence.js';
+import { loadSilenceDeadlines } from '../devices/session-silence-read.js';
 import { issueArchiveSide } from '../issues/archive.js';
 import { loadIssuePark } from '../issues/park-view.js';
 import { HUMAN_PARK_STATUSES, ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
@@ -35,6 +37,9 @@ export interface LiveSession {
   id: string;
   kind: string;
   title: string | null;
+  /** The job type and skill a step session was opened under, which its title begins with. */
+  jobType: string | null;
+  skillName: string | null;
   status: string;
   runtimeState: string | null;
   deviceId: string | null;
@@ -45,6 +50,8 @@ export interface LiveSession {
   createdAt: string;
   issues: HeldIssueRef[];
   report: SessionReport | null;
+  /** How long core lets this session go unheard before it ends it; `null` where no silence does. */
+  silenceLimitMs: number | null;
 }
 
 export type Holder =
@@ -88,6 +95,8 @@ export interface SessionRow {
   id: string;
   kind: string;
   title: string | null;
+  job_type?: string | null;
+  skill_name?: string | null;
   status: string;
   runtime_state: string | null;
   device_id: string | null;
@@ -96,6 +105,8 @@ export interface SessionRow {
   started_at: Date | string | null;
   last_heartbeat_at: Date | string | null;
   created_at: Date | string;
+  /** From `loadSilenceDeadlines`, epoch ms; absent reads as no limit. */
+  silence_deadline?: number | null;
 }
 
 export interface LeaseRow {
@@ -212,6 +223,8 @@ export function projectSessionsAndHolds(input: {
       id: s.id,
       kind: s.kind,
       title: s.title,
+      jobType: s.job_type ?? null,
+      skillName: s.skill_name ?? null,
       status: s.status,
       runtimeState: s.runtime_state,
       deviceId: s.device_id,
@@ -222,6 +235,11 @@ export function projectSessionsAndHolds(input: {
       createdAt: iso(s.created_at) as string,
       issues: issuesOf.get(s.id) ?? [],
       report: reportOf.get(s.id) ?? null,
+      silenceLimitMs: silenceLimitFrom(
+        s.silence_deadline ?? null,
+        s.last_heartbeat_at,
+        s.started_at,
+      ),
     }),
   );
 
@@ -264,7 +282,9 @@ export async function readSessionsAndHolds(
   `)) as unknown as Array<{ issue_prefix: string | null }>;
 
   const sessions = (await db.execute(sql`
-    SELECT s.id, s.kind, s.title, s.status, s.runtime_state, s.device_id, d.name AS device_name,
+    SELECT s.id, s.kind, s.title, s.metadata ->> 'jobType' AS job_type,
+           s.metadata ->> 'skillName' AS skill_name,
+           s.status, s.runtime_state, s.device_id, d.name AS device_name,
            s.parent_session_id, s.started_at, s.last_heartbeat_at, s.created_at
       FROM agent_sessions s
       LEFT JOIN devices d ON d.id = s.device_id
@@ -275,6 +295,8 @@ export async function readSessionsAndHolds(
 
   const ids = sessions.map((s) => s.id);
   const ledger = await loadLedgerRows(ids);
+  const deadlines = await loadSilenceDeadlines(ids);
+  for (const s of sessions) s.silence_deadline = deadlines.get(s.id) ?? null;
 
   const leases = (await db.execute(sql`
     SELECT l.session_id, s.title AS session_title, s.kind AS session_kind, d.name AS device_name,
@@ -287,7 +309,21 @@ export async function readSessionsAndHolds(
      WHERE l.project_id = ${projectId}::uuid
        AND s.status NOT IN (${terminalSessions})
        AND ${liveIssue}
-     ORDER BY issues.iss_seq
+    UNION ALL
+    -- A job's session holds its issue by \`metadata.issueId\`, the job lane pipeline-health binds.
+    SELECT s.id, s.title, s.kind, d.name, coalesce(s.started_at, s.created_at),
+           issues.id, issues.iss_seq, issues.title, issues.status
+      FROM agent_sessions s
+      JOIN issues ON issues.project_id = s.project_id AND issues.id::text = s.metadata ->> 'issueId'
+      LEFT JOIN devices d ON d.id = s.device_id
+     WHERE s.project_id = ${projectId}::uuid
+       AND s.status NOT IN (${terminalSessions})
+       AND ${liveIssue}
+       AND NOT EXISTS (
+         SELECT 1 FROM issue_leases l
+          WHERE l.session_id = s.id AND l.issue_key = 'ISS-' || issues.iss_seq -- ISS-992:canonical
+       )
+     ORDER BY iss_seq
   `)) as unknown as LeaseRow[];
 
   const claimRows = (await db.execute(sql`

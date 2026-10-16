@@ -1,6 +1,7 @@
 // The pipeline strip, read off the RUN this session belongs to — its own steps,
 // each under the name the run gave it, in one neutral accent.
 
+import { jobKindLabel } from "@/features/overview/job-kinds";
 import { formatDurationMs } from "@/lib/utils/format";
 import type { PipelineRunSummary } from "@/features/runs/types";
 
@@ -30,7 +31,7 @@ export function StepStrip({ run, currentStep }: { run: PipelineRunSummary; curre
               <span aria-hidden="true" style={{ color: tick.color }}>
                 {tick.glyph}
               </span>
-              <span className="fg-body-sm truncate">{step.jobType}</span>
+              <span className="fg-body-sm truncate">{jobKindLabel(step.jobType)}</span>
               <span className="fg-caption ml-auto">
                 {step.durationMs != null ? formatDurationMs(step.durationMs) : "—"}
               </span>

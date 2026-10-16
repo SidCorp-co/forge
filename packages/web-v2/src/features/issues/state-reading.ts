@@ -1,7 +1,8 @@
+import { jobKindLabel } from "@/features/overview/job-kinds";
 import { workStateOf } from "@forge/contracts/work-state";
 import type { StatusKey } from "@/design/status";
 import { formatElapsed } from "@/lib/utils/format";
-import { runStatusChip, statusLabel, statusToChip } from "./derive";
+import { liveStepWords, runStatusChip, statusLabel, statusToChip } from "./derive";
 import type { IssueFailureInfo, IssueRow } from "./types";
 import { deriveQueuedStep, hasLiveAgentSession, inStatusFor, STALE_AFTER_MS } from "./waiting";
 
@@ -77,15 +78,15 @@ function runParts(row: IssueRow, now: number): RunPart[] {
   const parts: RunPart[] = [];
   const queued = deriveQueuedStep(health, hasLiveAgentSession(row.agentStatus));
   if (row.agentStatus === "running") {
-    parts.push({ word: "Running", step: health?.activeSession?.skill ?? null, detail: null });
+    parts.push({ word: "Running", step: liveStepWords(health?.activeSession), detail: null });
   } else if (row.agentStatus === "queued") {
-    parts.push({ word: "Queued", step: health?.activeSession?.skill ?? null, detail: null });
+    parts.push({ word: "Queued", step: liveStepWords(health?.activeSession), detail: null });
   }
   if (queued) {
     parts.push({
       word: queued.gate?.short ?? "Queued",
-      step: queued.jobType,
-      detail: queued.gate ? `${queued.jobType} · ${queued.gate.detail}` : null,
+      step: jobKindLabel(queued.jobType),
+      detail: queued.gate ? `${jobKindLabel(queued.jobType)} · ${queued.gate.detail}` : null,
     });
   }
   if (row.agentStatus === "failed") {

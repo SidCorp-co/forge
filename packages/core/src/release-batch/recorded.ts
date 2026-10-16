@@ -181,7 +181,12 @@ export async function recordPerformedRelease(
 
   for (const issue of roster) {
     try {
-      await postSystemComment({ issueId: issue.id, authorId: userId, body: note });
+      await postSystemComment({
+        issueId: issue.id,
+        authorId: userId,
+        body: note,
+        announces: 'release',
+      });
     } catch (err) {
       logger.warn({ err, issueId: issue.id, runId: run.id }, 'release-record: comment failed');
       // With no probe the note is the issue's only word that nothing verified it, so no close.

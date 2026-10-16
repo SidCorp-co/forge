@@ -200,17 +200,15 @@ describe('ISS-164 pipelineHealth E2E', () => {
   it('exposes activeSession when a running session is linked', async () => {
     const { project } = await seedProject();
     const issueId = await insertIssue(project.id);
-    const sessionId = await insertSession(project.id, {
-      issueId,
-      status: 'running',
-      skill: 'forge-code',
-    });
+    const s = await insertSession(project.id, { issueId, status: 'running', skill: 'forge-code' });
     const map = await mods.hydratePipelineHealthForIssues(project.id, [issueId]);
     const health = map.get(issueId);
+    // A session that recorded no job type says null, not an empty string standing in for one.
     expect(health?.activeSession).toEqual({
-      id: sessionId,
+      id: s,
       status: 'running',
       skill: 'forge-code',
+      jobType: null,
     });
   });
 

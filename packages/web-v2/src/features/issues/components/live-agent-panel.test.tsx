@@ -67,7 +67,7 @@ describe("LiveAgentPanel — queued arm (ISS-903)", () => {
   it("says Agent queued, names the step, and states the gate in plain words", () => {
     renderPanel({ kind: "queued", step: gatedStep });
     expect(screen.getByText("Agent queued")).toBeInTheDocument();
-    expect(screen.getByText("drive")).toBeInTheDocument();
+    expect(screen.getByText("Issue work")).toBeInTheDocument();
     expect(screen.getByText(/No runner is online for this project/)).toBeInTheDocument();
     expect(screen.getByText(/Bring a runner back/)).toBeInTheDocument();
   });

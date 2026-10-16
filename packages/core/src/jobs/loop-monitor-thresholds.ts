@@ -10,6 +10,15 @@ const ACK_FAST_MS_DEFAULT = 90_000;
  *  between emissions. The demoted stale-detector alarm derives its margin from it. */
 export const RESULT_QUIET_MINUTES = 60;
 
+export const CHAT_IDLE_CLOSE_MS = 2 * 60 * 60_000;
+
+/** The least the one-shot sweep waits on a session whose box's runner still answers. */
+export const ONE_SHOT_DEVICE_GRACE_FLOOR_MS = 20 * 60_000;
+
+export function oneShotDeviceGraceMs(heartbeatMs: number): number {
+  return Math.max(heartbeatMs, ONE_SHOT_DEVICE_GRACE_FLOOR_MS);
+}
+
 function readTimeoutEnv(name: string, fallback: number): number {
   const raw = process.env[name];
   if (!raw) return fallback;

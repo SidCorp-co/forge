@@ -14,6 +14,8 @@ import {
   terminalAgentSessionStatuses,
   usageRecords,
 } from '../db/schema.js';
+import { silenceLimitFrom } from '../devices/session-silence.js';
+import { loadSilenceDeadlines } from '../devices/session-silence-read.js';
 import { isPipelineSessionKind } from '../jobs/session-kinds.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
@@ -69,6 +71,7 @@ import {
   detectUnexpandedSkillFailure,
   finalizeScheduleSessionFailure,
 } from './session-failure.js';
+import { loadSessionIssueRefs } from './session-issue-ref.js';
 import { onTerminalPatch } from './terminal-effects.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
 import { agentSessionTurnsRoutes } from './turns-routes.js';
@@ -381,11 +384,20 @@ agentSessionRoutes.get(
     }
 
     const reportById = await loadSessionReports(pageIds);
+    const deadlineById = await loadSilenceDeadlines(pageIds);
+    const issueById = await loadSessionIssueRefs(pageIds);
     const items = rows.map((r) => ({
       ...r,
+      issue: issueById.get(r.id) ?? null,
       estimatedCost: costById.get(r.id) ?? 0,
       lastMessagePreview: previewById.get(r.id) ?? null,
       report: reportById.get(r.id) ?? null,
+      silenceLimitMs: silenceLimitFrom(
+        deadlineById.get(r.id) ?? null,
+        r.lastHeartbeatAt,
+        r.startedAt,
+        r.updatedAt,
+      ),
     }));
     return c.json(
       answer(
@@ -461,7 +473,19 @@ agentSessionRoutes.get(
     }
 
     const reports = await loadSessionReports([row.id]);
-    return c.json(answer(ref.sessionReadSchema, { ...row, report: reports.get(row.id) ?? null }));
+    const deadlines = await loadSilenceDeadlines([row.id]);
+    return c.json(
+      answer(ref.sessionReadSchema, {
+        ...row,
+        report: reports.get(row.id) ?? null,
+        silenceLimitMs: silenceLimitFrom(
+          deadlines.get(row.id) ?? null,
+          row.lastHeartbeatAt,
+          row.startedAt,
+          row.updatedAt,
+        ),
+      }),
+    );
   },
 );
 

@@ -9,9 +9,11 @@
 // discriminated union rather than two components, which makes "renders nothing
 // when there is neither" the caller's obligation and the type's to enforce.
 
+import { jobKindLabel } from "@/features/overview/job-kinds";
 import { useState } from "react";
 import Link from "next/link";
-import { Card, CardContent, Icon, MonoTag } from "@/design";
+import { Card, CardContent, Icon, MonoTag, SILENCE_TONE, SILENCE_WORD } from "@/design";
+import { TONE_META } from "@/design/status";
 import { useElapsed } from "@/design/hooks/use-elapsed";
 import { heartbeatState } from "../derive";
 import type { QueuedStepView } from "../waiting";
@@ -35,7 +37,7 @@ const HEARTBEAT_META: Record<
   { dot: string; label: string }
 > = {
   alive: { dot: "var(--green-500)", label: "Heartbeat alive" },
-  stale: { dot: "var(--red-500)", label: "Heartbeat stale" },
+  stale: { dot: TONE_META[SILENCE_TONE].dot, label: SILENCE_WORD },
   unknown: { dot: "var(--ink-400)", label: "No heartbeat" },
 };
 
@@ -144,7 +146,7 @@ function QueuedRow({
           <Icon name="agent" size={16} />
           <span className="fg-label">Agent queued</span>
         </span>
-        <Stat icon="pipeline" label="Step" value={step.jobType} mono />
+        <Stat icon="pipeline" label="Step" value={jobKindLabel(step.jobType)} />
         <Stat icon="clock" label="Waited" value={waited} mono />
         {step.nextAttempt && (
           <Stat icon="clock" label="Next attempt" value={step.nextAttempt} />

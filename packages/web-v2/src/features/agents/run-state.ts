@@ -109,14 +109,14 @@ export interface Pulse {
 }
 
 export function pulse(
-  row: Pick<RunSessionRow, "lastActivityAt">,
+  row: Pick<RunSessionRow, "lastActivityAt" | "silenceLimitMs">,
   nowMs: number,
 ): Pulse {
   if (!row.lastActivityAt || Number.isNaN(Date.parse(row.lastActivityAt))) {
     return { state: "unheard", sinceMs: null };
   }
   const silence = sessionSilence(
-    { status: "running", lastHeartbeatAt: row.lastActivityAt, startedAt: null },
+    { status: "running", lastHeartbeatAt: row.lastActivityAt, startedAt: null, silenceLimitMs: row.silenceLimitMs },
     nowMs,
   );
   const sinceMs = Math.max(0, silence.sinceHeartbeatMs ?? 0);
@@ -141,7 +141,7 @@ export function pulseText(p: Pulse): string | null {
 /** The chip a run's row shows at `nowMs`: a run the box calls working that core has not heard from
  *  past the silence line says what it last reported, so the row never claims work nobody has seen. */
 export function stateLabelAt(
-  row: Pick<RunSessionRow, "incarnation" | "work" | "lastActivityAt">,
+  row: Pick<RunSessionRow, "incarnation" | "work" | "lastActivityAt" | "silenceLimitMs">,
   nowMs: number,
 ): StateLabel {
   const state = runState(row);
@@ -162,7 +162,7 @@ const boxClaimsAProcess = (incarnation: string): boolean =>
  * The silence line, on the rows where silence means something.
  */
 export function silenceText(
-  row: Pick<RunSessionRow, "incarnation" | "lastActivityAt">,
+  row: Pick<RunSessionRow, "incarnation" | "lastActivityAt" | "silenceLimitMs">,
   nowMs: number,
 ): string | null {
   return boxClaimsAProcess(row.incarnation) ? pulseText(pulse(row, nowMs)) : null;

@@ -110,3 +110,21 @@ describe("a blocked session's own page (ISS-1228 criteria 40, 41)", () => {
     expect(screen.getAllByText("Blocked").length).toBeGreaterThan(0);
   });
 });
+
+// ISS-1228 r9: a step session's page at phone width drew Stop and Open issue over its title, so the
+// step's words were on the page and nobody could read them.
+describe("a session page's header at phone width", () => {
+  it("lets its title wrap rather than truncate", () => {
+    render(<SessionScreen sessionId="s1" projectSlug="qa" />);
+    const title = screen.getByRole("heading", { name: "run: ISS-3" });
+    expect(title.className).not.toMatch(/\btruncate\b/);
+    expect(title.className).toContain("break-words");
+  });
+
+  it("puts its actions on a row of their own below sm", () => {
+    render(<SessionScreen sessionId="s1" projectSlug="qa" />);
+    const actions = screen.getByRole("button", { name: "Stop" }).parentElement;
+    expect(actions?.className.split(/\s+/)).toContain("basis-full");
+    expect(actions?.parentElement?.className.split(/\s+/)).toContain("flex-wrap");
+  });
+});

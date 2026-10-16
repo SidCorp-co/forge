@@ -11,12 +11,15 @@ const DEFAULT_RESIDENCY_SECONDS = 10 * 60;
 
 const PARK_GRACE_SECONDS = 5 * 60;
 
+/** How long an unparked waiting session in the project may go unheard: its residency plus the grace. */
+export const residencySeconds = (projectId: SQL): SQL => sql`(${PARK_GRACE_SECONDS} + COALESCE((
+    SELECT (p.agent_config -> 'pipelineConfig' ->> 'sessionResidencySeconds')::int
+    FROM projects p WHERE p.id = ${projectId}
+  ), ${DEFAULT_RESIDENCY_SECONDS}))`;
+
 const RESIDENCY_DEADLINE = sql`
   COALESCE(${agentSessions.lastHeartbeatAt}, ${agentSessions.createdAt})
-    < now() - make_interval(secs => ${PARK_GRACE_SECONDS} + COALESCE((
-        SELECT (p.agent_config -> 'pipelineConfig' ->> 'sessionResidencySeconds')::int
-        FROM projects p WHERE p.id = agent_sessions.project_id
-      ), ${DEFAULT_RESIDENCY_SECONDS}))`;
+    < now() - make_interval(secs => ${residencySeconds(sql`agent_sessions.project_id`)})`;
 
 /**
  * Whether the session at `sessionId` is parked on a person right now.

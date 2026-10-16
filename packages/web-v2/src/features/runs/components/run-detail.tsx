@@ -7,6 +7,7 @@
 // `['pipeline-run', id]`). Pause/Resume/Cancel hit real endpoints; Rerun/Fork
 // have NO backend (info toast, no phantom call).
 
+import { jobKindLabel } from "@/features/overview/job-kinds";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -90,7 +91,7 @@ export function RunDetail({ open, onClose, runId, slug, canWrite = true }: RunDe
       () => toast({ title: "Couldn't copy link", tone: "error" }),
     );
   }
-  const chipStep = run?.currentStep ?? undefined;
+  const chipStep = run?.currentStep ? jobKindLabel(run.currentStep) : undefined;
   const label = issueRef ?? (runId ? `run ${runId.slice(0, 8)}` : "run");
   const title = run?.issueTitle ?? "Pipeline run";
   const chipStatus = run ? drawerRunChip(run, null) : null;
@@ -241,7 +242,7 @@ export function RunDetail({ open, onClose, runId, slug, canWrite = true }: RunDe
                   className="forge-pulse inline-block size-2 flex-none rounded-full"
                   style={{ background: "var(--amber-500)" }}
                 />
-                Pausing — finishing current step: {activeStep?.jobType ?? "the in-flight step"}…
+                Pausing — finishing current step: {activeStep ? jobKindLabel(activeStep.jobType) : "the in-flight step"}…
               </p>
             )}
             {isHalted && (
@@ -340,7 +341,7 @@ function TimelineTab({ run, loading }: { run: PipelineRunSummary | undefined; lo
                             : "var(--fg-subtle)",
                   }}
                 >
-                  {step.jobType}
+                  {jobKindLabel(step.jobType)}
                 </span>
                 <span className="fg-body-sm capitalize text-muted">{step.status}</span>
                 {step.durationMs != null && (
@@ -390,7 +391,7 @@ function CostTab({ run, loading }: { run: PipelineRunSummary | undefined; loadin
           <p className="fg-overline">Step durations</p>
           {steps.map((s) => (
             <div key={s.jobType} className="flex items-center gap-2.5">
-              <span className="w-14 flex-none font-mono text-12 text-muted">{s.jobType}</span>
+              <span className="w-28 flex-none break-words text-12 text-muted">{jobKindLabel(s.jobType)}</span>
               <ProgressBar
                 className="flex-1"
                 value={((s.durationMs ?? 0) / maxDur) * 100}

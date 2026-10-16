@@ -24,6 +24,7 @@ export const runSessionRowSchema = z.object({
   sessionStatus: z.string().nullable(),
   sessionFailureReason: z.string().nullable(),
   lastActivityAt: z.string().nullable(),
+  silenceLimitMs: z.number().int().nonnegative().nullable(),
   masterTitle: z.string().nullable(),
 });
 

@@ -133,19 +133,34 @@ describe("what the run is doing", () => {
       }),
       NOW,
     );
-    expect(reading.runs).toEqual([{ word: "Running", step: "code", detail: null }]);
+    expect(reading.runs).toEqual([{ word: "Running", step: "Code", detail: null }]);
+  });
+
+  // ISS-1228 round 9: the issue list said "Running · forge-code" where spend calls the work Issue work.
+  it("names the running step by its job kind in words, never by its skill's stored name", () => {
+    const reading = stateReading(
+      row({
+        agentStatus: "running",
+        pipelineHealth: {
+          stage: "in_progress",
+          activeSession: { id: "s1", status: "running", skill: "forge-code", jobType: "drive" },
+        } as PipelineHealth,
+      }),
+      NOW,
+    );
+    expect(reading.runs).toEqual([{ word: "Running", step: "Issue work", detail: null }]);
   });
 
   it("names the gate holding a queued step, with its detail", () => {
     const [run] = stateReading(row({ pipelineHealth: queuedHealth("runner_stale") }), NOW).runs;
     expect(run.word).toBe("No runner online");
-    expect(run.step).toBe("drive");
+    expect(run.step).toBe("Issue work");
     expect(run.detail).toMatch(/No runner is online/);
   });
 
   it("says Queued when nothing is holding the step, so queued never reads as stuck", () => {
     const [run] = stateReading(row({ pipelineHealth: queuedHealth() }), NOW).runs;
-    expect(run).toEqual({ word: "Queued", step: "drive", detail: null });
+    expect(run).toEqual({ word: "Queued", step: "Issue work", detail: null });
   });
 
   it("keeps a failure's step and reason, and still shows the gate on a deferred retry", () => {

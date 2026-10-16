@@ -13,6 +13,8 @@ import { agentSessions, devices, runners } from '../db/schema.js';
 import { deviceRunLedger } from '../db/schema-run-ledger.js';
 import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
 import { logger } from '../logger.js';
+import { silenceLimitFrom } from './session-silence.js';
+import { loadSilenceDeadlines } from './session-silence-read.js';
 
 export interface RunLedgerIssue {
   issueKey: string;
@@ -159,6 +161,9 @@ export interface ProjectRunSessionRow
    *  has not ended — `sessionStatus` is what separates those two, never this field's absence. */
   sessionFailureReason: string | null;
   lastActivityAt: string | null;
+  /** How long after `lastActivityAt` core ends the run's session if nothing more is heard; `null`
+   *  where that is null, where no silence ends it, or where core holds no session for the run. */
+  silenceLimitMs: number | null;
   masterTitle: string | null;
 }
 
@@ -200,8 +205,14 @@ export async function readProjectRunSessions(projectId: string): Promise<Project
     .leftJoin(devices, eq(devices.id, deviceRunLedger.deviceId))
     .where(eq(deviceRunLedger.projectId, projectId))
     .orderBy(sql`${deviceRunLedger.observedAt} DESC`);
+  const deadlines = await loadSilenceDeadlines(
+    rows.flatMap((r) => (r.sessionId ? [r.sessionId] : [])),
+  );
   return rows.map((r) => ({
     ...r,
+    silenceLimitMs: r.sessionId
+      ? silenceLimitFrom(deadlines.get(r.sessionId) ?? null, r.lastActivityAt)
+      : null,
     issues: (r.issues ?? []) as RunLedgerIssue[],
     observedAt: new Date(r.observedAt).toISOString(),
     lastActivityAt: r.lastActivityAt ? new Date(r.lastActivityAt).toISOString() : null,

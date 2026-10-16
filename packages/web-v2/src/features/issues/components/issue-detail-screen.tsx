@@ -45,6 +45,7 @@ import {
   deriveRunView,
   isLiveRun,
   issueQueryKey,
+  liveStepWords,
   parseChecklist,
   runStatusChip,
   threadQuestionOf,
@@ -202,7 +203,7 @@ export function IssueDetailScreen({
     requestTransition(issue.id, "reopen", { successMessage: "Issue resumed", onSuccess: refreshIssue });
 
   const blocker = deriveBlockerState(issue, issue.pipelineHealth, depsQ.data, park);
-  const liveStep = issue.pipelineHealth?.activeSession?.skill ?? null;
+  const liveStep = liveStepWords(issue.pipelineHealth?.activeSession);
   // A group run names its members by the canonical key, never the project prefix (ISS-992).
   const runs = deriveRunView(journalQ.data, issue.agentSessions, `ISS-${issue.issSeq}`);
   const liveSession = pickActiveSession(issue.agentSessions);
@@ -301,7 +302,7 @@ export function IssueDetailScreen({
                 domain="session"
               />
             )}
-            {liveStep && <span className="fg-caption font-mono">{liveStep}</span>}
+            {liveStep && runChip !== "running" && <span className="fg-caption">{liveStep}</span>}
           </div>
           <PageTitle className="fg-h3 mt-1.5 break-words">{issue.title}</PageTitle>
         </div>

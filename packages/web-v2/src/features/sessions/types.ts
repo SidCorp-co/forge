@@ -1,3 +1,4 @@
+import { jobKindLabel } from "@/features/overview/job-kinds";
 
 import {
   FAILURE_CAUSE_PRESENTATION,
@@ -38,11 +39,8 @@ export interface SessionBoxReport {
   observedAt: string;
 }
 
-/** Warning band between a fresh heartbeat and the sweeper's heartbeat_timeout
- *  cutoff — promote `running` → `stalled` past this. */
+/** A running session silent past this reads as quiet on every screen: `running` → `stalled`. */
 export const STALLED_THRESHOLD_MS = 60_000;
-
-export const HEARTBEAT_REAP_MS = 3 * 60_000;
 
 /** A heartbeat moves no event, so every screen showing a running session re-reads it on this period. */
 export const LIVE_READ_POLL_MS = 20_000;
@@ -53,8 +51,8 @@ export interface LivenessResult {
   state: Liveness;
   /** Time since the last heartbeat signal, or null when not gradable. */
   sinceHeartbeatMs: number | null;
-  /** Milliseconds until the server auto-reaps (`stale` only); 0 once `reaping`,
-   *  null when not gradable. */
+  /** Milliseconds until core ends the session (`stale` only); 0 once `reaping`; null where core
+   *  states no limit for it, or the session is not gradable. */
   reapInMs: number | null;
 }
 
@@ -124,6 +122,10 @@ export interface SessionRow {
   estimatedCost?: number;
   /** What the box last reported about this session, off its ledger; `null` where it reported nothing. */
   report?: SessionBoxReport | null;
+  /** How long core lets this session go unheard before ending it; `null` where nothing does. */
+  silenceLimitMs?: number | null;
+  /** The issue the session works, as the list names it; `null` where core named none. */
+  issue?: { id: string; displayId: string; title: string } | null;
   /** One-line preview of the last user/assistant turn, attached by the list
    *  endpoint (ISS-698). Null when no previewable turn exists yet (e.g. a
    *  brand-new session, or a legacy row with only the jsonb transcript). */
@@ -335,12 +337,15 @@ export interface SilenceInput {
   lastHeartbeatAt: string | null;
   startedAt: string | null;
   updatedAt?: string | null;
+  /** The silence after which core ends this session, as core states it on the row. */
+  silenceLimitMs?: number | null;
 }
 
 /**
  * How long a running session has been silent — since its last check-in, else since it started —
- * and which side of the one-minute line that is. The session page, the sessions list and the
- * Pipeline page all judge a session quiet or stalled here, so no two of them disagree about one.
+ * which side of the one-minute line that is, and how far that is from the silence core ends the
+ * session after, read off the row (ISS-1228). The session page, the sessions list, the runs tab and
+ * the Pipeline page all judge a session here, so no two of them disagree about one.
  */
 export function sessionSilence(session: SilenceInput, nowMs: number = Date.now()): LivenessResult {
   if (session.status !== "running") return { state: "na", sinceHeartbeatMs: null, reapInMs: null };
@@ -350,17 +355,17 @@ export function sessionSilence(session: SilenceInput, nowMs: number = Date.now()
   if (Number.isNaN(lastMs)) return { state: "alive", sinceHeartbeatMs: null, reapInMs: null };
 
   const since = nowMs - lastMs;
+  const limit = session.silenceLimitMs ?? null;
+  if (limit !== null && since > limit) return { state: "reaping", sinceHeartbeatMs: since, reapInMs: 0 };
   if (since <= STALLED_THRESHOLD_MS) return { state: "alive", sinceHeartbeatMs: since, reapInMs: null };
-  if (since <= HEARTBEAT_REAP_MS) {
-    return { state: "stale", sinceHeartbeatMs: since, reapInMs: HEARTBEAT_REAP_MS - since };
-  }
-  return { state: "reaping", sinceHeartbeatMs: since, reapInMs: 0 };
+  if (limit === null) return { state: "stale", sinceHeartbeatMs: since, reapInMs: null };
+  return { state: "stale", sinceHeartbeatMs: since, reapInMs: limit - since };
 }
 
 export function deriveLiveness(
   session: Pick<
     SessionRow,
-    "status" | "lastHeartbeatAt" | "startedAt" | "updatedAt" | "metadata"
+    "status" | "lastHeartbeatAt" | "startedAt" | "updatedAt" | "metadata" | "silenceLimitMs"
   >,
   nowMs: number = Date.now(),
 ): LivenessResult {
@@ -371,7 +376,7 @@ export function deriveLiveness(
 export function deriveSessionDisplayStatus(
   session: Pick<
     SessionRow,
-    "status" | "lastHeartbeatAt" | "startedAt" | "updatedAt" | "metadata" | "report"
+    "status" | "lastHeartbeatAt" | "startedAt" | "updatedAt" | "metadata" | "report" | "silenceLimitMs"
   >,
   nowMs: number = Date.now(),
 ): AgentSessionDisplayStatus {
@@ -511,9 +516,27 @@ export function sessionStep(metadata: SessionMetadata | null): string | null {
   for (const value of [metadata?.step, metadata?.stage]) {
     if (typeof value !== "string") continue;
     const trimmed = value.trim();
-    if (trimmed !== "") return trimmed;
+    if (trimmed !== "") return jobKindLabel(trimmed);
   }
   return null;
+}
+
+const text = (value: unknown): string | null =>
+  typeof value === "string" && value.trim() !== "" ? value : null;
+
+/** Core titles a step session `<skill or job type>: <issue>`; any other title is printed as written. */
+export function sessionTitle(session: {
+  title: string | null;
+  metadata?: Readonly<Record<string, unknown>> | null;
+}): string | null {
+  const jobType = text(session.metadata?.jobType);
+  if (session.title === null || jobType === null) return session.title;
+  const head = text(session.metadata?.skillName) ?? jobType;
+  if (session.title === head) return jobKindLabel(jobType);
+  if (session.title.startsWith(`${head}: `)) {
+    return `${jobKindLabel(jobType)}: ${session.title.slice(head.length + 2)}`;
+  }
+  return session.title;
 }
 
 /** Whether a session can be retried (job-driven sessions tied to an issue). */

@@ -78,7 +78,7 @@ export async function noteUnverifiedCloses(args: {
         .where(and(eq(comments.issueId, issueId), like(comments.body, `%${marker}%`)))
         .limit(1);
       if (already) return false;
-      await postSystemComment({ issueId, ...author, body }, tx);
+      await postSystemComment({ issueId, ...author, body, announces: 'release' }, tx);
       return true;
     });
     if (wrote) written += 1;

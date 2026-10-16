@@ -5,6 +5,7 @@
 // question → Provide info, parked → Open issue. Each action NAVIGATES to the existing destination —
 // no new mutations. Flat: rows divided by hairlines, no boxes. Empty is one line, said only where
 // nothing is owed beyond it (ISS-1156).
+import { SESSION_ICONS } from "@/design/primitives/status-chip";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button, Icon, MonoTag, type IconName } from "@/design";
@@ -22,6 +23,7 @@ const ACTION_TONE: Record<AttentionActionKind, SemanticTone> = {
   diff: "active",
   input: "attention",
   parked: "blocked",
+  session: "attention",
 };
 
 const ACTION_META: Record<AttentionActionKind, { tag: string; icon: IconName }> = {
@@ -29,6 +31,7 @@ const ACTION_META: Record<AttentionActionKind, { tag: string; icon: IconName }> 
   diff: { tag: "Review", icon: "check" },
   input: { tag: "Awaiting", icon: "clock" },
   parked: { tag: "Blocked", icon: "clock" },
+  session: { tag: "Waiting", icon: SESSION_ICONS.waiting },
 };
 
 const TITLE = "Needs your attention";
@@ -154,9 +157,9 @@ export function AttentionQueue({
                 {m.tag}
               </span>
               {it.issueRef && <MonoTag>{it.issueRef}</MonoTag>}
-              {/* Narrow: kind, ref and age share the first line whatever the title's length, then the title
-                  takes its own, then the action. Wide: one line, in the order they are read. */}
-              <span className="fg-body-sm order-3 min-w-0 basis-full truncate text-fg sm:order-none sm:flex-1 sm:basis-40">
+              {/* Narrow: kind, ref and age share the first line, then the whole title wraps on its own,
+                  then the action. Wide: one line, in the order they are read; the title wraps there too. */}
+              <span className="fg-body-sm order-3 min-w-0 basis-full break-words text-fg sm:order-none sm:flex-1 sm:basis-40">
                 {it.title}
               </span>
               <span className="ml-auto flex-none sm:ml-0">

@@ -4,6 +4,7 @@
 // every attempt its journal recorded with the handoff that attempt left. Flat: hairlines between
 // runs and between attempts, hierarchy by type and whitespace, no card.
 
+import { jobKindLabel } from "@/features/overview/job-kinds";
 import { useState } from "react";
 import { EmptyPanelLine, Icon } from "@/design";
 import { formatApiError } from "@/lib/api/error";
@@ -175,7 +176,7 @@ function SessionsLine({ sessions }: { sessions: RunView["sessions"] }) {
             key={s.id}
             title={s.continuity === "fresh" && s.freshReason ? FRESH_REASON_COPY[s.freshReason] : undefined}
           >
-            <span className="font-mono">{s.jobType ?? "session"}</span>
+            <span>{s.jobType ? jobKindLabel(s.jobType) : "session"}</span>
             {continuity ? ` ${continuity}` : ""}
             {where ? ` on ${where}` : ""}
           </span>

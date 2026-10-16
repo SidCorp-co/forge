@@ -59,16 +59,25 @@ export const sweepQuerySchema = z.object({ projectId: z.uuid() }).strict();
 /** A whole session, transcript included. */
 export const sessionSchema = tableRow(agentSessions);
 
-/** A session as a reader sees it: the row, and what its box last reported about it. */
-export const sessionReadSchema = sessionSchema.extend({ report: sessionReportSchema });
+/** How long core lets this session go unheard before it ends it; `null` where no silence does. */
+const silenceLimitMsSchema = z.number().int().nonnegative().nullable();
 
-/** A session as a list shows it: no transcript, with its cost and the last line said. */
+/** A session as a reader sees it: the row, what its box last reported about it, and core's silence limit. */
+export const sessionReadSchema = sessionSchema.extend({
+  report: sessionReportSchema,
+  silenceLimitMs: silenceLimitMsSchema,
+});
+
+/** A session as a list shows it: no transcript, with its cost, the last line said and the issue it
+ *  works, named (`null` where it records none or the id matches no issue of its project). */
 export const sessionListItemSchema = sessionSchema.omit({ messages: true }).extend({
+  issue: z.object({ id: z.string(), displayId: z.string(), title: z.string() }).nullable(),
   messageCount: z.number().nullable(),
   transcript: z.enum(sessionTranscripts),
   estimatedCost: z.number(),
   lastMessagePreview: z.string().nullable(),
   report: sessionReportSchema,
+  silenceLimitMs: silenceLimitMsSchema,
 });
 
 export const sessionListSchema = z.object({

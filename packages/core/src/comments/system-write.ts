@@ -1,6 +1,6 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { comments } from '../db/schema.js';
+import { type CommentAnnouncement, comments } from '../db/schema.js';
 import { loadCredentialsByIssue, reportWithheld, withholdCredentials } from './credential-guard.js';
 
 /**
@@ -17,6 +17,7 @@ export interface SystemComment {
   body: string;
   authorDeviceId?: string | null | undefined;
   parentId?: string | null | undefined;
+  announces?: CommentAnnouncement | null | undefined;
 }
 
 /** `items`' bodies as they should be stored: each with its stored credentials replaced in place. */

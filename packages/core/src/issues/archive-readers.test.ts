@@ -25,6 +25,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'admin/pipeline-health-routes.ts': 'reads only `waiting`',
   'agent-sessions/lifecycle-routes.ts': "titles of the session's own issue ids",
   'agent-sessions/routes.ts': 'the one issue a session names',
+  'agent-sessions/session-issue-ref.ts':
+    'the issue each listed session names; archived, it was still worked',
   'assistant/tools/issue-dedup.ts':
     'reads only `draft` and `open`, which an archived issue never is',
   'assistant/weekly/read-rows.ts':

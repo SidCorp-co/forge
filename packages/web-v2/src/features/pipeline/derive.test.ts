@@ -210,6 +210,25 @@ describe("holderLine — who holds an issue, why, and since when", () => {
     expect(holderLine(h, NOW, [waiting]).why).toBe("Waiting for input");
   });
 
+  // ISS-1228 r9: Held by read "forge-code: Rename the export column" while the row above it said
+  // "Issue work: Rename the export column" for the same session.
+  it("names a step session holder as its live row does, its step in words", () => {
+    const h: Holder = {
+      by: "session",
+      sessionId: "s2",
+      sessionTitle: "forge-code: Rename the export column",
+      sessionKind: "pipeline",
+      deviceName: "box-a",
+      since: "2026-10-15T01:00:00.000Z",
+    };
+    const step = session({ id: "s2", kind: "pipeline", title: h.sessionTitle, jobType: "drive", skillName: "forge-code" });
+    expect(holderLine(h, NOW, [step]).who).toBe("Issue work: Rename the export column on box-a");
+  });
+
+  it("says no session kind by its stored name", () => {
+    expect(sessionKindLabel("review_bot")).toBe("Review bot");
+  });
+
   it("claims nothing for a session holder whose session the read did not return", () => {
     const h: Holder = {
       by: "session",

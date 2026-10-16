@@ -270,6 +270,17 @@ describe("the issue header's run", () => {
     expect(screen.queryByRole("button", { name: "Run pipeline" })).toBeNull();
   });
 
+  // ISS-1228 r9: the chip carried the step and a caption beside it named it again, and at phone width the chip cut it.
+  it("names a running step once, in words, in the header", () => {
+    issueOver = { agentStatus: "running" };
+    pipelineHealth = { stage: "in_progress", activeSession: { id: "s1", status: "running", skill: "forge-code", jobType: "drive" } };
+    renderScreen();
+    const said = headerChips().textContent ?? "";
+    expect(said).toContain("Issue work");
+    expect(said.split("Issue work").length - 1).toBe(1);
+    expect(said).not.toMatch(/forge-code|\bdrive\b/);
+  });
+
   it("shows no run chip and offers Run pipeline when nothing is queued and no session exists", () => {
     pipelineHealth = { stage: "open" };
     renderScreen();

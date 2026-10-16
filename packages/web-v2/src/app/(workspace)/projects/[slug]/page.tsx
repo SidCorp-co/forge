@@ -30,6 +30,7 @@ import {
   attentionReadFailure,
   attentionRefusal,
   attentionCut,
+  sessionsWaitingOnYou,
   idleRuns,
   joblessRuns,
   liveRuns,
@@ -163,10 +164,17 @@ export default function ProjectOverviewPage() {
   // Nothing below states a count, a list or "All caught up" the reads have not given: until one is in,
   // the headline, the Needs you figure and the list say they are reading, and where it failed they
   // refuse by name. The health row's parked list alone is a part of the answer, not the whole of it.
-  const attentionPending = attentionQ.read === "pending";
-  const readFailure =
-    attentionQ.read === "failed" ? attentionReadFailure(formatApiError(attentionQ.error)) : null;
-  const attentionRead = attentionQ.read === "read";
+  // Needs you counts the sessions blocked on a person too, so it waits on the sessions read as well.
+  const sessionsState = readOf(sessionsQ);
+  const attentionPending = attentionQ.read === "pending" || sessionsState.read === "pending";
+  const attentionFailure =
+    attentionQ.read === "failed"
+      ? formatApiError(attentionQ.error)
+      : sessionsState.read === "failed"
+        ? `the live sessions were not read (${sessionsState.reason})`
+        : null;
+  const readFailure = attentionFailure === null ? null : attentionReadFailure(attentionFailure);
+  const attentionRead = attentionQ.read === "read" && sessionsState.read === "ok";
   const parkedState: ReadState = !parkedWanted
     ? { read: "ok" }
     : parkedQ.isError
@@ -175,7 +183,12 @@ export default function ProjectOverviewPage() {
         ? { read: "pending" }
         : { read: "ok" };
   const ages = parkedState.read === "ok" ? parkedAges(parkedQ.data?.items) : undefined;
-  const attention = attentionRead ? projectAttention(attentionQ.view, project.slug, health?.blockers, ages) : [];
+  const attention = attentionRead
+    ? [
+        ...projectAttention(attentionQ.view, project.slug, health?.blockers, ages),
+        ...sessionsWaitingOnYou(sessionsQ.data?.sessions, project.slug),
+      ]
+    : [];
   // A response that cannot say how much the list leaves out is refused where the figure and the list
   // are, so the rest of the dashboard stands rather than the whole page failing.
   const attentionRefused = readFailure ?? (attentionRead ? attentionRefusal(attentionQ.view, project.slug) : null);
@@ -186,11 +199,10 @@ export default function ProjectOverviewPage() {
   const attentionState: ReadState = attentionPending
     ? { read: "pending" }
     : attentionRefused
-      ? { read: "failed", reason: readFailure ? formatApiError(attentionQ.error) : attentionRefused }
+      ? { read: "failed", reason: attentionFailure ?? attentionRefused }
       : { read: "ok" };
   const runItems = runsQ.data?.items;
   const runsState = readOf(runsQ);
-  const sessionsState = readOf(sessionsQ);
   const liveSessions = sessionsQ.data?.sessions ?? [];
   const durationsState = readOf(durationsQ);
   const throughputState = readOf(throughputQ);
@@ -336,7 +348,14 @@ export default function ProjectOverviewPage() {
                 cut={attentionLeftOut}
                 refusal={attentionRefused}
                 pending={attentionPending}
-                onRetry={readFailure ? attentionQ.refetch : undefined}
+                onRetry={
+                  readFailure
+                    ? () => {
+                        if (attentionQ.read === "failed") attentionQ.refetch();
+                        if (sessionsState.read === "failed") sessionsQ.refetch();
+                      }
+                    : undefined
+                }
                 shape={reading.shape}
                 slug={project.slug}
                 now={now}

@@ -35,7 +35,7 @@ import {
   useElapsed,
   WORKING_WORD,
 } from "@/design";
-import { TONE_META } from "@/design/status";
+import { BLOCKED_WORD, lastReported, TONE_META } from "@/design/status";
 import { SessionChip } from "./session-chip";
 import { useOrgScopedProjects, useProject, useProjects } from "@/features/projects/hooks";
 import { useDevices } from "@/features/runners/hooks";
@@ -58,6 +58,7 @@ import {
   isLiveDisplay,
   deriveSessionDisplayStatus,
   sessionStep,
+  sessionTitle,
   isAwaitingReply,
   isRetryable,
   sessionKind,
@@ -578,9 +579,8 @@ function SessionIdentity({
   onOpen?: () => void;
 }) {
   const router = useRouter();
-  const issueId = row.metadata?.issueId;
-  const kind = sessionKind(row);
-  const title = row.title ?? "Untitled session";
+  const issue = row.issue ?? null;
+  const title = sessionTitle(row) ?? "Untitled session";
   return (
     <div className="min-w-0">
       {onOpen ? (
@@ -589,28 +589,23 @@ function SessionIdentity({
           onClick={onOpen}
           className="block w-full text-left focus-visible:outline-none"
         >
-          <span className="fg-body-sm block truncate text-fg hover:text-accent-text">{title}</span>
+          <span title={title} className="fg-body-sm block break-words text-fg hover:text-accent-text sm:truncate">
+            {title}
+          </span>
         </button>
       ) : (
-        <p className="fg-body-sm truncate text-fg">{title}</p>
+        <p title={title} className="fg-body-sm break-words text-fg sm:truncate">
+          {title}
+        </p>
       )}
       <div className="mt-1 flex flex-wrap items-center gap-1.5">
-        {/* Pipeline (job-driven) vs interactive chat — a running chat spawns no
-            job, so it is NOT a wedged runner (ISS-378 AC#4). */}
-        <Tooltip
-          label={
-            kind === "chat"
-              ? "Interactive chat — spawns no pipeline job, so a running chat is not a wedged runner."
-              : "Pipeline session — driven by a pipeline job on a runner."
-          }
-        >
-          <MonoTag hue={kind === "chat" ? "flame" : "cobalt"}>{kind}</MonoTag>
-        </Tooltip>
-        {issueId &&
+        {issue &&
           (slug ? (
-            <IssueRefBadge id={issueId} slug={slug} />
+            <IssueRefBadge id={issue.id} slug={slug} displayId={issue.displayId} title={issue.title} />
           ) : (
-            <span className="fg-caption truncate">{issueId}</span>
+            <span className="fg-caption truncate" title={issue.title}>
+              {issue.displayId}
+            </span>
           ))}
         {/* Jump to the pipeline-run timeline (ISS-378 AC#3). */}
         {row.pipelineRunId && (
@@ -710,13 +705,18 @@ function StatusCell({
           {subLine}
         </span>
       )}
+      {(liveness.state === "stale" || liveness.state === "reaping") && (
+        <span className="fg-caption text-subtle">
+          {lastReported(row.report?.work === "blocked" ? BLOCKED_WORD : WORKING_WORD)}
+        </span>
+      )}
       {liveness.state === "stale" && liveness.reapInMs != null && (
-        <span className="fg-caption text-subtle" title="Time until the server auto-recovers this session">
+        <span className="fg-caption text-subtle" title="Time until core ends this session if it stays silent">
           auto-recovers in {formatCountdown(liveness.reapInMs)}
         </span>
       )}
       {liveness.state === "reaping" && (
-        <span className="fg-caption text-subtle">awaiting auto-recovery…</span>
+        <span className="fg-caption text-subtle">past the automatic-recovery threshold</span>
       )}
     </div>
   );
@@ -825,9 +825,12 @@ const KIND_TONE = {
   chat: "neutral",
 } as const satisfies Record<AgentSessionKind, "neutral" | "accent" | "cobalt">;
 
+/** A running chat spawns no job, so it is not a wedged runner (ISS-378 AC#4); the kind says which. */
 function SessionKindTag({ row }: { row: SessionRow }) {
   const kind = sessionKind(row);
-  return <Badge tone={KIND_TONE[kind]}>{SESSION_KIND_LABEL[kind]}</Badge>;
+  const tag = <Badge tone={KIND_TONE[kind]}>{SESSION_KIND_LABEL[kind]}</Badge>;
+  if (kind !== "chat") return tag;
+  return <Tooltip label="Interactive chat — spawns no pipeline job, so a running chat is not a wedged runner.">{tag}</Tooltip>;
 }
 
 function SessionMobileRow({

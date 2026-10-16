@@ -49,6 +49,18 @@ describe("the dashboard's live sessions", () => {
     expect(block).not.toHaveTextContent("none live");
   });
 
+  // ISS-1228 r9: at 390 a step session's name read "Issue work: Rename the expor…", with no hover to
+  // show the rest.
+  it("wraps a session's name below sm rather than cutting it, and says it whole on hover from sm up", () => {
+    const name = "Issue work: Rename the export column";
+    render(<LiveSessionsCard sessions={[session({ title: name })]} slug="pair" now={NOW} read={{ read: "ok" }} />);
+    const link = screen.getByRole("link", { name });
+    const tokens = link.className.split(/\s+/);
+    expect(tokens).not.toContain("truncate");
+    expect(tokens).toEqual(expect.arrayContaining(["break-words", "sm:truncate"]));
+    expect(link).toHaveAttribute("title", name);
+  });
+
   it("marks a running session silent past a minute quiet", () => {
     render(<LiveSessionsCard sessions={[session({ lastHeartbeatAt: ago(300) })]} slug="pair" now={NOW} read={{ read: "ok" }} />);
     expect(screen.getByText("Quiet · 5m ago")).toBeInTheDocument();

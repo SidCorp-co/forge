@@ -10,6 +10,7 @@ import {
   type LoopScope,
   runLoopMonitor,
 } from '../jobs/loop-monitor.js';
+import { CHAT_IDLE_CLOSE_MS, oneShotDeviceGraceMs } from '../jobs/loop-monitor-thresholds.js';
 import { parkedOnAHuman } from '../jobs/park-deadline.js';
 import { recordPipelineSweeperTick } from '../jobs/pgboss-health.js';
 import { CLIENT_SESSION_KINDS, kindTuple, PIPELINE_SESSION_KINDS } from '../jobs/session-kinds.js';
@@ -449,7 +450,7 @@ export async function reapOrphanedOneShotRuns(
 ): Promise<OneShotRunReapResult> {
   const { heartbeatMs } = getZombieThresholds();
   const cutoffIso = new Date(now.getTime() - heartbeatMs).toISOString();
-  const deviceGraceMs = Math.max(heartbeatMs, 20 * 60_000);
+  const deviceGraceMs = oneShotDeviceGraceMs(heartbeatMs);
   const graceCutoffIso = new Date(now.getTime() - deviceGraceMs).toISOString();
   const projectClause = scope.projectId ? sql`AND r.project_id = ${scope.projectId}` : sql``;
 
@@ -553,7 +554,7 @@ export async function reapOrphanedOneShotRuns(
  * that never closed is covered too — `reapOrphanedOneShotRuns` only looks at
  * runs still `running`/`paused`, and the terminal-run trigger only labels.
  */
-export const CHAT_IDLE_CLOSE_MS = 2 * 60 * 60_000;
+export { CHAT_IDLE_CLOSE_MS };
 
 export async function closeIdleChatSessions(
   now: Date = new Date(),

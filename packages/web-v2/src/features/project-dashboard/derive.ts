@@ -23,6 +23,7 @@ import {
 } from "@forge/contracts/work-state";
 import type { QueueStats } from "@/features/sessions/types";
 import type { LiveSession } from "@/features/pipeline/types";
+import { sessionName } from "@/features/pipeline/derive";
 
 /* ------------------------------------------------------------------ *
  * Open work by state: the donut, drawn from the same counts as the tile (ISS-1156)
@@ -181,7 +182,7 @@ export function activeSpend(runs: PipelineRunListItem[] | undefined): number {
  * ------------------------------------------------------------------ */
 
 /** `input` holds an open question; `parked` is stopped at a status a person moves it from, with no question. */
-export type AttentionActionKind = "retry" | "diff" | "input" | "parked";
+export type AttentionActionKind = "retry" | "diff" | "input" | "parked" | "session";
 
 export interface DashboardAttentionItem {
   key: string;
@@ -281,11 +282,36 @@ export function projectAttention(
   return [...out, ...parked];
 }
 
+/**
+ * The live sessions whose box reports them blocked on a person (ISS-1228): a person has to act for
+ * each to go on, so each is one item to act on, in the box's own words. A session blocked on a
+ * machine, another agent or nobody waits on no person and is not listed.
+ */
+export function sessionsWaitingOnYou(
+  sessions: readonly LiveSession[] | undefined,
+  slug: string,
+): DashboardAttentionItem[] {
+  return (sessions ?? [])
+    .filter((s) => s.report?.work === "blocked" && s.report.blockerKind === "human")
+    .map((s) => ({
+      key: `session-${s.id}`,
+      actionKind: "session" as const,
+      actionLabel: "Open session",
+      title: s.report?.waitingOn
+        ? `${sessionName(s)} waits on you — ${s.report.waitingOn}`
+        : `${sessionName(s)} waits on you`,
+      ...(s.issues[0] ? { issueRef: s.issues[0].displayId } : {}),
+      link: `/projects/${slug}/agents/${s.id}`,
+      ...ageOf(s.report?.observedAt),
+    }));
+}
+
 const ATTENTION_PARTS: ReadonlyArray<{ kind: AttentionActionKind; one: string; many: string }> = [
   { kind: "retry", one: "failed job", many: "failed jobs" },
   { kind: "diff", one: "to review", many: "to review" },
   { kind: "input", one: "issue with an open question", many: "issues with an open question" },
   { kind: "parked", one: "issue parked with no question", many: "issues parked with no question" },
+  { kind: "session", one: "session waiting on you", many: "sessions waiting on you" },
 ];
 
 /**
@@ -350,7 +376,8 @@ export function attentionCut(
   const atLeast =
     Math.max(totals.failedJobs, listed(["retry"])) +
     Math.max(totals.needsReview, listed(["diff"])) +
-    people;
+    people +
+    listed(["session"]);
   if (atLeast <= items.length) return null;
   return { shown: items.length, atLeast, peopleCut: people > listedPeople };
 }

@@ -5,7 +5,7 @@ export type StatusDomain = "issue" | "session";
 
 export interface StatusChipProps {
   status: StatusKey;
-  /** When running, append the step the session is on, e.g. `running · implement`, after `label` where one is given. */
+  /** When running, append the step the session is on, e.g. `Running · Issue work`, after `label` where one is given. */
   stage?: string;
   size?: "sm" | "md";
   /** Status vocabulary this chip belongs to. Defaults to `issue`. */
@@ -31,7 +31,7 @@ const SESSION_TONES: Partial<Record<StatusKey, (typeof TONE_META)[keyof typeof T
 
 /** A session chip's mark says which state it is in, one mark per status, so no two are told apart
  *  by colour alone. */
-const SESSION_ICONS: Record<StatusKey, IconName> = {
+export const SESSION_ICONS: Readonly<Record<StatusKey, IconName>> = {
   running: "agent",
   queued: "clock",
   blocked: "pause",
@@ -54,7 +54,7 @@ export function StatusChip({ status, stage, size = "md", domain = "issue", label
   const isRunning = status === "running";
   const isSession = domain === "session";
   const baseLabel = isSession ? (label ?? SESSION_LABELS[status] ?? m.label) : (label ?? m.label);
-  const text = stage && isRunning ? `${label ?? "running"} · ${stage}` : baseLabel;
+  const text = stage && isRunning ? `${baseLabel} · ${stage}` : baseLabel;
   const mono = isSession || (stage && isRunning);
   return (
     <span
@@ -89,7 +89,7 @@ export function StatusChip({ status, stage, size = "md", domain = "issue", label
           }}
         />
       )}
-      <span className="max-w-[16ch] truncate" title={text}>
+      <span className="max-w-[28ch] truncate" title={text}>
         {text}
       </span>
     </span>

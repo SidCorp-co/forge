@@ -6,6 +6,7 @@
 // events only arrive on subscribed rooms, so we fan out a `useRoom` per project
 // (bounded list) — `pipeline_run.status_changed` then refreshes
 // `['projects','health']` + `['pipeline-runs','list']`.
+import { jobKindLabel } from "@/features/overview/job-kinds";
 import { OPEN_WORK_LABEL } from "@forge/contracts/work-state";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -18,7 +19,6 @@ import {
   ErrorState,
   HealthDot,
   HelpButton,
-  MonoTag,
   PageContainer,
   PageTitle,
   ProgressBar,
@@ -309,7 +309,7 @@ function ProgressTab({
             <div className="flex flex-col gap-2.5">
               {aggs.map((a) => (
                 <div key={a.step} className="flex items-center gap-2.5">
-                  <span className="w-16 flex-none font-mono text-12 text-muted">{a.step}</span>
+                  <span className="w-28 flex-none break-words text-12 text-muted">{jobKindLabel(a.step)}</span>
                   <ProgressBar className="flex-1" value={(a.avgSec / maxAvg) * 100} />
                   <span className="w-20 flex-none text-right font-mono text-12 text-fg">
                     {formatDurationSec(a.avgSec)}
@@ -408,7 +408,7 @@ function RunsTab({
             className="flex flex-col gap-1.5 rounded-md border border-line bg-surface p-3 text-left hover:bg-hover"
           >
             <div className="flex items-center gap-2">
-              <MonoTag>{r.step}</MonoTag>
+              <span className="fg-body-sm text-fg">{jobKindLabel(r.step)}</span>
               <span className="fg-body-sm truncate text-fg">
                 {nameById.get(r.projectId) ?? r.projectId.slice(0, 8)}
               </span>
@@ -441,7 +441,7 @@ function RunsTab({
               >
                 <TD className="truncate">{nameById.get(r.projectId) ?? r.projectId.slice(0, 8)}</TD>
                 <TD>
-                  <MonoTag>{r.step}</MonoTag>
+                  <span className="fg-body-sm text-fg">{jobKindLabel(r.step)}</span>
                 </TD>
                 <TD className="text-right font-mono">{formatDurationSec(r.durationSeconds)}</TD>
                 <TD className="text-right font-mono">{formatUsd(r.costUsd)}</TD>
