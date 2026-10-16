@@ -235,16 +235,15 @@ function ShapePage({
     <>
       <SettingsSection id="release-answer">
         <SectionTitle className="fg-h3 mb-2">Shape &amp; release</SectionTitle>
-        <ReleaseAnswer projectId={project.id} slug={slug} />
+        <ReleaseAnswer
+          projectId={project.id}
+          slug={slug}
+          after={shipsNothingNow && waiting > 0 && <StrandedNotice waiting={waiting} slug={slug} />}
+        />
         {shapeForm.dirty && (
           <p className="fg-caption mt-2 text-muted">
             This answers for what is saved. Save to have your changes answered.
           </p>
-        )}
-        {shipsNothingNow && (
-          <div className="mt-3">
-            <StrandedNotice waiting={waiting} slug={slug} />
-          </div>
         )}
       </SettingsSection>
 

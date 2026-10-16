@@ -4,7 +4,8 @@
 // "can this project release?" with every reason under it at the top of the page, and the details a
 // release runs with (targets, runner label, rollback, probes) at its foot.
 
-import { ISSUE_STATUS_LABELS } from "@forge/contracts/issue-vocabulary";
+import type { ReleaseBlockerCode } from "@forge/contracts";
+import { ISSUE_STATUS_LABELS, type KernelIssueStatus } from "@forge/contracts/issue-vocabulary";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { ErrorState, Skeleton } from "@/design";
@@ -52,36 +53,84 @@ const FACT_GAPS = new Set(["build-commands", "test-commands", "release-procedure
 /** Where "add a live deploy target" lands: the section that adds one, with Deploy target and Live chosen. */
 const ADD_LIVE_TARGET = { tab: "integrations", add: LIVE_DEPLOY_TARGET, label: "Add a live deploy target" };
 
-/** Blockers a setting answers, and the tab that holds it; the rest are about the work waiting. */
-const BLOCKER_TAB: Record<string, { tab: string; add?: string; label: string }> = {
-  RELEASE_TARGET_UNDECLARED: ADD_LIVE_TARGET,
-  RELEASE_RUNNER_AMBIGUOUS: { tab: "integrations", label: "Reconcile the release runner labels" },
-  RELEASE_PROBES_UNREADABLE: { tab: "integrations", label: "Check the live binding's probes" },
-  RELEASE_POOL_EMPTY: { tab: "runners", label: "Assign a runner" },
-  NO_RUNNER_ONLINE: { tab: "runners", label: "See the runners" },
-};
-
 /** The gap that restates a blocker, where a readiness answer carries both. */
 const BLOCKER_GAP: Record<string, ReleaseReadiness["gaps"][number]> = {
   RELEASE_TARGET_UNDECLARED: "release-target",
   RELEASE_RUNNER_AMBIGUOUS: "release-runner-ambiguous",
 };
 
-/** Which issues the link beside a blocker opens: the statuses its sentence counts, or none where it
- *  counts no issue — a link onto an empty list sends a person looking for nothing (ISS-1229 j16). */
-function issuesLinkFor(b: ReleaseReadiness["blockers"][number]): { statuses: string[]; label: string } | null {
-  if (b.code === "RELEASE_ROSTER_EMPTY") {
+type Blocker = ReleaseReadiness["blockers"][number];
+
+/** Where the link beside a blocker goes: the setting that answers it, the issues at the statuses its
+ *  sentence counts, the particular issues it names, or nowhere, where its sentence names no issue. */
+type BlockerLink =
+  | { kind: "setting"; tab: string; add?: string; label: string }
+  | { kind: "statuses"; statuses: KernelIssueStatus[]; label: string }
+  | { kind: "issues"; displayIds: string[] }
+  | null;
+
+const setting = (tab: string, label: string, add?: string) => (): BlockerLink => ({
+  kind: "setting",
+  tab,
+  label,
+  ...(add ? { add } : {}),
+});
+
+const AT_AWAITING_RELEASE = (): BlockerLink => ({
+  kind: "statuses",
+  statuses: ["awaiting_release"],
+  label: `Open the issues at ${ISSUE_STATUS_LABELS.awaiting_release}`,
+});
+
+const NO_LINK = (): BlockerLink => null;
+
+const strings = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x !== "") : [];
+
+/** The display ids a list of objects carries under `key`, in the order the sentence names them. */
+const idsAt = (v: unknown, key: string): string[] =>
+  Array.isArray(v) ? strings(v.map((x) => (x && typeof x === "object" ? (x as Record<string, unknown>)[key] : null))) : [];
+
+const named = (displayIds: string[]): BlockerLink =>
+  displayIds.length === 0 ? null : { kind: "issues", displayIds };
+
+const NAMED_HERE = (b: Blocker): BlockerLink => named(strings(b.details?.displayIds));
+
+/** One entry per code core sends, so a code it adds does not type-check until its link is decided.
+ *  A code this screen does not know gets no link: a link onto a guessed list sends a person looking
+ *  for nothing (ISS-1229 j16, j17). */
+const BLOCKER_LINK: Record<ReleaseBlockerCode, (b: Blocker) => BlockerLink> = {
+  NO_RELEASE_GATE: NO_LINK,
+  RELEASE_TARGET_UNDECLARED: setting(ADD_LIVE_TARGET.tab, ADD_LIVE_TARGET.label, ADD_LIVE_TARGET.add),
+  RELEASE_RUNNER_AMBIGUOUS: setting("integrations", "Reconcile the release runner labels"),
+  RELEASE_PROBES_UNREADABLE: setting("integrations", "Check the live binding's probes"),
+  RELEASE_POOL_EMPTY: setting("runners", "Assign a runner"),
+  NO_RUNNER_ONLINE: setting("runners", "See the runners"),
+  RELEASE_ROSTER_EMPTY: (b) => {
     const nearGate = b.details?.nearGate;
     if (typeof nearGate !== "number" || nearGate === 0) return null;
     return {
+      kind: "statuses",
       statuses: ["testing", "tested"],
       label: `Open the issues at ${ISSUE_STATUS_LABELS.testing} or ${ISSUE_STATUS_LABELS.tested}`,
     };
-  }
-  return {
-    statuses: ["awaiting_release"],
-    label: `Open the issues at ${ISSUE_STATUS_LABELS.awaiting_release}`,
-  };
+  },
+  RELEASE_ROSTER_OVERSIZE: AT_AWAITING_RELEASE,
+  RELEASE_CRITERIA_UNEARNED: AT_AWAITING_RELEASE,
+  RELEASE_RUNTIME_UNROUTED: AT_AWAITING_RELEASE,
+  CLAIM_CONFLICT: (b) => named(idsAt(b.details?.conflicts, "key")),
+  RELEASE_RECORD_MISSING: NAMED_HERE,
+  RELEASE_WORK_UNMERGED: NAMED_HERE,
+  RELEASE_ISSUES_UNCLOSABLE: NAMED_HERE,
+  RELEASE_CUT_DROPS_ROSTER: NAMED_HERE,
+  RELEASE_CARRIES_UNDECIDED: (b) => named(idsAt(b.details?.carried, "displayId")),
+  RELEASE_CARRIED_DECISION_REFUSED: (b) => named(idsAt(b.details?.refused, "displayId")),
+  BATCH_IN_FLIGHT: (b) => named(idsAt([b.details?.decision], "displayId")),
+  RELEASE_CHECK_UNEVALUATED: NO_LINK,
+};
+
+function linkFor(b: Blocker): BlockerLink {
+  return Object.hasOwn(BLOCKER_LINK, b.code) ? BLOCKER_LINK[b.code as ReleaseBlockerCode](b) : null;
 }
 
 /** One reading is taken per live target that declares a probe, so with several targets the answer is per target. */
@@ -108,36 +157,86 @@ function answerText(r: ReleaseReadiness): ReactNode {
   }
 }
 
-/** The answer line and every reason under it, each with a link to where it is set. */
-export function ReleaseAnswer({ projectId, slug }: { projectId: string; slug?: string }) {
+/** The link a blocker's sentence earns, drawn after it; nothing where it earns none or no project is named. */
+function BlockerLinkView({ link, slug }: { link: BlockerLink; slug?: string }) {
+  if (!link || !slug) return null;
+  const cls = "text-accent-text hover:underline";
+  switch (link.kind) {
+    case "setting":
+      return (
+        <Link href={`/projects/${slug}/settings?tab=${link.tab}${link.add ? `&add=${link.add}` : ""}`} className={cls}>
+          {link.label}
+        </Link>
+      );
+    case "statuses":
+      return (
+        <Link href={`/projects/${slug}/issues?status=${link.statuses.join(",")}`} className={cls}>
+          {link.label}
+        </Link>
+      );
+    case "issues":
+      return (
+        <span data-testid="release-named-issues">
+          Open{" "}
+          {link.displayIds.map((id, i) => (
+            <span key={id}>
+              {i > 0 && ", "}
+              <Link href={`/projects/${slug}/issues/${encodeURIComponent(id)}`} className={cls}>
+                {id}
+              </Link>
+            </span>
+          ))}
+        </span>
+      );
+  }
+}
+
+/** What follows the answer: joined to a list the answer ends on, so the two share one divider. */
+function After({ node, joined }: { node: ReactNode; joined: boolean }) {
+  return node ? <div className={joined ? "-mt-px" : "mt-3"}>{node}</div> : null;
+}
+
+/** The answer line and every reason under it, each with a link to where it is set, then `after`. */
+export function ReleaseAnswer({
+  projectId,
+  slug,
+  after,
+}: {
+  projectId: string;
+  slug?: string;
+  after?: ReactNode;
+}) {
   const q = useReleaseReadiness(projectId);
   const tab = (t: string, add?: string) =>
     slug ? `/projects/${slug}/settings?tab=${t}${add ? `&add=${add}` : ""}` : undefined;
-  const issuesHref = (statuses: string[]) =>
-    slug ? `/projects/${slug}/issues?status=${statuses.join(",")}` : undefined;
   const knowledgeHref = slug ? `/projects/${slug}/library?tab=knowledge&sub=rules` : undefined;
 
   if (q.isLoading) {
     return (
-      <div className="space-y-2" data-testid="release-answer">
-        <Skeleton className="h-6 w-2/3 rounded-md" />
-      </div>
+      <>
+        <div className="space-y-2" data-testid="release-answer">
+          <Skeleton className="h-6 w-2/3 rounded-md" />
+        </div>
+        <After node={after} joined={false} />
+      </>
     );
   }
   if (q.isError) {
     return (
       <div data-testid="release-answer">
         <ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} />
+        <After node={after} joined={false} />
       </div>
     );
   }
   const r = q.data;
-  if (!r) return null;
+  if (!r) return <After node={after} joined={false} />;
   const a = releaseAnswer(r);
   const listed = a.kind === "blocked" || a.kind === "undeclared" || a.kind === "unread";
   // A gap its own blocker already lists would be said twice, once as not stopping a release.
   const blocked = new Set(r.blockers.map((b) => BLOCKER_GAP[b.code]).filter(Boolean));
   const gaps = r.gaps.filter((g) => !blocked.has(g));
+  const endsInList = listed && (r.blockers.length > 0 || gaps.length > 0);
 
   return (
     <div data-testid="release-answer" data-answer={a.kind}>
@@ -156,19 +255,12 @@ export function ReleaseAnswer({ projectId, slug }: { projectId: string; slug?: s
       {listed && r.blockers.length > 0 && (
         <ul className="mt-3 divide-y divide-line border-y border-line" aria-label="What stops a release">
           {r.blockers.map((b) => {
-            const at = BLOCKER_TAB[b.code];
-            const issues = at ? null : issuesLinkFor(b);
-            const href = at ? tab(at.tab, at.add) : issues ? issuesHref(issues.statuses) : undefined;
+            const link = linkFor(b);
             // The sentence leads; the code is for whoever greps for it, not for the reader.
             const gap = BLOCKER_GAP[b.code];
             return (
               <li key={`${b.code}:${b.message}`} className="fg-body-sm py-2.5 text-fg" data-code={b.code}>
-                {gap ? GAP_TEXT[gap] : inlineCode(b.message)}{" "}
-                {href && (
-                  <Link href={href} className="text-accent-text hover:underline">
-                    {at ? at.label : issues?.label}
-                  </Link>
-                )}
+                {gap ? GAP_TEXT[gap] : inlineCode(b.message)} <BlockerLinkView link={link} slug={slug} />
               </li>
             );
           })}
@@ -206,6 +298,7 @@ export function ReleaseAnswer({ projectId, slug }: { projectId: string; slug?: s
           </ul>
         </>
       )}
+      <After node={after} joined={endsInList} />
     </div>
   );
 }

@@ -349,21 +349,21 @@ describe('the codes this change did not touch', () => {
   it('keeps counting the issues named in a record refusal', () => {
     expect(
       releaseBlockerSentence('RELEASE_RECORD_MISSING', { issueIds: ['a', 'b', 'c'] }),
-    ).toContain('3 issue(s)');
+    ).toContain('3 issues named here have no release note');
   });
 
-  // ISS-1346 judge r2 finding 2: "2 issue(s) named here have no release note", naming neither.
+  // ISS-1346 judge r2 finding 2: a record refusal named neither issue it was about.
   it('names each issue a record refusal is about by its display id', () => {
     const details = { issueIds: ['a', 'b'], displayIds: ['ISS-1', 'ISS-2'] };
     expect(releaseBlockerSentence('RELEASE_RECORD_MISSING', details)).toContain(
-      '2 issue(s) named here (`ISS-1`, `ISS-2`) have no release note',
+      '2 issues named here (`ISS-1`, `ISS-2`) have no release note',
     );
     expect(releaseBlockerSentence('RELEASE_WORK_UNMERGED', details)).toContain(
-      '2 issue(s) named here (`ISS-1`, `ISS-2`) have no merge',
+      '2 issues named here (`ISS-1`, `ISS-2`) have no merge',
     );
     expect(
       releaseBlockerSentence('RELEASE_WORK_UNMERGED', { ...details, shape: 'outside_git' }),
-    ).toContain('2 issue(s) named here (`ISS-1`, `ISS-2`) have no mark');
+    ).toContain('2 issues named here (`ISS-1`, `ISS-2`) have no mark');
   });
 
   it('keeps naming the check that could not be run', () => {

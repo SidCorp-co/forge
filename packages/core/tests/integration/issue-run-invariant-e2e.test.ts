@@ -369,3 +369,49 @@ describe('how long an orphan notice says nothing has worked the issue', () => {
     ]);
   });
 });
+
+// A strand waits two sweeps before anybody is told, so the record must carry the body of the sweep
+// that tells, not of the one that opened it (ISS-1229 j17).
+describe('the count a stuck-issue notice carries when it reaches the inbox', () => {
+  it('is counted up to the sweep that delivered it, not the one that first saw the issue', async () => {
+    const user = await createTestUser(harness.db);
+    const project = await createTestProject(harness.db, user.id);
+    const issueId = await anIssueAt({
+      projectId: project.id,
+      createdById: user.id,
+      issSeq: 21,
+      status: 'in_progress',
+      agoMs: 5 * HOUR,
+    });
+    await enteredAt(issueId, 'in_progress', ago(20 * 60_000 + 30_000));
+    await harness.db.execute(
+      sql`UPDATE issues SET updated_at = ${ago(PAST_GRACE)} WHERE id = ${issueId}`,
+    );
+
+    const firstSweep = new Date();
+    await mods.detectOrphanedRunAssertions(firstSweep);
+    expect(await deliveriesFor(issueId), 'a strand seen once tells nobody yet').toBe(0);
+
+    // Three minutes pass before the next sweep, which is past the two the strand must hold for.
+    await harness.db.execute(sql`
+      UPDATE notifications SET pending_since = pending_since - interval '3 minutes'
+       WHERE issue_id = ${issueId}
+    `);
+    await mods.detectOrphanedRunAssertions(new Date(firstSweep.getTime() + 3 * 60_000));
+
+    expect(await deliveriesFor(issueId), 'the second sighting is the one that tells').toBe(1);
+    expect(await noticeBodies(issueId)).toEqual([
+      'ISS-21 reads In progress, and nothing has worked it for 23 minutes: no job, issue run or run session is live for it.',
+    ]);
+  });
+});
+
+async function deliveriesFor(issueId: string): Promise<number> {
+  const rows = (await harness.db.execute(sql`
+    SELECT count(*)::int AS n
+      FROM notification_delivery_members m
+      JOIN notifications n ON n.id = m.notification_id
+     WHERE n.issue_id = ${issueId}
+  `)) as unknown as { n: number }[];
+  return rows[0]?.n ?? 0;
+}
