@@ -62,4 +62,19 @@ describe("a drawn diagram", () => {
 		expect(box.className).toMatch(/\boverflow-x-auto\b/);
 		expect(box.className).toMatch(/\bmax-w-full\b/);
 	});
+
+	it("can be reached from the keyboard, so a box that scrolls can be scrolled without a pointer", async () => {
+		const { container } = render(createElement(MermaidDiagram, { code: "flowchart LR\n a --> b" }));
+
+		const svg = await waitFor(() => {
+			const found = container.querySelector("svg");
+			if (!found) throw new Error("not drawn yet");
+			return found;
+		});
+		const box = svg.parentElement as HTMLElement;
+		expect(box.tabIndex).toBe(0);
+		expect(box.tagName).toBe("SECTION");
+		expect(box.getAttribute("aria-label")).toBe("Diagram");
+		expect(box.className).toMatch(/focus-visible:/);
+	});
 });
