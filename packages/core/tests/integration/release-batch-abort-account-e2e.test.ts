@@ -373,14 +373,15 @@ describe('a held promoted roster across a sweeper pass', () => {
     }
   }, 30_000);
 
-  it('still clears every other stale claim of a run that ended', async () => {
+  it('clears the stale claim of a run that ended off a row it left at the gate', async () => {
     const { runId, ids } = await batchOf(2);
-    await harness.db.execute(sql`UPDATE pipeline_runs SET status = 'failed' WHERE id = ${runId}`);
+    await harness.db.execute(sql`WITH r AS (UPDATE pipeline_runs SET status = 'failed' WHERE id = ${runId})
+      UPDATE issues SET status = 'awaiting_release' WHERE id = ${ids[0]}`);
     const { reapStaleReleaseBatchClaims } = await import(
       '../../src/pipeline/stale-release-claims.js'
     );
-    expect(await reapStaleReleaseBatchClaims()).toEqual({ released: 2 });
-    for (const id of ids) expect((await fx.stored(id)).claim).toBeNull();
+    expect(await reapStaleReleaseBatchClaims()).toEqual({ released: 1 });
+    expect((await fx.stored(ids[0] as string)).claim).toBeNull();
   }, 30_000);
 });
 

@@ -291,6 +291,31 @@ describe("the issue header's run", () => {
 });
 
 // ISS-1257 — a question marks its issue and leaves its rung alone; ISS-1310 — the banner reads it off the park view.
+describe("the issue header at Releasing (ISS-1421)", () => {
+  const menuItems = () => screen.queryAllByRole("menuitem").map((el) => el.textContent ?? "");
+
+  it("offers View release for the run carrying it, and no move only a release may make", () => {
+    status = "releasing";
+    issueOver = { releaseBatchRunId: "run-9" };
+    renderScreen();
+    expect(screen.queryByRole("button", { name: "Run pipeline" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Pause" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reopen" })).toBeNull();
+    expect(screen.getByRole("button", { name: "View release" })).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Issue actions"));
+    expect(menuItems()).not.toContain("Pause (hold)");
+    expect(menuItems()).not.toContain("Reopen");
+  });
+
+  it("offers no Pause at Releasing even while a session is live on the issue", () => {
+    status = "releasing";
+    issueOver = { releaseBatchRunId: "run-9", agentStatus: "running" };
+    pipelineHealth = { stage: "releasing", activeSession: { id: "s1", status: "running", skill: "forge-code", jobType: "drive" } };
+    renderScreen();
+    expect(screen.queryByRole("button", { name: "Pause" })).toBeNull();
+  });
+});
+
 describe("the issue page of work a person owes an answer", () => {
   const WAITING_FOR_INFORMATION = /waiting for information/;
 

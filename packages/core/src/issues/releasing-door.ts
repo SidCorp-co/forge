@@ -26,7 +26,7 @@ export function releasingEntryRefusal(projectId: string, from: IssueStatus): Tra
   return new TransitionError(
     'RELEASING_STARTS_FROM_RELEASE',
     `${statusForCaller(RELEASING)} means a release batch is carrying this issue to production right now, so only starting a release puts an issue there. ` +
-      "Start one with the Release button on this issue's page or at the release gate, or with " +
+      "Start one with the Release now button on this issue's page or at the release gate, or with " +
       `POST /api/projects/${projectId}/release-batches naming this issue in \`issueIds\`. ` +
       `The issue stays at ${statusForCaller(from)}.`,
     {

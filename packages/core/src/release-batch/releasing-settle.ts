@@ -19,6 +19,7 @@ import {
   type ProductionReading,
   readProductionFinding,
 } from './releasing-settle-reading.js';
+import { releaseRunStopped } from './run-ended-words.js';
 
 /** At most this many rows a tick, oldest first; the rest are read on later ticks. */
 export const RELEASING_SETTLE_PAGE = 50;
@@ -80,7 +81,7 @@ export function strandedCause(
   if (!row.run_exists) {
     return `It names release run ${row.release_batch_run_id}, which no longer exists, so nothing was releasing it`;
   }
-  return `Release run ${row.release_batch_run_id} claimed it and ended ${row.run_status}, so nothing was releasing it`;
+  return `${releaseRunStopped(row.run_status, row.release_batch_run_id)}, so nothing was releasing it`;
 }
 
 const GATE = statusLabel(RELEASE_GATE_STATUS);
@@ -89,7 +90,7 @@ function startAgain(projectId: string): string {
   return (
     `It is back at ${GATE}. If its code has already shipped, record that with ` +
     `POST /api/projects/${projectId}/release-records naming the commit production serves, which ` +
-    'closes it; otherwise start a release with the Release button on this page or at the release gate.'
+    'closes it; otherwise start a release with Release now on this page or at the release gate.'
   );
 }
 

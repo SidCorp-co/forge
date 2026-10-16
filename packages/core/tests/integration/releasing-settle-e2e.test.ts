@@ -17,6 +17,7 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { TERMINAL_PIPELINE_RUN_STATUSES } from '../../src/pipeline/status-sets.js';
 import type { ProductionReading } from '../../src/release-batch/releasing-settle-reading.js';
+import { releaseRunStopped } from '../../src/release-batch/run-ended-words.js';
 import { type GitHubDouble, startGitHubDouble } from '../helpers/github-double.js';
 import {
   createTestProject,
@@ -162,9 +163,12 @@ describe('a row at Releasing that nothing carries (criteria 13, 14, 15, 16, 17)'
 
       expect(await fx.stored(id)).toMatchObject({ status: 'awaiting_release', claim: null });
       const [said] = await bodies(id);
-      expect(said).toContain(`Release run ${run} claimed it and ended ${runStatus}`);
+      expect(said).toContain(`${releaseRunStopped(runStatus, run)}, so nothing was releasing it`);
+      expect(said).not.toContain(`ended ${runStatus}`);
       expect(said).toContain(`does not carry this issue's landing commit \`${UNSHIPPED}\``);
-      expect(said).toContain('start a release with the Release button');
+      expect(said).toContain(
+        'start a release with Release now on this page or at the release gate',
+      );
       expect(await recordFor(id)).toBeNull();
     },
   );
@@ -187,7 +191,11 @@ describe('a row at Releasing that nothing carries (criteria 13, 14, 15, 16, 17)'
     await settle();
 
     expect(await fx.stored(id)).toMatchObject({ status: 'awaiting_release', claim: null });
-    expect((await bodies(id))[0]).toContain('What production serves could not be read');
+    const [said] = await bodies(id);
+    expect(said).toContain(
+      'What production serves could not be read: the probe of the live deployment reports it down.',
+    );
+    expect(said).not.toContain('answered down');
     expect(await recordFor(id)).toBeNull();
   });
 
@@ -306,6 +314,26 @@ describe('what the sweep holds to (criteria 18, 19, 20, 21)', () => {
   });
 });
 
+describe('a claim the stale-claims reaper meets at Releasing (criterion 14)', () => {
+  // Cleared first, the claim was the only record of which run left the row there, and the sweep
+  // then told the issue no release run had ever claimed it.
+  it('is left for the sweep, which names the run that ended', async () => {
+    await production();
+    const run = await plantRun('failed');
+    const id = await plant({ claim: run, landing: UNSHIPPED });
+    const { reapStaleReleaseBatchClaims } = await import(
+      '../../src/pipeline/stale-release-claims.js'
+    );
+
+    expect(await reapStaleReleaseBatchClaims()).toEqual({ released: 0 });
+    expect(await fx.stored(id)).toMatchObject({ status: 'releasing', claim: run });
+
+    expect(await settle()).toEqual({ settled: 1, closed: 0, failed: 0 });
+    const [said] = await bodies(id);
+    expect(said).toContain(`${releaseRunStopped('failed', run)}, so nothing was releasing it`);
+  });
+});
+
 describe('a landing marked while the sweep judges it (criterion 15)', () => {
   async function settleWith(production: ProductionReading['forLanding']) {
     const { settleStrandedReleasing } = await import('../../src/release-batch/releasing-settle.js');
@@ -394,7 +422,9 @@ describe('a promoted roster an abort left at Releasing (criterion 22)', () => {
     expect(await fx.stored(carried)).toMatchObject({ status: 'closed', claim: null });
     expect(await fx.stored(lacking)).toMatchObject({ status: 'awaiting_release', claim: null });
     const said = await bodies(lacking);
-    expect(said.at(-1)).toContain(`Release run ${runId} claimed it and ended cancelled`);
+    expect(said.at(-1)).toContain(
+      `Release run ${runId} was cancelled without finishing its release, so nothing was releasing it`,
+    );
     for (const body of [...said, ...(await bodies(carried))]) {
       expect(body).not.toMatch(/for a person to settle|settling it is an operator's act/);
     }

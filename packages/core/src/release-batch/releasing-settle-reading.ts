@@ -27,6 +27,12 @@ type Served =
 
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
+/** A live deployment that is not up, as the sweep's comment says it. */
+const NOT_UP = {
+  down: 'the probe of the live deployment reports it down',
+  unknown: 'no probe of the live deployment has answered yet',
+} as const;
+
 async function servedIdentity(projectId: string): Promise<Served> {
   let read: Awaited<ReturnType<typeof readServingDeployment>>;
   try {
@@ -49,7 +55,7 @@ async function servedIdentity(projectId: string): Promise<Served> {
     };
   }
   if (live.health !== 'up') {
-    return { kind: 'unread', why: `the live deployment answered ${live.health}` };
+    return { kind: 'unread', why: NOT_UP[live.health] };
   }
   if (!live.identity) {
     return { kind: 'unread', why: 'the live probes answered and none named a commit' };

@@ -9,9 +9,9 @@ export interface StaleReleaseBatchClaimsResult {
 /**
  * Clear the claims of release runs that ended, so their issues can join another batch.
  *
- * A roster whose run recorded a promotion and is still at `releasing` is left claimed: the
- * releasing sweep (`release-batch/releasing-settle.ts`) settles each such issue and clears its
- * claim in the same write that moves it.
+ * A row still at `releasing` is left claimed: the releasing sweep
+ * (`release-batch/releasing-settle.ts`) settles it, naming the run that left it there, and clears
+ * the claim in the same write that moves it (ISS-1421).
  */
 export async function reapStaleReleaseBatchClaims(): Promise<StaleReleaseBatchClaimsResult> {
   try {
@@ -24,13 +24,7 @@ export async function reapStaleReleaseBatchClaims(): Promise<StaleReleaseBatchCl
           WHERE r.id = issues.release_batch_run_id
             AND r.status NOT IN ('running', 'paused')
         )
-        AND NOT (
-          issues.status = 'releasing'
-          AND EXISTS (
-            SELECT 1 FROM release_attempts a
-            WHERE a.run_id = issues.release_batch_run_id AND a.stage = 'promote'
-          )
-        )
+        AND issues.status <> 'releasing'
       RETURNING id
     `);
     const count = Array.isArray(released) ? released.length : 0;

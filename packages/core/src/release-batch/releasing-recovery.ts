@@ -420,7 +420,7 @@ function settledNote(projectId: string, destination: IssueStatus): string {
 
 function promotedNote(runId: string): (projectId: string) => string {
   return (projectId) =>
-    `This batch recorded a promotion, so the code it carried may be on production, and its issues stay at Releasing and claimed while its run is live. Once the run has ended, Forge's releasing sweep settles them within a minute: it reads what production serves, closes an issue whose landing commit that carries through a release record, and returns the rest to the release gate. Read the run with \`GET /api/projects/${projectId}/release-batches/${runId}/state\`.`;
+    `This batch recorded a promotion, so the code it carried may be on production, and its issues stay at Releasing and claimed while its run is live. Once the run has ended, Forge's releasing sweep settles them within a minute: it reads what production serves, closes through a release record each issue whose landing commit production carries, and returns the rest to the release gate. Read the run with \`GET /api/projects/${projectId}/release-batches/${runId}/state\`.`;
 }
 
 function sayRefusedClose(

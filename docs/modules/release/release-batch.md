@@ -250,7 +250,7 @@ settles it.
 (`packages/core/src/release-batch/releasing-settle.ts:registerReleasingSettle`, registered beside the
 other release recoveries), `packages/core/src/release-batch/releasing-settle.ts:settleStrandedReleasing`
 takes every row at `releasing` whose claim is empty or names a run that is neither running nor
-paused, at most 50 a pass, on every project. It reads the project's verified live identity
+paused, at most 50 a pass, on every project. The stale-claims reaper (`packages/core/src/pipeline/stale-release-claims.ts:reapStaleReleaseBatchClaims`) leaves such a row claimed, so the sweep's comment can name the run that ended. It reads the project's verified live identity
 (`packages/core/src/release-batch/releasing-settle-reading.ts`) and, through the repository reader,
 whether that identity descends from the row's landing commit. It posts one comment naming why nothing
 was carrying the row and what it found, returns the row to `awaiting_release` with the dead claim

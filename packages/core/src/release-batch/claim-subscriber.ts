@@ -2,6 +2,7 @@ import { logger } from '../logger.js';
 import type { HooksBus } from '../pipeline/hooks.js';
 import { TERMINAL_PIPELINE_RUN_STATUSES } from '../pipeline/status-sets.js';
 import { recoverStrandedReleasing } from './releasing-recovery.js';
+import { releaseRunStopped } from './run-ended-words.js';
 
 const TERMINAL_STATUSES = new Set<string>(TERMINAL_PIPELINE_RUN_STATUSES);
 
@@ -10,7 +11,7 @@ export function registerReleaseBatchClaimSubscriber(bus: HooksBus): void {
     if (!TERMINAL_STATUSES.has(p.toStatus)) return;
 
     void recoverStrandedReleasing(p.runId, {
-      reason: `The release batch run ended ${p.toStatus} without finishing or aborting`,
+      reason: `${releaseRunStopped(p.toStatus)}, so nothing is carrying this issue to production.`,
     })
       .then(({ claimsCleared, recovered }) => {
         if (claimsCleared.length > 0) {

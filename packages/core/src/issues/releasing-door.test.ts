@@ -33,7 +33,7 @@ describe('entering releasing (ISS-1421)', () => {
     expect(refusal?.detail).toContain(
       'Releasing (releasing) means a release batch is carrying this issue to production right now',
     );
-    expect(refusal?.detail).toContain('the Release button');
+    expect(refusal?.detail).toContain("the Release now button on this issue's page");
     expect(refusal?.detail).toContain('at the release gate');
     expect(refusal?.detail).toContain('POST /api/projects/proj-7/release-batches');
     expect(refusal?.detail).toContain('The issue stays at Awaiting release (awaiting_release).');

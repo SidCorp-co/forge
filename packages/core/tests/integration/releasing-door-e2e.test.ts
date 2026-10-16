@@ -161,7 +161,7 @@ describe('a move to Releasing from any door but a release batch (criteria 5, 6, 
         'Releasing (releasing) means a release batch is carrying this issue to production right now',
       );
       expect(body.message).toContain(
-        "the Release button on this issue's page or at the release gate",
+        "the Release now button on this issue's page or at the release gate",
       );
       expect(body.message).toContain(`POST /api/projects/${projectId}/release-batches`);
       expect(await row(id)).toEqual({ status: from, claim: null });
@@ -192,7 +192,7 @@ describe('a move to Releasing from any door but a release batch (criteria 5, 6, 
 
     expect(answer.isError).toBe(true);
     expect(answer.text).toContain('RELEASING_STARTS_FROM_RELEASE');
-    expect(answer.text).toContain('Release button');
+    expect(answer.text).toContain('Release now button');
     expect(await row(id)).toEqual({ status: 'awaiting_release', claim: null });
   });
 });
