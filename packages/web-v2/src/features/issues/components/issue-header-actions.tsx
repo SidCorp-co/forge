@@ -8,6 +8,7 @@ import type { IssueStatus } from "../types";
  * The issue page header's primary action, Open session, and the actions menu. At Releasing a
  * release run carries the issue and only that run's finish or abort takes it out (ISS-1421), so
  * the header offers the run itself and no move: core would refuse Pause and Reopen there by name.
+ * At Awaiting release the page's primary is the banner's Release now, so Reopen sits in the menu.
  */
 export function IssueHeaderActions({
   slug,
@@ -34,6 +35,7 @@ export function IssueHeaderActions({
   const isTerminal = status === "awaiting_release" || status === "closed";
   const isReleasing = status === "releasing";
   const movable = canWrite && !isTerminal && !isReleasing;
+  const reopenable = movable || (canWrite && status === "awaiting_release");
   const openPipeline = () => router.push(`/projects/${slug}/pipeline`);
 
   const moreItems: MenuItem[] = [
@@ -41,7 +43,7 @@ export function IssueHeaderActions({
     ...(movable && status !== "on_hold"
       ? [{ label: "Pause (hold)", icon: "stop", onSelect: () => onTransition("on_hold") } as MenuItem]
       : []),
-    ...(movable
+    ...(reopenable
       ? [{ label: "Reopen", icon: "rerun", onSelect: () => onTransition("reopen") } as MenuItem]
       : []),
     { label: "Copy link", icon: "link", onSelect: onCopyLink },
@@ -51,6 +53,7 @@ export function IssueHeaderActions({
     <>
       <PrimaryAction
         isReleasing={isReleasing}
+        atGate={status === "awaiting_release"}
         releaseRunId={releaseRunId}
         canWrite={canWrite}
         isTerminal={isTerminal}
@@ -79,6 +82,7 @@ export function IssueHeaderActions({
 
 function PrimaryAction(props: {
   isReleasing: boolean;
+  atGate: boolean;
   releaseRunId: string | null | undefined;
   canWrite: boolean;
   isTerminal: boolean;
@@ -103,6 +107,7 @@ function PrimaryAction(props: {
       </Button>
     );
   }
+  if (props.atGate) return null;
   if (props.isTerminal) {
     return (
       <Button variant="primary" size="sm" icon="rerun" loading={pending} onClick={() => onTransition("reopen")}>

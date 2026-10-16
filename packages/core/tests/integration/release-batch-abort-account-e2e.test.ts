@@ -333,23 +333,25 @@ describe('a batch aborted after its finish closed part of the roster', () => {
   }, 30_000);
 });
 
-describe('the paths a promoted roster is told to read', () => {
-  it('names the real project and run in the note a held roster is given', async () => {
+describe('what a promoted roster is told, in words a person acts on', () => {
+  const ROUTE_OR_ID =
+    /\/api\/|\{projectId\}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/;
+  it('points a held roster at View release, naming no route and no id', async () => {
     const { runId, ids } = await batchOf(1);
     await promoted(runId);
     await abort(runId);
     const note = await promotionNote(ids[0] as string);
-    expect(note).toContain(`/api/projects/${projectId}/release-batches/${runId}/state`);
-    expect(note).not.toMatch(/\{projectId\}|\{runId\}/);
+    expect(note).toContain('View release on the issue shows where its run stands.');
+    expect(note).not.toMatch(ROUTE_OR_ID);
   }, 30_000);
 
-  it('names the real project in the note a settled roster is given', async () => {
+  it('tells a settled roster to record the release, naming no route and no id', async () => {
     const { runId, ids } = await batchOf(1);
     await promoted(runId);
     await abort(runId, { promotedRoster: 'return-to-gate' });
     const note = await promotionNote(ids[0] as string);
-    expect(note).toContain(`/api/projects/${projectId}/release-records`);
-    expect(note).not.toMatch(/\{projectId\}|\{runId\}/);
+    expect(note).toContain('If the release did land, record that release');
+    expect(note).not.toMatch(ROUTE_OR_ID);
   }, 30_000);
 });
 
@@ -474,13 +476,12 @@ describe('the route a held promoted roster is told to take, followed in its orde
   }, 30_000);
 
   it('gives the held note no finish and no route for a person: the releasing sweep settles it', async () => {
-    const { ids, runId } = await heldBatch();
+    const { ids } = await heldBatch();
     const note = (await promotionNote(ids[0] as string)) ?? '';
     expect(note).not.toMatch(/finish/i);
     expect(note).toContain("Forge's releasing sweep settles them within a minute");
-    expect(note).toContain(`GET /api/projects/${projectId}/release-batches/${runId}/state`);
-    expect(note).not.toContain('/abort');
-    expect(note).not.toContain('/release-records');
+    expect(note).toContain('View release on the issue shows where its run stands.');
+    expect(note).not.toMatch(/\/api\/|\/abort|\/release-records/);
   }, 30_000);
 });
 

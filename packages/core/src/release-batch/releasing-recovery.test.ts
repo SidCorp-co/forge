@@ -8,7 +8,7 @@ import { closeFailureText, closeRefusalOf, refusedCloseComment } from './releasi
 const PROJECT = '11111111-1111-4111-8111-111111111111';
 
 describe('what a finish says on an issue it could not close (ISS-1381)', () => {
-  it('names every id each `*Ids` collection of a refusal carries, labelled by its key', () => {
+  it('keeps every id a refusal names for a caller, and counts them in words for a person (ISS-1421)', () => {
     const refusal = closeRefusalOf(
       new TransitionError('OPEN_QUESTIONS', 'answer them first', {
         to: 'closed',
@@ -30,7 +30,8 @@ describe('what a finish says on an issue it could not close (ISS-1381)', () => {
       destination: 'awaiting_release',
     });
     expect(said).toContain('refused with `OPEN_QUESTIONS`');
-    expect(said).toContain('Blocking it: blocking run r-9, open question q-1, open question q-2.');
+    expect(said).toContain('Blocking it: 1 blocking run, 2 open questions.');
+    expect(said).not.toMatch(/q-1|q-2|r-9/);
     expect(said).toContain('shipped as version 1.4.0');
   });
 

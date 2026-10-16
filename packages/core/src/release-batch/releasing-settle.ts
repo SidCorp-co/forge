@@ -5,6 +5,7 @@
 // issue's landing commit it is closed by a release record; otherwise it goes back to the gate.
 
 import { sql } from 'drizzle-orm';
+import { forgeAuthorId } from '../comments/forge-author.js';
 import { postSystemComment } from '../comments/system-write.js';
 import { db, type Tx } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
@@ -44,7 +45,6 @@ interface StrandedRow extends Record<string, unknown> {
   run_status: string | null;
   run_exists: boolean;
   landing: string | null;
-  created_by: string;
 }
 
 /** The commit an issue landed at, as the sweep judges carriage against it. */
@@ -58,10 +58,8 @@ async function strandedRows(): Promise<StrandedRow[]> {
   return (await db.execute<StrandedRow>(sql`
     SELECT i.id, i.project_id, i.reopen_count, i.release_batch_run_id,
            r.status AS run_status, (r.id IS NOT NULL) AS run_exists,
-           ${LANDING} AS landing,
-           p.created_by
+           ${LANDING} AS landing
     FROM issues i
-    JOIN projects p ON p.id = i.project_id
     LEFT JOIN pipeline_runs r ON r.id = i.release_batch_run_id
     WHERE i.status = 'releasing'
       AND i.archived_at IS NULL
@@ -79,34 +77,30 @@ export function strandedCause(
     return 'No release run claims this issue, so nothing was releasing it';
   }
   if (!row.run_exists) {
-    return `It names release run ${row.release_batch_run_id}, which no longer exists, so nothing was releasing it`;
+    return 'The release run that claimed it no longer exists, so nothing was releasing it';
   }
-  return `${releaseRunStopped(row.run_status, row.release_batch_run_id)}, so nothing was releasing it`;
+  return `${releaseRunStopped(row.run_status)}, so nothing was releasing it`;
 }
 
 const GATE = statusLabel(RELEASE_GATE_STATUS);
 
-function startAgain(projectId: string): string {
-  return (
-    `It is back at ${GATE}. If its code has already shipped, record that with ` +
-    `POST /api/projects/${projectId}/release-records naming the commit production serves, which ` +
-    'closes it; otherwise start a release with Release now on this page or at the release gate.'
-  );
-}
+const START_AGAIN =
+  `It is back at ${GATE}. If its code has already shipped, record that release, which closes it; ` +
+  'otherwise start a release with Release now on this page or at the release gate.';
 
 /** What the sweep found on production, and what follows for the issue, as its comment says it. */
-export function findingSentence(finding: ProductionFinding, projectId: string): string {
+export function findingSentence(finding: ProductionFinding): string {
   switch (finding.kind) {
     case 'carried':
       return `Production's verified live deployment serves \`${finding.serving}\`, which carries this issue's landing commit \`${finding.landing}\`, so its code has shipped: a release record closes it now.`;
     case 'not-carried':
-      return `Production's verified live deployment serves \`${finding.serving}\`, which does not carry this issue's landing commit \`${finding.landing}\`, so its code has not shipped. ${startAgain(projectId)}`;
+      return `Production's verified live deployment serves \`${finding.serving}\`, which does not carry this issue's landing commit \`${finding.landing}\`, so its code has not shipped. ${START_AGAIN}`;
     case 'unverified':
-      return `This project's live deployment declares no verify probe, so nothing can read what production serves, and the sweep never closes an issue on a deployment nobody read. ${startAgain(projectId)}`;
+      return `This project's live deployment declares no verify probe, so nothing can read what production serves, and the sweep never closes an issue on a deployment nobody read. ${START_AGAIN}`;
     case 'no-landing':
-      return `This issue carries no landing commit, so nothing can say whether production has its code. Mark it merged naming the commit it landed at. ${startAgain(projectId)}`;
+      return `This issue carries no landing commit, so nothing can say whether production has its code. Mark it merged naming the commit it landed at. ${START_AGAIN}`;
     case 'unread':
-      return `What production serves could not be read: ${finding.why}. ${startAgain(projectId)}`;
+      return `What production serves could not be read: ${finding.why}. ${START_AGAIN}`;
   }
 }
 
@@ -135,12 +129,13 @@ async function fenceAndRelease(tx: Tx, row: StrandedRow): Promise<void> {
   `);
 }
 
-function sweepActor(row: StrandedRow): TransitionActor {
-  return { type: 'user', id: row.created_by, agency: 'agent' };
+async function sweepActor(): Promise<TransitionActor> {
+  return { type: 'user', id: await forgeAuthorId(db), agency: 'agent' };
 }
 
 /** Back to the gate, the dead claim cleared and the comment posted, in one transaction. */
 async function returnToGate(row: StrandedRow, body: string, reason: string): Promise<void> {
+  const actor = await sweepActor();
   await transitionIssueStatus(
     {
       id: row.id,
@@ -149,7 +144,7 @@ async function returnToGate(row: StrandedRow, body: string, reason: string): Pro
       reopenCount: row.reopen_count,
     },
     RELEASE_GATE_STATUS,
-    sweepActor(row),
+    actor,
     {
       // The gate's entry records are not re-read: an unearned one would hold the row at Releasing
       // for good, under a door nothing else may pass (ISS-1421 decision record).
@@ -158,7 +153,7 @@ async function returnToGate(row: StrandedRow, body: string, reason: string): Pro
       reason,
       beforeStatusWrite: async (tx) => {
         await fenceAndRelease(tx, row);
-        await postSystemComment({ issueId: row.id, authorId: row.created_by, body }, tx);
+        await postSystemComment({ issueId: row.id, authorId: actor.id, body }, tx);
       },
     },
   );
@@ -169,8 +164,9 @@ async function closeByRecord(
   finding: Extract<ProductionFinding, { kind: 'carried' }>,
   cause: string,
 ): Promise<boolean> {
+  const actor = await sweepActor();
   const account =
-    `Recorded by Forge's releasing sweep (ISS-1421). ${cause}; production's verified live ` +
+    `Recorded by Forge's releasing sweep. ${cause}; production's verified live ` +
     `deployment serves ${finding.serving}, which carries this issue's landing commit ${finding.landing}.`;
   try {
     const result = await recordPerformedRelease({
@@ -178,8 +174,8 @@ async function closeByRecord(
       issueIds: [row.id],
       commit: finding.servingWhole,
       account,
-      userId: row.created_by,
-      actor: sweepActor(row),
+      userId: actor.id,
+      actor,
       beforeClose: (tx, issueId) => landingStill(tx, issueId, finding.landing),
     });
     if (result.closed.includes(row.id)) return true;
@@ -208,10 +204,10 @@ export async function landingStill(tx: Tx, issueId: string, judged: string): Pro
 async function sayRecordRefused(row: StrandedRow, why: string): Promise<void> {
   await postSystemComment({
     issueId: row.id,
-    authorId: row.created_by,
+    authorId: await forgeAuthorId(db),
     body:
       `The release record that would close this issue was refused: ${why}. ` +
-      `It stays at ${GATE}. ${startAgain(row.project_id)}`,
+      `It stays at ${GATE}. ${START_AGAIN}`,
   });
 }
 
@@ -226,7 +222,7 @@ async function settleOne(
   const body = [
     `**Releasing, with nothing releasing it.** ${cause}.`,
     `Releasing means a release batch is carrying an issue to production right now, and none was, so Forge's releasing sweep has settled it.`,
-    findingSentence(finding, row.project_id),
+    findingSentence(finding),
   ].join('\n\n');
   await returnToGate(row, body, `releasing sweep: ${cause}`);
   if (finding.kind !== 'carried') return 'returned';

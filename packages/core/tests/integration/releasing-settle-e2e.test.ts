@@ -15,6 +15,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { FORGE_AUTHOR_ID } from '../../src/comments/forge-author.js';
 import { TERMINAL_PIPELINE_RUN_STATUSES } from '../../src/pipeline/status-sets.js';
 import type { ProductionReading } from '../../src/release-batch/releasing-settle-reading.js';
 import { releaseRunStopped } from '../../src/release-batch/run-ended-words.js';
@@ -153,7 +154,7 @@ describe('a row at Releasing that nothing carries (criteria 13, 14, 15, 16, 17)'
   });
 
   it.each([...TERMINAL_PIPELINE_RUN_STATUSES])(
-    'returns a row whose run ended %s to Awaiting release, naming the run, where production lacks it',
+    'returns a row whose run ended %s to Awaiting release, saying how it ended, where production lacks it',
     async (runStatus) => {
       await production();
       const run = await plantRun(runStatus);
@@ -163,11 +164,12 @@ describe('a row at Releasing that nothing carries (criteria 13, 14, 15, 16, 17)'
 
       expect(await fx.stored(id)).toMatchObject({ status: 'awaiting_release', claim: null });
       const [said] = await bodies(id);
-      expect(said).toContain(`${releaseRunStopped(runStatus, run)}, so nothing was releasing it`);
+      expect(said).toContain(`${releaseRunStopped(runStatus)}, so nothing was releasing it`);
       expect(said).not.toContain(`ended ${runStatus}`);
+      expect(said).not.toContain(run);
       expect(said).toContain(`does not carry this issue's landing commit \`${UNSHIPPED}\``);
       expect(said).toContain(
-        'start a release with Release now on this page or at the release gate',
+        'If its code has already shipped, record that release, which closes it; otherwise start a release with Release now on this page or at the release gate.',
       );
       expect(await recordFor(id)).toBeNull();
     },
@@ -288,14 +290,14 @@ describe('what the sweep holds to (criteria 18, 19, 20, 21)', () => {
         from_status: 'releasing',
         to_status: 'awaiting_release',
         actor_type: 'user',
-        actor_id: ownerId,
+        actor_id: FORGE_AUTHOR_ID,
         actor_agency: 'agent',
       },
       {
         from_status: 'awaiting_release',
         to_status: 'closed',
         actor_type: 'user',
-        actor_id: ownerId,
+        actor_id: FORGE_AUTHOR_ID,
         actor_agency: 'agent',
       },
     ]);
@@ -308,16 +310,53 @@ describe('what the sweep holds to (criteria 18, 19, 20, 21)', () => {
       WHERE issue_id = ${id} AND action = 'issue.statusChanged' ORDER BY created_at
     `);
     expect(activity).toEqual([
-      { actor_type: 'user', actor_id: ownerId, to: 'awaiting_release' },
-      { actor_type: 'user', actor_id: ownerId, to: 'closed' },
+      { actor_type: 'user', actor_id: FORGE_AUTHOR_ID, to: 'awaiting_release' },
+      { actor_type: 'user', actor_id: FORGE_AUTHOR_ID, to: 'closed' },
     ]);
   });
+});
+
+describe('what the sweep writes on an issue, and as whom (ISS-1421 round 2)', () => {
+  it.each([
+    ['closed, production carrying it', {}],
+    ['returned, production lacking it', { landing: UNSHIPPED }],
+    ['left at the gate, its record refused', { note: null }],
+  ] as const)(
+    'writes as Forge, in words naming no route and no id, where it is %s',
+    async (_, opts) => {
+      await production();
+      const id = await plant(opts);
+
+      await settle();
+
+      const said = await harness.db.execute<{
+        body: string;
+        author_id: string;
+        kind: string;
+        display_name: string | null;
+      }>(sql`
+      SELECT c.body, c.author_id, u.kind, u.display_name FROM comments c
+      JOIN users u ON u.id = c.author_id WHERE c.issue_id = ${id} ORDER BY c.created_at, c.id
+    `);
+      expect(said.length).toBeGreaterThan(0);
+      for (const row of said) {
+        expect(row).toMatchObject({
+          author_id: FORGE_AUTHOR_ID,
+          kind: 'agent',
+          display_name: 'Forge',
+        });
+        expect(row.body).not.toMatch(
+          /\/api\/|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/,
+        );
+      }
+    },
+  );
 });
 
 describe('a claim the stale-claims reaper meets at Releasing (criterion 14)', () => {
   // Cleared first, the claim was the only record of which run left the row there, and the sweep
   // then told the issue no release run had ever claimed it.
-  it('is left for the sweep, which names the run that ended', async () => {
+  it('is left for the sweep, which says the run that claimed it ended', async () => {
     await production();
     const run = await plantRun('failed');
     const id = await plant({ claim: run, landing: UNSHIPPED });
@@ -330,7 +369,7 @@ describe('a claim the stale-claims reaper meets at Releasing (criterion 14)', ()
 
     expect(await settle()).toEqual({ settled: 1, closed: 0, failed: 0 });
     const [said] = await bodies(id);
-    expect(said).toContain(`${releaseRunStopped('failed', run)}, so nothing was releasing it`);
+    expect(said).toContain(`${releaseRunStopped('failed')}, so nothing was releasing it`);
   });
 });
 
@@ -423,10 +462,13 @@ describe('a promoted roster an abort left at Releasing (criterion 22)', () => {
     expect(await fx.stored(lacking)).toMatchObject({ status: 'awaiting_release', claim: null });
     const said = await bodies(lacking);
     expect(said.at(-1)).toContain(
-      `Release run ${runId} was cancelled without finishing its release, so nothing was releasing it`,
+      'The release run was cancelled without finishing its release, so nothing was releasing it',
     );
     for (const body of [...said, ...(await bodies(carried))]) {
       expect(body).not.toMatch(/for a person to settle|settling it is an operator's act/);
+      expect(body).not.toMatch(
+        /\/api\/|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/,
+      );
     }
   });
 });

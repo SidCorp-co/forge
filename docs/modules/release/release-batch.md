@@ -227,8 +227,9 @@ One issue's refused close does not stop the others from closing. The refused iss
 leaves (`packages/core/src/release-batch/releasing-recovery.ts:refusedCloseComment`) says:
 
 - that the release it was in has shipped, with its version;
-- the refusal by its code (`OPEN_QUESTIONS`, say), and every blocking object the refusal reports —
-  each id under a `*Ids` key of its details, labelled (`open question <id>`);
+- the refusal by its code (`OPEN_QUESTIONS`, say), and the blocking objects the refusal reports,
+  counted by their label (`2 open questions`); the ids under each `*Ids` key of its details stay on
+  the refusal a caller reads, and never reach the comment (ISS-1421);
 - what clears it, as an act the issue's page offers at the release gate — for `OPEN_QUESTIONS`,
   answer each in its "Decision waiting" card; for `CLOSE_REQUIRES_SHIPPED`, Mark merged on its
   Properties rail; a code with no such act keeps the refusal's own detail
@@ -242,7 +243,7 @@ leaves (`packages/core/src/release-batch/releasing-recovery.ts:refusedCloseComme
 Where the run recorded a `promote` attempt, the refused issue does not move while the run is live:
 it stays at `releasing`, still claimed, because the code may be on production. Its comment names the
 same refusal, and in place of the last point it says that once the run has ended the releasing sweep
-settles it.
+settles it, and that View release on the issue shows where its run stands.
 
 ### A row at `releasing` that nothing carries (ISS-1421)
 
@@ -250,7 +251,7 @@ settles it.
 (`packages/core/src/release-batch/releasing-settle.ts:registerReleasingSettle`, registered beside the
 other release recoveries), `packages/core/src/release-batch/releasing-settle.ts:settleStrandedReleasing`
 takes every row at `releasing` whose claim is empty or names a run that is neither running nor
-paused, at most 50 a pass, on every project. The stale-claims reaper (`packages/core/src/pipeline/stale-release-claims.ts:reapStaleReleaseBatchClaims`) leaves such a row claimed, so the sweep's comment can name the run that ended. It reads the project's verified live identity
+paused, at most 50 a pass, on every project. The stale-claims reaper (`packages/core/src/pipeline/stale-release-claims.ts:reapStaleReleaseBatchClaims`) leaves such a row claimed, so the sweep's comment can say how the run that claimed it ended. It reads the project's verified live identity
 (`packages/core/src/release-batch/releasing-settle-reading.ts`) and, through the repository reader,
 whether that identity descends from the row's landing commit. It posts one comment naming why nothing
 was carrying the row and what it found, returns the row to `awaiting_release` with the dead claim
@@ -258,8 +259,10 @@ cleared in the same transaction — without re-reading the gate's entry records,
 hold the row at `releasing` for good — and, where production carries the landing commit, closes it
 through a release record naming the serving commit; that close is refused, under a lock on the row, where the issue's landing commit is no longer the one production was read as carrying. An unverified project, an unreadable probe or
 repository, a missing landing commit, or a record the release door refuses leaves the row at the gate
-with a comment saying which. A row a running or paused run carries is never touched. The moves are
-written as the project's creator with agent agency.
+with a comment saying which. A row a running or paused run carries is never touched. The moves, the comments and the release
+record are written as Forge (`packages/core/src/comments/forge-author.ts:forgeAuthorId`), an agent
+account in no organization minted on first use, never as a person; the comments name no route and
+no id, telling a person to record the release or to start one with Release now.
 
 A close that failed without a refusal names the database's own reason with its SQLSTATE, read off
 the driver error under drizzle's wrapper (`packages/core/src/lib/db-errors.ts:pgDriverError`) and

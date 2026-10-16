@@ -15,12 +15,6 @@ describe('releaseRunStopped (ISS-1421)', () => {
     expect(releaseRunStopped(status)).toBe(said);
   });
 
-  it('names the run where it is given', () => {
-    expect(releaseRunStopped('failed', 'run-7')).toBe(
-      'Release run run-7 failed without finishing its release',
-    );
-  });
-
   it('says a status it has no word for as stopped, never as the stored value', () => {
     expect(releaseRunStopped('paused')).toBe(
       'The release run stopped without finishing its release',

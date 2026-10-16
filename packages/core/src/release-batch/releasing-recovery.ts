@@ -190,6 +190,16 @@ function howItCloses(destination: IssueStatus, refusal: CloseRefusal): string {
   );
 }
 
+/** "1 blocking run, 2 open questions": a person is told what blocks, never the ids a caller reads. */
+function countedBlockers(blocking: readonly string[]): string {
+  const counts = new Map<string, number>();
+  for (const named of blocking) {
+    const label = named.slice(0, named.lastIndexOf(' '));
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  return [...counts].map(([label, n]) => `${n} ${label}${n === 1 ? '' : 's'}`).join(', ');
+}
+
 /** "version 1.4.0, one with no version": the releases a repeated failure came from. */
 function releasesNamed(versions: ReadonlyArray<string | null>): string {
   return versions.map((v) => (v ? `version ${v}` : 'one with no version')).join(', ');
@@ -212,7 +222,7 @@ export function refusedCloseComment(args: {
     refusal.kind === 'refused'
       ? `The close was refused with \`${refusal.code}\`. ${
           refusal.blocking.length > 0
-            ? `Blocking it: ${refusal.blocking.join(', ')}.`
+            ? `Blocking it: ${countedBlockers(refusal.blocking)}.`
             : 'The refusal named no blocking object.'
         } What clears it: ${personClears(refusal)}`
       : `The close failed before it reached a decision: ${refusal.message}. Nothing on this issue refused it, so nothing here is yours to clear: that reason is for whoever operates this Forge to fix.`;
@@ -278,7 +288,7 @@ export async function recoverStrandedReleasing(
       { runId, claimed: claimed.length, reason: options.reason },
       'release-batch: this run promoted, so its roster stays at Releasing until the releasing sweep settles it',
     );
-    await noteOnRoster(runId, claimed, options, promotedNote(runId));
+    await noteOnRoster(runId, claimed, options, PROMOTED_NOTE);
     return {
       claimsCleared: [],
       alreadyClosed,
@@ -315,7 +325,7 @@ export async function recoverStrandedReleasing(
             issueId: issue.id,
             authorId: author,
             body: promoted
-              ? `${options.reason}. ${settledNote(issue.projectId, destination)}`
+              ? `${options.reason}. ${settledNote(destination)}`
               : `${options.reason}. The issue is at ${statusLabel(destination)} — a person decides whether it goes back to work or into another batch.`,
           });
         }
@@ -408,20 +418,17 @@ async function releaseClaims(
 }
 
 /** What a roster is told when an operator settles it although this run promoted. */
-function settledNote(projectId: string, destination: IssueStatus): string {
+function settledNote(destination: IssueStatus): string {
   return (
     `This batch recorded a promotion, so the code it carried may be on production, and an operator ` +
     `settled the roster rather than leave it at Releasing — the issue is back at ` +
-    `${statusLabel(destination)}. If the release did land, record it with ` +
-    `POST /api/projects/${projectId}/release-records, naming the commit production is serving and ` +
-    `how it was released; that closes it against evidence instead of by hand.`
+    `${statusLabel(destination)}. If the release did land, record that release, naming the commit ` +
+    `production is serving and how it was released; that closes it against evidence instead of by hand.`
   );
 }
 
-function promotedNote(runId: string): (projectId: string) => string {
-  return (projectId) =>
-    `This batch recorded a promotion, so the code it carried may be on production, and its issues stay at Releasing and claimed while its run is live. Once the run has ended, Forge's releasing sweep settles them within a minute: it reads what production serves, closes through a release record each issue whose landing commit production carries, and returns the rest to the release gate. Read the run with \`GET /api/projects/${projectId}/release-batches/${runId}/state\`.`;
-}
+const PROMOTED_NOTE =
+  "This batch recorded a promotion, so the code it carried may be on production, and its issues stay at Releasing and claimed while its run is live. Once the run has ended, Forge's releasing sweep settles them within a minute: it reads what production serves, closes through a release record each issue whose landing commit production carries, and returns the rest to the release gate. View release on the issue shows where its run stands.";
 
 function sayRefusedClose(
   runId: string,
@@ -450,7 +457,7 @@ async function noteOnRoster(
   runId: string,
   claimed: Array<{ id: string; status: string; projectId: string }>,
   options: RecoverStrandedReleasingOptions,
-  note: (projectId: string) => string,
+  note: string,
 ): Promise<void> {
   const author = options.actorUserId ?? options.commentAuthorId;
   if (!options.comment || !author) return;
@@ -465,7 +472,7 @@ async function noteOnRoster(
             projectId: issue.projectId,
             version: options.version ?? null,
             destination: 'releasing',
-            held: note(issue.projectId),
+            held: note,
             repeats,
           }),
         );
@@ -473,7 +480,7 @@ async function noteOnRoster(
         await postSystemComment({
           issueId: issue.id,
           authorId: author,
-          body: `${options.reason}. ${note(issue.projectId)}`,
+          body: `${options.reason}. ${note}`,
         });
       }
     } catch (err) {
