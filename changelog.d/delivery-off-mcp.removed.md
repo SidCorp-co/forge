@@ -1,0 +1,1 @@
+**Delivery leaves the MCP server.** Coolify, the source host, Sentry and the storefront target are REST under `/api/projects/:id/integrations/…`, with Coolify logs added. A policy still denying a removed tool stops the deploy by name.

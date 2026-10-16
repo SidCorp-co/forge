@@ -267,12 +267,8 @@
           "why": "The one hand-built card, keyed 'github', is derived from `projects.repoUrl` and NOT from any integration binding \u2014 which is exactly why `githubIntegration` declares `presentation: null`, so the registry loop cannot emit a second card that collides with it. Every other card in this file comes from a declaration."
         },
         {
-          "glob": "packages/core/src/integration-door/storefront-tool.ts",
-          "why": "The `forge_storefront_target` MCP tool, living in the integration door and reading the registry through the integrations port face. It answers only about the storefront providers (epodsystem, autoflow) and names them in the description a model reads; no other provider's request reaches it."
-        },
-        {
           "glob": "packages/core/src/integration-door/*-routes.ts",
-          "why": "The integration door's per-provider route modules (ISS-167): `coolify-routes.ts` and `github-connect-routes.ts` are each ABOUT the provider they are named for, mounted by the route registry and read by no generic path. They left the provider directories because an adapter holds no HTTP door; the name came with them."
+          "why": "The integration door's per-provider route modules (ISS-167): `coolify-routes.ts`, `github-connect-routes.ts`, `sentry-routes.ts`, `source-routes.ts` and `storefront-routes.ts` are each ABOUT the provider or port they are named for, mounted by the route registry and read by no generic path. They left the provider directories because an adapter holds no HTTP door; the name came with them."
         },
         {
           "glob": "packages/core/src/release-batch/coolify-*.ts",

@@ -1,9 +1,9 @@
 /**
  * The Coolify deploy commands, for every surface that offers them.
  *
- * The MCP tool (`integration-door/coolify-tool.ts`) and the REST twin under
- * `/api/projects/:projectId/integrations/...` call the same functions rather
- * than restating the branch rules — `deploy` in particular decides whether a
+ * The REST routes under `/api/projects/:projectId/integrations/coolify/…`
+ * (`integration-door/coolify-routes.ts`) and the release batch call the same
+ * functions rather than restating the branch rules — `deploy` in particular decides whether a
  * PROD binding may dispatch, and that decision must not exist twice.
  *
  * Authorisation is the CALLER's job: each surface knows its own principal.
