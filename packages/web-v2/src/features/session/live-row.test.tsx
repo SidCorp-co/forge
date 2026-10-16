@@ -114,7 +114,8 @@ describe("the box's report on a page left open (ISS-1228 round 8)", () => {
 
   it("reads Blocked once the polled read carries a newer report than the row it opened with", async () => {
     reads.mockImplementation(async () => ({ ...beatingNow(), sessions: [{ ...beatingNow().sessions[0], report: blocked }] }));
-    const { result } = renderHook(() => useLiveSessionRow({ ...row, report: null }), { wrapper });
+    const opened: SessionRow = { ...row, report: null };
+    const { result } = renderHook(() => useLiveSessionRow(opened), { wrapper });
     await waitFor(() => expect(deriveSessionDisplayStatus(result.current as SessionRow, clock)).toBe("blocked"));
     expect(result.current?.report?.waitingOn).toBe("approve the database restore in Coolify");
   });
@@ -123,7 +124,8 @@ describe("the box's report on a page left open (ISS-1228 round 8)", () => {
     const older = { ...blocked, observedAt: new Date(T0 - 60_000).toISOString() };
     const newer = { ...blocked, work: "runnable", observedAt: new Date(T0 - 1_000).toISOString() };
     reads.mockImplementation(async () => ({ ...beatingNow(), sessions: [{ ...beatingNow().sessions[0], report: older }] }));
-    const { result } = renderHook(() => useLiveSessionRow({ ...row, report: newer }), { wrapper });
+    const opened: SessionRow = { ...row, report: newer };
+    const { result } = renderHook(() => useLiveSessionRow(opened), { wrapper });
     await act(async () => {});
     await waitFor(() => expect(reads).toHaveBeenCalled());
     expect(result.current?.report?.work).toBe("runnable");

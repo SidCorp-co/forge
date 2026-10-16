@@ -483,8 +483,9 @@ function announcesRelease(line: string): boolean {
 	if (RELEASE_HEADING.test(line)) return true;
 	const statement = line.replace(/^#+\s*/, "");
 	if (!RELEASE_STATEMENT.test(statement)) return false;
-	const clause = statement.split(/[;,—–]|\.(?!\d)|\s-\s/)[0] ?? "";
-	return !NOT_AN_ANNOUNCEMENT.test(clause.replace(/^(released|shipped|published release)\s*:?/, ""));
+	const rest = statement.replace(/^(released|shipped|published release)\s*[:—–-]?\s*/, "");
+	const clause = rest.split(/[;,—–]|\.(?!\d)|\s-\s/)[0] ?? "";
+	return !NOT_AN_ANNOUNCEMENT.test(clause);
 }
 
 /**
