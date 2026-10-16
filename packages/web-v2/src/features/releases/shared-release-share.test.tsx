@@ -34,14 +34,17 @@ describe("a shared release page", () => {
     const { container } = renderWithQuery(<SharedAnswer token={TOKEN} signedIn={false} release={(r) => <SharedReleaseView snapshot={r} />} />);
     expect(await screen.findByTestId("shared-release")).toBeTruthy();
     expect(calls).toEqual([{ method: "POST", path: "/shares/open", body: { token: TOKEN } }]);
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Release 0.4.0");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("0.4.0 · Readable releases");
     expect(screen.getByText(/read-only snapshot/)).toBeTruthy();
-    expect(screen.getByTestId("page-summary")).toHaveAttribute("data-state", "derived");
+    expect(screen.getByTestId("page-summary")).toHaveTextContent("opens as a page you can read in a minute");
     expect(screen.getByTestId("page-group-new")).toHaveTextContent("Releases read as pages");
-    const open = screen.getAllByTestId("page-known-issue")[0];
-    if (!open) throw new Error("no open row");
-    fireEvent.click(within(open).getAllByRole("button")[0]);
-    expect(open).toHaveTextContent("Falls short");
+    // the overview a share freezes counts what users do not see and lists no criterion (REQ-40 BC-15, BC-16)
+    expect(screen.queryByTestId("page-known-issue")).toBeNull();
+    expect(screen.getByTestId("page-internal-line")).toHaveTextContent("1 change has no note for users.");
+    const row = screen.getAllByTestId("page-change")[0];
+    if (!row) throw new Error("no change row");
+    fireEvent.click(within(row).getAllByRole("button")[0]);
+    expect(row).toHaveTextContent("Open any release and read what it brings, whole, in under a minute.");
     // a reader may not be a member: no link into the project (only the page's own anchors), and no share or export acts
     expect([...container.querySelectorAll("a")].filter((a) => !a.getAttribute("href")?.startsWith("#"))).toHaveLength(0);
     expect(screen.queryByTestId("page-row-technical")).toBeNull();

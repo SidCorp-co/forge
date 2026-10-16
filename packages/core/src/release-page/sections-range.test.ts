@@ -24,6 +24,7 @@ function detail(changes: ReleaseDetail['changes']): ReleaseDetail {
       sections: [],
       designs: [],
       withoutNotes: [],
+      skipped: [],
       reworked: [],
       language: 'en',
       attention: [],
@@ -127,14 +128,18 @@ describe("the developer view's What it changes is the range's own (BC-9, J9 on 0
   });
 
   it('asks an admin only for the migration the range adds, on dev.224, dev.225 and dev.226 (BC-7)', () => {
-    expect(actionsOf(landings, dev224).map((a) => `${a.kind}:${a.ref}:${a.issues}`)).toEqual([
-      `migration:${M494}:ISS-452`,
-    ]);
+    expect(
+      actionsOf(landings, dev224, detail(landings).notes).map(
+        (a) => `${a.kind}:${a.ref}:${a.issues}`,
+      ),
+    ).toEqual([`migration:${M494}:ISS-452`]);
     const dev225 = { ...dev224, migrations: [M495] };
-    expect(actionsOf(landings, dev225).map((a) => `${a.kind}:${a.ref}:${a.issues}`)).toEqual([
-      `migration:${M495}:ISS-455`,
-    ]);
+    expect(
+      actionsOf(landings, dev225, detail(landings).notes).map(
+        (a) => `${a.kind}:${a.ref}:${a.issues}`,
+      ),
+    ).toEqual([`migration:${M495}:ISS-455`]);
     const dev226 = { ...dev224, migrations: [] };
-    expect(actionsOf(landings, dev226)).toEqual([]);
+    expect(actionsOf(landings, dev226, detail(landings).notes)).toEqual([]);
   });
 });

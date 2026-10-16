@@ -84,6 +84,7 @@ import {
   createReleaseBatch,
   loadReleaseRoster,
   owedReleaseNotes,
+  unnamedReleases,
   warnedReleaseNotes,
 } from './release-batch/index.js';
 import { owedBreakdowns, owedRequirementRevisions } from './requirements/index.js';
@@ -213,6 +214,7 @@ export function provideExecutionPorts(): void {
     designsOwed: owedDesignRevisions,
     releaseNotesOwed: owedReleaseNotes,
     releaseNotesWarned: warnedReleaseNotes,
+    releasesUnnamed: unnamedReleases,
     answersSince: async (projectId, after) =>
       (await answeredOnIssuesSince(projectId, after)).map((a) => ({
         issueKey: formatIssueRef(a.issuePrefix, a.issSeq),

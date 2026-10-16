@@ -37,7 +37,16 @@ const page = releasePage({
       business: { total: 26, proven: [{ code: "BC-18", statement: BC18 }] },
     },
   ],
-  improvements: [{ issueKey: "ISS-451", kind: "improved", section: "Changed", line: "Every refusal now names the field to fix and how to fix it." }],
+  improvements: [
+    {
+      issueKey: "ISS-451",
+      kind: "improved",
+      section: "Changed",
+      line: "Every refusal names its field",
+      detail: "Every refusal now names the field to fix and how to fix it.",
+      requirementKey: "REQ-34",
+    },
+  ],
   fixes: [],
   knownIssues: [],
   technical: TECHNICAL,

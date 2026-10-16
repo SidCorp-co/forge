@@ -130,7 +130,7 @@ function ShippedPart({ s, slug, clock }: PartProps) {
             <span className="text-muted">{when(r.releasedAt)}</span>
             <span className="text-muted">{t("dash.shippedIssues", { n: r.issueCount })}</span>
             <span className="min-w-0 flex-1 text-muted">{verifiedSentence(r.verified, t)}</span>
-            {r.headline ? <span className="w-full">{r.headline}</span> : null}
+            {r.name ? <span className="w-full">{r.name}</span> : null}
           </li>
         ))}
         {s.shipped.releaseCount > s.shipped.releases.length ? (

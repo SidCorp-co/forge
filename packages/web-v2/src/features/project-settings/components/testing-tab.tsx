@@ -2,7 +2,6 @@
 // that uses it. Each account is one row: its role, where it is used, and whether its secret holds a
 // value (never the value), with a write-only act to replace it. The profile's limits are short rows,
 // and its raw document sits behind a fold for whoever edits it.
-import { releaseRowHeadline } from "@forge/contracts/release-digest";
 import { useState } from "react";
 import { Button, Disclosure, ErrorState, RowItem, RowList, SettingsGroup, Skeleton, sentenceCase } from "@/design";
 import { useProjectDocument, useSecretNames, useTestingProfiles } from "@/features/project-config";
@@ -92,12 +91,9 @@ function CredentialLine({
   );
 }
 
-/** A limit the profile declares, said by its note in at most fifteen words, the rest one click away;
- *  its id is the raw document's. */
+/** A limit the profile declares, said by its note whole: a reader is never handed a cut sentence. Its id is the raw document's. */
 function LimitLine({ id, note }: { id: string; note: string }) {
-  const [open, setOpen] = useState(false);
-  const head = releaseRowHeadline(note);
-  return <RowItem wrap expanded={open} onClick={head.cut ? () => setOpen((o) => !o) : undefined} title={open ? note : head.text} testId="testing-limit" rowKey={id} />;
+  return <RowItem wrap title={note} testId="testing-limit" rowKey={id} />;
 }
 
 function ProfileAccounts({

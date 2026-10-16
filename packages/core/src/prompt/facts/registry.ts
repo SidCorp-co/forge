@@ -1,4 +1,8 @@
 import { contentLanguageName } from '@forge/contracts/content-language';
+import {
+  RELEASE_NOTE_ADMIN_STEPS_MAX,
+  RELEASE_NOTE_TITLE_WORDS_MAX,
+} from '@forge/contracts/release-notes';
 import type { IssueStatus, JobType } from '../../db/schema.js';
 import { guideRef } from '../../guides/index.js';
 import { STEP_TOOL_REFERENCE_TEXT } from './drive-rules.js';
@@ -177,16 +181,18 @@ export const FORGE_FACTS: readonly ForgeFact[] = [
     scope: 'global',
     namespace: 'forge',
     appliesTo: ['clarify', 'release', 'drive'],
-    version: 7,
+    version: 8,
     render: (ctx) => `## Release-notes shape
-Seed \`releaseNotes\` via \`forge-runner api issues/<id> -X PATCH\` as \`{ section, userFacing, technical }\`:
-- \`section\` ∈ \`Added | Changed | Fixed | Removed | Security | Skip\` (\`Skip\` = internal-only, no changelog line).
-- \`userFacing\` — one plain-language line for end users, written in ${
+Seed \`releaseNotes\` via \`forge-runner api issues/<id> -X PATCH\` as \`{ section, title, userFacing, technical, adminSteps }\`:
+- \`section\` ∈ \`Added | Changed | Fixed | Removed | Security | Skip\` (\`Skip\` = nobody using the product sees it: counted apart, listed only in the developer view).
+- \`title\` — the change's short name a user scans, at most ${RELEASE_NOTE_TITLE_WORDS_MAX} words, no code, keys or paths. Required on every section but \`Skip\`: a note without one is refused by name, and no reader cuts \`userFacing\` to make one.
+- \`userFacing\` — the one plain-language sentence that says it in full, written in ${
       ctx?.contentLanguage
         ? `this project's content language, ${contentLanguageName(ctx.contentLanguage)} (\`${ctx.contentLanguage}\`)`
         : "this project's content language (its `## Content language` block names it)"
-    } — never in the language of the issue's code or commits.
-- \`technical\` — optional implementation detail.
+    } — never in the language of the issue's code or commits. The title is written in the same language.
+- \`technical\` — optional implementation detail, shown only in the developer view.
+- \`adminSteps\` — optional, at most ${RELEASE_NOTE_ADMIN_STEPS_MAX}: each one sentence an admin must do before this change goes out (run a migration, start a worker, grant a permission, approve a contract), in the same language. The release page lists them under "Before you release"; a step left only in \`technical\` is a step nobody is shown.
 ${
   ctx?.stage === 'drive'
     ? 'In this mode nothing dispatches after you, so **no later stage appends it** — if this project keeps a changelog, that line is yours, in the commit that carries the change.'

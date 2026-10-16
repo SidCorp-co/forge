@@ -1,6 +1,7 @@
 // create: opens a system run, atomically claims N gate-status issues, marks each at its `release`
 // step, enqueues one release_batch job. Finish and abort end the run (finish.ts, abort.ts).
 
+import type { ReleaseNaming } from '@forge/contracts/release-notes';
 import { RELEASE_ROSTER_LIMIT } from '@forge/contracts/releases';
 import { and, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -20,6 +21,7 @@ import { admitRoster } from './blockers.js';
 import { closeVerification, type ReleaseVerification, resolveReleasePlan } from './channel.js';
 import { claimRoster } from './claim-conflicts.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
+import { carryNaming } from './naming.js';
 import { RELEASE_BATCH_SKILL, releaseBranches } from './plan.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 import { askProviderLiveGate } from './provider-live.js';
@@ -34,6 +36,8 @@ interface CreateReleaseBatchArgs {
   projectId: string;
   issueIds: string[];
   userId: string;
+  /** The release's name and summary, when the cut writes them (REQ-40 BC-14). */
+  naming?: ReleaseNaming | null;
 }
 
 export interface CreateReleaseBatchResult {
@@ -122,7 +126,7 @@ async function enqueueReleaseJob(args: {
 }
 
 /**
- * The release row and its version in ONE transaction, then the roster claimed onto it. Cutting the
+ * The release row, its version and its name in ONE transaction, then the roster claimed onto it. Cutting the
  * number after the row committed would leave a window in which a release row has no identity; a
  * roster another caller claimed first cancels the row and refuses by name.
  */
@@ -130,12 +134,21 @@ async function openClaimedRun(args: {
   projectId: string;
   issueIds: string[];
   metadata: Record<string, unknown>;
+  naming: ReleaseNaming | null;
+  userId: string;
 }) {
   const { projectId, issueIds, metadata } = args;
   const runSpec: OneShotRunSpec = { projectId, kind: 'system', metadata };
   const { run, version } = await db.transaction(async (tx) => {
     const row = await insertOneShotRun(tx, runSpec);
     const cut = await cutReleaseVersion(tx, { runId: row.id, projectId, issueIds });
+    await carryNaming(tx, {
+      projectId,
+      version: cut,
+      runId: row.id,
+      given: args.naming,
+      by: args.userId,
+    });
     return { run: row, version: cut };
   });
   const claimed = await claimRoster(projectId, issueIds, run.id);
@@ -273,6 +286,8 @@ export async function createReleaseBatch(
       releaseRunner: { label: plan.releaseRunnerLabel, preferenceMet },
       ...(providerLiveGateOff.length ? { providerLiveGateOff } : {}),
     },
+    naming: args.naming ?? null,
+    userId,
   });
 
   const batchPrefix = await activeIssuePrefix(projectId);

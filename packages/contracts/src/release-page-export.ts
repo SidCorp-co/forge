@@ -5,14 +5,16 @@
 // file; an in-app link needs the reader's session, so what is exported says so rather than hiding it.
 
 import {
-	actionSaysRef,
-	type ReleaseHighlights,
-	type ReleaseMediaRef,
-	type ReleasePage,
-	type ReleasePageChange,
-	type ReleasePageCriteria,
-	type ReleasePageProven,
-	type ReleasePageRequirement,
+	RELEASE_CHANGE_GROUPS,
+	type ReleaseChangeGroup,
+	releaseGlanceOf,
+} from "./release-digest.js";
+import type {
+	ReleaseHighlights,
+	ReleaseMediaRef,
+	ReleasePage,
+	ReleasePageChange,
+	ReleasePageRequirement,
 } from "./release-page.js";
 
 export interface ReleasePageExportOptions {
@@ -26,14 +28,6 @@ export interface ReleasePageEmail {
 	text: string;
 	html: string;
 }
-
-/** A known issue's state in the words a person outside the team reads; the verdict's reason is the developer view's and never leaves with an export. */
-export const KNOWN_ISSUE_WORDS: Record<string, string> = {
-	fail: "Failing",
-	short: "Falls short",
-	skipped: "Skipped",
-	not_judged: "Not yet judged",
-};
 
 const APPROVAL_WORDS: Record<
 	ReleasePage["header"]["approval"]["state"],
@@ -61,7 +55,7 @@ function headerFacts(page: ReleasePage): string[] {
 	if (where) facts.push(`Runs at ${where}`);
 	if (h.build) facts.push(`Build ${h.build.slice(0, 7)}`);
 	if (h.verified.total > 0)
-		facts.push(`${h.verified.proven} of ${h.verified.total} criteria proven`);
+		facts.push(`${h.verified.proven} of ${h.verified.total} checks met`);
 	const a = h.approval;
 	facts.push(
 		a.state === "approved" && a.by
@@ -97,35 +91,32 @@ function mediaLink(m: ReleaseMediaRef, origin: string | undefined) {
 	};
 }
 
-const lineOf = (c: ReleasePageChange) => ({ text: c.line });
+/** A change whole: its short title, then the sentence that says it in full (REQ-40 BC-6). */
+const lineOf = (c: ReleasePageChange) => ({
+	text: c.detail ? `${c.line}: ${c.detail}` : c.line,
+});
 
-const rowText = (p: ReleasePageProven) =>
-	p.short ? `${p.statement} (short of its wording)` : p.statement;
+const GROUP_HEADING: Record<ReleaseChangeGroup, string> = {
+	new: "New",
+	improved: "Improved",
+	fixed: "Fixed",
+	security: "Security",
+	removed: "Removed",
+};
 
-/** One group's proven criteria, a short marked, then how many are not proven on the build. */
-function criteriaText(g: ReleasePageCriteria): string {
-	const proven =
-		g.proven.length > 0 ? `: ${g.proven.map(rowText).join("; ")}` : "";
-	return `${proven}${g.unproven > 0 ? ` (${g.unproven} not yet proven on this build)` : ""}`;
+const plural = (n: number, one: string, many: string) =>
+	`${n} ${n === 1 ? one : many}`;
+
+/** A requirement counted, never listed: its criteria are the developer view's (REQ-40 BC-15). */
+function requirementText(r: ReleasePageRequirement): string {
+	const met = r.business ? r.business.proven.length : r.proven.length;
+	return `${r.title}${r.completes ? " (complete)" : " (in progress)"}: ${plural(met, "check", "checks")} met by this release`;
 }
 
-const bare = (text: string) => text.trim().replace(/\.+$/, "");
-
-/**
- * A requirement counted in its own criteria, each one the build proves said once with the rows that
- * prove it; a share frozen before it was counted reads as its group did.
- */
-function requirementText(r: ReleasePageRequirement): string {
-	if (!r.business) return criteriaText(r);
-	const b = r.business;
-	const count = `: ${b.proven.length} of its ${b.total} criteria proven on this build`;
-	const codes = b.proven.map((c) => {
-		const rows = r.proven
-			.filter((p) => p.code === c.code)
-			.map((p) => `${bare(p.statement)}${p.short ? ", short of its wording" : ""}`);
-		return `${bare(c.statement)} (${rows.join("; ")})`;
-	});
-	return codes.length > 0 ? `${count}: ${codes.join("; ")}` : count;
+/** The title an export opens on: the version and the name it was cut with. */
+function titleOf(page: ReleasePage): string {
+	const { version, name } = page.header;
+	return name ? `${version} · ${name}` : `Release ${version}`;
 }
 
 function sectionsOf(page: ReleasePage, origin: string | undefined): Section[] {
@@ -133,39 +124,52 @@ function sectionsOf(page: ReleasePage, origin: string | undefined): Section[] {
 	const highlights = highlightItems(page.highlights, origin);
 	if (highlights.length > 0)
 		out.push({ title: "Highlights", items: highlights });
-	const proves = [
-		...page.requirements.map((r) => ({
-			text: `${r.title}${r.completes ? " (complete)" : " (in progress)"}${requirementText(r)}`,
-		})),
-		...(page.untraced
-			? [{ text: `Not traced to a requirement${criteriaText(page.untraced)}` }]
-			: []),
-	];
-	if (proves.length > 0)
-		out.push({ title: "What this release proves", items: proves });
-	if (page.improvements.length > 0)
-		out.push({ title: "Improvements", items: page.improvements.map(lineOf) });
-	if (page.fixes.length > 0)
-		out.push({ title: "Fixes", items: page.fixes.map(lineOf) });
+	const shipped = page.header.state === "shipped";
 	out.push({
-		title: "Action required",
-		items: page.actionRequired.map((a) => ({
-			text: actionSaysRef(a) ? a.sentence : `${a.sentence} (${a.ref})`,
-		})),
+		title: shipped ? "Action required" : "Before you release",
+		items: page.actionRequired.map((a) => ({ text: a.sentence })),
 		none:
-			page.shipped.state === "unread"
-				? `What this release requires of you could not be read: ${page.shipped.why}.`
+			page.shipped.state === "unread" && page.actionRequired.length === 0
+				? "No admin step was written, and the commit range was not read."
 				: "Nothing is required of you.",
 	});
+	const { groups } = releaseGlanceOf(page);
+	for (const g of RELEASE_CHANGE_GROUPS) {
+		if (groups[g].length > 0)
+			out.push({ title: GROUP_HEADING[g], items: groups[g].map(lineOf) });
+	}
+	if (page.internal.count > 0)
+		out.push({
+			title: "Internal",
+			items: [
+				{
+					text: `${plural(page.internal.count, "change", "changes")} nobody using the product sees.`,
+				},
+			],
+		});
+	if (page.requirements.length > 0)
+		out.push({
+			title: "Requirements",
+			items: page.requirements.map((r) => ({ text: requirementText(r) })),
+		});
 	out.push({
 		title: "Known issues",
-		items: page.knownIssues.map((k) => ({
-			text: `${k.statement} (${KNOWN_ISSUE_WORDS[k.standing] ?? k.standing})`,
-		})),
+		items:
+			page.knownIssues.length > 0
+				? [
+						{
+							text: `${plural(page.knownIssues.length, "check is", "checks are")} not yet met on this build.`,
+						},
+					]
+				: [],
 		none: "No known issues on this build.",
 	});
 	return out;
 }
+
+/** The summary paragraph an export opens with, where the release was named. */
+const summaryLines = (page: ReleasePage) =>
+	page.header.summary ? [page.header.summary, ""] : [];
 
 /** The release page as Markdown: its title, the facts of its header, then each user section. */
 export function releasePageMarkdown(
@@ -173,8 +177,9 @@ export function releasePageMarkdown(
 	opts: ReleasePageExportOptions = {},
 ): string {
 	const parts = [
-		`# Release ${page.header.version}`,
+		`# ${titleOf(page)}`,
 		"",
+		...summaryLines(page),
 		headerFacts(page).join(" · "),
 		"",
 	];
@@ -202,11 +207,12 @@ export function releasePageEmail(
 	page: ReleasePage,
 	opts: ReleasePageExportOptions = {},
 ): ReleasePageEmail {
-	const subject = `Release ${page.header.version}`;
+	const subject = titleOf(page);
 	const sections = sectionsOf(page, opts.origin);
 	const facts = headerFacts(page).join(" · ");
 	const text = [
 		`${subject}`,
+		...summaryLines(page),
 		facts,
 		"",
 		...sections.flatMap((s) => [
@@ -226,6 +232,7 @@ export function releasePageEmail(
 		"<!doctype html>",
 		`<html><body style="font-family:sans-serif;max-width:640px">`,
 		`<h1>${escapeHtml(subject)}</h1>`,
+		...(page.header.summary ? [`<p>${escapeHtml(page.header.summary)}</p>`] : []),
 		`<p>${escapeHtml(facts)}</p>`,
 		...sections.flatMap((s) => [
 			`<h2>${escapeHtml(s.title)}</h2>`,

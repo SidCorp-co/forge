@@ -9,9 +9,19 @@
 import { releaseNoteReferences } from "./content-language.js";
 import type { ReleaseNoteSection } from "./releases.js";
 
+/**
+ * One change as a customer reads it: `line` is the note's short title, or, on a note written before
+ * titles, its whole sentence; `detail` is the sentence a titled note says in full. Neither is cut.
+ */
+export interface CustomerNoteLine {
+	key: string;
+	line: string;
+	detail: string | null;
+}
+
 export interface CustomerNotesSection {
 	section: string;
-	lines: string[];
+	lines: CustomerNoteLine[];
 }
 
 export interface CustomerNotesView {
@@ -65,7 +75,7 @@ export function customerNotes(
 	const said = new Map<string, string>();
 	const out: CustomerNotesSection[] = [];
 	for (const s of sections) {
-		const lines: string[] = [];
+		const lines: CustomerNoteLine[] = [];
 		for (const e of s.entries) {
 			const carried = [...new Set(e.title.match(KEY) ?? [])].filter(
 				(k) => k !== e.key && noted.has(k),
@@ -74,20 +84,22 @@ export function customerNotes(
 				folded.push({ key: e.key, why: "carries", into: carried });
 				continue;
 			}
-			const line = withoutAsides(e.userFacing);
-			const left = handlesIn(line);
+			const sentence = withoutAsides(e.userFacing);
+			const line = e.heading ? withoutAsides(e.heading) : sentence;
+			const detail = e.heading ? sentence : null;
+			const left = [...handlesIn(line), ...handlesIn(detail ?? "")];
 			if (left.length > 0) {
-				held.push({ key: e.key, references: left });
+				held.push({ key: e.key, references: [...new Set(left)] });
 				continue;
 			}
-			const words = sameWords(line);
+			const words = sameWords(`${line} ${detail ?? ""}`);
 			const first = said.get(words);
 			if (first) {
 				folded.push({ key: e.key, why: "duplicate", into: [first] });
 				continue;
 			}
 			said.set(words, e.key);
-			lines.push(line);
+			lines.push({ key: e.key, line, detail });
 		}
 		if (lines.length > 0) out.push({ section: s.section, lines });
 	}
@@ -104,6 +116,8 @@ export function notesCallingItDemo(
 	sections: readonly ReleaseNoteSection[],
 ): string[] {
 	return sections.flatMap((s) =>
-		s.entries.filter((e) => DEMO_WORDS.test(e.userFacing)).map((e) => e.key),
+		s.entries
+			.filter((e) => DEMO_WORDS.test(`${e.heading ?? ""} ${e.userFacing}`))
+			.map((e) => e.key),
 	);
 }

@@ -13,7 +13,7 @@ const RELEASED = "2026-10-06T09:30:00.000Z";
 const release = {
   version: "0.2.0",
   releasedAt: RELEASED,
-  headline: "Saved boards keep every card",
+  name: "Saved boards",
   issueCount: 2,
   requirements: ["REQ-3"],
   contents: [

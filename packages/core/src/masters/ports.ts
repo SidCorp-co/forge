@@ -25,6 +25,8 @@ interface MastersPorts {
     projectId: string,
     language: string,
   ): Promise<{ issueId: string; key: string; problems: string[] }[]>;
+  /** Releases cut and not yet out that carry no name and summary (REQ-40 BC-14), oldest first. */
+  releasesUnnamed(projectId: string): Promise<{ version: string }[]>;
   /** Questions on the project's issues answered after `after`, with what each answer did to its park. */
   answersSince(
     projectId: string,

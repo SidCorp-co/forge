@@ -5,6 +5,7 @@ import { type BannerTone, Icon, LEGEND, Tooltip, WaitBanner } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { ApiError } from "@/lib/api/client";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { said, saidView } from "@/lib/i18n/said";
 import { issueHref } from "@/lib/routes/issues";
 import { cn } from "@/lib/utils/cn";
@@ -21,6 +22,10 @@ const BANNER_TONE: Record<ReleaseAttentionGroup, BannerTone> = {
 };
 
 export const shortSha = (sha: string) => sha.slice(0, 7);
+
+/** A release as it is named everywhere: its version and the name it was cut with (REQ-40 BC-14). */
+export const releaseTitle = (r: { version: string; name: string | null }, t: Copy): string =>
+  r.name ? `${r.version} · ${r.name}` : t("releases.releaseVersion", { version: r.version });
 
 const NAMED_IN_SENTENCE = 5;
 

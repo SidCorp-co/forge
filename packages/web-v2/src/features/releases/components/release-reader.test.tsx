@@ -1,13 +1,13 @@
-// The release page a reader sees (REQ-40), read in thirty seconds: a summary and where it stands
-// first, the changes counted by group with each count a link, its contents as one menu, then one short row per
-// change whose detail (the full note, the keys, the criteria, the technical note) opens under it. The
-// clip plays from the bytes the session may fetch; the technical note is never on a share.
+// The release page a reader sees (REQ-40), read in under a minute: the summary it was cut with and its
+// changes counted in one line, what an admin must do first, then each change as its short title, whole,
+// with its sentence one click away. No criterion, code or path on the overview; the Technical view keeps
+// them. The clip plays from the bytes the session may fetch; the technical note is never on a share.
 
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { releasePage, TECHNICAL } from "@/test/release-page";
-import { fakeCore, renderWithQuery } from "@/test/render";
+import { renderWithQuery } from "@/test/render";
 import { ReleaseReader } from "./release-reader";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
@@ -34,100 +34,44 @@ const changeRow = (text: string) => {
 };
 const open = (row: HTMLElement) => fireEvent.click(within(row).getAllByRole("button")[0]);
 
-describe("the summary a release opens on", () => {
-  it("says what it brings by group, the requirement it completes, its highlights and what is still open", () => {
-    renderWithQuery(<ReleaseReader page={releasePage()} slug="forge" authed={false} />);
-    const summary = screen.getByTestId("page-summary");
-    expect(summary).toHaveAttribute("data-state", "derived");
-    expect([...summary.querySelectorAll("p")].map((p) => p.textContent)).toEqual([
-      "This release brings 1 new feature and 1 fix, plus 1 change with no note for users yet.",
-      "It completes “Release page”.",
-      "Highlights: Every release has a page.",
-      "2 acceptance checks are still open on 2 changes.",
-    ]);
-  });
-
-  it("refuses by name, rather than a filler line, where the release carries nothing to summarise", () => {
-    renderWithQuery(
-      <ReleaseReader
-        page={releasePage({ improvements: [], fixes: [], withoutNotes: [], requirements: [], knownIssues: [], highlights: { state: "none", why: "no requirement" } })}
-        authed={false}
-      />,
-    );
-    const summary = screen.getByTestId("page-summary");
-    expect(summary).toHaveAttribute("data-state", "refused");
-    expect(summary).toHaveAttribute("data-code", "RELEASE_SUMMARY_UNDERIVABLE");
-    expect(summary).toHaveTextContent("No summary: release 0.4.0 carries no change and completes or advances no requirement");
-  });
-});
-
-describe("where the release stands, in one line (BC-1, BC-12)", () => {
-  it("says it is live and where, who approved it and what it proved, and never shows the build", () => {
-    renderWithQuery(<ReleaseReader page={releasePage({ view: "developer", technical: TECHNICAL })} slug="forge" authed={false} />);
-    const h = screen.getByTestId("page-header");
-    expect(h).toHaveTextContent(/Live on https:\/\/forge\.example since /);
-    expect(h).toHaveTextContent("Approved by Ada");
-    expect(h).toHaveTextContent("Verified: 2 criteria proven");
-    expect(h).not.toHaveTextContent("aaaaaaa");
-    // an admin step is listed as its own group, so the line does not also speak for it
-    expect(h).not.toHaveTextContent(/admin steps/i);
-  });
-
-  it("says a draft is not released or deployed, and that approval was not asked", () => {
-    const page = releasePage();
-    renderWithQuery(
-      <ReleaseReader
-        page={{ ...page, header: { ...page.header, state: "draft", releasedAt: null, environment: null, build: null, approval: { required: false, state: "not_asked", by: null, at: null } } }}
-        authed={false}
-      />,
-    );
-    const h = screen.getByTestId("page-header");
-    expect(h).toHaveTextContent("Not released yet, not deployed");
-    expect(h).toHaveTextContent("Not asked");
-  });
-
-  it("says there is no admin step only where the range was read, and that it was not checked where it was not", () => {
-    const { unmount } = renderWithQuery(<ReleaseReader page={releasePage({ actionRequired: [] })} authed={false} />);
-    expect(screen.getByTestId("page-header")).toHaveTextContent("Admin: none");
-    expect(screen.queryByTestId("page-actions")).toBeNull();
-    unmount();
-    renderWithQuery(<ReleaseReader page={releasePage({ actionRequired: [], shipped: { state: "unread", why: "the repository was unreachable" } })} authed={false} />);
-    expect(screen.getByTestId("page-header")).toHaveTextContent("Admin steps not checked yet");
-    expect(screen.getByTestId("page-header")).not.toHaveTextContent("Admin: none");
-    expect(screen.getByTestId("page-header")).not.toHaveTextContent("unreachable");
-  });
-});
-
-describe("the changes at a glance, and the contents", () => {
-  it("counts each group and links a count to its group, leaving an empty group counted and unlinked", () => {
+describe("the lead: the summary it was given and its changes in one line (BC-14)", () => {
+  it("opens on the summary it was given, whole, then one counted line, and no count tiles", () => {
     renderWithQuery(<ReleaseReader page={releasePage()} authed={false} />);
-    const cell = (k: string) => screen.getByTestId(`page-glance-${k}`);
-    const counts = ["new", "improved", "fixed", "security", "other", "open"].map((k) => [k, cell(k).textContent?.replace(/\D/g, "")]);
-    expect(counts).toEqual([["new", "1"], ["improved", "0"], ["fixed", "1"], ["security", "0"], ["other", "1"], ["open", "2"]]);
-    expect(cell("new")).toHaveAttribute("href", "#release-new");
-    expect(cell("open")).toHaveAttribute("href", "#release-open");
-    expect(cell("improved")).not.toHaveAttribute("href");
-    // the row knows its six cells, so it wraps into even lines (six, three a line, two a line) and never five over one
-    expect(screen.getByTestId("page-glance-row").style.getPropertyValue("--stat-track")).toContain("(660px - 100%)");
-    // every link lands on a group that is on the page
-    for (const k of ["new", "fixed", "other", "open"]) {
-      const target = cell(k).getAttribute("href")?.slice(1) ?? "";
-      expect(document.getElementById(target)).not.toBeNull();
+    const summary = screen.getByTestId("page-summary");
+    expect(summary.textContent).toBe(releasePage().header.summary);
+    expect(screen.getByTestId("page-tally")).toHaveTextContent("1 new1 fixed");
+    expect(screen.getByTestId("page-tally-new")).toHaveAttribute("href", "#release-new");
+    expect(screen.queryByTestId("page-glance")).toBeNull();
+  });
+
+  it("shows no summary where none was written, drafted or cut: never one derived, never an apology", () => {
+    const page = releasePage();
+    for (const state of ["draft", "awaiting_approval"] as const) {
+      const { unmount } = renderWithQuery(
+        <ReleaseReader page={{ ...page, header: { ...page.header, state, name: null, summary: null } }} authed={false} />,
+      );
+      expect(screen.queryByTestId("page-summary")).toBeNull();
+      const header = screen.getByTestId("page-header");
+      for (const word of ["This release brings", "when it is cut", "was written"]) expect(header).not.toHaveTextContent(word);
+      unmount();
     }
   });
 
-  it("groups a Security entry apart from the fixes its kind folds it into", () => {
+  it("groups Security and Removed apart from the fixes and improvements their kinds fold them into", () => {
     const page = releasePage();
-    renderWithQuery(
-      <ReleaseReader page={{ ...page, fixes: [...page.fixes, { issueKey: "ISS-7", kind: "fixed", section: "Security", line: "Reset links stop working once used." }] }} authed={false} />,
-    );
-    expect(screen.getByTestId("page-glance-security").textContent).toMatch(/1$/);
-    expect(screen.getByTestId("page-glance-fixed").textContent).toMatch(/1$/);
+    const extra = [
+      { issueKey: "ISS-7", kind: "fixed" as const, section: "Security" as const, line: "Reset links stop working once used", detail: null, requirementKey: null },
+      { issueKey: "ISS-8", kind: "improved" as const, section: "Removed" as const, line: "The old export button is gone", detail: null, requirementKey: null },
+    ];
+    renderWithQuery(<ReleaseReader page={{ ...page, fixes: [...page.fixes, ...extra] }} authed={false} />);
     expect(within(screen.getByTestId("page-group-security")).getByText("Reset links stop working once used")).toBeTruthy();
+    expect(within(screen.getByTestId("page-group-removed")).getByText("The old export button is gone")).toBeTruthy();
     expect(screen.getByTestId("page-group-fixed")).not.toHaveTextContent("Reset links");
+    expect(screen.getByTestId("page-tally")).toHaveTextContent("1 security");
+    expect(screen.getByTestId("page-tally")).toHaveTextContent("1 removed");
   });
 
-  it("names exactly the groups the page draws, in reading order, as one menu control and never a row of links", async () => {
+  it("names exactly the groups the overview draws, in reading order, as one menu control", async () => {
     const user = userEvent.setup();
     renderWithQuery(<ReleaseReader page={releasePage()} authed={false} />);
     const contents = screen.getByTestId("page-contents");
@@ -135,7 +79,7 @@ describe("the changes at a glance, and the contents", () => {
     expect(contents.querySelectorAll("button")).toHaveLength(1);
     await user.click(screen.getByTestId("page-contents-trigger"));
     const items = await screen.findAllByRole("menuitemcheckbox");
-    expect(items.map((i) => i.textContent)).toEqual(["Highlights", "New features", "Fixes", "Requirements", "Still open", "Other changes", "Admin steps"]);
+    expect(items.map((i) => i.textContent)).toEqual(["Highlights", "Before you release", "New", "Fixed"]);
   });
 
   it("takes the reader to the group picked from the menu", async () => {
@@ -150,8 +94,8 @@ describe("the changes at a glance, and the contents", () => {
     });
     renderWithQuery(<ReleaseReader page={releasePage()} authed={false} />);
     await user.click(screen.getByTestId("page-contents-trigger"));
-    await user.click(await screen.findByRole("menuitemcheckbox", { name: "Still open" }));
-    expect(went).toEqual(["release-open"]);
+    await user.click(await screen.findByRole("menuitemcheckbox", { name: "Before you release" }));
+    expect(went).toEqual(["release-admin"]);
     Reflect.deleteProperty(Element.prototype, "scrollIntoView");
   });
 
@@ -164,36 +108,43 @@ describe("the changes at a glance, and the contents", () => {
   });
 });
 
-describe("each change as one short row (BC-6)", () => {
+describe("each change as its short title, whole (BC-6)", () => {
   const LONG =
     "You can now save any product to your wishlist from its page or straight from the product grid and your list follows you to every device you sign in on.";
 
-  it("says at most fifteen words, and the full line only once the row is opened", () => {
-    renderWithQuery(<ReleaseReader page={releasePage({ improvements: [{ issueKey: "ISS-1", kind: "new", section: "Added", line: LONG }] })} authed={false} />);
-    const row = changeRow("You can now save");
-    const title = row.querySelector("button span span")?.textContent ?? "";
-    expect(title.replace(/…$/, "").split(/\s+/)).toHaveLength(15);
-    expect(title.endsWith("…")).toBe(true);
-    expect(row).not.toHaveTextContent("every device");
-    open(row);
-    expect(within(row).getByTestId("page-row-detail")).toHaveTextContent(LONG);
+  it("shows a note written before titles as its whole sentence, never cut at a word count or a comma", () => {
+    // catalog-api 0.1.0: "Giờ đây, khi deploy lại thiết kế lên cửa hàng ePOD" was a row cut at its first comma // i18n-allow: catalog-api 0.1.0's own note, replayed as the test case
+    const legacy = "Giờ đây, khi deploy lại thiết kế lên cửa hàng ePOD, sản phẩm đã có được cập nhật tại chỗ thay vì báo lỗi trùng SKU."; // i18n-allow: catalog-api 0.1.0's own note, replayed as the test case
+    renderWithQuery(
+      <ReleaseReader
+        page={releasePage({
+          improvements: [
+            { issueKey: "ISS-1", kind: "new", section: "Added", line: LONG, detail: null, requirementKey: null },
+            { issueKey: "ISS-3", kind: "improved", section: "Changed", line: legacy, detail: null, requirementKey: null },
+          ],
+        })}
+        authed={false}
+      />,
+    );
+    expect(changeRow("You can now save")).toHaveTextContent(LONG);
+    expect(changeRow("Giờ đây")).toHaveTextContent(legacy); // i18n-allow: catalog-api 0.1.0's own note, replayed as the test case
+    expect(screen.getByTestId("release-reader")).not.toHaveTextContent("…");
   });
 
-  it("shows no criterion, no requirement and no note behind a row until it is opened, then each with its links", () => {
-    renderWithQuery(<ReleaseReader page={releasePage()} slug="forge" authed={false} />);
+  it("shows a titled change as its title, and its full sentence with where to read more once opened", () => {
+    renderWithQuery(<ReleaseReader page={releasePage()} slug="forge" authed />);
     const row = changeRow("Releases read as pages");
-    expect(row).not.toHaveTextContent("The page shows the version and date.");
-    expect(within(row).getByRole("button")).toHaveAttribute("aria-expanded", "false");
+    expect(row).not.toHaveTextContent("in under a minute");
+    expect(within(row).getAllByRole("button")[0]).toHaveAttribute("aria-expanded", "false");
     open(row);
-    expect(within(row).getAllByRole("button")[0]).toHaveAttribute("aria-expanded", "true");
     const detail = within(row).getByTestId("page-row-detail");
-    expect(detail).toHaveTextContent("Checks: 3 met, 0 open");
-    expect(detail).toHaveTextContent("The page shows the version and date.");
+    expect(within(detail).getByTestId("page-row-sentence")).toHaveTextContent("Open any release and read what it brings, whole, in under a minute.");
     expect(within(detail).getByRole("link", { name: "Issue ISS-1" })).toHaveAttribute("href", "/projects/forge/issues/ISS-1");
     expect(within(detail).getByRole("link", { name: "Requirement REQ-40" })).toHaveAttribute("href", "/projects/forge/requirements/REQ-40");
+    expect(within(detail).getByRole("link", { name: "Technical details" })).toHaveAttribute("href", "?view=developer#release-technical");
   });
 
-  it("never shows a technical note on a share, nor reads one", () => {
+  it("never shows a technical note on a share, nor reads one, nor links into the project", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     renderWithQuery(<ReleaseReader page={releasePage()} authed={false} />);
@@ -204,15 +155,32 @@ describe("each change as one short row (BC-6)", () => {
     expect(within(row).queryByRole("link")).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
+});
 
-  it("reads a member's technical note from the Technical view only when the row is opened", async () => {
-    const calls = fakeCore((c) => (c.path === "/projects/p1/releases/0.4.0/page?view=developer" ? { body: releasePage({ view: "developer", technical: TECHNICAL }) } : undefined));
+describe("the overview shows no criterion, code, commit or path (BC-15)", () => {
+  const CRITERIA = ["The page shows the version and date.", "Known issues are listed.", "Each release has a page.", "0478_release_highlights.sql", "aaaaaaa"];
+
+  it("says no criterion anywhere on the overview, even behind an opened row, and draws no requirement or open-check group", () => {
     renderWithQuery(<ReleaseReader page={releasePage()} slug="forge" authed />);
-    expect(calls.filter((c) => c.path.includes("view=developer"))).toHaveLength(0);
+    for (const row of screen.getAllByTestId("page-change")) open(row);
+    const reader = screen.getByTestId("release-reader");
+    for (const text of CRITERIA) expect(reader).not.toHaveTextContent(text);
+    expect(reader).not.toHaveTextContent("Checks:");
+    expect(screen.queryByTestId("page-requirements")).toBeNull();
+    expect(screen.queryByTestId("page-known-issues")).toBeNull();
+    expect(screen.queryByTestId("page-unnoted")).toBeNull();
+  });
+
+  it("keeps each change's criteria, the requirements and what is still open on the Technical view", () => {
+    renderWithQuery(<ReleaseReader page={releasePage({ view: "developer", technical: TECHNICAL })} slug="forge" authed />);
     const row = changeRow("Releases read as pages");
     open(row);
-    expect(await within(row).findByTestId("page-row-technical")).toHaveTextContent("Reads release-read through sections.ts.");
-    expect(calls.filter((c) => c.path.includes("view=developer"))).toHaveLength(1);
+    const detail = within(row).getByTestId("page-row-detail");
+    expect(detail).toHaveTextContent("Checks: 3 met, 0 open");
+    expect(detail).toHaveTextContent("The page shows the version and date.");
+    expect(screen.getByTestId("page-requirements")).toHaveTextContent("Release page");
+    expect(screen.getByTestId("page-known-issues")).toBeTruthy();
+    expect(screen.getByTestId("page-unnoted")).toHaveTextContent("Rename a helper");
   });
 
   it("draws seven criteria of one issue as seven lines a reader tells apart", () => {
@@ -222,7 +190,7 @@ describe("each change as one short row (BC-6)", () => {
     const page = {
       ...base,
       view: "developer" as const,
-      improvements: [{ issueKey: "ISS-451", kind: "improved" as const, section: "Changed" as const, line: "Refusals name their field." }],
+      improvements: [{ issueKey: "ISS-451", kind: "improved" as const, section: "Changed" as const, line: "Refusals name their field", detail: null, requirementKey: "REQ-34" }],
       requirements: [
         { key: "REQ-34", title: "Refusals", completes: false, proven: seven, unproven: 30, business: { total: 26, proven: [{ code: "BC-18", statement: "A refusal says in plain words what to fix, on that field." }] } },
       ],
@@ -237,80 +205,50 @@ describe("each change as one short row (BC-6)", () => {
   });
 });
 
-describe("requirements, still open and other changes (BC-5, BC-8)", () => {
-  it("draws a requirement as one row, its own criteria proven only behind it", () => {
-    renderWithQuery(<ReleaseReader page={releasePage()} slug="forge" authed={false} />);
-    const r = screen.getByTestId("page-requirement");
-    expect(r).toHaveTextContent("Completes");
-    expect(r).toHaveTextContent("Release page");
-    expect(r).toHaveTextContent("Checks met: 3");
-    expect(within(r).queryByTestId("page-requirement-count")).toBeNull();
-    open(r);
-    const count = within(r).getByTestId("page-requirement-count");
-    expect(count).toHaveTextContent("2 of its 13 criteria proven");
-    expect(r).toHaveTextContent("Each release has a page.");
-    expect(within(r).getByRole("link", { name: "Requirement REQ-40" })).toHaveAttribute("href", "/projects/forge/requirements/REQ-40");
+describe("what nobody using the product sees, counted apart (BC-16)", () => {
+  it("counts the internal changes and those with no note in one line on the overview, and lists neither", () => {
+    renderWithQuery(<ReleaseReader page={releasePage()} slug="forge" authed />);
+    const line = screen.getByTestId("page-internal-line");
+    expect(line).toHaveTextContent("1 internal change nobody using the product sees.");
+    expect(line).toHaveTextContent("1 change has no note for users.");
+    expect(within(line).getByRole("link", { name: "See Technical" })).toHaveAttribute("href", "?view=developer");
+    expect(screen.getByTestId("release-reader")).not.toHaveTextContent("Rename a helper");
   });
 
-  it("draws one row per issue with criteria still open, each criterion as what it is behind it", () => {
-    renderWithQuery(<ReleaseReader page={releasePage()} authed={false} />);
-    const rows = screen.getAllByTestId("page-known-issue");
-    expect(rows.map((r) => r.getAttribute("data-row-key"))).toEqual(["ISS-3", "ISS-4"]);
-    expect(rows[0]).toHaveTextContent("1 open");
-    expect(rows[0]).not.toHaveTextContent("Known issues are listed.");
-    open(rows[0]);
-    expect(rows[0]).toHaveTextContent("Known issues are listed. (Falls short)");
-    open(rows[1]);
-    expect(rows[1]).toHaveTextContent("A developer view adds notes. (Not yet judged)");
-  });
-
-  // BC-11: the user view says the criterion's words and its state; QA's reason and the other build
-  // it was judged on are the Technical view's, even where the page carries them
-  it("shows QA's reason and the other build in the Technical view only", () => {
-    const page = releasePage();
-    const carried = page.knownIssues.map((k) => ({ ...k, reason: k.reason ?? "judged on another commit", elsewhere: k.elsewhere ?? { verdict: "pass" as const, commitSha: "b".repeat(40) } }));
-    const user = renderWithQuery(<ReleaseReader page={{ ...page, view: "user", knownIssues: carried }} authed={false} />);
-    for (const r of screen.getAllByTestId("page-known-issue")) open(r);
-    expect(screen.getByTestId("page-known-issues")).not.toHaveTextContent("the list is empty on mobile");
-    expect(screen.getByTestId("page-known-issues")).not.toHaveTextContent("bbbbbbb");
-    user.unmount();
-    renderWithQuery(<ReleaseReader page={{ ...page, view: "developer", knownIssues: carried }} authed={false} />);
-    const rows = screen.getAllByTestId("page-known-issue");
-    for (const r of rows) open(r);
-    expect(rows[0]).toHaveTextContent("the list is empty on mobile");
-    expect(rows[1]).toHaveTextContent("Judged pass on build bbbbbbb instead");
-  });
-
-  it("draws no Still open group where nothing is open, and counts it as nothing to follow", () => {
-    renderWithQuery(<ReleaseReader page={releasePage({ knownIssues: [] })} authed={false} />);
-    expect(screen.queryByTestId("page-known-issues")).toBeNull();
-    expect(screen.getByTestId("page-glance-open")).not.toHaveAttribute("href");
-  });
-
-  it("names the changes with no note for users, and one reworked in a later release, by their titles", () => {
-    const page = releasePage();
-    renderWithQuery(<ReleaseReader page={{ ...page, withoutNotes: [...page.withoutNotes, { issueKey: "ISS-455", title: "Intake drafts", why: "reworked" }] }} authed={false} />);
-    const rows = within(screen.getByTestId("page-unnoted")).getAllByTestId("page-unnoted-row");
-    expect(rows[0]).toHaveTextContent("Rename a helper");
-    expect(rows[0]).toHaveTextContent("no note yet");
-    expect(rows[1]).toHaveTextContent("Intake drafts");
-    expect(rows[1]).toHaveTextContent("reworked in a later release");
+  it("lists each internal change on the Technical view, saying why it is internal", () => {
+    const internal = { count: 2, changes: [
+      { issueKey: "ISS-4", title: "admin-rest-v1 declares the deploy report row schema", why: "carries" as const },
+      { issueKey: "ISS-9", title: "Publish the admin-rest-v1 contract", why: "skip" as const },
+    ] };
+    renderWithQuery(<ReleaseReader page={releasePage({ view: "developer", technical: TECHNICAL, internal })} slug="forge" authed />);
+    const rows = screen.getAllByTestId("page-internal-row");
+    expect(rows.map((r) => r.getAttribute("data-row-key") ?? r.textContent)).toHaveLength(2);
+    expect(screen.getByTestId("page-internal")).toHaveTextContent("Carries another change out");
+    expect(screen.getByTestId("page-internal")).toHaveTextContent("No change a user sees");
+    expect(screen.queryByTestId("page-internal-line")).toBeNull();
   });
 });
 
-describe("admin steps (BC-7)", () => {
-  it("says what an admin must do, naming the artifact that owes it", () => {
+describe("before you release (BC-7)", () => {
+  it("lists every step an admin must take at the head of the changes, with the issues that name it and no path", () => {
     renderWithQuery(<ReleaseReader page={releasePage()} authed={false} />);
-    expect(screen.getByTestId("page-action")).toHaveTextContent("Run the database migration before opening the app.");
-    expect(screen.getByTestId("page-action")).toHaveTextContent("0478_release_highlights.sql");
+    const steps = screen.getAllByTestId("page-action");
+    expect(steps.map((s) => s.getAttribute("data-kind"))).toEqual(["step", "migration"]);
+    expect(steps[0]).toHaveTextContent("Start a worker on the release-highlights queue.");
+    expect(steps[0]).toHaveTextContent("ISS-1");
+    expect(screen.getByTestId("page-actions")).not.toHaveTextContent("0478_release_highlights.sql");
+    const order = [...screen.getByTestId("release-reader").querySelectorAll("[data-testid='page-actions'], [data-testid^='page-group-']")].map((e) => e.getAttribute("data-testid"));
+    expect(order[0]).toBe("page-actions");
   });
 
-  // J10 on 0.4.0-dev.227: each ask printed its migration path twice, in the sentence and under it
-  it("names an ask's artifact once where its sentence already says it", () => {
-    const ref = "packages/core/drizzle/migrations/0495_intake_retry.sql";
-    const sentence = `Back up the database before this release deploys: ${ref} changes its schema.`;
-    renderWithQuery(<ReleaseReader page={releasePage({ actionRequired: [{ kind: "migration", sentence, ref, issues: ["ISS-455"] }] })} authed={false} />);
-    expect(screen.getByTestId("page-action").textContent?.split(ref)).toHaveLength(2);
+  it("names the migration file behind a derived step on the Technical view", () => {
+    renderWithQuery(<ReleaseReader page={releasePage({ view: "developer", technical: TECHNICAL })} slug="forge" authed />);
+    expect(screen.getAllByTestId("page-action")[1]).toHaveTextContent("0478_release_highlights.sql");
+  });
+
+  it("draws nothing where nothing is asked of an admin", () => {
+    renderWithQuery(<ReleaseReader page={releasePage({ actionRequired: [] })} authed={false} />);
+    expect(screen.queryByTestId("page-actions")).toBeNull();
   });
 });
 

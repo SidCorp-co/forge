@@ -136,7 +136,7 @@ export async function readReleasePage(args: {
   const row = detail.runId ? await highlightsRow(detail.runId) : null;
   const shown = shownHighlights(row, page.facts, page.digest, page.build);
   if (shown.owed && detail.runId) args.onOwed?.({ projectId, runId: detail.runId });
-  const changes = changesOf(detail.notes);
+  const changes = changesOf(detail, view);
   const range = await readRange(projectId, detail.version, page.build, detail.runId);
   const { shipped } = range;
   const map = view === 'developer' && range.changed ? await readSurfaceMap(projectId) : null;
@@ -152,8 +152,9 @@ export async function readReleasePage(args: {
     untraced: untracedOf(page.requirements, page.claims),
     improvements: changes.improvements,
     fixes: changes.fixes,
+    internal: changes.internal,
     withoutNotes: changes.withoutNotes,
-    actionRequired: actionsOf(detail.changes, shipped),
+    actionRequired: actionsOf(detail.changes, shipped, detail.notes),
     shipped,
     knownIssues: userKnownIssues(knownIssuesOf(page.claims), view),
     technical: view === 'developer' ? technicalOf(detail, range, map) : null,

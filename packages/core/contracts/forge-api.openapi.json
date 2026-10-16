@@ -11409,6 +11409,15 @@
                       {
                         "additionalProperties": false,
                         "properties": {
+                          "adminSteps": {
+                            "items": {
+                              "maxLength": 200,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "maxItems": 5,
+                            "type": "array"
+                          },
                           "section": {
                             "enum": [
                               "Added",
@@ -11431,6 +11440,11 @@
                               }
                             ]
                           },
+                          "title": {
+                            "maxLength": 80,
+                            "minLength": 1,
+                            "type": "string"
+                          },
                           "userFacing": {
                             "maxLength": 500,
                             "minLength": 1,
@@ -11441,7 +11455,10 @@
                           "section",
                           "userFacing"
                         ],
-                        "type": "object"
+                        "type": "object",
+                        "x-forge-refinements": [
+                          "a refinement with no fixed message, whose rule this contract cannot state"
+                        ]
                       },
                       {
                         "type": "null"
@@ -40318,12 +40335,21 @@
                     "x-forge-refinements": [
                       "a refinement with no fixed message, whose rule this contract cannot state"
                     ]
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "summary": {
+                    "type": "string"
                   }
                 },
                 "required": [
                   "issueIds"
                 ],
-                "type": "object"
+                "type": "object",
+                "x-forge-refinements": [
+                  "a refinement with no fixed message, whose rule this contract cannot state"
+                ]
               }
             }
           },
@@ -41498,6 +41524,81 @@
           "assertEmailVerified"
         ],
         "x-forge-validated": [
+          "param"
+        ]
+      }
+    },
+    "/api/projects/{projectId}/releases/{version}/naming": {
+      "put": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "maxLength": 40,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "maxLength": 60,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "summary": {
+                    "maxLength": 600,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "summary"
+                ],
+                "type": "object",
+                "x-forge-refinements": [
+                  "a refinement with no fixed message, whose rule this contract cannot state"
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "json",
           "param"
         ]
       }

@@ -270,11 +270,13 @@ naming its own rule before the green counts.
    of this project, not closed or dropped, and a design revision is never carried
    (\`ARTIFACT_CARRIER_UNKNOWN\`, \`ARTIFACT_CARRIER_SELF\`, \`ARTIFACT_CARRIER_SHIPPED\`,
    \`ARTIFACT_CARRIER_DESIGN\`).
-3. \`PATCH /api/issues/:id\` \`{ releaseNotes: { section, userFacing } }\`: what a user will now
-   see, in their words and in the project's content language (its \`## Content language\` block
-   names it; the answer carries a \`warnings\` entry when a Vietnamese project's note has no
-   Vietnamese letter in it) — no paths, hashes or refactors; \`section: 'Skip'\` where they will see
-   nothing. A release refuses to claim an issue without one.
+3. \`PATCH /api/issues/:id\` \`{ releaseNotes: { section, title, userFacing, adminSteps? } }\`:
+   what a user will now see, in their words and in the project's content language (its
+   \`## Content language\` block names it; the answer carries a \`warnings\` entry when a Vietnamese
+   project's note has no Vietnamese letter in it) — a short \`title\` of at most ten words (refused
+   by name without one), one full sentence in \`userFacing\`, and each step an admin must take
+   before it goes out in \`adminSteps\` — no paths, hashes or refactors; \`section: 'Skip'\` where
+   they will see nothing. A release refuses to claim an issue without one.
 4. \`POST /api/issues/:id/transition\` \`{ toStatus: 'awaiting_release' }\`. It is refused
    \`MERGE_NOT_RECORDED\` while the merge is not recorded; it asks no verdict, since verdicts are
    judged on the release that carries the work.

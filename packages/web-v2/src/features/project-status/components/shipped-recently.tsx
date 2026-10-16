@@ -38,7 +38,7 @@ export function ShippedRecently({ shipped, slug, clock }: { shipped: StatusShipp
               <span className="text-muted">{t("dash.shippedCompletes", { keys: shipped.requirementsShipped.map((r) => r.key).join(", ") })}</span>
             ) : null}
           </p>
-          {last.headline ? <p className="text-13">{last.headline}</p> : null}
+          {last.name ? <p className="text-13">{last.name}</p> : null}
           <Link href={statusReportHref(slug)} className={`text-13 text-link ${LINK}`}>
             {t("dash.shippedAll", { days: PROJECT_STATUS_DAYS_DEFAULT })}
           </Link>

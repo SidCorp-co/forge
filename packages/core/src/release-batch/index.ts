@@ -20,6 +20,7 @@ export {
 export { confirmPendingProdDeploy } from './coolify-prod-gate.js';
 export { createReleaseBatch } from './create.js';
 export { registerDeployWorker } from './deploy-worker.js';
+export { nextDraftVersion } from './draft-version.js';
 export { registerReleaseBatchFinish, resumeStrandedFinishes } from './finish-job.js';
 export { abortBlockedIssues } from './hold.js';
 export { judgedBuildOf, liveBuildHolds } from './judged-build.js';
@@ -29,6 +30,7 @@ export {
   readSurfaceMap,
   type SurfaceMap,
 } from './landing-surfaces.js';
+export { unnamedReleases } from './naming.js';
 export {
   provideReleaseBatchPorts,
   servedCarries,
@@ -43,7 +45,7 @@ export {
 } from './queries.js';
 export { bindingReachesProduction } from './release-coolify.js';
 export { type CarriedVerdict, carriedVerdictsOf } from './release-facts.js';
-export { nextDraftVersion, readRelease } from './release-read.js';
+export { readRelease } from './release-read.js';
 export { type AutomaticReleaseSweepResult, sweepAutomaticReleases } from './release-sweep.js';
 export type { ViewerFacts } from './release-view.js';
 export { type ShippedReleaseRun, shippedReleaseRuns } from './shipped-earlier.js';

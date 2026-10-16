@@ -61,7 +61,7 @@ function report(o: {
 	const releases = o.releases.map((r) => ({
 		version: r.version,
 		releasedAt: o.asOf,
-		headline: "",
+		name: null,
 		issueCount: r.issues.length,
 		requirements: [],
 		contents: [

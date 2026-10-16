@@ -1,7 +1,7 @@
 // A release's views, projected from what the loaders in release-read.ts read: pure, no I/O.
 
 import { releaseNoteAttention } from '@forge/contracts/content-language';
-import { releaseNotesSections } from '@forge/contracts/release-notes';
+import { type ReleaseNaming, releaseNotesSections } from '@forge/contracts/release-notes';
 import { releaseBuildOf } from '@forge/contracts/release-page';
 import {
   type IssueLandingReading,
@@ -15,6 +15,7 @@ import {
   type ReleaseFeedbackView,
   type ReleaseGateView,
   type ReleaseIssueView,
+  type ReleaseNoteEntry,
   type ReleaseNoteSection,
   type ReleasePerson,
   type ReleaseSplit,
@@ -31,7 +32,6 @@ import { gapOf, releaseChangesOf, surfacesOf } from './landing-surfaces.js';
 import { criteriaAt, type IssueFact, type ReleaseFacts } from './release-facts.js';
 import {
   completionOf,
-  headlineOf,
   proofOf,
   sumTotals,
   totalsOf,
@@ -60,6 +60,8 @@ export interface Part {
   cuts: ReleaseCutView[];
   /** Where this version's roster went on under another version; null where it is its release's own. */
   continuedAs: ReleaseContinuation | null;
+  /** The name and summary written when it was cut (`naming.ts`); null on a draft and until written. */
+  naming: ReleaseNaming | null;
 }
 
 export interface Shared {
@@ -241,15 +243,8 @@ export function summaryOf(p: Part, s: Shared): ReleaseSummary {
     state: p.state,
     current: s.current === p.version,
     ...turn,
-    headline: headlineOf(
-      facts.map((i) => {
-        const notes = reworkedSince(p, i) ? null : i.releaseNotes;
-        return {
-          section: notes?.section ?? null,
-          text: notes && notes.section !== 'Skip' ? notes.userFacing : i.title,
-        };
-      }),
-    ),
+    name: p.naming?.name ?? null,
+    summary: p.naming?.summary ?? null,
     issueCount: p.issueIds.length,
     requirements: reqs,
     criteria,
@@ -297,11 +292,13 @@ function attemptView(a: ReleaseAttemptRow): ReleaseAttemptView {
   };
 }
 
-const noteEntry = (i: IssueFact) => ({
+const noteEntry = (i: IssueFact): ReleaseNoteEntry => ({
   key: i.key,
   title: i.title,
+  heading: i.releaseNotes?.title?.trim() || null,
   userFacing: i.releaseNotes?.userFacing ?? '',
   technical: i.releaseNotes?.technical ?? null,
+  adminSteps: i.releaseNotes?.adminSteps ?? [],
 });
 
 /** A landing that names the design surface and nothing else: an approved design, not a user change. */
@@ -335,6 +332,7 @@ function noteSections(p: Part, s: Shared, landings: ReadonlyMap<string, IssueLan
     sections,
     designs: designs.map(noteEntry),
     withoutNotes: facts.filter((i) => !i.releaseNotes).map((i) => ({ key: i.key, title: i.title })),
+    skipped: facts.filter((i) => i.releaseNotes?.section === 'Skip').map(noteEntry),
     reworked: reworked.map((i) => ({ key: i.key, title: i.title })),
     language: s.contentLanguage,
     attention,

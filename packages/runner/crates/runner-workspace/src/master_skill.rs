@@ -390,6 +390,22 @@ mod tests {
         }
     }
 
+    /// A note with no title is refused at its write and a release with no name opens on a bare
+    /// version, so the skill tells the master both are written, and where.
+    #[test]
+    fn the_skill_tells_a_master_to_title_notes_and_name_releases() {
+        for word in [
+            "`releaseNotes.title`",
+            "`releaseNotes.adminSteps`",
+            "/naming -X PUT",
+        ] {
+            assert!(
+                ASSET.contains(word),
+                "forge-master-skill.md no longer names {word}, so a master writes notes a release refuses or cuts a release nobody named"
+            );
+        }
+    }
+
     /// A park described in prose wakes nobody when the mark lands, a business question asked with
     /// no `about` never reaches its requirement, a carried artifact left unsaid is verified on the
     /// wrong release, a silent abort blocks the next cut, and a pin-only dependent proposed again is

@@ -1,14 +1,15 @@
-// The groups of a release page, each change, requirement and open issue as one short row in the
-// reader's words with its detail one click away (`release-row-detail.tsx`), and the admin steps where
-// there are any. Flush rows under a heading: no card, no box in a box.
+// The groups of a release page: each change as its short title, whole (REQ-40 BC-6), with the
+// sentence that says it in full one click away (`release-row-detail.tsx`); what an admin must do
+// before it goes out (BC-7); and, on the Technical view, each requirement and open issue. Flush rows
+// under a heading: no card, no box in a box.
 
 import type { ReleaseChangeGroup } from "@forge/contracts/release-digest";
-import { releaseRowHeadline } from "@forge/contracts/release-digest";
-import { actionSaysRef, type ReleaseKnownIssue, type ReleasePage, type ReleasePageChange, type ReleasePageRequirement } from "@forge/contracts/release-page";
+import { type ReleaseKnownIssue, type ReleasePage, type ReleasePageChange, type ReleasePageRequirement } from "@forge/contracts/release-page";
 import { useState } from "react";
 import { Link } from "@/lib/navigation/router";
 import { RowItem, RowList, Section } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
+import { cn } from "@/lib/utils/cn";
 import { issueHref } from "@/lib/routes/issues";
 import { requirementHref } from "@/lib/routes/requirements";
 import { withoutCriterionCode } from "@/lib/utils/criterion-code";
@@ -16,18 +17,18 @@ import { shortSha } from "./release-bits";
 import { ANCHOR, GROUP_TITLE, type Reach } from "./release-anchors";
 import { ChangeDetail, CheckLine, type IssueChecks, RowKeys, STANDING_KEY } from "./release-row-detail";
 
-/** One change as one short row in user language; its key small at the right, its detail one click away. */
+/** One change as one row: its short title whole, its key small at the right, its full sentence one click away. */
 export function ChangeLine({ page, change, checks, reach }: { page: ReleasePage; change: ReleasePageChange; checks: IssueChecks | undefined; reach: Reach }) {
   const t = useCopy();
   const [open, setOpen] = useState(false);
-  const head = releaseRowHeadline(change.line);
-  const openChecks = checks?.open.length ?? 0;
+  // how many of its checks are open is a criterion count: the Technical view's (BC-15)
+  const openChecks = page.view === "developer" ? (checks?.open.length ?? 0) : 0;
   return (
     <RowItem
       wrap
       expanded={open}
       onClick={() => setOpen((o) => !o)}
-      title={head.text}
+      title={change.line}
       trailing={
         <span className="flex items-center gap-2 text-12 text-subtle">
           {openChecks > 0 ? <span className="font-medium text-warn-11">{t("releases.page.row.open", { n: openChecks })}</span> : null}
@@ -40,7 +41,7 @@ export function ChangeLine({ page, change, checks, reach }: { page: ReleasePage;
       testId="page-change"
       rowKey={change.issueKey}
     >
-      {open ? <ChangeDetail page={page} change={change} checks={checks} cut={head.cut} reach={reach} /> : null}
+      {open ? <ChangeDetail page={page} change={change} checks={checks} reach={reach} /> : null}
     </RowItem>
   );
 }
@@ -180,11 +181,8 @@ export function StillOpen({ page, reach }: { page: ReleasePage; reach: Reach }) 
   if (page.knownIssues.length === 0) return null;
   const byIssue = new Map<string, ReleaseKnownIssue[]>();
   for (const k of page.knownIssues) byIssue.set(k.issueKey, [...(byIssue.get(k.issueKey) ?? []), k]);
-  const lineOf = (key: string) => [...page.improvements, ...page.fixes].find((c) => c.issueKey === key)?.line;
-  const titleOf = (key: string) => {
-    const line = lineOf(key);
-    return line ? releaseRowHeadline(line).text : (page.withoutNotes.find((w) => w.issueKey === key)?.title ?? key);
-  };
+  const titleOf = (key: string) =>
+    [...page.improvements, ...page.fixes].find((c) => c.issueKey === key)?.line ?? page.withoutNotes.find((w) => w.issueKey === key)?.title ?? key;
   return (
     <Section id={ANCHOR.open} title={<GroupTitle title={t(GROUP_TITLE.open)} n={byIssue.size} />} testId="page-known-issues">
       <RowList label={t(GROUP_TITLE.open)}>
@@ -227,17 +225,45 @@ export function OtherChanges({ page, reach }: { page: ReleasePage; reach: Reach 
   );
 }
 
-/** What an admin must do once the release lands (BC-7): shown only where there is something to do. */
-export function AdminSteps({ page }: { page: ReleasePage }) {
+/**
+ * What an admin must do before the release goes out (BC-7), at the head of its changes and set off by
+ * a warning rule: the steps its notes name and what its range ships. The artifact behind a derived
+ * step is the Technical view's; the overview names no path (BC-15).
+ */
+export function BeforeYouRelease({ page }: { page: ReleasePage }) {
   const t = useCopy();
-  if (page.actionRequired.length === 0) return null;
+  const n = page.actionRequired.length;
+  if (n === 0) return null;
+  const developer = page.view === "developer";
   return (
-    <Section id={ANCHOR.admin} title={<GroupTitle title={t(GROUP_TITLE.admin)} n={page.actionRequired.length} />} testId="page-actions">
-      <RowList label={t(GROUP_TITLE.admin)}>
+    <Section id={ANCHOR.admin} title={<GroupTitle title={t(GROUP_TITLE.admin)} n={n} />} testId="page-actions" className="border-l-2 border-l-warn-9 pl-4">
+      <ol className="grid list-decimal gap-1.5 pl-5 text-14 text-fg" aria-label={t(GROUP_TITLE.admin)}>
         {page.actionRequired.map((a) => (
-          <RowItem key={`${a.kind}:${a.ref}`} wrap title={a.sentence} facts={actionSaysRef(a) ? undefined : [<span key="ref" className="font-mono">{a.ref}</span>]} testId="page-action" />
+          <li key={`${a.kind}:${a.sentence}`} data-testid="page-action" data-kind={a.kind}>
+            <span>{a.sentence}</span>
+            {a.issues.length > 0 ? <span className="ml-2 font-mono text-12 text-subtle">{a.issues.join(", ")}</span> : null}
+            {developer && a.ref && !a.sentence.includes(a.ref) ? <span className="ml-2 font-mono text-12 text-subtle">{a.ref}</span> : null}
+          </li>
         ))}
-      </RowList>
+      </ol>
     </Section>
+  );
+}
+
+const GROUP_TONE: Record<ReleaseChangeGroup, string> = {
+  new: "text-ok-11",
+  improved: "text-info-11",
+  fixed: "text-accent-text",
+  security: "text-danger-11",
+  removed: "text-muted",
+};
+
+/** A change's group as a small tag beside its title, in the group's tone. */
+export function ChangeTag({ group }: { group: ReleaseChangeGroup }) {
+  const t = useCopy();
+  return (
+    <span className={cn("inline-flex flex-none rounded-sm border border-current px-1.5 text-11 font-semibold uppercase tracking-wide", GROUP_TONE[group])} data-group={group}>
+      {t(GROUP_TITLE[group])}
+    </span>
   );
 }

@@ -41,8 +41,41 @@ describe('release note language warning', () => {
     return { id, token: await userToken(user.id) };
   }
 
-  const write = (id: string, token: string, userFacing: string, section = 'Fixed') =>
-    api(token, 'PATCH', `/api/issues/${id}`, { releaseNotes: { section, userFacing } });
+  const write = (
+    id: string,
+    token: string,
+    userFacing: string,
+    section = 'Fixed',
+    title: string | undefined = section === 'Skip' ? undefined : 'Sửa đăng nhập',
+  ) =>
+    api(token, 'PATCH', `/api/issues/${id}`, {
+      releaseNotes: { section, ...(title ? { title } : {}), userFacing },
+    });
+
+  // REQ-40 BC-17: a note users read is written with its short title, or refused by name at the write
+  it('refuses a note users read that has no short title, naming the field, and stores nothing', async () => {
+    const { id, token } = await seed('vi');
+    const res = await write(id, token, vietnamese, 'Fixed', '');
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toContain('title is required for a Fixed note');
+    const [row] = [
+      ...(await db.execute(sql`SELECT release_notes FROM issues WHERE id = ${id}`)),
+    ] as { release_notes: unknown }[];
+    expect(row?.release_notes).toBeNull();
+  });
+
+  it('warns on a title in the wrong language as it does on the sentence', async () => {
+    const { id, token } = await seed('vi');
+    const res = await write(
+      id,
+      token,
+      vietnamese,
+      'Fixed',
+      'Returning users are signed in again now',
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.warnings).toEqual([expect.stringContaining('releaseNotes.title')]);
+  });
 
   it('warns on an English note for a vi project, and still stores it', async () => {
     const { id, token } = await seed('vi');
@@ -60,14 +93,16 @@ describe('release note language warning', () => {
     expect((await write(vi.id, vi.token, '-', 'Skip')).body.warnings).toBeUndefined();
     await truncateAll();
     const en = await seed('en');
-    expect((await write(en.id, en.token, english)).body.warnings).toBeUndefined();
+    expect(
+      (await write(en.id, en.token, english, 'Fixed', 'Login fixed')).body.warnings,
+    ).toBeUndefined();
   });
 
   it("warns on each engineer's reference in a note, for any language, and still stores it", async () => {
     const { id, token } = await seed('en');
     const note =
       'Fixed in 9db12a21a (ISS-12), enforcing SOD-RULE-MAKER-CHECKER. Technical note: index added.';
-    const res = await write(id, token, note);
+    const res = await write(id, token, note, 'Fixed', 'Login fixed');
     expect(res.status).toBe(200);
     expect(res.body.warnings).toEqual([
       expect.stringContaining(

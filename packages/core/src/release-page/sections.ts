@@ -12,7 +12,10 @@ import {
   type ReleasePageApproval,
   type ReleasePageChange,
   type ReleasePageHeader,
+  type ReleasePageInternal,
+  type ReleasePageInternals,
   type ReleasePageUnnoted,
+  type ReleasePageViewKind,
   type ReleaseShipped,
   type ReleaseTechnicalNotes,
   releaseBuildOf,
@@ -62,6 +65,8 @@ export function headerOf(
 ): ReleasePageHeader {
   return {
     version: detail.version,
+    name: detail.name,
+    summary: detail.summary,
     state: detail.state,
     releasedAt: detail.releasedAt,
     environment: detail.production,
@@ -79,45 +84,68 @@ const isWhatsNewSection = (s: string): s is WhatsNewSection =>
   (WHATS_NEW_SECTIONS as readonly string[]).includes(s);
 
 /**
- * Each issue's user-facing line as a customer reads it (`customer-notes.ts:customerNotes`), kept
- * with the issue it came from and the kind its section reads as. A line another already says is
- * left out; an issue whose line is held back, that has none, or whose line now says a later round
- * (`notes.reworked`), is named rather than invented.
+ * Each change as users read it (`customer-notes.ts:customerNotes`): its short title and the sentence
+ * that says it in full, whole (REQ-40 BC-6), kept with the issue it came from, the requirement that
+ * issue traces and the kind its section reads as. A line another already says is left out; an issue
+ * whose line is held back, that has none, or whose line now says a later round (`notes.reworked`),
+ * is named rather than invented. What nobody using the product sees — a `Skip` note, or an issue
+ * that only carries another change out — is counted apart and listed on the developer view only
+ * (REQ-40 BC-16).
  */
-export function changesOf(notes: ReleaseDetail['notes']): {
+export function changesOf(
+  detail: Pick<ReleaseDetail, 'notes' | 'issues'>,
+  view: ReleasePageViewKind,
+): {
   improvements: ReleasePageChange[];
   fixes: ReleasePageChange[];
+  internal: ReleasePageInternals;
   withoutNotes: ReleasePageUnnoted[];
 } {
-  const view = customerNotes(notes.sections);
-  const folded = new Set(view.folded.map((f) => f.key));
-  const held = new Set(view.held.map((h) => h.key));
+  const { notes } = detail;
+  const notesView = customerNotes(notes.sections);
+  const requirementOf = new Map(detail.issues.map((i) => [i.key, i.requirement]));
   const changes: ReleasePageChange[] = [];
-  for (const section of notes.sections) {
+  for (const section of notesView.sections) {
     if (!isWhatsNewSection(section.section)) continue;
     const named = section.section;
-    const lines = view.sections.find((s) => s.section === section.section)?.lines ?? [];
-    const keys = section.entries
-      .filter((e) => !folded.has(e.key) && !held.has(e.key))
-      .map((e) => e.key);
-    const kind = WHATS_NEW_KIND_OF_SECTION[section.section];
-    keys.forEach((issueKey, i) => {
-      const line = lines[i];
-      if (line) changes.push({ issueKey, kind, section: named, line });
-    });
+    const kind = WHATS_NEW_KIND_OF_SECTION[named];
+    for (const l of section.lines) {
+      changes.push({
+        issueKey: l.key,
+        kind,
+        section: named,
+        line: l.line,
+        detail: l.detail,
+        requirementKey: requirementOf.get(l.key) ?? null,
+      });
+    }
   }
   const titleOf = (key: string) =>
     notes.sections.flatMap((s) => s.entries).find((e) => e.key === key)?.title ?? key;
+  const internal: ReleasePageInternal[] = [
+    ...notes.skipped.map((n) => ({ issueKey: n.key, title: n.title, why: 'skip' as const })),
+    ...notesView.folded
+      .filter((f) => f.why === 'carries')
+      .map((f) => ({ issueKey: f.key, title: titleOf(f.key), why: 'carries' as const })),
+  ];
   return {
     improvements: changes.filter((c) => c.kind !== 'fixed'),
     fixes: changes.filter((c) => c.kind === 'fixed'),
+    internal: {
+      count: internal.length,
+      changes: view === 'developer' ? internal : null,
+    },
     withoutNotes: [
       ...notes.withoutNotes.map((n) => ({
         issueKey: n.key,
         title: n.title,
         why: 'no_note' as const,
       })),
-      ...view.held.map((h) => ({ issueKey: h.key, title: titleOf(h.key), why: 'held' as const })),
+      ...notesView.held.map((h) => ({
+        issueKey: h.key,
+        title: titleOf(h.key),
+        why: 'held' as const,
+      })),
       ...notes.reworked.map((n) => ({
         issueKey: n.key,
         title: n.title,
@@ -157,11 +185,16 @@ const permissionOf = (a: ShippedArtifact) => {
 };
 
 const SENTENCES: Record<ReleaseActionKind, Record<ArtifactChange, (ref: string) => string>> = {
+  // said without the file: the overview names no path (REQ-40 BC-15); `ref` keeps it for the developer view
   migration: {
-    added: (ref) => `Back up the database before this release deploys: ${ref} changes its schema.`,
-    changed: (ref) =>
-      `Back up the database before this release deploys: ${ref} changes its schema.`,
-    removed: (ref) => `Check nothing still reads what ${ref} created: this release removes it.`,
+    added: () => 'Back up the database before this release deploys: it changes the schema.',
+    changed: () => 'Back up the database before this release deploys: it changes the schema.',
+    removed: () => 'Check nothing still reads the tables this release removes.',
+  },
+  step: {
+    added: (sentence) => sentence,
+    changed: (sentence) => sentence,
+    removed: (sentence) => sentence,
   },
   permission: {
     added: (ref) => `Grant ${ref} to the people who should have it: it is new in this release.`,
@@ -207,14 +240,31 @@ function landedArtifacts(
   return landed.filter((a) => permissionOf(a) !== null || (isMigration(a) && ships.has(a.ref)));
 }
 
+/** Every admin step the release's notes name, one item per sentence, with each issue that names it. */
+function writtenSteps(notes: ReleaseDetail['notes']): ReleaseActionItem[] {
+  const out = new Map<string, ReleaseActionItem>();
+  const entries = [...notes.sections.flatMap((s) => s.entries), ...notes.skipped, ...notes.designs];
+  for (const e of entries) {
+    for (const step of e.adminSteps) {
+      const held = out.get(step);
+      if (held) held.issues = [...new Set([...held.issues, e.key])].sort(byKey);
+      else out.set(step, { kind: 'step', sentence: step, ref: null, issues: [e.key] });
+    }
+  }
+  return [...out.values()];
+}
+
+const byKey = (a: string, b: string) => a.localeCompare(b, 'en', { numeric: true });
+
 /**
- * What an admin must do once the release lands, each item naming the artifact that owes it (BC-7):
- * what the release's commit range ships (`shipped`), then what its issues' landings add
- * (`landedArtifacts`), an item both say once.
+ * What an admin must do before or as the release lands (BC-7): the steps its issues' notes name,
+ * then what its commit range ships (`shipped`) and what its issues' landings add
+ * (`landedArtifacts`), each derived item naming the artifact that owes it and said once.
  */
 export function actionsOf(
   changes: ReleaseDetail['changes'],
   shipped: ReleaseShipped,
+  notes: ReleaseDetail['notes'],
 ): ReleaseActionItem[] {
   const out = new Map<string, ReleaseActionItem>();
   for (const a of [...derivedArtifacts(shipped), ...landedArtifacts(changes, shipped)]) {
@@ -228,15 +278,19 @@ export function actionsOf(
           : null;
     if (!kind) continue;
     const ref = permission ?? a.ref;
-    const key = `${kind}:${ref}`;
+    const sentence = SENTENCES[kind][a.change](ref);
+    // migrations are said once per sentence, every file they name kept in `ref`
+    const key = kind === 'migration' ? `${kind}:${sentence}` : `${kind}:${ref}`;
     const held = out.get(key);
     if (held) {
       held.issues = [...new Set([...held.issues, ...a.issues])].sort();
+      if (held.ref !== null && !held.ref.split(', ').includes(ref))
+        held.ref = `${held.ref}, ${ref}`;
       continue;
     }
-    out.set(key, { kind, sentence: SENTENCES[kind][a.change](ref), ref, issues: [...a.issues] });
+    out.set(key, { kind, sentence, ref, issues: [...a.issues] });
   }
-  return [...out.values()];
+  return [...writtenSteps(notes), ...out.values()];
 }
 
 const uniq = (refs: readonly string[]) => [...new Set(refs)].sort();

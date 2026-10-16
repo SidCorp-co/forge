@@ -247,6 +247,8 @@ describe('the page reads off the release record', () => {
         kind: 'new',
         section: 'Added',
         line: 'Nurses see a reminder before each visit.',
+        detail: null,
+        requirementKey: 'REQ-1',
       },
     ]);
     expect(p.fixes).toEqual([
@@ -255,6 +257,8 @@ describe('the page reads off the release record', () => {
         kind: 'fixed',
         section: 'Fixed',
         line: 'A visit report keeps its filter after a reload.',
+        detail: null,
+        requirementKey: 'REQ-1',
       },
     ]);
     expect(p.actionRequired.map((x) => [x.kind, x.ref])).toEqual([

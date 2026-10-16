@@ -2,6 +2,10 @@ import { createHash } from 'node:crypto';
 import { contentLanguageName } from '@forge/contracts/content-language';
 import type { MasterWork } from '@forge/contracts/master-verdict';
 import type { AnswerResume } from '@forge/contracts/questions';
+import {
+  RELEASE_NAME_WORDS_MAX,
+  RELEASE_NOTE_TITLE_WORDS_MAX,
+} from '@forge/contracts/release-notes';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { readAdmissibleIssues, readOwedComments } from '../devices/index.js';
@@ -27,6 +31,8 @@ interface Owed {
   releaseNotes: { issueId: string; key: string }[];
   /** Notes written but not in the content language, or carrying an engineer's reference. */
   warnedNotes: { issueId: string; key: string; problems: string[] }[];
+  /** Releases drafted, or cut and not yet out, that carry no name and summary. */
+  unnamedReleases: { version: string }[];
   /** Park questions answered since the master's last finished pass began, with what each did. */
   answers: { issueKey: string; questionId: string; outcome: AnswerResume | null }[];
   /** The project's content language tag, which a release note is written in. */
@@ -115,11 +121,15 @@ export function owedLine(owed: Owed): string {
   }
   if (releaseNotes.length > 0) {
     const keys = releaseNotes.map((r) => `${r.key} ${r.issueId}`);
-    line += ` ${releaseNotes.length} issue${plural(releaseNotes.length, ' waits', 's wait')} at the release gate with no release note (${keys.join(', ')}), so the next release refuses to carry ${plural(releaseNotes.length, 'it', 'them')} (\`RELEASE_RECORD_MISSING\`): read each issue and what it shipped, then write its note (\`forge-runner api issues/<id> -X PATCH -d '{"releaseNotes":{"section":"Added","userFacing":"<the one plain line a user would read, in ${contentLanguageName(contentLanguage)}>"}}'\`; the project's content language is ${contentLanguageName(contentLanguage)} (\`${contentLanguage}\`), so the line is written in it whatever language the issue or its commits are in, section one of Added, Changed, Fixed, Removed, Security, or \`{"section":"Skip","userFacing":"-"}\` when the change has no user-facing half).`;
+    line += ` ${releaseNotes.length} issue${plural(releaseNotes.length, ' waits', 's wait')} at the release gate with no release note (${keys.join(', ')}), so the next release refuses to carry ${plural(releaseNotes.length, 'it', 'them')} (\`RELEASE_RECORD_MISSING\`): read each issue and what it shipped, then write its note (\`forge-runner api issues/<id> -X PATCH -d '{"releaseNotes":{"section":"Added","title":"<the change's short name, at most ${RELEASE_NOTE_TITLE_WORDS_MAX} words>","userFacing":"<the one plain sentence a user would read, in ${contentLanguageName(contentLanguage)}>"}}'\`, adding \`adminSteps\` for each step an admin must take before it goes out; the project's content language is ${contentLanguageName(contentLanguage)} (\`${contentLanguage}\`), so the line is written in it whatever language the issue or its commits are in, section one of Added, Changed, Fixed, Removed, Security, or \`{"section":"Skip","userFacing":"-"}\` when the change has no user-facing half).`;
   }
   if (warnedNotes.length > 0) {
     const keys = warnedNotes.map((n) => `${n.key} ${n.issueId} (${n.problems.join('; ')})`);
-    line += ` ${warnedNotes.length} release note${plural(warnedNotes.length, '', 's')} at the release gate ${plural(warnedNotes.length, 'reads', 'read')} wrong to a user (${keys.join(', ')}): rewrite each as the one plain line a user would read, in ${contentLanguageName(contentLanguage)}, with no commit sha, issue key or rule code in it (\`forge-runner api issues/<id> -X PATCH -d '{"releaseNotes":{"section":"<the same section>","userFacing":"<the line>"}}'\`), keeping the engineering detail in \`technical\`; this is a reader aid, the release is not refused for it.`;
+    line += ` ${warnedNotes.length} release note${plural(warnedNotes.length, '', 's')} at the release gate ${plural(warnedNotes.length, 'reads', 'read')} wrong to a user (${keys.join(', ')}): rewrite each as the one plain line a user would read, in ${contentLanguageName(contentLanguage)}, with no commit sha, issue key or rule code in it (\`forge-runner api issues/<id> -X PATCH -d '{"releaseNotes":{"section":"<the same section>","title":"<its short name, at most ${RELEASE_NOTE_TITLE_WORDS_MAX} words>","userFacing":"<the sentence>"}}'\`), keeping the engineering detail in \`technical\` and each admin step in \`adminSteps\`; this is a reader aid, the release is not refused for it.`;
+  }
+  if (owed.unnamedReleases.length > 0) {
+    const versions = owed.unnamedReleases.map((r) => r.version);
+    line += ` ${versions.length} release${plural(versions.length, '', 's')} drafted or cut ${plural(versions.length, 'has', 'have')} no name (${versions.join(', ')}), so ${plural(versions.length, 'its page opens', 'their pages open')} on a bare version: read what each carries (\`forge-runner api projects/<projectId>/releases/<version>\`), then name it (\`forge-runner api projects/<projectId>/releases/<version>/naming -X PUT -d '{"name":"<a few words, at most ${RELEASE_NAME_WORDS_MAX}>","summary":"<two or three sentences on what it brings its users, in ${contentLanguageName(contentLanguage)}>"}'\`); a draft's name carries through its cut, and a cut can carry both as \`name\` and \`summary\`.`;
   }
   return line;
 }
@@ -202,6 +212,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     triages,
     designs,
     releaseNotes,
+    unnamedReleases,
     contentLanguage,
   ] = await Promise.all([
     readAdmissibleIssues({ deviceId, projectId }),
@@ -212,6 +223,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     ports.triagesOwed(projectId),
     ports.designsOwed(projectId),
     ports.releaseNotesOwed(projectId),
+    ports.releasesUnnamed(projectId),
     ports.contentLanguageOf(projectId),
   ]);
   const warnedNotes = await ports.releaseNotesWarned(projectId, contentLanguage);
@@ -227,6 +239,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     builderRuns: channel.builderRuns,
     releaseNotes,
     warnedNotes,
+    unnamedReleases,
     answers,
     contentLanguage,
   });

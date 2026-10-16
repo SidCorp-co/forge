@@ -9,6 +9,8 @@ export function releasePage(over: Partial<ReleasePage> = {}): ReleasePage {
     projectId: "p1",
     header: {
       version: "0.4.0",
+      name: "Readable releases",
+      summary: "Every release now opens as a page you can read in a minute. Each change is named in a short title and one sentence.",
       state: "shipped",
       releasedAt: "2026-10-09T10:00:00.000Z",
       environment: { name: "production", url: "https://forge.example" },
@@ -64,10 +66,23 @@ export function releasePage(over: Partial<ReleasePage> = {}): ReleasePage {
       },
     ],
     untraced: null,
-    improvements: [{ issueKey: "ISS-1", kind: "new", section: "Added", line: "Releases read as pages." }],
-    fixes: [{ issueKey: "ISS-2", kind: "fixed", section: "Fixed", line: "Dates show correctly." }],
+    improvements: [
+      {
+        issueKey: "ISS-1",
+        kind: "new",
+        section: "Added",
+        line: "Releases read as pages",
+        detail: "Open any release and read what it brings, whole, in under a minute.",
+        requirementKey: "REQ-40",
+      },
+    ],
+    fixes: [{ issueKey: "ISS-2", kind: "fixed", section: "Fixed", line: "Dates show correctly.", detail: null, requirementKey: null }],
+    internal: { count: 1, changes: null },
     withoutNotes: [{ issueKey: "ISS-9", title: "Rename a helper", why: "no_note" }],
-    actionRequired: [{ kind: "migration", sentence: "Run the database migration before opening the app.", ref: "0478_release_highlights.sql", issues: ["ISS-1"] }],
+    actionRequired: [
+      { kind: "step", sentence: "Start a worker on the release-highlights queue.", ref: null, issues: ["ISS-1"] },
+      { kind: "migration", sentence: "Back up the database before this release deploys: it changes the schema.", ref: "0478_release_highlights.sql", issues: ["ISS-1"] },
+    ],
     shipped: { state: "read", base: "b".repeat(40), head: BUILD, migrations: ["packages/core/drizzle/migrations/0478_release_highlights.sql"], contracts: [], dependencies: [], settings: [] },
     knownIssues: [
       { issueKey: "ISS-3", requirementKey: "REQ-40", bc: "BC-8", statement: "Known issues are listed.", standing: "short", reason: "the list is empty on mobile", elsewhere: null },

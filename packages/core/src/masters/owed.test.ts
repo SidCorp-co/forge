@@ -14,6 +14,7 @@ const none = {
   builderRuns: [],
   releaseNotes: [],
   warnedNotes: [],
+  unnamedReleases: [] as { version: string }[],
   answers: [],
   contentLanguage: 'en',
 };
@@ -118,6 +119,26 @@ describe('owedLine: what a pass is told it owes besides issues', () => {
     });
     expect(line).toContain('2 agreed requirements have no breakdown yet (REQ-3 overdue, REQ-4)');
     expect(line).toContain('A person is owed a reply on 1 issue (ISS-7 comment c1)');
+  });
+
+  // catalog-api 0.1.0 (REQ-40 BC-14): a release with no name opened on a bare version and an
+  // issue-title headline cut at 72 characters
+  it('names a release drafted with no name and the write that names it, in the content language', () => {
+    const line = owedLine({
+      ...none,
+      contentLanguage: 'vi',
+      unnamedReleases: [{ version: '0.1.0' }],
+    });
+    expect(line).toContain('1 release drafted or cut has no name (0.1.0)');
+    expect(line).toContain('releases/<version>/naming -X PUT');
+    expect(line).toContain('in Vietnamese');
+    expect(masterWork([], { ...none, unnamedReleases: [{ version: '0.1.0' }] }).owed).toBe(1);
+  });
+
+  it('teaches the note it asks for with its short title, so the write it names is never refused', () => {
+    const line = owedLine({ ...none, releaseNotes: [{ issueId: 'u6', key: 'ISS-6' }] });
+    expect(line).toContain('"title":');
+    expect(line).toContain('adminSteps');
   });
 
   it('names an issue at the release gate with no note by key and id, and the write that clears it', () => {
