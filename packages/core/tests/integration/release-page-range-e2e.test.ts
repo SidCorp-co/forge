@@ -9,6 +9,9 @@
  *   requirement count the same carried criteria by the one rule (contracts
  *   `verified-rule.ts:verifiedOf` of the verdicts on the build), a short never proven, a pass on an
  *   earlier build not counted.
+ *
+ * @direct-test-of packages/core/src/release-page/sections.ts
+ * @direct-test-of packages/contracts/src/release-page.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -189,9 +192,10 @@ describe('what a release requires is read from the range its run reports, with n
     });
     // J7 on 0.4.0-dev.223: an issue's landed migration the range does not add (0999 here) was listed
     // under the range's own line, and an admin was asked to back up for it; a permission key, which no
-    // range reads, still comes from the landing
+    // range reads, still comes from the landing; the migrations are one backup to take, so they are
+    // said once, every file kept in its ref
     expect(user.actionRequired.map((a) => [a.kind, a.ref])).toEqual([
-      ...MIGRATIONS.map((m) => ['migration', m]),
+      ['migration', MIGRATIONS.join(', ')],
       ['setting', 'VAULT_KEY'],
       ['permission', 'shares.write'],
     ]);

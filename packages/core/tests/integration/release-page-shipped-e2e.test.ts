@@ -4,6 +4,9 @@
  * criterion, the header counts what the list proves, and a share and both exports carry the user
  * view only. What the release ships, read from the range its run reports, is
  * release-page-range-e2e.test.ts.
+ *
+ * @direct-test-of packages/contracts/src/release-page-export.ts
+ * @direct-test-of packages/core/src/release-page/sections.ts
  */
 
 import {
@@ -265,7 +268,8 @@ describe('a release page shared and exported carries the user view only (BC-11)'
       ['fail', null],
     ]);
 
-    // the developer view carries the reasons; neither export prints them, from either view
+    // the developer view carries the reasons; neither export prints them, from either view, nor any
+    // criterion: an export is the user view, which counts the checks not yet met (BC-15)
     const dev = await page('member', 'developer');
     expect(JSON.stringify(dev.knownIssues)).toContain(REASONS[0]);
     for (const view of [dev, sharedPage]) {
@@ -279,10 +283,9 @@ describe('a release page shared and exported carries the user view only (BC-11)'
       ];
       for (const text of out.slice(0, 3)) {
         for (const reason of REASONS) expect(text).not.toContain(reason);
-        expect(text).toContain('criterion 2');
-        expect(text).toContain('(Falls short)');
-        expect(text).toContain('(Failing)');
-        expect(text).toContain('(Not yet judged)');
+        expect(text).toContain('3 checks are not yet met on this build.');
+        expect(text).not.toContain('criterion 2');
+        expect(text).not.toContain('(Falls short)');
       }
     }
   });
