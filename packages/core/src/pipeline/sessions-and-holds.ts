@@ -37,6 +37,9 @@ export interface LiveSession {
   id: string;
   kind: string;
   title: string | null;
+  /** The job type and skill a step session was opened under, which its title begins with. */
+  jobType: string | null;
+  skillName: string | null;
   status: string;
   runtimeState: string | null;
   deviceId: string | null;
@@ -92,6 +95,8 @@ export interface SessionRow {
   id: string;
   kind: string;
   title: string | null;
+  job_type?: string | null;
+  skill_name?: string | null;
   status: string;
   runtime_state: string | null;
   device_id: string | null;
@@ -218,6 +223,8 @@ export function projectSessionsAndHolds(input: {
       id: s.id,
       kind: s.kind,
       title: s.title,
+      jobType: s.job_type ?? null,
+      skillName: s.skill_name ?? null,
       status: s.status,
       runtimeState: s.runtime_state,
       deviceId: s.device_id,
@@ -275,7 +282,9 @@ export async function readSessionsAndHolds(
   `)) as unknown as Array<{ issue_prefix: string | null }>;
 
   const sessions = (await db.execute(sql`
-    SELECT s.id, s.kind, s.title, s.status, s.runtime_state, s.device_id, d.name AS device_name,
+    SELECT s.id, s.kind, s.title, s.metadata ->> 'jobType' AS job_type,
+           s.metadata ->> 'skillName' AS skill_name,
+           s.status, s.runtime_state, s.device_id, d.name AS device_name,
            s.parent_session_id, s.started_at, s.last_heartbeat_at, s.created_at
       FROM agent_sessions s
       LEFT JOIN devices d ON d.id = s.device_id

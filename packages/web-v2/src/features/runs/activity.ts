@@ -1,4 +1,5 @@
 
+import { jobKindLabel } from "@/features/overview/job-kinds";
 import {
   FAILURE_CAUSE_PRESENTATION,
   type FailureCause,
@@ -126,7 +127,7 @@ export function deriveActivityFeed(attempts: PipelineRunAttempt[] | undefined): 
     entries.push({
       key: a.jobId,
       verb: verbFor(position, 1),
-      object: a.jobType,
+      object: jobKindLabel(a.jobType),
       outcome,
       cause,
       action: cause ? failureReasonAction(cause) : null,

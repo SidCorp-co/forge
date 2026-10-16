@@ -378,27 +378,27 @@ describe("sessionStep — the step a session recorded, or none (ISS-999)", () =>
 	const meta = (over: Record<string, unknown>) =>
 		over as unknown as Parameters<typeof sessionStep>[0];
 
-	it("names `drive` as `drive`, not as one of the seven staged names", () => {
-		expect(sessionStep(meta({ type: "pipeline", step: "drive" }))).toBe("drive");
+	it("names `drive` in the dashboard's words, not as one of the seven staged names", () => {
+		expect(sessionStep(meta({ type: "pipeline", step: "drive" }))).toBe("Issue work");
 	});
 
-	it("names a staged step by the word that was recorded, without normalising it", () => {
-		expect(sessionStep(meta({ step: "verify" }))).toBe("verify");
-		expect(sessionStep(meta({ step: "code" }))).toBe("code");
+	it("names a staged step by the word that was recorded, in words, without normalising it", () => {
+		expect(sessionStep(meta({ step: "verify" }))).toBe("Verify");
+		expect(sessionStep(meta({ step: "code" }))).toBe("Code");
 	});
 
 	it("falls back to `stage` where only that was recorded", () => {
-		expect(sessionStep(meta({ stage: "review" }))).toBe("review");
+		expect(sessionStep(meta({ stage: "review" }))).toBe("Review");
 	});
 
 	it("passes a blank `step` over in favour of a recorded `stage`", () => {
-		expect(sessionStep(meta({ step: " ", stage: "review" }))).toBe("review");
-		expect(sessionStep(meta({ step: "", stage: "review" }))).toBe("review");
+		expect(sessionStep(meta({ step: " ", stage: "review" }))).toBe("Review");
+		expect(sessionStep(meta({ step: "", stage: "review" }))).toBe("Review");
 	});
 
 	it("names no step for a value that is not a string", () => {
 		expect(sessionStep(meta({ step: { name: "drive" } }))).toBeNull();
-		expect(sessionStep(meta({ step: 7, stage: "plan" }))).toBe("plan");
+		expect(sessionStep(meta({ step: 7, stage: "plan" }))).toBe("Plan");
 		expect(sessionStep(meta({ step: null, stage: null }))).toBeNull();
 	});
 

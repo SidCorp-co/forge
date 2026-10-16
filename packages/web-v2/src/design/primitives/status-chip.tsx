@@ -31,7 +31,7 @@ const SESSION_TONES: Partial<Record<StatusKey, (typeof TONE_META)[keyof typeof T
 
 /** A session chip's mark says which state it is in, one mark per status, so no two are told apart
  *  by colour alone. */
-const SESSION_ICONS: Record<StatusKey, IconName> = {
+export const SESSION_ICONS: Readonly<Record<StatusKey, IconName>> = {
   running: "agent",
   queued: "clock",
   blocked: "pause",

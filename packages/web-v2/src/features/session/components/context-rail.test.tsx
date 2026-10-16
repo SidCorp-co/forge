@@ -101,12 +101,12 @@ describe("a sibling session's name on the context rail", () => {
 		expect(name.className).not.toMatch(/(^|\s)(capitalize|uppercase)(\s|$)/);
 	});
 
-	it("opens a step's slug with a capital", () => {
+	it("names a step's slug in words", () => {
 		useDevices.mockReturnValue({ data: [] });
 		siblingRows = [sibling("s3", "j14 scratch", { step: "plan" })];
 
 		render(<ContextRail session={onIssue} items={[]} />);
 
-		expect(screen.getByText("plan").className).toMatch(/(^|\s)capitalize(\s|$)/);
+		expect(screen.getByText("Plan").textContent).toBe("Plan");
 	});
 });

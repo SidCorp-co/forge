@@ -5,6 +5,7 @@
 // question → Provide info, parked → Open issue. Each action NAVIGATES to the existing destination —
 // no new mutations. Flat: rows divided by hairlines, no boxes. Empty is one line, said only where
 // nothing is owed beyond it (ISS-1156).
+import { SESSION_ICONS } from "@/design/primitives/status-chip";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button, Icon, MonoTag, type IconName } from "@/design";
@@ -30,7 +31,7 @@ const ACTION_META: Record<AttentionActionKind, { tag: string; icon: IconName }> 
   diff: { tag: "Review", icon: "check" },
   input: { tag: "Awaiting", icon: "clock" },
   parked: { tag: "Blocked", icon: "clock" },
-  session: { tag: "Waiting", icon: "agent" },
+  session: { tag: "Waiting", icon: SESSION_ICONS.waiting },
 };
 
 const TITLE = "Needs your attention";

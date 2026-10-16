@@ -32,7 +32,7 @@ import {
   type SessionRow,
 } from "@/features/sessions/types";
 import { useSessionCost, useSessions } from "@/features/sessions/hooks";
-import { isJobDriven, sessionKind } from "@/features/sessions/types";
+import { isJobDriven, sessionKind, sessionTitle } from "@/features/sessions/types";
 import { type RunGateNote, runGateNote, runGateUnfetched } from "@/features/runs/derive";
 import { useRun } from "@/features/runs/hooks";
 import { useDevices } from "@/features/runners/hooks";
@@ -359,14 +359,12 @@ export function ContextRail({
 function SiblingRow({ row, onOpen }: { row: SessionRow; onOpen?: () => void }) {
   const display = deriveSessionDisplayStatus(row);
   const stage = sessionStep(row.metadata) ?? undefined;
-  // A step or stage is a lower-case slug and reads opened with a capital; a title is printed as written.
-  const slug = (row.metadata?.step as string | undefined) ?? (row.metadata?.stage as string | undefined);
-  const label = slug ?? row.title ?? `Session ${row.id.slice(0, 8)}`;
+  const label = stage ?? sessionTitle(row) ?? `Session ${row.id.slice(0, 8)}`;
 
   const inner = (
     <>
       <Icon name="pipeline" size={13} className="flex-none text-subtle" />
-      <span className={`flex-1 truncate fg-body-sm${slug ? " capitalize" : ""}`} title={label}>
+      <span className="flex-1 truncate fg-body-sm" title={label}>
         {label}
       </span>
       <SessionChip status={statusToChip(display)} stage={stage} size="sm" />

@@ -51,6 +51,8 @@ const reading = {
       issues: [{ issueId: 'i-7', displayId: 'ISS-7', title: 'Seven' }],
       report: null,
       silenceLimitMs: 600_000,
+      jobType: null,
+      skillName: null,
     },
   ],
   holds: [

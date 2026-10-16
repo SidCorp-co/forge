@@ -18,7 +18,7 @@ import {
 import { waitingOnOf } from "@/features/pipeline/derive";
 import { SessionChip } from "@/features/sessions/components/session-chip";
 import { useProjects } from "@/features/projects/hooks";
-import { isJobDriven } from "@/features/sessions/types";
+import { isJobDriven, sessionTitle } from "@/features/sessions/types";
 import {
   deriveSessionDisplayStatus,
   sessionSilence,
@@ -116,17 +116,19 @@ export function SessionScreen({
   // Skip in embedded mode (ISS-664 plan Q3): a session glanced at inline from
   // the workspace reply panel should not rewrite the owner's last-visited /
   // ⌘K recents state.
+  const recentId = session?.id;
+  const recentLabel = session ? (sessionTitle(session) ?? `Session ${session.id.slice(0, 8)}`) : null;
   useEffect(() => {
     if (embedded) return;
-    if (!session || !projectSlug) return;
+    if (!recentId || !recentLabel || !projectSlug) return;
     pushRecent({
       kind: "session",
-      id: session.id,
-      label: session.title ?? `Session ${session.id.slice(0, 8)}`,
-      href: `/projects/${projectSlug}/agents/${session.id}`,
+      id: recentId,
+      label: recentLabel,
+      href: `/projects/${projectSlug}/agents/${recentId}`,
       icon: "agent",
     });
-  }, [embedded, session?.id, session?.title, projectSlug, pushRecent]);
+  }, [embedded, recentId, recentLabel, projectSlug, pushRecent]);
 
   function copyLink() {
     if (!projectSlug) return;
@@ -288,7 +290,7 @@ export function SessionScreen({
           )}
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <PageTitle className="fg-h3 truncate">{session.title ?? "Session"}</PageTitle>
+              <PageTitle className="fg-h3 truncate">{sessionTitle(session) ?? "Session"}</PageTitle>
               <MonoTag hue="cobalt">{session.id.slice(0, 8)}</MonoTag>
             </div>
             <div className="mt-1 flex items-center gap-2">

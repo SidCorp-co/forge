@@ -32,6 +32,9 @@ export interface LiveSession {
   /** How long core lets this session go unheard before it ends it; `null` where no silence does;
    *  absent on a read that predates it. */
   silenceLimitMs?: number | null;
+  /** The job type and skill a step session was opened under, which its title begins with. */
+  jobType?: string | null;
+  skillName?: string | null;
 }
 
 export type PersonOwes = "information" | "decision" | "resource";

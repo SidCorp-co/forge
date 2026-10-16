@@ -2,6 +2,7 @@
 
 // The Issues list's row: five columns on one grid, and the actions that hang off it (ISS-1155).
 
+import { jobKindLabel } from "@/features/overview/job-kinds";
 import {
   Avatar,
   Checkbox,
@@ -71,7 +72,7 @@ export function StatusCell({ row, now = Date.now() }: { row: IssueRow; now?: num
             <span key={run.word}>
               {i > 0 && " · "}
               <span>{run.word}</span>
-              {run.step && <span className="font-mono"> {run.step}</span>}
+              {run.step && <span> {jobKindLabel(run.step)}</span>}
             </span>
           ))}
         </span>

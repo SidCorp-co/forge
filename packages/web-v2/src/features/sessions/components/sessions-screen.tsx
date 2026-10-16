@@ -58,6 +58,7 @@ import {
   isLiveDisplay,
   deriveSessionDisplayStatus,
   sessionStep,
+  sessionTitle,
   isAwaitingReply,
   isRetryable,
   sessionKind,
@@ -580,7 +581,7 @@ function SessionIdentity({
   const router = useRouter();
   const issueId = row.metadata?.issueId;
   const kind = sessionKind(row);
-  const title = row.title ?? "Untitled session";
+  const title = sessionTitle(row) ?? "Untitled session";
   return (
     <div className="min-w-0">
       {onOpen ? (

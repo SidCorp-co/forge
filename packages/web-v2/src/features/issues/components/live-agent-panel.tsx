@@ -9,6 +9,7 @@
 // discriminated union rather than two components, which makes "renders nothing
 // when there is neither" the caller's obligation and the type's to enforce.
 
+import { jobKindLabel } from "@/features/overview/job-kinds";
 import { useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, Icon, MonoTag, SILENCE_TONE, SILENCE_WORD } from "@/design";
@@ -145,7 +146,7 @@ function QueuedRow({
           <Icon name="agent" size={16} />
           <span className="fg-label">Agent queued</span>
         </span>
-        <Stat icon="pipeline" label="Step" value={step.jobType} mono />
+        <Stat icon="pipeline" label="Step" value={jobKindLabel(step.jobType)} />
         <Stat icon="clock" label="Waited" value={waited} mono />
         {step.nextAttempt && (
           <Stat icon="clock" label="Next attempt" value={step.nextAttempt} />

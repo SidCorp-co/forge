@@ -1,5 +1,5 @@
 import { BLOCKED_TONE, BLOCKED_WORD, lastReported, type SemanticTone, WORKING_WORD } from "@/design/status";
-import { STALLED_THRESHOLD_MS, sessionSilence } from "@/features/sessions/types";
+import { STALLED_THRESHOLD_MS, sessionSilence, sessionTitle } from "@/features/sessions/types";
 import { formatElapsed } from "@/lib/utils/format";
 import type { HeldIssue, Holder, LiveSession, PersonOwes } from "./types";
 
@@ -18,9 +18,15 @@ export function sessionKindLabel(kind: string): string {
   return KIND_LABEL[kind] ?? kind;
 }
 
-/** The session's name: its title where it has one, else its kind. */
-export function sessionName(session: Pick<LiveSession, "kind" | "title">): string {
-  return session.title?.trim() || sessionKindLabel(session.kind);
+/** The session's name: its title where it has one, its step kind in words, else its kind. */
+export function sessionName(
+  session: Pick<LiveSession, "kind" | "title" | "jobType" | "skillName">,
+): string {
+  const title = sessionTitle({
+    title: session.title,
+    metadata: { jobType: session.jobType, skillName: session.skillName },
+  });
+  return title?.trim() || sessionKindLabel(session.kind);
 }
 
 export interface Doing {

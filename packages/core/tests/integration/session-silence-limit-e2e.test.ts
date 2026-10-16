@@ -135,6 +135,22 @@ describe("a session read carries core's own silence limit (ISS-1228 round 9)", (
       (s) => s.id === run.id,
     );
     near(live?.silenceLimitMs, RUNNER_LAPSES);
+    expect(live).toMatchObject({ jobType: null, skillName: null });
+  });
+
+  it("names a step session's job type and skill on the Pipeline page, which its title begins with", async () => {
+    const { id } = await session('pipeline', { runKind: 'pm' });
+    await harness.db.execute(sql`
+      UPDATE agent_sessions SET title = 'forge-code: Fix the export',
+             metadata = '{"jobType": "drive", "skillName": "forge-code"}'::jsonb WHERE id = ${id}
+    `);
+    const body = await get(`/projects/${projectId}/sessions-and-holds`);
+    const live = (body.sessions as Array<{ id: string }>).find((s) => s.id === id);
+    expect(live).toMatchObject({
+      title: 'forge-code: Fix the export',
+      jobType: 'drive',
+      skillName: 'forge-code',
+    });
   });
 
   it("answers it on the runs tab's row for the run, and null where core holds no session for it", async () => {

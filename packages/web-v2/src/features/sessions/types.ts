@@ -1,3 +1,4 @@
+import { jobKindLabel } from "@/features/overview/job-kinds";
 
 import {
   FAILURE_CAUSE_PRESENTATION,
@@ -513,9 +514,31 @@ export function sessionStep(metadata: SessionMetadata | null): string | null {
   for (const value of [metadata?.step, metadata?.stage]) {
     if (typeof value !== "string") continue;
     const trimmed = value.trim();
-    if (trimmed !== "") return trimmed;
+    if (trimmed !== "") return jobKindLabel(trimmed);
   }
   return null;
+}
+
+const text = (value: unknown): string | null =>
+  typeof value === "string" && value.trim() !== "" ? value : null;
+
+/**
+ * A session's title with the step kind core opened it under read in words. Core writes a step
+ * session's title as `<skill or job type>: <issue title>`, both recorded in its metadata; a title
+ * that does not start so was written by someone and is printed as written.
+ */
+export function sessionTitle(session: {
+  title: string | null;
+  metadata?: Readonly<Record<string, unknown>> | null;
+}): string | null {
+  const jobType = text(session.metadata?.jobType);
+  if (session.title === null || jobType === null) return session.title;
+  const head = text(session.metadata?.skillName) ?? jobType;
+  if (session.title === head) return jobKindLabel(jobType);
+  if (session.title.startsWith(`${head}: `)) {
+    return `${jobKindLabel(jobType)}: ${session.title.slice(head.length + 2)}`;
+  }
+  return session.title;
 }
 
 /** Whether a session can be retried (job-driven sessions tied to an issue). */
