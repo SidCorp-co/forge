@@ -117,8 +117,6 @@ async function onHost<T>(projectId: string, call: (host: SourceHost) => Promise<
 
 type Routes = Hono<{ Variables: AuthVars }>;
 
-const BASE = '/:projectId/integrations/source';
-
 export function registerSourceRoutes(routes: Routes): void {
   registerSourceReads(routes);
   registerSourceWrites(routes);
@@ -127,11 +125,11 @@ export function registerSourceRoutes(routes: Routes): void {
 function registerSourceReads(routes: Routes): void {
   // The bindings with their health and inbound door. It contacts no host and answers the same
   // whether or not agents are granted, so it is where a caller finds out WHY another route refused.
-  routes.get(BASE, can('project.read'), async (c) =>
+  routes.get('/:projectId/integrations/source', can('project.read'), async (c) =>
     c.json({ bindings: await listSourceBindings(c.req.param('projectId')) }),
   );
   routes.get(
-    `${BASE}/change-requests/:number/diff`,
+    '/:projectId/integrations/source/change-requests/:number/diff',
     can('project.read'),
     zValidator('param', numberParamSchema),
     async (c) => {
@@ -140,7 +138,7 @@ function registerSourceReads(routes: Routes): void {
     },
   );
   routes.get(
-    `${BASE}/checks/:checkRunId/log`,
+    '/:projectId/integrations/source/checks/:checkRunId/log',
     can('project.read'),
     zValidator('param', checkLogParamSchema),
     zValidator('query', checkLogQuerySchema),
@@ -158,7 +156,7 @@ function registerSourceReads(routes: Routes): void {
 
 function registerSourceWrites(routes: Routes): void {
   routes.post(
-    `${BASE}/change-requests`,
+    '/:projectId/integrations/source/change-requests',
     can('project.write'),
     zValidator('json', openBodySchema),
     async (c) => {
@@ -168,7 +166,7 @@ function registerSourceWrites(routes: Routes): void {
     },
   );
   routes.post(
-    `${BASE}/change-requests/:number/comments`,
+    '/:projectId/integrations/source/change-requests/:number/comments',
     can('project.write'),
     zValidator('param', numberParamSchema),
     zValidator('json', commentBodySchema),
@@ -181,7 +179,7 @@ function registerSourceWrites(routes: Routes): void {
     },
   );
   routes.post(
-    `${BASE}/change-requests/:number/reviewers`,
+    '/:projectId/integrations/source/change-requests/:number/reviewers',
     can('project.write'),
     zValidator('param', numberParamSchema),
     zValidator('json', reviewersBodySchema),
@@ -200,7 +198,7 @@ function registerSourceWrites(routes: Routes): void {
     },
   );
   routes.post(
-    `${BASE}/change-requests/:number/reviews`,
+    '/:projectId/integrations/source/change-requests/:number/reviews',
     can('project.write'),
     zValidator('param', numberParamSchema),
     zValidator('json', reviewBodySchema),

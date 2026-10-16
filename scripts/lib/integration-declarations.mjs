@@ -57,7 +57,9 @@ function agentPathReasons(path) {
     );
   }
   if (path.kind === 'permission' && !nonEmptyString(path.permission)) {
-    reasons.push('a permission agentPath names no `permission` that decides who may use its routes');
+    reasons.push(
+      'a permission agentPath names no `permission` that decides who may use its routes',
+    );
   }
   if (path.kind !== 'direct-mcp') return reasons;
 

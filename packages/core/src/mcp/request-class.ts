@@ -1,7 +1,7 @@
 import { CHANNEL_READS } from '@forge/contracts/ecosystem';
 import type { McpToolName } from '@forge/contracts/mcp-tools';
 import type { MiddlewareHandler } from 'hono';
-import { READS as ECOSYSTEM_READS } from '../ecosystem/tool-args.js';
+import { ECOSYSTEM_READS } from '../ecosystem/index.js';
 import type { PatRequestClass } from '../lib/rate-limits.js';
 import type { PrincipalVars } from '../middleware/require-pat.js';
 
