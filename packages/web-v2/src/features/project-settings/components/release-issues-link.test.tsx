@@ -318,10 +318,16 @@ describe("a link beside a counted release sentence agrees with that count", () =
 		]);
 	});
 
-	it("counts a binding beside a bad probe url as two places to look", () => {
+	it("names a binding and a bad probe url beside it, each by its own count", () => {
 		expect(linkText("RELEASE_PROBES_UNREADABLE", { urls: ["api/version"], bindings: ["coolify-a"] })).toEqual([
-			"Check the live bindings' verify steps",
+			"Check the live binding's verify step and correct the probe's url",
 		]);
+		expect(
+			linkText("RELEASE_PROBES_UNREADABLE", { urls: ["api/version", "health"], bindings: ["coolify-a"] }),
+		).toEqual(["Check the live binding's verify step and correct the probes' urls"]);
+		expect(
+			linkText("RELEASE_PROBES_UNREADABLE", { urls: ["api/version"], bindings: ["coolify-a", "coolify-b"] }),
+		).toEqual(["Check the live bindings' verify steps and correct the probe's url"]);
 	});
 
 	it("opens the runners tab and the integrations tab whatever the count", () => {

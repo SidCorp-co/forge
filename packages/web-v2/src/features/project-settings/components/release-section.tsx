@@ -95,14 +95,17 @@ const AT_AWAITING_RELEASE =
     label: `Open ${one(countOf(b.details?.[key]), "the issue", "the issues")} at ${ISSUE_STATUS_LABELS.awaiting_release}`,
   });
 
-/** A refused `verify` names its bindings; a probe url no request could reach names only the url. */
+/** A refused `verify` names its bindings and a probe url no request could reach names the url, so
+ *  the label names each that the sentence names, each agreeing with its own count. */
 function probesLink(b: Blocker): BlockerLink {
   const bindings = countOf(b.details?.bindings) ?? 0;
   const urls = countOf(b.details?.urls) ?? 0;
+  const steps = one(bindings, "the live binding's verify step", "the live bindings' verify steps");
+  const probes = one(urls, "the probe's url", "the probes' urls");
   const label =
     bindings === 0
-      ? one(urls === 0 ? 1 : urls, "Correct the probe's url", "Correct the probes' urls")
-      : one(bindings + (urls > 0 ? 1 : 0), "Check the live binding's verify step", "Check the live bindings' verify steps");
+      ? `Correct ${urls === 0 ? "the probe's url" : probes}`
+      : `Check ${steps}${urls > 0 ? ` and correct ${probes}` : ""}`;
   return setting("integrations", label)();
 }
 
