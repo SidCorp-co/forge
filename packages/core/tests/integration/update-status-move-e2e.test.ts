@@ -1,8 +1,7 @@
 /**
- * ISS-1229 r10 — `forge_issues` update that moves a status writes its fields, labels and relations
- * inside the move's own transaction. Judge-23 read `updated` for an update whose status the issue
- * already held; a move refused for any reason used to leave the rest written. Each case reads the
- * row back from the database.
+ * ISS-1229 r10 — a `forge_issues` update that moves a status writes its fields, labels and
+ * relations inside the move's own transaction, so a refused move, an unchanged status included,
+ * leaves none of them written. Each case reads the row back from the database.
  */
 
 import { sql } from 'drizzle-orm';
