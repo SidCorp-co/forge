@@ -5,7 +5,7 @@ import { Seeded } from "./vi-chrome-requirements";
 import type { ChromeScreen } from "./vi-chrome-screens";
 
 // The Questions page for the vi walking test: a question waiting on the reader, the questions raised
-// (owed to the agent, to members, to nobody, and one answered) and the form that raises one. A
+// (owed to the agent and to members, one closed on an ended issue, and one answered) and the form that raises one. A
 // question, an answer and a title are what a person wrote, so they are placeholder words here.
 
 const P = "p1";
@@ -37,13 +37,14 @@ const target = (scope: "requirement" | "issue" | "feedback", key: string) => ({ 
 
 const RAISED: RaisedQuestionsResponse = {
   by: "me",
-  owed: 3,
+  owed: 2,
   answered: 1,
+  closed: 1,
   questions: [
-    { id: "q1", target: target("requirement", "REQ-7"), body: "Cau hoi mot", author: LAN, askedAt: AT, answer: null, owedBy: "members", withheld: false },
-    { id: "q2", target: target("issue", "ISS-9"), body: "Cau hoi hai", author: LAN, askedAt: AT, answer: null, owedBy: "agent", withheld: false },
-    { id: "q3", target: target("issue", "ISS-4"), body: null, author: LAN, askedAt: AT, answer: null, owedBy: "nobody", withheld: true },
-    { id: "q4", target: target("feedback", "FB-2"), body: "Cau hoi bon", author: LAN, askedAt: AT, answer: { id: "a4", body: "Tra loi", author: { id: "u2", name: "Minh", agency: "human" }, at: AT }, owedBy: null, withheld: false },
+    { id: "q1", target: target("requirement", "REQ-7"), summary: "Cau hoi mot", author: LAN, askedAt: AT, state: "owed", answer: null, owedBy: "members", withheld: false },
+    { id: "q2", target: target("issue", "ISS-9"), summary: "Cau hoi hai", author: LAN, askedAt: AT, state: "owed", answer: null, owedBy: "agent", withheld: false },
+    { id: "q3", target: target("issue", "ISS-4"), summary: null, author: LAN, askedAt: AT, state: "closed", answer: null, owedBy: null, withheld: true },
+    { id: "q4", target: target("feedback", "FB-2"), summary: "Cau hoi bon", author: LAN, askedAt: AT, state: "answered", answer: { id: "a4", summary: "Tra loi", author: { id: "u2", name: "Minh", agency: "human" }, at: AT }, owedBy: null, withheld: false },
   ],
 };
 

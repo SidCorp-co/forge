@@ -2,11 +2,13 @@
 // approve-type decision, each with its key, who asked, how long it waited and its acts, beside the
 // project menu whose Approvals row carries the same count. At 390 px the acts wrap under the title and
 // nothing scrolls sideways. Each case is shot light, dark, with an approve's confirm step open, and
-// with a decline's reason step open.
+// with a decline's reason step open. The rows carry what a live project held (dev.251): a suggestion
+// on an issue whose title runs past the row's bound, cut at a word as core cuts it, and a record core
+// could not make a row of, listed by name after the rows.
 //
 //   pnpm --filter web-v2 witness witness/approval-inbox.witness.tsx --out <dir>
 
-import { type ApprovalInbox as Inbox, approvalInboxSchema } from "@forge/contracts/approvals";
+import { type ApprovalInbox as Inbox, approvalInboxSchema, approvalTitle } from "@forge/contracts/approvals";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
 import { NavRail } from "@/design";
@@ -22,10 +24,34 @@ const ago = (days: number) => new Date(Date.now() - days * DAY).toISOString();
 const act = (a: string, path: string, reason: "required" | "optional" | "none") => ({ act: a, path, body: {}, reason });
 const base = { suggestionKind: null, mockupKind: null, revision: null } as const;
 
+const LONG_TITLE = `Project config v1 is five strict documents with a JSON Schema and cross-field refusals by name, ${Array.from({ length: 80 }, (_, i) => `clause${i}`).join(" ")}`;
+
 const READ: Inbox = approvalInboxSchema.parse({
   generatedAt: new Date().toISOString(),
-  total: 7,
+  total: 9,
+  unreadable: [
+    {
+      kind: "suggestion",
+      id: "suggestion:s9",
+      key: "ISS-77",
+      opens: { kind: "issue", key: "ISS-77" },
+      problem: "askedBy.name: Too big: expected string to have <=200 characters",
+    },
+  ],
   items: [
+    {
+      ...base,
+      kind: "suggestion",
+      suggestionKind: "triage",
+      id: "suggestion:s0",
+      key: "ISS-1",
+      title: approvalTitle(LONG_TITLE),
+      askedBy: { kind: "agent", name: "forge-master" },
+      since: ago(9),
+      opens: { kind: "issue", key: "ISS-1" },
+      approve: act("suggestion.accept", `/api/projects/${P}/suggestions/s0/accept`, "optional"),
+      decline: act("suggestion.reject", `/api/projects/${P}/suggestions/s0/reject`, "required"),
+    },
     {
       ...base,
       kind: "suggestion",
@@ -71,7 +97,7 @@ const READ: Inbox = approvalInboxSchema.parse({
       mockupKind: "html",
       id: "mockup:m1",
       key: "MK-4",
-      title: "The checkout as it should look",
+      title: "checkout.html",
       askedBy: { kind: "person", name: "Ana" },
       since: ago(2),
       opens: { kind: "issue", key: "ISS-41" },
@@ -177,6 +203,15 @@ function drawn(): string[] {
     const rail = document.querySelector("[data-testid=witness-rail]")?.textContent ?? "";
     if (!rail.includes("Approvals")) wrong.push("the menu draws no Approvals row");
     if (!rail.includes(String(READ.total))) wrong.push(`the menu's Approvals row does not read its count ${READ.total}`);
+  }
+  const long = all.find((r) => r.textContent?.includes("ISS-1"))?.textContent ?? "";
+  if (!long.includes("…") || long.includes("clause79")) wrong.push("the long title is not cut at its bound with an ellipsis");
+  const unreadable = [...document.querySelectorAll<HTMLElement>("[data-testid=approval-unreadable]")];
+  if (unreadable.length !== 1) wrong.push(`${unreadable.length} unreadable records are drawn, not 1`);
+  for (const u of unreadable) {
+    if (!u.textContent?.includes("ISS-77")) wrong.push("the unreadable record does not name ISS-77");
+    const open = u.querySelector("[data-testid=approval-open]");
+    if (!open || open.getBoundingClientRect().right > window.innerWidth + 0.5) wrong.push("the unreadable record draws no Open link inside the window");
   }
   if (document.documentElement.scrollWidth > window.innerWidth) wrong.push(`the page scrolls sideways: ${document.documentElement.scrollWidth} px in ${window.innerWidth}`);
   return wrong;

@@ -240,6 +240,8 @@ describe('a raised question is owed until somebody else answers it', () => {
     expect(mine.questions[0]).toMatchObject({
       id: questionId,
       target: { scope: 'requirement', key: requirementKey },
+      summary: 'Does a saved board keep archived cards?',
+      state: 'owed',
       answer: null,
       owedBy: 'members',
     });
@@ -270,15 +272,16 @@ describe('a raised question is owed until somebody else answers it', () => {
       201,
     );
     const mine = ok(await say('member', 'GET', at('/raised-questions')));
-    expect(mine).toMatchObject({ owed: 0, answered: 1 });
+    expect(mine).toMatchObject({ owed: 0, answered: 1, closed: 0 });
     expect(mine.questions[0]).toMatchObject({
       id: questionId,
+      state: 'answered',
       owedBy: null,
-      answer: { body: 'Yes, archived cards are kept.' },
+      answer: { summary: 'Yes, archived cards are kept.' },
     });
   });
 
-  it('names the agent as owing a question on a live issue, and nobody once the issue ended', async () => {
+  it('names the agent as owing a question on a live issue, and reads it closed once the issue ended', async () => {
     const i = await issue('Keep archived cards');
     ok(
       await say('member', 'POST', `/api/issues/${i.id}/comments`, {
@@ -291,9 +294,9 @@ describe('a raised question is owed until somebody else answers it', () => {
       (ok(await say('member', 'GET', at('/raised-questions'))).questions as Doc[]).find(
         (q) => q.target.key === i.key,
       );
-    expect((await owedOn())?.owedBy).toBe('agent');
+    expect(await owedOn()).toMatchObject({ state: 'owed', owedBy: 'agent' });
     await seedIssueStatus(i.id, 'dropped');
-    expect((await owedOn())?.owedBy).toBe('nobody');
+    expect(await owedOn()).toMatchObject({ state: 'closed', owedBy: null });
   });
 
   it('refuses a `by` it does not know, naming the values it takes', async () => {

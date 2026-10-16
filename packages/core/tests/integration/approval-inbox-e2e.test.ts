@@ -167,6 +167,7 @@ describe('GET /approvals lists what waits on the viewer, and only what they may 
     expect(kinds).toEqual(
       expect.arrayContaining(['suggestion', 'mockup', 'design', 'revision', 'preview']),
     );
+    expect(inbox.unreadable).toEqual([]);
     expect(inbox.total).toBe(inbox.items.length);
     // the member's suggestion was asked four days ago: nothing has waited longer
     expect(kinds[0]).toBe('suggestion');
@@ -174,9 +175,10 @@ describe('GET /approvals lists what waits on the viewer, and only what they may 
     expect([...since].sort()).toEqual(since);
 
     const suggestion = inbox.items.find((i: Doc) => i.kind === 'suggestion');
+    // titled by the issue it is on, never by its payload's note
     expect(suggestion).toMatchObject({
       key: w.issueKey,
-      title: 'route this to the checkout team',
+      title: 'issue 1',
       suggestionKind: 'triage',
       askedBy: { kind: 'person' },
       opens: { kind: 'issue', key: w.issueKey },
@@ -186,9 +188,10 @@ describe('GET /approvals lists what waits on the viewer, and only what they may 
     expect(suggestion.askedBy.name).toBeTruthy();
 
     const mockup = inbox.items.find((i: Doc) => i.kind === 'mockup');
+    // titled by its name, never by its caption
     expect(mockup).toMatchObject({
       key: 'MK-1',
-      title: 'the checkout as it should look',
+      title: 'checkout.html',
       mockupKind: 'html',
       approve: { act: 'mockup.accept' },
       decline: { act: 'mockup.return', reason: 'required' },
@@ -250,7 +253,11 @@ describe('GET /approvals lists what waits on the viewer, and only what they may 
 
   it('answers an empty inbox on a project where nothing waits', async () => {
     const { id } = await createTestProject(ownerId);
-    expect(ok(await as(id)('owner', 'GET', '/approvals'))).toMatchObject({ items: [], total: 0 });
+    expect(ok(await as(id)('owner', 'GET', '/approvals'))).toMatchObject({
+      items: [],
+      unreadable: [],
+      total: 0,
+    });
   });
 
   it('refuses a person outside the project, and a query it does not take', async () => {

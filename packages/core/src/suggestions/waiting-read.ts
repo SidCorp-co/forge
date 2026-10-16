@@ -1,6 +1,7 @@
 // The suggestions of one project still waiting on a person, as the approval inbox lists them: what
-// each is on by the key a reader knows, its writer's own words, who produced it, and which of the
+// each is on, by the key and the short title a reader knows it by, who produced it, and which of the
 // two decisions the viewer may take (accept under its kind's gate, reject under suggestions.approve).
+// A suggestion's payload is prose (a change summary, a note, a reason) and is never its title.
 
 import { feedbackKey } from '@forge/contracts/feedback';
 import type { ProjectPermission } from '@forge/contracts/permissions';
@@ -10,7 +11,7 @@ import type {
   SuggestionProducer,
   SuggestionTargetType,
 } from '@forge/contracts/suggestions';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
@@ -25,9 +26,8 @@ import { type Row, targetOfRow } from './read.js';
 export interface WaitingSuggestion {
   id: string;
   kind: SuggestionKind;
-  target: { type: SuggestionTargetType; key: string };
-  /** The writer's words the payload leads with; empty where its kind carries none. */
-  title: string;
+  /** What it is on: its key, and its short title (a requirement's short name, else its title). */
+  target: { type: SuggestionTargetType; key: string; title: string };
   producerKind: SuggestionProducer;
   producerId: string | null;
   createdAt: string;
@@ -35,56 +35,57 @@ export interface WaitingSuggestion {
   mayReject: boolean;
 }
 
-/** The fields a payload's own words sit in, in the order a reader is shown the first one present. */
-const WORDS = ['title', 'changeSummary', 'tldr', 'note', 'answer', 'reason'] as const;
-
-export function wordsOf(payload: unknown): string {
-  if (!payload || typeof payload !== 'object') return '';
-  const p = payload as Record<string, unknown>;
-  for (const field of WORDS) {
-    const v = p[field];
-    if (typeof v === 'string' && v.trim()) return v.trim();
-  }
-  return '';
+interface Named {
+  key: string;
+  title: string;
 }
 
-async function targetKeysOf(projectId: string, rows: readonly Row[]): Promise<Map<string, string>> {
+/** Each target's key and short title, one set read per target type. */
+async function targetsOf(projectId: string, rows: readonly Row[]): Promise<Map<string, Named>> {
   const ids = (type: SuggestionTargetType) => [
     ...new Set(rows.map(targetOfRow).flatMap((t) => (t.type === type ? [t.id] : []))),
   ];
   const [reqs, fbs, iss, flows, prefix] = await Promise.all([
     ids('requirement').length
       ? db
-          .select({ id: requirements.id, seq: requirements.reqSeq })
+          .select({
+            id: requirements.id,
+            seq: requirements.reqSeq,
+            title: sql<string>`coalesce(${requirements.shortName}, ${requirements.title})`,
+          })
           .from(requirements)
           .where(inArray(requirements.id, ids('requirement')))
       : [],
     ids('feedback').length
       ? db
-          .select({ id: feedback.id, seq: feedback.fbSeq })
+          .select({ id: feedback.id, seq: feedback.fbSeq, title: feedback.title })
           .from(feedback)
           .where(inArray(feedback.id, ids('feedback')))
       : [],
     ids('issue').length
       ? db
-          .select({ id: issues.id, seq: issues.issSeq })
+          .select({ id: issues.id, seq: issues.issSeq, title: issues.title })
           .from(issues)
           .where(inArray(issues.id, ids('issue')))
       : [],
     ids('workflow').length
       ? db
-          .select({ id: projectWorkflows.id, flow: projectWorkflows.flow })
+          .select({
+            id: projectWorkflows.id,
+            flow: projectWorkflows.flow,
+            title: sql<string>`coalesce(${projectWorkflows.document}->>'title', ${projectWorkflows.flow})`,
+          })
           .from(projectWorkflows)
           .where(inArray(projectWorkflows.id, ids('workflow')))
       : [],
     ids('issue').length ? activeIssuePrefix(projectId) : null,
   ]);
-  const keys = new Map<string, string>();
-  for (const r of reqs) keys.set(r.id, requirementKey(r.seq));
-  for (const f of fbs) keys.set(f.id, feedbackKey(f.seq));
-  for (const i of iss) keys.set(i.id, formatIssueRef(prefix, i.seq));
-  for (const w of flows) keys.set(w.id, w.flow);
-  return keys;
+  const named = new Map<string, Named>();
+  for (const r of reqs) named.set(r.id, { key: requirementKey(r.seq), title: r.title });
+  for (const f of fbs) named.set(f.id, { key: feedbackKey(f.seq), title: f.title });
+  for (const i of iss) named.set(i.id, { key: formatIssueRef(prefix, i.seq), title: i.title });
+  for (const w of flows) named.set(w.id, { key: w.flow, title: w.title });
+  return named;
 }
 
 /**
@@ -105,13 +106,13 @@ export async function waitingSuggestionsFor(
     .from(suggestions)
     .where(and(eq(suggestions.projectId, projectId), eq(suggestions.status, 'proposed')))
     .orderBy(asc(suggestions.createdAt));
-  const keys = await targetKeysOf(projectId, rows);
+  const named = await targetsOf(projectId, rows);
   return rows.flatMap((r): WaitingSuggestion[] => {
     const mayAccept = r.kind === 'breakdown' ? mayBreakdown : mayReject;
     if (!mayAccept && !mayReject) return [];
     const t = targetOfRow(r);
-    const key = keys.get(t.id);
-    if (!key) {
+    const target = named.get(t.id);
+    if (!target) {
       throw new Error(
         `suggestions: suggestion ${r.id} is on ${t.type} ${t.id}, which project ${projectId} does not hold`,
       );
@@ -120,8 +121,7 @@ export async function waitingSuggestionsFor(
       {
         id: r.id,
         kind: r.kind,
-        target: { type: t.type, key },
-        title: wordsOf(r.payload),
+        target: { type: t.type, ...target },
         producerKind: r.producerKind,
         producerId: r.producerId,
         createdAt: r.createdAt.toISOString(),

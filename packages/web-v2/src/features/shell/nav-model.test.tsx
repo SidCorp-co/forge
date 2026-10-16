@@ -54,7 +54,7 @@ describe("the nav model", () => {
   });
 
   it("puts Approvals beside the Dashboard, counted by the inbox's own read, and lights it on its page", () => {
-    const approvals = { generatedAt: "2026-10-16T00:00:00.000Z", items: [], total: 4 };
+    const approvals = { generatedAt: "2026-10-16T00:00:00.000Z", items: [], unreadable: [], total: 4 };
     const row = projectMenu({ approvals }).find((e) => e.key === "proj-approvals");
     expect(row).toMatchObject({ label: "Approvals", badge: 4, badgeHint: "4 waiting on your decision" });
     expect(PROJECT_ITEMS.find((it) => it.key === "proj-approvals")?.sub).toBe("/approvals");

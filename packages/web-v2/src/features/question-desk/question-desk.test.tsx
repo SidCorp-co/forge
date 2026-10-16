@@ -1,6 +1,9 @@
 // The Questions page: the questions waiting on the reader, drawn from the one needs-me read (its
 // `answer` group only), then the questions people raised, each owed until somebody other than its
-// asker replies, naming who owes it; and the form that raises one where it will be answered.
+// asker replies, naming who owes it, or closed where its issue ended; each by its short form; and
+// the form that raises one where it will be answered.
+//
+// @direct-test-of packages/web-v2/src/features/question-desk/components/raised-list.tsx
 
 import type { RaisedQuestionsResponse, RaisedQuestionView } from "@forge/contracts/comments";
 import { needsYouDecisionsSchema } from "@forge/contracts/needs-you-decisions";
@@ -55,9 +58,10 @@ const DECISIONS = needsYouDecisionsSchema.parse({
 const raised = (id: string, over: Partial<RaisedQuestionView> = {}): RaisedQuestionView => ({
   id,
   target: { scope: "requirement", id: `t-${id}`, key: "REQ-7", title: "Bulk export" },
-  body: `Question ${id}`,
+  summary: `Question ${id}?`,
   author: ME,
   askedAt: AT,
+  state: "owed",
   answer: null,
   owedBy: "members",
   withheld: false,
@@ -68,10 +72,12 @@ const RAISED: RaisedQuestionsResponse = {
   by: "me",
   owed: 2,
   answered: 1,
+  closed: 1,
   questions: [
     raised("q1"),
     raised("q2", { target: { scope: "issue", id: "i2", key: "ISS-9", title: "Sync" }, owedBy: "agent" }),
-    raised("q3", { owedBy: null, answer: { id: "a3", body: "Weekly is enough.", author: { id: "u2", name: "Minh", agency: "human" }, at: AT } }),
+    raised("q3", { state: "answered", owedBy: null, answer: { id: "a3", summary: "Weekly is enough.", author: { id: "u2", name: "Minh", agency: "human" }, at: AT } }),
+    raised("q5", { target: { scope: "issue", id: "i5", key: "ISS-5", title: "Old export" }, state: "closed", owedBy: null }),
   ],
 };
 
@@ -81,7 +87,7 @@ function core(over: (c: Call) => { status?: number; body: unknown } | undefined 
     if (mine) return mine;
     if (c.path === `/projects/${P}/needs-you/decisions`) return { body: DECISIONS };
     if (c.path === `/projects/${P}/raised-questions?by=me`) return { body: RAISED };
-    if (c.path === `/projects/${P}/raised-questions?by=people`) return { body: { ...RAISED, by: "people", questions: [raised("q9", { author: { id: "u3", name: "Lan", agency: "human" } })], owed: 1, answered: 0 } };
+    if (c.path === `/projects/${P}/raised-questions?by=people`) return { body: { ...RAISED, by: "people", questions: [raised("q9", { author: { id: "u3", name: "Lan", agency: "human" } })], owed: 1, answered: 0, closed: 0 } };
     if (c.path === `/projects/${P}/requirements`) return { body: { requirements: [{ key: "REQ-7", title: "Bulk export" }] } };
     return undefined;
   });
@@ -105,8 +111,8 @@ describe("the questions raised", () => {
     core();
     renderWithQuery(<QuestionDesk projectId={P} slug="hop" />);
     const rows = await screen.findAllByTestId("raised-question");
-    expect(rows.map((r) => r.dataset.owed)).toEqual(["true", "true", "false"]);
-    expect(screen.getByTestId("question-desk-counts").textContent).toBe("2 owed · 1 answered");
+    expect(rows.map((r) => r.dataset.state)).toEqual(["owed", "owed", "answered", "closed"]);
+    expect(screen.getByTestId("question-desk-counts").textContent).toBe("2 owed · 1 answered · 1 closed");
     const owedBy = screen.getAllByTestId("raised-question-owed-by");
     expect(owedBy.map((o) => o.dataset.owedBy)).toEqual(["members", "agent"]);
     expect(owedBy[1]?.textContent).toBe("Owed by the project's agent, on its next pass");
@@ -116,12 +122,22 @@ describe("the questions raised", () => {
     expect(within(rows[1]).getByRole("link", { name: "ISS-9" }).getAttribute("href")).toBe("/projects/hop/issues/ISS-9");
   });
 
-  it("says a question on an ended record is owed by nobody, never as owed by members", async () => {
-    core((c) => (c.path === `/projects/${P}/raised-questions?by=me` ? { body: { ...RAISED, owed: 1, answered: 0, questions: [raised("q4", { target: { scope: "issue", id: "i4", key: "ISS-4", title: null }, owedBy: "nobody" })] } } : undefined));
+  it("reads a question on an ended issue as closed, never as owed", async () => {
+    core();
     renderWithQuery(<QuestionDesk projectId={P} slug="hop" />);
-    const line = await screen.findByTestId("raised-question-owed-by");
-    expect(line.dataset.owedBy).toBe("nobody");
-    expect(line.textContent).toBe("Owed, but ISS-4 has ended: nobody takes it");
+    const closed = (await screen.findAllByTestId("raised-question")).find((r) => r.dataset.id === "q5");
+    if (!closed) throw new Error("q5 is not listed");
+    expect(within(closed).queryByTestId("raised-question-owed-by")).toBeNull();
+    expect(within(closed).getByTestId("raised-question-closed").textContent).toBe("Closed unanswered: ISS-5 has ended");
+    expect(within(closed).getByText("Closed")).toBeInTheDocument();
+  });
+
+  it("shows each question by the short form core sends, on one line", async () => {
+    core();
+    renderWithQuery(<QuestionDesk projectId={P} slug="hop" />);
+    const summaries = await screen.findAllByTestId("raised-question-summary");
+    expect(summaries.map((s) => s.textContent)).toEqual(["Question q1?", "Question q2?", "Question q3?", "Question q5?"]);
+    for (const s of summaries) expect(s.className).not.toContain("whitespace-pre");
   });
 
   it("reads everyone's questions when asked, naming each asker", async () => {
@@ -135,7 +151,7 @@ describe("the questions raised", () => {
   });
 
   it("says none were raised in two words", async () => {
-    core((c) => (c.path === `/projects/${P}/raised-questions?by=me` ? { body: { by: "me", owed: 0, answered: 0, questions: [] } } : undefined));
+    core((c) => (c.path === `/projects/${P}/raised-questions?by=me` ? { body: { by: "me", owed: 0, answered: 0, closed: 0, questions: [] } } : undefined));
     renderWithQuery(<QuestionDesk projectId={P} slug="hop" />);
     expect(await screen.findByText("No questions")).toBeInTheDocument();
   });
