@@ -81,4 +81,44 @@ describe('the stuck issues of a project, as the health read counts them', () => 
       { id: newer, seq: 2, total: 2 },
     ]);
   });
+
+  it('lists the five stuck longest of each project, longest first, beside how many there are', async () => {
+    const user = await createTestUser(harness.db);
+    const few = await createTestProject(harness.db, user.id);
+    const many = await createTestProject(harness.db, user.id);
+    // Ages run against the seq so neither the seq nor the insert order can stand in for the rank.
+    const seed = async (projectId: string, count: number) => {
+      for (let seq = 1; seq <= count; seq++) {
+        const id = randomUUID();
+        await harness.db.execute(sql`
+          INSERT INTO issues (id, project_id, title, status, created_by_id, iss_seq)
+          VALUES (${id}::uuid, ${projectId}::uuid, 'stuck', 'open', ${user.id}::uuid, ${seq})
+        `);
+        await harness.db.execute(sql`
+          INSERT INTO notifications (project_id, issue_id, type, kind, tier, state, title, resolution_key, created_at)
+          VALUES (${projectId}::uuid, ${id}::uuid, 'issue_stranded', 'condition', 'ticket', 'firing', 'stuck',
+                  ${`issue:${id}:idle`}, now() - (${seq * 7} || ' minutes')::interval)
+        `);
+      }
+    };
+    await seed(many.id, 7);
+    await seed(few.id, 3);
+
+    const { stuckIssueRows } = await readHealthAggregates([few.id, many.id]);
+
+    const listed = (projectId: string) =>
+      stuckIssueRows.filter((r) => r.projectId === projectId).map((r) => [r.issSeq, r.total]);
+    expect(listed(many.id)).toEqual([
+      [7, 7],
+      [6, 7],
+      [5, 7],
+      [4, 7],
+      [3, 7],
+    ]);
+    expect(listed(few.id)).toEqual([
+      [3, 3],
+      [2, 3],
+      [1, 3],
+    ]);
+  });
 });

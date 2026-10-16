@@ -197,6 +197,7 @@ const readStuckIssueRows = (projectIds: string[]) =>
        GROUP BY n.project_id, i.id, i.iss_seq, p.issue_prefix
     ) stuck
      WHERE rank <= ${STUCK_ISSUES_LISTED}
+     ORDER BY "projectId", rank
   `) as unknown as Promise<StuckIssueRow[]>;
 
 /**
