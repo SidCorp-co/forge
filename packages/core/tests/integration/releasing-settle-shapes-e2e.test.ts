@@ -9,7 +9,6 @@
  * server and a GitHub double.
  */
 
-import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { ProductionReading } from '../../src/release-batch/releasing-settle-reading.js';

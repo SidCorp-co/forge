@@ -204,6 +204,13 @@ const headers = async () => ({
   'content-type': 'application/json',
 });
 
+/** A skipped row carries the refusal's code and sentence beside its reason (ISS-1421 round 2). */
+const DRAFT_REFUSED = {
+  reason: 'illegal_transition',
+  code: 'ILLEGAL_TRANSITION',
+  message: expect.stringContaining('a Draft (draft) issue may only move to'),
+};
+
 describe('PATCH /api/issues/batch', () => {
   it('401 without token', async () => {
     const res = await buildApp().request('/api/issues/batch', {
@@ -349,15 +356,7 @@ describe('PATCH /api/issues/batch', () => {
     };
     expect(body.updated.map((u) => u.id)).toEqual([ISS2]);
     const detail = expect.stringContaining('nothing else this update carried was written');
-    expect(body.skipped).toEqual([
-      {
-        id: ISS1,
-        reason: 'illegal_transition',
-        code: 'ILLEGAL_TRANSITION',
-        message: expect.stringContaining('a Draft (draft) issue may only move to'),
-        detail,
-      },
-    ]);
+    expect(body.skipped).toEqual([{ id: ISS1, ...DRAFT_REFUSED, detail }]);
     expect(issueUpdatedEmit.mock.calls.map(([p]) => p.issueId)).toEqual([ISS2]);
     // ISS-196 — the AFTER UPDATE trigger writes the outbox row; the legacy
     // inline hooks emit was removed. Assert the status UPDATE ran inside a
