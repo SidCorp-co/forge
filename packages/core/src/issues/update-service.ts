@@ -29,10 +29,12 @@ export type IssueUpdateInput = {
 };
 
 export async function updateIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
-  const { row, wrote } = await writeIssueFields(input);
+  const { row, wrote } = await db.transaction((tx) => writeIssueFieldsIn(tx, input));
   if (wrote) await announceContractInput(input.issueId, row.projectId, input.updates);
   return row;
 }
+
+export type IssueFieldsTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 /** Column keys a write may carry that record the write itself rather than change the issue. */
 const WRITE_STAMPS: ReadonlySet<string> = new Set(['updatedAt']);
@@ -49,7 +51,13 @@ function declarationOnly(input: IssueUpdateInput): boolean {
   );
 }
 
-async function writeIssueFields(
+/**
+ * The durable half of `updateIssueFields`, on a transaction the caller holds, so the write commits
+ * or rolls back with whatever else that transaction does: a status move (ISS-1229 r10). The caller
+ * announces with `announceContractInput` once it commits, and only where `wrote` is true.
+ */
+export async function writeIssueFieldsIn(
+  tx: IssueFieldsTx,
   input: IssueUpdateInput,
 ): Promise<{ row: IssueRow; wrote: boolean }> {
   const { issueId, updates, labelIds, expect, actor } = input;
@@ -59,63 +67,61 @@ async function writeIssueFields(
   const noOpPossible = shape !== undefined && declarationOnly(input);
   if (noOpPossible) guard.push(shapeMovesGuard(shape));
 
-  return db.transaction(async (tx) => {
-    if (updates.sessionContext !== undefined && !expect) {
-      await refuseUnreadSessionContextDrop(tx, issueId, updates.sessionContext);
+  if (updates.sessionContext !== undefined && !expect) {
+    await refuseUnreadSessionContextDrop(tx, issueId, updates.sessionContext);
+  }
+  const [row] = await tx
+    .update(issues)
+    .set(updates)
+    .where(and(eq(issues.id, issueId), ...guard))
+    .returning();
+  if (!row) {
+    if (noOpPossible) {
+      const [held] = await tx.select().from(issues).where(eq(issues.id, issueId)).limit(1);
+      if (held && held.declaredLandingShape === shape) return { row: held, wrote: false };
     }
-    const [row] = await tx
-      .update(issues)
-      .set(updates)
-      .where(and(eq(issues.id, issueId), ...guard))
-      .returning();
-    if (!row) {
-      if (noOpPossible) {
-        const [held] = await tx.select().from(issues).where(eq(issues.id, issueId)).limit(1);
-        if (held && held.declaredLandingShape === shape) return { row: held, wrote: false };
-      }
-      if (shape !== undefined) await refuseShapeOverMark(tx, issueId, shape);
-      if (expect) await refuseMovedSessionContext(tx, issueId);
-      throw new IssueUpdateNotFound(issueId);
-    }
+    if (shape !== undefined) await refuseShapeOverMark(tx, issueId, shape);
+    if (expect) await refuseMovedSessionContext(tx, issueId);
+    throw new IssueUpdateNotFound(issueId);
+  }
 
-    if (labelIds !== undefined) {
-      const existing = await tx
-        .select({ labelId: issueLabels.labelId })
-        .from(issueLabels)
-        .where(eq(issueLabels.issueId, issueId));
-      const oldSet = new Set(existing.map((r) => r.labelId));
-      const newSet = new Set(labelIds.map((l) => l.labelId));
+  if (labelIds !== undefined) {
+    const existing = await tx
+      .select({ labelId: issueLabels.labelId })
+      .from(issueLabels)
+      .where(eq(issueLabels.issueId, issueId));
+    const oldSet = new Set(existing.map((r) => r.labelId));
+    const newSet = new Set(labelIds.map((l) => l.labelId));
 
-      await tx.delete(issueLabels).where(eq(issueLabels.issueId, issueId));
-      if (labelIds.length > 0) {
-        await tx
-          .insert(issueLabels)
-          .values(labelIds.map((l) => ({ issueId, labelId: l.labelId, isPrimary: l.isPrimary })));
-      }
-
-      for (const labelId of [...newSet].filter((l) => !oldSet.has(l))) {
-        await recordActivityTx(tx, {
-          issueId,
-          actor,
-          action: 'issue.labeled',
-          payload: { labelId },
-        });
-      }
-      for (const labelId of [...oldSet].filter((l) => !newSet.has(l))) {
-        await recordActivityTx(tx, {
-          issueId,
-          actor,
-          action: 'issue.unlabeled',
-          payload: { labelId },
-        });
-      }
+    await tx.delete(issueLabels).where(eq(issueLabels.issueId, issueId));
+    if (labelIds.length > 0) {
+      await tx
+        .insert(issueLabels)
+        .values(labelIds.map((l) => ({ issueId, labelId: l.labelId, isPrimary: l.isPrimary })));
     }
 
-    return { row, wrote: true };
-  });
+    for (const labelId of [...newSet].filter((l) => !oldSet.has(l))) {
+      await recordActivityTx(tx, {
+        issueId,
+        actor,
+        action: 'issue.labeled',
+        payload: { labelId },
+      });
+    }
+    for (const labelId of [...oldSet].filter((l) => !newSet.has(l))) {
+      await recordActivityTx(tx, {
+        issueId,
+        actor,
+        action: 'issue.unlabeled',
+        payload: { labelId },
+      });
+    }
+  }
+
+  return { row, wrote: true };
 }
 
-async function announceContractInput(
+export async function announceContractInput(
   issueId: string,
   projectId: string,
   updates: Record<string, unknown>,

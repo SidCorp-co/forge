@@ -99,19 +99,6 @@ Each line is accepted by one door and refused, or answered differently, by the o
 - `forge_step_handoff` get takes an issue uuid only; the REST list also takes a display key.
 - `pm` runner load answers `{ runners }` from the tool and a bare array from REST.
 
-## An update that moves a status writes its fields first, so a refused move leaves them written
-
-`forge_issues` update writes the fields, labels and relations it carries, then makes the status
-move (`packages/core/src/mcp/tools/forge-issues.ts:forgeIssuesTool`). The order is load-bearing: a
-`plan` sent beside `approved` must be stored before the move reads it. The cost is that a move the
-transition refuses (`ILLEGAL_TRANSITION`, `CLOSE_REQUIRES_SHIPPED`, a rule rewriting the target onto
-the status already held, answered `NO_OP`) answers an error after the other writes have landed.
-ISS-1229 r10 closed only the case readable before any write: a `data.status` equal to the status
-held is refused `NO_OP` before anything is written (`refuseUnchangedStatus` in
-`forge-issues-transition.ts`). What closes the rest: the field write and the transition in one
-transaction, which `transitionIssueStatus` does not take today, since it opens its own and runs its
-hooks after it.
-
 ## One capability, two queries, because the two answers are shaped for different readers
 
 The tool calls a service in its domain directory and the route holds a query of its own:

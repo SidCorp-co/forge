@@ -441,6 +441,99 @@ describe('forge_issues update — a status the issue already holds is refused, n
     expect(edges.length).toBe(0);
   });
 
+  /** An agent's credential on a project with no release step, so a close is judged as itself. */
+  async function plainWorld(): Promise<World> {
+    const user = await createTestUser(harness.db);
+    const project = await createTestProject(harness.db, user.id);
+    await createTestProjectMember(harness.db, {
+      userId: user.id,
+      projectId: project.id,
+      role: 'admin',
+    });
+    await harness.db.execute(
+      sql`UPDATE users SET email_verified_at = now(), kind = 'agent' WHERE id = ${user.id}::uuid`,
+    );
+    const { plaintext } = await mintPat({
+      userId: user.id,
+      name: 'an agent on a project with no release step',
+      boundProjectId: project.id,
+    });
+    return { userId: user.id, projectId: project.id, token: plaintext };
+  }
+
+  async function whole(id: string) {
+    const rows = await harness.db.execute(sql`
+      SELECT title, plan, release_notes, status, updated_at::text AS updated_at,
+             (SELECT count(*)::int FROM issue_dependencies d
+               WHERE d.from_issue_id = ${id}::uuid OR d.to_issue_id = ${id}::uuid) AS edges
+        FROM issues WHERE id = ${id}::uuid
+    `);
+    return rows[0];
+  }
+
+  const NOTES = { section: 'Fixed', userFacing: 'A thing works.' };
+
+  it.each([
+    ['an illegal move out of Draft', 'draft', 'confirmed', 'ILLEGAL_TRANSITION'],
+    ['a move to Developed with no work behind it', 'in_progress', 'developed', 'NO_WORK_EVIDENCE'],
+    ['a close with nothing shipped', 'testing', 'closed', 'CLOSE_REQUIRES_SHIPPED'],
+  ])(
+    'a refused status move (%s) writes none of the fields, notes or relations beside it',
+    async (_what, from, to, code) => {
+      const w = await plainWorld();
+      const id = await insertIssue(w, from);
+      const other = await insertIssue(w, 'open');
+      const before = await whole(id);
+
+      const said = await refusal(w.token, {
+        action: 'update',
+        documentId: id,
+        data: {
+          status: to,
+          title: 'a new title',
+          plan: 'a plan',
+          releaseNotes: NOTES,
+          relations: [{ kind: 'blocks', dependsOnId: other }],
+        },
+      });
+
+      expect(said).toContain(`${code}: `);
+      expect(said).toContain('Nothing else this update carried was written');
+      expect(await whole(id)).toEqual(before);
+    },
+  );
+
+  it('closes on release notes written by the same update', async () => {
+    const w = await plainWorld();
+    const id = await insertIssue(w, 'testing');
+    await harness.db.execute(
+      sql`UPDATE issues SET merged_at = now(), merged_commit_sha = ${'a'.repeat(40)} WHERE id = ${id}::uuid`,
+    );
+
+    const body = await mcp(w.token, {
+      action: 'update',
+      documentId: id,
+      data: { status: 'closed', releaseNotes: NOTES },
+    });
+
+    expect(body.status).toBe('closed');
+    expect((await whole(id))?.release_notes).toEqual(NOTES);
+  });
+
+  it('writes the fields of an update whose move is made', async () => {
+    const w = await plainWorld();
+    const id = await insertIssue(w, 'open');
+
+    const body = await mcp(w.token, {
+      action: 'update',
+      documentId: id,
+      data: { status: 'confirmed', title: 'a new title' },
+    });
+
+    expect(body.status).toBe('confirmed');
+    expect((await whole(id))?.title).toBe('a new title');
+  });
+
   it('still writes the fields of an update that sends no status', async () => {
     const w = await seed();
     const id = await insertIssue(w, 'confirmed');
