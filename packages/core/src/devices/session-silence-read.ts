@@ -181,7 +181,8 @@ export async function loadSilenceDeadlines(
   const final = (id: string): number | null =>
     remember(`final:${id}`, () => {
       const r = byId.get(id);
-      const above = r ? owner(r) : undefined;
+      if (!r || TERMINAL.has(r.status)) return null;
+      const above = owner(r);
       return earliest(own(id, true), above ? final(above.id) : null);
     });
   return new Map(ids.filter((id) => byId.has(id)).map((id) => [id, final(id)]));

@@ -389,6 +389,12 @@ describe('the one-shot sweep, as the limit reads it (ISS-1228 round 9)', () => {
         expect(items.find((i) => i.id === id)?.silenceLimitMs).toBeLessThan(11 * 60_000);
       }
     }
+    const ended = await session('chat', { runKind: 'pm' });
+    await harness.db.execute(sql`
+      UPDATE agent_sessions SET status = 'completed', parent_session_id = ${master.id} WHERE id = ${ended.id}
+    `);
+    expect((await get(`/agent-sessions/${ended.id}`)).silenceLimitMs).toBeNull();
+
     const { reapSilentMasters } = await import('../../src/devices/master-reaper.js');
     await reapSilentMasters();
     expect(await statusOf(master.id)).toBe('failed');
