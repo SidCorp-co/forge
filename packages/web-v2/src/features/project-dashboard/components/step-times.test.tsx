@@ -30,21 +30,29 @@ const mount = (over: Partial<Parameters<typeof StepTimes>[0]> = {}) =>
   );
 
 describe("StepTimes", () => {
-  it("lists each step with its median and cost, slowest first, and names the slowest", () => {
+  it("lists each kind of work in the Overview's words with its median and cost, slowest first, and names the slowest", () => {
     mount({
-      durations: [duration("code", 600, 1.5), duration("code", 1200, 2), duration("test", 60, 0.25)],
+      durations: [duration("drive", 600, 1.5), duration("drive", 1200, 2), duration("release_batch", 60, 0.25)],
     });
-    const steps = screen.getAllByTitle(/^(code|test)$/).map((n) => n.textContent);
-    expect(steps).toEqual(["code", "test"]);
+    const steps = screen.getAllByTitle(/^(drive|release_batch)$/).map((n) => n.textContent);
+    expect(steps).toEqual(["Issue work", "Releases"]);
     expect(screen.getByText(/Slowest step:/)).toHaveTextContent(
-      "Slowest step: code at a 15m 00s median over 2 runs, 15.0× slower than test.",
+      "Slowest step: Issue work at a 15m 00s median over 2 runs, 15.0× slower than Releases.",
     );
     expect(screen.getByText("3 steps · 7d")).toBeInTheDocument();
+    expect(screen.queryByText("release_batch")).toBeNull();
   });
 
   it("names no comparison where there is only one step to compare", () => {
+    mount({ durations: [duration("reconcile", 600, 1.5)] });
+    expect(screen.getByText(/Slowest step:/)).toHaveTextContent(
+      "Slowest step: Skill updates at a 10m 00s median over 1 run.",
+    );
+  });
+
+  it("says a step no kind of work names is unrecognised, keeping the stored name as its title", () => {
     mount({ durations: [duration("code", 600, 1.5)] });
-    expect(screen.getByText(/Slowest step:/)).toHaveTextContent("Slowest step: code at a 10m 00s median over 1 run.");
+    expect(screen.getByTitle("code")).toHaveTextContent("Unrecognised work (code)");
   });
 
   it("says no step finished, in one flat line, when the window holds nothing", () => {

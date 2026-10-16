@@ -117,11 +117,13 @@ describe("the Pipeline page with a reading", () => {
     );
   });
 
-  it("names the issue a session holds as a link, what it is doing, what it waits on and its quiet check-in", () => {
+  it("names the issue a session holds as a link, what it last reported, what it waits on and its quiet check-in", () => {
     screenFor();
     const row = screen.getAllByRole("listitem").find((r) => r.getAttribute("data-session-id") === "s1") as HTMLElement;
     expect(within(row).getByRole("link", { name: /^ISS-7/ })).toHaveAttribute("href", "/projects/forge-dev/issues/i7");
-    expect(within(row).getByText("Waiting for input")).toBeInTheDocument();
+    // Silent five minutes, so its row says what it last reported rather than that it is waiting now.
+    expect(within(row).getByText("Last reported waiting for input")).toBeInTheDocument();
+    expect(within(row).queryByText("Waiting for input")).not.toBeInTheDocument();
     expect(within(row).getByText("A person — an answer on ISS-7")).toBeInTheDocument();
     expect(within(row).getByText("Quiet · 5m ago")).toBeInTheDocument();
   });

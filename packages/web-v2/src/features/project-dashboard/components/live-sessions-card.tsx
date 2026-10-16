@@ -27,7 +27,7 @@ export interface LiveSessionsCardProps {
 }
 
 function SessionRow({ session, slug, now }: { session: LiveSession; slug: string; now: number }) {
-  const doing = doingOf(session);
+  const doing = doingOf(session, now);
   const checkIn = checkInOf(session, now);
   return (
     <li className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2" data-session-id={session.id}>

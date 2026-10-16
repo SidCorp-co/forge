@@ -464,6 +464,11 @@ export function groupRows(rows: IssueRow[], groupBy: GroupBy): IssueGroup[] {
 	return groups;
 }
 
+function openingLine(body: string): string {
+	const text = body.replace(/<[^>]*>/g, " ");
+	return text.split("\n").map((line) => line.trim()).find((line) => line !== "") ?? "";
+}
+
 /**
  * Lifecycle-kind for a comment, read from the prose markers the pipeline
  * writes. Order matters — more specific markers first.
@@ -471,9 +476,11 @@ export function groupRows(rows: IssueRow[], groupBy: GroupBy): IssueGroup[] {
  * It read `template` (the root component name) first until 2026-09-14, when
  * the component vocabulary and that column were removed. The prose regex this
  * was meant to replace is the only reader again.
+ *
+ * Only the opening line is read, markup stripped: a badge says what the comment IS.
  */
 function prefixKind(body: string): CommentKind {
-	const b = body.toLowerCase();
+	const b = openingLine(body).toLowerCase();
 	if (/^#+\s*triage|triage (report|summary)|\btriaged\b/.test(b))
 		return "triage";
 	if (/request changes|requesting changes|changes requested/.test(b))
@@ -487,7 +494,7 @@ function prefixKind(body: string): CommentKind {
 		)
 	)
 		return "qa";
-	if (/released|release note|published release|shipped/.test(b))
+	if (/^(#+\s*)?(released\b|release note|published release|shipped\b)/.test(b))
 		return "released";
 	if (
 		/forge-code|plan implemented|implementation complete|code complete|pushed .* branch/.test(
@@ -735,6 +742,18 @@ const releasesDependent = (edge: IssueDependencyEdge): boolean => {
 		edge.holdsUntil === "shipped" ? SHIPPED_BLOCKERS : SETTLED_BLOCKERS;
 	return Boolean(edge.fromStatus && releasing.has(edge.fromStatus));
 };
+
+/** Incoming `blocks` edges split by whether the blocker still holds the issue. */
+export function splitBlockedBy(incoming: readonly IssueDependencyEdge[]): {
+	holding: IssueDependencyEdge[];
+	settled: IssueDependencyEdge[];
+} {
+	const blocks = incoming.filter((e) => e.kind === "blocks");
+	return {
+		holding: blocks.filter((e) => !releasesDependent(e)),
+		settled: blocks.filter(releasesDependent),
+	};
+}
 
 /** Incoming `blocks` edges whose blocker core has not settled — i.e. this issue is genuinely
  *  blocked-by one Forge will not dispatch past. Exported so list/board rows can flag a

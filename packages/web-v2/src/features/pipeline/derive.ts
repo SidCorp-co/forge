@@ -1,4 +1,4 @@
-import type { SemanticTone } from "@/design/status";
+import { lastReported, type SemanticTone, WORKING_WORD } from "@/design/status";
 import { STALLED_THRESHOLD_MS, sessionSilence } from "@/features/sessions/types";
 import { formatElapsed } from "@/lib/utils/format";
 import type { HeldIssue, Holder, LiveSession, PersonOwes } from "./types";
@@ -30,18 +30,28 @@ export interface Doing {
 
 const RUNTIME_DOING: Record<string, Doing> = {
   starting: { label: "Starting", tone: "neutral" },
-  working: { label: "Working", tone: "active" },
+  working: { label: WORKING_WORD, tone: "active" },
   awaiting_input: { label: "Waiting for input", tone: "attention" },
   checkpointing: { label: "Checkpointing", tone: "neutral" },
   closed: { label: "Closing", tone: "neutral" },
 };
 
-/** What the session is doing, from its status first and its runtime state second. */
-export function doingOf(session: Pick<LiveSession, "status" | "runtimeState">): Doing {
+/** What the session is doing, from its status first and its runtime state second. A running session
+ *  gone quiet is doing nothing anyone has heard of, so it says what it last reported instead. */
+export function doingOf(
+  session: Pick<LiveSession, "status" | "runtimeState" | "lastHeartbeatAt" | "startedAt">,
+  now: number,
+): Doing {
   if (session.status === "queued") return { label: "Waiting for a box", tone: "neutral" };
   if (session.status === "idle") return { label: "Not started", tone: "neutral" };
   const runtime = session.runtimeState ? RUNTIME_DOING[session.runtimeState] : undefined;
-  return runtime ?? { label: "Working", tone: "active" };
+  const doing = runtime ?? { label: WORKING_WORD, tone: "active" };
+  return isQuiet(session, now) ? { label: lastReported(doing.label), tone: "neutral" } : doing;
+}
+
+function isQuiet(session: Pick<LiveSession, "status" | "lastHeartbeatAt" | "startedAt">, now: number): boolean {
+  const { state } = sessionSilence(session, now);
+  return state === "stale" || state === "reaping";
 }
 
 const BLOCKER: Record<string, string> = {
@@ -76,8 +86,7 @@ export function checkInOf(
   session: Pick<LiveSession, "status" | "lastHeartbeatAt" | "startedAt">,
   now: number,
 ): CheckIn {
-  const silence = sessionSilence(session, now);
-  const quiet = silence.state === "stale" || silence.state === "reaping";
+  const quiet = isQuiet(session, now);
   const at = session.lastHeartbeatAt ? Date.parse(session.lastHeartbeatAt) : Number.NaN;
   if (Number.isNaN(at)) return { text: "No check-in yet", quiet };
   return { text: `${formatElapsed(Math.max(0, now - at))} ago`, quiet };

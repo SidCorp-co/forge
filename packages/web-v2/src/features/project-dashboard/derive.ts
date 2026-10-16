@@ -3,6 +3,7 @@ import { TONE_META, type SemanticTone } from "@/design/status";
 import type { AttentionView } from "@/features/attention/types";
 import { statusLabel } from "@/features/issues/derive";
 import type { IssueStatus } from "@/features/issues/types";
+import { jobKindLabel } from "@/features/overview/job-kinds";
 import type { PipelineRunListItem, StepDurationRow } from "@/features/runs/types";
 import type { ProjectHealthRow } from "@/features/projects/types";
 import {
@@ -82,7 +83,7 @@ export function conicGradient(segments: DonutSegment[]): string {
  * 7-day spend by step (AC#4)
  * ------------------------------------------------------------------ */
 
-/** Neutral ink for the three costliest steps, then "other": a step name carries no colour of its own. */
+/** Neutral ink for the three costliest kinds of work, then "Other": a kind carries no colour of its own. */
 const SPEND_INK = ["var(--fg-default)", "var(--fg-muted)", "var(--fg-subtle)"] as const;
 const OTHER_INK = "var(--border-strong)";
 export const SPEND_OTHER_KEY = "other";
@@ -90,6 +91,7 @@ export const SPEND_OTHER_KEY = "other";
 export interface SpendSegment {
   /** The step exactly as the rows name it, or `other` for everything past the three costliest. */
   key: string;
+  /** The kind of work in the Overview's words, never the stored step name. */
   label: string;
   color: string;
   cost: number;
@@ -101,7 +103,7 @@ export interface SpendByStepData {
   total: number;
 }
 
-/** The window's spend split by the step names its rows carry: the three costliest, then the rest as `other`. */
+/** The window's spend by step, named in the Overview's words: the three costliest, then Other. */
 export function spendByStep(rows: StepDurationRow[] | undefined): SpendByStepData {
   const byStep = new Map<string, number>();
   for (const r of rows ?? []) byStep.set(r.step, (byStep.get(r.step) ?? 0) + (r.costUsd ?? 0));
@@ -112,14 +114,14 @@ export function spendByStep(rows: StepDurationRow[] | undefined): SpendByStepDat
   const pct = (cost: number) => (total > 0 ? (cost / total) * 100 : 0);
   const segments: SpendSegment[] = ranked.slice(0, SPEND_INK.length).map(([step, cost], i) => ({
     key: step,
-    label: step,
+    label: jobKindLabel(step),
     color: SPEND_INK[i] as string,
     cost,
     pct: pct(cost),
   }));
   const rest = ranked.slice(SPEND_INK.length).reduce((a, [, cost]) => a + cost, 0);
   if (rest > 0) {
-    segments.push({ key: SPEND_OTHER_KEY, label: "other", color: OTHER_INK, cost: rest, pct: pct(rest) });
+    segments.push({ key: SPEND_OTHER_KEY, label: "Other", color: OTHER_INK, cost: rest, pct: pct(rest) });
   }
   return { segments, total };
 }
