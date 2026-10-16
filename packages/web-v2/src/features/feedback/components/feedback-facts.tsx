@@ -15,14 +15,7 @@ import { feedbackHref } from "@/lib/routes/feedback";
 import type { FeedbackPhase, FeedbackRoute, FeedbackView } from "../types";
 import { FEEDBACK_ATTENTION_LABELS } from "@forge/contracts/feedback";
 import type { FeedbackShipNotice } from "@forge/contracts/feedback";
-import type { FeedbackForecast } from "@forge/contracts/forecast";
-import { EtaInline } from "@/features/forecast";
-import { ReleaseLine } from "@/features/forecast";
-import { type EtaClock, etaOfFeedback } from "@/features/forecast";
-import { ETA_COPY } from "@/lib/i18n/eta-copy";
-import { feedbackForecastText } from "@/features/forecast";
 import { releaseHref } from "@/lib/routes/releases";
-import { useEtaClock } from "@/lib/i18n/eta-clock";
 
 const STRIP: FeedbackPhase[] = ["new", "triaged", "planned", "resolved", "verified"];
 
@@ -118,27 +111,6 @@ const CARRIER_FAMILY = {
   revision: "suggestion",
   answer: null,
 } as const satisfies Record<FeedbackRoute, StatusFamily | null>;
-
-/** The item's line as its reporter means "done": who triages it, or when the fix is in people's hands. */
-function ForecastFact({ forecast, slug, clock }: { forecast: FeedbackForecast | undefined; slug: string; clock?: EtaClock | undefined }) {
-  const t = useCopy();
-  const fallbackClock = useEtaClock();
-  const read = forecast ? feedbackForecastText(forecast, clock ?? fallbackClock) : null;
-  if (!read) return null;
-  const eta = clock ? etaOfFeedback(forecast, clock) : null;
-  return (
-    <>
-      {eta ? (
-        <Fact label={ETA_COPY[clock?.lang ?? "en"].header} testId="facts-feedback-eta">
-          <EtaInline eta={eta} clock={clock as EtaClock} />
-        </Fact>
-      ) : null}
-      <Fact label={t("feedback.fact.forecast")} testId="facts-feedback-forecast">
-        <ReleaseLine said={read} slug={slug} className="fg-body-sm text-muted" testId="feedback-forecast-line" />
-      </Fact>
-    </>
-  );
-}
 
 /** When and in which release the work shipped, ahead of why the reporter was not told: the ship is the fact, the silence its consequence. */
 function ShippedLine({ notice, slug }: { notice: Extract<FeedbackShipNotice, { state: "not_told" }>; slug: string }) {
@@ -274,16 +246,10 @@ function WhatCarriesIt({ f, slug }: { f: FeedbackView; slug: string }) {
 export function LinkedFeedback({
   f,
   slug,
-  forecast,
-  clock,
   developer = false,
 }: {
   f: FeedbackView;
   slug: string;
-  /** The peek's forecast; the page's is its answer line, so the page passes none. */
-  forecast?: FeedbackForecast | undefined;
-  /** Language and clock of the ETA row; without one the row is left out. */
-  clock?: EtaClock | undefined;
   /** The developer view: the agent report the item was filed from. */
   developer?: boolean;
 }) {
@@ -295,7 +261,6 @@ export function LinkedFeedback({
   return (
     <div data-testid="feedback-facts">
       <FactsGroup title={tr("feedback.fact.status")}>
-        <ForecastFact forecast={forecast} slug={slug} clock={clock} />
         <ShipNoticeFact notice={f.shipNotice} slug={slug} />
         <VerifiedFact f={f} />
         {f.snoozed ? (

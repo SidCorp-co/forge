@@ -4,7 +4,7 @@ import { feedbackForecastKey } from "@/features/forecast";
 import { recordingsKey, reproduceApi } from "@/features/previews";
 import { readOf, useWrite } from "@/lib/api/query-kit";
 import { feedbackApi } from "./api";
-import type { CreateFeedbackRequest, FeedbackAction, FeedbackMessageAudience, PromoteAgentReportRequest } from "./types";
+import type { CreateFeedbackRequest, FeedbackAction, FeedbackMessageAudience, PromoteAgentReportRequest, SimilarFeedbackDraft } from "./types";
 
 /** While a reproduce recording is still taking batches the list is read again on this clock. */
 const RECORDING_POLL_MS = 10_000;
@@ -35,6 +35,16 @@ export const useFeedbackItem = (projectId: string | undefined, key: string | und
 export const useFeedbackEndpoints = (projectId: string, enabled: boolean) =>
   useQuery({ ...readOf(["feedback-endpoints", projectId], () => feedbackApi.endpoints(projectId), 60_000), enabled: Boolean(projectId) && enabled });
 
+/** The filed items most like this one. */
+export const useSimilarFeedback = (projectId: string, key: string) => useQuery(readOf(["feedback-similar", projectId, key], () => feedbackApi.similar(projectId, key), 60_000));
+
+/** Likely duplicates of a draft, read once its title says enough to compare. */
+export const useDraftDuplicates = (projectId: string, draft: SimilarFeedbackDraft | null) =>
+  useQuery({
+    ...readOf(["feedback-similar-draft", projectId, draft], () => feedbackApi.similarToDraft(projectId, draft as SimilarFeedbackDraft), 60_000),
+    placeholderData: (previous) => previous,
+  });
+
 export const useFeedbackChoices = (projectId: string, type: "requirement" | "workflow" | "release" | null) =>
   useQuery(readOf(["feedback-choices", projectId, type], () => feedbackApi.choices(projectId, type as "requirement" | "workflow" | "release")));
 
@@ -57,7 +67,7 @@ export const usePromoteFeedback = (projectId: string) =>
 const useItemWrite = <V,>(projectId: string, key: string, write: (vars: V) => ReturnType<typeof feedbackApi.get>) =>
   useWrite(write, { shows: feedbackKeys.item(projectId, key), touches: touched(projectId) });
 
-/** Triage, retarget, decline, verify, reopen or delete reporter data. */
+/** Triage, retarget, decline, verify, reopen, ask the reporter a clarification, or delete reporter data. */
 export const useFeedbackAction = (projectId: string, key: string) => useItemWrite(projectId, key, (a: FeedbackAction) => feedbackApi.act(projectId, key, a));
 
 /** What a message to reporters would say and to whom, read before it is sent. */

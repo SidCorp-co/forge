@@ -188,3 +188,50 @@ export interface DecisionListResponse {
 	/** How many decisions under the same filters the other makers hold, folded away; 0 when `by` is all. */
 	folded: number;
 }
+
+/**
+ * Whose raised questions a read lists: `me` (the default) those the reader asked, `people` every
+ * question a person asked on the project.
+ */
+export const RAISED_QUESTION_ASKERS = ["me", "people"] as const;
+export type RaisedQuestionAsker = (typeof RAISED_QUESTION_ASKERS)[number];
+
+/**
+ * Who owes a raised question its reply. `agent`: a question on a live issue, which the project's
+ * master is owed and takes on its next pass (`core devices/comment-inbox.ts:readOwedComments`).
+ * `members`: a question on a requirement, workflow or feedback item, which no agent sweeps, so a
+ * project member answers it in its thread. `nobody`: a question on an issue that has ended, which
+ * no pass reads until the issue reopens.
+ */
+export const RAISED_QUESTION_OWERS = ["agent", "members", "nobody"] as const;
+export type RaisedQuestionOwer = (typeof RAISED_QUESTION_OWERS)[number];
+
+/**
+ * A question a person raised as a `question` comment, owed until somebody other than its asker
+ * replies under it: then it reads answered, with that first reply.
+ */
+export interface RaisedQuestionView {
+	id: string;
+	target: CommentTargetView;
+	body: string | null;
+	author: CommentAuthorView;
+	askedAt: string;
+	/** Null while owed. */
+	answer: {
+		id: string;
+		body: string | null;
+		author: CommentAuthorView;
+		at: string;
+	} | null;
+	/** Who owes the reply while it is owed; null once answered. */
+	owedBy: RaisedQuestionOwer | null;
+	withheld: boolean;
+}
+
+/** `GET /api/projects/:id/raised-questions?by=me|people`: owed first, oldest first, then answered, newest first. */
+export interface RaisedQuestionsResponse {
+	questions: RaisedQuestionView[];
+	owed: number;
+	answered: number;
+	by: RaisedQuestionAsker;
+}

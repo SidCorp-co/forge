@@ -24,6 +24,8 @@ export type {
   FeedbackTriage,
   FeedbackView,
   PromoteAgentReportRequest,
+  SimilarFeedbackDraft,
+  SimilarFeedbackResponse,
 } from "@forge/contracts/feedback";
 
 /** One act a person takes on an item from its page; each answers the item as it reads next. */
@@ -34,4 +36,5 @@ export type FeedbackAction =
   | { kind: "verify"; note?: string }
   | { kind: "verify-ask" }
   | { kind: "reopen"; reason: string }
+  | { kind: "clarify"; prompt: string; needed: string }
   | { kind: "redact" };

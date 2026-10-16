@@ -353,3 +353,89 @@ export interface ComingNextForecast extends ForecastStamp {
 	requirements: ScopeForecast[];
 	draft: ScopeForecast;
 }
+
+/**
+ * How far the work carrying one feedback item has got, by its live issues: `running` while any is
+ * in progress, then `parked`, `queued`, `drafted`, `landed` (all awaiting release) and `shipped`, in
+ * that order, the issue statuses counted the way a requirement's turn reads them
+ * (`core requirements/standing-work.ts:workTurn`). `untriaged` and `no_work` name an item no issue
+ * carries yet or ever will (an answer, a decline, a requirement revision); `no_issues` a route whose
+ * carrier holds no live issue; `ended` one whose every issue was dropped.
+ */
+export const FEEDBACK_WORK_STATES = [
+	"untriaged",
+	"no_work",
+	"no_issues",
+	"running",
+	"parked",
+	"queued",
+	"drafted",
+	"landed",
+	"shipped",
+	"ended",
+] as const;
+export type FeedbackWorkState = (typeof FEEDBACK_WORK_STATES)[number];
+
+/** One issue carrying the item, directly or through the requirement it was routed to. */
+export interface FeedbackWorkIssue {
+	key: string;
+	title: string;
+	status: string;
+}
+
+export interface FeedbackWork {
+	state: FeedbackWorkState;
+	/** The issues in progress: the "is it running" answer, counted apart from `state`. */
+	running: number;
+	/** Live issues (a dropped one is not counted). */
+	total: number;
+	/** The requirement a new-requirement route opened, with its status; null on any other route. */
+	requirement: { key: string; title: string; status: string } | null;
+	/** The item this one is a duplicate of, whose work it reads; null on any other route. */
+	duplicateOf: string | null;
+	issues: FeedbackWorkIssue[];
+}
+
+/**
+ * Why an item carries no date, each named so a reader never meets an empty ETA: untriaged (a person
+ * triages it first), snoozed (parked out of New until a date), no work ships for its route, its
+ * carrier holds no issue, a person or a gate holds its landing, too little history to forecast, its
+ * issues ended without landing, or it landed and a person owes the release (or the release lag has
+ * too little history).
+ */
+export const FEEDBACK_NO_ESTIMATE_REASONS = [
+	"untriaged",
+	"snoozed",
+	"no_work",
+	"no_issues",
+	"waits",
+	"history",
+	"ended",
+	"release_waits",
+	"release_history",
+] as const;
+export type FeedbackNoEstimateReason =
+	(typeof FEEDBACK_NO_ESTIMATE_REASONS)[number];
+
+/** Whether the item has a date, has shipped, or carries none and why. Core decides it; no screen does. */
+export type FeedbackEstimate =
+	| { kind: "dated"; p50At: string; p85At: string; of: DeliveryDates["of"] }
+	| { kind: "shipped"; version: string | null; at: string | null }
+	| {
+			kind: "none";
+			reason: FeedbackNoEstimateReason;
+			/** Who owes the next act, and what it is, where a wait holds the date. */
+			waits: ForecastWaitSays | null;
+			/** The history a forecast needs and how much there is, where too little holds it. */
+			history: { n: number; floor: number } | null;
+			/** Until when a snoozed item is parked. */
+			until: string | null;
+	  };
+
+/** `GET /api/projects/:id/forecast/feedback/:fb`: the item's work, its line, and its estimate or why it has none. */
+export interface FeedbackProgress extends ForecastStamp {
+	key: string;
+	work: FeedbackWork;
+	forecast: FeedbackForecast;
+	estimate: FeedbackEstimate;
+}

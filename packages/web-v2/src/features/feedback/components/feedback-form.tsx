@@ -11,6 +11,7 @@ import { AttachFailed } from "../api";
 import { useAttachFeedback, useCreateFeedback, usePromoteFeedback } from "../hooks";
 import type { CreateFeedbackRequest, FeedbackKind, FeedbackSeverity } from "../types";
 import { useFeedbackStaging } from "./feedback-attachments";
+import { DraftDuplicates } from "./feedback-similar";
 import { type PickableTarget, TargetPicker } from "./target-picker";
 
 export interface FeedbackDraft {
@@ -35,11 +36,14 @@ const BLANK: FeedbackDraft = { kind: "bug", severity: "medium", targetType: "req
 
 export function FeedbackForm({
   projectId,
+  slug,
   onDone,
   agentReport,
   draft = BLANK,
 }: {
   projectId: string;
+  /** The project the likely duplicates link into. */
+  slug: string;
   onDone: (key: string) => void;
   agentReport?: string;
   draft?: FeedbackDraft;
@@ -119,6 +123,7 @@ export function FeedbackForm({
         </Field>
       </div>
       <StagedFileList files={staged.files} warnings={staged.warnings} remove={staged.remove} />
+      <DraftDuplicates projectId={projectId} slug={slug} title={title} body={body} />
       {agentReport ? <p className="text-13 text-muted">{t("feedback.form.copied", { id: agentReport.slice(0, 8) })}</p> : null}
       <RefusalLine error={write.error} onField={refused.onField} />
       {failed ? (

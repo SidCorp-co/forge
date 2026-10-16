@@ -4,7 +4,9 @@
 // what the reporter said (Overview), the mockups proposed about it (Mockups), and every decision on it
 // with the triage it passed (Activity: past items, REQ-43 BC-8), as tabs beside the sticky facts rail.
 // The header's badge says the phase; the page leads with what the badge does not say (when it is
-// expected, the release that shipped it), then whose turn it is, once (BC-5). A person's view leaves
+// expected, the release that shipped it), then whose turn it is, once (BC-5), then its progress: is
+// work on it running, what carries it, and its estimate or why it has none. Overview also asks the
+// reporter a clarification and lists the similar items already filed. A person's view leaves
 // the agent text out — the assistant's draft, where an answer came from — and `?view=developer` draws
 // it (BC-7).
 
@@ -41,9 +43,12 @@ import { FeedbackActions, Proposals } from "./feedback-actions";
 import { FeedbackAnswer } from "./feedback-answer";
 import { FeedbackAttachments } from "./feedback-attachments";
 import { FeedbackEvidence } from "./feedback-evidence";
+import { ClarifyReporter } from "./feedback-clarify";
 import { FeedbackBanner, LinkedFeedback } from "./feedback-facts";
 import { Messages } from "./feedback-messages";
+import { FeedbackProgress } from "./feedback-progress";
 import { FeedbackRoom } from "./feedback-room";
+import { SimilarFeedback } from "./feedback-similar";
 
 const FEEDBACK_TABS = ["overview", "mockups", "activity"] as const;
 type FeedbackTab = (typeof FEEDBACK_TABS)[number];
@@ -169,6 +174,7 @@ export function FeedbackPage({
             <DetailMobileTitle itemKey={f.key} title={<Written text={f.title} lang={f.writtenLang} />} badge={<StatusBadge family="feedbackPhase" value={f.phase} />} />
             <FeedbackAnswer f={f} slug={slug} forecast={forecasts.data?.items.find((i) => i.key === f.key)} clock={clock} className="px-8 pt-4 pb-2 max-md:px-4" />
             <FeedbackBanner f={f} slug={slug} className="px-8 py-2.5 max-md:px-4" />
+            <FeedbackProgress projectId={projectId} slug={slug} fbKey={f.key} className="px-8 pt-3 pb-1 max-md:px-4" />
             <DetailLeadEnd />
             <ViewBar view={view} onView={onView} />
             <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="feedback-tabs" />
@@ -185,7 +191,9 @@ export function FeedbackPage({
                       <FeedbackActions projectId={projectId} f={f} />
                     </section>
                   ) : null}
+                  <ClarifyReporter projectId={projectId} f={f} />
                   <Body projectId={projectId} f={f} />
+                  <SimilarFeedback projectId={projectId} slug={slug} fbKey={f.key} />
                   <Reproduction
                     projectId={projectId}
                     fbKey={f.key}

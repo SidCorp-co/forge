@@ -6,6 +6,7 @@ import {
   type EntityCommentResponse,
   type EntityCommentScope,
   editEntityCommentRequestSchema,
+  RAISED_QUESTION_ASKERS,
 } from '@forge/contracts/comments';
 import { COMMENT_INTENTS } from '@forge/contracts/record-events';
 import { type Context, Hono } from 'hono';
@@ -20,6 +21,7 @@ import {
   editEntityComment,
   postEntityComment,
 } from './entity-service.js';
+import { listRaisedQuestionsAs } from './raised-read.js';
 
 export const entityCommentRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -27,6 +29,7 @@ export const entityCommentRoutes = new Hono<{ Variables: AuthVars }>();
 // which their own modules already gate; gating them again here would run the PAT admission twice.
 // An issue's decisions path is gated here: the issue module's gate is mounted after this one
 entityCommentRoutes.use('/:id/issues/:issue/comments', requireAuth(), assertEmailVerified());
+entityCommentRoutes.use('/:id/raised-questions', requireAuth(), assertEmailVerified());
 
 type Target<S extends CommentScope = EntityCommentScope> = {
   scope: S;
@@ -218,4 +221,25 @@ entityCommentRoutes.get(
     ),
   ),
   (c) => listFor(c, ISSUE, c.req.valid('param') as Params, c.req.valid('query').intent),
+);
+
+// the questions people raised across the project's threads, each owed or answered
+entityCommentRoutes.get(
+  '/:id/raised-questions',
+  zValidator(
+    'param',
+    z.object({ id: z.uuid() }),
+    invalid('invalid path: the project id is a uuid'),
+  ),
+  zValidator(
+    'query',
+    z.strictObject({ by: z.enum(RAISED_QUESTION_ASKERS).optional() }),
+    invalid(`invalid query: by? (${RAISED_QUESTION_ASKERS.join(' | ')}; me by default)`),
+  ),
+  async (c) =>
+    c.json(
+      await listRaisedQuestionsAs(actorOf(c), c.req.valid('param').id, {
+        by: c.req.valid('query').by,
+      }),
+    ),
 );

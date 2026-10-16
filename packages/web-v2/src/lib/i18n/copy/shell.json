@@ -290,7 +290,8 @@
     "shell.thread.sendFailed": "Couldn't send.",
     "shell.thread.sending": "Sending…",
     "shell.thread.tryAgain": "Try again",
-    "shell.thread.withdrawn": "A draft was replaced by the reply check and answered below."
+    "shell.thread.withdrawn": "A draft was replaced by the reply check and answered below.",
+    "nav.proj-questions": "Questions"
   },
   "vi": {
     "nav.attention": "Cần chú ý",

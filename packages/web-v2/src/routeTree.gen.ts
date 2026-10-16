@@ -54,6 +54,7 @@ import { Route as WorkspaceProjectsSlugMemoryIndexRouteImport } from './routes/_
 import { Route as WorkspaceProjectsSlugModulesIndexRouteImport } from './routes/_workspace/projects/$slug/modules/index'
 import { Route as WorkspaceProjectsSlugOverviewIndexRouteImport } from './routes/_workspace/projects/$slug/overview/index'
 import { Route as WorkspaceProjectsSlugPipelineIndexRouteImport } from './routes/_workspace/projects/$slug/pipeline/index'
+import { Route as WorkspaceProjectsSlugQuestionsIndexRouteImport } from './routes/_workspace/projects/$slug/questions/index'
 import { Route as WorkspaceProjectsSlugReleasesIndexRouteImport } from './routes/_workspace/projects/$slug/releases/index'
 import { Route as WorkspaceProjectsSlugRequirementsIndexRouteImport } from './routes/_workspace/projects/$slug/requirements/index'
 import { Route as WorkspaceProjectsSlugRoadmapIndexRouteImport } from './routes/_workspace/projects/$slug/roadmap/index'
@@ -320,6 +321,12 @@ const WorkspaceProjectsSlugPipelineIndexRoute =
     path: '/pipeline/',
     getParentRoute: () => WorkspaceProjectsSlugRouteRoute,
   } as any)
+const WorkspaceProjectsSlugQuestionsIndexRoute =
+  WorkspaceProjectsSlugQuestionsIndexRouteImport.update({
+    id: '/questions/',
+    path: '/questions/',
+    getParentRoute: () => WorkspaceProjectsSlugRouteRoute,
+  } as any)
 const WorkspaceProjectsSlugReleasesIndexRoute =
   WorkspaceProjectsSlugReleasesIndexRouteImport.update({
     id: '/releases/',
@@ -509,6 +516,7 @@ export interface FileRoutesByFullPath {
   '/projects/$slug/modules/': typeof WorkspaceProjectsSlugModulesIndexRoute
   '/projects/$slug/overview/': typeof WorkspaceProjectsSlugOverviewIndexRoute
   '/projects/$slug/pipeline/': typeof WorkspaceProjectsSlugPipelineIndexRoute
+  '/projects/$slug/questions/': typeof WorkspaceProjectsSlugQuestionsIndexRoute
   '/projects/$slug/releases/': typeof WorkspaceProjectsSlugReleasesIndexRoute
   '/projects/$slug/requirements/': typeof WorkspaceProjectsSlugRequirementsIndexRoute
   '/projects/$slug/roadmap/': typeof WorkspaceProjectsSlugRoadmapIndexRoute
@@ -576,6 +584,7 @@ export interface FileRoutesByTo {
   '/projects/$slug/modules': typeof WorkspaceProjectsSlugModulesIndexRoute
   '/projects/$slug/overview': typeof WorkspaceProjectsSlugOverviewIndexRoute
   '/projects/$slug/pipeline': typeof WorkspaceProjectsSlugPipelineIndexRoute
+  '/projects/$slug/questions': typeof WorkspaceProjectsSlugQuestionsIndexRoute
   '/projects/$slug/releases': typeof WorkspaceProjectsSlugReleasesIndexRoute
   '/projects/$slug/requirements': typeof WorkspaceProjectsSlugRequirementsIndexRoute
   '/projects/$slug/roadmap': typeof WorkspaceProjectsSlugRoadmapIndexRoute
@@ -648,6 +657,7 @@ export interface FileRoutesById {
   '/_workspace/projects/$slug/modules/': typeof WorkspaceProjectsSlugModulesIndexRoute
   '/_workspace/projects/$slug/overview/': typeof WorkspaceProjectsSlugOverviewIndexRoute
   '/_workspace/projects/$slug/pipeline/': typeof WorkspaceProjectsSlugPipelineIndexRoute
+  '/_workspace/projects/$slug/questions/': typeof WorkspaceProjectsSlugQuestionsIndexRoute
   '/_workspace/projects/$slug/releases/': typeof WorkspaceProjectsSlugReleasesIndexRoute
   '/_workspace/projects/$slug/requirements/': typeof WorkspaceProjectsSlugRequirementsIndexRoute
   '/_workspace/projects/$slug/roadmap/': typeof WorkspaceProjectsSlugRoadmapIndexRoute
@@ -719,6 +729,7 @@ export interface FileRouteTypes {
     | '/projects/$slug/modules/'
     | '/projects/$slug/overview/'
     | '/projects/$slug/pipeline/'
+    | '/projects/$slug/questions/'
     | '/projects/$slug/releases/'
     | '/projects/$slug/requirements/'
     | '/projects/$slug/roadmap/'
@@ -786,6 +797,7 @@ export interface FileRouteTypes {
     | '/projects/$slug/modules'
     | '/projects/$slug/overview'
     | '/projects/$slug/pipeline'
+    | '/projects/$slug/questions'
     | '/projects/$slug/releases'
     | '/projects/$slug/requirements'
     | '/projects/$slug/roadmap'
@@ -857,6 +869,7 @@ export interface FileRouteTypes {
     | '/_workspace/projects/$slug/modules/'
     | '/_workspace/projects/$slug/overview/'
     | '/_workspace/projects/$slug/pipeline/'
+    | '/_workspace/projects/$slug/questions/'
     | '/_workspace/projects/$slug/releases/'
     | '/_workspace/projects/$slug/requirements/'
     | '/_workspace/projects/$slug/roadmap/'
@@ -1212,6 +1225,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkspaceProjectsSlugPipelineIndexRouteImport
       parentRoute: typeof WorkspaceProjectsSlugRouteRoute
     }
+    '/_workspace/projects/$slug/questions/': {
+      id: '/_workspace/projects/$slug/questions/'
+      path: '/questions'
+      fullPath: '/projects/$slug/questions/'
+      preLoaderRoute: typeof WorkspaceProjectsSlugQuestionsIndexRouteImport
+      parentRoute: typeof WorkspaceProjectsSlugRouteRoute
+    }
     '/_workspace/projects/$slug/releases/': {
       id: '/_workspace/projects/$slug/releases/'
       path: '/releases'
@@ -1409,6 +1429,7 @@ interface WorkspaceProjectsSlugRouteRouteChildren {
   WorkspaceProjectsSlugModulesIndexRoute: typeof WorkspaceProjectsSlugModulesIndexRoute
   WorkspaceProjectsSlugOverviewIndexRoute: typeof WorkspaceProjectsSlugOverviewIndexRoute
   WorkspaceProjectsSlugPipelineIndexRoute: typeof WorkspaceProjectsSlugPipelineIndexRoute
+  WorkspaceProjectsSlugQuestionsIndexRoute: typeof WorkspaceProjectsSlugQuestionsIndexRoute
   WorkspaceProjectsSlugReleasesIndexRoute: typeof WorkspaceProjectsSlugReleasesIndexRoute
   WorkspaceProjectsSlugRequirementsIndexRoute: typeof WorkspaceProjectsSlugRequirementsIndexRoute
   WorkspaceProjectsSlugRoadmapIndexRoute: typeof WorkspaceProjectsSlugRoadmapIndexRoute
@@ -1458,6 +1479,8 @@ const WorkspaceProjectsSlugRouteRouteChildren: WorkspaceProjectsSlugRouteRouteCh
       WorkspaceProjectsSlugOverviewIndexRoute,
     WorkspaceProjectsSlugPipelineIndexRoute:
       WorkspaceProjectsSlugPipelineIndexRoute,
+    WorkspaceProjectsSlugQuestionsIndexRoute:
+      WorkspaceProjectsSlugQuestionsIndexRoute,
     WorkspaceProjectsSlugReleasesIndexRoute:
       WorkspaceProjectsSlugReleasesIndexRoute,
     WorkspaceProjectsSlugRequirementsIndexRoute:

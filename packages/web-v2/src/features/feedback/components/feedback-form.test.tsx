@@ -44,20 +44,20 @@ const SERVED = {
 describe("the feedback About picker", () => {
   it("offers a route or tool beside the other targets, and an issue only to a member of the Development space", async () => {
     core(() => undefined);
-    renderWithQuery(<FeedbackForm projectId="p1" onDone={() => {}} />);
+    renderWithQuery(<FeedbackForm projectId="p1" slug="hop" onDone={() => {}} />);
     const options = () => [...(screen.getByLabelText("Target type") as HTMLSelectElement).options].map((o) => o.textContent);
     await waitFor(() => expect(options()).toEqual(["Requirement", "Issue", "Release", "Workflow", "API route or tool", "Screen"]));
   });
 
   it("holds the title to the length core keeps, so a pasted title never reaches the refusal (FB-118)", async () => {
     core(() => undefined);
-    renderWithQuery(<FeedbackForm projectId="p1" onDone={() => {}} />);
+    renderWithQuery(<FeedbackForm projectId="p1" slug="hop" onDone={() => {}} />);
     expect(screen.getByLabelText(/^Title/).getAttribute("maxlength")).toBe("300");
   });
 
   it("does not offer Issue to a reader who is not a member", async () => {
     core((c) => (c.path === "/projects" ? { body: [{ id: "p1", role: "viewer" }] } : undefined));
-    renderWithQuery(<FeedbackForm projectId="p1" onDone={() => {}} />);
+    renderWithQuery(<FeedbackForm projectId="p1" slug="hop" onDone={() => {}} />);
     await screen.findByTestId("feedback-choices");
     const options = [...(screen.getByLabelText("Target type") as HTMLSelectElement).options].map((o) => o.textContent);
     expect(options).toEqual(["Requirement", "Release", "Workflow", "API route or tool", "Screen"]);
@@ -65,7 +65,7 @@ describe("the feedback About picker", () => {
 
   it("picks About by title from the project's own requirements, never a typed key, and refuses text naming none", async () => {
     const calls = core((c) => (c.method === "POST" ? { status: 201, body: { feedback: { key: "FB-3" } } } : undefined));
-    renderWithQuery(<FeedbackForm projectId="p1" onDone={() => {}} />);
+    renderWithQuery(<FeedbackForm projectId="p1" slug="hop" onDone={() => {}} />);
     const list = await screen.findByTestId("feedback-choices");
     expect([...list.querySelectorAll("option")].map((o) => [o.getAttribute("value"), o.getAttribute("label")])).toEqual([
       ["The board keeps its cards", "REQ-3"],
@@ -77,7 +77,7 @@ describe("the feedback About picker", () => {
     expect(screen.getByRole("button", { name: "Send feedback" })).toBeDisabled();
     fireEvent.change(screen.getByLabelText("Target"), { target: { value: "The board keeps its cards" } });
     fireEvent.click(screen.getByRole("button", { name: "Send feedback" }));
-    await waitFor(() => expect(calls.find((c) => c.method === "POST")?.body).toMatchObject({ requirement: "REQ-3" }));
+    await waitFor(() => expect(calls.find((c) => c.method === "POST" && c.path === "/projects/p1/feedback")?.body).toMatchObject({ requirement: "REQ-3" }));
   });
 
   it("names an Issue About by picking it from the project's issues by key or title, never by a typed key", async () => {
@@ -88,7 +88,7 @@ describe("the feedback About picker", () => {
           ? { body: { items: [{ id: "i52", displayId: "ISS-52", title: "Snooze by the item's owner" }], total: 1 } }
           : undefined,
     );
-    renderWithQuery(<FeedbackForm projectId="p1" onDone={() => {}} />);
+    renderWithQuery(<FeedbackForm projectId="p1" slug="hop" onDone={() => {}} />);
     await waitFor(() =>
       expect([...(screen.getByLabelText("Target type") as HTMLSelectElement).options].map((o) => o.value)).toContain("issue"),
     );
@@ -100,12 +100,12 @@ describe("the feedback About picker", () => {
     await userEvent.type(picker, "ISS-52");
     await userEvent.click(await screen.findByRole("option", { name: /ISS-52/ }));
     fireEvent.click(screen.getByRole("button", { name: "Send feedback" }));
-    await waitFor(() => expect(calls.find((c) => c.method === "POST")?.body).toMatchObject({ issue: "ISS-52" }));
+    await waitFor(() => expect(calls.find((c) => c.method === "POST" && c.path === "/projects/p1/feedback")?.body).toMatchObject({ issue: "ISS-52" }));
   });
 
   it("reads what the project serves only once a route or tool is picked, and suggests it", async () => {
     const calls = core((c) => (c.path === "/projects/p1/feedback/endpoints" ? { body: SERVED } : undefined));
-    renderWithQuery(<FeedbackForm projectId="p1" onDone={() => {}} />);
+    renderWithQuery(<FeedbackForm projectId="p1" slug="hop" onDone={() => {}} />);
     expect(calls.filter((c) => c.path.endsWith("/endpoints"))).toHaveLength(0);
     fireEvent.change(screen.getByLabelText("Target type"), { target: { value: "endpoint" } });
     const list = await screen.findByTestId("feedback-endpoints");
@@ -119,7 +119,7 @@ describe("the feedback About picker", () => {
   // ISS-279's judge: on a project serving nothing the refusal came only after Send, in API terms
   it("says before Send that a project serving nothing has no route or tool to name, and to file it as a Screen", async () => {
     const calls = core((c) => (c.path.endsWith("/endpoints") ? { body: { endpoints: [] } } : undefined));
-    renderWithQuery(<FeedbackForm projectId="p1" onDone={() => {}} />);
+    renderWithQuery(<FeedbackForm projectId="p1" slug="hop" onDone={() => {}} />);
     fireEvent.change(screen.getByLabelText("Target type"), { target: { value: "endpoint" } });
     const note = await screen.findByTestId("feedback-endpoints-none");
     expect(note).toHaveTextContent("No API routes or tools here; file it as a Screen.");
@@ -129,7 +129,7 @@ describe("the feedback About picker", () => {
 
   it("says nothing of the kind where the project serves routes or tools", async () => {
     core((c) => (c.path.endsWith("/endpoints") ? { body: SERVED } : undefined));
-    renderWithQuery(<FeedbackForm projectId="p1" onDone={() => {}} />);
+    renderWithQuery(<FeedbackForm projectId="p1" slug="hop" onDone={() => {}} />);
     fireEvent.change(screen.getByLabelText("Target type"), { target: { value: "endpoint" } });
     await screen.findByTestId("feedback-endpoints");
     expect(screen.queryByTestId("feedback-endpoints-none")).toBeNull();
@@ -141,13 +141,13 @@ describe("the feedback About picker", () => {
       return c.method === "POST" ? { status: 201, body: { feedback: { key: "FB-2" } } } : undefined;
     });
     const onDone = vi.fn();
-    renderWithQuery(<FeedbackForm projectId="p1" onDone={onDone} />);
+    renderWithQuery(<FeedbackForm projectId="p1" slug="hop" onDone={onDone} />);
     fireEvent.change(screen.getByLabelText("Target type"), { target: { value: "endpoint" } });
     fireEvent.change(screen.getByLabelText("Target"), { target: { value: " save_backend_workflow " } });
     fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), { target: { value: "Takes the graph only inline" } });
     fireEvent.click(screen.getByRole("button", { name: "Send feedback" }));
     await waitFor(() => expect(onDone).toHaveBeenCalledWith("FB-2"));
-    expect(calls.find((c) => c.method === "POST")).toEqual({
+    expect(calls.find((c) => c.method === "POST" && c.path === "/projects/p1/feedback")).toEqual({
       method: "POST",
       path: "/projects/p1/feedback",
       body: { kind: "bug", severity: "medium", title: "Takes the graph only inline", endpoint: "save_backend_workflow" },
@@ -175,7 +175,7 @@ describe("filing feedback", () => {
     renderWithQuery(
       <>
         <NeedsYouCounts projectId="p1" />
-        <FeedbackForm projectId="p1" onDone={onDone} />
+        <FeedbackForm projectId="p1" slug="hop" onDone={onDone} />
       </>,
       createQueryClient(),
     );
@@ -201,7 +201,7 @@ describe("filing feedback", () => {
     fireEvent.submit(form);
     fireEvent.submit(form);
     await waitFor(() => expect(screen.getByRole("button", { name: /Send feedback/ })).toBeDisabled());
-    expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
+    expect(calls.filter((c) => c.method === "POST" && c.path === "/projects/p1/feedback")).toHaveLength(1);
   });
 
   it("shows a refused send's plain words on the field each refusal names, and only the rest under the form (REQ-34 BC-18)", async () => {
@@ -211,7 +211,7 @@ describe("filing feedback", () => {
       { code: "BAD_REQUEST", path: "/writtenLang", detail: "Name the language it is written in." },
     ];
     core((c) => (c.method === "POST" ? { status: 422, body: { error: { code: "FEEDBACK_REFUSED", message: "refused", refusals } } } : undefined));
-    renderWithQuery(<FeedbackForm projectId="p1" onDone={() => {}} />);
+    renderWithQuery(<FeedbackForm projectId="p1" slug="hop" onDone={() => {}} />);
     await screen.findByTestId("feedback-choices");
     fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), { target: { value: "Cards vanish" } });
     fireEvent.change(screen.getByLabelText("Target"), { target: { value: "The board keeps its cards" } });

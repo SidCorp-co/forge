@@ -79,6 +79,7 @@ export const PREFIX_HOMES = {
   progress: 'lib/i18n/copy/forecast.json',
   projects: 'lib/i18n/copy/projects.json',
   pulse: 'lib/i18n/copy/overview.json',
+  questionDesk: 'lib/i18n/copy/question-desk.json',
   questions: 'lib/i18n/copy/questions.json',
   releases: 'lib/i18n/copy/releases.json',
   requirements: 'lib/i18n/copy/requirements.json',

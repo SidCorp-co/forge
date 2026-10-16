@@ -41,7 +41,7 @@ describe("the nav model", () => {
       ["delivery", undefined],
     ]);
     const product = groups[0]?.items.map((it) => it.label) ?? [];
-    expect([...product].sort()).toEqual(["Feedback", "Releases", "Requirements", "Workflows"]);
+    expect([...product].sort()).toEqual(["Feedback", "Questions", "Releases", "Requirements", "Workflows"]);
     expect(groups[1]?.items.map((it) => it.label)).toEqual(["Overview", "Issues", "Modules", "Agents / Runs", "Contracts", "Automation"]);
     expect(PROJECT_ITEMS.map((it) => it.label)).not.toContain("Development");
   });

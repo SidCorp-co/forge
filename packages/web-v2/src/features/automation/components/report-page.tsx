@@ -148,7 +148,7 @@ export function ReportPage({ projectId, slug, reportId, canWrite }: { projectId:
               {tab === "report" ? (
                 <div data-testid="view-report">
                   <Prose title={t("schedules.report.summary")} lang={r.writtenLang}>{r.summary}</Prose>
-                  {canWrite ? <ReportTriage r={r} projectId={projectId} /> : null}
+                  {canWrite ? <ReportTriage r={r} projectId={projectId} slug={slug} /> : null}
                   {developer ? (
                     <>
                       <Prose title={t("schedules.report.detail")} lang={r.writtenLang}>{r.detail}</Prose>
