@@ -80,6 +80,12 @@ describe("agentHoldsSelection", () => {
 		expect(agentHoldsSelection(9, 9)).not.toContain("9 of the 9");
 	});
 
+	it("says 'both' rather than 'all 2' when the whole selection of two is held", () => {
+		expect(agentHoldsSelection(2, 2)).toContain("both selected issues");
+		expect(agentHoldsSelection(2, 2)).not.toMatch(/all 2/);
+		expect(agentHoldsSelection(3, 3)).toContain("all 3 selected issues");
+	});
+
 	it("says 'this issue' rather than 'all 1 selected issues'", () => {
 		expect(agentHoldsSelection(1, 1)).toContain("this issue");
 	});

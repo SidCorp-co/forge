@@ -12,6 +12,7 @@ import { carriedSentence, carriedWaysOut } from './carried-sentences.js';
 import { claimConflictSentence, readClaimConflictDetails } from './claim-conflicts.js';
 import { agree, counted } from './counted.js';
 import type { ReleaseDeclaration } from './gate.js';
+import { criteriaUnearnedLead, unroutedRemedy } from './held-sentences.js';
 import type { ReleaseChannel } from './plan.js';
 import { RUNNERS_TAB, runnerHoldClause } from './runner-hold-sentences.js';
 import type { ServingReading } from './serving-reading.js';
@@ -103,8 +104,6 @@ export function alsoBlocking(err: unknown, thrown: ReleaseBlockerCode): ReleaseB
   return rest;
 }
 
-const CRITERIA_UNEARNED_LEAD = `Every issue at ${ISSUE_STATUS_LABELS.awaiting_release} still owes a verdict on an acceptance criterion, so the automatic release cuts nothing until each is recorded`;
-
 type NamedCode =
   | 'CLAIM_CONFLICT'
   | 'RELEASE_RECORD_MISSING'
@@ -160,9 +159,8 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
     'This project has runners registered and none of them could be handed a release, and the reading of why could not be taken. Open Settings \u2192 Runners and check each box\'s "Takes jobs from the pool" switch and when it was last seen.',
   BATCH_IN_FLIGHT:
     'A release is already running for this project, and a second one would claim the same issues. Let it finish, or abort it with what you found.',
-  RELEASE_CRITERIA_UNEARNED: `${CRITERIA_UNEARNED_LEAD}.`,
-  RELEASE_RUNTIME_UNROUTED:
-    'This project releases without a person acting, only an issue whose every acceptance criterion is earned at what it is serving, and nothing here can read what it is serving — so no verdict a run records can earn one, and every issue waiting at the gate is held on that one reason. Give it a way to be read, and the next sweep weighs every waiting issue again.',
+  RELEASE_CRITERIA_UNEARNED: `${criteriaUnearnedLead(0)}.`,
+  RELEASE_RUNTIME_UNROUTED: unroutedRemedy(0),
   RELEASE_CARRIES_UNDECIDED: `This release promotes a range that carries the landing of issues this batch does not name. ${carriedWaysOut(2)}`,
   RELEASE_CARRIED_DECISION_REFUSED:
     'A decision sent with this batch for an issue its range carries does not hold. Correct each one named and send the batch again.',
@@ -264,7 +262,7 @@ function criteriaUnearnedSentence(held: HeldIssueRef[], clears: readonly string[
     clears.length === 0
       ? ''
       : `At least one acceptance criterion cannot be weighed until the repository can be read: ${clears.join('; and ')}. `;
-  return `${unread}${CRITERIA_UNEARNED_LEAD}${owed}.`;
+  return `${unread}${criteriaUnearnedLead(held.length)}${owed}.`;
 }
 
 /** "criterion 4", "criteria 1–30", "criteria 3, 7 and 9–12". */
@@ -336,7 +334,7 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   const carried = carriedSentence(code, details);
   if (carried) return carried;
   if (code === 'RELEASE_RUNTIME_UNROUTED' && typeof details?.missing === 'string') {
-    return unroutedSentence(remedy, details.missing, details);
+    return unroutedSentence(details.missing, details);
   }
   if (code === 'RELEASE_WORK_UNMERGED' && details?.shape === 'outside_git') {
     const n = Array.isArray(details.issueIds) ? details.issueIds.length : 0;
@@ -350,7 +348,11 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
     const last = chain[chain.length - 1]?.branch;
     return `This project's release chain ends at \`${String(last)}\` and it has no active deploy binding carrying the \`live\` stage, so there is nowhere for a release to land. Add one on the integrations screen, or, if this project ships nothing, choose "Repository, no release" under Shape & release in its settings.`;
   }
-  if (code === 'RELEASE_RUNNER_AMBIGUOUS' && Array.isArray(details?.labels)) {
+  if (
+    code === 'RELEASE_RUNNER_AMBIGUOUS' &&
+    Array.isArray(details?.labels) &&
+    details.labels.length > 0
+  ) {
     const labels = details.labels as string[];
     return `Live deploy bindings name ${counted(labels.length, 'different release runner')} (${labels.join(', ')}), so there is no one box the release job may be offered to. Make the labels agree, or clear all but one.`;
   }
@@ -416,17 +418,12 @@ export function namedHere(details: Record<string, unknown>): string {
   return `${counted(ids.length, 'issue')} named here${which}`;
 }
 
-/** The route is read off the bindings the project has, so a provider that cannot report a commit is
- *  never told to become one (ISS-1346, judge finding 4). */
-function unroutedSentence(
-  remedy: string,
-  missing: string,
-  details: Record<string, unknown>,
-): string {
+/** The route comes off the project's own bindings, never a provider it cannot become (ISS-1346). */
+function unroutedSentence(missing: string, details: Record<string, unknown>): string {
   const route =
     typeof details.route === 'string' ? ` The way to give it one: ${details.route}.` : '';
   const held = (details.held as HeldIssueRef[] | undefined) ?? [];
-  const lead = `${remedy} What is missing: ${missing}.${route}`;
+  const lead = `${unroutedRemedy(held.length)} What is missing: ${missing}.${route}`;
   return held.length === 0 ? lead : heldIssuesSentence(lead, held);
 }
 

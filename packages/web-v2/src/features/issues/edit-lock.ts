@@ -27,6 +27,6 @@ export const AGENT_HOLDS_EDIT =
 /** Said in place of a bulk action, naming how much of the selection is held. */
 export function agentHoldsSelection(held: number, total: number): string {
 	return held === total
-		? `An agent is working ${total === 1 ? "this issue" : `all ${total} selected issues`} — your change would be overwritten`
+		? `An agent is working ${total === 1 ? "this issue" : total === 2 ? "both selected issues" : `all ${total} selected issues`} — your change would be overwritten`
 		: `An agent is working ${held} of the ${total} selected issues — your change would be overwritten`;
 }

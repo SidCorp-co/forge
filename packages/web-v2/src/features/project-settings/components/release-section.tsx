@@ -59,6 +59,12 @@ const BLOCKER_GAP: Record<string, ReleaseReadiness["gaps"][number]> = {
   RELEASE_RUNNER_AMBIGUOUS: "release-runner-ambiguous",
 };
 
+/** A blocker said in its gap's words, where core's sentence for it is the caller's. The runner line
+ *  is core's own person sentence, which names the labels that disagree (ISS-1229 r11, judge-25). */
+const SAID_AS_GAP: Record<string, ReleaseReadiness["gaps"][number]> = {
+  RELEASE_TARGET_UNDECLARED: "release-target",
+};
+
 type Blocker = ReleaseReadiness["blockers"][number];
 
 /** Where the link beside a blocker goes: the setting that answers it, the issues at the statuses its
@@ -284,7 +290,7 @@ export function ReleaseAnswer({
           {r.blockers.map((b) => {
             const link = linkFor(b);
             // The person's sentence leads; the caller's and the code are for an API caller.
-            const gap = BLOCKER_GAP[b.code];
+            const gap = SAID_AS_GAP[b.code];
             return (
               <li key={`${b.code}:${b.message}`} className="fg-body-sm py-2.5 text-fg" data-code={b.code}>
                 {gap ? GAP_TEXT[gap] : inlineCode(b.reader)} <BlockerLinkView link={link} slug={slug} />

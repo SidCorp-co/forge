@@ -308,7 +308,7 @@ describe('the criteria hold', () => {
     const message = releaseBlockerSentence('RELEASE_CRITERIA_UNEARNED', { held });
 
     expect(message).toBe(
-      'Every issue at Awaiting release still owes a verdict on an acceptance criterion, so the automatic release cuts nothing until each is recorded: `ISS-1127` owes criteria 3 and 7; `ISS-1142` owes criterion 1.',
+      'Both issues at Awaiting release still owe a verdict on an acceptance criterion, so the automatic release cuts nothing until each verdict they owe is recorded: `ISS-1127` owes criteria 3 and 7; `ISS-1142` owes criterion 1.',
     );
     expect(message.split(/\.(?:\s|$)/).filter(Boolean)).toHaveLength(1);
   });

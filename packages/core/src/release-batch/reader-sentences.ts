@@ -19,7 +19,7 @@ import {
   unreadableSentence,
 } from './blocker-sentences.js';
 import { carriedUndecidedSentence } from './carried-sentences.js';
-import { agree } from './counted.js';
+import { agree, counted } from './counted.js';
 
 /** Every check a release reason can stand in for, as a person names the work it does. */
 export const RELEASE_CHECK_WORDS = {
@@ -97,6 +97,13 @@ function unreadableForReader(details: Details): string | null {
   return unreadableSentence(remedy, details, unreadableDeclarationForReader);
 }
 
+/** The labels the live bindings disagree on, named the way the caller's sentence names them. */
+function runnersForReader(details: Details): string | null {
+  const labels = Array.isArray(details?.labels) ? (details.labels as string[]) : [];
+  if (labels.length === 0) return null;
+  return `Live bindings name ${counted(labels.length, 'different release runner')} (${labels.join(', ')}) — a release is refused rather than sent to whichever was created first. Give them the same label, or retire all but one.`;
+}
+
 function unclosableForReader(details: Details): string | null {
   if (!Array.isArray(details?.refused)) return null;
   return unclosableSentence(details.refused as UnclosableIssueRef[], false);
@@ -117,7 +124,7 @@ const READER: Record<ReleaseBlockerCode, Reader> = {
   RELEASE_RECORD_MISSING: recordMissingForReader,
   RELEASE_WORK_UNMERGED: unmergedForReader,
   RELEASE_ISSUES_UNCLOSABLE: unclosableForReader,
-  RELEASE_RUNNER_AMBIGUOUS: 'same',
+  RELEASE_RUNNER_AMBIGUOUS: runnersForReader,
   RELEASE_PROBES_UNREADABLE: unreadableForReader,
   RELEASE_POOL_EMPTY: 'same',
   NO_RUNNER_ONLINE: 'same',
