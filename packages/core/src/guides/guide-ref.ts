@@ -28,3 +28,6 @@ const GUIDE_SLUGS = [
 export type GuideSlug = (typeof GUIDE_SLUGS)[number];
 
 export const guideRef = (slug: GuideSlug): string => `GET /api/guides/${slug}.md`;
+
+/** The same pointer as a box's pane sends it, through `forge-runner api`. */
+export const guideCall = (slug: GuideSlug): string => `forge-runner api guides/${slug}.md`;

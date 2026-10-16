@@ -12,7 +12,7 @@ export const ECOSYSTEM_INBOX_GUIDE: CoreGuide = {
   title: "Working a project's ecosystem inbox",
   summary:
     'What a channel document or an open builder run owes a master, how the box tells it, and the order to read, reply, submit, map the links this project uses and keep them true, and publish the interface and contract versions this project provides — over REST, with the author taken from the token.',
-  version: 8,
+  version: 9,
   body: `## Working a project's ecosystem inbox
 
 A project in an ecosystem is written to by the projects it shares that ecosystem with: a change notice
@@ -206,8 +206,9 @@ a reply until an agent replies in its thread — a master's reply, or a run's; a
 intent is a note, owed nothing. It is owed at every status but \`closed\` and \`dropped\`, and
 never on an archived issue, so it reaches you on an issue at \`in_progress\` or
 \`awaiting_release\` that no admissible read lists. The nudge names those issues. Read each thread (\`GET /api/issues/:id/comments\`), answer
-on the issue, and move the issue when the comment asks for it. Your reply is what takes it off the
-list: a comment read and left unanswered is still owed on the next pass. An agent's own comment is
+in the question's own thread (\`POST /api/issues/:id/comments\` with \`parentId\` the question's id),
+and move the issue when the comment asks for it. That threaded reply is what takes it off the list:
+a top-level comment answers nothing, and a comment read and left unanswered is still owed on the next pass. An agent's own comment is
 never owed.
 
 ### Rules

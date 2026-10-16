@@ -18,7 +18,7 @@ export const ISSUE_FLOW_GUIDE: CoreGuide = {
   title: 'Taking one issue from open to awaiting_release',
   summary:
     'The method a run follows for one issue, every tracker act a REST call: read it whole, take it, write the plan and criteria, build in its own tree, prove each criterion, land, mark the merge and move it to `awaiting_release` — never to `closed`.',
-  version: 3,
+  version: 4,
   body: `## Taking one issue from open to awaiting_release
 
 One run, one issue (or a batch that shares one branch), from its title to landed code that a release
@@ -275,8 +275,9 @@ naming its own rule before the green counts.
    \`## Content language\` block names it; the answer carries a \`warnings\` entry when a Vietnamese
    project's note has no Vietnamese letter in it) — a short \`title\` of at most ten words (refused
    by name without one), one full sentence in \`userFacing\`, and each step an admin must take
-   before it goes out in \`adminSteps\` — no paths, hashes or refactors; \`section: 'Skip'\` where
-   they will see nothing. A release refuses to claim an issue without one.
+   before it goes out in \`adminSteps\` — no paths, hashes or refactors, the engineering detail in
+   \`technical\`; \`{ section: 'Skip', userFacing: '-' }\` where they will see nothing, since a Skip
+   still carries a sentence. A release refuses to claim an issue without one.
 4. \`POST /api/issues/:id/transition\` \`{ toStatus: 'awaiting_release' }\`. It is refused
    \`MERGE_NOT_RECORDED\` while the merge is not recorded; it asks no verdict, since verdicts are
    judged on the release that carries the work.

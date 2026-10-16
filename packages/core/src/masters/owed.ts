@@ -9,6 +9,7 @@ import {
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { readAdmissibleIssues, readOwedComments } from '../devices/index.js';
+import { type GuideSlug, guideCall } from '../guides/index.js';
 import { mastersPorts } from './ports.js';
 
 /** The edge kind that gates dispatch, the one whose blocker's state changes what a master can take. */
@@ -41,16 +42,19 @@ interface Owed {
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 
+/** A line names the guide that holds its method by slug, never restates it (REQ-23 BC-2). */
+const method = (slug: GuideSlug) => `\`${guideCall(slug)}\``;
+
 function returnedLine(owed: Owed): string {
   let line = '';
   const { designs, revisions } = owed;
   if (designs.length > 0) {
     const keys = designs.map((d) => `${d.flow} r${d.revision}, workflow ${d.workflowId}`);
-    line += ` ${designs.length} returned design${plural(designs.length, ' owes', 's owe')} a revision no issue carries (${keys.join('; ')}): read each return's reason (\`forge-runner api projects/<projectId>/workflows/<workflowId>/design\`), then get the next revision written and proposed in a declared run, or record why it waits; the forge-master skill's returned-work section is the method.`;
+    line += ` ${designs.length} returned design${plural(designs.length, ' owes', 's owe')} a revision no issue carries (${keys.join('; ')}): read each return's reason (\`forge-runner api projects/<projectId>/workflows/<workflowId>/design\`), then get the next revision written and proposed in a declared run, or record why it waits; ${method('workflow-design')} is how a revision is written and proposed, and the forge-master skill's returned-work section is the master's part.`;
   }
   if (revisions.length > 0) {
     const keys = revisions.map((r) => `${r.key} r${r.revision}`);
-    line += ` ${revisions.length} returned requirement revision${plural(revisions.length, ' owes', 's owe')} a revise (${keys.join(', ')}): read each (\`forge-runner api projects/<projectId>/requirements/<key>\`, its revision's \`returnReason\`), then write and propose it again, or drop it; the forge-master skill's returned-work section is the method.`;
+    line += ` ${revisions.length} returned requirement revision${plural(revisions.length, ' owes', 's owe')} a revise (${keys.join(', ')}): read each (\`forge-runner api projects/<projectId>/requirements/<key>\`, its revision's \`returnReason\`), then write and propose it again, or drop it; ${method('requirement-lifecycle')} is how, and the forge-master skill's returned-work section is the master's part.`;
   }
   return line;
 }
@@ -101,31 +105,31 @@ export function owedLine(owed: Owed): string {
   } = owed;
   if (breakdowns.length > 0) {
     const keys = breakdowns.map((b) => (b.overdue ? `${b.key} overdue` : b.key));
-    line += ` ${breakdowns.length} agreed requirement${plural(breakdowns.length, ' has', 's have')} no breakdown yet (${keys.join(', ')}): read each (\`forge-runner api projects/<id>/requirements/<key>\`) and propose its breakdown as a suggestion; an overdue one is past its breakdown SLA.`;
+    line += ` ${breakdowns.length} agreed requirement${plural(breakdowns.length, ' has', 's have')} no breakdown yet (${keys.join(', ')}): read each (\`forge-runner api projects/<id>/requirements/<key>\`) and propose its breakdown as a suggestion, as ${method('suggestions')} says; an overdue one is past its breakdown SLA.`;
   }
   if (triages.length > 0) {
-    line += ` ${triages.length} feedback item${plural(triages.length, ' owes', 's owe')} a triage (${triages.map((t) => t.key).join(', ')}): read each (\`forge-runner api projects/<projectId>/feedback/<key>\`, and \`/similar\` for its nearest), then route it (\`forge-runner api projects/<projectId>/feedback/<key>/triage -X POST\`) or propose a \`feedback_triage\` suggestion (\`forge-runner api projects/<projectId>/suggestions -X POST\`); the forge-master skill's feedback section is the method.`;
+    line += ` ${triages.length} feedback item${plural(triages.length, ' owes', 's owe')} a triage (${triages.map((t) => t.key).join(', ')}): read each (\`forge-runner api projects/<projectId>/feedback/<key>\`, and \`/similar\` for its nearest), then route it (\`forge-runner api projects/<projectId>/feedback/<key>/triage -X POST\`) or propose a \`feedback_triage\` suggestion (\`forge-runner api projects/<projectId>/suggestions -X POST\`); ${method('feedback-triage')} is how, and the forge-master skill's feedback section is when a master routes and when it proposes.`;
   }
   if (comments.length > 0) {
     // a question is cleared only by a reply threaded under it (devices/comment-inbox.ts), so each
     // is named with the comment id the reply's parentId takes
     const keys = comments.map((c) => `${c.issueKey} comment ${c.commentId}`);
-    line += ` A person is owed a reply on ${comments.length} issue${plural(comments.length, '', 's')} (${keys.join(', ')}): read each thread (\`forge-runner api issues/<id>/comments\`), reply to that comment in its thread (\`forge-runner api issues/<id>/comments -X POST\` with \`parentId\` set to the comment id), and move the issue when the comment asks for it; only a threaded reply clears it, a top-level comment does not.`;
+    line += ` A person is owed a reply on ${comments.length} issue${plural(comments.length, '', 's')} (${keys.join(', ')}): read each thread (\`forge-runner api issues/<id>/comments\`), and reply in that comment's thread (\`forge-runner api issues/<id>/comments -X POST\` with \`parentId\` set to the comment id), as ${method('ecosystem-inbox')} (Issue comments) says.`;
   }
   if (documents.length > 0) {
     const numbers = documents.map((d) => d.number ?? d.id);
-    line += ` The ecosystem channel owes ${documents.length} repl${plural(documents.length, 'y', 'ies')} (${numbers.join(', ')}): list them (\`forge-runner api projects/<projectId>/channel/unanswered\`), read each (\`forge-runner api projects/<projectId>/channel/documents/<number>\`), and \`forge-runner api guides/ecosystem-inbox.md\` is how to work them.`;
+    line += ` The ecosystem channel owes ${documents.length} repl${plural(documents.length, 'y', 'ies')} (${numbers.join(', ')}): list them (\`forge-runner api projects/<projectId>/channel/unanswered\`), read each (\`forge-runner api projects/<projectId>/channel/documents/<number>\`), and ${method('ecosystem-inbox')} is how to work them.`;
   }
   if (builderRuns.length > 0) {
-    line += ` ${builderRuns.length} ecosystem builder run${plural(builderRuns.length, ' is', 's are')} open (${builderRuns.map((r) => r.id).join(', ')}): \`forge-runner api projects/<projectId>/builder-runs\` lists them, and \`forge-runner api guides/ecosystem-inbox.md\` is how to work one.`;
+    line += ` ${builderRuns.length} ecosystem builder run${plural(builderRuns.length, ' is', 's are')} open (${builderRuns.map((r) => r.id).join(', ')}): \`forge-runner api projects/<projectId>/builder-runs\` lists them, and ${method('ecosystem-inbox')} is how to work one.`;
   }
   if (releaseNotes.length > 0) {
     const keys = releaseNotes.map((r) => `${r.key} ${r.issueId}`);
-    line += ` ${releaseNotes.length} issue${plural(releaseNotes.length, ' waits', 's wait')} at the release gate with no release note (${keys.join(', ')}), so the next release refuses to carry ${plural(releaseNotes.length, 'it', 'them')} (\`RELEASE_RECORD_MISSING\`): read each issue and what it shipped, then write its note (\`forge-runner api issues/<id> -X PATCH -d '{"releaseNotes":{"section":"Added","title":"<the change's short name, at most ${RELEASE_NOTE_TITLE_WORDS_MAX} words>","userFacing":"<the one plain sentence a user would read, in ${contentLanguageName(contentLanguage)}>"}}'\`, adding \`adminSteps\` for each step an admin must take before it goes out; the project's content language is ${contentLanguageName(contentLanguage)} (\`${contentLanguage}\`), so the line is written in it whatever language the issue or its commits are in, section one of Added, Changed, Fixed, Removed, Security, or \`{"section":"Skip","userFacing":"-"}\` when the change has no user-facing half).`;
+    line += ` ${releaseNotes.length} issue${plural(releaseNotes.length, ' waits', 's wait')} at the release gate with no release note (${keys.join(', ')}), so the next release refuses to carry ${plural(releaseNotes.length, 'it', 'them')} (\`RELEASE_RECORD_MISSING\`): read each issue and what it shipped, then write its note (\`forge-runner api issues/<id> -X PATCH -d '{"releaseNotes":{"section":"Added","title":"<the change's short name, at most ${RELEASE_NOTE_TITLE_WORDS_MAX} words>","userFacing":"<the one plain sentence a user would read, in ${contentLanguageName(contentLanguage)}>"}}'\`), as ${method('issue-flow')} (Land, mark, move) says, its sections, \`adminSteps\` and \`Skip\` included; the project's content language is ${contentLanguageName(contentLanguage)} (\`${contentLanguage}\`), so the note is written in it whatever language the issue or its commits are in.`;
   }
   if (warnedNotes.length > 0) {
     const keys = warnedNotes.map((n) => `${n.key} ${n.issueId} (${n.problems.join('; ')})`);
-    line += ` ${warnedNotes.length} release note${plural(warnedNotes.length, '', 's')} at the release gate ${plural(warnedNotes.length, 'reads', 'read')} wrong to a user (${keys.join(', ')}): rewrite each as the one plain line a user would read, in ${contentLanguageName(contentLanguage)}, with no commit sha, issue key or rule code in it (\`forge-runner api issues/<id> -X PATCH -d '{"releaseNotes":{"section":"<the same section>","title":"<its short name, at most ${RELEASE_NOTE_TITLE_WORDS_MAX} words>","userFacing":"<the sentence>"}}'\`), keeping the engineering detail in \`technical\` and each admin step in \`adminSteps\`; this is a reader aid, the release is not refused for it.`;
+    line += ` ${warnedNotes.length} release note${plural(warnedNotes.length, '', 's')} at the release gate ${plural(warnedNotes.length, 'reads', 'read')} wrong to a user (${keys.join(', ')}): rewrite each in ${contentLanguageName(contentLanguage)} so the problem named goes (\`forge-runner api issues/<id> -X PATCH -d '{"releaseNotes":{"section":"<the same section>","title":"<its short name, at most ${RELEASE_NOTE_TITLE_WORDS_MAX} words>","userFacing":"<the sentence>"}}'\`), as ${method('issue-flow')} (Land, mark, move) says a note reads, moving the engineering detail to \`technical\`; this is a reader aid, the release is not refused for it.`;
   }
   if (owed.unnamedReleases.length > 0) {
     const versions = owed.unnamedReleases.map((r) => r.version);
