@@ -3,6 +3,7 @@
  * explains it. Every door reads these, so none carries its own copy (ISS-1127).
  */
 
+import type { ReleaseBlockerCode } from '@forge/contracts';
 import { RELEASE_RECORD_REMEDY } from '../issues/release-record-required.js';
 import { ISSUE_STATUS_LABELS, statusLabel } from '../issues/status-sets.js';
 import type { RunnerHold } from '../runners/ineligible.js';
@@ -19,26 +20,7 @@ export { runnerHoldClause };
 /** The most issues one release may carry; `resolveRoster` holds every door to it. */
 export const RELEASE_ROSTER_LIMIT = 50;
 
-export type ReleaseBlockerCode =
-  | 'NO_RELEASE_GATE'
-  | 'RELEASE_TARGET_UNDECLARED'
-  | 'CLAIM_CONFLICT'
-  | 'RELEASE_ROSTER_EMPTY'
-  | 'RELEASE_ROSTER_OVERSIZE'
-  | 'RELEASE_RECORD_MISSING'
-  | 'RELEASE_WORK_UNMERGED'
-  | 'RELEASE_ISSUES_UNCLOSABLE'
-  | 'RELEASE_RUNNER_AMBIGUOUS'
-  | 'RELEASE_PROBES_UNREADABLE'
-  | 'RELEASE_POOL_EMPTY'
-  | 'NO_RUNNER_ONLINE'
-  | 'BATCH_IN_FLIGHT'
-  | 'RELEASE_CRITERIA_UNEARNED'
-  | 'RELEASE_RUNTIME_UNROUTED'
-  | 'RELEASE_CARRIES_UNDECIDED'
-  | 'RELEASE_CARRIED_DECISION_REFUSED'
-  | 'RELEASE_CUT_DROPS_ROSTER'
-  | 'RELEASE_CHECK_UNEVALUATED';
+export type { ReleaseBlockerCode };
 
 export type ReleaseWarningCode =
   | 'RELEASE_ROSTER_IN_PARTS'
@@ -47,7 +29,6 @@ export type ReleaseWarningCode =
   | 'RELEASE_CRITERIA_UNCORROBORATED'
   | 'RELEASE_CARRIED_UNREAD';
 
-/** Every reason this project answers with, whether or not it stops a release. */
 export type ReleaseReasonCode = ReleaseBlockerCode | ReleaseWarningCode;
 
 export interface ReleaseBlocker {
@@ -403,7 +384,6 @@ export function carriedUnreadWarningSentence(why: string): string {
   );
 }
 
-/** How many issues a refusal is about, and which, by the id a screen shows (ISS-1346). */
 /** One issue the finish's close would refuse, as `RELEASE_ISSUES_UNCLOSABLE` carries it. */
 export interface UnclosableIssueRef {
   issueId: string;
