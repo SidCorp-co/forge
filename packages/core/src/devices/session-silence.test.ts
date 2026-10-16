@@ -38,6 +38,19 @@ describe('silenceLimitMs', () => {
     expect(silenceLimitMs({ kind: 'chat', metadata: { agentChat: null } })).toBe(3 * 60_000);
   });
 
+  it('takes the shortest reaper that applies: a run session carrying an escalation ends at three minutes', () => {
+    expect(silenceLimitMs({ kind: 'run_session', metadata: { escalation: null } })).toBe(
+      3 * 60_000,
+    );
+    expect(
+      silenceLimitMs({
+        kind: 'master',
+        runtimeState: 'awaiting_input',
+        metadata: { agentChat: {} },
+      }),
+    ).toBe(10 * 60_000);
+  });
+
   it('states no limit where no silence ends the session', () => {
     expect(silenceLimitMs({ kind: 'chat' })).toBeNull();
     expect(silenceLimitMs({ kind: 'chat', metadata: { other: 1 } })).toBeNull();

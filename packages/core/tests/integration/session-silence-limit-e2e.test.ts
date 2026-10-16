@@ -158,4 +158,21 @@ describe("a session read carries core's own silence limit (ISS-1228 round 9)", (
     const [row] = await harness.db.execute(sql`SELECT status FROM agent_sessions WHERE id = ${id}`);
     expect(row?.status).toBe('failed');
   });
+
+  it('reports three minutes for a run session carrying an escalation, which the loop monitor ends at three', async () => {
+    const { id } = await session('run_session');
+    await harness.db.execute(sql`
+      UPDATE agent_sessions SET metadata = '{"escalation": null}'::jsonb, claude_session_id = 'claude-2',
+             updated_at = now() - interval '4 minutes', started_at = now() - interval '10 minutes'
+       WHERE id = ${id}
+    `);
+
+    const body = await get(`/agent-sessions/${id}`);
+    expect(body.silenceLimitMs).toBe(THREE_MIN);
+
+    const { reapZombieSessions } = await import('../../src/jobs/loop-monitor.js');
+    await reapZombieSessions(new Date());
+    const [row] = await harness.db.execute(sql`SELECT status FROM agent_sessions WHERE id = ${id}`);
+    expect(row?.status).toBe('failed');
+  });
 });

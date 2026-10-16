@@ -24,13 +24,15 @@ function carries(metadata: unknown, key: string): boolean {
  * built on the constants the reapers read, so a screen counting to it says what core will do.
  */
 export function silenceLimitMs(session: SilenceSubject): number | null {
+  const limits: number[] = [];
   if (session.kind === RUN_SESSION_METADATA_TYPE || session.kind === MASTER_SESSION_METADATA_TYPE) {
-    return SESSION_SILENCE_TIMEOUT_MS;
+    limits.push(SESSION_SILENCE_TIMEOUT_MS);
   }
-  if (session.runtimeState === 'awaiting_input') return null;
   const heartbeatReaped =
-    HEARTBEAT_REAPED_KINDS.has(session.kind) ||
-    carries(session.metadata, 'escalation') ||
-    carries(session.metadata, 'agentChat');
-  return heartbeatReaped ? getLoopThresholds().heartbeatMs : null;
+    session.runtimeState !== 'awaiting_input' &&
+    (HEARTBEAT_REAPED_KINDS.has(session.kind) ||
+      carries(session.metadata, 'escalation') ||
+      carries(session.metadata, 'agentChat'));
+  if (heartbeatReaped) limits.push(getLoopThresholds().heartbeatMs);
+  return limits.length === 0 ? null : Math.min(...limits);
 }
