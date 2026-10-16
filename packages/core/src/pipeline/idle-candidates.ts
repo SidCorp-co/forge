@@ -11,7 +11,7 @@ import { statusEnteredAtSql } from '../issues/status-entered-at.js';
 import { logger } from '../logger.js';
 import { projectHasAdminSql } from '../notifications/project-admins.js';
 import {
-  DUE_PROBE_LIMIT,
+  ARRIVALS_PER_PASS,
   FRESH_SIGHTING_LIMIT,
   pendingConditionSql,
   pendingSightingLimit,
@@ -19,9 +19,16 @@ import {
   unraisedConditionSql,
   withOwed,
 } from './owed-sighting.js';
+import { type LeaseReading, leaseShowsHolderGone } from './session-claim.js';
 import { isTerminalPlacement } from './status-assertions.js';
 import { SHORTEST_GRACE_MS, STRAND_RULES, WATCHED_STATUSES } from './strand-rules.js';
-import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
+import {
+  advanceArrivals,
+  advanceSweep,
+  arrivalMark,
+  type SweepPosition,
+  sweepWindow,
+} from './sweep-cursor.js';
 
 export const IDLE_KEY_SUFFIX = ':idle';
 
@@ -59,12 +66,40 @@ export interface CandidateRow {
   release_hold: unknown;
   ever_ran: boolean;
   cursor_ts: string;
+  /** When the row spends its status's grace, as ISO text: where the arrival read resumes. */
+  due_at: string;
+}
+
+/** Left the status its finding was written at; unreadable reads as moved, as `clearRecovered`
+ *  did before. */
+export function hasMoved(status: string, strand: unknown): boolean {
+  if (strand === null || typeof strand !== 'object' || Array.isArray(strand)) return true;
+  const written = (strand as Record<string, unknown>).status;
+  return typeof written !== 'string' || written !== status;
+}
+
+/** A holder gone, or a claim this pass stopped on a finding still at the row's status: the release
+ *  is the sweep's own write, and starting the grace again would let that finding's notice go stale. */
+export function graceWaived(row: CandidateRow, lease: LeaseReading): boolean {
+  return (
+    leaseShowsHolderGone(lease.verdict) || (lease.stopped && !hasMoved(row.status, row.strand))
+  );
 }
 
 /** Terminal, plus every status the rule table declares at rest. Everything else is a candidate. */
 const NOT_WATCHED: readonly string[] = issueStatuses.filter(
   (s) => isTerminalPlacement(s) || !STRAND_RULES[s].watch,
 );
+
+/** When a row at its status spends that status's grace: the order rows arrive in as they come due. */
+function dueAtSql(): SQL {
+  const arms = WATCHED_STATUSES.map((status) => {
+    const rule = STRAND_RULES[status];
+    const ms = rule.watch ? rule.graceMs : 0;
+    return sql`WHEN ${status} THEN i.updated_at + (${ms} * interval '1 millisecond')`;
+  });
+  return sql`(CASE i.status ${sql.join(arms, sql` `)} ELSE i.updated_at END)`;
+}
 
 /** One read of the candidates: a watched status, a live project, nothing running, then `where`. */
 async function selectCandidates(args: {
@@ -88,6 +123,7 @@ async function selectCandidates(args: {
            i.session_context -> 'strand' AS strand,
            i.session_context -> 'releaseHold' AS release_hold,
            i.updated_at::text AS cursor_ts,
+           to_char(${dueAtSql()} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS due_at,
            EXISTS (SELECT 1 FROM pipeline_runs pr WHERE pr.issue_id = i.id) AS ever_ran
       FROM issues i
       JOIN projects p ON p.id = i.project_id
@@ -109,16 +145,6 @@ function dueBeforeSql(now: Date): SQL {
     return sql`WHEN ${status} THEN ${due}::timestamptz`;
   });
   return sql`(CASE i.status ${sql.join(arms, sql` `)} ELSE ${now.toISOString()}::timestamptz END)`;
-}
-
-/** When a row at its status spends that status's grace: what the probe orders by, newest first. */
-function dueAtSql(): SQL {
-  const arms = WATCHED_STATUSES.map((status) => {
-    const rule = STRAND_RULES[status];
-    const ms = rule.watch ? rule.graceMs : 0;
-    return sql`WHEN ${status} THEN i.updated_at + (${ms} * interval '1 millisecond')`;
-  });
-  return sql`(CASE i.status ${sql.join(arms, sql` `)} ELSE i.updated_at END)`;
 }
 
 export async function readCandidates(
@@ -157,18 +183,27 @@ export async function readCandidates(
     order: sql`${pendingSinceSql(sql`i.id`, IDLE_KEY_SUFFIX)} ASC, i.id ASC`,
     limit: pendingSightingLimit(IDLE_SCAN_LIMIT),
   });
-  // Newest first, resuming past the rows read last pass: one the judge declines to raise (a live
-  // claim) stays unraised, and without the cursor those rows would hold every fresh slot.
   const unraisedDue = sql`${unraisedConditionSql(sql`i.id`, IDLE_KEY_SUFFIX)} AND i.updated_at < ${dueBeforeSql(now)}
       AND ${projectHasAdminSql(sql`i.project_id`)}`;
-  // The cursor below passes a position once a traversal, so a row coming due behind it would wait
-  // for the wrap; the rows that came due last are read every pass instead.
-  const probe = await selectCandidates({
+  // The fresh cursor passes a position once a traversal, so a row coming due behind it would wait
+  // for the wrap: every row that came due since the last pass is read in the order it came due.
+  const arrivalKey = `idle-arrivals:${scope.projectId ?? '*'}`;
+  const mark = arrivalMark(arrivalKey, now, new Date(now.getTime() - SHORTEST_GRACE_MS));
+  const arrived = await selectCandidates({
     scope,
-    where: unraisedDue,
-    order: sql`${dueAtSql()} DESC, i.id DESC`,
-    limit: DUE_PROBE_LIMIT,
+    where: sql`${unraisedDue} AND (${dueAtSql()}, i.id) > (${mark.ts}::timestamptz, ${mark.id}::uuid)`,
+    order: sql`${dueAtSql()} ASC, i.id ASC`,
+    limit: ARRIVALS_PER_PASS,
   });
+  const lastArrived = arrived.at(-1);
+  advanceArrivals(
+    arrivalKey,
+    now,
+    lastArrived ? { ts: lastArrived.due_at, id: lastArrived.id } : null,
+    arrived.length === ARRIVALS_PER_PASS,
+  );
+  // Newest first, resuming past the rows read last pass: one the judge declines to raise (a live
+  // claim) stays unraised, and without the cursor those rows would hold every fresh slot.
   const freshKey = `idle-fresh:${scope.projectId ?? '*'}`;
   const freshWindow = sweepWindow(freshKey, now.toISOString());
   const older = freshWindow.after
@@ -187,5 +222,5 @@ export async function readCandidates(
     lastFresh ? { ts: lastFresh.cursor_ts, id: lastFresh.id } : null,
     fresh.length === FRESH_SIGHTING_LIMIT,
   );
-  return withOwed(rows, pending, probe, fresh);
+  return withOwed(rows, pending, arrived, fresh);
 }

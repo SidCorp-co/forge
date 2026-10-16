@@ -90,6 +90,21 @@ async function target(w: World, status: string, at: number, merged: boolean): Pr
   return id;
 }
 
+/** `count` Open issues entered 5ms apart from `at`, each under a claim live past the cases' end. */
+async function liveClaims(w: World, at: number, count: number): Promise<void> {
+  const claimed = new Date(at + 10 * MINUTE).toISOString();
+  await harness.db.execute(sql`
+    INSERT INTO issues (id, project_id, title, status, created_by_id, iss_seq, session_context, created_at, updated_at)
+    SELECT gen_random_uuid(), ${w.projectId}::uuid, 'claimed ' || g, 'open', ${w.ownerId}::uuid, ${BOARD + 1} + g,
+           jsonb_build_object('lease', jsonb_build_object(
+             'holder', 'claimer-' || g, 'minutes', 600, 'renewedAt', ${claimed}::text,
+             'history', jsonb_build_array(jsonb_build_object('at', ${claimed}::text, 'how', 'claim')))),
+           ${new Date(at).toISOString()}::timestamptz + (g * 5 || ' milliseconds')::interval,
+           ${new Date(at).toISOString()}::timestamptz + (g * 5 || ' milliseconds')::interval
+      FROM generate_series(1, ${count}) g
+  `);
+}
+
 /** What the sweeper does each minute for one arm: the sweep, then the re-evaluation after it. */
 async function tick(sweep: Sweep, now: Date): Promise<void> {
   await sweep(now);
@@ -203,6 +218,14 @@ describe('a stuck-issue notice on a board of five full pages', () => {
         FROM notifications WHERE type = 'issue_stranded'
     `)) as unknown as Array<{ raised: number; firing: number; issues: number }>;
     expect(rows[0]).toEqual({ raised: BOARD, firing: BOARD, issues: BOARD });
+    const told = (await harness.db.execute(sql`
+      SELECT count(DISTINCT n.issue_id)::int AS n
+        FROM notification_deliveries d
+        JOIN notification_delivery_members m ON m.delivery_id = d.id
+        JOIN notifications n ON n.id = m.notification_id
+       WHERE d.user_id = ${w.ownerId}::uuid AND n.type = 'issue_stranded' AND d.resolved_notice = false
+    `)) as unknown as Array<{ n: number }>;
+    expect(told[0]?.n, 'each issue delivered to its admin').toBe(BOARD);
   }, 600_000);
 });
 
@@ -293,17 +316,7 @@ describe('the rows a pass owes a sighting, on a board that is hard to read', () 
     const t0 = Date.now();
     await board(w, 'open', t0, false);
     const watched = await target(w, 'open', t0, false);
-    const claimed = new Date(t0 + 10 * MINUTE).toISOString();
-    await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, title, status, created_by_id, iss_seq, session_context, created_at, updated_at)
-      SELECT gen_random_uuid(), ${w.projectId}::uuid, 'claimed ' || g, 'open', ${w.ownerId}::uuid, ${BOARD + 1} + g,
-             jsonb_build_object('lease', jsonb_build_object(
-               'holder', 'holder-' || g, 'minutes', 600, 'renewedAt', ${claimed}::text,
-               'history', jsonb_build_array(jsonb_build_object('at', ${claimed}::text, 'how', 'claim')))),
-             ${new Date(t0).toISOString()}::timestamptz + (g * 5 || ' milliseconds')::interval,
-             ${new Date(t0).toISOString()}::timestamptz + (g * 5 || ' milliseconds')::interval
-        FROM generate_series(1, 200) g
-    `);
+    await liveClaims(w, t0, 200);
 
     const seen = await follow({
       sweep: sweeps.idle,
@@ -317,7 +330,7 @@ describe('the rows a pass owes a sighting, on a board that is hard to read', () 
     expect((seen.deliveredAt ?? 0) - t0).toBeLessThanOrEqual(20 * MINUTE);
   }, 600_000);
 
-  it('reaches an issue that comes due while the fresh read is part way through 1,000 it cannot raise', async () => {
+  it('reaches an issue coming due while the fresh read is part way through 1,000 it cannot raise, and 50 more come due just after it', async () => {
     const w = await world();
     const t0 = Date.now();
     const claimed = new Date(t0 + 10 * MINUTE).toISOString();
@@ -328,6 +341,7 @@ describe('the rows a pass owes a sighting, on a board that is hard to read', () 
         'history', jsonb_build_array(jsonb_build_object('at', ${claimed}::text, 'how', 'claim'))))
     `);
     const watched = await target(w, 'open', t0, false);
+    await liveClaims(w, t0, 50);
 
     const seen = await follow({
       sweep: sweeps.idle,

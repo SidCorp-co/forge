@@ -25,6 +25,8 @@ import { projectAdminUserIdsFor } from '../notifications/project-admins.js';
 import { resolveArchivedProjectNotices } from './archived-project-notices.js';
 import {
   type CandidateRow,
+  graceWaived,
+  hasMoved,
   IDLE_KEY_SUFFIX,
   IDLE_SCAN_LIMIT,
   NOTHING_LIVE_ON_THIS_ISSUE,
@@ -126,13 +128,9 @@ export async function reconcileIdleIssues(
   return result;
 }
 
-/**
- * Whether the finding already on the row says the same thing as the one just built.
- *
- * `at` is the only field that moves on its own, and it is what makes the record say how long the
- * row has been reported rather than how long ago the last tick was — so an unchanged finding is
- * left exactly as it was written.
- */
+/** Whether the finding on the row says what the one just built says. `at` alone moves on its own,
+ *  and it says how long the row has been reported rather than when the last tick ran, so an
+ *  unchanged finding is left exactly as it was written. */
 function unchangedStrand(held: unknown, next: StrandRecord): boolean {
   if (held === null || typeof held !== 'object') return false;
   const { at: _next, ...rest } = next;
@@ -177,7 +175,7 @@ function judge(
   if (!rule.watch) return null;
   // At `in_progress` the two hours run from the holder's last write, so the grace, not the lease
   // term, decides when a dead run's row is reached — and waiting it out buys the reading nothing.
-  if (!leaseShowsHolderGone(lease.verdict) && !graceSpent(row.updated_at, rule.graceMs, now)) {
+  if (!graceWaived(row, lease) && !graceSpent(row.updated_at, rule.graceMs, now)) {
     return null;
   }
 
@@ -421,13 +419,6 @@ function stillStranded(
     return false;
   }
   return !leaseIsWorkInProgress(lease.verdict);
-}
-
-/** Left the status its finding was written at; unreadable reads as moved, as this arm did before. */
-function hasMoved(status: string, strand: unknown): boolean {
-  if (strand === null || typeof strand !== 'object' || Array.isArray(strand)) return true;
-  const written = (strand as Record<string, unknown>).status;
-  return typeof written !== 'string' || written !== status;
 }
 
 /** Whether a row has stood at its status long enough for that status's own clock to say anything. */

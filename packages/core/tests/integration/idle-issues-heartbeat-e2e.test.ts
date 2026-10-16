@@ -196,6 +196,18 @@ describe('A holder that stopped reporting (ISS-1195)', () => {
     expect(history.filter((h) => h.how === 'swept')).toHaveLength(1);
   });
 
+  /** ISS-1229 r12: the release is the sweep's own write, so it does not start the status grace again. */
+  it('keeps sighting the row it released on the heartbeat while its status grace is unspent', async () => {
+    const issueId = await seedSilentRow();
+
+    await mods.reconcileIdleIssues(NOW);
+    const next = await mods.reconcileIdleIssues(new Date(NOW.getTime() + 60_000));
+
+    expect(next.detected, 'sighted again, so its pending notice is not left to go stale').toBe(1);
+    expect(emitted).toHaveLength(2);
+    expect(await strandOf(issueId)).not.toBeNull();
+  });
+
   /**
    * F4 on this issue's plan consult: were an unreadable heartbeat to reach `leaseIsUnexpired`, the
    * row WITHOUT one would drop out of its holder's fanout and change verdict — a lease carrying no
