@@ -36,6 +36,7 @@ import { Route as AdminMcpLogsIndexRouteImport } from './routes/admin/mcp-logs/i
 import { Route as AdminPipelineIndexRouteImport } from './routes/admin/pipeline/index'
 import { Route as GuidesSlugIndexRouteImport } from './routes/guides/$slug/index'
 import { Route as InviteAcceptIndexRouteImport } from './routes/invite/accept/index'
+import { Route as OauthAuthorizeIndexRouteImport } from './routes/oauth/authorize/index'
 import { Route as STokenIndexRouteImport } from './routes/s/$token/index'
 import { Route as WorkspaceDevDesignIndexRouteImport } from './routes/_workspace/dev/design/index'
 import { Route as WorkspaceEcosystemsIdIndexRouteImport } from './routes/_workspace/ecosystems/$id/index'
@@ -212,6 +213,11 @@ const GuidesSlugIndexRoute = GuidesSlugIndexRouteImport.update({
 const InviteAcceptIndexRoute = InviteAcceptIndexRouteImport.update({
   id: '/invite/accept/',
   path: '/invite/accept/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OauthAuthorizeIndexRoute = OauthAuthorizeIndexRouteImport.update({
+  id: '/oauth/authorize/',
+  path: '/oauth/authorize/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const STokenIndexRoute = STokenIndexRouteImport.update({
@@ -485,6 +491,7 @@ export interface FileRoutesByFullPath {
   '/admin/pipeline/': typeof AdminPipelineIndexRoute
   '/guides/$slug/': typeof GuidesSlugIndexRoute
   '/invite/accept/': typeof InviteAcceptIndexRoute
+  '/oauth/authorize/': typeof OauthAuthorizeIndexRoute
   '/s/$token/': typeof STokenIndexRoute
   '/dev/design/': typeof WorkspaceDevDesignIndexRoute
   '/ecosystems/$id/': typeof WorkspaceEcosystemsIdIndexRoute
@@ -551,6 +558,7 @@ export interface FileRoutesByTo {
   '/admin/pipeline': typeof AdminPipelineIndexRoute
   '/guides/$slug': typeof GuidesSlugIndexRoute
   '/invite/accept': typeof InviteAcceptIndexRoute
+  '/oauth/authorize': typeof OauthAuthorizeIndexRoute
   '/s/$token': typeof STokenIndexRoute
   '/dev/design': typeof WorkspaceDevDesignIndexRoute
   '/ecosystems/$id': typeof WorkspaceEcosystemsIdIndexRoute
@@ -622,6 +630,7 @@ export interface FileRoutesById {
   '/admin/pipeline/': typeof AdminPipelineIndexRoute
   '/guides/$slug/': typeof GuidesSlugIndexRoute
   '/invite/accept/': typeof InviteAcceptIndexRoute
+  '/oauth/authorize/': typeof OauthAuthorizeIndexRoute
   '/s/$token/': typeof STokenIndexRoute
   '/_workspace/dev/design/': typeof WorkspaceDevDesignIndexRoute
   '/_workspace/ecosystems/$id/': typeof WorkspaceEcosystemsIdIndexRoute
@@ -692,6 +701,7 @@ export interface FileRouteTypes {
     | '/admin/pipeline/'
     | '/guides/$slug/'
     | '/invite/accept/'
+    | '/oauth/authorize/'
     | '/s/$token/'
     | '/dev/design/'
     | '/ecosystems/$id/'
@@ -758,6 +768,7 @@ export interface FileRouteTypes {
     | '/admin/pipeline'
     | '/guides/$slug'
     | '/invite/accept'
+    | '/oauth/authorize'
     | '/s/$token'
     | '/dev/design'
     | '/ecosystems/$id'
@@ -828,6 +839,7 @@ export interface FileRouteTypes {
     | '/admin/pipeline/'
     | '/guides/$slug/'
     | '/invite/accept/'
+    | '/oauth/authorize/'
     | '/s/$token/'
     | '/_workspace/dev/design/'
     | '/_workspace/ecosystems/$id/'
@@ -879,6 +891,7 @@ export interface RootRouteChildren {
   LinkChatIndexRoute: typeof LinkChatIndexRoute
   GuidesSlugIndexRoute: typeof GuidesSlugIndexRoute
   InviteAcceptIndexRoute: typeof InviteAcceptIndexRoute
+  OauthAuthorizeIndexRoute: typeof OauthAuthorizeIndexRoute
   STokenIndexRoute: typeof STokenIndexRoute
 }
 
@@ -1071,6 +1084,13 @@ declare module '@tanstack/react-router' {
       path: '/invite/accept'
       fullPath: '/invite/accept/'
       preLoaderRoute: typeof InviteAcceptIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/oauth/authorize/': {
+      id: '/oauth/authorize/'
+      path: '/oauth/authorize'
+      fullPath: '/oauth/authorize/'
+      preLoaderRoute: typeof OauthAuthorizeIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/s/$token/': {
@@ -1568,6 +1588,7 @@ const rootRouteChildren: RootRouteChildren = {
   LinkChatIndexRoute: LinkChatIndexRoute,
   GuidesSlugIndexRoute: GuidesSlugIndexRoute,
   InviteAcceptIndexRoute: InviteAcceptIndexRoute,
+  OauthAuthorizeIndexRoute: OauthAuthorizeIndexRoute,
   STokenIndexRoute: STokenIndexRoute,
 }
 export const routeTree = rootRouteImport

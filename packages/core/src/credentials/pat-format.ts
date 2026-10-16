@@ -117,6 +117,14 @@ export function turnTokenOrigin(name: string): TurnTokenOrigin | null {
   return null;
 }
 
+const MCP_OAUTH_NAME_PREFIX = 'mcp oauth ';
+
+/**
+ * The access token an MCP client holds for one consent (`credentials/mcp-oauth-store.ts`): an
+ * hour long, superseded at every refresh, and revoked on the tokens page to end the grant.
+ */
+export const mcpOauthTokenNameFor = (grantId: string) => `${MCP_OAUTH_NAME_PREFIX}${grantId}`;
+
 const CORE_NAME_PREFIXES = [
   DEVICE_TOKEN_NAME_PREFIX,
   WORKSPACE_TOKEN_NAME_PREFIX,
@@ -125,6 +133,7 @@ const CORE_NAME_PREFIXES = [
   AGREEMENT_NAME_PREFIX,
   SCRIPT_READ_NAME_PREFIX,
   PROBE_REPLAY_NAME_PREFIX,
+  MCP_OAUTH_NAME_PREFIX,
 ];
 
 // a person's token named like a turn token would make their CLI writes read as written through the assistant

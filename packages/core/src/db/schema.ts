@@ -31,6 +31,7 @@ export * from './schema-jobs.js';
 export * from './schema-knowledge.js';
 export * from './schema-labels.js';
 export * from './schema-lifecycle.js';
+export * from './schema-mcp-oauth.js';
 export * from './schema-memory.js';
 export * from './schema-notifications.js';
 export * from './schema-orgs.js';

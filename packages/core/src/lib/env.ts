@@ -83,6 +83,8 @@ const EnvSchema = z.object({
   RATE_LIMIT_BACKLOG_STREAM_WINDOW_MS: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_SHARE_OPEN_ADDRESS_MAX: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_SHARE_OPEN_ADDRESS_WINDOW_MS: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_MCP_OAUTH_REGISTER_MAX: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_MCP_OAUTH_REGISTER_WINDOW_MS: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_SHARE_OPEN_TOKEN_MAX: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_SHARE_OPEN_TOKEN_WINDOW_MS: z.coerce.number().int().positive().optional(),
   EMBEDDINGS_BASE_URL: z.url().optional(),

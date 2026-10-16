@@ -74,7 +74,10 @@ const COMPONENTS: JsonSchema = {
   },
 };
 
-const INPUT_TARGETS = ['json', 'param', 'query'] as const;
+const INPUT_TARGETS = ['json', 'form', 'param', 'query'] as const;
+
+/** The media type each body a validator holds is sent as. */
+const BODY_TYPES = { json: 'application/json', form: 'application/x-www-form-urlencoded' } as const;
 type InputTarget = (typeof INPUT_TARGETS)[number];
 
 const METHOD_ORDER = ['GET', 'PUT', 'POST', 'DELETE', 'OPTIONS', 'HEAD', 'PATCH', 'TRACE'];
@@ -281,7 +284,7 @@ function queryParameters(schema: JsonSchema, refusals: string[]) {
 
 function readRefusals(endpoint: Endpoint, validated: Set<string>): string[] {
   const refusals: string[] = [];
-  const hasBody = validated.has('json') || endpoint.raws.length > 0;
+  const hasBody = validated.has('json') || validated.has('form') || endpoint.raws.length > 0;
   for (const read of endpoint.reads) {
     if (read.kind === 'validated' && !validated.has(read.part)) {
       refusals.push(`reads \`${read.via}\` and holds no \`${read.part}\` validator`);
@@ -296,8 +299,11 @@ function readRefusals(endpoint: Endpoint, validated: Set<string>): string[] {
     }
   }
   if (endpoint.raws.length > 1) refusals.push('two rawBody() declarations for one body');
-  if (endpoint.raws.length > 0 && validated.has('json')) {
-    refusals.push('a json validator and a rawBody() declaration for one body');
+  const bodies = [validated.has('json'), validated.has('form'), endpoint.raws.length > 0];
+  if (bodies.filter(Boolean).length > 1) {
+    refusals.push(
+      'more than one of a json validator, a form validator and a rawBody() for one body',
+    );
   }
   return [...new Set(refusals)];
 }
@@ -329,7 +335,6 @@ function describe(shape: PathShape, endpoint: Endpoint): Described {
     ...pathParameters(shape, schemas.get('param'), refusals),
     ...(query === undefined ? [] : queryParameters(query, refusals)),
   ];
-  const json = schemas.get('json');
   const raw = endpoint.raws[0];
   const operation: Operation = {
     'x-forge-auth': endpoint.gates,
@@ -344,8 +349,12 @@ function describe(shape: PathShape, endpoint: Endpoint): Described {
   if (query !== undefined && query.additionalProperties === false) {
     operation['x-forge-query-closed'] = true;
   }
-  if (json !== undefined) {
-    operation.requestBody = { required: true, content: { 'application/json': { schema: json } } };
+  const body = (['json', 'form'] as const).find((t) => schemas.has(t));
+  if (body !== undefined) {
+    operation.requestBody = {
+      required: true,
+      content: { [BODY_TYPES[body]]: { schema: schemas.get(body) } },
+    };
   } else if (raw !== undefined) {
     operation.requestBody = {
       required: raw.required,

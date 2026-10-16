@@ -13,6 +13,7 @@ import {
 } from '../integrations/github/index.js';
 import { resolveApiBaseUrl } from '../integrations/index.js';
 import { logger } from '../lib/logger.js';
+import { reachedOrigin } from '../lib/reached-origin.js';
 import { refuser } from '../lib/refusal.js';
 import { platformAdminNames } from '../middleware/require-admin.js';
 import { projectOrgHead } from '../projects/index.js';
@@ -88,16 +89,6 @@ export function apiBaseUrl(): string {
   const base = resolveApiBaseUrl();
   if (!base) throw new HTTPException(500, { message: 'APP_BASE_URL is not configured' });
   return base;
-}
-
-/** The public origin this request reached core at, as the proxy in front of core reports it. */
-export function reachedOrigin(c: Context): string {
-  const url = new URL(c.req.url);
-  const proto = c.req.header('x-forwarded-proto')?.split(',')[0]?.trim();
-  if (proto === 'https' || proto === 'http') url.protocol = `${proto}:`;
-  const forwardedHost = c.req.header('x-forwarded-host')?.split(',')[0]?.trim();
-  if (forwardedHost) url.host = forwardedHost;
-  return url.origin;
 }
 
 /**

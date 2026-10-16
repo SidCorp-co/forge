@@ -96,6 +96,9 @@ export const CREDENTIAL_INPUTS: Readonly<Record<string, string>> = {
     'the instance GitHub App’s body signature, verified against its webhook secret before routing',
   'field:param:uploadId': 'an upload ticket: holding it is the right to write one file',
   'field:param:ticketId': 'a download ticket: holding it is the right to read one file',
+  'field:form:code': 'an MCP client’s authorization code, redeemed once by its digest',
+  'field:form:code_verifier': 'the PKCE verifier that code’s challenge was made from',
+  'field:form:refresh_token': 'an MCP client’s refresh token, looked up by its digest and rotated',
 };
 
 const ROW_KEYS = 'an id, key, number or slug naming a row, checked under the caller’s permissions';
@@ -207,6 +210,13 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
   'an address: a mailbox, a service URL, a git host, where to go after sign-in': words`
     field:json:baseUrl field:json:serverUrl field:json:host field:json:protocol
     field:json:email field:query:email field:query:redirect`,
+  'an MCP client’s OAuth request: who it is, where to send the answer, a PKCE challenge (a hash, never its verifier), the reach asked for and its own opaque state': words`
+    field:form:client_id field:form:grant_type field:form:redirect_uri field:form:resource
+    field:form:scope field:json:client_id field:json:client_name field:json:code_challenge
+    field:json:grant_types field:json:permissions field:json:project_ids field:json:redirect_uri
+    field:json:redirect_uris field:json:resource field:json:response_types field:json:state
+    field:json:token_endpoint_auth_method field:query:client_id field:query:code_challenge
+    field:query:redirect_uri field:query:resource field:query:scope`,
   'a filter, a sort, a page or a view of a read; a provider’s error code': words`
     field:query:after field:query:archived field:query:before field:query:category
     field:query:cites field:query:cursor field:query:includeFiles field:query:intent
@@ -267,6 +277,7 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     integrations/identity/github.ts URL.href in githubProvider
     integrations/identity/oidc.ts URL handed to openid-client:discovery in configFor
     integrations/identity/oidc.ts URL.href in start
+    credentials/mcp-oauth-shape.ts URL.toString in redirectWith
     integrations/inbound-door.ts URL.search in sameEndpoint
     integrations/llm/embeddings-client.ts URL handed to @types/node:fetchFn in timedFetch
     integrations/rocketchat/rest-client.ts URLSearchParams.toString in rcGet
@@ -274,6 +285,13 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     sandbox/run.ts URL handed to @types/node:Worker in runScript
     sandbox/run.ts URL.href in workerEntry
     skills/builtin-seed.ts URL handed to @types/node:fileURLToPath in defaultSkillsRoot`,
+  'a redirect or resource URL an MCP client names, checked for its shape; it carries no credential': lines`
+    credentials/mcp-oauth-routes.ts URL.hash in resourceIsOurs
+    credentials/mcp-oauth-routes.ts URL.search in resourceIsOurs
+    credentials/mcp-oauth-shape.ts URL.hash in redirectUriFault
+    credentials/mcp-oauth-shape.ts URL.password in redirectUriFault
+    credentials/mcp-oauth-shape.ts URL.search in redirectUriRegistered
+    credentials/mcp-oauth-shape.ts URL.username in redirectUriFault`,
   'a cookie written or cleared on the answer, never read': lines`
     auth/oauth/state.ts Context handed to hono:deleteCookie in clearStateCookie
     auth/oauth/state.ts Context handed to hono:setCookie in setStateCookie
@@ -293,6 +311,8 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     assistant/agreement/rest-hold.ts URL.search in holdSessionWrite`,
   'a validated target whose type names no fixed keys; the handler reads the fields it names': lines`
     auth/oauth/routes.ts HonoRequest.valid(query) in module code
+    credentials/mcp-oauth-routes.ts HonoRequest.valid(form) in module code
+    credentials/mcp-oauth-routes.ts HonoRequest.valid(json) in module code
     comments/entity-routes.ts HonoRequest.valid(param) in module code
     ecosystem/link-routes.ts HonoRequest.valid(json) in module code
     ecosystem/project-routes.ts HonoRequest.valid(json) in module code
@@ -331,7 +351,7 @@ export const PLAIN_READS: Readonly<Record<string, readonly string[]>> = {
     middleware/route-refs.ts Request.url in resolveRouteRefs
     devices/install-routes.ts HonoRequest.url in module code
     guides/routes.ts HonoRequest.url in module code
-    integration-door/github-connect-shared.ts HonoRequest.url in reachedOrigin
+    lib/reached-origin.ts HonoRequest.url in reachedOrigin
     requirements/route-kit.ts HonoRequest.param() in draftPictureFits
     workflows/template-routes.ts HonoRequest.param() in module code
     questions/routes.ts HonoRequest.param(…) handed to questionId as { param: (k: string) => string; } in module code`,

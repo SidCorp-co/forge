@@ -1,9 +1,11 @@
 
 // Settings → MCP. There is no backend "MCP config" to persist (the `/mcp`
-// endpoint is the protocol surface; access is by PAT). So this tab does the two
-// real things v1's /settings/mcp does, both against the live endpoint:
-//   1. Generate per-client config snippets (token rendered as a placeholder —
-//      secrets are never echoed here; the plaintext shows once, on Tokens).
+// endpoint is the protocol surface; access is by PAT, which Claude Code gets by
+// signing in through the browser). So this tab does the two real things v1's
+// /settings/mcp does, both against the live endpoint:
+//   1. Generate per-client config snippets (Claude Code's carries no token; the
+//      others render it as a placeholder — secrets are never echoed here; the
+//      plaintext shows once, on Tokens).
 //   2. Test the connection live via JSON-RPC `tools/list`.
 import { Fragment, type ReactNode, useEffect, useState } from "react";
 import { Link } from "@/lib/navigation/router";
@@ -162,11 +164,8 @@ function McpSnippet({
           </div>
 
           <p className="fg-caption mb-2" data-testid="mcp-snippet-how">
-            {snippet.howTo === "command" ? (
-              <>
-                {t("settings.mcp.replace")} <MonoTag hue="flame">{TOKEN_PLACEHOLDER}</MonoTag>{" "}
-                {t("settings.mcp.replaceRun")}
-              </>
+            {snippet.howTo === "signIn" ? (
+              t("settings.mcp.signInRun")
             ) : (
               <>
                 {t("settings.mcp.addTo")} <MonoTag>{snippet.filePath}</MonoTag> {t("settings.mcp.andReplace")}{" "}
