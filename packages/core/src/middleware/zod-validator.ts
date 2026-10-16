@@ -154,17 +154,41 @@ const JSON_TYPE = /^application\/([a-z0-9.+-]*\+)?json(\s*;|$)/i;
 
 // hono's json validator reads a body of any other content type as `{}`, so an
 // all-optional schema would answer 200 having read nothing; a body that is there and is not
-// declared JSON is refused by name instead
+// declared JSON is refused by name instead.
+// A JSON-typed request with no body (a DELETE sent by most clients, a POST with nothing to say)
+// is read as `{}`, the same as hono reads a body with no content type, so the route's schema
+// decides it: a route taking an empty object takes it, and one needing a field refuses by naming
+// that field, never with hono's bare "Malformed JSON in request body". A body that is there and
+// is not JSON is refused naming the route.
 function refuseUndeclaredBodyType<M extends MiddlewareHandler>(middleware: M): M {
   return (async (c: Context, next: Next) => {
     const type = c.req.header('content-type') ?? '';
-    if (!JSON_TYPE.test(type) && c.req.raw.body !== null && (await c.req.text()).length > 0) {
-      throw new HTTPException(415, {
-        message:
-          `${c.req.method} ${c.req.routePath} takes a JSON body, and this one was sent as ` +
-          `${type ? `\`${type}\`` : 'no content type'}; send it with Content-Type: application/json.`,
-        cause: { code: 'BODY_NOT_JSON', details: { contentType: type || null } },
-      });
+    const text = c.req.raw.body === null ? '' : await c.req.text();
+    if (!JSON_TYPE.test(type)) {
+      if (text.length > 0) {
+        throw new HTTPException(415, {
+          message:
+            `${c.req.method} ${c.req.routePath} takes a JSON body, and this one was sent as ` +
+            `${type ? `\`${type}\`` : 'no content type'}; send it with Content-Type: application/json.`,
+          cause: { code: 'BODY_NOT_JSON', details: { contentType: type || null } },
+        });
+      }
+      return middleware(c, next);
+    }
+    if (text.trim() === '') {
+      // hono reads json() off the cached text, so this is the body every reader after us sees
+      // hono types the cache as the body but stores the promise of it (request.ts #cachedBody)
+      (c.req.bodyCache as Record<string, unknown>).text = Promise.resolve('{}');
+    } else {
+      try {
+        JSON.parse(text);
+      } catch {
+        // the parser's own message quotes the body, which may carry a secret; it is not echoed
+        throw new HTTPException(400, {
+          message: `${c.req.method} ${c.req.routePath} takes a JSON body, and this one does not parse as JSON.`,
+          cause: { code: 'BAD_REQUEST' },
+        });
+      }
     }
     return middleware(c, next);
   }) as M;

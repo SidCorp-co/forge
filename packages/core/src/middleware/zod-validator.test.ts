@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { zValidator } from './zod-validator.js';
+import { invalid, zValidator } from './zod-validator.js';
 
 function appWith(schema: z.ZodType) {
   const app = new Hono();
@@ -50,5 +50,73 @@ describe('zValidator query', () => {
     const loose = z.looseObject({ code: z.string().optional() });
     const res = await appWith(loose).request('/graph?code=x&scope=email');
     expect(res.status).toBe(200);
+  });
+});
+
+// A JSON-typed request with no body is the body `{}`, as hono reads one with no content type: the
+// route's schema decides it, never hono's bare "Malformed JSON in request body" (a DELETE of a
+// binding sent with no body, forge-dev 2026-10-16).
+describe('zValidator json, a request with no body', () => {
+  function bodyApp(schema: z.ZodType, hint?: string) {
+    const app = new Hono();
+    app.delete('/thing', zValidator('json', schema, hint ? invalid(hint) : undefined), (c) =>
+      c.json({ read: c.req.valid('json' as never) }),
+    );
+    app.onError((err, c) => {
+      if (!(err instanceof HTTPException)) throw err;
+      return c.json(
+        { message: err.message, code: (err.cause as { code?: string })?.code },
+        err.status,
+      );
+    });
+    return app;
+  }
+  const send = (app: Hono, body?: string, type = 'application/json') =>
+    app.request('/thing', {
+      method: 'DELETE',
+      headers: { 'content-type': type },
+      ...(body === undefined ? {} : { body }),
+    });
+
+  it('is taken by a route whose schema takes an empty object', async () => {
+    for (const body of [undefined, '', '  \n']) {
+      const res = await send(bodyApp(z.strictObject({})), body);
+      expect(res.status, JSON.stringify(body)).toBe(200);
+      expect(await res.json()).toEqual({ read: {} });
+    }
+  });
+
+  it('is refused by a route needing a field, naming the shape it takes', async () => {
+    const res = await send(
+      bodyApp(z.strictObject({ baseRevision: z.number() }), 'send { "baseRevision": <n> }'),
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { message: string };
+    expect(body.message).toBe('send { "baseRevision": <n> }');
+    expect(body.message).not.toContain('Malformed');
+  });
+
+  it('refuses a body that is not JSON naming the route, without echoing the body', async () => {
+    const res = await send(bodyApp(z.strictObject({})), '{"token":"sk-secret"');
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { message: string };
+    expect(body.message).toBe(
+      'DELETE /thing takes a JSON body, and this one does not parse as JSON.',
+    );
+    expect(body.message).not.toContain('sk-secret');
+  });
+
+  it('still refuses a body sent under another content type, by name', async () => {
+    const res = await send(bodyApp(z.strictObject({})), 'baseRevision=1', 'text/plain');
+    expect(res.status).toBe(415);
+    expect(((await res.json()) as { code: string }).code).toBe('BODY_NOT_JSON');
+  });
+
+  it('reads a real body as sent', async () => {
+    const res = await send(
+      bodyApp(z.strictObject({ baseRevision: z.number() })),
+      '{"baseRevision":3}',
+    );
+    expect(await res.json()).toEqual({ read: { baseRevision: 3 } });
   });
 });

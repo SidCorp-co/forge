@@ -1,0 +1,1 @@
+**A JSON request with no body reads as `{}`.** The route's schema decides it, so a bodiless binding DELETE is refused naming `baseRevision`, never "Malformed JSON"; unparseable JSON is refused naming the route, without echoing the body.
