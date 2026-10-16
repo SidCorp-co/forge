@@ -375,6 +375,9 @@
     "web-feature-workflows": [
       "packages/web-v2/src/features/workflows/**"
     ],
+    "web-feature-widget": [
+      "packages/web-v2/src/features/widget/**"
+    ],
     "web-lib": [
       "packages/web-v2/src/lib/**"
     ],
@@ -534,6 +537,7 @@
         "web-feature-forecast",
         "web-feature-issue-picker",
         "web-feature-memory",
+        "web-feature-widget",
         "web-features"
       ],
       "status": "locked",

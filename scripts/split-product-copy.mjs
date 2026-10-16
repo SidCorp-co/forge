@@ -103,6 +103,7 @@ export const PREFIX_HOMES = {
   tours: 'lib/i18n/copy/tours.json',
   visual: 'lib/i18n/copy/visual-blocks.json',
   whatsNew: 'lib/i18n/copy/whats-new.json',
+  widget: 'lib/i18n/copy/widget.json',
   workflows: 'lib/i18n/copy/workflows.json',
   written: 'lib/i18n/copy/written.json',
 };

@@ -12,6 +12,7 @@ import { github } from "./github";
 import { gitlab } from "./gitlab";
 import { rocketchat } from "./rocketchat";
 import { sentry } from "./sentry";
+import { widget } from "./widget";
 
 type ProjectSection = ComponentType<{ projectId: string }>;
 export type ConnectionSection = ComponentType<{
@@ -61,6 +62,7 @@ export const PROVIDER_MODULES: readonly ProviderModule[] = [
   gitlab,
   agent,
   autoflow,
+  widget,
 ];
 
 const byName = new Map(PROVIDER_MODULES.map((m) => [m.provider, m]));
