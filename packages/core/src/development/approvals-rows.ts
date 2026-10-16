@@ -33,6 +33,7 @@ import { logger } from '../lib/logger.js';
 import type { Person } from '../lib/people.js';
 import type { ApprovablePreview } from '../previews/read.js';
 import type { WaitingSuggestion } from '../suggestions/waiting-read.js';
+import { problemOf } from './approvals-problem.js';
 import type { OwedDecision } from './needs-you-decisions.js';
 
 export type Asker = { kind: ApprovalAsker; userId: string | null } | null;
@@ -276,10 +277,6 @@ export async function decidedRows(
     });
   });
 }
-
-/** A row's problems as a reader reads them: each field and the rule it broke. */
-const problemOf = (issues: readonly { path: readonly PropertyKey[]; message: string }[]) =>
-  issues.map((i) => `${i.path.map(String).join('.') || 'row'}: ${i.message}`).join('; ');
 
 /** A record no row could be made of, as the inbox names it: never itself the reason the read fails. */
 function unreadableOf(ref: Ref, problem: string): ApprovalUnreadable {
