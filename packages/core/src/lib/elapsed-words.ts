@@ -14,7 +14,6 @@ export function elapsedWords(since: Date | string, now: Date): string {
   return durationWords(now.getTime() - at);
 }
 
-/** A span of `ms` in the same words, for a reading that holds an age rather than a time. */
 export function durationWords(ms: number): string {
   const span = Math.max(0, ms);
   if (span < MINUTE_MS) return 'less than a minute';
