@@ -154,7 +154,7 @@ describe('a project that releases without a person acting, holding more than one
     const parted = r.warnings.find((w) => w.code === 'RELEASE_ROSTER_IN_PARTS');
     expect(parted?.details).toEqual({ waiting: 58, limit: 50, part: 50, later: 8 });
     expect(parted?.message).toContain('58 issues are waiting');
-    expect(parted?.message).toContain('the 8 behind them wait for a later release');
+    expect(parted?.message).toContain('the remaining 8 wait for a later release');
     expect(parted?.message).toContain('Nothing here is for a person to cut');
   });
 
@@ -195,7 +195,7 @@ describe('a project that releases without a person acting, holding more than one
     const parted = (await report()).warnings.find((w) => w.code === 'RELEASE_ROSTER_IN_PARTS');
 
     expect(parted?.details).toEqual({ waiting: 51, limit: 50, part: 50, later: 1 });
-    expect(parted?.message).toContain('the 1 behind it');
+    expect(parted?.message).toContain('the remaining 1 waits');
   });
 
   it('keeps the size refusal where it cannot read whether a person cuts, and names the read it could not take', async () => {

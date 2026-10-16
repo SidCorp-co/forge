@@ -174,15 +174,15 @@ describe('the warning about issues the sweep holds back', () => {
 });
 
 describe('the warning about a roster cut in parts', () => {
-  it('says the one behind it waits, at one', () => {
+  it('says the remaining one waits, at one', () => {
     expect(rosterInPartsWarningSentence(51, 50, 1)).toContain(
-      'the 1 behind it waits for a later release',
+      'the remaining 1 waits for a later release',
     );
   });
 
-  it('says the two behind them wait, at two', () => {
+  it('says the remaining two wait, at two', () => {
     expect(rosterInPartsWarningSentence(52, 50, 2)).toContain(
-      'the 2 behind them wait for a later release',
+      'the remaining 2 wait for a later release',
     );
   });
 });
