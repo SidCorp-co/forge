@@ -4,6 +4,7 @@
 // the form that raises one where it will be answered.
 //
 // @direct-test-of packages/web-v2/src/features/question-desk/components/raised-list.tsx
+// @direct-test-of packages/web-v2/src/features/question-desk/hooks.ts
 
 import type { RaisedQuestionsResponse, RaisedQuestionView } from "@forge/contracts/comments";
 import { needsYouDecisionsSchema } from "@forge/contracts/needs-you-decisions";
@@ -68,30 +69,53 @@ const raised = (id: string, over: Partial<RaisedQuestionView> = {}): RaisedQuest
   ...over,
 });
 
-const RAISED: RaisedQuestionsResponse = {
-  by: "me",
-  owed: 2,
-  answered: 1,
-  closed: 1,
-  questions: [
-    raised("q1"),
-    raised("q2", { target: { scope: "issue", id: "i2", key: "ISS-9", title: "Sync" }, owedBy: "agent" }),
-    raised("q3", { state: "answered", owedBy: null, answer: { id: "a3", summary: "Weekly is enough.", author: { id: "u2", name: "Minh", agency: "human" }, at: AT } }),
-    raised("q5", { target: { scope: "issue", id: "i5", key: "ISS-5", title: "Old export" }, state: "closed", owedBy: null }),
-  ],
-};
+const MINE: RaisedQuestionView[] = [
+  raised("q1"),
+  raised("q2", { target: { scope: "issue", id: "i2", key: "ISS-9", title: "Sync" }, owedBy: "agent" }),
+  raised("q3", { state: "answered", owedBy: null, answer: { id: "a3", summary: "Weekly is enough.", author: { id: "u2", name: "Minh", agency: "human" }, at: AT } }),
+  raised("q5", { target: { scope: "issue", id: "i5", key: "ISS-5", title: "Old export" }, state: "closed", owedBy: null }),
+];
+const EVERYONES: RaisedQuestionView[] = [raised("q9", { author: { id: "u3", name: "Lan", agency: "human" } })];
 
-function core(over: (c: Call) => { status?: number; body: unknown } | undefined = () => undefined) {
+/**
+ * Core's raised-questions read over `rows` (in core's order: owed oldest first, the others newest
+ * first): the state a read names, a page of it by `offset` and `limit`, the counts over all of them.
+ */
+function raisedRead(by: string, rows: readonly RaisedQuestionView[]) {
+  return (c: Call): { body: RaisedQuestionsResponse } | undefined => {
+    const url = new URL(c.path, "http://forge.test");
+    if (url.pathname !== `/projects/${P}/raised-questions` || url.searchParams.get("by") !== by) return undefined;
+    const of = (state: string) => rows.filter((q) => q.state === state);
+    const state = url.searchParams.get("state");
+    const offset = Number(url.searchParams.get("offset") ?? 0);
+    const limit = Number(url.searchParams.get("limit") ?? 200);
+    const listed = state ? of(state) : [...rows];
+    return {
+      body: {
+        by: by as RaisedQuestionsResponse["by"],
+        owed: of("owed").length,
+        answered: of("answered").length,
+        closed: of("closed").length,
+        questions: listed.slice(offset, offset + limit),
+      },
+    };
+  };
+}
+
+function core(over: (c: Call) => { status?: number; body: unknown } | undefined = () => undefined, mine: readonly RaisedQuestionView[] = MINE) {
   return fakeCore((c) => {
-    const mine = over(c);
-    if (mine) return mine;
+    const ours = over(c);
+    if (ours) return ours;
     if (c.path === `/projects/${P}/needs-you/decisions`) return { body: DECISIONS };
-    if (c.path === `/projects/${P}/raised-questions?by=me`) return { body: RAISED };
-    if (c.path === `/projects/${P}/raised-questions?by=people`) return { body: { ...RAISED, by: "people", questions: [raised("q9", { author: { id: "u3", name: "Lan", agency: "human" } })], owed: 1, answered: 0, closed: 0 } };
+    const read = raisedRead("me", mine)(c) ?? raisedRead("people", EVERYONES)(c);
+    if (read) return read;
     if (c.path === `/projects/${P}/requirements`) return { body: { requirements: [{ key: "REQ-7", title: "Bulk export" }] } };
     return undefined;
   });
 }
+
+const rowIds = () => screen.queryAllByTestId("raised-question").map((r) => r.dataset.id);
+const toggle = (state: "answered" | "closed") => screen.queryByTestId(`raised-group-${state}`);
 
 describe("the questions waiting on the reader", () => {
   it("lists only the questions owed to the reader, from the needs-me read, with their count", async () => {
@@ -110,7 +134,11 @@ describe("the questions raised", () => {
   it("keeps a question owed until someone answers it, naming who owes each", async () => {
     core();
     renderWithQuery(<QuestionDesk projectId={P} slug="hop" />);
-    const rows = await screen.findAllByTestId("raised-question");
+    await screen.findAllByTestId("raised-question");
+    fireEvent.click(await screen.findByTestId("raised-group-answered"));
+    fireEvent.click(await screen.findByTestId("raised-group-closed"));
+    await waitFor(() => expect(rowIds()).toHaveLength(4));
+    const rows = screen.getAllByTestId("raised-question");
     expect(rows.map((r) => r.dataset.state)).toEqual(["owed", "owed", "answered", "closed"]);
     expect(screen.getByTestId("question-desk-counts").textContent).toBe("2 owed · 1 answered · 1 closed");
     const owedBy = screen.getAllByTestId("raised-question-owed-by");
@@ -125,7 +153,9 @@ describe("the questions raised", () => {
   it("reads a question on an ended issue as closed, never as owed", async () => {
     core();
     renderWithQuery(<QuestionDesk projectId={P} slug="hop" />);
-    const closed = (await screen.findAllByTestId("raised-question")).find((r) => r.dataset.id === "q5");
+    fireEvent.click(await screen.findByTestId("raised-group-closed"));
+    await waitFor(() => expect(rowIds()).toContain("q5"));
+    const closed = screen.getAllByTestId("raised-question").find((r) => r.dataset.id === "q5");
     if (!closed) throw new Error("q5 is not listed");
     expect(within(closed).queryByTestId("raised-question-owed-by")).toBeNull();
     expect(within(closed).getByTestId("raised-question-closed").textContent).toBe("Closed unanswered: ISS-5 has ended");
@@ -135,7 +165,10 @@ describe("the questions raised", () => {
   it("shows each question by the short form core sends, on one line", async () => {
     core();
     renderWithQuery(<QuestionDesk projectId={P} slug="hop" />);
-    const summaries = await screen.findAllByTestId("raised-question-summary");
+    fireEvent.click(await screen.findByTestId("raised-group-answered"));
+    fireEvent.click(await screen.findByTestId("raised-group-closed"));
+    await waitFor(() => expect(rowIds()).toHaveLength(4));
+    const summaries = screen.getAllByTestId("raised-question-summary");
     expect(summaries.map((s) => s.textContent)).toEqual(["Question q1?", "Question q2?", "Question q3?", "Question q5?"]);
     for (const s of summaries) expect(s.className).not.toContain("whitespace-pre");
   });
@@ -146,14 +179,82 @@ describe("the questions raised", () => {
     await screen.findAllByTestId("raised-question");
     fireEvent.click(screen.getByRole("button", { name: "Everyone's" }));
     await waitFor(() => expect(screen.getAllByTestId("raised-question").map((r) => r.dataset.id)).toEqual(["q9"]));
-    expect(calls.some((c) => c.path === `/projects/${P}/raised-questions?by=people`)).toBe(true);
+    expect(calls.some((c) => c.path.startsWith(`/projects/${P}/raised-questions?by=people&state=owed`))).toBe(true);
     expect(screen.getByText("Lan")).toBeInTheDocument();
   });
 
   it("says none were raised in two words", async () => {
-    core((c) => (c.path === `/projects/${P}/raised-questions?by=me` ? { body: { by: "me", owed: 0, answered: 0, closed: 0, questions: [] } } : undefined));
+    core(undefined, []);
     renderWithQuery(<QuestionDesk projectId={P} slug="hop" />);
     expect(await screen.findByText("No questions")).toBeInTheDocument();
+    expect(toggle("answered")).toBeNull();
+    expect(toggle("closed")).toBeNull();
+  });
+});
+
+// Live dev.251's Questions page listed all 566 answered and closed rows, about 9k words, almost all
+// release records with a "Thanks." reply. The page leads with what is owed; the rest is a count.
+describe("the questions raised, owed first", () => {
+  /** `n` closed questions in core's order, newest first: c0 is the newest. */
+  const closedRows = (n: number) =>
+    Array.from({ length: n }, (_, i) =>
+      raised(`c${i}`, { target: { scope: "issue", id: `i-c${i}`, key: `ISS-${100 + i}`, title: "Release" }, state: "closed", owedBy: null, askedAt: new Date(Date.parse(AT) - i * 60_000).toISOString() }),
+    );
+
+  it("lists only the owed rows, and shows answered and closed as counts, folded", async () => {
+    const calls = core();
+    renderWithQuery(<QuestionDesk projectId={P} slug="hop" />);
+    await waitFor(() => expect(rowIds()).toEqual(["q1", "q2"]));
+    expect(screen.getByTestId("question-desk-counts").textContent).toBe("2 owed · 1 answered · 1 closed");
+    expect(toggle("answered")?.textContent).toBe("1 answered");
+    expect(toggle("closed")?.textContent).toBe("1 closed");
+    expect(toggle("answered")?.getAttribute("aria-expanded")).toBe("false");
+    expect(toggle("closed")?.getAttribute("aria-expanded")).toBe("false");
+    // nothing answered or closed crosses the wire until a reader opens it
+    expect(calls.some((c) => /state=(answered|closed)/.test(c.path))).toBe(false);
+    expect(calls.some((c) => c.path.includes("raised-questions") && !c.path.includes("state=owed"))).toBe(false);
+  });
+
+  it("opens a group to its 20 newest, and Show more adds 20 more until none is left", async () => {
+    const closed = closedRows(45);
+    const calls = core(undefined, [...MINE.filter((q) => q.state !== "closed"), ...closed]);
+    renderWithQuery(<QuestionDesk projectId={P} slug="hop" />);
+    await waitFor(() => expect(rowIds()).toEqual(["q1", "q2"]));
+    const group = toggle("closed");
+    expect(group?.textContent).toBe("45 closed");
+    fireEvent.click(group as HTMLElement);
+    expect(toggle("closed")?.getAttribute("aria-expanded")).toBe("true");
+    const shown = () => rowIds().filter((id) => id?.startsWith("c"));
+    await waitFor(() => expect(shown()).toEqual(closed.slice(0, 20).map((q) => q.id)));
+    expect(calls.some((c) => c.path.endsWith("state=closed&offset=0&limit=20"))).toBe(true);
+    fireEvent.click(screen.getByTestId("raised-more-closed"));
+    await waitFor(() => expect(shown()).toEqual(closed.slice(0, 40).map((q) => q.id)));
+    fireEvent.click(screen.getByTestId("raised-more-closed"));
+    await waitFor(() => expect(shown()).toEqual(closed.map((q) => q.id)));
+    expect(screen.queryByTestId("raised-more-closed")).toBeNull();
+  });
+
+  it("folds a group back on a second click, and opens it again at 20", async () => {
+    const closed = closedRows(30);
+    core(undefined, [...MINE.filter((q) => q.state !== "closed"), ...closed]);
+    renderWithQuery(<QuestionDesk projectId={P} slug="hop" />);
+    fireEvent.click(await screen.findByTestId("raised-group-closed"));
+    await waitFor(() => expect(rowIds().filter((id) => id?.startsWith("c"))).toHaveLength(20));
+    fireEvent.click(screen.getByTestId("raised-more-closed"));
+    await waitFor(() => expect(rowIds().filter((id) => id?.startsWith("c"))).toHaveLength(30));
+    fireEvent.click(screen.getByTestId("raised-group-closed"));
+    await waitFor(() => expect(rowIds()).toEqual(["q1", "q2"]));
+    fireEvent.click(screen.getByTestId("raised-group-closed"));
+    await waitFor(() => expect(rowIds().filter((id) => id?.startsWith("c"))).toHaveLength(20));
+  });
+
+  it("draws no toggle for an empty group, and says so when nothing is owed", async () => {
+    core(undefined, MINE.filter((q) => q.state === "closed"));
+    renderWithQuery(<QuestionDesk projectId={P} slug="hop" />);
+    expect(await screen.findByTestId("raised-group-closed")).toBeInTheDocument();
+    expect(toggle("answered")).toBeNull();
+    expect(rowIds()).toEqual([]);
+    expect(screen.getByTestId("raised-owed-none").textContent).toBe("Nothing owed");
   });
 });
 

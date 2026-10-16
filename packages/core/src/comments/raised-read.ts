@@ -6,6 +6,8 @@
  * sits on is live, and closed on an issue that has ended (closed, dropped or archived): nobody takes
  * it there, the rule `devices/comment-inbox.ts:readOwedComments` reads the master's owed questions by.
  * A row carries the question's short form, never its body (`@forge/contracts/title-text:shortForm`).
+ * A read names one state and a page of it (`offset`, `limit`), so a page lists what is owed and
+ * fetches the answered and closed ones only when a reader opens them; the counts always cover all.
  */
 
 import {
@@ -13,6 +15,7 @@ import {
   RAISED_QUESTION_SUMMARY_MAX,
   type RaisedQuestionAsker,
   type RaisedQuestionOwer,
+  type RaisedQuestionState,
   type RaisedQuestionsResponse,
   type RaisedQuestionView,
 } from '@forge/contracts/comments';
@@ -41,6 +44,14 @@ import { scopeOfArc } from './entity-rules.js';
 
 /** The most raised questions one read lists; `owed`, `answered` and `closed` still count them all. */
 export const RAISED_QUESTIONS_LIMIT = 200;
+
+/** Which raised questions one read lists: whose, which state (every state when absent), and which page of them. */
+export interface RaisedQuestionsQuery {
+  by?: RaisedQuestionAsker | undefined;
+  state?: RaisedQuestionState | undefined;
+  offset?: number | undefined;
+  limit?: number | undefined;
+}
 
 /** Whether the issue a question sits on has ended: closed, dropped, or archived. */
 export function issueEnded(issue: { status: string | null; archivedAt: Date | null }): boolean {
@@ -90,7 +101,7 @@ async function answersOf(ids: readonly string[]): Promise<Map<string, AnswerRow>
 export async function listRaisedQuestionsAs(
   actor: EntityCommentActor,
   projectId: string,
-  query: { by?: RaisedQuestionAsker | undefined } = {},
+  query: RaisedQuestionsQuery = {},
   door: ReadDoor = {},
 ): Promise<RaisedQuestionsResponse> {
   await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
@@ -176,8 +187,12 @@ export async function listRaisedQuestionsAs(
   const owed = all.filter((q) => q.state === 'owed').reverse();
   const answered = all.filter((q) => q.state === 'answered');
   const closed = all.filter((q) => q.state === 'closed');
+  const listed = query.state
+    ? { owed, answered, closed }[query.state]
+    : [...owed, ...answered, ...closed];
+  const offset = query.offset ?? 0;
   return {
-    questions: [...owed, ...answered, ...closed].slice(0, RAISED_QUESTIONS_LIMIT),
+    questions: listed.slice(offset, offset + (query.limit ?? RAISED_QUESTIONS_LIMIT)),
     owed: owed.length,
     answered: answered.length,
     closed: closed.length,

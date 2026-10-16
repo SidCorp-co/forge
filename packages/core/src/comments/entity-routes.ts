@@ -7,6 +7,7 @@ import {
   type EntityCommentScope,
   editEntityCommentRequestSchema,
   RAISED_QUESTION_ASKERS,
+  RAISED_QUESTION_STATES,
 } from '@forge/contracts/comments';
 import { COMMENT_INTENTS } from '@forge/contracts/record-events';
 import { type Context, Hono } from 'hono';
@@ -21,7 +22,7 @@ import {
   editEntityComment,
   postEntityComment,
 } from './entity-service.js';
-import { listRaisedQuestionsAs } from './raised-read.js';
+import { listRaisedQuestionsAs, RAISED_QUESTIONS_LIMIT } from './raised-read.js';
 
 export const entityCommentRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -233,13 +234,16 @@ entityCommentRoutes.get(
   ),
   zValidator(
     'query',
-    z.strictObject({ by: z.enum(RAISED_QUESTION_ASKERS).optional() }),
-    invalid(`invalid query: by? (${RAISED_QUESTION_ASKERS.join(' | ')}; me by default)`),
+    z.strictObject({
+      by: z.enum(RAISED_QUESTION_ASKERS).optional(),
+      state: z.enum(RAISED_QUESTION_STATES).optional(),
+      offset: z.coerce.number().int().min(0).optional(),
+      limit: z.coerce.number().int().min(1).max(RAISED_QUESTIONS_LIMIT).optional(),
+    }),
+    invalid(
+      `invalid query: by? (${RAISED_QUESTION_ASKERS.join(' | ')}; me by default), state? (${RAISED_QUESTION_STATES.join(' | ')}; every state by default), offset? (a whole number from 0), limit? (1 to ${RAISED_QUESTIONS_LIMIT})`,
+    ),
   ),
   async (c) =>
-    c.json(
-      await listRaisedQuestionsAs(actorOf(c), c.req.valid('param').id, {
-        by: c.req.valid('query').by,
-      }),
-    ),
+    c.json(await listRaisedQuestionsAs(actorOf(c), c.req.valid('param').id, c.req.valid('query'))),
 );

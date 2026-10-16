@@ -82,17 +82,24 @@ function AddCommentBox({
 
       <StagedFileList files={staged.files} warnings={staged.warnings} remove={staged.remove} />
 
-      <div className="flex items-center justify-between gap-2">
+      {/* wraps rather than overflows: at 390 px a nested reply's Attach, tick, Cancel and Reply do not fit
+          one row, so the send buttons drop to their own line, kept at the right (witness/comment-reply-intent) */}
+      <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-3">
           <Button type="button" variant="ghost" size="sm" icon="plus" onClick={staged.choose}>
             {t("issues.thread.attach")}
           </Button>
           {picked === undefined && (
-            <Checkbox checked={asks} onChange={setAsks} disabled={create.isPending} label={t("issues.thread.askAsQuestion")} />
+            <Checkbox
+              checked={asks}
+              onChange={setAsks}
+              disabled={create.isPending}
+              label={<span className="whitespace-nowrap">{t("issues.thread.askAsQuestion")}</span>}
+            />
           )}
         </div>
         {staged.input}
-        <div className="flex gap-2">
+        <div className="ml-auto flex gap-2">
           {onDone && (
             <Button variant="ghost" size="sm" onClick={onDone}>
               {t("common.cancel")}

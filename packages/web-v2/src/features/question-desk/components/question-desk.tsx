@@ -1,7 +1,7 @@
 // The project's Questions page, for the person who owns the product layer: the questions waiting on
 // them, answered here through the one needs-me read the project home and the chat draw (REQ-41 BC-1,
 // `DecisionList`, its `answer` group), so the three never disagree; then the questions they raised,
-// each owed or answered, and the form that raises one.
+// owed first, the answered and closed ones each a count opened on a click, and the form that raises one.
 
 import type { RaisedQuestionAsker } from "@forge/contracts/comments";
 import { useState } from "react";
@@ -9,9 +9,9 @@ import { Button, EmptyState, ReportPage, Section, SegmentedControl, Skeleton } f
 import { DecisionList, useNeedsYouDecisions } from "@/features/needs-you";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { useRaisedQuestions } from "../hooks";
+import { useRaisedGroup } from "../hooks";
 import { AskForm } from "./ask-form";
-import { RaisedList } from "./raised-list";
+import { RaisedGroup, RaisedPage } from "./raised-list";
 
 function ForYou({ projectId, slug }: { projectId: string; slug: string }) {
   const t = useCopy();
@@ -36,7 +36,8 @@ function Raised({ projectId, slug }: { projectId: string; slug: string }) {
   const t = useCopy();
   const [by, setBy] = useState<RaisedQuestionAsker>("me");
   const [asking, setAsking] = useState(false);
-  const q = useRaisedQuestions(projectId, by);
+  const owed = useRaisedGroup(projectId, by, "owed");
+  const counts = owed.counts;
   return (
     <Section
       title={t("questionDesk.raised")}
@@ -62,20 +63,30 @@ function Raised({ projectId, slug }: { projectId: string; slug: string }) {
           <AskForm projectId={projectId} onDone={() => setAsking(false)} />
         </div>
       ) : null}
-      {q.data ? (
+      {counts ? (
         <>
           <p className="text-13 text-muted" data-testid="question-desk-counts">
-            {t("questionDesk.counts", { owed: q.data.owed, answered: q.data.answered, closed: q.data.closed })}
+            {t("questionDesk.counts", { owed: counts.owed, answered: counts.answered, closed: counts.closed })}
           </p>
-          {q.data.questions.length === 0 ? (
+          {counts.owed + counts.answered + counts.closed === 0 ? (
             <EmptyState message={t("questionDesk.raisedEmpty")} />
           ) : (
-            <RaisedList questions={q.data.questions} slug={slug} showAsker={by === "people"} />
+            <div className="grid gap-2" key={by}>
+              {counts.owed === 0 ? (
+                <p className="py-2 text-13 text-muted" data-testid="raised-owed-none">
+                  {t("questionDesk.owedNone")}
+                </p>
+              ) : (
+                <RaisedPage group={owed} slug={slug} showAsker={by === "people"} state="owed" />
+              )}
+              <RaisedGroup projectId={projectId} by={by} state="answered" count={counts.answered} slug={slug} showAsker={by === "people"} />
+              <RaisedGroup projectId={projectId} by={by} state="closed" count={counts.closed} slug={slug} showAsker={by === "people"} />
+            </div>
           )}
         </>
-      ) : q.isError ? (
+      ) : owed.query.isError ? (
         <p className="text-13 text-danger" role="alert">
-          {formatApiError(q.error)}
+          {formatApiError(owed.query.error)}
         </p>
       ) : (
         <Skeleton className="h-24 w-full" />

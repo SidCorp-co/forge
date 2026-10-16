@@ -1,10 +1,13 @@
 // The questions raised on the project, as core reads them (`GET …/raised-questions`): owed first, the
 // longest waiting at the top, each naming who owes the reply; then the answered ones with the first
 // answer and who gave it; then the closed ones, unanswered on an issue that has ended. Each is its
-// short form, one line, never its body: the whole text stays on the record it was asked on.
+// short form, one line, never its body: the whole text stays on the record it was asked on. The
+// answered and closed ones are a count, folded, read a page at a time once a reader opens them.
 
-import type { RaisedQuestionOwer, RaisedQuestionState, RaisedQuestionView } from "@forge/contracts/comments";
-import type { LegendTone } from "@/design";
+import type { RaisedQuestionAsker, RaisedQuestionOwer, RaisedQuestionState, RaisedQuestionView } from "@forge/contracts/comments";
+import { useState } from "react";
+import { Button, Icon, type LegendTone, Skeleton } from "@/design";
+import { formatApiError } from "@/lib/api/error";
 import { Link } from "@/lib/navigation/router";
 import { ActorChip, ToneBadge } from "@/design";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
@@ -13,6 +16,7 @@ import { feedbackHref } from "@/lib/routes/feedback";
 import { issueHref } from "@/lib/routes/issues";
 import { requirementHref } from "@/lib/routes/requirements";
 import { workflowHref } from "@/lib/routes/workflows";
+import { useRaisedGroup } from "../hooks";
 
 const OWED_BY: Record<RaisedQuestionOwer, ProductCopyKey> = {
   agent: "questionDesk.owedBy.agent",
@@ -85,5 +89,59 @@ export function RaisedList({ questions, slug, showAsker }: { questions: readonly
         <RaisedQuestion key={q.id} q={q} slug={slug} showAsker={showAsker} />
       ))}
     </ul>
+  );
+}
+
+const GROUP: Record<Exclude<RaisedQuestionState, "owed">, ProductCopyKey> = {
+  answered: "questionDesk.group.answered",
+  closed: "questionDesk.group.closed",
+};
+
+/** What is left to read of a group: its rows so far, a Show more while core holds more, or its refusal. */
+export function RaisedPage({ group, slug, showAsker, state }: { group: ReturnType<typeof useRaisedGroup>; slug: string; showAsker: boolean; state: RaisedQuestionState }) {
+  const t = useCopy();
+  const { query, rows } = group;
+  if (query.isError && rows.length === 0)
+    return (
+      <p className="text-13 text-danger" role="alert">
+        {formatApiError(query.error)}
+      </p>
+    );
+  if (!query.data) return <Skeleton className="h-16 w-full" />;
+  return (
+    <>
+      {rows.length > 0 ? <RaisedList questions={rows} slug={slug} showAsker={showAsker} /> : null}
+      {query.hasNextPage ? (
+        <Button type="button" variant="ghost" size="sm" loading={query.isFetchingNextPage} onClick={() => void query.fetchNextPage()} data-testid={`raised-more-${state}`}>
+          {t("questionDesk.showMore")}
+        </Button>
+      ) : null}
+    </>
+  );
+}
+
+/** The answered or closed questions as one count, opened on a click to their newest page; none, no toggle. */
+export function RaisedGroup({ projectId, by, state, count, slug, showAsker }: { projectId: string; by: RaisedQuestionAsker; state: Exclude<RaisedQuestionState, "owed">; count: number; slug: string; showAsker: boolean }) {
+  const t = useCopy();
+  const [open, setOpen] = useState(false);
+  const group = useRaisedGroup(projectId, by, state, open);
+  if (count === 0) return null;
+  return (
+    <div className="grid gap-1 border-t border-line-subtle pt-2">
+      <button
+        type="button"
+        className="flex w-fit items-center gap-1.5 py-1 text-13 font-medium text-muted hover:text-fg"
+        aria-expanded={open}
+        data-testid={`raised-group-${state}`}
+        onClick={() => {
+          if (open) group.fold();
+          setOpen(!open);
+        }}
+      >
+        <Icon name={open ? "chevronDown" : "chevronRight"} size={14} />
+        {t(GROUP[state], { count })}
+      </button>
+      {open ? <RaisedPage group={group} slug={slug} showAsker={showAsker} state={state} /> : null}
+    </div>
   );
 }

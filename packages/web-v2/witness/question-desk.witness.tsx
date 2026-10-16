@@ -2,8 +2,10 @@
 // waiting on the reader, the questions raised, each owed one naming who owes it whole inside the
 // window, and the form that raises one. jsdom lays nothing out, so a line cut off at 390 px goes red
 // here. The raised rows carry the bodies a live project held (dev.251: a merge claim, a run's
-// landing note and a requirement digest, each hundreds of words), cut by the same short form core
-// cuts them by, so a row that grows past a few lines goes red too.
+// landing note and a requirement digest, each hundreds of words, and 566 answered and closed rows,
+// almost all release records in markdown with a "Thanks." reply), cut by the same short form core
+// cuts them by, so a row that grows past a few lines, or shows a `**` or `##`, goes red too. Only the
+// owed rows are listed at first; answered and closed are counts, opened 20 at a time.
 //
 //   pnpm --filter web-v2 witness witness/question-desk.witness.tsx --out <dir>
 
@@ -49,27 +51,49 @@ const LANDING = `Landed on \`dev\` at 940ea1103 after the gate went green on eve
 const DIGEST = `## Requirement REQ-12 — what it asks and what is built\n\n${filler}`;
 const LONG_QUESTION = `Which file formats does the registry accept today, does it need the header row, and does the nightly import read the old column order for the reports the clinics already file every week ${filler}?`;
 
-const RAISED: RaisedQuestionsResponse = {
-  by: "me",
-  owed: 2,
-  answered: 1,
-  closed: 4,
-  questions: [
-    { id: "q1", target: { scope: "requirement", id: "r7", key: "REQ-7", title: "Bulk export of patient referrals to the regional registry" }, summary: short(LONG_QUESTION), author: ANA, askedAt: AT, state: "owed", answer: null, owedBy: "members", withheld: false },
-    { id: "q2", target: { scope: "issue", id: "i9", key: "ISS-9", title: "Nightly sync" }, summary: short("Is the sync nightly or hourly?"), author: ANA, askedAt: AT, state: "owed", answer: null, owedBy: "agent", withheld: false },
-    { id: "q4", target: { scope: "feedback", id: "f2", key: "FB-2", title: "Search misses accents" }, summary: short("Does this affect names only?"), author: ANA, askedAt: AT, state: "answered", answer: { id: "a4", summary: short(`Names and addresses both; the index folds neither. ${filler}`), author: { id: "u2", name: "Minh Tran", agency: "human" }, at: AT }, owedBy: null, withheld: false },
-    { id: "q3", target: { scope: "issue", id: "i4", key: "ISS-4", title: "Old importer" }, summary: short("Can we drop the old importer?"), author: ANA, askedAt: AT, state: "closed", answer: null, owedBy: null, withheld: false },
-    { id: "q5", target: { scope: "issue", id: "i1", key: "ISS-1", title: "Project config v1 is five strict documents with a JSON Schema and cross-field refusals by name" }, summary: short(MERGE_CLAIM), author: ANA, askedAt: AT, state: "closed", answer: null, owedBy: null, withheld: false },
-    { id: "q6", target: { scope: "issue", id: "i2", key: "ISS-2", title: "A project's config documents are stored in core behind one API" }, summary: short(LANDING), author: ANA, askedAt: AT, state: "closed", answer: null, owedBy: null, withheld: false },
-    { id: "q7", target: { scope: "issue", id: "i3", key: "ISS-3", title: "What an environment runs is read off its deployment record" }, summary: short(DIGEST), author: ANA, askedAt: AT, state: "closed", answer: null, owedBy: null, withheld: false },
-  ],
-};
+const MIN = 60_000;
+const ago = (minutes: number) => new Date(Date.now() - minutes * MIN).toISOString();
+const MINH = { id: "u2", name: "Minh Tran", agency: "human" as const };
+type Row = RaisedQuestionsResponse["questions"][number];
+const issue = (n: number, title: string) => ({ scope: "issue" as const, id: `i${n}`, key: `ISS-${n}`, title });
+/** A release record as an operator posted it, in markdown, asked as a question by habit. */
+const RELEASE = (n: number) =>
+  n % 2 === 0
+    ? `**Release 0.4.0-dev.${n}** landed on \`beta\`? Notes in [the release page](https://forge.example/r/${n}).\n\n${filler}`
+    : `## Release 0.4.0-dev.${n}\n\n- shipped to beta\n- ${filler}`;
+
+const OWED: Row[] = [
+  { id: "q1", target: { scope: "requirement", id: "r7", key: "REQ-7", title: "Bulk export of patient referrals to the regional registry" }, summary: short(LONG_QUESTION), author: ANA, askedAt: AT, state: "owed", answer: null, owedBy: "members", withheld: false },
+  { id: "q2", target: issue(9, "Nightly sync"), summary: short("Is the sync nightly or hourly?"), author: ANA, askedAt: AT, state: "owed", answer: null, owedBy: "agent", withheld: false },
+];
+/** Answered, newest first: release records each answered "Thanks.", and one real answer. */
+const ANSWERED: Row[] = [
+  { id: "q4", target: { scope: "feedback", id: "f2", key: "FB-2", title: "Search misses accents" }, summary: short("Does this affect names only?"), author: ANA, askedAt: ago(1), state: "answered", answer: { id: "a4", summary: short(`Names and addresses both; the index folds neither. ${filler}`), author: MINH, at: ago(1) }, owedBy: null, withheld: false },
+  ...Array.from({ length: 11 }, (_, i): Row => ({ id: `a${i}`, target: issue(200 + i, `Release 0.4.0-dev.${251 - i}`), summary: short(RELEASE(251 - i)), author: ANA, askedAt: ago(10 + i * 60), state: "answered", answer: { id: `aa${i}`, summary: short("Thanks."), author: MINH, at: ago(9 + i * 60) }, owedBy: null, withheld: false })),
+];
+/** Closed, newest first: the long bodies a live project held, then 351 release records. */
+const CLOSED: Row[] = [
+  { id: "q5", target: issue(1, "Project config v1 is five strict documents with a JSON Schema and cross-field refusals by name"), summary: short(MERGE_CLAIM), author: ANA, askedAt: ago(2), state: "closed", answer: null, owedBy: null, withheld: false },
+  { id: "q6", target: issue(2, "A project's config documents are stored in core behind one API"), summary: short(LANDING), author: ANA, askedAt: ago(3), state: "closed", answer: null, owedBy: null, withheld: false },
+  { id: "q7", target: issue(3, "What an environment runs is read off its deployment record"), summary: short(DIGEST), author: ANA, askedAt: ago(4), state: "closed", answer: null, owedBy: null, withheld: false },
+  ...Array.from({ length: 351 }, (_, i): Row => ({ id: `c${i}`, target: issue(300 + i, `Release 0.4.0-dev.${240 - (i % 200)}`), summary: short(RELEASE(240 - (i % 200))), author: ANA, askedAt: ago(30 + i * 90), state: "closed", answer: null, owedBy: null, withheld: false })),
+];
+const BY_STATE = { owed: OWED, answered: ANSWERED, closed: CLOSED };
+
+/** Core's raised read: one state, a page of it by offset and limit, the counts over all of them. */
+function raised(url: URL): RaisedQuestionsResponse {
+  const state = url.searchParams.get("state") as keyof typeof BY_STATE | null;
+  const offset = Number(url.searchParams.get("offset") ?? 0);
+  const limit = Number(url.searchParams.get("limit") ?? 200);
+  const listed = state ? BY_STATE[state] : [...OWED, ...ANSWERED, ...CLOSED];
+  return { by: "me", owed: OWED.length, answered: ANSWERED.length, closed: CLOSED.length, questions: listed.slice(offset, offset + limit) };
+}
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
 window.fetch = async (input: RequestInfo | URL) => {
   const url = new URL(String(input), "http://forge.test");
   if (url.pathname.endsWith("/needs-you/decisions")) return json(DECISIONS);
-  if (url.pathname.endsWith("/raised-questions")) return json(RAISED);
+  if (url.pathname.endsWith("/raised-questions")) return json(raised(url));
   if (url.pathname.endsWith("/projects/p1/requirements")) return json({ requirements: [{ key: "REQ-7", title: "Bulk export of patient referrals" }] });
   return new Promise<Response>(() => {});
 };
@@ -105,11 +129,42 @@ function drawn(): string[] {
   return wrong;
 }
 
+/** No short form shows a markdown marker: a heading's hashes, `**`, `__`, a backtick or a link's brackets. */
+function plain(): string[] {
+  const wrong: string[] = [];
+  for (const text of all("[data-testid=raised-question-summary], [data-testid=raised-question-answer] p:last-child")) {
+    const said = text.textContent ?? "";
+    if (/^#|\*\*|__|`|\]\(/.test(said)) wrong.push(`a short form shows its markdown: "${said.slice(0, 50)}"`);
+  }
+  return wrong;
+}
+
+const rowsIn = (state: string) => all(`[data-testid=raised-question][data-state=${state}]`);
+const group = (state: string) => document.querySelector<HTMLElement>(`[data-testid=raised-group-${state}]`);
+
 async function light(): Promise<string[]> {
-  const wrong = drawn();
-  if (all("[data-testid=raised-question][data-state=owed]").length !== 2) wrong.push("the two owed questions are not drawn as owed");
-  if (all("[data-testid=raised-question][data-state=closed]").length !== 4) wrong.push("the four questions on ended issues are not drawn as closed");
-  if (all("[data-testid=raised-question-owed-by]").length !== 2) wrong.push("a closed question names somebody as owing it");
+  const wrong = [...drawn(), ...plain()];
+  if (rowsIn("owed").length !== 2) wrong.push("the two owed questions are not drawn as owed");
+  if (rowsIn("answered").length + rowsIn("closed").length > 0) wrong.push("an answered or closed question is listed before its group is opened");
+  if (group("answered")?.textContent !== "12 answered") wrong.push(`the answered group reads "${group("answered")?.textContent}", not "12 answered"`);
+  if (group("closed")?.textContent !== "354 closed") wrong.push(`the closed group reads "${group("closed")?.textContent}", not "354 closed"`);
+  if (all("[data-testid=raised-question-owed-by]").length !== 2) wrong.push("a question not owed names somebody as owing it");
+  return wrong;
+}
+
+async function opened(): Promise<string[]> {
+  group("answered")?.click();
+  group("closed")?.click();
+  for (let i = 0; i < 40 && rowsIn("closed").length < 20; i += 1) await pause(50);
+  document.querySelector<HTMLElement>("[data-testid=raised-more-closed]")?.click();
+  for (let i = 0; i < 40 && rowsIn("closed").length < 40; i += 1) await pause(50);
+  const wrong = [...drawn(), ...plain()];
+  if (rowsIn("answered").length !== 12) wrong.push(`the answered group lists ${rowsIn("answered").length}, not its 12`);
+  const closed = rowsIn("closed").map((r) => r.dataset.id);
+  const newest = CLOSED.slice(0, 40).map((q) => q.id);
+  if (closed.join() !== newest.join()) wrong.push(`the closed group, opened and shown more once, lists ${closed.length} rows, not the 40 newest in order`);
+  if (!document.querySelector("[data-testid=raised-more-closed]")) wrong.push("no Show more is left though 314 closed rows are not shown");
+  if (document.querySelector("[data-testid=raised-more-answered]")) wrong.push("the answered group offers Show more with nothing left to show");
   return wrong;
 }
 
@@ -126,7 +181,7 @@ async function asking(): Promise<string[]> {
 async function dark(): Promise<string[]> {
   document.documentElement.dataset.theme = "dark";
   await pause(150);
-  const wrong = drawn();
+  const wrong = [...drawn(), ...plain()];
   const line = all("[data-testid=raised-question-owed-by]")[0];
   if (line && getComputedStyle(line).color === getComputedStyle(document.body).backgroundColor) wrong.push("who owes a question is drawn in the page's own background colour");
   return wrong;
@@ -137,10 +192,11 @@ window.__witness = {
     { name: "phone", width: 390 },
     { name: "desktop", width: 1440 },
   ],
-  ready: () => all("[data-testid=raised-question]").length === 7 && all("[data-testid=needs-you-decision]").length === 1,
+  ready: () => all("[data-testid=raised-question]").length === 2 && Boolean(group("closed")) && all("[data-testid=needs-you-decision]").length === 1,
   stages: [
     { name: "1-light", run: light },
-    { name: "2-asking", run: asking },
-    { name: "3-dark", run: dark },
+    { name: "2-opened", run: opened },
+    { name: "3-asking", run: asking },
+    { name: "4-dark", run: dark },
   ],
 };
