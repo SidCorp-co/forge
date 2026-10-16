@@ -193,10 +193,14 @@ questionRoutes.post(
   '/:id/answer',
   async (c, next) => {
     if (c.get('principal') === 'pat') {
+      const tokenId = c.get('patTokenId');
+      if (!tokenId)
+        throw new Error('questions: a token request reached the answer without its token id');
       await assertTokenMayAnswer({
         questionId: questionId(c),
         userId: c.get('userId'),
         agentUserId: c.get('agentUserId') ?? null,
+        tokenId,
       });
     }
     await next();

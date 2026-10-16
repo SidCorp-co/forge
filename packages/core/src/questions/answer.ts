@@ -3,7 +3,7 @@
 import type { PersonVia } from '@forge/contracts/ecosystem';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
-import type { AnswerHold } from '@forge/contracts/questions';
+import type { AnswerCredential, AnswerHold } from '@forge/contracts/questions';
 import { and, eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
@@ -35,6 +35,8 @@ export type AnswerInput = {
   note?: string;
   /** The door the answerer came through, which a channel gate records as the decider's via. */
   via: PersonVia;
+  /** The token the answer arrived on, recorded on the round; absent for a session or a room. */
+  answeredWith?: AnswerCredential;
   /** The answer does not release the issue: it still waits on this (ISS-257). */
   stillWaits?: StillWaits;
 };
@@ -175,6 +177,7 @@ async function answerRound(
       answeredAt: now.toISOString(),
       chosenOptionId: option.id,
       answeredBy: args.by,
+      ...(args.answeredWith ? { answeredWith: args.answeredWith } : {}),
       ...(note ? { note } : {}),
     };
   }
@@ -192,6 +195,7 @@ async function answerRound(
       answeredAt: now.toISOString(),
       answerText: text,
       answeredBy: args.by,
+      ...(args.answeredWith ? { answeredWith: args.answeredWith } : {}),
     };
   }
   throw refuseQuestion(

@@ -7,9 +7,15 @@
 import { randomUUID } from 'node:crypto';
 import type { PersonVia } from '@forge/contracts/ecosystem';
 import type { ActorAgency } from '@forge/contracts/permissions';
-import type { QuestionAboutRequest, QuestionRoundFacts } from '@forge/contracts/questions';
+import type {
+  AnswerCredential,
+  QuestionAboutRequest,
+  QuestionRoundFacts,
+} from '@forge/contracts/questions';
 import { and, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import { delegationOf } from '../credentials/pat-scope.js';
+import { tokenIdentityOf } from '../credentials/token-identity.js';
 import { db } from '../db/client.js';
 import { issues, projects } from '../db/schema.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
@@ -342,8 +348,10 @@ export async function answerAs(args: {
   const access = await accessOn(row.projectId, args.userId);
   if (!access) throw notFound(`no question ${args.questionId}`);
   const stillWaits = args.stillWaits && (await resolvedWait(args.stillWaits, row.projectId));
+  const answeredWith = await credentialOfAnswer(args.userId);
   return answerQuestion({
     ...(stillWaits ? { stillWaits } : {}),
+    ...(answeredWith ? { answeredWith } : {}),
     questionId: args.questionId,
     answer: args.answer,
     round: args.round,
@@ -353,6 +361,17 @@ export async function answerAs(args: {
     facts: access,
     ...(args.note === undefined ? {} : { note: args.note }),
   });
+}
+
+/**
+ * The token this request's answer by `userId` arrives on, with the MCP client holding it, as the
+ * answered round records it (REQ-27 BC-2); undefined for a session or a room, which carry none.
+ */
+async function credentialOfAnswer(userId: string): Promise<AnswerCredential | undefined> {
+  const { tokenId } = delegationOf(userId);
+  if (!tokenId) return undefined;
+  const { client } = await tokenIdentityOf(tokenId);
+  return { tokenId, client };
 }
 
 /**

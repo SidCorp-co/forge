@@ -31,6 +31,8 @@ interface QuestionPorts {
   ) => Promise<void>;
   /** The door the request came through: the CLI's token, or the web. */
   doorOfRequest: (c: Context<{ Variables: AuthVars }>) => Promise<PersonVia>;
+  /** The door a token came through: the CLI's, or the assistant's for a turn's. */
+  doorOfToken: (tokenId: string) => Promise<PersonVia>;
   /** Null when the session ran no conversation turn; `{ meta: null }` when its record of one is unreadable. */
   conversationTurnOf: (metadata: unknown) => { meta: ConversationTurnMeta | null } | null;
   /** The requirement `ref` (REQ-n or uuid) names in the project, or null when it names none. */
@@ -55,6 +57,7 @@ const { port } = slot;
 
 export const decideChannelGate = port('decideChannelGate');
 export const doorOfRequest = port('doorOfRequest');
+export const doorOfToken = port('doorOfToken');
 export const conversationTurnOf = port('conversationTurnOf');
 export const requirementIdIn = port('requirementIdIn');
 export const contractAboutRefusal = port('contractAboutRefusal');

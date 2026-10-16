@@ -1,7 +1,8 @@
 // forge_requirements: a BA's door onto a project's requirements over /mcp (owner direction
 // 2026-10-16: /mcp serves the product layer). Every action is a REST route's own service call —
-// GET/POST /api/projects/:id/requirements, …/:req/revisions, …/revisions/:n/propose — and every
-// read carries the progress block (`product-progress.ts`).
+// GET/POST /api/projects/:id/requirements, …/:req/revisions, …/revisions/:n/propose, and
+// POST /api/questions/:id/answer for a question standing on one — and every read carries the
+// progress block (`product-progress.ts`).
 
 import { REQUIREMENT_STATES } from '@forge/contracts/requirements';
 import { REQUIREMENT_TITLE_MAX, titleText } from '@forge/contracts/title-text';
@@ -20,6 +21,7 @@ import {
   zodToMcpSchema,
 } from '../lib/tool.js';
 import { resolveEffectiveProjectId } from '../projects/index.js';
+import { ANSWER_SHAPE, answerBody, answerWithToken } from '../questions/index.js';
 import {
   draftRequirement,
   listRequirementsAs,
@@ -32,7 +34,16 @@ import {
 import { issuesOfRequirements, liveRunsByIssue, runsOn } from './product-progress.js';
 import { requirementDetail, requirementProgress, requirementRow } from './requirement-views.js';
 
-const ACTIONS = ['list', 'get', 'progress', 'similar', 'create', 'revise', 'propose'] as const;
+const ACTIONS = [
+  'list',
+  'get',
+  'progress',
+  'similar',
+  'create',
+  'revise',
+  'propose',
+  'answer',
+] as const;
 const READS = ['list', 'get', 'progress', 'similar'] as const;
 export const REQUIREMENT_READ_ACTIONS: readonly string[] = READS;
 
@@ -74,6 +85,10 @@ const inputSchema = z.strictObject({
     .describe(
       'revise: the draft revision to rewrite whole; propose: the draft revision to propose',
     ),
+  questionId: z.uuid().optional().describe('answer: a question standing on the requirement'),
+  round: z.number().int().optional().describe('answer: the round being answered'),
+  optionId: z.string().optional().describe('answer: the option the person chose'),
+  answer: z.string().optional().describe('answer: the person’s words, on a free-text round'),
   ...revisionFields,
   criteria: revisionFields.criteria.optional(),
 });
@@ -92,7 +107,8 @@ const DESCRIPTION = [
   'create {title, criteria?, reason?, spec?, tldr?, kind?, picture?, designs?, writtenLang?}: a NEW draft requirement at revision 1, as POST /api/projects/:id/requirements writes it; with no reason its author is asked why. REQUIREMENT_DESIGN_UNKNOWN names a design the project lacks.',
   'revise {requirement, baseRevision, criteria, reason?, spec?, tldr?, changeSummary?, kind?, picture?}: a new draft revision on the head — use it to change an agreed requirement. Write the WHOLE criteria list: each criterion that stays keeps its code, a new one has none. REQUIREMENT_REVISION_OPEN: a draft or proposed revision is open, so pass revision: n to rewrite that draft instead. REQUIREMENT_REVISION_STALE: the head moved, get it again.',
   'propose {requirement, revision}: put a draft revision before the people who agree it.',
-  'Agreeing, accepting, returning, deferring and dropping are a person’s sign-off on the requirement page; this tool does none of them. A question standing on a requirement is answered by a signed-in person on its page or in the room it was asked in, never by a token (REST refuses a token too).',
+  `answer {requirement, questionId, round, optionId | answer}: answer a question standing on the requirement (one get lists under questions), as POST /api/questions/:id/answer does — ${ANSWER_SHAPE}, the free answer passed here as answer. Answer only with what the person told you in this conversation, in their words; never answer on your own reading of the question, the spec or the code, and when they have not said, ask them. The answer is theirs, recorded with this token and this client: it answers what they could answer signed in. QUESTION_NOT_OPEN: it is already answered.`,
+  'Agreeing, accepting, returning, deferring and dropping are a person’s sign-off on the requirement page; this tool does none of them.',
   'A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and writes nothing: tell the person the detail.',
 ].join(' ');
 
@@ -105,6 +121,7 @@ const GRANT = {
     create: 'projects:write',
     revise: 'projects:write',
     propose: 'projects:write',
+    answer: 'questions:write',
   },
 } as const;
 
@@ -272,12 +289,45 @@ async function propose(ctx: McpContext, projectId: string, input: Input) {
   );
 }
 
-const HANDLERS = { list, get, progress, similar, create, revise, propose } as const;
+/** A question standing on the requirement, answered as the token's holder; one standing elsewhere is not found here. */
+async function answer(ctx: McpContext, projectId: string, input: Input) {
+  const key = need(input, 'requirement', 'the requirement key, REQ-n');
+  const questionId = need(input, 'questionId', 'a question standing on it, as get lists it');
+  const detail = await readRequirementAs(actorOf(ctx), projectId, key, MCP_DOOR);
+  if (!detail.questions.some((q) => q.id === questionId)) {
+    throw new Error(
+      `NOT_FOUND: question ${questionId} does not stand on ${detail.key}; answer one get lists under questions, or answer this one with forge_questions`,
+    );
+  }
+  const { principal } = ctx;
+  const body = answerBody.safeParse({
+    round: input.round,
+    ...(input.optionId === undefined ? {} : { optionId: input.optionId }),
+    ...(input.answer === undefined ? {} : { text: input.answer }),
+  });
+  if (!body.success) {
+    throw new Error(
+      `BAD_REQUEST: ${body.error.issues.map((i) => i.message).join('; ')} — ${ANSWER_SHAPE}`,
+    );
+  }
+  return answerWithToken({
+    token: {
+      questionId,
+      userId: principal.userId,
+      agentUserId: principal.agentUserId ?? null,
+      tokenId: principal.tokenId,
+    },
+    body: body.data,
+    agency: actorOf(ctx).agency,
+  });
+}
+
+const HANDLERS = { list, get, progress, similar, create, revise, propose, answer } as const;
 
 export const forgeRequirementsMcpTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_requirements',
   reach: 'project',
-  route: '/api/projects',
+  route: ['/api/projects', '/api/questions'],
   grant: GRANT,
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(inputSchema),

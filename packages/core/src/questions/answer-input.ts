@@ -1,5 +1,6 @@
-// The body an answer to a question is: read by both doors that take one, REST's answer route and the
-// MCP door's `forge_questions answer`, so a wrong answer is refused alike at each.
+// The body an answer to a question is: read by every door that takes one, REST's answer route and the
+// MCP door's `forge_questions answer` and `forge_requirements answer`, so a wrong answer is refused
+// alike at each.
 
 import { z } from 'zod';
 import type { GivenAnswer } from './answer.js';
@@ -54,7 +55,7 @@ export const answerBody = answerFields
     when: (p) => isBody(p.value),
   });
 
-type AnswerBody = z.infer<typeof answerBody>;
+export type AnswerBody = z.infer<typeof answerBody>;
 
 /** The answer a valid body gives, with what it carries beside it, as `answerAs` takes them. */
 export function givenAnswerOf(body: AnswerBody): {
