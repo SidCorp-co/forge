@@ -9,10 +9,12 @@ import { issueStatuses } from '../db/schema.js';
 import { issueWorkInFlightSql } from '../issues/issue-lease.js';
 import { statusEnteredAtSql } from '../issues/status-entered-at.js';
 import { logger } from '../logger.js';
+import { projectHasAdminSql } from '../notifications/project-admins.js';
 import {
   FRESH_SIGHTING_LIMIT,
   pendingConditionSql,
   pendingSightingLimit,
+  pendingSinceSql,
   unraisedConditionSql,
   withOwed,
 } from './owed-sighting.js';
@@ -141,12 +143,13 @@ export async function readCandidates(
   const pending = await selectCandidates({
     scope,
     where: pendingConditionSql(sql`i.id`, IDLE_KEY_SUFFIX),
-    order: sql`i.updated_at ASC, i.id ASC`,
+    order: sql`${pendingSinceSql(sql`i.id`, IDLE_KEY_SUFFIX)} ASC, i.id ASC`,
     limit: pendingSightingLimit(IDLE_SCAN_LIMIT),
   });
   const fresh = await selectCandidates({
     scope,
-    where: sql`${unraisedConditionSql(sql`i.id`, IDLE_KEY_SUFFIX)} AND i.updated_at < ${dueBeforeSql(now)}`,
+    where: sql`${unraisedConditionSql(sql`i.id`, IDLE_KEY_SUFFIX)} AND i.updated_at < ${dueBeforeSql(now)}
+      AND ${projectHasAdminSql(sql`i.project_id`)}`,
     order: sql`i.updated_at DESC, i.id DESC`,
     limit: FRESH_SIGHTING_LIMIT,
   });

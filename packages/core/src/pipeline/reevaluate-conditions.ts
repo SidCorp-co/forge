@@ -41,7 +41,8 @@ export async function reevaluateConditions(now: Date = new Date()): Promise<Reev
 
     const released = await db.execute<{ id: string }>(sql`
       UPDATE notifications n
-         SET state = 'pending', inhibited_by = NULL, pending_since = ${now.toISOString()}::timestamptz
+         SET state = 'pending', inhibited_by = NULL, pending_since = ${now.toISOString()}::timestamptz,
+             last_seen_at = ${now.toISOString()}::timestamptz
         FROM notifications root
        WHERE n.inhibited_by = root.id
          AND n.state = 'inhibited'

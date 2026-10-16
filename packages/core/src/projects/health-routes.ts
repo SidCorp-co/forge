@@ -60,6 +60,7 @@ interface ProjectHealthRow {
    *  field's absence, which is what callers had before, said nothing at all. */
   loopMonitor: LoopMonitorCoverage;
   stuckIssues: number;
+  stuckIssueRefs: Array<{ issueId: string; documentId: string }>;
 }
 
 /** First 2 chars of the email local-part, uppercased — the avatar initials. */
@@ -146,7 +147,13 @@ projectHealthRoutes.get('/health', readProjectHealth, async (c) => {
   for (const r of agg.liveSessionRows) liveSessionsByProject.set(r.projectId, Number(r.n));
 
   const stuckIssuesByProject = new Map<string, number>();
-  for (const r of agg.stuckIssueRows) stuckIssuesByProject.set(r.projectId, Number(r.n));
+  const stuckRefsByProject = new Map<string, ProjectHealthRow['stuckIssueRefs']>();
+  for (const r of agg.stuckIssueRows) {
+    stuckIssuesByProject.set(r.projectId, Number(r.total));
+    const refs = stuckRefsByProject.get(r.projectId) ?? [];
+    refs.push({ issueId: formatIssueRef(r.issuePrefix, r.issSeq), documentId: r.id });
+    stuckRefsByProject.set(r.projectId, refs);
+  }
 
   const runnersByProject = new Map<string, number>();
   for (const r of agg.runnerRows) runnersByProject.set(r.projectId, Number(r.n));
@@ -198,6 +205,7 @@ projectHealthRoutes.get('/health', readProjectHealth, async (c) => {
       lastActivityAt: lastActivityByProject.get(p.id) ?? null,
       loopMonitor: loopMonitorCoverage(claimHeldByProject.get(p.id) ?? 0),
       stuckIssues: stuckIssuesByProject.get(p.id) ?? 0,
+      stuckIssueRefs: stuckRefsByProject.get(p.id) ?? [],
     };
   });
 

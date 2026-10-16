@@ -36,6 +36,7 @@ const projectHealthSchema = z.object({
     sweptBy: z.literal('pipeline/idle-issues.ts'),
   }),
   stuckIssues: z.number(),
+  stuckIssueRefs: z.array(z.object({ issueId: z.string(), documentId: z.string() })),
 });
 
 export const projectHealthListSchema = z.array(projectHealthSchema);
@@ -43,6 +44,6 @@ export const projectHealthListSchema = z.array(projectHealthSchema);
 export const readProjectHealth = describeOperation({
   summary: 'A health rollup of every project the caller can see, one row per project',
   description:
-    '`work` counts issues by work state; `blockers` is the capped list of parked issues and `blockersTotal` the count behind it; `members` holds up to five avatar initials; `stuckIssues` counts the issues a stuck-issue notice stands for. Join a row to `GET /api/projects` by `id`.',
+    '`work` counts issues by work state; `blockers` is the capped list of parked issues and `blockersTotal` the count behind it; `members` holds up to five avatar initials; `stuckIssues` counts the issues a stuck-issue notice stands for and `stuckIssueRefs` names up to five, longest-standing first. Join a row to `GET /api/projects` by `id`.',
   responses: { 200: json(projectHealthListSchema, 'One health row per visible project') },
 });

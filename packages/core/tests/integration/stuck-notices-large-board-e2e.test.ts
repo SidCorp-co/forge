@@ -254,3 +254,64 @@ describe('a delivered idle notice whose issue is no longer stuck', () => {
     expect(notices[0]?.state).toBe('resolved');
   }, 600_000);
 });
+
+describe('the rows a pass owes a sighting, on a board that is hard to read', () => {
+  it('reaches a due issue behind 200 newer ones on a project nobody can be told about', async () => {
+    const w = await world();
+    const t0 = Date.now();
+    await board(w, 'open', t0, false);
+    const owner = await createTestUser(harness.db);
+    const org = await seedOrg(harness.db, owner.id);
+    const nobody = await createTestProject(harness.db, owner.id, { orgId: org.id });
+    await harness.db.execute(
+      sql`DELETE FROM project_members WHERE project_id = ${nobody.id}::uuid`,
+    );
+    await harness.db.execute(sql`DELETE FROM organization_members WHERE org_id = ${org.id}::uuid`);
+    const watched = await target(w, 'open', t0, false);
+    await harness.db.execute(sql`
+      INSERT INTO issues (id, project_id, title, status, created_by_id, iss_seq, created_at, updated_at)
+      SELECT gen_random_uuid(), ${nobody.id}::uuid, 'untold ' || g, 'open', ${owner.id}::uuid, g,
+             ${new Date(t0).toISOString()}::timestamptz + (g * 5 || ' milliseconds')::interval,
+             ${new Date(t0).toISOString()}::timestamptz + (g * 5 || ' milliseconds')::interval
+        FROM generate_series(1, 200) g
+    `);
+
+    const seen = await follow({
+      sweep: sweeps.idle,
+      from: t0 + 10 * MINUTE,
+      to: t0 + 22 * MINUTE,
+      ownerId: w.ownerId,
+      issueId: watched,
+    });
+
+    expect(seen.deliveredAt, 'delivered at all').not.toBeNull();
+    expect((seen.deliveredAt ?? 0) - t0).toBeLessThanOrEqual(20 * MINUTE);
+  }, 600_000);
+
+  it('keeps a backlog a cleared wedge releases pending until it is seen again', async () => {
+    const w = await world();
+    const t0 = Date.now();
+    const issueId = await target(w, 'open', t0 - HOUR, false);
+    const long = new Date(t0 - HOUR).toISOString();
+    const [wedge] = (await harness.db.execute(sql`
+      INSERT INTO notifications (project_id, type, kind, tier, state, title, resolution_key,
+                                 pending_since, last_seen_at, created_at, resolved_at)
+      VALUES (${w.projectId}::uuid, 'pipeline_wedge', 'condition', 'page', 'resolved', 'wedge',
+              'wedge:cleared', ${long}::timestamptz, ${long}::timestamptz, ${long}::timestamptz,
+              ${new Date(t0).toISOString()}::timestamptz)
+      RETURNING id
+    `)) as unknown as Array<{ id: string }>;
+    await harness.db.execute(sql`
+      INSERT INTO notifications (project_id, issue_id, type, kind, tier, state, title, resolution_key,
+                                 inhibited_by, pending_since, last_seen_at, created_at)
+      VALUES (${w.projectId}::uuid, ${issueId}::uuid, 'issue_stranded', 'condition', 'ticket',
+              'inhibited', 'held', ${`issue:${issueId}:idle`}, ${wedge?.id}::uuid,
+              ${long}::timestamptz, ${long}::timestamptz, ${long}::timestamptz)
+    `);
+
+    await reevaluate(new Date(t0));
+    await reevaluate(new Date(t0 + MINUTE));
+
+    expect((await noticesOf(issueId)).map((n) => n.state)).toEqual(['pending']);
+  }, 60_000);
+});

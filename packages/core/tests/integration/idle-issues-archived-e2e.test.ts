@@ -16,11 +16,15 @@ vi.mock('../../src/notifications/emit.js', () => ({
     return { delivered: 1 };
   },
 }));
-vi.mock('../../src/notifications/project-admins.js', () => ({
-  projectAdminUserIdsFor: async (ids: readonly string[]) =>
-    new Map(ids.map((id) => [id, [`admin-of-${id}`]])),
-  projectAdminUserIds: async () => ['admin'],
-}));
+vi.mock('../../src/notifications/project-admins.js', async () => {
+  const { sql } = await import('drizzle-orm');
+  return {
+    projectAdminUserIdsFor: async (ids: readonly string[]) =>
+      new Map(ids.map((id) => [id, [`admin-of-${id}`]])),
+    projectAdminUserIds: async () => ['admin'],
+    projectHasAdminSql: () => sql`TRUE`,
+  };
+});
 
 const fx = registerIdleFixture(1300);
 const NOW = new Date('2026-09-20T16:00:00.000Z');

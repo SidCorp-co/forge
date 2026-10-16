@@ -209,6 +209,7 @@ export default function ProjectOverviewPage() {
     releaseIssues: awaitingReleaseIssues,
     stuck: health ? { read: "ok" } : { read: "failed", reason: "the health read returned no row for this project" },
     stuckIssues: health?.stuckIssues ?? 0,
+    stuckIssueRefs: health?.stuckIssueRefs ?? [],
     now,
   });
 

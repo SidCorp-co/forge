@@ -8,13 +8,23 @@ import { type SQL, sql } from 'drizzle-orm';
 
 export const FRESH_SIGHTING_LIMIT = 200;
 
-/** A row stays pending three passes, and a pass raises at most its page and its fresh rows. */
+/** A row stays pending three passes, and a pass raises at most its page and its fresh rows; a larger
+ *  backlog released by a cleared wedge is read oldest first, and the rest are raised again later. */
 export function pendingSightingLimit(pageLimit: number): number {
   return 3 * (pageLimit + FRESH_SIGHTING_LIMIT);
 }
 
 function conditionKey(issueId: SQL, keySuffix: string): SQL {
   return sql`('issue:' || (${issueId})::text || ${keySuffix})`;
+}
+
+export function pendingSinceSql(issueId: SQL, keySuffix: string): SQL {
+  return sql`(
+    SELECT min(since.pending_since) FROM notifications since
+     WHERE since.resolution_key = ${conditionKey(issueId, keySuffix)}
+       AND since.resolved_at IS NULL
+       AND since.state = 'pending'
+  )`;
 }
 
 export function pendingConditionSql(issueId: SQL, keySuffix: string): SQL {

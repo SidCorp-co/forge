@@ -169,19 +169,34 @@ const readRunActivityRows = (projectIds: string[]) =>
     .where(inArray(pipelineRuns.projectId, projectIds))
     .groupBy(pipelineRuns.projectId);
 
-export type StuckIssueRow = { projectId: string; n: number };
+export type StuckIssueRow = {
+  projectId: string;
+  id: string;
+  issSeq: number;
+  issuePrefix: string | null;
+  /** How many issues of the project a notice stands for, beside the first `STUCK_ISSUES_LISTED`. */
+  total: number;
+};
 
-/** Issues with a stuck-issue notice standing: what every stuck-issue sweep raises, counted once per issue. */
+export const STUCK_ISSUES_LISTED = 5;
+
+/** Issues with a stuck-issue notice standing, longest-standing first: what every stuck-issue sweep raises, once per issue. */
 const readStuckIssueRows = (projectIds: string[]) =>
   db.execute(sql`
-    SELECT n.project_id AS "projectId", count(DISTINCT n.issue_id)::int AS n
-      FROM notifications n
-     WHERE n.type = 'issue_stranded'
-       AND n.state = 'firing'
-       AND n.resolved_at IS NULL
-       AND n.issue_id IS NOT NULL
-       AND n.project_id IN (${idList(projectIds)})
-     GROUP BY n.project_id
+    SELECT "projectId", id, "issSeq", "issuePrefix", total::int AS total FROM (
+      SELECT n.project_id AS "projectId", i.id, i.iss_seq AS "issSeq", p.issue_prefix AS "issuePrefix",
+             count(*) OVER (PARTITION BY n.project_id) AS total,
+             row_number() OVER (PARTITION BY n.project_id ORDER BY min(n.created_at), i.id) AS rank
+        FROM notifications n
+        JOIN issues i ON i.id = n.issue_id
+        JOIN projects p ON p.id = i.project_id
+       WHERE n.type = 'issue_stranded'
+         AND n.state = 'firing'
+         AND n.resolved_at IS NULL
+         AND n.project_id IN (${idList(projectIds)})
+       GROUP BY n.project_id, i.id, i.iss_seq, p.issue_prefix
+    ) stuck
+     WHERE rank <= ${STUCK_ISSUES_LISTED}
   `) as unknown as Promise<StuckIssueRow[]>;
 
 /**

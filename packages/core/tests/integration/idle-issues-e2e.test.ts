@@ -19,13 +19,17 @@ vi.mock('../../src/notifications/emit.js', () => ({
  * spying it intercepts nothing.
  */
 let betweenReadAndWrite: (() => Promise<void>) | null = null;
-vi.mock('../../src/notifications/project-admins.js', () => ({
-  projectAdminUserIdsFor: async (ids: readonly string[]) => {
-    if (betweenReadAndWrite) await betweenReadAndWrite();
-    return new Map(ids.map((id) => [id, [`admin-of-${id}`]]));
-  },
-  projectAdminUserIds: async () => ['admin'],
-}));
+vi.mock('../../src/notifications/project-admins.js', async () => {
+  const { sql } = await import('drizzle-orm');
+  return {
+    projectAdminUserIdsFor: async (ids: readonly string[]) => {
+      if (betweenReadAndWrite) await betweenReadAndWrite();
+      return new Map(ids.map((id) => [id, [`admin-of-${id}`]]));
+    },
+    projectAdminUserIds: async () => ['admin'],
+    projectHasAdminSql: () => sql`TRUE`,
+  };
+});
 
 /**
  * ISS-1122 — the issue-level invariant, proved against real SQL.

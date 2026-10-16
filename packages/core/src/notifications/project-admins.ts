@@ -1,6 +1,6 @@
 // The people a "needs a human decision" notification must reach.
 
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { organizationMembers, projectMembers, projects } from '../db/schema.js';
 
@@ -69,6 +69,17 @@ export async function projectAdminUserIdsFor(
     ]);
   }
   return out;
+}
+
+/** The same rule as a predicate on a project id: it has at least one admin to tell. */
+export function projectHasAdminSql(projectId: SQL): SQL {
+  return sql`(
+    EXISTS (SELECT 1 FROM project_members pm
+             WHERE pm.project_id = ${projectId} AND pm.role = 'admin')
+    OR EXISTS (SELECT 1 FROM projects ap
+                 JOIN organization_members om ON om.org_id = ap.org_id
+                WHERE ap.id = ${projectId} AND om.role IN ('owner', 'admin'))
+  )`;
 }
 
 export async function projectAdminUserIds(projectId: string): Promise<string[]> {

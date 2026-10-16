@@ -70,6 +70,8 @@ export interface ProjectHealthRow {
   lastActivityAt: string | null;
   /** Issues with a stuck-issue notice standing, each counted once whichever sweep raised it. */
   stuckIssues: number;
+  /** Up to five of them, longest-standing first. */
+  stuckIssueRefs: Array<{ issueId: string; documentId: string }>;
 }
 
 export interface CreateProjectInput {

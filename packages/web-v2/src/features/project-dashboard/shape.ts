@@ -86,8 +86,9 @@ export interface ShapeInput {
   releaseIssues: number;
   /** The health row this project's stuck-issue count comes from: no row is a read that did not arrive. */
   stuck: ReadState;
-  /** Issues a stuck-issue notice stands for: what the stuck-issue sweeps say nothing is working. */
+  /** Issues a stuck-issue notice stands for, and the first few of them, longest-standing first. */
   stuckIssues: number;
+  stuckIssueRefs: readonly { issueId: string; documentId: string }[];
   now: number;
 }
 
@@ -161,15 +162,19 @@ function stuckIssuesOf(input: ShapeInput): number {
   return input.stuck.read === "ok" ? input.stuckIssues : 0;
 }
 
+function stuckEntry(slug: string, count: number, first: { issueId: string; documentId: string } | undefined): BandEntry {
+  if (!first) return { label: "Action needed — open the issues", href: `/projects/${slug}/issues` };
+  const which = count === 1 ? first.issueId : `${first.issueId}, stuck longest`;
+  return { label: `Action needed — open ${which}`, href: `/projects/${slug}/issues/${first.documentId}` };
+}
+
 function degradedBand(input: ShapeInput, quals: readonly Qualifier[], stuck: readonly PipelineRunListItem[], failed: number) {
   const overdue = quals.filter((q) => q.kind === "overdue").length;
   const stuckIssues = stuckIssuesOf(input);
   const parts: string[] = [];
   if (failed > 0) parts.push(plural(failed, "failed job", "failed jobs"));
   if (stuck.length > 0) parts.push(`${plural(stuck.length, "run", "runs")} stuck, nothing heard for an hour`);
-  if (stuckIssues > 0) {
-    parts.push(`${plural(stuckIssues, "issue", "issues")} stuck, nothing working ${stuckIssues === 1 ? "it" : "them"}`);
-  }
+  if (stuckIssues > 0) parts.push(`${plural(stuckIssues, "issue", "issues")} reported stuck`);
   if (overdue > 0) {
     parts.push(`${plural(overdue, "item", "items")} waiting on a person for over ${OVERDUE_WAIT_SECONDS / DAY} days`);
   }
@@ -194,10 +199,7 @@ function degradedBand(input: ShapeInput, quals: readonly Qualifier[], stuck: rea
   } else if (stuck.length > 0 || failed > 0) {
     entry = { label: "Action needed — open the runs", href: `/projects/${input.slug}/agents` };
   } else if (stuckIssues > 0) {
-    entry = {
-      label: `Action needed — open the stuck ${stuckIssues === 1 ? "issue" : "issues"}`,
-      href: `/projects/${input.slug}/issues`,
-    };
+    entry = stuckEntry(input.slug, stuckIssues, input.stuckIssueRefs[0]);
   }
   return { text: `${lead} — ${parts.join(" · ")}`, entry };
 }

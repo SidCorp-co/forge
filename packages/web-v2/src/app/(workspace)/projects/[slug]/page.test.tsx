@@ -37,6 +37,7 @@ let attentionRead: "pending" | "failed" | "read";
 let attentionError: unknown;
 let blockers: unknown[];
 let stuckIssues: number;
+let stuckIssueRefs: Array<{ issueId: string; documentId: string }>;
 let work: Record<string, number>;
 let runs: unknown[] | undefined;
 let runsError: unknown;
@@ -66,6 +67,7 @@ function reset() {
   attentionError = null;
   blockers = [];
   stuckIssues = 0;
+  stuckIssueRefs = [];
   work = QUIET_WORK;
   runs = [];
   runsError = null;
@@ -136,7 +138,7 @@ vi.mock("@/features/projects/hooks", () => ({
   useProjects: () => ({ ...noQuery, data: [{ id: "p1", slug: "pair", name: "Pair" }] }),
   useProjectHealth: () => ({
     ...noQuery,
-    data: [{ projectSlug: "pair", blockers, blockersTotal: blockers.length, work, spend24hUsd: 0, stuckIssues }],
+    data: [{ projectSlug: "pair", blockers, blockersTotal: blockers.length, work, spend24hUsd: 0, stuckIssues, stuckIssueRefs }],
   }),
 }));
 vi.mock("@/features/runners/hooks", () => ({
@@ -411,19 +413,26 @@ describe("a degraded project", () => {
 describe("a project with an issue a stuck-issue notice stands for (ISS-1229 r12)", () => {
   it("says how many are stuck rather than that nothing needs anyone, and offers them", () => {
     stuckIssues = 1;
+    stuckIssueRefs = [{ issueId: "ISS-4", documentId: "d-4" }];
     const { container } = mount();
     expect(shape(container)).toBe("degraded");
     expect(screen.queryByText(/Nothing needs anyone/)).toBeNull();
     const band = screen.getByTestId("degraded-band");
-    expect(band).toHaveTextContent("Work is blocked — 1 issue stuck, nothing working it");
-    expect(within(band).getByRole("link")).toHaveTextContent("Action needed — open the stuck issue");
-    expect(within(band).getByRole("link")).toHaveAttribute("href", "/projects/pair/issues");
+    expect(band).toHaveTextContent("Work is blocked — 1 issue reported stuck");
+    expect(within(band).getByRole("link")).toHaveTextContent("Action needed — open ISS-4");
+    expect(within(band).getByRole("link")).toHaveAttribute("href", "/projects/pair/issues/d-4");
   });
 
   it("counts two in the plural", () => {
     stuckIssues = 2;
+    stuckIssueRefs = [
+      { issueId: "ISS-3", documentId: "d-3" },
+      { issueId: "ISS-4", documentId: "d-4" },
+    ];
     mount();
-    expect(screen.getByTestId("degraded-band")).toHaveTextContent("Work is blocked — 2 issues stuck, nothing working them");
+    const band = screen.getByTestId("degraded-band");
+    expect(band).toHaveTextContent("Work is blocked — 2 issues reported stuck");
+    expect(within(band).getByRole("link")).toHaveTextContent("Action needed — open ISS-3, stuck longest");
   });
 });
 

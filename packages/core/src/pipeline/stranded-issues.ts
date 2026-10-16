@@ -8,12 +8,13 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
 import { type SweepDetector, sweepGroup } from '../notifications/explanations.js';
-import { projectAdminUserIdsFor } from '../notifications/project-admins.js';
+import { projectAdminUserIdsFor, projectHasAdminSql } from '../notifications/project-admins.js';
 import { resolveArchivedProjectNotices } from './archived-project-notices.js';
 import {
   FRESH_SIGHTING_LIMIT,
   pendingConditionSql,
   pendingSightingLimit,
+  pendingSinceSql,
   unraisedConditionSql,
   withOwed,
 } from './owed-sighting.js';
@@ -104,8 +105,7 @@ const PARKED_AT = statusEnteredAtSql({
 type Scope = { projectId?: string };
 
 /** One read of waiting parks on live projects, `where` narrowing it, oldest or newest park first. */
-function readParks(args: { scope: Scope; where: SQL[]; newestFirst: boolean; limit: number }) {
-  const order = args.newestFirst ? desc : asc;
+function readParks(args: { scope: Scope; where: SQL[]; order: SQL[]; limit: number }) {
   return db
     .select({
       id: issues.id,
@@ -128,15 +128,14 @@ function readParks(args: { scope: Scope; where: SQL[]; newestFirst: boolean; lim
         ...args.where,
       ),
     )
-    .orderBy(order(PARKED_AT), order(issues.id))
+    .orderBy(...args.order)
     .limit(args.limit);
 }
 
 const TERMINAL = issueStatuses.filter(isTerminalPlacement);
 
 /** One read of merged issues still open with nothing running, `where` narrowing it, by merge time. */
-function readOwedCloses(args: { scope: Scope; where: SQL[]; newestFirst: boolean; limit: number }) {
-  const order = args.newestFirst ? desc : asc;
+function readOwedCloses(args: { scope: Scope; where: SQL[]; order: SQL[]; limit: number }) {
   return db
     .select({
       id: issues.id,
@@ -162,7 +161,7 @@ function readOwedCloses(args: { scope: Scope; where: SQL[]; newestFirst: boolean
         ...args.where,
       ),
     )
-    .orderBy(order(issues.mergedAt), order(issues.id))
+    .orderBy(...args.order)
     .limit(args.limit);
 }
 
@@ -195,7 +194,7 @@ export async function detectStrandedIssues(
             ]
           : []),
       ],
-      newestFirst: false,
+      order: [asc(PARKED_AT), asc(issues.id)],
       limit: STRANDED_SCAN_LIMIT,
     });
 
@@ -209,7 +208,7 @@ export async function detectStrandedIssues(
       await readParks({
         scope,
         where: [pendingConditionSql(sql`"issues"."id"`, STRANDED_KEY_SUFFIX)],
-        newestFirst: false,
+        order: [asc(pendingSinceSql(sql`"issues"."id"`, STRANDED_KEY_SUFFIX)), asc(issues.id)],
         limit: pendingSightingLimit(STRANDED_SCAN_LIMIT),
       }),
       await readParks({
@@ -217,8 +216,9 @@ export async function detectStrandedIssues(
         where: [
           unraisedConditionSql(sql`"issues"."id"`, STRANDED_KEY_SUFFIX),
           sql`${PARKED_AT} < ${cutoff.toISOString()}::timestamptz`,
+          projectHasAdminSql(sql`"issues"."project_id"`),
         ],
-        newestFirst: true,
+        order: [desc(PARKED_AT), desc(issues.id)],
         limit: FRESH_SIGHTING_LIMIT,
       }),
     );
@@ -290,7 +290,7 @@ export async function detectOwedCloses(
             ]
           : []),
       ],
-      newestFirst: false,
+      order: [asc(issues.mergedAt), asc(issues.id)],
       limit: STRANDED_SCAN_LIMIT,
     });
 
@@ -304,7 +304,7 @@ export async function detectOwedCloses(
       await readOwedCloses({
         scope,
         where: [pendingConditionSql(sql`"issues"."id"`, OWED_CLOSE_KEY_SUFFIX)],
-        newestFirst: false,
+        order: [asc(pendingSinceSql(sql`"issues"."id"`, OWED_CLOSE_KEY_SUFFIX)), asc(issues.id)],
         limit: pendingSightingLimit(STRANDED_SCAN_LIMIT),
       }),
       await readOwedCloses({
@@ -312,8 +312,9 @@ export async function detectOwedCloses(
         where: [
           unraisedConditionSql(sql`"issues"."id"`, OWED_CLOSE_KEY_SUFFIX),
           sql`"issues"."merged_at" < ${cutoff.toISOString()}::timestamptz`,
+          projectHasAdminSql(sql`"issues"."project_id"`),
         ],
-        newestFirst: true,
+        order: [desc(issues.mergedAt), desc(issues.id)],
         limit: FRESH_SIGHTING_LIMIT,
       }),
     );
