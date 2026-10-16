@@ -48,8 +48,8 @@ describe("which edges hide more of the diagram", () => {
   });
 
   it("fades only an edge that hides more, and nothing where none does", () => {
-    expect(edgeMask({ start: false, end: true })).toBe("linear-gradient(to right, #000, #000 calc(100% - 32px), transparent)");
-    expect(edgeMask({ start: true, end: false })).toBe("linear-gradient(to right, transparent, #000 32px, #000)");
+    expect(edgeMask({ start: false, end: true })).toBe("linear-gradient(to right, currentColor, currentColor calc(100% - 32px), transparent)");
+    expect(edgeMask({ start: true, end: false })).toBe("linear-gradient(to right, transparent, currentColor 32px, currentColor)");
     expect(edgeMask({ start: false, end: false })).toBeUndefined();
   });
 });

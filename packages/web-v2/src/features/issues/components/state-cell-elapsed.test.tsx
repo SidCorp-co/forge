@@ -7,8 +7,7 @@
 // two facts the rendered colour actually rests on, each of which can go red on
 // its own: the span asks for the mark by a class the cascade lets through, and
 // that class is declared where it outranks `.fg-caption`.
-// ISS-1155 — the figure sits in the state cell. ISS-1229 r8 — where nothing more specific is
-// recorded it is how long the issue has stood at its status, never its last write.
+// ISS-1155 / ISS-1229 r8 — the figure sits in the state cell, as time at the status.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";

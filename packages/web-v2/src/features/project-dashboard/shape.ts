@@ -25,8 +25,7 @@ export function ageBand(seconds: number): AgeBand {
   return "overdue";
 }
 
-/** When each parked issue began to wait, by issue id: its open question to a person where there is
- *  one, else when it entered its status — never its last write, which an edit or a claim moves. */
+/** When each parked issue began to wait: its open question to a person, else when it entered its status. */
 export function parkedAges(rows: readonly IssueRow[] | undefined): Map<string, string> {
   const out = new Map<string, string>();
   for (const r of rows ?? []) {
