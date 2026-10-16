@@ -74,7 +74,9 @@ export function forgeIssuesDescription(refClause: string): string {
     "or, where a rule stored another status than the one asked (an agent's waiting stored as " +
     "needs_info on an autonomous project, an agent's closed held at awaiting_release by the " +
     'release gate), rewritten { requested, stored, rule: autonomous_driver | release_gate, ' +
-    'waitingKind { sent, stored }, detail }; update answers it whenever it moved the status.\n' +
+    'waitingKind { sent, stored }, detail }; update answers it whenever it moved the status. ' +
+    'An update whose data.status is the status the issue already holds is refused NO_OP, as a ' +
+    'transition is, before anything else it carried is written.\n' +
     "LANDING SHAPE. get and every write's answer carry landingShape (git | outside_git), the one " +
     "field saying where THIS issue's work lands and so what its mark and close accept, and " +
     "declaredLandingShape, the issue's own declaration, null where its project's kind answers " +

@@ -49,7 +49,7 @@ import { ISSUE_ACTIONS, refuseUnservedIssueAction } from './forge-issues-actions
 import { refuseStrayArchiveFields, runArchiveAction } from './forge-issues-archive.js';
 import { forgeIssuesDescription } from './forge-issues-description.js';
 import { toMcpIssueError } from './forge-issues-errors.js';
-import { transitionByData } from './forge-issues-transition.js';
+import { refuseUnchangedStatus, transitionByData } from './forge-issues-transition.js';
 import { ISSUE_REF_CLAUSE, issueRefSchema, refsFor } from './issue-ref-input.js';
 import {
   assertPrincipalIsMember,
@@ -609,6 +609,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!input.data) throw new Error('BAD_REQUEST: data is required for update');
         const issue = await loadIssue(await refs.issue('documentId', input.documentId));
         await assertPrincipalIsWriter(principal, issue.projectId);
+        refuseUnchangedStatus(issue, input.data as Record<string, unknown>);
 
         let labelIds: ResolvedLabelAttach[] | undefined;
         if (input.data.labels !== undefined) {
@@ -666,7 +667,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
 
         let unasked: string | null = null;
         let rewritten: TransitionRewrite | null | undefined;
-        if (input.data.status && input.data.status !== issue.status) {
+        if (input.data.status) {
           ({ rewritten } = await transitionByData(issue, input.data.status, principal, input.data));
           unasked = parkQuestionNotMinted({
             issue,

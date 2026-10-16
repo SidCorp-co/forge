@@ -373,3 +373,85 @@ describe('PATCH /api/issues/batch — an updated row says what a rule stored', (
     expect((await storedRow(plain)).status).toBe('confirmed');
   });
 });
+
+// Judge-23 at 2fa8b2e: `update` sent with the status the issue holds answered `updated` and moved
+// nothing, where the transition door refuses the same move NO_OP (ISS-1229 r10).
+describe('forge_issues update — a status the issue already holds is refused, not ignored', () => {
+  async function refusal(token: string, args: Record<string, unknown>): Promise<string> {
+    const err = await mcp(token, args).then(
+      () => null,
+      (e: Error) => e.message,
+    );
+    if (err === null) throw new Error('forge_issues answered where a refusal was owed');
+    return err;
+  }
+
+  async function row(id: string) {
+    const rows = await harness.db.execute<{ title: string; status: string; updated_at: string }>(
+      sql`SELECT title, status, updated_at::text FROM issues WHERE id = ${id}::uuid`,
+    );
+    return rows[0] as { title: string; status: string; updated_at: string };
+  }
+
+  it('refuses the status alone NO_OP, naming it as the transition door does', async () => {
+    const w = await seed();
+    const id = await insertIssue(w, 'confirmed');
+
+    const said = await refusal(w.token, {
+      action: 'update',
+      documentId: id,
+      data: { status: 'confirmed' },
+    });
+
+    expect(said).toContain('NO_OP: issue already in status Confirmed (confirmed)');
+    expect(said).not.toContain('Nothing else');
+    expect((await row(id)).status).toBe('confirmed');
+  });
+
+  it('writes none of the fields beside it, and says to send them without the status', async () => {
+    const w = await seed();
+    const id = await insertIssue(w, 'confirmed');
+    const before = await row(id);
+
+    const said = await refusal(w.token, {
+      action: 'update',
+      documentId: id,
+      data: { status: 'confirmed', title: 'a new title', plan: 'a plan' },
+    });
+
+    expect(said).toContain('NO_OP: issue already in status Confirmed (confirmed)');
+    expect(said).toContain('send it again without `data.status` to write the rest');
+    expect(await row(id)).toEqual(before);
+  });
+
+  it('writes no relation it carried', async () => {
+    const w = await seed();
+    const id = await insertIssue(w, 'confirmed');
+    const blocker = await insertIssue(w, 'open');
+
+    await refusal(w.token, {
+      action: 'update',
+      documentId: id,
+      data: { status: 'confirmed', relations: [{ kind: 'blocks', dependsOnId: blocker }] },
+    });
+
+    const edges = await harness.db.execute(
+      sql`SELECT 1 FROM issue_dependencies WHERE from_issue_id = ${id}::uuid OR to_issue_id = ${id}::uuid`,
+    );
+    expect(edges.length).toBe(0);
+  });
+
+  it('still writes the fields of an update that sends no status', async () => {
+    const w = await seed();
+    const id = await insertIssue(w, 'confirmed');
+
+    const body = await mcp(w.token, {
+      action: 'update',
+      documentId: id,
+      data: { title: 'a new title' },
+    });
+
+    expect(body.action).toBe('updated');
+    expect((await row(id)).title).toBe('a new title');
+  });
+});

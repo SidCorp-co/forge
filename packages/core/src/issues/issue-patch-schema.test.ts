@@ -24,3 +24,18 @@ describe('an issue update that writes nothing is refused for what the caller sen
     expect(refusals({ title: 'a title', expect: { sessionContext: null } })).toEqual([]);
   });
 });
+
+// Judge-23 read `forge_issues update` answering `updated` for an unchanged status (ISS-1229 r10).
+// This door never took a status at all: a status moves through `/transition`.
+describe('an issue update carrying a status', () => {
+  it('is refused naming `status`, alone or beside a field', () => {
+    for (const body of [{ status: 'open' }, { title: 'a title', status: 'open' }]) {
+      const parsed = issuePatchSchema.safeParse(body);
+      expect(parsed.success).toBe(false);
+      const keys = parsed.success
+        ? []
+        : parsed.error.issues.flatMap((i) => ('keys' in i ? i.keys : []));
+      expect(keys).toEqual(['status']);
+    }
+  });
+});
