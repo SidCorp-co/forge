@@ -352,11 +352,11 @@ export function sessionSilence(session: SilenceInput, nowMs: number = Date.now()
   if (Number.isNaN(lastMs)) return { state: "alive", sinceHeartbeatMs: null, reapInMs: null };
 
   const since = nowMs - lastMs;
-  if (since <= STALLED_THRESHOLD_MS) return { state: "alive", sinceHeartbeatMs: since, reapInMs: null };
   const limit = session.silenceLimitMs ?? null;
+  if (limit !== null && since > limit) return { state: "reaping", sinceHeartbeatMs: since, reapInMs: 0 };
+  if (since <= STALLED_THRESHOLD_MS) return { state: "alive", sinceHeartbeatMs: since, reapInMs: null };
   if (limit === null) return { state: "stale", sinceHeartbeatMs: since, reapInMs: null };
-  if (since <= limit) return { state: "stale", sinceHeartbeatMs: since, reapInMs: limit - since };
-  return { state: "reaping", sinceHeartbeatMs: since, reapInMs: 0 };
+  return { state: "stale", sinceHeartbeatMs: since, reapInMs: limit - since };
 }
 
 export function deriveLiveness(

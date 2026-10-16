@@ -88,6 +88,12 @@ describe("deriveLiveness", () => {
     }
   });
 
+  it("calls a session past core's limit even inside the quiet line, where core's limit is shorter", () => {
+    const r = deriveLiveness(running(45_000, { silenceLimitMs: 30_000 }), NOW);
+    expect(r).toEqual({ state: "reaping", sinceHeartbeatMs: 45_000, reapInMs: 0 });
+    expect(deriveLiveness(running(30_000, { silenceLimitMs: 30_000 }), NOW).state).toBe("alive");
+  });
+
   it("treats the exact thresholds as the lower band (boundaries inclusive)", () => {
     expect(deriveLiveness(running(STALLED_THRESHOLD_MS), NOW).state).toBe("alive");
     expect(deriveLiveness(running(PIPELINE_LIMIT, { silenceLimitMs: PIPELINE_LIMIT }), NOW).state).toBe("stale");
