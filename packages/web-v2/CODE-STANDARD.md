@@ -12,7 +12,7 @@ and which block to use) is in [`src/design/README.md`](src/design/README.md).
 - A feature imports another feature only through that feature's `index.ts`. Never reach into its files.
   - ✗ `import { x } from "@/features/issues/components/issue-row"`
   - ✓ `import { x } from "@/features/issues"`
-- `src/routes/` files stay thin: read params, then render one feature screen. A file or folder there whose name starts with `-` is not a route. Source: [TanStack Router: file-based routing](https://tanstack.com/router/latest/docs/framework/react/routing/file-based-routing).
+- `src/routes/` files stay thin: read params, then render one feature screen. A file or folder there whose name starts with `-` is not a route. Source: [TanStack Router: file-based routing](https://github.com/TanStack/router/blob/main/docs/router/routing/file-based-routing.md).
 
 ## Components
 
@@ -40,16 +40,16 @@ and which block to use) is in [`src/design/README.md`](src/design/README.md).
 ## TanStack Query
 
 - Give each feature one query-key factory, `const requirementKeys = { all, list(p), detail(p, k) }`. Source: [TkDodo: effective query keys](https://tkdodo.eu/blog/effective-react-query-keys), which the Query docs link.
-- Give each resource one `queryOptions()` factory, and use it from both `useQuery` and `prefetchQuery`. Source: [Query: queryOptions](https://tanstack.com/query/latest/docs/framework/react/guides/query-options).
-- A mutation updates the cache with `setQueryData` from its response, or invalidates with the key factory in `onSuccess`/`onSettled`. Source: [Query: invalidations from mutations](https://tanstack.com/query/latest/docs/framework/react/guides/invalidations-from-mutations).
+- Give each resource one `queryOptions()` factory, and use it from both `useQuery` and `prefetchQuery`. Source: [Query: queryOptions](https://github.com/TanStack/query/blob/main/docs/framework/react/guides/query-options.md).
+- A mutation updates the cache with `setQueryData` from its response, or invalidates with the key factory in `onSuccess`/`onSettled`. Source: [Query: invalidations from mutations](https://github.com/TanStack/query/blob/main/docs/framework/react/guides/invalidations-from-mutations.md).
 - Never fetch inside `useEffect`, and never call `fetch` in a component. Server state comes from a query. Source: [React: fetching data](https://react.dev/learn/you-might-not-need-an-effect#fetching-data).
 - Never copy server state into `useState`. Derive from `data`, and hold only the user's edit as local state. Source: [TkDodo: React Query and forms](https://tkdodo.eu/blog/react-query-and-forms).
 - Use `select` to shape the data. Never transform it in an effect.
 
 ## TanStack Table and Virtual
 
-- Columns come from `createColumnHelper<T>()`, and rows from the library's row models (`getCoreRowModel`, `getSortedRowModel`). Sources: [Table: column defs](https://tanstack.com/table/latest/docs/guide/column-defs) and [Table: row models](https://tanstack.com/table/latest/docs/guide/row-models).
-- A list that can pass about 200 rows virtualises with `useVirtualizer`. Source: [Virtual: introduction](https://tanstack.com/virtual/latest/docs/introduction).
+- Columns come from `createColumnHelper<T>()`, and rows from the library's row models (`getCoreRowModel`, `getSortedRowModel`). Sources: [Table: column defs](https://github.com/TanStack/table/blob/main/docs/guide/column-defs.md) and [Table: row models](https://github.com/TanStack/table/blob/main/docs/guide/row-models.md).
+- A list that can pass about 200 rows virtualises with `useVirtualizer`. Source: [Virtual: introduction](https://github.com/TanStack/virtual/blob/main/docs/introduction.md).
 - Sort state lives in the URL, not in a table's own state.
 
 ## Charts
@@ -70,7 +70,7 @@ and which block to use) is in [`src/design/README.md`](src/design/README.md).
 
 ## State
 
-- Filters, sort, the selected tab and the open peek go in URL search params (`useUrlParams`, `useUrlChoice` from `@/design`), so a view can be shared. Source: [TanStack Router: search params](https://tanstack.com/router/latest/docs/framework/react/guide/search-params).
+- Filters, sort, the selected tab and the open peek go in URL search params (`useUrlParams`, `useUrlChoice` from `@/design`), so a view can be shared. Source: [TanStack Router: search params](https://github.com/TanStack/router/blob/main/docs/router/guide/search-params.md).
 - Keep ephemeral UI state local: a hover, an open menu, a draft.
 - Add no global store. Share server state through the query cache, and session state through the existing providers.
 
