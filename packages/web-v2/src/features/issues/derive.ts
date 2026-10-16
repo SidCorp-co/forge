@@ -472,7 +472,7 @@ function openingLine(body: string): string {
 const RELEASE_HEADING = /^(#+\s*)?release notes?(\s*$|\s*[:—–-]|\s+for\b)/;
 /** Released / Shipped / Published release, then what went out (a version) or where or how it went. */
 const RELEASE_STATEMENT =
-	/^(released|shipped|published release)(\s*[:—–-]|\s+(v?\d|in|to|as|on|at|into|onto|outside|via|with|through|by|from|for)\b)/;
+	/^(released|shipped|published release)(\s*[:—–-]|\s+(v?\d+|in|to|as|on|at|into|onto|outside|via|with|through|by|from|for)\b)/;
 /** A clause that asks, denies or says something of its own about the word announces nothing. */
 const NOT_AN_ANNOUNCEMENT =
 	/\?|\b(not|no|never|yet|n't|is|are|was|were|be|been|will|would|should|could|can|may|might|must)\b/;
@@ -483,7 +483,7 @@ function announcesRelease(line: string): boolean {
 	if (RELEASE_HEADING.test(line)) return true;
 	const statement = line.replace(/^#+\s*/, "");
 	if (!RELEASE_STATEMENT.test(statement)) return false;
-	const clause = statement.split(/[.;,—–]|\s-\s/)[0] ?? "";
+	const clause = statement.split(/[;,—–]|\.(?!\d)|\s-\s/)[0] ?? "";
 	return !NOT_AN_ANNOUNCEMENT.test(clause.replace(/^(released|shipped|published release)\s*:?/, ""));
 }
 
