@@ -1,10 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { getLoopThresholds } from '../jobs/loop-monitor-thresholds.js';
 import {
+  getLoopThresholds,
   ONE_SHOT_DEVICE_GRACE_FLOOR_MS,
-  SESSION_SILENCE_TIMEOUT_MS,
-  silenceLimitMs,
-} from './session-silence.js';
+} from '../jobs/loop-monitor-thresholds.js';
+import { SESSION_SILENCE_TIMEOUT_MS, silenceLimitMs } from './session-silence.js';
 
 // ISS-1228 round 9: a screen that says when core will end a quiet session counts to the silence
 // core ends that kind of session after, read here from the constants the reapers themselves use.

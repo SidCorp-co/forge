@@ -1,4 +1,4 @@
-import { getLoopThresholds } from '../jobs/loop-monitor-thresholds.js';
+import { getLoopThresholds, oneShotDeviceGraceMs } from '../jobs/loop-monitor-thresholds.js';
 import { PIPELINE_SESSION_KINDS } from '../jobs/session-kinds.js';
 import { MASTER_SESSION_METADATA_TYPE, RUN_SESSION_METADATA_TYPE } from './run-session-keys.js';
 
@@ -6,18 +6,10 @@ export const SESSION_SILENCE_TIMEOUT_MS = 10 * 60 * 1000;
 
 export const SESSION_SILENCE_TIMEOUT_S = Math.floor(SESSION_SILENCE_TIMEOUT_MS / 1000);
 
-/** The least the one-shot sweep waits on a session whose box's runner still answers. */
-export const ONE_SHOT_DEVICE_GRACE_FLOOR_MS = 20 * 60_000;
-
-export function oneShotDeviceGraceMs(heartbeatMs: number): number {
-  return Math.max(heartbeatMs, ONE_SHOT_DEVICE_GRACE_FLOOR_MS);
-}
-
 const HEARTBEAT_REAPED_KINDS: ReadonlySet<string> = new Set(PIPELINE_SESSION_KINDS);
 
-/** A live session on the same jobless one-shot run, the subject included at `leadMs` 0. */
+/** A live session on the same jobless one-shot run (the subject at `leadMs` 0), `leadMs` after it. */
 export interface OneShotSibling {
-  /** How much later than the subject it was last heard. */
   leadMs: number;
   runnerAnswers: boolean;
   parked: boolean;
@@ -27,9 +19,7 @@ export interface SilenceSubject {
   kind: string;
   runtimeState?: string | null;
   metadata?: unknown;
-  /** A master: how much later than it the latest live child it owns was heard. */
   childLeadMs?: number | null;
-  /** The live sessions of its run, where the run is a running one-shot run with no job. */
   oneShot?: readonly OneShotSibling[] | null;
 }
 
@@ -57,7 +47,6 @@ export function silenceLimitMs(session: SilenceSubject): number | null {
   if (heartbeatReaped) limits.push(heartbeatMs);
   const siblings = session.oneShot ?? [];
   if (siblings.length > 0 && !siblings.some((t) => t.parked)) {
-    // The sweep closes the run once no live session on it is fresh, so the last one heard sets it.
     limits.push(
       Math.max(
         ...siblings.map(

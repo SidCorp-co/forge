@@ -2,7 +2,6 @@ import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { type AlertSweepResult, runAlertSweep } from '../admin/alert-sweeper.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
-import { oneShotDeviceGraceMs } from '../devices/session-silence.js';
 import { broadcastSessionEvent } from '../jobs/agent-session-link.js';
 import { killGraceMs } from '../jobs/kill-gate.js';
 import {
@@ -11,6 +10,7 @@ import {
   type LoopScope,
   runLoopMonitor,
 } from '../jobs/loop-monitor.js';
+import { oneShotDeviceGraceMs } from '../jobs/loop-monitor-thresholds.js';
 import { parkedOnAHuman } from '../jobs/park-deadline.js';
 import { recordPipelineSweeperTick } from '../jobs/pgboss-health.js';
 import { CLIENT_SESSION_KINDS, kindTuple, PIPELINE_SESSION_KINDS } from '../jobs/session-kinds.js';
