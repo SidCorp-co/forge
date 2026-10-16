@@ -80,6 +80,8 @@ const READS: Record<string, 'person' | 'caller'> = {
   'questions/write.ts': 'caller',
   'release-batch/abort-stamp.ts': 'caller',
   'release-batch/blocker-sentences.ts': 'person',
+  'release-batch/carried-sentences.ts': 'person',
+  'release-batch/reader-sentences.ts': 'person',
   'release-batch/claim-conflicts.ts': 'caller',
   'release-batch/releasing-recovery.ts': 'person',
 };

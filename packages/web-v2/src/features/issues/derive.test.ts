@@ -85,6 +85,7 @@ function row(over: Partial<IssueRow> & { id: string }): IssueRow {
 		mergedAt: over.mergedAt ?? null,
 		createdAt: over.createdAt ?? "2026-01-01T00:00:00.000Z",
 		updatedAt: over.updatedAt ?? "2026-01-01T00:00:00.000Z",
+		statusEnteredAt: over.statusEnteredAt ?? "2026-01-01T00:00:00.000Z",
 		agentSessions: over.agentSessions,
 		agentStatus: over.agentStatus,
 		modules: over.modules,

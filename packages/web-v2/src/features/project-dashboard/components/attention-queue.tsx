@@ -160,7 +160,7 @@ export function AttentionQueue({
                 {it.title}
               </span>
               <span className="ml-auto flex-none sm:ml-0">
-                <AgeChip since={it.since} basis={it.sinceBasis} now={now} />
+                <AgeChip since={it.since} now={now} />
               </span>
               <Button
                 size="sm"

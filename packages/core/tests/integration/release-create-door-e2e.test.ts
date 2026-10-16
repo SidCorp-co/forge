@@ -153,12 +153,16 @@ interface Entry {
   details?: Record<string, unknown>;
 }
 
+/** Readiness's entries as a caller reads them; the `reader` sentence beside each is the screen's
+ *  alone, so it is checked present and left out of what the two doors must agree on. */
 async function readiness(w: World): Promise<Entry[]> {
   const res = await app.request(`/api/projects/${w.projectId}/release-readiness`, {
     headers: { Authorization: `Bearer ${w.token}` },
   });
   expect(res.status).toBe(200);
-  return ((await res.json()) as { blockers: Entry[] }).blockers;
+  const listed = ((await res.json()) as { blockers: Array<Entry & { reader: string }> }).blockers;
+  for (const b of listed) expect(typeof b.reader).toBe('string');
+  return listed.map(({ reader: _reader, ...caller }) => caller);
 }
 
 async function create(w: World, issueIds: string[]) {

@@ -115,6 +115,8 @@ export interface IssueRow {
   updatedAt: string;
   /** ISS-1257 — the oldest open question blocked on a person; null or absent when none is. */
   waitingOnPersonSince?: string | null;
+  /** ISS-1229 r8 — when the issue entered its status; an edit or a claim does not move it. Core's. */
+  statusEnteredAt: string;
   agentSessions?: IssueAgentSession[];
   agentStatus?: IssueAgentStatus;
   estimatedCost?: number;

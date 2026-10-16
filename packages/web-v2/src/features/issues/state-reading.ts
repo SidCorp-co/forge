@@ -3,7 +3,7 @@ import type { StatusKey } from "@/design/status";
 import { formatElapsed } from "@/lib/utils/format";
 import { runStatusChip, statusLabel, statusToChip } from "./derive";
 import type { IssueFailureInfo, IssueRow } from "./types";
-import { deriveQueuedStep, hasLiveAgentSession, sinceLastWrite, STALE_AFTER_MS } from "./waiting";
+import { deriveQueuedStep, hasLiveAgentSession, inStatusFor, STALE_AFTER_MS } from "./waiting";
 
 /** One half of what the run is doing: the word, the step it is on, and what the word stands for. */
 export interface RunPart {
@@ -35,8 +35,7 @@ export interface StateReading {
   elapsed: ElapsedReading | null;
 }
 
-const LAST_WRITE_MEASURES =
-  "A status move, a field edit, a merge mark or an agent's claim or lease renewal resets this; a comment on its own does not.";
+const IN_STATUS_MEASURES = "Counted from when it entered this status; an edit, a merge mark or a claim does not reset it.";
 
 const asTime = (iso: string | null | undefined): number | null => {
   if (!iso) return null;
@@ -117,9 +116,8 @@ function toneOf(row: IssueRow, waiting: boolean): StatusKey {
 }
 
 /**
- * How long the row has been where it is, from the most specific time the row records. Only when no
- * event is recorded does it fall back to the last write to the issue, and that one says it is not
- * time in the status: a claim or lease renewal resets `updatedAt`, a comment does not.
+ * How long the row has been where it is, from the most specific time the row records: a question's
+ * wait, a failure, a run, a queued step, and otherwise how long the issue has stood at its status.
  */
 function elapsedOf(
   row: IssueRow,
@@ -146,14 +144,12 @@ function elapsedOf(
     const queued = elapsedSince(asTime(queuedStep.queuedAt), now, (l) => `The next step has been queued for ${l}.`);
     if (queued) return queued;
   }
-  const written = sinceLastWrite(row, now);
-  if (!written) return null;
+  const held = inStatusFor(row, now);
+  if (!held) return null;
   return {
-    label: written.label,
-    stale: written.stale,
-    title: written.stale
-      ? `Nothing has been written to this issue in ${written.label}. ${LAST_WRITE_MEASURES}`
-      : `This issue was last written to ${written.label} ago. ${LAST_WRITE_MEASURES}`,
+    label: held.label,
+    stale: held.stale,
+    title: `This issue has been ${statusLabel(row.status)} for ${held.label}. ${IN_STATUS_MEASURES}`,
   };
 }
 

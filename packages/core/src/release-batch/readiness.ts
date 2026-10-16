@@ -6,15 +6,17 @@ import { selectAllSlugsFromKnowledge } from '../knowledge/service.js';
 import { missingProjectKnowledge } from '../projects/autonomous-contract.js';
 import { normalizeEnvironments } from '../projects/environments.js';
 import { type ReleaseChain, retiredReleaseAxes } from '../projects/release-chain.js';
-import {
-  collectReleaseBlockers,
-  type ReleaseBlocker,
-  type ReleaseWarning,
-  releaseBlockerSentence,
-} from './blockers.js';
+import { collectReleaseBlockers, type ReleaseBlocker, releaseBlockerSentence } from './blockers.js';
 import { type CarriedRecord, carriedRecord, readCarried } from './carried.js';
 import { releaseRunnerLabelOf } from './channel.js';
 import type { ReleaseRollback, VerifySource } from './plan.js';
+import {
+  type ReaderBlocker,
+  type ReaderWarning,
+  type ReleaseCheck,
+  warningWithReader,
+  withReader,
+} from './reader-sentences.js';
 import { readWeighingNow } from './runtime-weighing.js';
 import { readServingNow } from './serving-reading.js';
 
@@ -63,11 +65,12 @@ export interface ReleaseReadiness {
    * Every reason a release would be refused RIGHT NOW, in the order the create
    * door refuses in — the declarations, and also the roster and the fleet, which
    * `gaps` never looked at. Empty here means a create over this roster succeeds;
-   * that equivalence is the whole of ISS-1127.
+   * that equivalence is the whole of ISS-1127. Each carries the sentence a person reads beside the
+   * caller's, because this answer is what Shape & release shows (ISS-1229 r8).
    */
-  blockers: ReleaseBlocker[];
+  blockers: ReaderBlocker[];
   /** What will change how the release runs without stopping it. */
-  warnings: ReleaseWarning[];
+  warnings: ReaderWarning[];
   /** What a cut now would carry beyond its roster, or why that range was not read (ISS-1386). */
   carried: CarriedRecord | null;
 }
@@ -128,15 +131,15 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
     hasVerify: channels.length > 0 && channels.every((c) => c.verify !== null),
     verifySources: channels.map((c) => c.verifySource),
     gaps,
-    blockers,
-    warnings: report.warnings,
+    blockers: blockers.map(withReader),
+    warnings: report.warnings.map(warningWithReader),
     carried: carriedRecord(report.carried),
   };
 }
 
 /** A read this answer needs, and the blocker that stands in for it when it fails. */
 async function guarded<T>(
-  check: string,
+  check: ReleaseCheck,
   out: ReleaseBlocker[],
   read: () => Promise<T>,
 ): Promise<T | undefined> {

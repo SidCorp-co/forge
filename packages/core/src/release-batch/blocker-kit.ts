@@ -4,6 +4,7 @@ import {
   type ReleaseBlockerCode,
   releaseBlockerSentence,
 } from './blocker-sentences.js';
+import type { ReleaseCheck } from './reader-sentences.js';
 
 export function blocker(
   code: ReleaseBlockerCode,
@@ -22,7 +23,7 @@ export function blocker(
 
 /** One check, and the blocker that stands in for it when it cannot be run. */
 export async function evaluate<T>(
-  check: string,
+  check: ReleaseCheck,
   read: () => Promise<T>,
   out: ReleaseBlocker[],
 ): Promise<T | undefined> {
@@ -33,7 +34,7 @@ export async function evaluate<T>(
 
 /** The same read, with its failure handed back rather than appended. */
 export async function attempt<T>(
-  check: string,
+  check: ReleaseCheck,
   read: () => Promise<T>,
 ): Promise<{ value: T | undefined; failure: ReleaseBlocker | null }> {
   try {

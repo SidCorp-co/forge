@@ -6,7 +6,6 @@ import { Icon } from "@/design";
 import { TONE_META, type SemanticTone } from "@/design/status";
 import { formatElapsed } from "@/features/overview/derive";
 import { type AgeBand, ageBand, secondsSince } from "../shape";
-import type { AgeBasis } from "../derive";
 
 const BAND: Record<AgeBand, { tone: SemanticTone | null; weight: string; ring: boolean }> = {
   fresh: { tone: null, weight: "font-normal", ring: false },
@@ -15,23 +14,18 @@ const BAND: Record<AgeBand, { tone: SemanticTone | null; weight: string; ring: b
   overdue: { tone: "failure", weight: "font-bold", ring: true },
 };
 
-export function AgeChip({ since, basis, now }: { since: string | undefined; basis: AgeBasis | undefined; now: number }) {
+export function AgeChip({ since, now }: { since: string | undefined; now: number }) {
   const seconds = secondsSince(since, now);
   if (seconds === null) return null;
   const band = ageBand(seconds);
   const b = BAND[band];
   const meta = b.tone ? TONE_META[b.tone] : null;
-  const lastWrite = basis === "last-write";
   const age = formatElapsed(seconds);
   return (
     <span
       data-testid="age-chip"
       data-band={band}
-      title={
-        lastWrite
-          ? `Last written to ${age} ago. Nothing records how long it has been parked, and a comment or a claim resets this.`
-          : `Waiting ${age}.`
-      }
+      title={`Waiting ${age}.`}
       className={`inline-flex flex-none items-center gap-1 whitespace-nowrap rounded-pill px-1.5 py-0.5 tabular-nums ${b.weight} ${meta ? "" : "text-subtle"}`}
       style={{
         fontSize: "var(--text-11)",
@@ -40,7 +34,7 @@ export function AgeChip({ since, basis, now }: { since: string | undefined; basi
       }}
     >
       {band === "overdue" && <Icon name="alert" size={11} />}
-      {lastWrite ? `${age} since last write` : age}
+      {age}
     </span>
   );
 }

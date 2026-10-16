@@ -57,6 +57,7 @@ const row = (
     mergedAt: null,
     createdAt: QUEUED_AT,
     updatedAt: QUEUED_AT,
+    statusEnteredAt: QUEUED_AT,
     agentStatus,
     ...(pipelineHealth ? { pipelineHealth } : {}),
   }) as IssueRow;

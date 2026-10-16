@@ -175,7 +175,7 @@ describe('RELEASE_ISSUES_UNCLOSABLE, before the press at either door', () => {
       expect(unclosable?.message).toContain(
         '`ISS-2` missing what this project requires to close: plan',
       );
-      expect(unclosable?.message).toContain('leave the issue off this release');
+      expect(unclosable?.message).toContain('leave each such issue off this release');
     },
   );
 

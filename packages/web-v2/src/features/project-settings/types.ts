@@ -193,8 +193,10 @@ export interface PluginDesignation {
  *  `ReleaseBlocker` in core `release-batch/blocker-sentences.ts`. */
 export interface ReleaseBlocker {
 	code: string;
-	/** The one sentence an operator reads, carrying its own remedy. */
+	/** The caller's sentence, carrying its own remedy in the terms an API caller acts on. */
 	message: string;
+	/** The same reason as a person on Shape & release reads it: the act in words (ISS-1229 r8). */
+	reader: string;
 	details?: Record<string, unknown>;
 	/** False when this check could not be run at all. */
 	evaluated: boolean;
@@ -204,6 +206,8 @@ export interface ReleaseBlocker {
 export interface ReleaseWarning {
 	code: string;
 	message: string;
+	/** What a person reads; `message` is the caller's. */
+	reader: string;
 	details?: Record<string, unknown>;
 }
 

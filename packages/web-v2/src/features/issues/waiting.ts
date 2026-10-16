@@ -13,17 +13,16 @@ export const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 const SETTLED = new Set<IssueStatus>(statusesForLabels("done", "dropped"));
 
 /**
- * How long since the issue ROW itself was last written, graded against a caller-held instant so
- * every row in one render is comparable. It is NOT how long the issue has been at this status, and
- * NOT how long since anything happened to it; each surface showing it says which of the three it
- * is, because the three differ by hours on live rows.
+ * How long the issue has stood at its status, from when it entered it, graded against a
+ * caller-held instant so every row in one render is comparable. A title edit, a merge mark or an
+ * agent's claim writes the row and does not move this (ISS-1229 r8, judge-20).
  */
-export function sinceLastWrite(
-	row: { status: IssueStatus; updatedAt: string },
+export function inStatusFor(
+	row: { status: IssueStatus; statusEnteredAt: string },
 	now: number,
 ): { label: string; stale: boolean } | null {
 	if (SETTLED.has(row.status)) return null;
-	const since = new Date(row.updatedAt).getTime();
+	const since = new Date(row.statusEnteredAt).getTime();
 	if (Number.isNaN(since)) return null;
 	const ms = Math.max(0, now - since);
 	return { label: formatElapsed(ms), stale: ms >= STALE_AFTER_MS };

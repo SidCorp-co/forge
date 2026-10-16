@@ -20,6 +20,9 @@ import type { ReleaseReadiness } from "./types";
 
 expect.extend(matchers);
 
+/** What core sends an API caller beside the reader sentence these fixtures plant; never drawn. */
+const CALLER_SENTENCE = "The caller's sentence, which this screen does not draw.";
+
 const readiness = vi.fn();
 vi.mock("./hooks", async (importActual) => {
 	const actual = await importActual<typeof import("./hooks")>();
@@ -125,7 +128,8 @@ describe("the Release section's prose", () => {
 					{
 						code: "RELEASE_ROSTER_EMPTY",
 						evaluated: true,
-						message: "Nothing waits at `awaiting_release`, and 3 stand at `testing`.",
+						message: CALLER_SENTENCE,
+			reader: "Nothing waits at `awaiting_release`, and 3 stand at `testing`.",
 					},
 				],
 			}),
@@ -147,7 +151,8 @@ describe("the Release section's prose", () => {
 			data: ready({
 				providers: [],
 				blockers: [
-					{ code: "RELEASE_TARGET_UNDECLARED", evaluated: true, message: "Nothing serves Live." },
+					{ code: "RELEASE_TARGET_UNDECLARED", evaluated: true, message: CALLER_SENTENCE,
+			reader: "Nothing serves Live." },
 				],
 				gaps: ["release-target", "rollback"],
 			}),
@@ -176,7 +181,8 @@ describe("the Release section's prose", () => {
 			isLoading: false,
 			error: null,
 			data: ready({
-				blockers: [{ code: "RELEASE_RUNNER_AMBIGUOUS", evaluated: true, message: "Two labels." }],
+				blockers: [{ code: "RELEASE_RUNNER_AMBIGUOUS", evaluated: true, message: CALLER_SENTENCE,
+			reader: "Two labels." }],
 				gaps: ["release-runner-ambiguous", "rollback"],
 			}),
 		});
@@ -220,7 +226,8 @@ describe("the Release section's prose", () => {
 				warnings: [
 					{
 						code: "RELEASE_RUNNER_PREFERENCE_UNMET",
-						message: "No box carries `release`.",
+						message: CALLER_SENTENCE,
+			reader: "No box carries `release`.",
 					},
 				],
 			}),
@@ -243,7 +250,8 @@ describe("the Release section's prose", () => {
 					{
 						code: "RELEASE_POOL_EMPTY",
 						evaluated: true,
-						message: "A stray ` and then some words that must survive it.",
+						message: CALLER_SENTENCE,
+			reader: "A stray ` and then some words that must survive it.",
 					},
 				],
 			}),

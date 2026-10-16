@@ -30,7 +30,6 @@ const item = (over: Partial<DashboardAttentionItem> = {}): DashboardAttentionIte
   issueRef: "ISS-7",
   link: "/projects/p/issues/d7",
   since: ago(2 * 3600),
-  sinceBasis: "entered",
   ...over,
 });
 
@@ -126,11 +125,6 @@ describe("a degraded project", () => {
     expect(at(14 * DAY)).toBe("degraded");
   });
 
-  it("never degrades on a last-write age, which is not time parked", () => {
-    const old = item({ since: ago(112 * DAY), sinceBasis: "last-write" });
-    expect(projectShape(input({ items: [old] })).shape).toBe("working");
-  });
-
   it("links the oldest listed qualifying item, and says listed where the lists are cut", () => {
     const young = item({ key: "a", link: "/a", since: ago(15 * DAY) });
     const oldest = item({ key: "b", link: "/b", since: ago(112 * DAY) });
@@ -215,15 +209,17 @@ describe("an age's band", () => {
 });
 
 describe("the ages of parked issues", () => {
-  const row = (over: Partial<IssueRow>) => ({ id: "d1", updatedAt: ago(5 * DAY), ...over }) as IssueRow;
+  const row = (over: Partial<IssueRow>) =>
+    ({ id: "d1", statusEnteredAt: ago(9 * DAY), updatedAt: ago(5 * DAY), ...over }) as IssueRow;
 
-  it("takes the open question's wait where there is one, measured", () => {
+  it("takes the open question's wait where there is one", () => {
     const ages = parkedAges([row({ waitingOnPersonSince: ago(20 * DAY) })]);
-    expect(ages.get("d1")).toEqual({ since: ago(20 * DAY), basis: "entered" });
+    expect(ages.get("d1")).toBe(ago(20 * DAY));
   });
 
-  it("falls back to the last write, said to be one", () => {
-    expect(parkedAges([row({ waitingOnPersonSince: null })]).get("d1")).toEqual({ since: ago(5 * DAY), basis: "last-write" });
+  // ISS-1229 r8: an edit to a parked issue wrote the row and restarted the chip's count.
+  it("takes when the issue entered its status otherwise, never its last write", () => {
+    expect(parkedAges([row({ waitingOnPersonSince: null })]).get("d1")).toBe(ago(9 * DAY));
   });
 
   it("holds nothing for a row it never read", () => {
