@@ -36,7 +36,25 @@ const CONTRACTS: Array<[RegExp, string]> = [
 
 /** A tool's description names the values a call sends, so a stored value written there is the
  *  contract; its runtime answer is a sentence a caller reads and is held like any other. */
-const TOOL_DESCRIPTIONS = /^mcp\/tools\//;
+const TOOL_FILE = /^mcp\/tools\//;
+/** A line that opens a description: the tool's own, or one a schema field carries. */
+const OPENS_DESCRIPTION = /\bdescription:|\.describe\(/;
+/** A line holding nothing but a string, which continues the statement above it. */
+const STRING_ONLY = /^\s*(?:\+\s*)?['"`]/;
+
+/** A tool file with its description lines blanked, numbering kept, so what is left is the code and
+ *  the answers it sends. A string-only line belongs to the statement that opened above it. */
+function withoutDescriptions(file: string, source: string): string {
+  if (!TOOL_FILE.test(file)) return source;
+  let describing = false;
+  return source
+    .split('\n')
+    .map((text) => {
+      if (!STRING_ONLY.test(text)) describing = OPENS_DESCRIPTION.test(text);
+      return describing ? '' : text;
+    })
+    .join('\n');
+}
 
 /** Lines a reader sees that keep the stored value, each for a stated reason. */
 const KEPT_LINES: Array<[string, RegExp, string]> = [
@@ -259,9 +277,10 @@ describe('a status a person reads is named by its label (ISS-1229)', () => {
   it('no refusal or reader sentence in core writes a status as code', () => {
     const found = walk(SRC)
       .map((full) => relative(SRC, full))
-      .filter((file) => file !== SELF && !TOOL_DESCRIPTIONS.test(file))
-      .filter((file) => !CONTRACTS.some(([re]) => re.test(file)))
-      .flatMap((file) => offences(file, readFileSync(join(SRC, file), 'utf8')));
+      .filter((file) => file !== SELF && !CONTRACTS.some(([re]) => re.test(file)))
+      .flatMap((file) =>
+        offences(file, withoutDescriptions(file, readFileSync(join(SRC, file), 'utf8'))),
+      );
     expect(found).toEqual([]);
   });
 
@@ -270,7 +289,10 @@ describe('a status a person reads is named by its label (ISS-1229)', () => {
       .map((full) => relative(SRC, full))
       .filter((file) => file !== SELF && file !== 'issues/status-sets.ts')
       .filter((file) => !CONTRACTS.some(([re]) => re.test(file)))
-      .map((file) => ({ file, source: readFileSync(join(SRC, file), 'utf8') }));
+      .map((file) => ({
+        file,
+        source: withoutDescriptions(file, readFileSync(join(SRC, file), 'utf8')),
+      }));
 
   it('says who reads every file that names a status', () => {
     expect(unplaced(sources())).toEqual([]);
@@ -350,10 +372,26 @@ describe('a status a person reads is named by its label (ISS-1229)', () => {
   it("holds a tool's runtime answer and leaves its description the contract it is", () => {
     const tool = sources().find(({ file }) => file === 'mcp/tools/forge-step-start.ts');
     expect(tool && READS[tool.file]).toBe('caller');
-    const description =
-      "  description: 'Moves the issue. `toStatus` takes `awaiting_release` or `closed`.',";
-    expect(TOOL_DESCRIPTIONS.test('mcp/tools/forge-issues.ts')).toBe(true);
-    expect(bareValueOffences('mcp/tools/forge-issues.ts', description)).toEqual([]);
+    const file = 'mcp/tools/forge-x.ts';
+    const description = [
+      '  description:',
+      "    'Moves the issue. `toStatus` takes `awaiting_release` or ' +",
+      "    '`closed`, and the answer says which.',",
+      "  status: z.enum(issueStatuses).describe('`needs_info` parks it'),",
+    ].join('\n');
+    expect(offences(file, withoutDescriptions(file, description))).toEqual([]);
+    // Codex review of f556a27: a runtime answer in code form was exempt with its whole file.
+    const answer = line('    throw new Error(`Issue is at \\`#{issue.status}\\``);');
+    const both = withoutDescriptions(file, [description, answer].join('\n'));
+    expect(offences(file, both)).toHaveLength(1);
+    const split = line(
+      [
+        '    const note =',
+        "      `the driver writes its own status. Issue is at '#{issue.status}'.`;",
+      ].join('\n'),
+    );
+    expect(bareValueOffences(file, withoutDescriptions(file, split))).toHaveLength(1);
+    expect(unplaced([{ file, source: withoutDescriptions(file, split) }])).toEqual([file]);
   });
 
   // The codex consult on the r5e plan: one file can hold a notice and a refusal, and one sentence
