@@ -25,6 +25,8 @@ export interface StatStripProps {
   activityUnread?: boolean;
   busyRunners: number;
   onlineRunners: number;
+  /** Every runner serving the project, online or not. */
+  totalRunners: number;
   needsYou: number;
   /** What the figure counts, by kind. */
   needsYouCaption: string;
@@ -48,12 +50,20 @@ function money(usd: number): string {
   return `$${usd.toFixed(2)}`;
 }
 
+function runnersFigure(props: StatStripProps): string {
+  if (props.totalRunners === 0) return "no runners";
+  if (props.onlineRunners === 0) return `${plural(props.totalRunners, "runner", "runners")} · none online`;
+  const busy = `${props.busyRunners} of ${props.onlineRunners} runners busy`;
+  const offline = props.totalRunners - props.onlineRunners;
+  return offline > 0 ? `${busy} · ${offline} offline` : busy;
+}
+
 function liveCaption(props: StatStripProps): string {
   const runners = props.runnersUnread
     ? "runners not read"
     : props.activityUnread
       ? `${plural(props.onlineRunners, "runner", "runners")} online · activity not read`
-      : `${props.busyRunners} of ${props.onlineRunners} runners busy`;
+      : runnersFigure(props);
   if (props.runsUnread) return `${runners} · runs not read`;
   const open = props.openRuns ?? 0;
   return open > 0 ? `${runners} · ${plural(open, "run", "runs")} open` : runners;

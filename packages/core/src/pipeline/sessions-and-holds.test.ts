@@ -37,6 +37,7 @@ const lease = (over: Partial<LeaseRow> = {}): LeaseRow => ({
   iss_seq: 7,
   title: 'Seven',
   status: 'in_progress',
+  held: true,
   ...over,
 });
 
@@ -78,6 +79,7 @@ describe('projectSessionsAndHolds — sessions', () => {
           blocker_kind: 'human',
           waiting_on: 'an answer on ISS-7',
           observed_at: '2026-10-15T01:58:00.000Z',
+          work_since: '2026-10-15T01:50:00.000Z',
         },
       ],
     });
@@ -91,8 +93,15 @@ describe('projectSessionsAndHolds — sessions', () => {
       blockerKind: 'human',
       waitingOn: 'an answer on ISS-7',
       observedAt: '2026-10-15T01:58:00.000Z',
+      since: '2026-10-15T01:50:00.000Z',
     });
     expect(out.readAt).toBe(NOW.toISOString());
+  });
+
+  it('names an issue whose lease the run reports returned, and holds nothing for it', () => {
+    const out = project({ sessions: [session()], leases: [lease({ held: false })] });
+    expect(out.sessions[0]?.issues.map((i) => i.issueId)).toEqual(['i-7']);
+    expect(out.holds).toEqual([]);
   });
 
   it('keeps the newest of two ledger entries for one session', () => {
@@ -101,6 +110,7 @@ describe('projectSessionsAndHolds — sessions', () => {
       incarnation: 'live',
       blocker_kind: null,
       waiting_on: null,
+      work_since: '2026-10-15T01:00:00.000Z',
     };
     const out = project({
       sessions: [session()],

@@ -64,19 +64,25 @@ function Marks({ row }: { row: RunSessionRow }) {
 }
 
 /** What core's own heartbeat says, where it disagrees with the chip beside it. */
-function CoreReading({ row, now }: { row: RunSessionRow; now: number }) {
+function coreReadingLines(row: RunSessionRow, now: number): { lines: string[]; silence: string | null } {
   const silence = silenceText(row, now);
   const split = disagreement(row);
   const ended = endReasonText(row);
   const note = pendingReasonText(row);
-  const lines = [silence, split && disagreementText(split), ended, note].filter(
-    Boolean,
-  ) as string[];
+  const lines = [silence, split && disagreementText(split), ended, note].filter(Boolean) as string[];
+  return { lines, silence };
+}
+
+function CoreReading({ lines, silence }: { lines: string[]; silence: string | null }) {
   if (lines.length === 0) return null;
   return (
-    <span className="fg-caption flex min-w-0 flex-col gap-0.5 text-muted sm:flex-none sm:text-right">
+    <span className="fg-caption flex min-w-0 max-w-full flex-col gap-0.5 text-muted sm:ml-auto sm:text-right">
       {lines.map((l) => (
-        <span key={l} className="truncate" style={l === silence ? { color: TONE_META[SILENCE_TONE].fg } : undefined}>
+        <span
+          key={l}
+          className="break-words"
+          style={l === silence ? { color: TONE_META[SILENCE_TONE].fg } : undefined}
+        >
           {l}
         </span>
       ))}
@@ -94,12 +100,10 @@ export interface RunRowProps {
 
 /** Who can end the wait and what the run waits on, in the box's own words; the questions tab is a
  *  link beside it rather than a paraphrase in its place. */
-function WaitingOn({ row }: { row: RunSessionRow }) {
-  const who = blockerText(row.blockerKind);
+function WaitingOn({ row, who }: { row: RunSessionRow; who: string }) {
   const pathname = usePathname() || "";
-  if (!who) return null;
   return (
-    <span className="fg-caption flex min-w-0 flex-wrap items-baseline gap-x-2 text-muted sm:max-w-[24rem]">
+    <span className="fg-caption flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 text-muted">
       <span className="min-w-0 break-words">
         {row.waitingOn ? `Waiting on ${who} — ${row.waitingOn}` : `Waiting on ${who}`}
       </span>
@@ -115,12 +119,20 @@ function WaitingOn({ row }: { row: RunSessionRow }) {
   );
 }
 
+/**
+ * One run, on two lines from `sm` up: what it is (its state, its issues, the close marks, its box and
+ * when it last reported), and beneath, full width, what it waits on and core's reading of it. The
+ * readings never share a line with the issue keys, and the key block keeps its own width, so no
+ * reading can be drawn over a key however long it runs. Below `sm` every part stacks.
+ */
 export function RunRow({ row, now, slug }: RunRowProps) {
   const issues = row.issues ?? [];
+  const who = blockerText(row.blockerKind);
+  const core = coreReadingLines(row, now);
   return (
-    <li className="flex flex-col gap-2 py-2.5 sm:flex-row sm:items-center sm:gap-3">
+    <li className="flex flex-col gap-2 py-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3 sm:gap-y-1.5">
       <StateChip row={row} now={now} />
-      <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+      <span className="flex flex-1 flex-wrap items-center gap-1.5">
         {issues.length === 0 ? (
           <span className="fg-caption text-subtle">no issues on this run</span>
         ) : (
@@ -135,10 +147,14 @@ export function RunRow({ row, now, slug }: RunRowProps) {
           ))
         )}
       </span>
-      <WaitingOn row={row} />
-      <CoreReading row={row} now={now} />
+      {(who || core.lines.length > 0) && (
+        <span className="flex min-w-0 flex-col gap-1 sm:order-last sm:basis-full sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-4">
+          {who && <WaitingOn row={row} who={who} />}
+          <CoreReading lines={core.lines} silence={core.silence} />
+        </span>
+      )}
       <Marks row={row} />
-      <span className="fg-caption hidden flex-none truncate text-subtle sm:inline sm:max-w-[9rem]">
+      <span className="fg-caption hidden break-words text-subtle sm:block sm:max-w-[12rem]">
         {row.deviceName ?? row.deviceId}
       </span>
       <span className="fg-caption flex-none whitespace-nowrap text-subtle">

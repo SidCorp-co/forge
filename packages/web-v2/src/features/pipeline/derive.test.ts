@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   checkInOf,
-  doingOf,
   holderLine,
   orderHolds,
   orderSessions,
@@ -14,9 +13,6 @@ import {
 import type { HeldIssue, Holder, LiveSession } from "./types";
 
 const NOW = Date.parse("2026-10-15T02:00:00.000Z");
-const AT = Date.parse("2026-10-15T10:00:00.000Z");
-const HEARD = new Date(AT - 5_000).toISOString();
-const SILENT = new Date(AT - 90_000).toISOString();
 
 const session = (over: Partial<LiveSession> = {}): LiveSession => ({
   id: "s1",
@@ -35,68 +31,6 @@ const session = (over: Partial<LiveSession> = {}): LiveSession => ({
   ...over,
 });
 
-describe("doingOf — what a session is doing, in words", () => {
-  it.each([
-    [{ status: "queued", runtimeState: null }, "Waiting for a box"],
-    [{ status: "idle", runtimeState: null }, "Not started"],
-    [{ status: "running", runtimeState: "starting" }, "Starting"],
-    [{ status: "running", runtimeState: "working" }, "Working"],
-    [{ status: "running", runtimeState: "awaiting_input" }, "Waiting for input"],
-    [{ status: "running", runtimeState: "checkpointing" }, "Checkpointing"],
-    [{ status: "running", runtimeState: "closed" }, "Closing"],
-    [{ status: "running", runtimeState: null }, "Working"],
-  ])("%o reads %s", (s, label) => {
-    expect(doingOf({ ...s, lastHeartbeatAt: HEARD, startedAt: HEARD }, AT).label).toBe(label);
-  });
-
-  it("lets a queued status outrank a runtime state the box left behind", () => {
-    expect(
-      doingOf({ status: "queued", runtimeState: "working", lastHeartbeatAt: null, startedAt: null }, AT).label,
-    ).toBe("Waiting for a box");
-  });
-
-  it("says what a running session silent past a minute last reported, never that it is doing it", () => {
-    const silent = { status: "running", lastHeartbeatAt: SILENT, startedAt: SILENT };
-    expect(doingOf({ ...silent, runtimeState: "working" }, AT)).toEqual({
-      label: "Last reported working",
-      tone: "neutral",
-    });
-    expect(doingOf({ ...silent, runtimeState: "awaiting_input" }, AT).label).toBe(
-      "Last reported waiting for input",
-    );
-    expect(doingOf({ ...silent, runtimeState: null }, AT).label).toBe("Last reported working");
-  });
-
-  it("calls a session its box reports blocked Blocked, never Working, and a quiet one Last reported blocked", () => {
-    const report = {
-      incarnation: "live",
-      work: "blocked",
-      blockerKind: "human",
-      waitingOn: "the owner's answer",
-      observedAt: HEARD,
-    };
-    const heard = { status: "running", runtimeState: "working", startedAt: HEARD, report };
-    expect(doingOf({ ...heard, lastHeartbeatAt: HEARD }, AT)).toEqual({ label: "Blocked", tone: "attention" });
-    expect(doingOf({ ...heard, lastHeartbeatAt: SILENT }, AT)).toEqual({
-      label: "Last reported blocked",
-      tone: "neutral",
-    });
-    expect(doingOf({ ...heard, lastHeartbeatAt: HEARD, report: { ...report, work: "runnable" } }, AT).label).toBe(
-      "Working",
-    );
-  });
-
-  it("calls a session heard from exactly a minute ago working, and one a second past that quiet", () => {
-    const at = (ms: number) => new Date(AT - ms).toISOString();
-    const base = { status: "running", runtimeState: "working" };
-    expect(doingOf({ ...base, lastHeartbeatAt: at(60_000), startedAt: null }, AT).label).toBe("Working");
-    expect(doingOf({ ...base, lastHeartbeatAt: at(61_000), startedAt: null }, AT).label).toBe(
-      "Last reported working",
-    );
-  });
-});
-
-
 describe("waitingOnOf — who can end the wait, in the box's words", () => {
   const report = (over: Partial<NonNullable<LiveSession["report"]>>) => ({
     incarnation: "live",
@@ -104,6 +38,7 @@ describe("waitingOnOf — who can end the wait, in the box's words", () => {
     blockerKind: "human",
     waitingOn: "the answer on ISS-7",
     observedAt: "2026-10-15T01:59:00.000Z",
+    since: "2026-10-15T01:59:00.000Z",
     ...over,
   });
 

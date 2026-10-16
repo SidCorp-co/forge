@@ -35,8 +35,9 @@ import {
   useElapsed,
   WORKING_WORD,
 } from "@/design";
-import { BLOCKED_WORD, lastReported, TONE_META } from "@/design/status";
+import { TONE_META } from "@/design/status";
 import { SessionChip } from "./session-chip";
+import { isWaitingForInput, sessionWord } from "../session-word";
 import { useOrgScopedProjects, useProject, useProjects } from "@/features/projects/hooks";
 import { useDevices } from "@/features/runners/hooks";
 import { IssueRefBadge } from "@/features/issues/components/issue-ref-badge";
@@ -66,6 +67,7 @@ import {
   classifySessionOutcome,
   isRealFailure,
   failureReasonLabel,
+  quietEndText,
   AGENT_SESSION_KINDS,
   SESSION_KIND_LABEL,
   type AgentSessionDisplayStatus,
@@ -88,14 +90,6 @@ function formatDuration(ms: number): string {
   const m = Math.floor(s / 60);
   const h = Math.floor(m / 60);
   if (h > 0) return `${h}h ${String(m % 60).padStart(2, "0")}m`;
-  if (m > 0) return `${m}m ${String(s % 60).padStart(2, "0")}s`;
-  return `${s}s`;
-}
-
-/** `m ss` / `s` countdown for the reap-window label. */
-function formatCountdown(ms: number): string {
-  const s = Math.max(0, Math.ceil(ms / 1000));
-  const m = Math.floor(s / 60);
   if (m > 0) return `${m}m ${String(s % 60).padStart(2, "0")}s`;
   return `${s}s`;
 }
@@ -148,18 +142,24 @@ function matchesKind(kind: KindFilter, row: SessionRow): boolean {
   return sessionKind(row) === kind;
 }
 
-function matchesFilter(filter: SessionFilter, row: SessionRow, display: AgentSessionDisplayStatus): boolean {
+function matchesFilter(
+  filter: SessionFilter,
+  row: SessionRow,
+  display: AgentSessionDisplayStatus,
+  now: number,
+): boolean {
   switch (filter) {
     case "waiting":
-      // ISS-664 — a finished interactive chat awaiting the owner's reply.
-      // Deliberately distinct from `queued` (a pipeline session awaiting a
-      // runner also carries `status:'idle'` in some capacity-blocked states,
-      // but `isAwaitingReply` only matches interactive chats).
-      return isAwaitingReply(row);
-    case "running":
-      // Heard from and running: the one reading the header's Working figure counts too. A quiet
-      // session is counted under Quiet and Attention, never here.
-      return display === "running";
+      // A chat awaiting the owner's reply (ISS-664), and every session the Pipeline page calls
+      // Waiting for input (ISS-1228): both wait on a person's next message.
+      return isAwaitingReply(row) || isWaitingForInput(row, now);
+    case "running": {
+      // The sessions this list calls Working, which the header's Working figure counts too: never a
+      // quiet one, nor one doing something it has its own word for. A chat has no session word,
+      // and its chip says Working while it runs.
+      const word = sessionWord(row, now);
+      return word ? word.label === WORKING_WORD : display === "running";
+    }
     case "queued":
       return row.status === "queued" || row.status === "idle";
     case "attention":
@@ -277,18 +277,18 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
     };
     rows.forEach((r, i) => {
       for (const f of FILTERS) {
-        if (f !== "all" && matchesFilter(f, r, displays[i])) c[f] += 1;
+        if (f !== "all" && matchesFilter(f, r, displays[i], now)) c[f] += 1;
       }
     });
     return c;
-  }, [rows, displays]);
+  }, [rows, displays, now]);
 
   const visibleRows = useMemo(() => {
     return rows
       .map((r, i) => ({ row: r, display: displays[i] }))
-      .filter(({ row, display }) => matchesFilter(filter, row, display))
+      .filter(({ row, display }) => matchesFilter(filter, row, display, now))
       .map(({ row }) => row);
-  }, [rows, displays, filter]);
+  }, [rows, displays, filter, now]);
 
   // A pure derivation so it can be tested without a browser; session-tree.ts
   // says what happens to a row whose owner a filter excluded.
@@ -579,7 +579,7 @@ function SessionIdentity({
   onOpen?: () => void;
 }) {
   const router = useRouter();
-  const issue = row.issue ?? null;
+  const issues = row.issues ?? [];
   const title = sessionTitle(row) ?? "Untitled session";
   return (
     <div className="min-w-0">
@@ -599,14 +599,21 @@ function SessionIdentity({
         </p>
       )}
       <div className="mt-1 flex flex-wrap items-center gap-1.5">
-        {issue &&
-          (slug ? (
-            <IssueRefBadge id={issue.id} slug={slug} displayId={issue.displayId} title={issue.title} />
+        {issues.map((issue) =>
+          slug ? (
+            <IssueRefBadge
+              key={issue.id}
+              id={issue.id}
+              slug={slug}
+              displayId={issue.displayId}
+              title={issue.title}
+            />
           ) : (
-            <span className="fg-caption truncate" title={issue.title}>
+            <span key={issue.id} className="fg-caption truncate" title={issue.title}>
               {issue.displayId}
             </span>
-          ))}
+          ),
+        )}
         {/* Jump to the pipeline-run timeline (ISS-378 AC#3). */}
         {row.pipelineRunId && (
           <Tooltip label="Open pipeline run timeline">
@@ -674,6 +681,8 @@ function StatusCell({
   now: number;
 }) {
   const liveness = deriveLiveness(row, now);
+  const word = sessionWord(row, now);
+  const endText = quietEndText(liveness);
   // ISS-664 — a finished interactive chat awaiting the owner's reply gets its
   // own distinct chip (the `waiting` StatusKey — amber "a human must act"),
   // taking priority over the generic idle→paused mapping used everywhere else
@@ -695,28 +704,21 @@ function StatusCell({
     <div className="flex flex-col items-start gap-1">
       {!awaitingReply && outcome.tooltip ? (
         <Tooltip label={outcome.tooltip}>
-          <SessionChip status={chipStatus} stage={stage} />
+          <SessionChip status={chipStatus} stage={stage} session={row} now={now} />
         </Tooltip>
       ) : (
-        <SessionChip status={chipStatus} stage={stage} />
+        <SessionChip status={chipStatus} stage={stage} session={row} now={now} />
       )}
       {subLine && (
         <span className="fg-caption" style={{ color: reasonColor }}>
           {subLine}
         </span>
       )}
-      {(liveness.state === "stale" || liveness.state === "reaping") && (
-        <span className="fg-caption text-subtle">
-          {lastReported(row.report?.work === "blocked" ? BLOCKED_WORD : WORKING_WORD)}
+      {word?.quiet && <span className="fg-caption text-subtle">{word.label}</span>}
+      {endText && (
+        <span className="fg-caption text-subtle" title="Core ends a session as failed once it stays silent this long">
+          {endText}
         </span>
-      )}
-      {liveness.state === "stale" && liveness.reapInMs != null && (
-        <span className="fg-caption text-subtle" title="Time until core ends this session if it stays silent">
-          auto-recovers in {formatCountdown(liveness.reapInMs)}
-        </span>
-      )}
-      {liveness.state === "reaping" && (
-        <span className="fg-caption text-subtle">past the automatic-recovery threshold</span>
       )}
     </div>
   );

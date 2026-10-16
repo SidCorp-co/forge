@@ -283,7 +283,8 @@ describe("a working project", () => {
     const { container } = mount();
     expect(shape(container)).toBe("working");
     expect(headline()).toHaveTextContent("2 sessions are live and 1 item needs a person.");
-    expect(figure("Sessions live").getByText(/runners busy/)).toBeInTheDocument();
+    // No runner serves this project here, which the caption says rather than "0 of 0 runners busy".
+    expect(figure("Sessions live").getByText("no runners · 2 runs open")).toBeInTheDocument();
     expect(figure("Needs you").getByText(/oldest 2h/)).toBeInTheDocument();
   });
 

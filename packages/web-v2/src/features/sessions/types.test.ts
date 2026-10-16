@@ -142,6 +142,7 @@ describe("deriveSessionDisplayStatus (single-sourced on deriveLiveness)", () => 
     blockerKind: "human",
     waitingOn: "approve the restore",
     observedAt: new Date(NOW - 5_000).toISOString(),
+    since: new Date(NOW - 5_000).toISOString(),
   });
   it("calls a running session its box reports blocked blocked, and a quiet one quiet", () => {
     expect(deriveSessionDisplayStatus(running(5_000, { report: report("blocked") }), NOW)).toBe("blocked");

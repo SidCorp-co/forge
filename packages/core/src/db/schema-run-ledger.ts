@@ -41,6 +41,8 @@ export const deviceRunLedger = pgTable(
     worktreeGoneAt: timestamp('worktree_gone_at', { withTimezone: true }),
     issues: jsonb('issues').$type<Array<{ issueKey: string; leaseReturned: boolean }>>().notNull(),
     observedAt: timestamp('observed_at', { withTimezone: true }).notNull().defaultNow(),
+    /** When core first saw this `work`, `blockerKind` and `waitingOn` together (ISS-1228). */
+    workSince: timestamp('work_since', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.deviceId, t.runId] }),

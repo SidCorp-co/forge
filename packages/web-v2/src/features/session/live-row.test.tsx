@@ -110,6 +110,7 @@ describe("the box's report on a page left open (ISS-1228 round 8)", () => {
     blockerKind: "human",
     waitingOn: "approve the database restore in Coolify",
     observedAt: new Date(T0 - 5_000).toISOString(),
+    since: new Date(T0 - 5_000).toISOString(),
   };
 
   it("reads Blocked once the polled read carries a newer report than the row it opened with", async () => {

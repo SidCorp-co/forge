@@ -13,6 +13,8 @@ export interface SessionReport {
   blockerKind: string | null;
   waitingOn: string | null;
   observedAt: string;
+  /** When the box first reported this work, blocker and wait; every report restamps `observedAt`. */
+  since: string;
 }
 
 export interface LiveSession {
