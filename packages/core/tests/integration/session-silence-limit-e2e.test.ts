@@ -351,13 +351,27 @@ describe('the one-shot sweep, as the limit reads it (ISS-1228 round 9)', () => {
     expect(await statusOf(asked.id)).toBe('running');
   });
 
+  it('stops counting on a child the heartbeat hop has already ended, as the master reaper does', async () => {
+    const master = await session('master', { runKind: 'pm' });
+    await harness.db.execute(sql`
+      UPDATE agent_sessions SET last_heartbeat_at = now() - interval '11 minutes' WHERE id = ${master.id}
+    `);
+    const child = await session('pipeline', { runKind: 'pm' });
+    await harness.db.execute(sql`
+      UPDATE agent_sessions SET parent_session_id = ${master.id} WHERE id = ${child.id}
+    `);
+
+    const limit = (await get(`/agent-sessions/${master.id}`)).silenceLimitMs as number;
+    expect(limit).toBeLessThan(11 * 60_000 + 10_000);
+    const { reapZombieSessions } = await import('../../src/jobs/loop-monitor.js');
+    await reapZombieSessions(new Date());
+    const { reapSilentMasters } = await import('../../src/devices/master-reaper.js');
+    await reapSilentMasters();
+    expect(await statusOf(master.id)).toBe('failed');
+  });
+
   it('waits a master out while a child it owns is heard, as the master reaper does', async () => {
     const master = await session('master');
-    // Asked a person, so the one-shot sweep holds off and the master reaper alone sets the limit.
-    await harness.db.execute(sql`
-      INSERT INTO agent_questions (id, project_id, agent_session_id, status, blocker_kind, steps)
-      VALUES (${randomUUID()}, ${projectId}::uuid, ${master.id}, 'open', 'human', '[]'::jsonb)
-    `);
     await harness.db.execute(sql`
       UPDATE agent_sessions SET last_heartbeat_at = now() - interval '9 minutes' WHERE id = ${master.id}
     `);
@@ -366,6 +380,13 @@ describe('the one-shot sweep, as the limit reads it (ISS-1228 round 9)', () => {
       UPDATE agent_sessions SET parent_session_id = ${master.id}, last_heartbeat_at = now() - interval '1 minute'
        WHERE id = ${child.id}
     `);
+    // Both asked a person, so no one-shot sweep runs and the run and master reapers alone set it.
+    for (const id of [master.id, child.id]) {
+      await harness.db.execute(sql`
+        INSERT INTO agent_questions (id, project_id, agent_session_id, status, blocker_kind, steps)
+        VALUES (${randomUUID()}, ${projectId}::uuid, ${id}, 'open', 'human', '[]'::jsonb)
+      `);
+    }
 
     const limit = (await get(`/agent-sessions/${master.id}`)).silenceLimitMs as number;
     expect(limit).toBeGreaterThan(TEN_MIN + 7 * 60_000);

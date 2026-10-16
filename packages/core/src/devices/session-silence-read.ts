@@ -5,15 +5,17 @@ import { parkedOnAHuman, residencySeconds } from '../jobs/park-deadline.js';
 import { LIVE_SESSION_STATUSES } from '../lifecycle/status-sets.js';
 import { type SilenceSubject, silenceDeadline } from './session-silence.js';
 
-const TERMINAL = sql.raw(terminalAgentSessionStatuses.map((s) => `'${s}'`).join(', '));
+const TERMINAL_SQL = sql.raw(terminalAgentSessionStatuses.map((s) => `'${s}'`).join(', '));
 const LIVE_SQL = sql.raw(LIVE_SESSION_STATUSES.map((s) => `'${s}'`).join(', '));
 const LIVE: ReadonlySet<string> = new Set(LIVE_SESSION_STATUSES);
+const TERMINAL: ReadonlySet<string> = new Set(terminalAgentSessionStatuses);
 
 type Ms = number | string | null;
 
 interface SilenceRow {
   id: string;
   pipeline_run_id: string | null;
+  parent_session_id: string | null;
   kind: string;
   status: string;
   runtime_state: string | null;
@@ -27,7 +29,6 @@ interface SilenceRow {
   parked: boolean;
   has_job: boolean;
   residency_s: number | string;
-  latest_child_beat_at: Ms;
   sweep_beat_at: Ms;
   runner_seen_at: Ms;
   run_started_at: Ms;
@@ -51,26 +52,27 @@ function subjectOf(r: SilenceRow): SilenceSubject {
     parked: r.parked,
     hasJob: r.has_job,
     residencyMs: Number(r.residency_s) * 1000,
-    latestChildBeatAt: ms(r.latest_child_beat_at),
   };
 }
 
-/**
- * When core ends each session if nothing more is heard, read from the rows every reaper's eligibility
- * reads, so the sessions list, the session page, the Pipeline page and the runs tab count to one time.
- * The live sessions sharing a jobless one-shot run are read too: the sweep waits on each of them only
- * until another reaper ends it.
- */
-export async function loadSilenceDeadlines(
-  ids: readonly string[],
-): Promise<Map<string, number | null>> {
-  if (ids.length === 0) return new Map();
+/** The sessions whose silence decides theirs: siblings on one run, and a master's children. */
+async function readClosure(ids: readonly string[]): Promise<SilenceRow[]> {
   const wanted = sql.join(
     ids.map((id) => sql`${id}::uuid`),
     sql`, `,
   );
-  const rows = (await db.execute(sql`
-    SELECT s.id, s.pipeline_run_id, s.kind, s.status, s.runtime_state,
+  return (await db.execute(sql`
+    WITH RECURSIVE closure(id) AS (
+      SELECT id FROM agent_sessions WHERE id IN (${wanted})
+      UNION
+      SELECT t.id
+        FROM closure c
+        JOIN agent_sessions s ON s.id = c.id
+        JOIN agent_sessions t
+          ON (t.pipeline_run_id = s.pipeline_run_id AND t.status IN (${LIVE_SQL}))
+          OR (t.parent_session_id = s.id AND t.status NOT IN (${TERMINAL_SQL}))
+    )
+    SELECT s.id, s.pipeline_run_id, s.parent_session_id, s.kind, s.status, s.runtime_state,
            s.claude_session_id IS NOT NULL AS has_client,
            (SELECT jsonb_object_agg(m.key, m.value)
               FROM jsonb_each(CASE WHEN jsonb_typeof(s.metadata) = 'object' THEN s.metadata ELSE '{}'::jsonb END) m
@@ -81,9 +83,6 @@ export async function loadSilenceDeadlines(
            ${parkedOnAHuman(sql`s.id`)} AS parked,
            EXISTS (SELECT 1 FROM jobs j WHERE j.agent_session_id = s.id) AS has_job,
            ${residencySeconds(sql`s.project_id`)} AS residency_s,
-           (SELECT ${epoch('MAX(COALESCE(c.last_heartbeat_at, c.started_at))')}
-              FROM agent_sessions c
-             WHERE c.parent_session_id = s.id AND c.status NOT IN (${TERMINAL})) AS latest_child_beat_at,
            ${epoch('COALESCE(s.last_heartbeat_at, s.started_at, s.updated_at, s.created_at)')} AS sweep_beat_at,
            (SELECT ${epoch('MAX(rn.last_seen_at)')} FROM runners rn WHERE rn.device_id = s.device_id) AS runner_seen_at,
            ${epoch('r.started_at')} AS run_started_at
@@ -93,36 +92,68 @@ export async function loadSilenceDeadlines(
             AND r.kind IN ('system', 'interactive')
             AND r.status IN ('running', 'paused')
             AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.pipeline_run_id = r.id)
-     WHERE s.id IN (${wanted})
-        OR (s.status IN (${LIVE_SQL})
-            AND s.pipeline_run_id IN (SELECT x.pipeline_run_id FROM agent_sessions x WHERE x.id IN (${wanted})))
+     WHERE s.id IN (SELECT id FROM closure)
   `)) as unknown as SilenceRow[];
+}
 
-  const byRun = new Map<string, SilenceRow[]>();
+function group(rows: readonly SilenceRow[], key: (r: SilenceRow) => string | null) {
+  const out = new Map<string, SilenceRow[]>();
   for (const r of rows) {
-    if (r.pipeline_run_id === null || r.run_started_at === null || !LIVE.has(r.status)) continue;
-    byRun.set(r.pipeline_run_id, [...(byRun.get(r.pipeline_run_id) ?? []), r]);
+    const k = key(r);
+    if (k !== null) out.set(k, [...(out.get(k) ?? []), r]);
   }
-  const wantedIds = new Set(ids);
-  return new Map(
-    rows
-      .filter((r) => wantedIds.has(r.id))
-      .map((r) => {
-        const runStartedAt = ms(r.run_started_at);
-        const siblings = r.pipeline_run_id === null ? [] : (byRun.get(r.pipeline_run_id) ?? []);
-        const oneShot =
-          runStartedAt === null
-            ? null
-            : {
-                runStartedAt,
-                sessions: siblings.map((t) => ({
-                  beatAt: Number(t.sweep_beat_at),
-                  runnerSeenAt: ms(t.runner_seen_at),
-                  parked: t.parked,
-                  endsBy: silenceDeadline(subjectOf(t)),
-                })),
-              };
-        return [r.id, silenceDeadline({ ...subjectOf(r), oneShot })];
-      }),
+  return out;
+}
+
+/**
+ * When core ends each session if nothing more is heard, read from the rows every reaper's eligibility
+ * reads, so the sessions list, the session page, the Pipeline page and the runs tab count to one time.
+ * A session another one holds up — a sibling on a jobless one-shot run, a master's child — holds it
+ * only until a reaper ends that one.
+ */
+export async function loadSilenceDeadlines(
+  ids: readonly string[],
+): Promise<Map<string, number | null>> {
+  if (ids.length === 0) return new Map();
+  const rows = await readClosure(ids);
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const oneShotRuns = group(rows, (r) =>
+    r.run_started_at !== null && LIVE.has(r.status) ? r.pipeline_run_id : null,
   );
+  const children = group(rows, (r) => (TERMINAL.has(r.status) ? null : r.parent_session_id));
+
+  const memo = new Map<string, number | null>();
+  const open = new Set<string>();
+  const deadline = (id: string, withSweep: boolean): number | null => {
+    const key = `${id}:${withSweep}`;
+    if (memo.has(key)) return memo.get(key) ?? null;
+    const r = byId.get(id);
+    if (!r || open.has(key)) return null;
+    open.add(key);
+    const runStartedAt = ms(r.run_started_at);
+    const siblings = r.pipeline_run_id === null ? [] : (oneShotRuns.get(r.pipeline_run_id) ?? []);
+    const found = silenceDeadline({
+      ...subjectOf(r),
+      children: (children.get(id) ?? []).map((c) => ({
+        beatAt: ms(c.last_heartbeat_at) ?? ms(c.started_at),
+        endsBy: deadline(c.id, true),
+      })),
+      oneShot:
+        !withSweep || runStartedAt === null
+          ? null
+          : {
+              runStartedAt,
+              sessions: siblings.map((t) => ({
+                beatAt: Number(t.sweep_beat_at),
+                runnerSeenAt: ms(t.runner_seen_at),
+                parked: t.parked,
+                endsBy: deadline(t.id, false),
+              })),
+            },
+    });
+    open.delete(key);
+    memo.set(key, found);
+    return found;
+  };
+  return new Map(ids.filter((id) => byId.has(id)).map((id) => [id, deadline(id, true)]));
 }

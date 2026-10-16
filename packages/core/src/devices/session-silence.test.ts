@@ -56,12 +56,21 @@ describe('silenceLimitMs', () => {
     expect(
       silenceLimitMs(subject({ kind: 'master', runtimeState: 'awaiting_input', parked: true })),
     ).toBe(10 * MIN);
-    expect(silenceLimitMs(subject({ kind: 'master', latestChildBeatAt: T + 4 * MIN }))).toBe(
+    const child = (beatAt: number | null, endsBy: number | null = null) => ({ beatAt, endsBy });
+    expect(silenceLimitMs(subject({ kind: 'master', children: [child(T + 4 * MIN)] }))).toBe(
       14 * MIN,
     );
-    expect(silenceLimitMs(subject({ kind: 'master', latestChildBeatAt: T - 4 * MIN }))).toBe(
+    expect(silenceLimitMs(subject({ kind: 'master', children: [child(T - 4 * MIN)] }))).toBe(
       10 * MIN,
     );
+    // A child that never reported holds nothing; one another reaper ends holds only until then.
+    expect(silenceLimitMs(subject({ kind: 'master', children: [child(null)] }))).toBe(10 * MIN);
+    expect(
+      silenceLimitMs(subject({ kind: 'master', children: [child(T + 4 * MIN, T + 2 * MIN)] })),
+    ).toBe(10 * MIN);
+    expect(
+      silenceLimitMs(subject({ kind: 'master', children: [child(T + 4 * MIN, T + 12 * MIN)] })),
+    ).toBe(12 * MIN);
   });
 
   it("gives a pipeline session the loop monitor's heartbeat timeout, following its override", () => {

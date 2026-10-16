@@ -44,7 +44,8 @@ export interface SilenceSubject {
   hasJob?: boolean;
   /** The project's residency, park grace included. */
   residencyMs?: number;
-  latestChildBeatAt?: number | null;
+  /** A master's unended children: when each last reported, and when another reaper ends it. */
+  children?: readonly { beatAt: number | null; endsBy: number | null }[];
   oneShot?: { runStartedAt: number; sessions: readonly OneShotSibling[] } | null;
 }
 
@@ -114,7 +115,12 @@ export function silenceDeadline(s: SilenceSubject): number | null {
     ends.push(ownBeat + SESSION_SILENCE_TIMEOUT_MS);
   }
   if (s.kind === MASTER_SESSION_METADATA_TYPE && !TERMINAL.has(s.status)) {
-    ends.push(Math.max(ownBeat, s.latestChildBeatAt ?? ownBeat) + SESSION_SILENCE_TIMEOUT_MS);
+    const held = (s.children ?? []).map((c) =>
+      c.beatAt === null
+        ? 0
+        : Math.min(c.beatAt + SESSION_SILENCE_TIMEOUT_MS, c.endsBy ?? Number.POSITIVE_INFINITY),
+    );
+    ends.push(Math.max(ownBeat + SESSION_SILENCE_TIMEOUT_MS, ...held));
   }
   if (s.status === 'running' && s.runtimeState === 'awaiting_input' && !s.parked) {
     if (s.residencyMs !== undefined) ends.push((s.lastHeartbeatAt ?? s.createdAt) + s.residencyMs);
