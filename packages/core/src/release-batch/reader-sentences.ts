@@ -7,7 +7,6 @@
 
 import type { ReleaseBlockerCode } from '@forge/contracts';
 import {
-  carriedUndecidedSentence,
   namedHere,
   type ReleaseBlocker,
   type ReleaseWarning,
@@ -18,6 +17,7 @@ import {
   unclosableSentence,
   unreadableSentence,
 } from './blocker-sentences.js';
+import { carriedUndecidedSentence } from './carried-sentences.js';
 import { agree } from './counted.js';
 
 /** Every check a release reason can stand in for, as a person names the work it does. */
@@ -127,8 +127,7 @@ const READER: Record<ReleaseBlockerCode, Reader> = {
   RELEASE_CHECK_UNEVALUATED: uncheckedSentence,
 };
 
-/** The sentence a person reads for a release reason; a reader with nothing of its own for these
- *  details means the caller's sentence already reads for a person. */
+/** A reader returning null for these details defers to the caller's sentence. */
 export function releaseBlockerReaderSentence(code: ReleaseBlockerCode, details?: Details): string {
   const reader = READER[code];
   const own = reader === 'same' ? null : reader(details);
@@ -147,7 +146,6 @@ const WARNING_READER: Record<ReleaseWarningCode, Reader> = {
   RELEASE_CARRIED_UNREAD: 'same',
 };
 
-/** A reason with the sentence a person reads beside the one a caller reads. */
 export type ReaderBlocker = ReleaseBlocker & { reader: string };
 export type ReaderWarning = ReleaseWarning & { reader: string };
 
