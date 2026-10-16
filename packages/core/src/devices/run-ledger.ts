@@ -202,10 +202,9 @@ export async function readProjectRunSessions(projectId: string): Promise<Project
       sessionRuntimeState: sql<
         string | null
       >`(SELECT s.runtime_state FROM agent_sessions s WHERE s.id = ${deviceRunLedger.sessionId})`,
-      sessionSilenceMetadata: sql<unknown>`(SELECT jsonb_strip_nulls(jsonb_build_object(
-          'escalation', s.metadata -> 'escalation',
-          'agentChat', s.metadata -> 'agentChat'))
-        FROM agent_sessions s WHERE s.id = ${deviceRunLedger.sessionId})`,
+      sessionSilenceMetadata: sql<unknown>`(SELECT jsonb_object_agg(m.key, m.value)
+        FROM agent_sessions s, jsonb_each(CASE WHEN jsonb_typeof(s.metadata) = 'object' THEN s.metadata ELSE '{}'::jsonb END) m
+        WHERE s.id = ${deviceRunLedger.sessionId} AND m.key IN ('escalation', 'agentChat'))`,
       masterTitle: sql<
         string | null
       >`(SELECT s.title FROM agent_sessions s WHERE s.id = ${deviceRunLedger.masterSessionId})`,

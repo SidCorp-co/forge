@@ -33,11 +33,14 @@ describe('silenceLimitMs', () => {
       3 * 60_000,
     );
     expect(silenceLimitMs({ kind: 'chat', metadata: { agentChat: { id: 'a' } } })).toBe(3 * 60_000);
+    // The reaper reads `metadata -> 'escalation' IS NOT NULL`, which a JSON null satisfies.
+    expect(silenceLimitMs({ kind: 'chat', metadata: { escalation: null } })).toBe(3 * 60_000);
+    expect(silenceLimitMs({ kind: 'chat', metadata: { agentChat: null } })).toBe(3 * 60_000);
   });
 
   it('states no limit where no silence ends the session', () => {
     expect(silenceLimitMs({ kind: 'chat' })).toBeNull();
-    expect(silenceLimitMs({ kind: 'chat', metadata: { escalation: null } })).toBeNull();
+    expect(silenceLimitMs({ kind: 'chat', metadata: { other: 1 } })).toBeNull();
     expect(silenceLimitMs({ kind: 'pipeline', runtimeState: 'awaiting_input' })).toBeNull();
   });
 });

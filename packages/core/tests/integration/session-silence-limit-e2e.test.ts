@@ -131,4 +131,31 @@ describe("a session read carries core's own silence limit (ISS-1228 round 9)", (
     expect(rows.find((r) => r.sessionId === run.id)?.silenceLimitMs).toBe(TEN_MIN);
     expect(rows.find((r) => r.sessionId === null)?.silenceLimitMs).toBeNull();
   });
+
+  it('reports the limit the loop monitor enforces on a chat whose escalation key holds a JSON null', async () => {
+    const id = randomUUID();
+    const runId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, kind, status)
+      VALUES (${runId}, ${projectId}::uuid, 'interactive', 'running')
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO agent_sessions (id, project_id, device_id, pipeline_run_id, kind, status, title, runtime_state,
+                                  claude_session_id, metadata, started_at, last_heartbeat_at, updated_at)
+      VALUES (${id}, ${projectId}::uuid, ${deviceId}::uuid, ${runId}, 'chat', 'running', 'a chat', 'working',
+              'claude-1', '{"escalation": null}'::jsonb, now() - interval '10 minutes',
+              now() - interval '4 minutes', now() - interval '4 minutes')
+    `);
+
+    const body = await get(`/agent-sessions?projectId=${projectId}`);
+    const listed = (body.items as Array<{ id: string; silenceLimitMs: number | null }>).find(
+      (i) => i.id === id,
+    );
+    expect(listed?.silenceLimitMs).toBe(THREE_MIN);
+
+    const { reapZombieSessions } = await import('../../src/jobs/loop-monitor.js');
+    await reapZombieSessions(new Date());
+    const [row] = await harness.db.execute(sql`SELECT status FROM agent_sessions WHERE id = ${id}`);
+    expect(row?.status).toBe('failed');
+  });
 });

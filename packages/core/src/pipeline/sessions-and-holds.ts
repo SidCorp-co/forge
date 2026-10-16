@@ -276,10 +276,8 @@ export async function readSessionsAndHolds(
   const sessions = (await db.execute(sql`
     SELECT s.id, s.kind, s.title, s.status, s.runtime_state, s.device_id, d.name AS device_name,
            s.parent_session_id, s.started_at, s.last_heartbeat_at, s.created_at,
-           jsonb_strip_nulls(jsonb_build_object(
-             'escalation', s.metadata -> 'escalation',
-             'agentChat', s.metadata -> 'agentChat'
-           )) AS metadata
+           (SELECT jsonb_object_agg(m.key, m.value) FROM jsonb_each(CASE WHEN jsonb_typeof(s.metadata) = 'object' THEN s.metadata ELSE '{}'::jsonb END) m
+             WHERE m.key IN ('escalation', 'agentChat')) AS metadata
       FROM agent_sessions s
       LEFT JOIN devices d ON d.id = s.device_id
      WHERE s.project_id = ${projectId}::uuid

@@ -57,6 +57,7 @@ const readOfMock = (read: Read, data: unknown, message: string) =>
 const failedWithData = (data: unknown, message: string) => ({ ...failedQuery(message), data });
 const failedQuery = (message: string) => ({ data: undefined, isLoading: false, isError: true, error: new Error(message) });
 const refetch = vi.fn();
+const sessionsRefetch = vi.fn();
 
 function reset() {
   attentionView = view({});
@@ -117,6 +118,7 @@ vi.mock("@/features/pipeline/hooks", () => ({
     isLoading: false,
     isError: sessionsError !== null,
     error: sessionsError,
+    refetch: sessionsRefetch,
   }),
 }));
 vi.mock("@/features/issues/hooks", async (importOriginal) => ({
@@ -829,5 +831,58 @@ describe("the project dashboard's metrics", () => {
     mount();
     expect(screen.getByRole("region", { name: "Throughput" })).toHaveTextContent("4 today · 2.0 a day over the six before");
     expect(screen.getByRole("region", { name: "Open work by state" })).toBeInTheDocument();
+  });
+});
+
+// ISS-1228 round 9: a live session its box reports blocked on a person is one item Needs you counts,
+// so the figure and the list wait on the sessions read as they wait on the attention read.
+describe("Needs you and the live sessions it counts", () => {
+  const heard = new Date(NOW - 10_000).toISOString();
+  const blockedOnYou = {
+    id: "s9",
+    kind: "run_session",
+    title: "run: ISS-9",
+    status: "running",
+    runtimeState: "working",
+    deviceId: "d1",
+    deviceName: "box-a",
+    parentSessionId: null,
+    startedAt: heard,
+    lastHeartbeatAt: heard,
+    createdAt: heard,
+    issues: [{ issueId: "doc-9", displayId: "ISS-9", title: "Nine" }],
+    report: { incarnation: "live", work: "blocked", blockerKind: "human", waitingOn: "approve the restore", observedAt: heard },
+    silenceLimitMs: 600_000,
+  };
+
+  it("counts and lists a session blocked on a person", () => {
+    sessions = [blockedOnYou];
+    mount();
+    expect(figure("Needs you").getByText("1")).toBeInTheDocument();
+    const list = screen.getByRole("region", { name: "Needs your attention" });
+    expect(list).toHaveTextContent("waits on you — approve the restore");
+    expect(list).toHaveTextContent("ISS-9");
+  });
+
+  it("states no figure while the sessions read is on its way, though the health row lists blockers", () => {
+    blockers = PAIR_BLOCKERS;
+    sessions = undefined;
+    mount();
+    const n = figure("Needs you");
+    expect(n.getByText("…")).toBeInTheDocument();
+    expect(n.queryByText(String(PAIR_BLOCKERS.length))).toBeNull();
+    expect(screen.getByTestId("attention-pending")).toBeInTheDocument();
+  });
+
+  it("refuses by name when the sessions read failed, and its retry asks for both reads again", () => {
+    blockers = PAIR_BLOCKERS;
+    sessions = undefined;
+    sessionsError = new Error("sessions down");
+    mount();
+    const n = figure("Needs you");
+    expect(n.getByText("—")).toBeInTheDocument();
+    expect(n.getByText(/could not be read.*sessions down.*unknown/u)).toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole("region", { name: "Needs your attention" })).getByRole("button", { name: "Try again" }));
+    expect(sessionsRefetch).toHaveBeenCalled();
   });
 });

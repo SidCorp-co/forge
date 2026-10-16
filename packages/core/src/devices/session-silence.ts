@@ -6,7 +6,6 @@ export const SESSION_SILENCE_TIMEOUT_MS = 10 * 60 * 1000;
 
 export const SESSION_SILENCE_TIMEOUT_S = Math.floor(SESSION_SILENCE_TIMEOUT_MS / 1000);
 
-/** The kinds the loop monitor fails on a stopped heartbeat (`reapZombieSessions`). */
 const HEARTBEAT_REAPED_KINDS: ReadonlySet<string> = new Set(PIPELINE_SESSION_KINDS);
 
 export interface SilenceSubject {
@@ -15,10 +14,9 @@ export interface SilenceSubject {
   metadata?: unknown;
 }
 
+/** As the loop monitor's `metadata -> key IS NOT NULL` reads it: the key present, a JSON null included. */
 function carries(metadata: unknown, key: string): boolean {
-  if (metadata === null || typeof metadata !== 'object') return false;
-  const value = (metadata as Record<string, unknown>)[key];
-  return value !== undefined && value !== null;
+  return metadata !== null && typeof metadata === 'object' && Object.hasOwn(metadata, key);
 }
 
 /**
