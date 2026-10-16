@@ -56,6 +56,12 @@ const PAT_STRING_PATTERN = /forge_pat_(?:dev|stg|prd)_[A-Fa-f0-9]+/g;
  */
 const SHARE_TOKEN_STRING_PATTERN = /forge_share_[A-Za-z0-9_-]{8,}/g;
 
+/**
+ * An MCP client's refresh token or authorization code (`@forge/contracts/mcp-auth`): a refresh token
+ * mints access tokens for a month, so it is redacted wherever it turns up, cut off or not.
+ */
+const MCP_OAUTH_SECRET_PATTERN = /forge_mcp_(?:rt|code)_[A-Za-z0-9_-]{8,}/g;
+
 const PEM_PRIVATE_KEY_PATTERN =
 	/-----BEGIN (?:[A-Z]{1,12} ){0,3}PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z]{1,12} ){0,3}PRIVATE KEY-----/g;
 
@@ -127,6 +133,7 @@ function scrubPatInString(s: string): string {
 	return s
 		.replace(PAT_STRING_PATTERN, FILTERED)
 		.replace(SHARE_TOKEN_STRING_PATTERN, FILTERED)
+		.replace(MCP_OAUTH_SECRET_PATTERN, FILTERED)
 		.replace(PEM_PRIVATE_KEY_PATTERN, FILTERED)
 		.replace(PEM_PRIVATE_KEY_HEAD_PATTERN, FILTERED)
 		.replace(GOOGLE_ACCESS_TOKEN_PATTERN, FILTERED)

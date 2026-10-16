@@ -164,6 +164,12 @@ const SECRET_DOORS: Readonly<Record<string, string>> = {
     'readRelayTicket verifies a relay ticket, a JWT under its own issuer naming one binding; a PAT is never one',
   'uploads/routes.ts':
     'an upload or download ticket, a uuid core minted for one file, is the only authority there; a PAT is never one',
+  'credentials/mcp-oauth-routes.ts':
+    'POST /token redeems a code or a refresh token core minted for an MCP client, with no session; a PAT is neither. Consent sits behind requireAuth, where the chat write rule runs, and refuses a token by PAT_UNGRANTABLE',
+  'credentials/mcp-oauth-store.ts':
+    'redeemCode and refreshGrant look a code or a refresh token up by its digest; a PAT digests to neither',
+  'credentials/mcp-oauth-shape.ts':
+    'pkceAnswers checks a PKCE verifier against the challenge its code was issued with, in constant time; mintSecret digests what it mints',
 };
 
 /** Each module the walk reaches that admits nobody, and why. */

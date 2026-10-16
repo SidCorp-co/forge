@@ -214,7 +214,14 @@
     "credentials": {
       "kind": "platform",
       "context": "platform",
-      "owns": ["mcpAuditLog", "personalAccessTokens", "tokenFenceChanges"],
+      "owns": [
+        "mcpAuditLog",
+        "mcpOauthClients",
+        "mcpOauthCodes",
+        "mcpOauthGrants",
+        "personalAccessTokens",
+        "tokenFenceChanges"
+      ],
       "serves": [
         "REQ-27",
         "personal-data-flow#ds-audit",
@@ -1291,6 +1298,9 @@
     },
     "issues": {
       "serves": ["REQ-11", "REQ-2"]
+    },
+    "mcp-auth": {
+      "serves": ["REQ-27", "personal-data-flow#src-mcp"]
     },
     "memory": {
       "serves": ["personal-data-flow#pr-memory", "personal-data-flow#ds-memory"]

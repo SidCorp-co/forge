@@ -3,28 +3,24 @@ import { Hono, type MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import type { personalAccessTokens } from '../db/schema.js';
-import { loadVisibleProjectIds } from '../lib/authz.js';
-import { env } from '../lib/env.js';
-import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { declareGate } from '../middleware/declared-gate.js';
 import { forgetPatThrottle } from '../middleware/require-pat.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import {
-  countActivePatsForUser,
-  hasLivePatNamed,
-  lastFreshAuthAt,
-  listPatsOf,
-  mintPat,
-  revokePat,
-  setPatFence,
-} from './pat.js';
+import { hasLivePatNamed, listPatsOf, mintPat, revokePat, setPatFence } from './pat.js';
 import { coreTokenNamePrefixOf } from './pat-format.js';
+import {
+  assertFreshAuth,
+  assertProjectsVisible,
+  assertUnderTokenLimit,
+  mintableGrant,
+  patMenu,
+  refusePat,
+} from './pat-grant-checks.js';
 import {
   PAT_ACCOUNT_ONLY_PERMISSIONS,
   PAT_EXPLICIT_PERMISSIONS,
-  PAT_FULL_NARROWING_PERMISSIONS,
   PAT_GRANT_EPOCH,
   PAT_PERMISSION_ALL,
   PAT_PERMISSION_NAMES,
@@ -33,7 +29,7 @@ import {
 } from './pat-permissions.js';
 import { tokenChanged } from './ports.js';
 
-const refuse = refuser<PatRefusalCode>('PAT_REFUSED');
+const refuse = refusePat;
 
 const SCOPES = ['read', 'write'] as const;
 
@@ -128,12 +124,7 @@ patRoutes.get('/pat', async (c) => {
   const rows = await listPatsOf(userId);
   return c.json({
     tokens: rows.map(publicShape),
-    menu: {
-      permissions: PAT_PERMISSION_NAMES,
-      accountOnly: PAT_ACCOUNT_ONLY_PERMISSIONS,
-      explicit: PAT_EXPLICIT_PERMISSIONS,
-      full: PAT_PERMISSION_ALL,
-    },
+    menu: patMenu(),
   });
 });
 
@@ -144,57 +135,9 @@ patRoutes.post('/pat', requireFreshAuth(5), zValidator('json', createBodySchema)
   // What is wrong with the body is answered before what is wrong with the
   // account, so a caller at the token limit still reads which field it left
   // out rather than a limit it would have met either way.
-  const permissions = body.permissions;
-  if (!patGrantIsStated(permissions)) {
-    throw new HTTPException(400, {
-      message:
-        'a token states what it may reach: send `permissions` naming the groups this token ' +
-        `needs, or ["${PAT_PERMISSION_ALL}"] for full access chosen on purpose. An omitted ` +
-        'grant used to mint a token reaching the whole menu, and no longer does.',
-      cause: {
-        code: 'PAT_PERMISSIONS_REQUIRED',
-        details: { menu: PAT_PERMISSION_NAMES, full: [PAT_PERMISSION_ALL] },
-      },
-    });
-  }
-  const besideFull = permissions.filter(
-    (p) => p !== PAT_PERMISSION_ALL && !PAT_FULL_NARROWING_PERMISSIONS.includes(p),
-  );
-  if (permissions.includes(PAT_PERMISSION_ALL) && besideFull.length > 0) {
-    throw new HTTPException(400, {
-      message:
-        `full access already holds ${besideFull.join(', ')}: "${PAT_PERMISSION_ALL}" holds ` +
-        `everything your role can do, approvals included. Send ["${PAT_PERMISSION_ALL}"] alone ` +
-        `(only ${PAT_FULL_NARROWING_PERMISSIONS.join(', ')}, which narrows it, may join it), or ` +
-        'name what this token needs without it.',
-      cause: {
-        code: 'PAT_PERMISSIONS_FULL_NOT_COMBINABLE',
-        details: { sent: permissions, alreadyHeld: besideFull },
-      },
-    });
-  }
-
   const fenced = (body.projectIds ?? null) !== null || Boolean(body.boundProjectId);
-  const accountOnly = permissions.filter((p) =>
-    (PAT_ACCOUNT_ONLY_PERMISSIONS as readonly string[]).includes(p),
-  );
-  if (fenced && accountOnly.length > 0) {
-    throw refuse(
-      'PAT_ACCOUNT_PERMISSION_ON_SCOPED_TOKEN',
-      `${accountOnly.join(', ')} ${accountOnly.length === 1 ? 'is' : 'are'} account ` +
-        'permissions, whose routes resolve no project, and this token is fenced to projects. ' +
-        'Drop them, or mint the token with no project list.',
-      '/permissions',
-    );
-  }
-
-  const active = await countActivePatsForUser(userId);
-  if (active >= env.PAT_MAX_PER_USER) {
-    throw refuse(
-      'PAT_LIMIT',
-      `you hold the most live personal access tokens allowed (${env.PAT_MAX_PER_USER}); revoke one first`,
-    );
-  }
+  const permissions = mintableGrant(body.permissions, fenced);
+  await assertUnderTokenLimit(userId);
 
   if (await hasLivePatNamed(userId, body.name)) {
     throw refuse(
@@ -208,7 +151,7 @@ patRoutes.post('/pat', requireFreshAuth(5), zValidator('json', createBodySchema)
   if (reserved) {
     throw refuse(
       'PAT_NAME_RESERVED',
-      `a token name beginning "${reserved}" is one core gives the tokens it mints for a device, a workspace or an assistant turn; name a personal token otherwise`,
+      `a token name beginning "${reserved}" is one core gives the tokens it mints for a device, a workspace, an assistant turn or an MCP client's sign-in; name a personal token otherwise`,
       '/name',
     );
   }
@@ -217,20 +160,10 @@ patRoutes.post('/pat', requireFreshAuth(5), zValidator('json', createBodySchema)
     throw badRequest('boundProjectId and projectIds are mutually exclusive');
   }
 
-  const referenced = [
+  await assertProjectsVisible(userId, [
     ...(body.projectIds ?? []),
     ...(body.boundProjectId ? [body.boundProjectId] : []),
-  ];
-  if (referenced.length > 0) {
-    const allowed = new Set(await loadVisibleProjectIds(userId));
-    const projectId = referenced.find((pid) => !allowed.has(pid));
-    if (projectId) {
-      throw new HTTPException(403, {
-        message: 'project not accessible',
-        cause: { code: 'FORBIDDEN_PROJECT', details: { projectId } },
-      });
-    }
-  }
+  ]);
 
   const minted = await mintPat({
     userId,
@@ -288,16 +221,10 @@ patRoutes.patch(
     if (!row) throw notFound();
     const fixed = fenceFixed(row);
     if (fixed) throw refuse(fixed.code, fixed.detail, fixed.path);
-    const allowed = new Set(await loadVisibleProjectIds(userId));
-    const missing = [...(projectIds ?? []), ...(boundProjectId ? [boundProjectId] : [])].find(
-      (pid) => !allowed.has(pid),
-    );
-    if (missing) {
-      throw new HTTPException(403, {
-        message: 'project not accessible',
-        cause: { code: 'FORBIDDEN_PROJECT', details: { projectId: missing } },
-      });
-    }
+    await assertProjectsVisible(userId, [
+      ...(projectIds ?? []),
+      ...(boundProjectId ? [boundProjectId] : []),
+    ]);
     const updated = await setPatFence(id, userId, { projectIds, boundProjectId });
     if (!updated) throw notFound();
     forgetPatThrottle(updated.id);
@@ -328,17 +255,7 @@ patRoutes.delete('/pat/:id', zValidator('param', idParamSchema), async (c) => {
 
 function requireFreshAuth(minutes = 5): MiddlewareHandler<{ Variables: AuthVars }> {
   return declareGate('requireFreshAuth', async (c, next) => {
-    const userId = c.get('userId');
-
-    const stale = () =>
-      new HTTPException(403, {
-        message: 'fresh authentication required',
-        cause: { code: 'FRESH_AUTH_REQUIRED' },
-      });
-
-    const at = await lastFreshAuthAt(userId);
-    if (!at || Date.now() - at.getTime() > minutes * 60_000) throw stale();
-
+    await assertFreshAuth(c.get('userId'), minutes);
     await next();
   });
 }

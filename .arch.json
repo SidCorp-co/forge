@@ -216,6 +216,9 @@
     "web-feature-auth": [
       "packages/web-v2/src/features/auth/**"
     ],
+    "web-feature-mcp-auth": [
+      "packages/web-v2/src/features/mcp-auth/**"
+    ],
     "web-feature-automation": [
       "packages/web-v2/src/features/automation/**"
     ],
@@ -483,6 +486,7 @@
         "web-feature-pipeline",
         "web-feature-contracts",
         "web-feature-automation",
+        "web-feature-mcp-auth",
         "web-feature-auth",
         "web-feature-attention",
         "web-feature-ecosystem",

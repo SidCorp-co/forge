@@ -40,6 +40,11 @@ const DEFAULTS = {
   shareOpenAddress: { windowMs: 60_000, max: 60, by: 'ip' },
   /** Opening one share link, from anywhere: keyed by its token's hash (`shares/open.ts`), not a PAT. */
   shareOpenToken: { windowMs: 60_000, max: 120, by: 'token' },
+  /**
+   * An MCP client registering itself, which needs no sign-in: one person connects a few clients,
+   * and twenty an hour from one address is a script filling the table.
+   */
+  mcpOauthRegister: { windowMs: 60 * 60_000, max: 20, by: 'ip' },
 } as const satisfies Record<string, RateLimitRule>;
 
 type RuleName = keyof typeof DEFAULTS;
@@ -71,6 +76,10 @@ const OVERRIDES: Record<RuleName, () => [max: number | undefined, windowMs: numb
   shareOpenToken: () => [
     env.RATE_LIMIT_SHARE_OPEN_TOKEN_MAX,
     env.RATE_LIMIT_SHARE_OPEN_TOKEN_WINDOW_MS,
+  ],
+  mcpOauthRegister: () => [
+    env.RATE_LIMIT_MCP_OAUTH_REGISTER_MAX,
+    env.RATE_LIMIT_MCP_OAUTH_REGISTER_WINDOW_MS,
   ],
 };
 

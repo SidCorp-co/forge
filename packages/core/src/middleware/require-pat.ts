@@ -2,6 +2,7 @@ import type { ActorAgency } from '@forge/contracts/permissions';
 import type { Context, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { writeMcpAudit } from '../credentials/mcp-audit.js';
+import { resourceMetadataUrl } from '../credentials/mcp-oauth-metadata.js';
 import { touchPatUsage, verifyPat } from '../credentials/pat.js';
 import { isPatLike } from '../credentials/pat-format.js';
 import type { StatedPatGrant } from '../credentials/pat-permissions.js';
@@ -49,18 +50,28 @@ export type PrincipalVars = {
   patRequestWrites?: readonly string[];
 };
 
-const unauth = (message: string, options?: { invalidToken?: boolean; invalidRequest?: boolean }) =>
-  new HTTPException(401, {
+/**
+ * A 401 from `/mcp`, naming where an MCP client finds how to sign in (RFC 9728 §5.1), so a client
+ * holding no token starts the browser sign-in rather than asking for a pasted one.
+ */
+const unauth = (
+  c: Context,
+  message: string,
+  options?: { invalidToken?: boolean; invalidRequest?: boolean },
+) => {
+  const error = options?.invalidToken
+    ? ', error="invalid_token"'
+    : options?.invalidRequest
+      ? ', error="invalid_request"'
+      : '';
+  return new HTTPException(401, {
     message,
     cause: {
       code: 'UNAUTHENTICATED',
-      wwwAuthenticate: options?.invalidToken
-        ? 'Bearer realm="forge-mcp", error="invalid_token"'
-        : options?.invalidRequest
-          ? 'Bearer realm="forge-mcp", error="invalid_request"'
-          : 'Bearer realm="forge-mcp"',
+      wwwAuthenticate: `Bearer realm="forge-mcp"${error}, resource_metadata="${resourceMetadataUrl(c)}"`,
     },
   });
+};
 
 const bucketKey = (tokenId: string, requestClass: PatRequestClass) => `${tokenId}:${requestClass}`;
 
@@ -188,18 +199,18 @@ const placeholderRefusal = (token: string) =>
 export const requirePat = (): MiddlewareHandler<{ Variables: PrincipalVars }> => {
   return declareGate('requirePat', async (c, next) => {
     const parsed = parseBearerHeader(c);
-    if (parsed.kind === 'absent') throw unauth('authentication required');
+    if (parsed.kind === 'absent') throw unauth(c, 'authentication required');
     if (parsed.kind === 'malformed')
-      throw unauth('invalid authorization header', { invalidRequest: true });
+      throw unauth(c, 'invalid authorization header', { invalidRequest: true });
     const token = parsed.token;
 
     if (PLACEHOLDER_TOKEN.test(token))
-      throw unauth(placeholderRefusal(token), { invalidToken: true });
-    if (!isPatLike(token)) throw unauth(NOT_A_PAT_REFUSAL, { invalidToken: true });
+      throw unauth(c, placeholderRefusal(token), { invalidToken: true });
+    if (!isPatLike(token)) throw unauth(c, NOT_A_PAT_REFUSAL, { invalidToken: true });
 
     const requestClass = c.get('patRequestClass') ?? 'write';
     const principal = await authenticatePat(c, token, requestClass);
-    if (!principal) throw unauth('invalid personal access token', { invalidToken: true });
+    if (!principal) throw unauth(c, 'invalid personal access token', { invalidToken: true });
     if (requestClass === 'write' && !principal.scopes.includes('write')) {
       const calls = c.get('patRequestWrites') ?? [];
       throw new HTTPException(403, {

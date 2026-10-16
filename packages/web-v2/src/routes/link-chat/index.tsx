@@ -8,6 +8,7 @@ import { createFileRoute } from "@tanstack/react-router";
 // ever echoed back to the API and shown as a label, so a new transport needs no change here.
 
 import { Banner, Button, Skeleton } from "@/design";
+import { loginHref } from "@/features/auth";
 import { AuthShell } from "@/features/auth/components/auth-shell";
 import { ApiError, apiClient } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
@@ -123,7 +124,7 @@ function LinkChatState({
     ) : authLoading ? (
       <Skeleton className="h-9 w-full rounded-md" />
     ) : !user ? (
-      <Link href="/login" className="block">
+      <Link href={loginHref(`/link-chat${window.location.search}`)} className="block">
         <Button variant="primary" className="w-full">
           {t("auth.linkChat.signInToContinue")}
         </Button>

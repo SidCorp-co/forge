@@ -161,6 +161,10 @@ export const PAT_UNGRANTABLE: Readonly<Record<string, string>> = Object.freeze({
   '/api/auth/oauth': SESSION,
   '/api/pat':
     'token management: a token that could mint, rotate or revoke tokens could widen its own grant',
+  '/api/mcp-auth':
+    "an MCP client's browser sign-in: a person's session gives the consent, and a token that could give it could mint one wider than its own grant",
+  '/.well-known/oauth-protected-resource': PUBLIC,
+  '/.well-known/oauth-authorization-server': PUBLIC,
   '/api/integrations/github':
     'a browser redirect GitHub sends back after an install, carrying the session that started it',
   '/api/uploads': 'ticket-authenticated: the single-use ticket in the path is the credential',

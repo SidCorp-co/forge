@@ -14,8 +14,11 @@ const FIELD_KEYS: readonly LoginFieldKey[] = ['email', 'password'];
 export function LoginForm({
   presetEmail = '',
   sessionEnded: sentHere = false,
+  returnTo = '/',
 }: {
   presetEmail?: string;
+  /** Where sign-in lands: a same-origin path the page that sent the person here named. */
+  returnTo?: string;
   /** A server-side gate (the /admin one) met a session core refused and sent the person here. */
   sessionEnded?: boolean;
 }) {
@@ -42,8 +45,8 @@ export function LoginForm({
     setLoading(true);
     try {
       await login({ email: email.trim(), password });
-      // basePath-relative — resolves to the /v2 workspace shell.
-      router.push('/');
+      // basePath-relative — the workspace shell, or the page that sent the person to sign in
+      router.push(returnTo);
     } catch (err) {
       const fieldMap = extractFieldErrors(err, FIELD_KEYS);
       if (Object.keys(fieldMap).length > 0) {

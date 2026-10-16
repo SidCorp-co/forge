@@ -1,3 +1,4 @@
+import { reauthWithPassword } from "@/features/auth";
 import type { Preferences } from "@/features/preferences";
 import { apiClient, apiClientList } from "@/lib/api/client";
 import type {
@@ -41,11 +42,7 @@ export const settingsApi = {
   revokeToken: (id: string) => apiClient<PatToken>(`/pat/${id}`, { method: "DELETE" }),
 
   /** `POST /api/auth/reauth` — refresh the fresh-auth window with the password. */
-  reauth: (password: string) =>
-    apiClient<{ freshAuthAt: string }>(`/auth/reauth`, {
-      method: "POST",
-      body: JSON.stringify({ password }),
-    }),
+  reauth: reauthWithPassword,
 
   /** `GET /api/notifications` — flat rows + `X-Total-Count`. */
   listNotifications: (page = 1) =>

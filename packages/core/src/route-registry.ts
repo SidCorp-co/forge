@@ -29,6 +29,8 @@ import {
   entityCommentRoutes,
   registerIssueCommentRoutes,
 } from './comments/routes.js';
+import { mcpOauthMetadataRoutes } from './credentials/mcp-oauth-metadata.js';
+import { mcpOauthRoutes } from './credentials/mcp-oauth-routes.js';
 import { patRoutes } from './credentials/pat-routes.js';
 import { developmentOverviewRoutes, needsYouRoutes } from './development/routes.js';
 
@@ -182,10 +184,12 @@ export function mountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   mountRemainingRoutes(app);
 }
 
-/** The unauthenticated surfaces: health, the MCP endpoint, install, guides, the build's trace and the root. */
+/** The unauthenticated surfaces: health, the MCP endpoint and how to sign in to it, install, guides, the build's trace and the root. */
 function mountPublicDoors(app: Hono<{ Variables: RequestIdVars }>): void {
   for (const at of ['/', '/api']) app.route(at, publicHealthRoutes);
 
+  // an MCP client that reaches /mcp with no token is pointed here to sign in through the browser
+  app.route('/', mcpOauthMetadataRoutes);
   app.use('/mcp', mcpRequestClass(), requirePat());
   app.post('/mcp', mcpMessageBody, mcpHandler);
   app.on(['GET', 'DELETE'], '/mcp', mcpNoBody, mcpHandler);
@@ -209,6 +213,7 @@ function mountAccountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/auth', logoutRoutes);
   app.route('/api/auth', reauthRoutes);
   app.route('/api', patRoutes);
+  app.route('/api/mcp-auth', mcpOauthRoutes);
   app.route('/api/auth', oauthRoutes);
   app.route('/api/projects', projectHealthRoutes);
   app.route('/api/projects', projectMetricsRoutes);

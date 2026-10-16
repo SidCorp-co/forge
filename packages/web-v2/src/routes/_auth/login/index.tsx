@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Banner } from '@/design';
 import { AuthShell } from '@/features/auth/components/auth-shell';
 import { SocialLogin } from '@/features/auth/components/social-login';
+import { returnPathFrom } from '@/features/auth';
 import { LoginForm } from '@/features/auth/login-form';
 import { type Copy, productCopy } from '@/lib/i18n/product-copy';
 import { Link, useSearchParams } from "@/lib/navigation/router";
@@ -24,6 +25,7 @@ function LoginPage() {
   const params = useSearchParams();
   const justRegistered = params.get('registered') === '1';
   const presetEmail = params.get('email') ?? '';
+  const back = returnPathFrom(params);
   const oauthErrorCode = params.get('oauth_error');
   const oauthError = oauthErrorCode
     ? (OAUTH_ERROR_MESSAGES[oauthErrorCode] ?? OAUTH_ERROR_MESSAGES.provider_error)?.(t)
@@ -52,8 +54,12 @@ function LoginPage() {
         </div>
       )}
 
-      <SocialLogin redirectTo="/" />
-      <LoginForm presetEmail={presetEmail} sessionEnded={params.get('session') === 'ended'} />
+      <SocialLogin redirectTo={back ?? '/'} />
+      <LoginForm
+        presetEmail={presetEmail}
+        sessionEnded={params.get('session') === 'ended'}
+        returnTo={back ?? '/'}
+      />
     </AuthShell>
   );
 }

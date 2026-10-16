@@ -3,9 +3,11 @@ import { CORE_URL } from "@/lib/utils/core-url";
 
 // Two real capabilities, both backed by the live MCP endpoint — there is no
 // backend "MCP config" to save, so nothing is faked here:
-//  1. Per-client config snippet generation. The token is ALWAYS rendered as the
-//     `<YOUR_TOKEN_HERE>` placeholder — we never echo a secret value (the
-//     plaintext is only shown once, at creation, on the Tokens tab).
+//  1. Per-client config snippet generation. Claude Code signs in through the
+//     browser (core's MCP OAuth), so its command carries no token at all; every
+//     other client's token is ALWAYS rendered as the `<YOUR_TOKEN_HERE>`
+//     placeholder — we never echo a secret value (the plaintext is only shown
+//     once, at creation, on the Tokens tab).
 //  2. `testConnection` issues a real JSON-RPC `tools/list` against `/mcp` with a
 //     user-supplied token, so a user verifies their setup against the same path
 //     a real MCP client uses.
@@ -27,10 +29,13 @@ interface SnippetInput {
   mcpUrl: string;
 }
 
-/** A snippet is either pasted into a file the client reads, or run once in a terminal. */
+/**
+ * A snippet is either pasted into a file the client reads, with a token put in it, or a command run
+ * once in a terminal, after which the client signs in through the browser and holds no pasted token.
+ */
 type Snippet =
   | { howTo: "file"; filePath: string; content: string }
-  | { howTo: "command"; content: string };
+  | { howTo: "signIn"; content: string };
 
 function forgeHeaders(projectSlug: string) {
   return { Authorization: `Bearer ${TOKEN_PLACEHOLDER}`, "X-Forge-Project-Slug": projectSlug };
@@ -59,10 +64,9 @@ export function generateSnippet(kind: ClientKind, input: SnippetInput): Snippet 
   switch (kind) {
     case "claude-cli":
       return {
-        howTo: "command",
+        howTo: "signIn",
         content:
           `claude mcp add --transport http --scope user forge ${input.mcpUrl}` +
-          ` --header "Authorization: Bearer ${TOKEN_PLACEHOLDER}"` +
           ` --header "X-Forge-Project-Slug: ${input.projectSlug}"\n`,
       };
     case "zed":

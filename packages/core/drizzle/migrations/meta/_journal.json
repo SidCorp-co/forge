@@ -3221,6 +3221,13 @@
       "when": 1826236800000,
       "tag": "0501_a_drafted_release_holds_its_name",
       "breakpoints": true
+    },
+    {
+      "idx": 502,
+      "version": "7",
+      "when": 1826323200000,
+      "tag": "0502_an_mcp_client_signs_in_through_the_browser",
+      "breakpoints": true
     }
   ]
 }
