@@ -276,7 +276,7 @@ export async function recoverStrandedReleasing(
   if (promoted && options.settlePromotedRoster !== true) {
     logger.warn(
       { runId, claimed: claimed.length, reason: options.reason },
-      'release-batch: this run promoted, so its roster stays at Releasing for a person to settle',
+      'release-batch: this run promoted, so its roster stays at Releasing until the releasing sweep settles it',
     );
     await noteOnRoster(runId, claimed, options, promotedNote(runId));
     return {
@@ -420,7 +420,7 @@ function settledNote(projectId: string, destination: IssueStatus): string {
 
 function promotedNote(runId: string): (projectId: string) => string {
   return (projectId) =>
-    `This batch recorded a promotion, so its issues stay at Releasing and stay claimed: the code may be on production, and no other status here would be safe to claim. No screen settles a promoted roster yet, so settling it is an operator's act. Read the run with \`GET /api/projects/${projectId}/release-batches/${runId}/state\`. To settle the issues, abort the batch with POST /api/projects/${projectId}/release-batches/${runId}/abort and a body of {"promotedRoster":"return-to-gate"}, which puts them back at the release gate, and then, if the release did land, record it with POST /api/projects/${projectId}/release-records; or settle each issue by hand.`;
+    `This batch recorded a promotion, so the code it carried may be on production, and its issues stay at Releasing and claimed while its run is live. Once the run has ended, Forge's releasing sweep settles them within a minute: it reads what production serves, closes an issue whose landing commit that carries through a release record, and returns the rest to the release gate. Read the run with \`GET /api/projects/${projectId}/release-batches/${runId}/state\`.`;
 }
 
 function sayRefusedClose(

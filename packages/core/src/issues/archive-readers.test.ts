@@ -51,10 +51,10 @@ const NOT_DISCOVERY: Record<string, string> = {
   'integrations/rocketchat/question-delivery.ts': 'the issue an owed question names',
   'integrations/sentry/intake-issue.ts':
     'by the Sentry external id; a regression on an archived issue is refused by name',
-  'issues/apply-transition.ts': 'by issue id',
   'issues/attachment-routes.ts': 'by issue or attachment id',
   'issues/attributes/read.ts': 'the ids attribute values reference',
   'issues/attributes/routes.ts': 'by issue id',
+  'issues/draft-entry.ts': 'by issue id',
   'issues/backlog/rank-chain.ts':
     'walks edges to dependents that are not in an ended status, which an archived issue always is (archiving takes closed and dropped only)',
   'issues/live-blockers-sql.ts':
@@ -85,6 +85,7 @@ const NOT_DISCOVERY: Record<string, string> = {
   'issues/pipeline-health.ts': 'the ids passed in',
   'issues/read-service.ts': 'retrieval by id or key, which answers an archived issue by design',
   'issues/release-record-required.ts': 'the ids passed in',
+  'issues/releasing-door.ts': 'by issue id',
   'issues/release-tag-close.ts':
     'by issue id, the landing commit of the issue a close names; an archived issue is refused before this runs',
   'issues/search-term.ts': 'whether the project holds the key a search typed, retrieval by key',

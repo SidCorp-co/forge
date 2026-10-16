@@ -104,9 +104,9 @@ async function candidateProjectIds(now: Date): Promise<string[]> {
   return [...new Set(rows.map((r) => r.project_id))];
 }
 
-// `createReleaseBatch` claims issues and moves them to `releasing` in separate statements
-// AFTER its own transaction, so a failure past that point (an enqueue error, say) can leave an
-// issue claimed even though the attempt overall threw. An untouched row gets a hold
+// `createReleaseBatch` claims its roster and moves it to `releasing` in one transaction, but
+// enqueues the job after it commits, so a failure past that point (an enqueue error, say) can
+// leave an issue claimed even though the attempt overall threw. An untouched row gets a hold
 // (`cutFailedHold`); a claimed one is off the gate, so it is told here instead.
 function claimedFailureBody(message: string, releaseBatchRunId: string | null): string {
   return [

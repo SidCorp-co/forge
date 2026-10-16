@@ -203,8 +203,10 @@ describe('a release finish that cannot close an issue', () => {
       'What clears it: answer each open question in its "Decision waiting" card',
     );
     expect(said).toContain(`shipped as version ${version}`);
-    expect(said).toContain('stay at Releasing and stay claimed');
-    expect(said).toContain(`/release-batches/${runId}/abort`);
+    expect(said).toContain('stay at Releasing and claimed while its run is live');
+    expect(said).toContain("Forge's releasing sweep settles them within a minute");
+    expect(said).toContain(`/release-batches/${runId}/state`);
+    expect(said).not.toContain('/abort');
   });
 
   it('writes the comment as the device owner when a device finished the batch', async () => {

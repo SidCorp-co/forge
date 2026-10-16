@@ -9,9 +9,9 @@ export interface StaleReleaseBatchClaimsResult {
 /**
  * Clear the claims of release runs that ended, so their issues can join another batch.
  *
- * A roster whose run recorded a promotion and is still at `releasing` is left claimed: that is
- * the roster `recoverStrandedReleasing` holds on purpose, for a person, and its claims are the
- * only index a `return-to-gate` abort can read it back by.
+ * A roster whose run recorded a promotion and is still at `releasing` is left claimed: the
+ * releasing sweep (`release-batch/releasing-settle.ts`) settles each such issue and clears its
+ * claim in the same write that moves it.
  */
 export async function reapStaleReleaseBatchClaims(): Promise<StaleReleaseBatchClaimsResult> {
   try {

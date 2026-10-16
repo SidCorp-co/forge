@@ -15,6 +15,7 @@ import { postSystemComment } from '../comments/system-write.js';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
 import { releaseAttempts } from '../db/schema-release-ledger.js';
+import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
 import { logger } from '../logger.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
@@ -39,6 +40,9 @@ export interface RecordPerformedReleaseArgs {
   /** The provider's own handle on the act — a deployment uuid, a tag. Never the evidence. */
   providerRef?: string | undefined;
   userId: string;
+  /** Who the closes are recorded as; the person `userId` names where absent. A sweep that records
+   *  a release nobody pressed passes its own agent actor, so the move is not charged to a person. */
+  actor?: TransitionActor | undefined;
 }
 
 /** One issue as the record found it, so the claim stays checkable afterwards. */
@@ -202,7 +206,7 @@ export async function recordPerformedRelease(
       await transitionIssueStatus(
         { id: issue.id, projectId, status: gateStatus, reopenCount: 0 },
         'closed',
-        { type: 'user', id: userId },
+        args.actor ?? { type: 'user', id: userId },
         { viaReleasePath: true, reason: account },
       );
       closed.push(issue.id);

@@ -180,6 +180,9 @@ export function statusToTone(status: IssueStatus): SemanticTone {
 	return STATUS_KEY_TONE[statusToChip(status)];
 }
 
+/** No menu offers these: a release starts from the Release button, core refuses every other door (ISS-1421). */
+const RELEASE_ONLY_TARGETS: ReadonlySet<IssueStatus> = new Set(["releasing"]);
+
 /**
  * The targets a rung may move to, read off core's exits table as the pipeline
  * registry served it (`useStatusExits`). The row arrives in its declared
@@ -194,8 +197,11 @@ export function allowedTransitions(
 	exits: StatusExits | undefined,
 	from: IssueStatus,
 ): IssueStatus[] {
-	return [...(exits?.[from] ?? [])];
+	return (exits?.[from] ?? []).filter((to) => !RELEASE_ONLY_TARGETS.has(to));
 }
+
+export const RELEASING_HAS_NO_MOVE =
+	"A release is carrying this issue — it leaves Releasing when that release finishes or is aborted";
 
 /** How a target reads against the rung it is offered from. */
 export type TransitionKind = "forward" | "bounce" | "discard";
@@ -217,10 +223,8 @@ const DISCARD_TARGETS = new Set<IssueStatus>(["closed", "dropped"]);
 const KIND_ORDER: TransitionKind[] = ["forward", "bounce", "discard"];
 
 /**
- * The rung's targets as the menu draws them: forward first, then the bounces,
- * then the discards, each group in the order core declared it. A row's FIRST
- * exit is its forward move whatever set it belongs to, which is what keeps
- * `releasing → closed` out of the discard group.
+ * The rung's targets as the menu draws them: forward, bounces, discards, each in core's order.
+ * A row's FIRST exit is forward unless it is a bounce (`awaiting_release → needs_info`).
  */
 export function groupedTransitions(
 	exits: StatusExits | undefined,
@@ -228,8 +232,8 @@ export function groupedTransitions(
 ): GroupedTransition[] {
 	const row = allowedTransitions(exits, from);
 	const kindOf = (to: IssueStatus, i: number): TransitionKind => {
-		if (i === 0) return "forward";
 		if (BOUNCE_TARGETS.has(to)) return "bounce";
+		if (i === 0) return "forward";
 		if (DISCARD_TARGETS.has(to)) return "discard";
 		return "forward";
 	};

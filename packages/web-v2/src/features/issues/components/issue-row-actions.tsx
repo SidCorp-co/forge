@@ -23,6 +23,7 @@ import {
   groupedTransitions,
   initials,
   priorityLabel,
+  RELEASING_HAS_NO_MOVE,
   transitionLabels,
 } from "../derive";
 import { useStatusExits } from "../hooks";
@@ -138,7 +139,9 @@ function useRowMenuItems(
   }
 
   const grouped = groupedTransitions(exits, row.status);
-  if (isPending) {
+  if (row.status === "releasing") {
+    items.push({ label: RELEASING_HAS_NO_MOVE, disabled: true, separatorBefore: true });
+  } else if (isPending) {
     items.push({ label: "Loading status moves…", disabled: true, separatorBefore: true });
   } else if (isError) {
     items.push({ label: "Couldn't load status moves", disabled: true, separatorBefore: true });

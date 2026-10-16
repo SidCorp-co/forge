@@ -14,7 +14,9 @@ export type TransitionErrorCode =
   | 'WAITING_KIND_NOT_APPLICABLE'
   | 'ISSUE_ARCHIVED'
   | 'OPEN_QUESTIONS'
-  | 'VOID_REASON_REQUIRED';
+  | 'VOID_REASON_REQUIRED'
+  | 'RELEASING_STARTS_FROM_RELEASE'
+  | 'RELEASING_ENDS_BY_RELEASE';
 
 /**
  * Typed transition failure. `message` keeps the legacy `CODE: detail` shape

@@ -94,6 +94,11 @@ const KEPT_LINES: Array<[string, RegExp, string]> = [
     /throw new Error\(`\$\{status\}: \$\{err\.code\}/,
     'the HTTP status word a tool error leads with',
   ],
+  [
+    'release-batch/releasing-settle.ts',
+    /ended \$\{row\.run_status\}/,
+    "a release run's status, not an issue's",
+  ],
 ];
 
 /** Who reads the sentences a file builds through `statusLabel` or `statusForCaller`. A file new to
@@ -104,6 +109,7 @@ const READS: Record<string, 'person' | 'caller'> = {
   'issues/apply-transition.ts': 'caller',
   'issues/archive.ts': 'caller',
   'issues/close-substitution.ts': 'caller',
+  'issues/draft-entry.ts': 'caller',
   'issues/landing-evidence.ts': 'caller',
   'issues/merge-marker.ts': 'caller',
   'issues/merged-at.ts': 'caller',
@@ -112,6 +118,7 @@ const READS: Record<string, 'person' | 'caller'> = {
   'issues/release-gate-hold.ts': 'person',
   'issues/release-record-required.ts': 'caller',
   'issues/release-tag-close.ts': 'caller',
+  'issues/releasing-door.ts': 'caller',
   'issues/transition-evidence.ts': 'caller',
   'issues/transition-reason.ts': 'caller',
   'issues/work-state.ts': 'caller',
@@ -137,6 +144,7 @@ const READS: Record<string, 'person' | 'caller'> = {
   'release-batch/reader-sentences.ts': 'person',
   'release-batch/claim-conflicts.ts': 'caller',
   'release-batch/releasing-recovery.ts': 'person',
+  'release-batch/releasing-settle.ts': 'person',
 };
 
 const HELPER = /\bstatus(?:Label|ForCaller)\b/;

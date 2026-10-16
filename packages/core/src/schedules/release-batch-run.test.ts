@@ -35,6 +35,7 @@ class NoRunnerOnlineError extends Error {}
 class ReleasePoolEmptyError extends Error {}
 class NoReleaseGateError extends Error {}
 class ReleaseRecordMissingError extends Error {}
+class ReleaseRosterRefusedError extends Error {}
 
 const createReleaseBatchMock = vi.fn(
   async (_args: { projectId: string; issueIds: string[]; userId: string }) => ({
@@ -55,6 +56,7 @@ vi.mock('../release-batch/service.js', () => ({
   ReleasePoolEmptyError,
   NoReleaseGateError,
   ReleaseRecordMissingError,
+  ReleaseRosterRefusedError,
 }));
 
 vi.mock('../logger.js', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));

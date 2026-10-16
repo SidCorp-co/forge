@@ -125,7 +125,7 @@ function claimedSentences(projectId: string, runId: string, list: Standing<'clai
   if (held.length > 0) {
     const them = held.length === 1 ? 'it' : 'them';
     out.push(
-      `${keys(held)} ${isAre(held)} at Releasing (releasing), still claimed by release batch ${runId}, which has ended: abort it with POST /api/projects/${projectId}/release-batches/${runId}/abort and a body of {"promotedRoster":"return-to-gate"}, which releases the claim and puts ${them} back at the release gate, then send ${them} again.`,
+      `${keys(held)} ${isAre(held)} at Releasing (releasing), still claimed by release batch ${runId}, which has ended: Forge's releasing sweep settles ${them} within a minute, closing ${them} by a release record where production carries ${them} and otherwise returning ${them} to the release gate, so send ${them} again after it has run.`,
     );
   }
   if (stale.length > 0) {

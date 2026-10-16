@@ -6,7 +6,13 @@
 // the mutation factory, the row value snaps back since nothing is invalidated).
 
 import { Menu, NativeSelect, Select, StatusChip, type MenuItem, type SelectOption } from "@/design";
-import { groupedTransitions, statusLabel, statusToChip, transitionLabels } from "../derive";
+import {
+  groupedTransitions,
+  RELEASING_HAS_NO_MOVE,
+  statusLabel,
+  statusToChip,
+  transitionLabels,
+} from "../derive";
 import { AGENT_HOLDS_MOVE, heldByAgent } from "../edit-lock";
 import { useStatusExits } from "../hooks";
 import type { ParkReading } from "../derive";
@@ -74,6 +80,7 @@ function ordinaryItems(args: {
   const { status, grouped, isPending, isError, onTransition } = args;
   if (isPending) return [{ label: "Loading status moves…", disabled: true }];
   if (isError) return [{ label: "Couldn't load status moves", disabled: true }];
+  if (status === "releasing") return [{ label: RELEASING_HAS_NO_MOVE, disabled: true }];
   if (grouped.length === 0) {
     return [{ label: `No move from ${statusLabel(status)} — re-file instead`, disabled: true }];
   }

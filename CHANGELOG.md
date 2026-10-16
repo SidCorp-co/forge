@@ -3193,6 +3193,7 @@
 
 ### Fixed
 
+- **An issue is at Releasing only while a release carries it.** Status menus no longer offer Releasing; it starts from the Release button. An issue stranded there is closed if production serves its code, otherwise returned to Awaiting release. (ISS-1421)
 - **An issue's Branch row shows the branch Forge counts as its work.** It printed the issue's key even when moving the issue on said no branch was recorded; it now shows that branch, or None recorded. (ISS-1133)
 - **A job started as its run ends goes to a run still open.** It could land under the run that just finished; it now starts a fresh run, or is refused where only that run would do. (ISS-1133)
 - **Cancelling a run's only job ends the run.** It read Running for up to an hour with nothing left to run; it now reads Cancelled at once. A run with another job still going keeps running. (ISS-1133)

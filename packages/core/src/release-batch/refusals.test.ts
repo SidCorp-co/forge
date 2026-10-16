@@ -178,12 +178,14 @@ describe('finishRefusal — what the abort did to this batch', () => {
     }
   });
 
-  it('says a held promoted roster stays at releasing, claimed, with the routes to settle it', () => {
+  it('says a held promoted roster stays at releasing only until the releasing sweep settles it (ISS-1421)', () => {
     expect(said('held')).toMatch(
-      /kept its claims\. Its issues stay at Releasing \(releasing\), still claimed/,
+      /kept its claims\. Its issues stay at Releasing \(releasing\) only until Forge's releasing sweep reads what production serves/,
     );
-    expect(said('held')).toContain('POST /api/projects/proj-7/release-records');
-    expect(said('held')).toContain('"return-to-gate"');
+    expect(said('held')).toContain(
+      'closed by a release record, and the rest go back to the release gate',
+    );
+    expect(said('held')).toContain('Nothing here is left for a person to settle.');
     expect(said('held')).not.toMatch(/claims were released/);
   });
 
@@ -249,14 +251,10 @@ describe('finishRefusal — what the abort did to this batch', () => {
     expect(message).toMatch(/closed iss-a before the abort, and it stays closed\. Every other/);
   });
 
-  // release-records takes only unclaimed issues at the gate, so offering it beside the
-  // return-to-gate abort sent a person to a 409 (the judge at 06bf45b90).
-  it('gives a held roster the return-to-gate abort first and release-records after it', () => {
+  it('sends no person to settle a held roster by hand: no abort route, no release-records route (ISS-1421)', () => {
     const message = said('held');
-    const abortAt = message.indexOf('"return-to-gate"');
-    expect(abortAt).toBeGreaterThan(-1);
-    expect(message.indexOf('/release-records')).toBeGreaterThan(abortAt);
-    expect(message).not.toMatch(/release-records, or abort/);
+    expect(message).not.toContain('"return-to-gate"');
+    expect(message).not.toContain('/release-records');
   });
 
   it('keeps the whole-roster sentence and carries an empty list where nothing had closed', () => {

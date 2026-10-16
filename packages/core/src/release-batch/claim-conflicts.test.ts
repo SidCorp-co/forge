@@ -59,16 +59,15 @@ const at = (key: string, status: 'testing' | 'closed' | 'dropped'): ClaimConflic
 const absent = (id: string): ClaimConflict => ({ id, key: id, standing: 'absent' });
 
 describe('claimConflictSentence', () => {
-  it('names a roster held by a batch that ended with the return-to-gate abort on that batch', () => {
+  it('tells a roster held by a batch that ended that the releasing sweep settles it (ISS-1421)', () => {
     const s = claimConflictSentence(P, GATE, [held('ISS-11'), held('ISS-12')]);
     expect(s).toMatch(/^2 issues named here cannot be claimed for a release\./);
     expect(s).toContain(
       'ISS-11, ISS-12 are at Releasing (releasing), still claimed by release batch run-ended',
     );
-    expect(s).toContain(
-      'POST /api/projects/p-1/release-batches/run-ended/abort and a body of {"promotedRoster":"return-to-gate"}',
-    );
-    expect(s).toContain('then send them again');
+    expect(s).toContain("Forge's releasing sweep settles them within a minute");
+    expect(s).toContain('so send them again after it has run');
+    expect(s).not.toMatch(/abort/i);
   });
 
   it('names a batch still running by its state path and offers no abort', () => {
@@ -87,12 +86,14 @@ describe('claimConflictSentence', () => {
     expect(s).not.toMatch(/abort/i);
   });
 
-  it('splits one ended batch into the abort for `releasing` and the sweep for the gate', () => {
+  it('splits one ended batch into the releasing sweep for `releasing` and the claim sweep for the gate', () => {
     const s = claimConflictSentence(P, GATE, [held('ISS-8'), staleAt('ISS-9')]);
     expect(s).toContain(
       'ISS-8 is at Releasing (releasing), still claimed by release batch run-ended',
     );
-    expect(s).toContain('puts it back at the release gate, then send it again.');
+    expect(s).toContain(
+      'otherwise returning it to the release gate, so send it again after it has run.',
+    );
     expect(s).toContain(
       'ISS-9 is still claimed by release batch run-ended, which has ended: the pipeline sweep',
     );

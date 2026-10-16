@@ -415,3 +415,99 @@ describe("BulkActionBar, while an agent is working part of the selection", () =>
     await vi.waitFor(() => expect(btn(/Set priority/)).not.toBeDisabled());
   });
 });
+
+// ISS-1421 — a release starts from the Release button, so no menu offers Releasing, even against a
+// core whose table still lists it; and at Releasing the menu says what takes the issue out.
+describe("Releasing is never a menu choice (ISS-1421)", () => {
+  const OLD_CORE = {
+    ...ANSWERED,
+    statusExits: {
+      ...STATUS_EXITS,
+      awaiting_release: ["releasing", "needs_info", "on_hold", "dropped"],
+      releasing: ["closed", "reopen", "needs_info", "on_hold"],
+    },
+  };
+  const NEW_CORE = {
+    ...ANSWERED,
+    statusExits: { ...STATUS_EXITS, awaiting_release: ["needs_info", "on_hold", "dropped"], releasing: [] },
+  };
+
+  it.each([
+    ["a core still listing it", OLD_CORE],
+    ["this core", NEW_CORE],
+  ])("leaves Releasing off the issue page picker at Awaiting release, against %s", async (_n, answer) => {
+    get.mockResolvedValue(answer);
+    openPicker("awaiting_release");
+    await screen.findByRole("menuitem", { name: "Needs info" });
+    expect(labels()).toEqual(["Needs info", "On hold", "Dropped"]);
+  });
+
+  it("leaves Releasing off the row's overflow menu at Awaiting release", async () => {
+    get.mockResolvedValue(OLD_CORE);
+    wrap(
+      <IssueLine
+        row={row({ status: "awaiting_release" })}
+        slug="p1"
+        actions={{ patch: vi.fn(), transition: vi.fn(), isPending: false }}
+        density="compact"
+        now={Date.now()}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("Row actions"));
+    await screen.findByText("Status: Needs info");
+    expect(labels().filter((l) => l.startsWith("Status: "))).toEqual([
+      "Status: Needs info",
+      "Status: On hold",
+      "Status: Dropped",
+    ]);
+  });
+
+  it("leaves Releasing off the bulk Set status menu", async () => {
+    get.mockResolvedValue(OLD_CORE);
+    wrap(
+      <BulkActionBar
+        projectId="p1"
+        selectedRows={[row({ status: "awaiting_release" }), row({ id: "i2", status: "awaiting_release" })]}
+        onCleared={vi.fn()}
+      />,
+    );
+    const btn = () => screen.getByRole("button", { name: /Set status/ });
+    await vi.waitFor(() => expect(btn()).not.toBeDisabled());
+    fireEvent.click(btn());
+    expect(labels()).not.toContain("Releasing");
+    expect(labels()).toEqual(["On hold", "Dropped"]);
+  });
+
+  it.each([
+    ["a core still listing exits", OLD_CORE],
+    ["this core", NEW_CORE],
+  ])("offers no move at Releasing and says what ends it, against %s", async (_n, answer) => {
+    const onTransition = vi.fn();
+    get.mockResolvedValue(answer);
+    wrap(<StatusEdit status="releasing" onTransition={onTransition} />);
+    fireEvent.click(screen.getByLabelText("Change status (currently Releasing)"));
+    await screen.findByText(/finishes or is aborted/);
+    expect(labels()).toEqual([
+      "A release is carrying this issue — it leaves Releasing when that release finishes or is aborted",
+    ]);
+    expect(screen.getByRole("menuitem")).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(screen.getByRole("menuitem"));
+    expect(onTransition).not.toHaveBeenCalled();
+  });
+
+  it("puts the same line in the row's overflow menu at Releasing, and no status item", async () => {
+    get.mockResolvedValue(OLD_CORE);
+    wrap(
+      <IssueLine
+        row={row({ status: "releasing" })}
+        slug="p1"
+        actions={{ patch: vi.fn(), transition: vi.fn(), isPending: false }}
+        density="compact"
+        now={Date.now()}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("Row actions"));
+    expect(screen.getByText(/finishes or is aborted/)).toBeInTheDocument();
+    expect(labels().filter((l) => l.startsWith("Status: "))).toEqual([]);
+  });
+});
