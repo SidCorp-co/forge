@@ -423,9 +423,10 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
 
       {!sessionsQ.isLoading && !sessionsQ.isError && visibleRows.length > 0 && (
         <>
-          {/* Desktop / tablet: dense table. */}
+          {/* Desktop / tablet: dense table. Its nine columns fit the content column at 1280: cells keep a
+              12px side, and the issue column takes what the others leave, cutting its title to fit. */}
           <div className="hidden md:block">
-            <Table>
+            <Table className="[&_td]:px-3 [&_th]:px-3">
               <THead>
                 <TR>
                   <TH>Session</TH>
@@ -795,7 +796,7 @@ function SessionTableRow({
           )}
         </div>
       </TD>
-      <TD className="max-w-[260px]">
+      <TD className="w-full min-w-[200px] max-w-0">
         <SessionIdentity row={row} slug={slug} onOpen={open} />
       </TD>
       <TD className="max-w-[160px]">

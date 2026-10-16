@@ -29,10 +29,22 @@ const SESSION_TONES: Partial<Record<StatusKey, (typeof TONE_META)[keyof typeof T
   blocked: TONE_META[BLOCKED_TONE],
 };
 
-/** A session chip's mark says which state it is in, so working, quiet and blocked never share one. */
-const SESSION_ICONS: Partial<Record<StatusKey, IconName>> = {
-  zombie: "quiet",
+/** A session chip's mark says which state it is in, one mark per status, so no two are told apart
+ *  by colour alone. */
+const SESSION_ICONS: Record<StatusKey, IconName> = {
+  running: "agent",
+  queued: "clock",
   blocked: "pause",
+  waiting: "bell",
+  passed: "shield",
+  failed: "alert",
+  paused: "dot",
+  done: "check",
+  shipped: "arrowRight",
+  archived: "stop",
+  review: "search",
+  zombie: "quiet",
+  swept: "archive",
 };
 
 export function StatusChip({ status, stage, size = "md", domain = "issue", label }: StatusChipProps) {
@@ -60,7 +72,7 @@ export function StatusChip({ status, stage, size = "md", domain = "issue", label
     >
       {isSession ? (
         <Icon
-          name={SESSION_ICONS[status] ?? "agent"}
+          name={SESSION_ICONS[status] ?? SESSION_ICONS.queued}
           size={size === "sm" ? 11 : 12}
           className={isRunning ? "forge-pulse" : ""}
           style={{ color: m.dot }}

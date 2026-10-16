@@ -22,7 +22,7 @@ function StateChip({ row, now }: { row: RunSessionRow; now: number }) {
   const tone = TONE_META[meta.tone];
   return (
     <span
-      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-pill px-2 py-0.5 font-semibold"
+      className="inline-flex items-center gap-1.5 self-start whitespace-nowrap rounded-pill px-2 py-0.5 font-semibold sm:self-auto"
       style={{ color: tone.fg, background: tone.bg, fontSize: "var(--text-11-5)" }}
       title={meta.detail}
     >

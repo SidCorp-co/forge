@@ -201,7 +201,7 @@ export function RunsPane({ scope }: RunsPaneProps) {
   const rows = useMemo(() => applyFilters(all, q, filter, now), [all, q, filter, now]);
 
   return (
-    <div className="flex flex-col gap-3 p-4">
+    <div className="flex flex-col gap-3 py-4">
       <StalledBand projectId={scope.projectId} now={now} />
       {isLoading ? (
         <div className="flex flex-col gap-2" aria-busy="true">
