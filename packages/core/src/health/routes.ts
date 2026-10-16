@@ -10,6 +10,7 @@
 import { Hono } from 'hono';
 import pkg from '../../package.json' with { type: 'json' };
 import { sourceCommit } from '../lib/source-commit.js';
+import { bossErrorTally } from '../queue/boss-errors.js';
 import { readLiveness } from './service.js';
 export const publicHealthRoutes = new Hono();
 
@@ -19,7 +20,8 @@ publicHealthRoutes.get('/health', async (c) => {
     {
       ok: live.ok,
       db: { ok: live.dbOk },
-      queue: { ok: live.queueOk },
+      // a count, never a message: this route is public, and the line itself is in the log
+      queue: { ok: live.queueOk, errorsSinceBoot: bossErrorTally().count },
       ws: { ok: live.wsOk },
     },
     live.ok ? 200 : 503,

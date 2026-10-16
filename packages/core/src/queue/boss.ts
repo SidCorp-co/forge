@@ -1,5 +1,6 @@
 import { type CommandResponse, PgBoss, type Queue } from 'pg-boss';
 import { env } from '../lib/env.js';
+import { onBossError } from './boss-errors.js';
 import { carryOverV10Jobs } from './v10-carry-over.js';
 
 /**
@@ -17,6 +18,8 @@ let instance: PgBoss | null = null;
 function getBoss(): PgBoss {
   if (!instance) {
     instance = new PgBoss({ connectionString: env.DATABASE_URL, schema: BOSS_SCHEMA });
+    // never without this: an `error` nobody listens for is thrown out of a loop nothing awaits
+    instance.on('error', onBossError);
   }
   return instance;
 }

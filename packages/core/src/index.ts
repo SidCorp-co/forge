@@ -76,6 +76,7 @@ import { provideContractVersionReads } from './lib/contract-versions.js';
 import { provideDataPolicy } from './lib/data-egress.js';
 import { env } from './lib/env.js';
 import { provideEphemeralPublisher } from './lib/ephemeral.js';
+import { installFatalExit } from './lib/fatal-exit.js';
 import { logger } from './lib/logger.js';
 import { provideWrittenLangPorts } from './lib/written-lang.js';
 import {
@@ -406,6 +407,8 @@ app.fetch = resolvingRouteRefs(app as unknown as Hono<never>, app.fetch);
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 
 if (isMain) {
+  // first, so a throw nothing catches during boot or after it is one fatal line and an exit
+  installFatalExit();
   const port = env.PORT;
   // a core told to serve a web build (WEB_DIST_DIR) it cannot read stops here, naming the fix
   servedWebBuild();
