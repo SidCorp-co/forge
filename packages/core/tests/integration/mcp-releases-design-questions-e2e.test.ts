@@ -2,8 +2,8 @@
  * The product layer on core's MCP server (2026-10-16: a person works the product from an MCP client,
  * delivery stays off it). Through `/mcp` with a token, against real Postgres: releases read with what
  * is running and when it is likely done, named, and decided by the version a person reads; designs
- * written, proposed and decided only by their approver; questions read, a person's question refused a
- * token's answer as REST refuses it, and a question raised on an issue; issues read with their
+ * written, proposed and decided only by their approver; questions read, a person's question answered
+ * with their own token as REST answers it, and a question raised on an issue; issues read with their
  * progress, and an issue never filed from here — the refusal says where the record goes instead.
  */
 
@@ -282,20 +282,21 @@ describe('forge_questions', () => {
     expect(typeof progress.says).toBe('string');
   });
 
-  it("refuses a token's answer to a person's question as REST does, and leaves it open", async () => {
-    const answered = await mcp('owner', 'forge_questions', {
-      action: 'answer',
-      projectId,
-      questionId,
-      round: 1,
-      text: 'tours.v2',
-    });
-    expect(answered.isError).toBe(true);
-    expect(answered.text).toContain('a question is answered by a person in a session');
+  it("answers a person's question with that person's own token, as REST does", async () => {
+    const answered = ok(
+      await mcp('owner', 'forge_questions', {
+        action: 'answer',
+        projectId,
+        questionId,
+        round: 1,
+        text: 'tours.v2',
+      }),
+    );
+    expect(answered.status).toBe('answered');
     const [row] = await rows<{ status: string }>(
       sql`SELECT status FROM agent_questions WHERE id = ${questionId}`,
     );
-    expect(row?.status).toBe('open');
+    expect(row?.status).toBe('answered');
   });
 
   it("does not read another project's question under this one", async () => {

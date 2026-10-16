@@ -824,7 +824,7 @@
       "name": "forge_issues"
     },
     {
-      "description": "Questions waiting on a person, and a person's own question on an issue.\n- action=list { projectId, status?: open | answered | void | expired | needs_info (open by default), issue?, limit?, cursor? }: what is owed an answer, newest first, each with its prompt, its options (locked where you may not choose one) and the recommended one. `issue` narrows to one issue's questions. Read `hasMore` and pass `nextCursor` back as `cursor` for the next page.\n- action=get { projectId, questionId }: one question with every round, and `progress`: the issue it parks, whether work on it is running, and when it is likely done once answered.\n- action=answer { projectId, questionId, round, optionId | text, note?, stillWaits? }: { round, optionId | text, note?, stillWaits? }: round is the round being answered, as an integer, and the answer is exactly one of optionId (one of the question's options) or text (a free answer). A question a person owes is answered by that person signed in, on the web or in the room it was delivered to; this door carries a token, so it is refused with that instruction. With a token only a question blocked on another agent is answered, by that agent's own token.\n- action=ask { projectId, issue, body, parentId? }: raise your own question on an issue, as a question comment the agent working it owes a reply. To question a requirement or report a problem, use Feedback or the requirement instead: an issue is delivery work, and a question there is about that work.",
+      "description": "Questions waiting on a person, the person's answer to one, and a person's own question on an issue.\n- action=list { projectId, status?: open | answered | void | expired | needs_info (open by default), issue?, limit?, cursor? }: what is owed an answer, newest first, each with its prompt, its options (locked where you may not choose one) and the recommended one. `issue` narrows to one issue's questions. Read `hasMore` and pass `nextCursor` back as `cursor` for the next page.\n- action=get { projectId, questionId }: one question with every round, and `progress`: the issue it parks, whether work on it is running, and when it is likely done once answered.\n- action=answer { projectId, questionId, round, optionId | text, note?, stillWaits? }: { round, optionId | text, note?, stillWaits? }: round is the round being answered, as an integer, and the answer is exactly one of optionId (one of the question's options) or text (a free answer). Answer only with what the person told you in this conversation, in their words; never answer on your own reading of the question, its recommendation or the code, and when they have not said, ask them. The answer is theirs, recorded with this token and this client: it answers a question a person owes, within what they could answer signed in, and is refused PERMISSION_FORBIDDEN naming the permission an option takes that they do not hold. A question blocked on another agent is that agent's to answer: QUESTION_BLOCKED_ON_AGENT. QUESTION_NOT_OPEN: it is already answered. QUESTION_ROUND_STALE: get it again and show them the new round.\n- action=ask { projectId, issue, body, parentId? }: raise your own question on an issue, as a question comment the agent working it owes a reply. To question a requirement or report a problem, use Feedback or the requirement instead: an issue is delivery work, and a question there is about that work.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -989,7 +989,7 @@
       "name": "forge_releases"
     },
     {
-      "description": "A project's requirements (REQ-n), for a BA: read them, draft and revise them, and tell the person how delivery is going. Every list row and get answer carries `progress`: `running` (a run works on it right now), `runs` (unfinished runs on its issues: issue, state, step), `waitingOn` (who owes what before it goes on: an agree, a breakdown, a release act; `late` when overdue), `work` (its issues: total, shipped, awaitingRelease, toDo) and `eta` — {estimate:true, likelyBy (p50), almostSurelyBy (p85), of: hands|landing, basis, confidence} read off the project’s own history, or {estimate:false, done, why} saying why no date can be given. `progress.says` is the block in one paragraph: tell it to the person, and never give a date the block does not hold. Actions. list {state?}: every requirement with its state, whom it waits on, criteria proven of total, and progress. get {requirement}: one in full — its latest revision (spec, criteria with codes), revisions, questions standing on it, issues, releases, linked feedback, progress. NOT_FOUND when the project holds no such key. progress {requirement}: the progress block alone. similar {text}: the requirements nearest a wish; call it before create, and revise the one that covers it instead. provider_not_configured or withheld_by_policy does not mean none is similar. create {title, criteria?, reason?, spec?, tldr?, kind?, picture?, designs?, writtenLang?}: a NEW draft requirement at revision 1, as POST /api/projects/:id/requirements writes it; with no reason its author is asked why. REQUIREMENT_DESIGN_UNKNOWN names a design the project lacks. revise {requirement, baseRevision, criteria, reason?, spec?, tldr?, changeSummary?, kind?, picture?}: a new draft revision on the head — use it to change an agreed requirement. Write the WHOLE criteria list: each criterion that stays keeps its code, a new one has none. REQUIREMENT_REVISION_OPEN: a draft or proposed revision is open, so pass revision: n to rewrite that draft instead. REQUIREMENT_REVISION_STALE: the head moved, get it again. propose {requirement, revision}: put a draft revision before the people who agree it. Agreeing, accepting, returning, deferring and dropping are a person’s sign-off on the requirement page; this tool does none of them. A question standing on a requirement is answered by a signed-in person on its page or in the room it was asked in, never by a token (REST refuses a token too). A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and writes nothing: tell the person the detail.",
+      "description": "A project's requirements (REQ-n), for a BA: read them, draft and revise them, and tell the person how delivery is going. Every list row and get answer carries `progress`: `running` (a run works on it right now), `runs` (unfinished runs on its issues: issue, state, step), `waitingOn` (who owes what before it goes on: an agree, a breakdown, a release act; `late` when overdue), `work` (its issues: total, shipped, awaitingRelease, toDo) and `eta` — {estimate:true, likelyBy (p50), almostSurelyBy (p85), of: hands|landing, basis, confidence} read off the project’s own history, or {estimate:false, done, why} saying why no date can be given. `progress.says` is the block in one paragraph: tell it to the person, and never give a date the block does not hold. Actions. list {state?}: every requirement with its state, whom it waits on, criteria proven of total, and progress. get {requirement}: one in full — its latest revision (spec, criteria with codes), revisions, questions standing on it, issues, releases, linked feedback, progress. NOT_FOUND when the project holds no such key. progress {requirement}: the progress block alone. similar {text}: the requirements nearest a wish; call it before create, and revise the one that covers it instead. provider_not_configured or withheld_by_policy does not mean none is similar. create {title, criteria?, reason?, spec?, tldr?, kind?, picture?, designs?, writtenLang?}: a NEW draft requirement at revision 1, as POST /api/projects/:id/requirements writes it; with no reason its author is asked why. REQUIREMENT_DESIGN_UNKNOWN names a design the project lacks. revise {requirement, baseRevision, criteria, reason?, spec?, tldr?, changeSummary?, kind?, picture?}: a new draft revision on the head — use it to change an agreed requirement. Write the WHOLE criteria list: each criterion that stays keeps its code, a new one has none. REQUIREMENT_REVISION_OPEN: a draft or proposed revision is open, so pass revision: n to rewrite that draft instead. REQUIREMENT_REVISION_STALE: the head moved, get it again. propose {requirement, revision}: put a draft revision before the people who agree it. answer {requirement, questionId, round, optionId | answer}: answer a question standing on the requirement (one get lists under questions), as POST /api/questions/:id/answer does — { round, optionId | text, note?, stillWaits? }: round is the round being answered, as an integer, and the answer is exactly one of optionId (one of the question's options) or text (a free answer), the free answer passed here as answer. Answer only with what the person told you in this conversation, in their words; never answer on your own reading of the question, the spec or the code, and when they have not said, ask them. The answer is theirs, recorded with this token and this client: it answers a question a person owes, within what they could answer signed in; one blocked on another agent is refused QUESTION_BLOCKED_ON_AGENT. QUESTION_NOT_OPEN: it is already answered. Agreeing, accepting, returning, deferring and dropping are a person’s sign-off on the requirement page; this tool does none of them. A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and writes nothing: tell the person the detail.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -1002,8 +1002,13 @@
               "similar",
               "create",
               "revise",
-              "propose"
+              "propose",
+              "answer"
             ],
+            "type": "string"
+          },
+          "answer": {
+            "description": "answer: the person’s words, on a free-text round",
             "type": "string"
           },
           "baseRevision": {
@@ -1084,6 +1089,10 @@
                 "type": "null"
               }
             ]
+          },
+          "optionId": {
+            "description": "answer: the option the person chose",
+            "type": "string"
           },
           "picture": {
             "oneOf": [
@@ -1396,6 +1405,12 @@
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
             "type": "string"
           },
+          "questionId": {
+            "description": "answer: a question standing on the requirement",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
           "reason": {
             "anyOf": [
               {
@@ -1416,6 +1431,12 @@
             "description": "revise: the draft revision to rewrite whole; propose: the draft revision to propose",
             "maximum": 9007199254740991,
             "minimum": 1,
+            "type": "integer"
+          },
+          "round": {
+            "description": "answer: the round being answered",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
             "type": "integer"
           },
           "spec": {

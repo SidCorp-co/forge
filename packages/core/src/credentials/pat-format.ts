@@ -125,6 +125,10 @@ const MCP_OAUTH_NAME_PREFIX = 'mcp oauth ';
  */
 export const mcpOauthTokenNameFor = (grantId: string) => `${MCP_OAUTH_NAME_PREFIX}${grantId}`;
 
+/** The consent an MCP client's access token was minted for, by the token's name; null for any other token. */
+export const mcpOauthGrantIdOf = (name: string): string | null =>
+  name.startsWith(MCP_OAUTH_NAME_PREFIX) ? name.slice(MCP_OAUTH_NAME_PREFIX.length) : null;
+
 const CORE_NAME_PREFIXES = [
   DEVICE_TOKEN_NAME_PREFIX,
   WORKSPACE_TOKEN_NAME_PREFIX,

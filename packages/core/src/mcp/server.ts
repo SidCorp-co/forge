@@ -194,11 +194,11 @@ function publicGuidesUrl(): string {
 function forgeMcpInstructions(): string {
   return `You are connected to a Forge-managed project — Forge is the control plane for this repo's issues, pipeline, and durable memory. The REST API (\`<host>/api/...\`, a personal access token as \`Authorization: Bearer\`) is the primary door and the \`forge\` CLI sits on it; this server carries the product layer a BA works in, so a person can work from an MCP client, and what neither covers:
 
-- \`forge_requirements\` — list, read, draft and revise requirements (REQ-n), and propose a draft revision; agreeing and accepting stay a person's act on the requirement page.
+- \`forge_requirements\` — list, read, draft and revise requirements (REQ-n), propose a draft revision, and answer a question standing on one with what the person said; agreeing and accepting stay a person's act on the requirement page.
 - \`forge_feedback\` — list, read and file feedback (FB-n), find similar items, and ask a reporter a clarification; triage stays a person's act.
 - \`forge_releases\` — releases: what shipped, what is drafted, what waits on approval; name one, and decide its approval where you hold releases.approve.
 - \`forge_design\` — workflow designs, suggestions and mockups: read them, write and propose a design, and approve, return, accept, reject, revise or withdraw where you hold the permission.
-- \`forge_questions\` — questions waiting on a person, one read in full, an answer, and your own question on an issue.
+- \`forge_questions\` — questions waiting on a person, one read in full, the person's answer in their own words, and your own question on an issue.
 - \`forge_issues\` — delivery work read: each issue's status, whether an agent works on it now and when it is likely done. It files no issue: \`create\` is refused MCP_FILES_FEEDBACK_NOT_ISSUES and says where the record goes instead (Feedback, a Requirement, or a question).
 - \`forge_uploads\` — read an issue, comment or session attachment; an image comes back as a viewable block.
 

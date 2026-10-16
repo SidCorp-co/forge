@@ -1,21 +1,19 @@
-// `forge_questions`: the questions waiting on a person, as `/api/questions` serves them, and a person
-// raising one of their own on an issue (a question comment, owed a reply). Every action calls what
-// its REST route calls, including who may answer with a token (`questions/answer-door.ts`).
+// `forge_questions`: the questions waiting on a person, as `/api/questions` serves them, a person's
+// answer to one they owe, and a person raising one of their own on an issue (a question comment, owed
+// a reply). Every action calls what its REST route calls, including who may answer with a token
+// (`questions/answer-door.ts`).
 
 import { QUESTIONS_TOOL_ACTIONS } from '@forge/contracts/mcp-product';
 import { QUESTION_STATUSES } from '@forge/contracts/question-machine';
 import { z } from 'zod';
 import { postIssueComment } from '../comments/index.js';
-import { doorOf } from '../ecosystem/index.js';
 import { readIssueForecast } from '../forecast/index.js';
 import { findIssueById, issueDisplayIds, resolveIssueRouteRef } from '../issues/index.js';
 import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from '../lib/tool.js';
 import {
   ANSWER_SHAPE,
-  answerAs,
   answerBody,
-  assertTokenMayAnswer,
-  givenAnswerOf,
+  answerWithToken,
   projectQuestionsFor,
   readQuestionFor,
   readQuestionsForIssue,
@@ -55,10 +53,10 @@ type Input = z.infer<typeof input>;
 const SHAPE =
   '{ action, projectId, questionId?, issue?, status?, limit?, cursor?, round?, optionId? | text?, note?, stillWaits?, body?, parentId? }';
 
-const DESCRIPTION = `Questions waiting on a person, and a person's own question on an issue.
+const DESCRIPTION = `Questions waiting on a person, the person's answer to one, and a person's own question on an issue.
 - action=list { projectId, status?: ${QUESTION_STATUSES.join(' | ')} (open by default), issue?, limit?, cursor? }: what is owed an answer, newest first, each with its prompt, its options (locked where you may not choose one) and the recommended one. \`issue\` narrows to one issue's questions. Read \`hasMore\` and pass \`nextCursor\` back as \`cursor\` for the next page.
 - action=get { projectId, questionId }: one question with every round, and \`progress\`: the issue it parks, whether work on it is running, and when it is likely done once answered.
-- action=answer { projectId, questionId, round, optionId | text, note?, stillWaits? }: ${ANSWER_SHAPE}. A question a person owes is answered by that person signed in, on the web or in the room it was delivered to; this door carries a token, so it is refused with that instruction. With a token only a question blocked on another agent is answered, by that agent's own token.
+- action=answer { projectId, questionId, round, optionId | text, note?, stillWaits? }: ${ANSWER_SHAPE}. Answer only with what the person told you in this conversation, in their words; never answer on your own reading of the question, its recommendation or the code, and when they have not said, ask them. The answer is theirs, recorded with this token and this client: it answers a question a person owes, within what they could answer signed in, and is refused PERMISSION_FORBIDDEN naming the permission an option takes that they do not hold. A question blocked on another agent is that agent's to answer: QUESTION_BLOCKED_ON_AGENT. QUESTION_NOT_OPEN: it is already answered. QUESTION_ROUND_STALE: get it again and show them the new round.
 - action=ask { projectId, issue, body, parentId? }: raise your own question on an issue, as a question comment the agent working it owes a reply. To question a requirement or report a problem, use Feedback or the requirement instead: an issue is delivery work, and a question there is about that work.`;
 
 function page(i: Input) {
@@ -138,11 +136,6 @@ async function answer(ctx: McpContext, i: Input) {
   const { questionId } = need(i, 'answer', 'questionId');
   await questionIn(ctx, i.projectId, questionId);
   const { principal } = ctx;
-  await assertTokenMayAnswer({
-    questionId,
-    userId: principal.userId,
-    agentUserId: principal.agentUserId ?? null,
-  });
   const body = parseArgs(
     answerBody,
     {
@@ -154,12 +147,15 @@ async function answer(ctx: McpContext, i: Input) {
     },
     ANSWER_SHAPE,
   );
-  return answerAs({
-    questionId,
-    ...givenAnswerOf(body),
-    userId: principal.userId,
+  return answerWithToken({
+    token: {
+      questionId,
+      userId: principal.userId,
+      agentUserId: principal.agentUserId ?? null,
+      tokenId: principal.tokenId,
+    },
+    body,
     agency: actorOf(ctx).agency,
-    via: await doorOf(principal.tokenId),
   });
 }
 

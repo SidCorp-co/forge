@@ -344,6 +344,7 @@ export function provideWorkPorts(): void {
   provideQuestionPorts({
     decideChannelGate,
     doorOfRequest: (c) => doorOf(tokenIdOf(c)),
+    doorOfToken: doorOf,
     conversationTurnOf: (metadata) => {
       const marked = (metadata as Record<string, unknown> | null)?.[CONVERSATION_AGENT_MARKER];
       return marked === undefined || marked === null

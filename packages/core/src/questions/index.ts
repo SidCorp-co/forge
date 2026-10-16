@@ -1,5 +1,5 @@
-export { assertTokenMayAnswer } from './answer-door.js';
-export { ANSWER_SHAPE, answerBody, givenAnswerOf } from './answer-input.js';
+export { answerWithToken, assertTokenMayAnswer } from './answer-door.js';
+export { ANSWER_SHAPE, type AnswerBody, answerBody, givenAnswerOf } from './answer-input.js';
 export {
   type AnsweredOnIssue,
   type AnsweredSince,

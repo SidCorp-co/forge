@@ -14,7 +14,12 @@ import { QUESTION_STATUSES } from '@forge/contracts/question-machine';
 
 import type { QuestionnaireItem } from '@forge/contracts/onboarding';
 import type { QuestionSuggestion } from '@forge/contracts/question-suggestion';
-import type { AnswerHold, AnswerResume, QuestionAbout } from '@forge/contracts/questions';
+import type {
+  AnswerCredential,
+  AnswerHold,
+  AnswerResume,
+  QuestionAbout,
+} from '@forge/contracts/questions';
 
 import { sql } from 'drizzle-orm';
 import {
@@ -69,6 +74,8 @@ type StepCommon = {
   askedAt: string;
   answeredAt?: string;
   answeredBy?: string;
+  /** The token the answer arrived on, and the MCP client holding it (REQ-27 BC-2); absent for a session's or a room's. */
+  answeredWith?: AnswerCredential;
   note?: string;
   sensitive?: boolean;
   /** What the answer said the issue still waits on (ISS-257). */

@@ -33,11 +33,17 @@ export const QUESTION_REFUSAL_CODES = [
 	"QUESTION_ABOUT_ON_MERGE_WAIT",
 	"QUESTION_ABOUT_SHAPE",
 	"QUESTION_RECOMMENDATION_REQUIRED",
+	"QUESTION_TOKEN_NOT_OWN",
+	"QUESTION_OWED_BY_PERSON",
+	"QUESTION_BLOCKED_ON_AGENT",
 ] as const;
 export type QuestionRefusalCode = (typeof QUESTION_REFUSAL_CODES)[number];
 export const QUESTION_REFUSAL_STATUSES = {
 	QUESTION_ROUND_STALE: 409,
 	QUESTION_ABOUT_SHAPE: 400,
+	QUESTION_TOKEN_NOT_OWN: 403,
+	QUESTION_OWED_BY_PERSON: 403,
+	QUESTION_BLOCKED_ON_AGENT: 403,
 } as const satisfies RefusalStatuses<QuestionRefusalCode>;
 
 /**
@@ -68,6 +74,17 @@ export interface QuestionRoundFacts {
 export interface AnswerHold {
 	reason: string;
 	blockedBy?: { id: string; key: string };
+}
+
+/**
+ * The token an answer arrived on, stored on the round it answers (REQ-27 BC-2): who acted is
+ * `answeredBy`, and this is the credential they acted through. `client` is the MCP client holding
+ * it where it is an OAuth access token, as the client registered itself; null for any other token.
+ * A round answered in a session or a room carries none.
+ */
+export interface AnswerCredential {
+	tokenId: string;
+	client: { id: string; name: string } | null;
 }
 
 /**
