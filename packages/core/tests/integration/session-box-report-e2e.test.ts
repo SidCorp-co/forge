@@ -103,14 +103,23 @@ async function runningSession(w: World): Promise<string> {
 async function ledger(
   w: World,
   sessionId: string,
-  entry: { work: string; blockerKind?: string; waitingOn?: string; at: string; projectId?: string },
+  entry: {
+    work: string;
+    blockerKind?: string;
+    waitingOn?: string;
+    at: string;
+    since?: string;
+    projectId?: string;
+  },
 ): Promise<void> {
   await harness.db.execute(sql`
     INSERT INTO device_run_ledger (device_id, run_id, project_id, session_id, worktree_path, boot_id,
-                                   incarnation, work, blocker_kind, waiting_on, issues, observed_at)
+                                   incarnation, work, blocker_kind, waiting_on, issues, observed_at,
+                                   work_since)
     VALUES (${w.deviceId}::uuid, ${randomUUID()}, ${entry.projectId ?? w.projectId}::uuid,
             ${sessionId}::uuid, '/tmp/wt', 'boot-1', 'live', ${entry.work},
-            ${entry.blockerKind ?? null}, ${entry.waitingOn ?? null}, '[]'::jsonb, ${entry.at}::timestamptz)
+            ${entry.blockerKind ?? null}, ${entry.waitingOn ?? null}, '[]'::jsonb, ${entry.at}::timestamptz,
+            ${entry.since ?? entry.at}::timestamptz)
   `);
 }
 
@@ -123,6 +132,7 @@ interface Report {
   blockerKind: string | null;
   waitingOn: string | null;
   observedAt: string;
+  since: string;
 }
 
 describe('a session read carries its box report (ISS-1228)', () => {
@@ -136,6 +146,7 @@ describe('a session read carries its box report (ISS-1228)', () => {
       blockerKind: 'human',
       waitingOn: 'approve the database restore in Coolify',
       at: '2026-10-16T08:00:00.000Z',
+      since: '2026-10-16T07:30:00.000Z',
     });
 
     const res = await get(`/api/agent-sessions?projectId=${w.projectId}`, w.token);
@@ -148,6 +159,7 @@ describe('a session read carries its box report (ISS-1228)', () => {
       blockerKind: 'human',
       waitingOn: 'approve the database restore in Coolify',
       observedAt: '2026-10-16T08:00:00.000Z',
+      since: '2026-10-16T07:30:00.000Z',
     });
     expect(byId.has(silent)).toBe(true);
     expect(byId.get(silent)).toBeNull();

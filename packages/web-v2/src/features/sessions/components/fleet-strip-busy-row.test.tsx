@@ -20,7 +20,24 @@ vi.mock("@/features/projects/hooks", () => ({
   useProject: () => ({ data: { devicePool: [DEVICE], defaultDeviceId: "dev-1" } }),
 }));
 vi.mock("../hooks", () => ({
-  useQueueStats: () => ({ data: { perDevice: [] } }),
+  useQueueStats: () => ({ data: { devices: [] }, isError: false, error: null }),
+}));
+vi.mock("@/features/runners/hooks", () => ({
+  useDevices: () => ({ data: [] }),
+  useProjectRunners: () => ({
+    data: [{ runnerId: "r-d1", deviceId: "dev-1", deviceName: "forge-vm", platform: "linux", deviceStatus: "online", runnerStatus: "online", limitReason: null }],
+    isError: false,
+    error: null,
+  }),
+  useActiveRunners: () => ({ data: { runners: [], busy: 0 }, isError: false, error: null }),
+}));
+vi.mock("@/features/pipeline/hooks", () => ({
+  // The box hosts the live session every case renders, as the dashboard's read says.
+  useSessionsAndHolds: () => ({
+    data: { sessions: [{ id: "s-1", deviceId: "dev-1" }], holds: [], readAt: "" },
+    isError: false,
+    error: null,
+  }),
 }));
 
 afterEach(cleanup);

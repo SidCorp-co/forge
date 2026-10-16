@@ -227,13 +227,15 @@ export function ContextRail({
 
       {isPipeline && (
         <Section title="Pipeline">
-          <SessionChip status={statusToChip(display)} stage={stage} size="sm" />
+          <SessionChip status={statusToChip(display)} stage={stage} size="sm" session={session} />
         </Section>
       )}
 
       <Section title="Run stats">
         <div className="flex flex-col gap-2.5">
-          {!isPipeline && <SessionChip status={statusToChip(display)} stage={stage} size="sm" />}
+          {!isPipeline && (
+            <SessionChip status={statusToChip(display)} stage={stage} size="sm" session={session} />
+          )}
           <Stat icon="activity" title="Turns">{usage.turns ?? "—"} turns</Stat>
           <Stat icon="clock" title="Duration">{duration}</Stat>
           <Stat icon="cpu" title="Context window used">{fmtNum(usage.contextUsed)} ctx</Stat>
@@ -367,7 +369,7 @@ function SiblingRow({ row, onOpen }: { row: SessionRow; onOpen?: () => void }) {
       <span className="flex-1 truncate fg-body-sm" title={label}>
         {label}
       </span>
-      <SessionChip status={statusToChip(display)} stage={stage} size="sm" />
+      <SessionChip status={statusToChip(display)} stage={stage} size="sm" session={row} />
     </>
   );
 

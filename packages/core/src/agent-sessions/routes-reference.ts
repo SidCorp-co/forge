@@ -68,10 +68,11 @@ export const sessionReadSchema = sessionSchema.extend({
   silenceLimitMs: silenceLimitMsSchema,
 });
 
-/** A session as a list shows it: no transcript, with its cost, the last line said and the issue it
- *  works, named (`null` where it records none or the id matches no issue of its project). */
+/** A session as a list shows it: no transcript, with its cost, the last line said and every issue
+ *  it holds, named (its leases and its job's issue, as `held-issues.ts` reads them; empty where it
+ *  holds none). */
 export const sessionListItemSchema = sessionSchema.omit({ messages: true }).extend({
-  issue: z.object({ id: z.string(), displayId: z.string(), title: z.string() }).nullable(),
+  issues: z.array(z.object({ id: z.string(), displayId: z.string(), title: z.string() })),
   messageCount: z.number().nullable(),
   transcript: z.enum(sessionTranscripts),
   estimatedCost: z.number(),

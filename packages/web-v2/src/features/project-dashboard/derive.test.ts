@@ -460,6 +460,7 @@ describe("runnersSummary — a runner hosting a live session is busy (ISS-1228)"
 describe("sessions waiting on you", () => {
   const NOW = Date.parse("2026-10-16T10:00:00.000Z");
   const heard = new Date(NOW - 10_000).toISOString();
+  const waitBegan = new Date(NOW - 35 * 60_000).toISOString();
   function session(over: Partial<LiveSession>): LiveSession {
     return {
       id: "s1",
@@ -484,6 +485,7 @@ describe("sessions waiting on you", () => {
     blockerKind,
     waitingOn: "approve the database restore",
     observedAt: heard,
+    since: waitBegan,
   });
 
   it("lists a session blocked on a person, naming what it waits on and linking to its page", () => {
@@ -493,9 +495,15 @@ describe("sessions waiting on you", () => {
       actionKind: "session",
       issueRef: "ISS-3",
       link: "/projects/sable/agents/s1",
-      since: heard,
+      since: waitBegan,
     });
     expect(item?.title).toContain("approve the database restore");
+  });
+
+  it("ages the wait from when the box first reported it, not from its latest report (round 10)", () => {
+    const [item] = sessionsWaitingOnYou([session({ report: blockedOn("human") })], "sable");
+    expect(item?.since).toBe(waitBegan);
+    expect(item?.since).not.toBe(heard);
   });
 
   it("does not list a session blocked on a machine, another agent or nobody, nor one working", () => {

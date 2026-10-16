@@ -70,6 +70,7 @@ const reading: SessionsAndHolds = {
         blockerKind: "human",
         waitingOn: "an answer on ISS-7",
         observedAt: "2026-10-15T01:59:00.000Z",
+        since: "2026-10-15T01:59:00.000Z",
       },
     },
   ],

@@ -254,3 +254,26 @@ describe("what a blocked session's page draws (ISS-1228 criteria 40, 41)", () =>
     expect(screen.getByText(BLOCKED_HOLD)).toBeVisible();
   });
 });
+
+// ISS-1228 round 10: a session at Waiting for input wore that chip on its page while its turn line
+// spun "Working…" and its composer was busy.
+describe("what the page of a session doing something specific draws (ISS-1228 round 10)", () => {
+  it("says the session's own activity on its turn line", () => {
+    render(<TurnStage stage="working" activity="Checkpointing" />);
+    expect(screen.getByTestId("turn-stage")).toHaveTextContent("Checkpointing…");
+    expect(screen.getByTestId("turn-stage")).not.toHaveTextContent("Working");
+  });
+
+  it("spins nothing while the session waits for input, and its composer takes a message", () => {
+    render(<TurnStage stage="working" activity="Waiting for input" />);
+    expect(screen.getByTestId("turn-stage")).toHaveTextContent(/^Waiting for input$/);
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(sessionComposerState("running", false, true)).toEqual({ busy: false });
+    expect(sessionComposerState("running", false, false)).toEqual({ busy: true });
+  });
+
+  it("says Working where the session's word is Working", () => {
+    render(<TurnStage stage="working" activity="Working" />);
+    expect(screen.getByTestId("turn-stage")).toHaveTextContent("Working…");
+  });
+});

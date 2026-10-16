@@ -8,7 +8,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon, LiveDot, MonoTag, SILENCE_TONE, SILENCE_WORD } from "@/design";
 import { TONE_META } from "@/design/status";
-import { checkInOf, doingOf, orderSessions, sessionName } from "@/features/pipeline/derive";
+import { checkInOf, orderSessions, sessionName } from "@/features/pipeline/derive";
+import { liveSessionWord } from "@/features/sessions/session-word";
 import type { LiveSession } from "@/features/pipeline/types";
 import type { PipelineRunListItem } from "@/features/runs/types";
 import type { ReadState } from "../shape";
@@ -27,7 +28,7 @@ export interface LiveSessionsCardProps {
 }
 
 function SessionRow({ session, slug, now }: { session: LiveSession; slug: string; now: number }) {
-  const doing = doingOf(session, now);
+  const doing = liveSessionWord(session, now);
   const checkIn = checkInOf(session, now);
   const name = sessionName(session);
   return (

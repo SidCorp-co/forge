@@ -15,6 +15,7 @@ const base: StatStripProps = {
   liveSessions: 3,
   busyRunners: 2,
   onlineRunners: 4,
+  totalRunners: 4,
   needsYou: 2,
   needsYouCaption: "to act on: 1 failed job · 1 to review",
   oldestWait: "112d",

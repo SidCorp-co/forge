@@ -39,6 +39,7 @@ import { extractTurnPreview } from './chat-preview.js';
 import { syncRunnerHealthFromChatTerminal } from './chat-runner-health.js';
 import { createChatSessionRow } from './chat-turn.js';
 import { agentSessionEventsRoutes } from './events-routes.js';
+import { loadSessionIssues } from './held-issues.js';
 import { agentSessionInboxRoutes } from './inbox-routes.js';
 import { assertCallerDeclaresNoKind, kindFromQuery } from './kind-query.js';
 import { agentSessionLifecycleRoutes } from './lifecycle-routes.js';
@@ -71,7 +72,6 @@ import {
   detectUnexpandedSkillFailure,
   finalizeScheduleSessionFailure,
 } from './session-failure.js';
-import { loadSessionIssueRefs } from './session-issue-ref.js';
 import { onTerminalPatch } from './terminal-effects.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
 import { agentSessionTurnsRoutes } from './turns-routes.js';
@@ -385,10 +385,10 @@ agentSessionRoutes.get(
 
     const reportById = await loadSessionReports(pageIds);
     const deadlineById = await loadSilenceDeadlines(pageIds);
-    const issueById = await loadSessionIssueRefs(pageIds);
+    const issuesById = await loadSessionIssues(pageIds);
     const items = rows.map((r) => ({
       ...r,
-      issue: issueById.get(r.id) ?? null,
+      issues: issuesById.get(r.id) ?? [],
       estimatedCost: costById.get(r.id) ?? 0,
       lastMessagePreview: previewById.get(r.id) ?? null,
       report: reportById.get(r.id) ?? null,

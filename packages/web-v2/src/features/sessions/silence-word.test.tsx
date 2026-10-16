@@ -8,6 +8,7 @@
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { lastReported, WORKING_WORD } from "@/design";
+import type { StatusKey } from "@/design/status";
 import { RunRow } from "@/features/agents/components/run-row";
 import type { RunSessionRow } from "@/features/agents/types";
 import { SessionsList } from "@/features/pipeline/components/sessions-list";
@@ -30,7 +31,18 @@ vi.mock("@/features/projects/hooks", () => ({
   useProjects: () => ({ data: [{ id: "p1", slug: "pair", name: "Pair", role: "owner" }] }),
   useOrgScopedProjects: () => ({ projects: [], projectIds: new Set(["p1"]) }),
 }));
-vi.mock("@/features/runners/hooks", () => ({ useDevices: () => ({ data: [] }) }));
+vi.mock("@/features/runners/hooks", () => ({
+  useDevices: () => ({ data: [] }),
+  useProjectRunners: () => ({
+    data: [{ runnerId: "r-d1", deviceId: "d1", deviceName: "box-a", platform: "linux", deviceStatus: "online", runnerStatus: "online", limitReason: null }],
+    isError: false,
+    error: null,
+  }),
+  useActiveRunners: () => ({ data: { runners: [], busy: 0 }, isError: false, error: null }),
+}));
+vi.mock("@/features/pipeline/hooks", () => ({
+  useSessionsAndHolds: () => ({ data: { sessions: [], holds: [], readAt: "" }, isError: false, error: null }),
+}));
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));
 const { mutation } = vi.hoisted(() => ({ mutation: () => ({ mutate: () => {}, isPending: false }) }));
 vi.mock("./hooks", () => ({
@@ -324,6 +336,7 @@ describe("a running session its box reports blocked (ISS-1228 criteria 34, 40, 4
     blockerKind: "human",
     waitingOn: "approve the database restore in Coolify",
     observedAt: HEARD_AT,
+    since: HEARD_AT,
   };
   const blockedLive: LiveSession = { ...live, lastHeartbeatAt: HEARD_AT, report };
   const blockedRow: SessionRow = { ...row, lastHeartbeatAt: HEARD_AT, updatedAt: HEARD_AT, report };
@@ -412,6 +425,7 @@ describe("a quiet session read against core's own silence limit (ISS-1228 round 
     blockerKind: "human",
     waitingOn: "a decision on the schema",
     observedAt: FOUR_MIN_AGO,
+    since: FOUR_MIN_AGO,
   };
 
   it("reads Last reported blocked on the sessions list, as the session page and the Pipeline page do", () => {
@@ -424,16 +438,17 @@ describe("a quiet session read against core's own silence limit (ISS-1228 round 
     expect(cell).not.toContain("awaiting auto-recovery");
   });
 
-  it("counts the sessions list's countdown to core's ten minutes for a run session", () => {
+  it("counts the sessions list's countdown to core's ten minutes for a run session, saying core ends it as failed", () => {
     listed = { ...row, lastHeartbeatAt: FOUR_MIN_AGO, updatedAt: FOUR_MIN_AGO, silenceLimitMs: TEN_MIN };
     const { container } = render(<SessionsScreen scope={{ projectId: "p1" }} />);
     const cell = container.querySelector("tbody")?.textContent ?? "";
     listed = row;
     cleanup();
-    expect(cell).toContain("auto-recovers in 6m 00s");
+    expect(cell).toContain("core ends it as failed in 6m 00s");
+    expect(cell).not.toMatch(/recover/i);
   });
 
-  it("calls a run past the recovery threshold on the runs tab only once core's limit has passed", () => {
+  it("says core is ending a run as failed on the runs tab only once core's limit has passed", () => {
     const before = render(
       <ul>
         <RunRow row={{ ...run, lastActivityAt: FOUR_MIN_AGO, silenceLimitMs: TEN_MIN }} now={NOW} slug="pair" />
@@ -446,7 +461,177 @@ describe("a quiet session read against core's own silence limit (ISS-1228 round 
       </ul>,
     ).container.textContent;
     cleanup();
-    expect(before).not.toContain("past the automatic-recovery threshold");
-    expect(after).toContain("past the automatic-recovery threshold");
+    expect(before).not.toContain("core is ending it as failed");
+    expect(after).toContain("core is ending it as failed");
+    expect(after).not.toMatch(/recover/i);
   });
 });
+
+// ISS-1228 round 10: a running session doing something specific read its activity on the Pipeline page
+// and the dashboard and Working on the sessions list, its own page and the runs tab; Waiting for me
+// stayed 0 while the Pipeline page said Waiting for input; and a quiet blocked run said "Blocked,
+// holding the box" in the present tense on the runs tab.
+describe("one word for a session, on every surface (ISS-1228 round 10)", () => {
+  const ACTIVITIES: Array<[string, string]> = [
+    ["starting", "Starting"],
+    ["awaiting_input", "Waiting for input"],
+    ["checkpointing", "Checkpointing"],
+    ["closed", "Closing"],
+  ];
+
+  // The session's own page is read through `SessionScreen` in session-screen-blocked.test.tsx.
+  it.each(ACTIVITIES)("calls a heard-from session at %s %s on every surface", (runtimeState, word) => {
+    const heardLive = { ...live, runtimeState, lastHeartbeatAt: HEARD_AT };
+    const heardRow = { ...row, runtimeState, lastHeartbeatAt: HEARD_AT, updatedAt: HEARD_AT };
+    const surfaces: Record<string, string> = {};
+
+    surfaces.pipeline = render(<SessionsList sessions={[heardLive]} slug="pair" now={NOW} />).container.textContent ?? "";
+    cleanup();
+    surfaces.dashboard =
+      render(<LiveSessionsCard sessions={[heardLive]} slug="pair" now={NOW} read={{ read: "ok" }} />).container
+        .textContent ?? "";
+    cleanup();
+    listed = heardRow;
+    surfaces.list = render(<SessionsScreen scope={{ projectId: "p1" }} />).container.querySelector("tbody")?.textContent ?? "";
+    listed = row;
+    cleanup();
+    surfaces.runs =
+      render(
+        <ul>
+          <RunRow row={{ ...run, lastActivityAt: HEARD_AT, sessionRuntimeState: runtimeState }} now={NOW} slug="pair" />
+        </ul>,
+      ).container.textContent ?? "";
+    cleanup();
+
+    for (const [surface, text] of Object.entries(surfaces)) {
+      expect({ surface, says: text.includes(word) }).toEqual({ surface, says: true });
+      expect({ surface, working: text.includes(WORKING_WORD) }).toEqual({ surface, working: false });
+    }
+  });
+
+  it("counts a session the Pipeline page calls Waiting for input under Waiting for me, and not under Working", () => {
+    listed = { ...row, runtimeState: "awaiting_input", lastHeartbeatAt: HEARD_AT, updatedAt: HEARD_AT };
+    const { container } = render(<SessionsScreen scope={{ projectId: "p1" }} />);
+    const text = container.textContent ?? "";
+    listed = row;
+    cleanup();
+    expect(text).toContain("Waiting for me 1");
+    expect(text).toContain(`${WORKING_WORD} 0`);
+  });
+
+  it("counts under Working only the sessions it calls Working", () => {
+    listed = { ...row, runtimeState: "checkpointing", lastHeartbeatAt: HEARD_AT, updatedAt: HEARD_AT };
+    const checkpointing = render(<SessionsScreen scope={{ projectId: "p1" }} />).container.textContent ?? "";
+    cleanup();
+    listed = { ...row, runtimeState: "working", lastHeartbeatAt: HEARD_AT, updatedAt: HEARD_AT };
+    const working = render(<SessionsScreen scope={{ projectId: "p1" }} />).container.textContent ?? "";
+    listed = row;
+    cleanup();
+    expect(checkpointing).toContain(`${WORKING_WORD} 0`);
+    expect(working).toContain(`${WORKING_WORD} 1`);
+  });
+
+  it("counts a running chat under Working, as its chip says Working", () => {
+    listed = {
+      ...row,
+      kind: "chat",
+      metadata: { type: "chat" },
+      lastHeartbeatAt: HEARD_AT,
+      updatedAt: HEARD_AT,
+    } as SessionRow;
+    const { container } = render(<SessionsScreen scope={{ projectId: "p1" }} />);
+    const text = container.textContent ?? "";
+    listed = row;
+    cleanup();
+    expect(text).toContain(`${WORKING_WORD} 1`);
+  });
+
+  it("says a quiet blocked run last reported blocked on the runs tab, never that it is blocked now", () => {
+    const quietBlocked = {
+      ...run,
+      work: "blocked",
+      blockerKind: "human",
+      waitingOn: "approve the restore",
+      lastActivityAt: SILENT_SINCE,
+    };
+    for (const sessionStatus of ["running", "failed"]) {
+      const text =
+        render(
+          <ul>
+            <RunRow row={{ ...quietBlocked, sessionStatus }} now={NOW} slug="pair" />
+          </ul>,
+        ).container.textContent ?? "";
+      cleanup();
+      expect(text).toContain(lastReported("Blocked"));
+      expect(text).not.toContain("Blocked, holding the box");
+    }
+  });
+});
+
+// ISS-1228 round 10: on the sessions list "Waiting for input" and "Checkpointing" wore the Working
+// sparkle, because a chip's mark followed its status and every activity is the running status.
+describe("every word a session chip shows has a mark of its own (ISS-1228 criterion 65)", () => {
+  const heard = { ...row, lastHeartbeatAt: HEARD_AT, updatedAt: HEARD_AT };
+  const shown: Array<{ session: SessionRow; status?: StatusKey }> = [
+    { session: { ...heard, runtimeState: "working" } },
+    { session: { ...heard, runtimeState: "awaiting_input" } },
+    { session: { ...heard, runtimeState: "starting" } },
+    { session: { ...heard, runtimeState: "checkpointing" } },
+    { session: { ...heard, runtimeState: "closed" } },
+    {
+      session: {
+        ...heard,
+        report: {
+          incarnation: "live",
+          work: "blocked",
+          blockerKind: "human",
+          waitingOn: "a decision",
+          observedAt: HEARD_AT,
+          since: HEARD_AT,
+        },
+      },
+    },
+    { session: { ...heard, status: "queued" } },
+    { session: { ...heard, status: "idle" } },
+    { session: row },
+    { session: { ...row, status: "completed" } },
+    { session: { ...row, status: "failed", failureReason: "crashed" } },
+    { session: { ...row, status: "cancelled" } },
+    { session: { ...row, status: "cancelled_stale" } },
+    { session: { ...heard, kind: "chat", metadata: { type: "chat" }, status: "idle" } },
+    { session: { ...heard, kind: "chat", metadata: { type: "chat" } }, status: "waiting" },
+  ];
+
+  function chipOf({ session, status }: { session: SessionRow; status?: StatusKey }): [string, string] {
+    const { container } = render(
+      <SessionChip status={status ?? statusToChip(deriveSessionDisplayStatus(session, NOW))} session={session} now={NOW} />,
+    );
+    const svg = container.querySelector("svg");
+    const mark = svg ? [...svg.children].map((c) => c.outerHTML).join("") : "";
+    const word = container.textContent ?? "";
+    cleanup();
+    return [word, mark];
+  }
+
+  it("draws a different mark for every word, Waiting for input sharing only the bell of Waiting for me", () => {
+    const chips = shown.map(chipOf);
+    const words = chips.map(([word]) => word);
+    expect(new Set(words).size, words.join(" | ")).toBe(chips.length);
+    const byMark = new Map<string, string[]>();
+    for (const [word, mark] of chips) byMark.set(mark, [...(byMark.get(mark) ?? []), word]);
+    const shared = [...byMark.values()].filter((w) => w.length > 1).map((w) => w.sort());
+    expect(shared).toEqual([["Waiting for input", "Waiting for me"]]);
+    expect(chips.every(([, mark]) => mark !== "")).toBe(true);
+  });
+
+  it("pulses only the Working word's mark", () => {
+    for (const runtimeState of ["awaiting_input", "starting", "checkpointing", "closed"]) {
+      const { container } = render(
+        <SessionChip status="running" session={{ ...heard, runtimeState }} now={NOW} />,
+      );
+      expect(container.querySelector("svg")?.getAttribute("class") ?? "").not.toMatch(/forge-pulse/);
+      cleanup();
+    }
+  });
+});
+

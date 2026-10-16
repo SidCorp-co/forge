@@ -3,6 +3,7 @@
 import { BLOCKED_TONE, BLOCKED_WORD, Icon, lastReported, SILENCE_TONE, SILENCE_WORD, Spinner, WORKING_WORD } from "@/design";
 import { TONE_META } from "@/design/status";
 import { formatElapsed } from "@/lib/utils/format";
+import { WAITING_FOR_INPUT_WORD } from "@/features/sessions/session-word";
 import { type AgentSessionDisplayStatus, isLiveDisplay } from "@/features/sessions/types";
 import type { ConversationItem, RenderBlock } from "../types";
 
@@ -60,12 +61,13 @@ export const BLOCKED_HOLD = "Sending waits until this session is no longer block
 export function sessionComposerState(
   display: AgentSessionDisplayStatus,
   sending: boolean,
+  waitingForInput = false,
 ): { busy: boolean; held?: string } {
   const { answering, quiet, blocked } = sessionActivity(display);
   if (sending) return { busy: true };
   if (quiet) return { busy: false, held: QUIET_HOLD };
   if (blocked) return { busy: false, held: BLOCKED_HOLD };
-  return { busy: answering };
+  return { busy: answering && !waitingForInput };
 }
 
 /**
@@ -105,6 +107,7 @@ export function TurnStage({
   silentForMs,
   reported = WORKING_WORD,
   waitingOn,
+  activity,
 }: {
   stage: TurnStage;
   elapsed?: string;
@@ -114,6 +117,8 @@ export function TurnStage({
   reported?: string;
   /** Who can end a blocked session's wait and what it waits on, in the box's words; `blocked` only. */
   waitingOn?: string;
+  /** The session's word (`sessionWord`), which a `working` line says in place of Working. */
+  activity?: string;
 }) {
   if (stage === "quiet" || stage === "blocked") {
     const quiet = stage === "quiet";
@@ -138,6 +143,9 @@ export function TurnStage({
       </div>
     );
   }
+  const named = stage === "working" && activity !== undefined && activity !== WORKING_WORD;
+  const waitingForInput = named && activity === WAITING_FOR_INPUT_WORD;
+  const label = named ? (waitingForInput ? activity : `${activity}…`) : LABEL[stage];
   return (
     <div
       data-testid="turn-stage"
@@ -149,11 +157,13 @@ export function TurnStage({
       <span className="flex h-[14px] w-[14px] flex-none items-center justify-center">
         {stage === "failed" ? (
           <Icon name="alert" size={12} className="text-danger" />
+        ) : waitingForInput ? (
+          <Icon name="pause" size={12} />
         ) : (
           <Spinner size={12} />
         )}
       </span>
-      <span>{LABEL[stage]}</span>
+      <span>{label}</span>
       {elapsed && <span className="font-mono">· {elapsed}</span>}
     </div>
   );
