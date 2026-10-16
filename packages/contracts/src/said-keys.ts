@@ -797,7 +797,7 @@ export const SAID = {
 		},
 	},
 	"standing.gate.noGate": {
-		en: "This project ships on close; there is no release to cut.",
+		en: "A release has nowhere to go until one is declared.",
 	},
 	"standing.gate.noRunner": { en: "No runner is paired to this project." },
 	"standing.gate.noRunnerOnline": {
@@ -852,7 +852,7 @@ export const SAID = {
 	"standing.gate.title.claimed": { en: "Issues already claimed" },
 	"standing.gate.title.empty": { en: "Gate empty" },
 	"standing.gate.title.heldBack": { en: "Some issues held back" },
-	"standing.gate.title.noGate": { en: "No release step" },
+	"standing.gate.title.noGate": { en: "No production environment" },
 	"standing.gate.title.noRunner": { en: "No runner paired" },
 	"standing.gate.title.noRunnerOnline": { en: "No runner can take it" },
 	"standing.gate.title.noteMissing": { en: "Release note missing" },

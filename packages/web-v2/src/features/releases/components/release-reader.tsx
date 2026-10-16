@@ -6,6 +6,7 @@
 // same component draws a page in the app (a member, with links into the project) and a frozen page a
 // share link opens (no links, no technical note), so the two cannot read differently.
 
+import type { ReactNode } from "react";
 import { RELEASE_CHANGE_GROUPS, type ReleaseGlance, releaseGlanceOf } from "@forge/contracts/release-digest";
 import type { ReleasePage } from "@forge/contracts/release-page";
 import { type ContentsItem, ContentsMenu, DetailLeadEnd, RowItem, RowList, Section } from "@/design";
@@ -100,25 +101,50 @@ function shownGroups(page: ReleasePage, glance: ReleaseGlance): Anchor[] {
   ];
 }
 
-/** The page's contents: one item per group it draws, each naming the anchor the group starts at. */
-export function useReleaseContents(page: ReleasePage | undefined): ContentsItem[] {
+/**
+ * The page's contents: one item per group it draws, each naming the anchor the group starts at, then
+ * the sections drawn after it (`record`), so a page has one navigation.
+ */
+export function useReleaseContents(page: ReleasePage | undefined, after: ContentsItem[] = []): ContentsItem[] {
   const t = useCopy();
   if (!page) return [];
-  return shownGroups(page, releaseGlanceOf(page)).map((a) => ({
-    id: ANCHOR[a],
-    label: a === "highlights" ? t("releases.page.highlights.title") : t(GROUP_TITLE[a]),
-  }));
+  return [
+    ...shownGroups(page, releaseGlanceOf(page)).map((a) => ({
+      id: ANCHOR[a],
+      label: a === "highlights" ? t("releases.page.highlights.title") : t(GROUP_TITLE[a]),
+    })),
+    ...after,
+  ];
+}
+
+/** Sections a page draws after its own, with the contents entries that name them. */
+export interface PageRecord {
+  contents: ContentsItem[];
+  node: ReactNode;
 }
 
 /**
  * `slug` is set where the reader is a member in the app (keys link into the project); `authed` says
  * the media are issue attachments behind the session rather than tickets a share link minted, and
  * that a row may read its technical note. `railContents` says a facts rail beside the page lists the
- * contents on a wide screen, so the menu here shows only where that rail has collapsed.
+ * contents on a wide screen, so the menu here shows only where that rail has collapsed. `record` is
+ * what the page draws after its own sections, named in the same contents.
  */
-export function ReleaseReader({ page, slug, authed, railContents = false }: { page: ReleasePage; slug?: string | undefined; authed: boolean; railContents?: boolean }) {
+export function ReleaseReader({
+  page,
+  slug,
+  authed,
+  railContents = false,
+  record,
+}: {
+  page: ReleasePage;
+  slug?: string | undefined;
+  authed: boolean;
+  railContents?: boolean;
+  record?: PageRecord | undefined;
+}) {
   const t = useCopy();
-  const contents = useReleaseContents(page);
+  const contents = useReleaseContents(page, record?.contents);
   const glance = releaseGlanceOf(page);
   const checks = checksByIssue(page);
   const reach: Reach = { slug, authed };
@@ -151,6 +177,7 @@ export function ReleaseReader({ page, slug, authed, railContents = false }: { pa
         ) : null}
         <Technical page={page} slug={slug} />
       </div>
+      {record?.node}
     </div>
   );
 }

@@ -1,24 +1,38 @@
 // The release page's rail (REQ-40 BC-5, BC-19): where the release stands in plain words, the
-// requirements it delivers with how many of their checks it meets, and the page's contents. The
+// requirements it delivers with how many of their criteria it proves, and the page's contents. The
 // criteria themselves are the Technical view's; the rail counts them and never lists them.
 
 import type { ReleasePage, ReleasePageRequirement } from "@forge/contracts/release-page";
-import { type ContentsItem, ContentsList, Fact, FactsGroup } from "@/design";
+import { type ContentsItem, ContentsList, CoverageBar, Fact, FactsGroup } from "@/design";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
-import type { Copy } from "@/lib/i18n/product-copy";
 import { Link } from "@/lib/navigation/router";
 import { requirementHref } from "@/lib/routes/requirements";
 import { releaseStandingOf } from "../release-standing";
 import type { ReleaseDetail } from "../types";
 
 /**
- * What a requirement's checks read on this release: its own criteria proven, counted by the rule the
- * requirement counts by where it has one (REQ-35), else the issue checks proving it.
+ * A requirement's criteria this release proves, said once on the page and drawn as a bar out of its
+ * own total (REQ-35 BC-9), counted by the rule the requirement counts by (REQ-35). A requirement with
+ * no criteria of its own says how many issue checks trace to it instead.
  */
-function requirementCount(r: ReleasePageRequirement, t: Copy): string {
-  return r.business
-    ? t("releases.page.requirement.business", { proven: r.business.proven.length, total: r.business.total })
-    : t("releases.page.requirement.checksMet", { n: r.proven.length });
+function RequirementCount({ r }: { r: ReleasePageRequirement }) {
+  const t = useCopy();
+  if (!r.business || r.business.total === 0) {
+    return <span className="text-12-5 text-muted">{t("releases.page.requirement.traced", { n: r.proven.length, key: r.key })}</span>;
+  }
+  const proven = r.business.proven.length;
+  return (
+    <span className="grid gap-1" data-testid="rail-requirement-criteria">
+      <CoverageBar
+        legend={false}
+        segments={[
+          { key: "proven", label: t("releases.page.requirement.proven"), count: proven, tone: "ready" },
+          { key: "unproven", label: t("releases.page.requirement.unproven"), count: r.business.total - proven, fill: "var(--paper-400)" },
+        ]}
+      />
+      <span className="text-12-5 text-muted">{t("releases.page.requirement.business", { proven, total: r.business.total })}</span>
+    </span>
+  );
 }
 
 export function WhereReleaseStands({ r }: { r: ReleaseDetail }) {
@@ -48,7 +62,7 @@ export function WhereReleaseStands({ r }: { r: ReleaseDetail }) {
   );
 }
 
-function RailRequirements({ page, slug }: { page: ReleasePage; slug: string }) {
+export function RailRequirements({ page, slug }: { page: ReleasePage; slug: string }) {
   const t = useCopy();
   if (page.requirements.length === 0) return null;
   return (
@@ -59,7 +73,7 @@ function RailRequirements({ page, slug }: { page: ReleasePage; slug: string }) {
             <Link href={requirementHref(slug, r.key)} className="text-13 font-medium text-fg hover:text-link hover:underline">
               {r.key} · {r.title}
             </Link>
-            <span className="text-12-5 text-muted">{requirementCount(r, t)}</span>
+            <RequirementCount r={r} />
           </li>
         ))}
       </ul>

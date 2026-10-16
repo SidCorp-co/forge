@@ -97,7 +97,7 @@
     "standing.gate.subject.some": "Một số issue",
     "standing.gate.title.claimed": "Issue đã bị giữ",
     "standing.gate.title.heldBack": "Một số issue bị giữ lại",
-    "standing.gate.title.noGate": "Không có bước release",
+    "standing.gate.title.noGate": "Chưa có môi trường production",
     "standing.gate.title.noRunner": "Chưa ghép runner",
     "standing.gate.title.noRunnerOnline": "Không runner nào nhận được",
     "standing.gate.title.noteMissing": "Thiếu ghi chú release",

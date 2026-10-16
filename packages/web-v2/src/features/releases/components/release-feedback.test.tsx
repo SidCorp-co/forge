@@ -3,7 +3,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ReleaseDetail, ReleaseFeedbackView } from "../types";
-import { FeedbackAnswered } from "./release-panes";
+import { FeedbackAnswered } from "./release-feedback";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 

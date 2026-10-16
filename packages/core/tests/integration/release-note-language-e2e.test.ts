@@ -57,7 +57,11 @@ describe('release note language warning', () => {
     const { id, token } = await seed('vi');
     const res = await write(id, token, vietnamese, 'Fixed', '');
     expect(res.status).toBe(400);
-    expect(JSON.stringify(res.body)).toContain('title is required for a Fixed note');
+    const said = JSON.stringify(res.body);
+    expect(said).toContain('title is required for a Fixed note');
+    // a master that meets it reads the field and the body to send, from the refusal alone
+    expect(said).toContain('"path":"/releaseNotes/title"');
+    expect(said).toContain('\\"title\\":\\"<at most 10 words>\\"');
     const [row] = [
       ...(await db.execute(sql`SELECT release_notes FROM issues WHERE id = ${id}`)),
     ] as { release_notes: unknown }[];

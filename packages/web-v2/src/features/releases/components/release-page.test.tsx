@@ -69,12 +69,15 @@ describe("the release page screen", () => {
     expect(screen.queryByTestId("release-tabs")).toBeNull();
   });
 
-  it("shows the developer view from ?view=developer: technical notes above the operator's tabs", async () => {
+  it("shows the developer view from ?view=developer: technical notes, then the release's record, under one navigation", async () => {
     window.history.replaceState(null, "", "/projects/forge/releases/0.4.0?view=developer");
     const calls = serve();
     renderWithQuery(<ReleasePage projectId="p1" slug="forge" version="0.4.0" />);
     expect(await screen.findByTestId("page-technical")).toBeTruthy();
-    expect(await screen.findByTestId("release-tabs")).toBeTruthy();
+    expect(await screen.findByTestId("release-record")).toBeTruthy();
+    // no second tab strip under the page, and none of what it repeated (PR #1055 review)
+    expect(screen.queryByTestId("release-tabs")).toBeNull();
+    for (const word of ["Release train", "Requirements it completes", "criteria passing"]) expect(document.body).not.toHaveTextContent(word);
     expect(calls.some((c) => c.path === "/projects/p1/releases/0.4.0/page?view=developer")).toBe(true);
   });
 
@@ -158,7 +161,7 @@ describe("the rail and the Technical view's list say one count (BC-5)", () => {
     // said once: the rail carries no Proof panel (REQ-43 BC-5)
     expect(screen.queryByTestId("facts-proof")).toBeNull();
     // the requirement's 3 proven rows, the untraced one, and the 2 still open sum to the header's 6
-    expect(screen.getByTestId("page-requirement")).toHaveTextContent("Checks met: 3");
+    expect(screen.getByTestId("page-requirement")).toHaveTextContent("3 checks trace to REQ-1");
     const open = screen.getAllByTestId("page-known-issue").map((r) => Number(within(r).getByText(/^\d+ open$/).textContent?.split(" ")[0]));
     expect(3 + (page.untraced?.proven.length ?? 0) + open.reduce((a, b) => a + b, 0)).toBe(6);
     // a row opened on the Technical view marks each criterion by its number on its issue (REQ-43 BC-7, BC-10)

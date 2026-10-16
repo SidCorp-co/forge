@@ -82,8 +82,7 @@ export function RequirementLine({ r, slug }: { r: ReleasePageRequirement; slug?:
       title={r.title}
       trailing={
         <span className="flex items-center gap-2 text-12 text-subtle">
-          <span>{t("releases.page.requirement.passed", { n: r.proven.length })}</span>
-          <span className="font-mono">{r.key}</span>
+          <span>{t("releases.page.requirement.traced", { n: r.proven.length, key: r.key })}</span>
           <span aria-hidden className={open ? "rotate-90 transition-transform" : "transition-transform"}>
             ›
           </span>

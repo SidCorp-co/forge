@@ -54,7 +54,7 @@ export const ReleaseNotesWriteSchema = ReleaseNotesSchema.superRefine((note, ctx
     ctx.addIssue({
       code: 'custom',
       path: ['title'],
-      message: `title is required for a ${note.section} note: a short title of at most ${RELEASE_NOTE_TITLE_WORDS_MAX} words a user scans, with userFacing as its one full sentence.`,
+      message: `title is required for a ${note.section} note: a short title of at most ${RELEASE_NOTE_TITLE_WORDS_MAX} words a user scans, with userFacing as its one full sentence. Send {"releaseNotes":{"section":"${note.section}","title":"<at most ${RELEASE_NOTE_TITLE_WORDS_MAX} words>","userFacing":"<its one full sentence>"}}.`,
     });
     return;
   }
