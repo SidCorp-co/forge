@@ -286,6 +286,36 @@ describe("a session read carries core's own silence limit (ISS-1228 round 9)", (
     expect(await statusOf(id)).toBe('failed');
   });
 
+  it('reads past a sibling the heartbeat hop ends first, as the sweep does once it is gone', async () => {
+    const chat = await session('chat');
+    await harness.db.execute(sql`
+      UPDATE agent_sessions SET claude_session_id = 'claude-5', last_heartbeat_at = now() - interval '2 minutes'
+       WHERE id = ${chat.id}
+    `);
+    const boxed = await createTestDevice(harness.db, (await createTestUser(harness.db)).id);
+    await bindTestRunner(harness.db, { projectId, deviceId: boxed.id });
+    await harness.db.execute(
+      sql`UPDATE runners SET last_seen_at = now() WHERE device_id = ${boxed.id}::uuid`,
+    );
+    const pool = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO agent_sessions (id, project_id, device_id, pipeline_run_id, kind, status, title,
+                                  runtime_state, started_at, last_heartbeat_at)
+      VALUES (${pool}, ${projectId}::uuid, ${boxed.id}::uuid, ${chat.runId}, 'pipeline', 'running',
+              'a sibling', 'working', now() - interval '10 minutes', now() - interval '4 minutes')
+    `);
+
+    // The sibling's runner would hold the run to three minutes from now, but the heartbeat hop ends
+    // the sibling now; the chat then has the heartbeat timeout from its own beat.
+    near((await get(`/agent-sessions/${chat.id}`)).silenceLimitMs, THREE_MIN);
+    const { reapZombieSessions } = await import('../../src/jobs/loop-monitor.js');
+    await reapZombieSessions(new Date());
+    expect(await statusOf(pool)).toBe('failed');
+    const { reapOrphanedOneShotRuns } = await import('../../src/pipeline/sweeper.js');
+    await reapOrphanedOneShotRuns(new Date(Date.now() + 70_000));
+    expect(await statusOf(chat.id)).toBe('failed');
+  });
+
   it('holds the one-shot sweep while the runner answers or a person is asked, and the sweep leaves the session be', async () => {
     const quiet = await session('run_session');
     const asked = await session('run_session');

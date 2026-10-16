@@ -23,6 +23,8 @@ export interface OneShotSibling {
   /** When its box's runner was last heard, `null` where the box has none. */
   runnerSeenAt: number | null;
   parked: boolean;
+  /** When a reaper other than the one-shot sweep ends it, `null` where none does. */
+  endsBy: number | null;
 }
 
 /** Times are epoch milliseconds, as the reapers' own rows hold them. */
@@ -80,17 +82,21 @@ function noClientHop(s: SilenceSubject, hb: number, ackFastMs: number): number |
 
 function oneShotSweep(s: SilenceSubject, hb: number): number | null {
   const run = s.oneShot;
-  if (!run || !LIVE.has(s.status) || run.sessions.some((t) => t.parked)) return null;
+  if (!run || !LIVE.has(s.status)) return null;
   const grace = oneShotDeviceGraceMs(hb);
-  return Math.max(
+  const end = Math.max(
     run.runStartedAt + hb,
-    ...run.sessions.map((t) =>
-      Math.max(
-        t.beatAt + hb,
-        t.runnerSeenAt === null ? 0 : Math.min(t.beatAt + grace, t.runnerSeenAt + hb),
-      ),
-    ),
+    ...run.sessions.map((t) => {
+      const fresh = t.parked
+        ? Number.POSITIVE_INFINITY
+        : Math.max(
+            t.beatAt + hb,
+            t.runnerSeenAt === null ? 0 : Math.min(t.beatAt + grace, t.runnerSeenAt + hb),
+          );
+      return Math.min(fresh, t.endsBy ?? Number.POSITIVE_INFINITY);
+    }),
   );
+  return Number.isFinite(end) ? end : null;
 }
 
 /** When core ends this session if nothing is heard from it, or `null` where silence never does. */

@@ -32,7 +32,14 @@ const alone = (
   over: { runnerSeenAt?: number | null; parked?: boolean; runStartedAt?: number } = {},
 ) => ({
   runStartedAt: over.runStartedAt ?? T - 60 * MIN,
-  sessions: [{ beatAt: T, runnerSeenAt: over.runnerSeenAt ?? null, parked: over.parked ?? false }],
+  sessions: [
+    {
+      beatAt: T,
+      runnerSeenAt: over.runnerSeenAt ?? null,
+      parked: over.parked ?? false,
+      endsBy: null,
+    },
+  ],
 });
 
 // ISS-1228 round 9: the limit a screen counts to is the earliest moment any reaper ends the session,
@@ -145,7 +152,10 @@ describe('silenceLimitMs', () => {
     );
     const two = {
       runStartedAt: T - 60 * MIN,
-      sessions: [...alone().sessions, { beatAt: T + 90_000, runnerSeenAt: null, parked: false }],
+      sessions: [
+        ...alone().sessions,
+        { beatAt: T + 90_000, runnerSeenAt: null, parked: false, endsBy: null },
+      ],
     };
     expect(silenceLimitMs(subject({ oneShot: two }))).toBe(3 * MIN + 90_000);
     expect(silenceLimitMs(subject({ oneShot: alone({ parked: true }) }))).toBeNull();
@@ -163,6 +173,17 @@ describe('silenceLimitMs', () => {
       startedAt: T,
     });
     expect(silenceLimitMs(late)).toBe(0);
+  });
+
+  it('lets a sibling hold the one-shot sweep off only until another reaper ends that sibling', () => {
+    const run = (endsBy: number | null, parked = false) => ({
+      runStartedAt: T - 60 * MIN,
+      sessions: [...alone().sessions, { beatAt: T, runnerSeenAt: T + 10 * MIN, parked, endsBy }],
+    });
+    expect(silenceLimitMs(subject({ oneShot: run(null) }))).toBe(13 * MIN);
+    expect(silenceLimitMs(subject({ oneShot: run(T + MIN) }))).toBe(3 * MIN);
+    expect(silenceLimitMs(subject({ oneShot: run(T + 5 * MIN, true) }))).toBe(5 * MIN);
+    expect(silenceLimitMs(subject({ oneShot: run(null, true) }))).toBeNull();
   });
 
   it('counts from the row the screen is served, so a beat landing after it only lengthens the limit', () => {
