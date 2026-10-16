@@ -6,6 +6,7 @@ import {
   FEEDBACK_SEVERITIES,
   FEEDBACK_STATUSES,
 } from '@forge/contracts/feedback';
+import { FEEDBACK_EXTERNAL_CHANNELS } from '@forge/contracts/widget';
 import { WRITTEN_LANGS } from '@forge/contracts/written-lang';
 import { sql } from 'drizzle-orm';
 import {
@@ -15,6 +16,7 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
@@ -26,6 +28,7 @@ import { users } from './schema-auth.js';
 import { contractVersions } from './schema-ecosystem.js';
 import { issues } from './schema-issues.js';
 import { pipelineRuns } from './schema-pipeline.js';
+import { integrationBindings } from './schema-project-config.js';
 import { projects } from './schema-projects.js';
 import { requirementCriteria, requirements } from './schema-requirements.js';
 import { suggestions } from './schema-suggestions.js';
@@ -364,5 +367,50 @@ export const feedbackMessages = pgTable(
     ),
     agencyChk: check('feedback_messages_agency_chk', sql`${t.sentAgency} IN ('human', 'agent')`),
     feedbackIdx: index('feedback_messages_feedback_idx').on(t.feedbackId, t.createdAt),
+  }),
+);
+
+/**
+ * Who filed an item from outside Forge (`feedback.reported_by` is then the channel's own account):
+ * the visitor as they identified themselves, the binding they came through, the page they were on,
+ * and the SHA-256 of their private status link (the token is shown once). The email, the name, the
+ * signed id and the page are reporter data, cleared with the rest of it on a redaction.
+ */
+export const feedbackExternalReporters = pgTable(
+  'feedback_external_reporters',
+  {
+    feedbackId: uuid('feedback_id')
+      .primaryKey()
+      .references(() => feedback.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    channel: text('channel', { enum: FEEDBACK_EXTERNAL_CHANNELS }).notNull(),
+    bindingId: uuid('binding_id').references(() => integrationBindings.id, {
+      onDelete: 'set null',
+    }),
+    visitorId: uuid('visitor_id').notNull(),
+    email: text('email'),
+    name: text('name'),
+    signedUserId: text('signed_user_id'),
+    pageContext: jsonb('page_context'),
+    statusTokenHash: text('status_token_hash').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    statusTokenUq: uniqueIndex('feedback_external_reporters_status_token_uq').on(t.statusTokenHash),
+    projectIdx: index('feedback_external_reporters_project_idx').on(t.projectId),
+    channelChk: check(
+      'feedback_external_reporters_channel_chk',
+      sql`${t.channel} IN (${sql.raw(FEEDBACK_EXTERNAL_CHANNELS.map((c) => `'${c}'`).join(', '))})`,
+    ),
+    statusTokenChk: check(
+      'feedback_external_reporters_status_token_chk',
+      sql`${t.statusTokenHash} ~ '^[0-9a-f]{64}$'`,
+    ),
+    pageContextChk: check(
+      'feedback_external_reporters_page_context_chk',
+      sql`${t.pageContext} IS NULL OR jsonb_typeof(${t.pageContext}) = 'object'`,
+    ),
   }),
 );

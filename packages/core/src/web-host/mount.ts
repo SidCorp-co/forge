@@ -3,7 +3,7 @@ import { env } from '../lib/env.js';
 import { loadWebBuild, type WebBuild } from './build.js';
 import { withDemoCredential } from './demo-credential.js';
 import type { AppFetch } from './gates.js';
-import { webHost } from './host.js';
+import { type WebHostPorts, webHost } from './host.js';
 
 let served: WebBuild | null | undefined;
 
@@ -23,13 +23,13 @@ export function servedWebBuild(): WebBuild | null {
  * it reads no setting until a request arrives, so a test that sets the environment after importing
  * core is read as it set it.
  */
-export function hostTheWeb<E extends Env>(app: Hono<E>): void {
+export function hostTheWeb<E extends Env>(app: Hono<E>, ports: WebHostPorts = {}): void {
   const fetch: AppFetch = (request) => Promise.resolve(app.fetch(request));
   let host: MiddlewareHandler | null | undefined;
   app.use('*', (c, next) => {
     if (host === undefined) {
       const build = servedWebBuild();
-      host = build ? webHost(build, fetch) : null;
+      host = build ? webHost(build, fetch, ports) : null;
     }
     return host ? host(c, next) : next();
   });

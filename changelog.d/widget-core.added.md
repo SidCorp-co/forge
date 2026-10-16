@@ -1,0 +1,1 @@
+**A client site can embed a feedback chat that files Feedback.** Visitors confirm the drafted report and get a private status link. Light caps only: captcha is deferred, a priced amnesty until abuse beyond the caps appears.

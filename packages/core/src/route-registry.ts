@@ -164,6 +164,8 @@ import { suggestionRoutes } from './suggestions/routes.js';
 import { uploadRoutes } from './uploads/routes.js';
 import { hostTheWeb } from './web-host/index.js';
 import { whatsNewRoutes } from './whats-new/routes.js';
+import { widgetFrameAncestors } from './widget/index.js';
+import { widgetRoutes } from './widget/routes.js';
 import { workflowJsonSchemas } from './workflows/index.js';
 import { workflowRoutes, workflowTemplateCatalogueRoutes } from './workflows/routes.js';
 
@@ -171,7 +173,8 @@ import { workflowRoutes, workflowTemplateCatalogueRoutes } from './workflows/rou
 registerIssueCommentRoutes(issueRoutes);
 
 export function mountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
-  hostTheWeb(app);
+  // the widget's frame page answers with its binding's frame-ancestors, the boundary on embedding
+  hostTheWeb(app, { widgetFrameAncestors });
   mountPublicDoors(app);
   mountAccountRoutes(app);
   mountProjectDocumentRoutes(app);
@@ -184,7 +187,7 @@ export function mountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   mountRemainingRoutes(app);
 }
 
-/** The unauthenticated surfaces: health, the MCP endpoint and how to sign in to it, install, guides, the build's trace and the root. */
+/** The unauthenticated surfaces: health, the MCP endpoint and how to sign in to it, install, guides, the build's trace, the feedback widget and the root. */
 function mountPublicDoors(app: Hono<{ Variables: RequestIdVars }>): void {
   for (const at of ['/', '/api']) app.route(at, publicHealthRoutes);
 
@@ -197,6 +200,8 @@ function mountPublicDoors(app: Hono<{ Variables: RequestIdVars }>): void {
   for (const at of ['/', '/api']) app.route(at, installRoutes);
   for (const at of ['/', '/api']) app.route(at, guideRoutes);
   app.route('/api', codeTraceRoutes);
+  // a client site's visitor, never a Forge user: the site key, the session token or the status link
+  app.route('/api/widget', widgetRoutes);
 
   app.route('/', rootRoutes);
 }

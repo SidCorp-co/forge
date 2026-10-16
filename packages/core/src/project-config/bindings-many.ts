@@ -9,6 +9,7 @@ import {
   effectsOf,
   type PlannedBinding,
   planBinding,
+  writtenDocumentOf,
 } from './bindings.js';
 import type { ApiRefusal } from './documents.js';
 import type { BindingDocument } from './schema.js';
@@ -85,7 +86,7 @@ export async function writeBindings(input: {
     held.push({
       projectId: plan.projectId,
       revision: result.stored.revision,
-      document: { ...plan.doc, agentAccess: plan.agentAccess, active: plan.active },
+      document: writtenDocumentOf(plan),
       created: result.created,
       effects: await effectsOf(plan, result),
     });

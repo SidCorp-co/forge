@@ -368,6 +368,7 @@
         "feedback",
         "feedbackAttachments",
         "feedbackDecisions",
+        "feedbackExternalReporters",
         "feedbackMessages",
         "feedbackRouteIssues"
       ],
@@ -522,6 +523,11 @@
       "kind": "adapter",
       "context": "adapters",
       "serves": ["personal-data-flow#src-sentry", "automation#inline"]
+    },
+    "integrations/widget": {
+      "kind": "adapter",
+      "context": "adapters",
+      "serves": ["via:widget"]
     },
     "integrations/source-host": {
       "kind": "adapter",
@@ -1154,6 +1160,12 @@
       "kind": "domain",
       "context": "release",
       "serves": ["REQ-14", "issue-delivery#act-release"]
+    },
+    "widget": {
+      "kind": "domain",
+      "context": "conversations",
+      "owns": ["widgetDrafts", "widgetPrincipals", "widgetSessions"],
+      "serves": ["REQ-7", "feedback-triage#intake"]
     },
     "workflows": {
       "kind": "domain",

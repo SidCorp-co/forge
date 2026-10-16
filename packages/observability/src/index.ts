@@ -62,6 +62,13 @@ const SHARE_TOKEN_STRING_PATTERN = /forge_share_[A-Za-z0-9_-]{8,}/g;
  */
 const MCP_OAUTH_SECRET_PATTERN = /forge_mcp_(?:rt|code)_[A-Za-z0-9_-]{8,}/g;
 
+/**
+ * A feedback widget visitor's session token or status link token (`@forge/contracts/widget`): the
+ * one carries a visitor's chat, the other what they filed, so both are redacted wherever they turn
+ * up, a `/api/widget/status/<token>` path included, cut off or not. A site key is public and stays.
+ */
+const WIDGET_TOKEN_PATTERN = /fw_(?:sess|stat)_[A-Za-z0-9_-]{8,}/g;
+
 const PEM_PRIVATE_KEY_PATTERN =
 	/-----BEGIN (?:[A-Z]{1,12} ){0,3}PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z]{1,12} ){0,3}PRIVATE KEY-----/g;
 
@@ -134,6 +141,7 @@ function scrubPatInString(s: string): string {
 		.replace(PAT_STRING_PATTERN, FILTERED)
 		.replace(SHARE_TOKEN_STRING_PATTERN, FILTERED)
 		.replace(MCP_OAUTH_SECRET_PATTERN, FILTERED)
+		.replace(WIDGET_TOKEN_PATTERN, FILTERED)
 		.replace(PEM_PRIVATE_KEY_PATTERN, FILTERED)
 		.replace(PEM_PRIVATE_KEY_HEAD_PATTERN, FILTERED)
 		.replace(GOOGLE_ACCESS_TOKEN_PATTERN, FILTERED)

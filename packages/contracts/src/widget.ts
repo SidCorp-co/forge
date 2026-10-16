@@ -23,6 +23,11 @@ export const WIDGET_IDENTITY_MODES = ["anonymous", "email", "signed"] as const;
 export type WidgetIdentityMode = (typeof WIDGET_IDENTITY_MODES)[number];
 export const WIDGET_SIGNATURE_MAX_AGE_S = 600;
 
+/** The channels a reporter outside Forge files Feedback through; the widget is the one there is. */
+export const FEEDBACK_EXTERNAL_CHANNELS = ["widget"] as const;
+export type FeedbackExternalChannel =
+	(typeof FEEDBACK_EXTERNAL_CHANNELS)[number];
+
 /** The public key a page embeds: this prefix and 32 base64url characters. Not a secret. */
 export const WIDGET_SITE_KEY_PREFIX = "fw_site_";
 export const WIDGET_SITE_KEY_PATTERN = /^fw_site_[A-Za-z0-9_-]{32}$/;
@@ -125,6 +130,13 @@ export const widgetSessionRequestSchema = z.strictObject({
 		})
 		.optional(),
 	context: widgetPageContextSchema.optional(),
+	/**
+	 * The origin of the page that framed the widget, as the frame reads it (`ancestorOrigins`, or the
+	 * referrer the loader's `referrerpolicy="origin"` leaves). Refused when it is not one of the
+	 * binding's allowed origins. A claim, not the boundary: the frame page's
+	 * `Content-Security-Policy: frame-ancestors` is what keeps other sites from embedding it.
+	 */
+	embeddedAt: widgetOriginSchema.optional(),
 	/** A visitor id the frame kept from an earlier session on this site, to continue as the same visitor. */
 	visitorId: z.uuid().optional(),
 });
@@ -143,6 +155,24 @@ export const widgetMessageRequestSchema = z.strictObject({
 	context: widgetPageContextSchema.optional(),
 });
 
+/** The kinds of feedback a visitor's draft may be: the feedback kinds a person outside Forge can report. */
+export const WIDGET_DRAFT_KINDS = [
+	"bug",
+	"change_request",
+	"idea",
+	"question",
+] as const;
+/** A draft waits on the visitor, and is filed or discarded by them, never both. */
+export const WIDGET_DRAFT_STATES = ["pending", "filed", "discarded"] as const;
+
+/**
+ * POST /api/widget/session/messages answers the visitor's message as stored, once the assistant's
+ * turn on it has settled; the reply, and any draft, arrive on the stream and in the history.
+ */
+export interface WidgetMessageAccepted {
+	message: WidgetMessage;
+}
+
 /** What the assistant proposes to file; the visitor confirms or discards it in the frame. */
 export interface WidgetFeedbackDraft {
 	draftId: string;
@@ -152,8 +182,10 @@ export interface WidgetFeedbackDraft {
 	saw: string;
 	expected: string | null;
 	whereSeen: string | null;
-	kind: "bug" | "change_request" | "idea" | "question";
-	state: "pending" | "filed" | "discarded";
+	kind: (typeof WIDGET_DRAFT_KINDS)[number];
+	state: (typeof WIDGET_DRAFT_STATES)[number];
+	/** On a filed draft: the item it filed and the visitor's status link, to show again after a reload. */
+	filed?: WidgetFiled | null;
 }
 
 /** One line of the conversation as the frame shows it. */

@@ -71,6 +71,13 @@ export const DOORS: readonly DoorPolicy[] = [
     repairs: 0,
     why: "the browser's own runner-hosted reply, and it is NOT `agent-chat-completion`: that door's `public:report` cell is written for a reader holding no role, and its `no-developer-detail` rule refuses a file path, a fenced block and a raw status word — which are the three things a person opens Agent mode to ask for. The reader here is the one `web-chat-reply` already argues for: `conversation-routes.ts` lets nobody send without `project.write`, and every later reader is re-checked at the push and at the read. Zero repairs, for `agent-chat-completion`'s reason and not `web-chat-reply`'s — the session that wrote this has already ended, so there is no turn to ask again (ISS-1039)",
   },
+  {
+    id: 'widget-chat-reply',
+    cell: 'public:report',
+    ending: 'fallback',
+    repairs: 1,
+    why: "the feedback widget's reply to a client site's visitor, who holds no role and is never a Forge user — the reader `public:report` is written for, so its `no-developer-detail` keeps a file path, a fenced block and a raw status word out of a stranger's chat. A fallback, because somebody typed and is waiting; one repair for `chat-sync`'s reason, a full model turn somebody pressed enter for",
+  },
 ];
 
 const byId = new Map<DoorId, DoorPolicy>(DOORS.map((d) => [d.id, d]));

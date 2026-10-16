@@ -4,6 +4,7 @@ import { BA_FIRST_DOOR_LAYER } from './door-ba-first.js';
 import { ROCKETCHAT_DOOR_LAYER } from './door-rocketchat.js';
 import { WEB_DOOR_LAYER } from './door-web.js';
 import { WEB_AGENT_DOOR_LAYER } from './door-web-agent.js';
+import { WIDGET_DOOR_LAYER } from './door-widget.js';
 import { IDENTITY_LAYER } from './identity.js';
 import type { PromptLayer } from './layer.js';
 import { LINKING_LAYER } from './linking.js';
@@ -26,3 +27,8 @@ export const ROCKETCHAT_DOOR_LAYERS: readonly PromptLayer[] = [...OPENING, ROCKE
 /** The BA door: who it is and its narrow role, without the tracker method the other doors carry. */
 export const BA_DOOR_LAYERS: readonly PromptLayer[] = [IDENTITY_LAYER, BA_DOOR_LAYER];
 export const BA_FIRST_DOOR_LAYERS: readonly PromptLayer[] = [IDENTITY_LAYER, BA_FIRST_DOOR_LAYER];
+/**
+ * The feedback widget: its own layer and nothing else, because every other layer speaks of the
+ * project, its tracker or its tools, and a visitor's assistant knows none of them.
+ */
+export const WIDGET_DOOR_LAYERS: readonly PromptLayer[] = [WIDGET_DOOR_LAYER];

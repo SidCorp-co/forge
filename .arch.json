@@ -188,6 +188,9 @@
     "core-web-host": [
       "packages/core/src/web-host/**"
     ],
+    "core-widget": [
+      "packages/core/src/widget/**"
+    ],
     "core-workflows": [
       "packages/core/src/workflows/**"
     ],

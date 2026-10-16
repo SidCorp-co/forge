@@ -21,7 +21,7 @@ vi.mock('../lib/env.js', async (importOriginal) => {
 
 import pkg from '../../package.json' with { type: 'json' };
 import { loadWebBuild } from './build.js';
-import { webHost } from './host.js';
+import { type WebHostPorts, webHost } from './host.js';
 
 const INDEX = '<!doctype html><html><body><div id="root"></div></body></html>';
 // past compress()'s 1 KiB floor, so the gzip the web's own server gave a script is observable
@@ -37,6 +37,8 @@ const ROUTES = [
   '/projects/$slug/issues/$id/',
   '/projects/$slug/releases/$version/',
   '/s/$token/',
+  '/w/$siteKey/',
+  '/w/status/$token/',
 ];
 
 const dirs: string[] = [];
@@ -65,7 +67,7 @@ interface Whoami {
 }
 
 /** Core with the web in front, a whoami that answers what a test sets, and one route of core's own (`/pair`). */
-function core(basePath = '') {
+function core(basePath = '', ports: WebHostPorts = {}) {
   const seen: (string | null)[] = [];
   const whoami: { answer: (cookie: string | null) => Whoami } = {
     answer: () => ({ status: 200, body: { isAdmin: true } }),
@@ -73,7 +75,11 @@ function core(basePath = '') {
   const app = new Hono();
   app.use(
     '*',
-    webHost(loadWebBuild(buildDir(basePath)), (request) => Promise.resolve(app.fetch(request))),
+    webHost(
+      loadWebBuild(buildDir(basePath)),
+      (request) => Promise.resolve(app.fetch(request)),
+      ports,
+    ),
   );
   app.get('/api/admin/whoami', (c) => {
     const cookie = c.req.header('cookie') ?? null;
@@ -176,6 +182,44 @@ describe('the page', () => {
     expect(res.headers.get('cache-control')).toBe('no-store');
     expect(res.headers.get('referrer-policy')).toBe('no-referrer');
     expect(res.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+  });
+
+  it('keeps a widget status link out of every cache, referrer and index', async () => {
+    const res = await core().get('/w/status/fw_stat_abc123');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    expect(res.headers.get('referrer-policy')).toBe('no-referrer');
+    expect(res.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+    expect(res.headers.get('content-security-policy')).toBeNull();
+  });
+});
+
+describe('the widget frame', () => {
+  const KEY = 'fw_site_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+  const ports: WebHostPorts = {
+    widgetFrameAncestors: async (siteKey) =>
+      siteKey === KEY ? ['https://shop.example', 'https://www.shop.example'] : null,
+  };
+
+  it('may be framed only by its binding’s own origins, never cached', async () => {
+    const res = await core('', ports).get(`/w/${KEY}`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-security-policy')).toBe(
+      'frame-ancestors https://shop.example https://www.shop.example',
+    );
+    expect(res.headers.get('cache-control')).toBe('no-store');
+  });
+
+  it('may be framed by nobody for a key no binding holds, or where core wires no lookup', async () => {
+    const unknown = await core('', ports).get('/w/fw_site_unknown');
+    expect(unknown.headers.get('content-security-policy')).toBe("frame-ancestors 'none'");
+    const unwired = await core().get(`/w/${KEY}`);
+    expect(unwired.headers.get('content-security-policy')).toBe("frame-ancestors 'none'");
+  });
+
+  it('leaves every other page free of a frame policy', async () => {
+    const res = await core('', ports).get('/projects/hop');
+    expect(res.headers.get('content-security-policy')).toBeNull();
   });
 });
 

@@ -4,6 +4,12 @@ export { fileContractChangeIn } from './contract-change.js';
 export { provideFeedbackDependents } from './dependents.js';
 export type { ReadDoor } from './egress.js';
 export { embedFeedback, embedFeedbackLater, nearestFeedbackOf } from './embeddings.js';
+export {
+  type ExternalFeedbackStatus,
+  type ExternalReporter,
+  externalFeedbackStatus,
+  fileExternalFeedback,
+} from './external.js';
 export { listFeedbackAs } from './list-read.js';
 export { sweepResolvedFeedback } from './loop-check.js';
 export { owedTriages } from './owed-triage.js';

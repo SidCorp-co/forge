@@ -9,6 +9,7 @@ import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { redactRecordingsOf } from '../previews/index.js';
 import { deleteFeedbackQuestions } from '../questions/index.js';
 import { feedbackDependents } from './dependents.js';
+import { redactExternalReporterIn } from './external.js';
 import { type FeedbackActor, rowIn } from './read.js';
 import { redactActRefusal, redactedRefusal } from './rules.js';
 import {
@@ -87,6 +88,7 @@ export async function redactReporterData(input: {
         updatedAt: now,
       })
       .where(eq(feedback.id, row.id));
+    await redactExternalReporterIn(tx, row.id);
     paths.push(...(await feedbackDependents().deleteMockups(tx, row.id)));
     await decide(tx, row, actor, { decision: 'redacted' });
     return null;

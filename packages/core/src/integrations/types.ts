@@ -15,7 +15,8 @@ export type IntegrationProvider =
   | 'github'
   | 'gitlab'
   | 'agent'
-  | 'autoflow';
+  | 'autoflow'
+  | 'widget';
 
 export const INTEGRATION_PROVIDERS = [
   'coolify',
@@ -26,6 +27,7 @@ export const INTEGRATION_PROVIDERS = [
   'gitlab',
   'agent',
   'autoflow',
+  'widget',
 ] as const satisfies readonly IntegrationProvider[];
 
 const _providersExhaustive: IntegrationProvider =
@@ -383,7 +385,9 @@ export interface BindingTargetRefusal {
     | 'COOLIFY_UNREACHABLE'
     | 'SOURCE_HOST_MISMATCH'
     | 'SOURCE_REPOSITORY_LOCAL'
-    | 'GITHUB_INSTALLATION_NOT_RECORDED';
+    | 'GITHUB_INSTALLATION_NOT_RECORDED'
+    | 'WIDGET_SITE_KEY_MINTED'
+    | 'WIDGET_SITE_KEY_TAKEN';
   path: string;
   detail: string;
 }
@@ -536,6 +540,20 @@ export interface IntegrationAdapterMethods<
    * target off the project's host binds a repository the project does not build.
    */
   verifyBindingTarget?(args: VerifyBindingTargetArgs): Promise<BindingTargetRefusal[]>;
+  /**
+   * The binding-tier config as it is stored, from the config a document encodes to and what the
+   * row already holds: where a provider mints a value on bind and keeps it on every later write.
+   *
+   * The widget is the only one: its site key is the one the creating document names (minted in
+   * the browser) or one minted here, never changed after, and never one another binding holds.
+   */
+  settleBindingConfig?(args: {
+    bindingId: string;
+    config: Record<string, unknown>;
+    held: Record<string, unknown> | null;
+  }): Promise<
+    { ok: true; config: Record<string, unknown> } | { ok: false; refusals: BindingTargetRefusal[] }
+  >;
   healthcheck(ctx: AdapterContext<TConfig, TSecrets>): Promise<HealthCheckResult>;
   deploymentRecords?(
     ctx: AdapterContext<TConfig, TSecrets>,

@@ -82,6 +82,60 @@ export async function listActiveDeployBindingsForProvider(
 }
 
 /**
+ * The one active binding of `provider`, on an active connection, whose binding-tier config holds
+ * `value` at `key`: how a public key a provider mints (a widget's site key) names its binding. Two
+ * rows answering is a fault the caller never sees silently: the unique index a provider declares
+ * over such a key is what keeps it to one.
+ */
+export async function findActiveBindingByConfigValue(
+  provider: IntegrationProvider,
+  key: string,
+  value: string,
+): Promise<BindingWithConnection | null> {
+  const rows = await db
+    .select({ binding: integrationBindings, connection: integrationConnections })
+    .from(integrationBindings)
+    .innerJoin(
+      integrationConnections,
+      eq(integrationBindings.connectionId, integrationConnections.id),
+    )
+    .where(
+      and(
+        eq(integrationBindings.provider, provider),
+        sql`${integrationBindings.config} ->> ${key} = ${value}`,
+        eq(integrationBindings.active, true),
+        eq(integrationConnections.active, true),
+      ),
+    )
+    .limit(2);
+  if (rows.length > 1) {
+    throw new Error(
+      `integrations: two active ${provider} bindings hold ${key} ${value}; one key names one binding`,
+    );
+  }
+  return rows[0] ?? null;
+}
+
+/** The binding of `provider`, switched on or off, whose config holds `value` at `key`. */
+export async function findBindingIdByConfigValue(
+  provider: IntegrationProvider,
+  key: string,
+  value: string,
+): Promise<string | null> {
+  const [row] = await db
+    .select({ id: integrationBindings.id })
+    .from(integrationBindings)
+    .where(
+      and(
+        eq(integrationBindings.provider, provider),
+        sql`${integrationBindings.config} ->> ${key} = ${value}`,
+      ),
+    )
+    .limit(1);
+  return row?.id ?? null;
+}
+
+/**
  * All active bindings (+ connections) for a project + provider, across roles. Used by the inbound
  * webhook router to find the right binding when the payload carries a provider hint.
  */
