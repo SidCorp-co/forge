@@ -1,4 +1,6 @@
 import { and, eq } from 'drizzle-orm';
+import { HTTPException } from 'hono/http-exception';
+import { isForgeAddress } from '../auth/agent-account.js';
 import { FORGE_AUTHOR_ID } from '../comments/forge-author.js';
 import { db } from '../db/client.js';
 import { organizationMembers, organizations, users } from '../db/schema.js';
@@ -12,6 +14,25 @@ type DbLike = Pick<typeof db, 'insert' | 'select'>;
 /** Forge's own account writes what its sweeps say and is a member of nothing. */
 export function isNeverAMember(userId: string): boolean {
   return userId === FORGE_AUTHOR_ID;
+}
+
+/** The one refusal every door that adds a member or invites one answers Forge with, by id or by
+ *  address in any letter case, whether or not its account has been minted yet. */
+export function forgeIsNotAMember(named: string): HTTPException {
+  return new HTTPException(409, {
+    message: `${named} is Forge's own account, which writes what Forge's sweeps say and is never a member of an organization or a project`,
+    cause: { code: 'FORGE_IS_NOT_A_MEMBER' },
+  });
+}
+
+/** Refuse an invitation or a membership naming Forge, by address or by account id. */
+export function refuseForgeAsMember(target: { email?: string; userId?: string }): void {
+  if (target.email !== undefined && isForgeAddress(target.email)) {
+    throw forgeIsNotAMember(target.email);
+  }
+  if (target.userId !== undefined && isNeverAMember(target.userId)) {
+    throw forgeIsNotAMember(`account ${target.userId}`);
+  }
 }
 
 /**

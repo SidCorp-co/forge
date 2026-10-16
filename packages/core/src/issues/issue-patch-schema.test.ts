@@ -39,3 +39,16 @@ describe('an issue update carrying a status', () => {
     }
   });
 });
+
+// Judge-28 sent `status: 'releasing'` here and was told only that the key is unknown (ISS-1421 r2).
+describe('an issue update carrying a status is told where a status moves', () => {
+  it('names `status` and POST /api/issues/:id/transition', () => {
+    expect(refusals({ title: 'a title', status: 'releasing' })).toEqual([
+      'Unrecognized key: "status" — an issue update never writes a status. A status moves through POST /api/issues/:id/transition (or `forge_issues` `transition`), and only starting a release puts an issue at Releasing.',
+    ]);
+  });
+
+  it('keeps the plain refusal for any other unknown key', () => {
+    expect(refusals({ title: 'a title', colour: 'red' })).toEqual(['Unrecognized key: "colour"']);
+  });
+});

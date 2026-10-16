@@ -169,7 +169,7 @@ describe('a row at Releasing that nothing carries (criteria 13, 14, 15, 16, 17)'
       expect(said).not.toContain(run);
       expect(said).toContain(`does not carry this issue's landing commit \`${UNSHIPPED}\``);
       expect(said).toContain(
-        'If its code has already shipped, record that release, which closes it; otherwise start a release with Release now on this page or at the release gate.',
+        'It is back at Awaiting release. Release now on this page, or at the release gate on the issues list, starts a release that carries it.',
       );
       expect(await recordFor(id)).toBeNull();
     },
@@ -222,6 +222,78 @@ describe('a row at Releasing that nothing carries (criteria 13, 14, 15, 16, 17)'
     expect(said[0]).toContain('a release record closes it now');
     expect(said.at(-1)).toContain('The release record that would close this issue was refused');
     expect(said.at(-1)).toContain('It stays at Awaiting release');
+  });
+});
+
+describe("the sweep's next step names only a door the project has (criteria 27, 28, 29, 30)", () => {
+  const GATE_DOORS = /Release now|release gate/;
+
+  it('on a project with a release gate, says a release starts from Release now or the release gate', async () => {
+    await production();
+    const id = await plant({ landing: UNSHIPPED });
+
+    await settle();
+
+    expect((await bodies(id))[0]).toContain(
+      'Release now on this page, or at the release gate on the issues list, starts a release that carries it.',
+    );
+  });
+
+  it('on a project that ships nothing, offers a releasing shape or Reopen and reads no production', async () => {
+    await production();
+    await harness.db.execute(
+      sql`UPDATE projects SET release_chain = '[]'::jsonb WHERE id = ${projectId}`,
+    );
+    const id = await plant();
+
+    expect(await settle()).toEqual({ settled: 1, closed: 0, failed: 0 });
+
+    expect(await fx.stored(id)).toMatchObject({ status: 'awaiting_release', claim: null });
+    const [said] = await bodies(id);
+    expect(said).toContain('This project ships nothing, so no release will carry it');
+    expect(said).toContain('choose a shape that releases under Shape & release');
+    expect(said).toContain('or reopen it if work remains');
+    expect(said).not.toMatch(GATE_DOORS);
+    expect(said).not.toMatch(/Production's|production serves|verify probe|landing commit/);
+    expect(await recordFor(id)).toBeNull();
+  });
+
+  it('on a project with no live deploy target, says none can start until one is added', async () => {
+    await harness.db.execute(sql`
+      UPDATE projects SET base_branch = 'main', release_chain = '[{"branch": "main"}]'::jsonb
+      WHERE id = ${projectId}
+    `);
+    const id = await plant();
+    expect(await settle()).toEqual({ settled: 1, closed: 0, failed: 0 });
+    expect(await fx.stored(id)).toMatchObject({ status: 'awaiting_release', claim: null });
+    const [said] = await bodies(id);
+    expect(said).toContain(
+      'This project declares a release but has no live deploy target, so no release can start until one is added on its integrations screen.',
+    );
+    expect(said).not.toMatch(GATE_DOORS);
+  });
+
+  it.each([
+    ['a website project', 'kind'],
+    ['an issue declaring its work lands outside git', 'declared'],
+  ] as const)('on %s, asks for no commit', async (_, how) => {
+    await production();
+    if (how === 'kind') {
+      await harness.db.execute(sql`UPDATE projects SET kind = 'website' WHERE id = ${projectId}`);
+    }
+    const id = await plant({ landing: null });
+    await harness.db.execute(sql`
+      UPDATE issues SET merged_landing = 'https://shop.example/products/42',
+             declared_landing_shape = ${how === 'declared' ? 'outside_git' : null}
+      WHERE id = ${id}
+    `);
+
+    expect(await settle()).toEqual({ settled: 1, closed: 0, failed: 0 });
+
+    const [said] = await bodies(id);
+    expect(said).toContain("This issue's work lands outside git");
+    expect(said).not.toMatch(/commit it landed at|Mark it merged/);
+    expect(said).toContain('Release now on this page');
   });
 });
 

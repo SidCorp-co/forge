@@ -22,6 +22,8 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   email_unverified:
     'Your provider did not return a verified email. Verify it on the provider side, then retry.',
   provider_error: 'Could not complete sign-in. Try again or use email + password below.',
+  agent_address:
+    'That address belongs to an agent account Forge runs, and no person signs in with it. Sign in with an address you receive mail at.',
 };
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {

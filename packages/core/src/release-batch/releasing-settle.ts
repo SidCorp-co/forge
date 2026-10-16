@@ -8,13 +8,15 @@ import { sql } from 'drizzle-orm';
 import { forgeAuthorId } from '../comments/forge-author.js';
 import { postSystemComment } from '../comments/system-write.js';
 import { db, type Tx } from '../db/client.js';
-import type { IssueStatus } from '../db/schema.js';
+import type { IssueStatus, LandingShape } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { transitionIssueStatus } from '../issues/apply-transition.js';
+import { laneOrNull } from '../issues/landing-evidence.js';
 import { statusLabel } from '../issues/status-sets.js';
 import { logger } from '../logger.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import { recordPerformedRelease } from './recorded.js';
+import { nextAtGateFor, type ReleasePath, readReleasePath } from './release-path-words.js';
 import {
   type ProductionFinding,
   type ProductionReading,
@@ -45,6 +47,8 @@ interface StrandedRow extends Record<string, unknown> {
   run_status: string | null;
   run_exists: boolean;
   landing: string | null;
+  project_kind: string;
+  declared_lane: string | null;
 }
 
 /** The commit an issue landed at, as the sweep judges carriage against it. */
@@ -58,8 +62,10 @@ async function strandedRows(): Promise<StrandedRow[]> {
   return (await db.execute<StrandedRow>(sql`
     SELECT i.id, i.project_id, i.reopen_count, i.release_batch_run_id,
            r.status AS run_status, (r.id IS NOT NULL) AS run_exists,
-           ${LANDING} AS landing
+           ${LANDING} AS landing, p.kind AS project_kind,
+           i.declared_landing_shape AS declared_lane
     FROM issues i
+    JOIN projects p ON p.id = i.project_id
     LEFT JOIN pipeline_runs r ON r.id = i.release_batch_run_id
     WHERE i.status = 'releasing'
       AND i.archived_at IS NULL
@@ -84,23 +90,34 @@ export function strandedCause(
 
 const GATE = statusLabel(RELEASE_GATE_STATUS);
 
-const START_AGAIN =
-  `It is back at ${GATE}. If its code has already shipped, record that release, which closes it; ` +
-  'otherwise start a release with Release now on this page or at the release gate.';
+/** A production reading, or why the sweep did not take one for this row. */
+type SettleFinding = ProductionFinding | { kind: 'outside-git' } | { kind: 'not-read' };
 
-/** What the sweep found on production, and what follows for the issue, as its comment says it. */
-export function findingSentence(finding: ProductionFinding): string {
+/** What the reader of a row returned to the gate does next, by how its project releases. */
+function backAtGate(path: ReleasePath): string {
+  return `It is back at ${GATE}. ${nextAtGateFor(path)}`;
+}
+
+/** What the sweep found on production, and what follows for the issue, as its comment says it.
+ *  Only a gated project is read: one that ships nothing, or has no live target, has no production
+ *  this issue could reach, and its comment says how that project releases instead. */
+export function findingSentence(finding: SettleFinding, path: ReleasePath = 'gated'): string {
+  const next = backAtGate(path);
   switch (finding.kind) {
     case 'carried':
       return `Production's verified live deployment serves \`${finding.serving}\`, which carries this issue's landing commit \`${finding.landing}\`, so its code has shipped: a release record closes it now.`;
     case 'not-carried':
-      return `Production's verified live deployment serves \`${finding.serving}\`, which does not carry this issue's landing commit \`${finding.landing}\`, so its code has not shipped. ${START_AGAIN}`;
+      return `Production's verified live deployment serves \`${finding.serving}\`, which does not carry this issue's landing commit \`${finding.landing}\`, so its code has not shipped. ${next}`;
     case 'unverified':
-      return `This project's live deployment declares no verify probe, so nothing can read what production serves, and the sweep never closes an issue on a deployment nobody read. ${START_AGAIN}`;
+      return `This project's live deployment declares no verify probe, so nothing can read what production serves, and the sweep never closes an issue on a deployment nobody read. ${next}`;
     case 'no-landing':
-      return `This issue carries no landing commit, so nothing can say whether production has its code. Mark it merged naming the commit it landed at. ${START_AGAIN}`;
+      return `This issue carries no landing commit, so nothing can say whether production has its code. Mark it merged naming the commit it landed at. ${next}`;
+    case 'outside-git':
+      return `This issue's work lands outside git, so no commit production serves can say whether it has shipped, and the sweep never closes an issue on a reading it cannot make. ${next}`;
+    case 'not-read':
+      return next;
     case 'unread':
-      return `What production serves could not be read: ${finding.why}. ${START_AGAIN}`;
+      return `What production serves could not be read: ${finding.why}. ${next}`;
   }
 }
 
@@ -207,22 +224,44 @@ async function sayRecordRefused(row: StrandedRow, why: string): Promise<void> {
     authorId: await forgeAuthorId(db),
     body:
       `The release record that would close this issue was refused: ${why}. ` +
-      `It stays at ${GATE}. ${START_AGAIN}`,
+      `It stays at ${GATE}. ${nextAtGateFor('gated')}`,
   });
+}
+
+/** Where this row's work lands; a project kind Forge does not know asks for no landing at all. */
+function laneOfRow(row: StrandedRow): LandingShape | null {
+  try {
+    return laneOrNull(row.declared_lane, row.project_kind)?.shape ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** What production says about this row, read only where a release could have carried it there. */
+async function findingFor(
+  row: StrandedRow,
+  path: ReleasePath,
+  read: (projectId: string) => Promise<ProductionReading>,
+): Promise<SettleFinding> {
+  if (path !== 'gated') return { kind: 'not-read' };
+  const lane = laneOfRow(row);
+  if (lane === 'outside_git') return { kind: 'outside-git' };
+  if (!row.landing) return lane === 'git' ? { kind: 'no-landing' } : { kind: 'not-read' };
+  return (await read(row.project_id)).forLanding(row.landing);
 }
 
 async function settleOne(
   row: StrandedRow,
   read: (projectId: string) => Promise<ProductionReading>,
+  pathOf: (projectId: string) => Promise<ReleasePath>,
 ): Promise<'closed' | 'returned'> {
   const cause = strandedCause(row);
-  const finding: ProductionFinding = row.landing
-    ? await (await read(row.project_id)).forLanding(row.landing)
-    : { kind: 'no-landing' };
+  const path = await pathOf(row.project_id);
+  const finding = await findingFor(row, path, read);
   const body = [
     `**Releasing, with nothing releasing it.** ${cause}.`,
     `Releasing means a release batch is carrying an issue to production right now, and none was, so Forge's releasing sweep has settled it.`,
-    findingSentence(finding),
+    findingSentence(finding, path),
   ].join('\n\n');
   await returnToGate(row, body, `releasing sweep: ${cause}`);
   if (finding.kind !== 'carried') return 'returned';
@@ -243,6 +282,14 @@ export async function settleStrandedReleasing(
   if (rows.length === 0) return result;
 
   const readings = new Map<string, Promise<ProductionReading>>();
+  const paths = new Map<string, Promise<ReleasePath>>();
+  const pathOf = (projectId: string) => {
+    const kept = paths.get(projectId);
+    if (kept) return kept;
+    const fresh = readReleasePath(projectId);
+    paths.set(projectId, fresh);
+    return fresh;
+  };
   const read = (projectId: string) => {
     const kept = readings.get(projectId);
     if (kept) return kept;
@@ -253,7 +300,7 @@ export async function settleStrandedReleasing(
 
   for (const row of rows) {
     try {
-      const outcome = await settleOne(row, read);
+      const outcome = await settleOne(row, read, pathOf);
       result.settled++;
       if (outcome === 'closed') result.closed++;
     } catch (err) {

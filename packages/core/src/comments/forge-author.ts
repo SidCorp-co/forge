@@ -1,4 +1,4 @@
-import { AGENT_EMAIL_DOMAIN } from '../auth/agent-account.js';
+import { FORGE_ADDRESS } from '../auth/agent-account.js';
 import type { Tx } from '../db/client.js';
 import { users } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
@@ -12,7 +12,7 @@ export async function forgeAuthorId(executor: Tx): Promise<string> {
     .insert(users)
     .values({
       id: FORGE_AUTHOR_ID,
-      email: `forge@${AGENT_EMAIL_DOMAIN}`,
+      email: FORGE_ADDRESS,
       kind: 'agent',
       displayName: 'Forge',
       passwordHash: null,

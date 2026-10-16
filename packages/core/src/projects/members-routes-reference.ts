@@ -77,6 +77,7 @@ export const addMember = describeOperation({
     409: fail({
       NOT_ORG_MEMBER: "the user is not a member of the project's org: invite them by email instead",
       ALREADY_MEMBER: 'the user is a member already',
+      FORGE_IS_NOT_A_MEMBER: "the account is Forge's own, which is never a member",
     }),
   },
 });
@@ -89,7 +90,10 @@ export const inviteMember = describeOperation({
     201: json(invitationIssuedSchema, 'The invitation and when it expires'),
     403: fail('FORBIDDEN', 'the caller is not a project admin, or their account no longer exists'),
     404: NO_PROJECT,
-    409: fail('ALREADY_MEMBER', 'the person with this email is a member already'),
+    409: fail({
+      ALREADY_MEMBER: 'the person with this email is a member already',
+      FORGE_IS_NOT_A_MEMBER: "the address is Forge's own account, which is never a member",
+    }),
   },
 });
 

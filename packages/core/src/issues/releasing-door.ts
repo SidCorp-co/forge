@@ -6,6 +6,11 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, pipelineRuns } from '../db/schema.js';
+import {
+  type ReleasePath,
+  readReleasePath,
+  releaseStartsFor,
+} from '../release-batch/release-path-words.js';
 import { statusForCaller } from './status-sets.js';
 import { TransitionError } from './transition-error.js';
 
@@ -22,22 +27,17 @@ export interface ReleasingDoorAsk {
   viaReleasePath?: boolean | undefined;
 }
 
-export function releasingEntryRefusal(projectId: string, from: IssueStatus): TransitionError {
+export function releasingEntryRefusal(
+  projectId: string,
+  from: IssueStatus,
+  path: ReleasePath,
+): TransitionError {
   return new TransitionError(
     'RELEASING_STARTS_FROM_RELEASE',
     `${statusForCaller(RELEASING)} means a release batch is carrying this issue to production right now, so only starting a release puts an issue there. ` +
-      "Start one with the Release now button on this issue's page or at the release gate, or with " +
-      `POST /api/projects/${projectId}/release-batches naming this issue in \`issueIds\`. ` +
+      `${releaseStartsFor(path, projectId, from)} ` +
       `The issue stays at ${statusForCaller(from)}.`,
-    {
-      from,
-      to: RELEASING,
-      startsAt: [
-        'release-button',
-        'release-gate',
-        `POST /api/projects/${projectId}/release-batches`,
-      ],
-    },
+    { from, to: RELEASING, releasePath: path },
   );
 }
 
@@ -73,7 +73,7 @@ export async function releasingDoorRefusal(ask: ReleasingDoorAsk): Promise<Trans
     );
   }
   if (ask.to === RELEASING && ask.from !== RELEASING && ask.releaseRun === undefined) {
-    return releasingEntryRefusal(ask.projectId, ask.from);
+    return releasingEntryRefusal(ask.projectId, ask.from, await readReleasePath(ask.projectId));
   }
   if (ask.from === RELEASING && ask.to !== RELEASING && ask.viaReleasePath !== true) {
     return releasingExitRefusal(ask);

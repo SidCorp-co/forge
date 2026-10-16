@@ -3195,6 +3195,9 @@
 
 - **An issue is at Releasing only while a release carries it.** Release now starts it; status menus do not. A stranded issue closes if production serves its code, else returns to Awaiting release, where Reopen sits in the menu. (ISS-1421)
 - **What Forge writes on its own names Forge, not the project's creator.** Release holds, budget and rescue notices, the weekly reading, Sentry and GitHub intake and knowledge promotions; Forge is never a member, mentioned or notified. (ISS-1421)
+- **A refused move to Releasing, and the sweep's note, name only a door you have.** Release now only where the project has a release gate and the issue waits there; otherwise what must happen first. (ISS-1421)
+- **Forge cannot be invited, added, or signed up as.** Project invites, direct adds and org adds refuse its address in any case; registering or signing in with an agent address is refused. (ISS-1421)
+- **On a phone, the issue header's buttons stay on one row.** Open session shows its icon alone below tablet width. (ISS-1421)
 - **An issue's Branch row shows the branch Forge counts as its work.** It printed the issue's key even when moving the issue on said no branch was recorded; it now shows that branch, or None recorded. (ISS-1133)
 - **A job started as its run ends goes to a run still open.** It could land under the run that just finished; it now starts a fresh run, or is refused where only that run would do. (ISS-1133)
 - **Cancelling a run's only job ends the run.** It read Running for up to an hour with nothing left to run; it now reads Cancelled at once. A run with another job still going keeps running. (ISS-1133)

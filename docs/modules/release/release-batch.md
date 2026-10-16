@@ -262,7 +262,12 @@ repository, a missing landing commit, or a record the release door refuses leave
 with a comment saying which. A row a running or paused run carries is never touched. The moves, the comments and the release
 record are written as Forge (`packages/core/src/comments/forge-author.ts:forgeAuthorId`), an agent
 account in no organization minted on first use, never as a person; the comments name no route and
-no id, telling a person to record the release or to start one with Release now.
+no id. What a comment tells its reader to do next follows how the project releases
+(`packages/core/src/release-batch/release-path-words.ts:nextAtGateFor`): on a project with a release
+gate, Release now on the page or at the release gate; on one that ships nothing, choosing a shape
+that releases or reopening the issue, and production is not read there; on one declaring a release
+with no live deploy target, that none can start until one is added. An issue whose work lands
+outside git is never asked for a commit.
 
 A close that failed without a refusal names the database's own reason with its SQLSTATE, read off
 the driver error under drizzle's wrapper (`packages/core/src/lib/db-errors.ts:pgDriverError`) and
