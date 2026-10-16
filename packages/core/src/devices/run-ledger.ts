@@ -13,7 +13,7 @@ import { agentSessions, devices, runners } from '../db/schema.js';
 import { deviceRunLedger } from '../db/schema-run-ledger.js';
 import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
 import { logger } from '../logger.js';
-import { silenceLimitMs } from './session-silence.js';
+import { loadSilenceLimits } from './session-silence-read.js';
 
 export interface RunLedgerIssue {
   issueKey: string;
@@ -196,15 +196,6 @@ export async function readProjectRunSessions(projectId: string): Promise<Project
       lastActivityAt: sql<
         string | null
       >`(SELECT s.last_heartbeat_at FROM agent_sessions s WHERE s.id = ${deviceRunLedger.sessionId})`,
-      sessionKind: sql<
-        string | null
-      >`(SELECT s.kind FROM agent_sessions s WHERE s.id = ${deviceRunLedger.sessionId})`,
-      sessionRuntimeState: sql<
-        string | null
-      >`(SELECT s.runtime_state FROM agent_sessions s WHERE s.id = ${deviceRunLedger.sessionId})`,
-      sessionSilenceMetadata: sql<unknown>`(SELECT jsonb_object_agg(m.key, m.value)
-        FROM agent_sessions s, jsonb_each(CASE WHEN jsonb_typeof(s.metadata) = 'object' THEN s.metadata ELSE '{}'::jsonb END) m
-        WHERE s.id = ${deviceRunLedger.sessionId} AND m.key IN ('escalation', 'agentChat'))`,
       masterTitle: sql<
         string | null
       >`(SELECT s.title FROM agent_sessions s WHERE s.id = ${deviceRunLedger.masterSessionId})`,
@@ -213,16 +204,10 @@ export async function readProjectRunSessions(projectId: string): Promise<Project
     .leftJoin(devices, eq(devices.id, deviceRunLedger.deviceId))
     .where(eq(deviceRunLedger.projectId, projectId))
     .orderBy(sql`${deviceRunLedger.observedAt} DESC`);
-  return rows.map(({ sessionKind, sessionRuntimeState, sessionSilenceMetadata, ...r }) => ({
+  const limits = await loadSilenceLimits(rows.flatMap((r) => (r.sessionId ? [r.sessionId] : [])));
+  return rows.map((r) => ({
     ...r,
-    silenceLimitMs:
-      sessionKind === null
-        ? null
-        : silenceLimitMs({
-            kind: sessionKind,
-            runtimeState: sessionRuntimeState,
-            metadata: sessionSilenceMetadata,
-          }),
+    silenceLimitMs: r.sessionId ? (limits.get(r.sessionId) ?? null) : null,
     issues: (r.issues ?? []) as RunLedgerIssue[],
     observedAt: new Date(r.observedAt).toISOString(),
     lastActivityAt: r.lastActivityAt ? new Date(r.lastActivityAt).toISOString() : null,

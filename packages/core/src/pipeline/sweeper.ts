@@ -2,6 +2,7 @@ import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { type AlertSweepResult, runAlertSweep } from '../admin/alert-sweeper.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
+import { oneShotDeviceGraceMs } from '../devices/session-silence.js';
 import { broadcastSessionEvent } from '../jobs/agent-session-link.js';
 import { killGraceMs } from '../jobs/kill-gate.js';
 import {
@@ -449,7 +450,7 @@ export async function reapOrphanedOneShotRuns(
 ): Promise<OneShotRunReapResult> {
   const { heartbeatMs } = getZombieThresholds();
   const cutoffIso = new Date(now.getTime() - heartbeatMs).toISOString();
-  const deviceGraceMs = Math.max(heartbeatMs, 20 * 60_000);
+  const deviceGraceMs = oneShotDeviceGraceMs(heartbeatMs);
   const graceCutoffIso = new Date(now.getTime() - deviceGraceMs).toISOString();
   const projectClause = scope.projectId ? sql`AND r.project_id = ${scope.projectId}` : sql``;
 

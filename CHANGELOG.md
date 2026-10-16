@@ -3228,7 +3228,7 @@
 - **Every session chip has its own mark,** so Completed, Working, Quiet, Blocked and Failed read apart without colour, and the sessions list's boxes and sessions are flush rows rather than cards. (ISS-1228)
 - **The sessions table fits its column at 1280 with every column shown,** and scrolls inside its own frame below that. (ISS-1228)
 - **A quiet session its box last reported blocked says so in the sessions list,** as on its own page and the Pipeline page, instead of "awaiting auto-recovery". (ISS-1228)
-- **The time before Forge ends a silent session is the time Forge actually uses.** The sessions list and the Agents runs tab counted three minutes for every session; an agent run is given ten. (ISS-1228)
+- **The time before Forge ends a silent session is the time Forge actually uses.** The sessions list and the Agents runs tab counted three minutes for every session; an agent run is given ten while its box answers, and a master as long as its runs are heard. (ISS-1228)
 - **Needs you counts a session waiting on you,** listing what it waits on and linking to the session. (ISS-1228)
 - **On a phone each Needs you row reads whole,** its title wrapping under the kind, key and age instead of being cut off. (ISS-1228)
 - **The live agent on an issue page reads Quiet, in amber, once it has been silent a minute,** as every other screen does. It said "Heartbeat stale" in red only after three. (ISS-1228)
