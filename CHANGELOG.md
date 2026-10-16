@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.256] - 2026-10-16
+
+Requests with no body now say which field they need
+
+### Fixed
+
+- **A JSON request with no body reads as `{}`.** The route's schema decides it, so a bodiless binding DELETE is refused naming `baseRevision`, never "Malformed JSON"; unparseable JSON is refused naming the route, without echoing the body.
+- **A master's nudge names the guide for each kind of owed work** instead of paraphrasing it; the guides now say what only the nudge said: a threaded reply clears a question, and a Skip note keeps a sentence.
+- **A plugin pin conflict is read at the grain a box has.** Projects on one box pinning one marketplace at different commits, even through two of its plugins, now show on their plugin settings, and `forge-runner doctor` names it.
+
 ## [0.4.0-dev.255] - 2026-10-16
 
 Runner install refuses an unbuilt platform cleanly and leaves no empty folder
