@@ -4,7 +4,7 @@ import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { issues, notifications } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { ASSERTS_WORK_IN_PROGRESS } from '../issues/status-sets.js';
+import { ASSERTS_WORK_IN_PROGRESS, statusLabel } from '../issues/status-sets.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import type { HooksBus } from '../pipeline/hooks.js';
@@ -62,7 +62,7 @@ async function alreadyNotifiedTransition(dedupeKey: string): Promise<boolean> {
 }
 
 /** Per-status one-line body explaining why the recipient is being pinged. */
-function bodyForStatus(to: IssueStatus, reason?: string): string {
+export function bodyForStatus(to: IssueStatus, reason?: string): string {
   if (reason && reason.trim().length > 0) return reason.trim();
   switch (to) {
     case 'tested':
@@ -76,8 +76,13 @@ function bodyForStatus(to: IssueStatus, reason?: string): string {
     case 'closed':
       return 'Closed.';
     default:
-      return `Moved to ${to}.`;
+      return `Moved to ${statusLabel(to)}.`;
   }
+}
+
+/** The notification's title: the issue, then the status it moved to as the screen names it. */
+export function transitionTitle(issue: string, to: IssueStatus): string {
+  return `${issue} moved to ${statusLabel(to)}`;
 }
 
 /**
@@ -137,7 +142,7 @@ export function registerTransitionNotifications(bus: HooksBus): void {
         userId: recipient,
         projectId: p.projectId,
         type: 'issue_status_changed',
-        title: `${label} moved to ${p.to}`,
+        title: transitionTitle(label, p.to),
         body: bodyForStatus(p.to, p.reason),
         issueId: p.issueId,
         severity: severityForStatus(p.to),

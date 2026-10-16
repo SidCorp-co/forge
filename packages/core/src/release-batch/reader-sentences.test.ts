@@ -134,6 +134,33 @@ describe('every reason Shape & release lists, as a person reads it', () => {
   });
 });
 
+// Judge-22 at 2734783: "each declare a verify step… Give its probe…" at two bindings.
+describe('a verify step Forge cannot read, as a person reads it at one and at two', () => {
+  const read = (bindings: string[]) =>
+    releaseBlockerReaderSentence('RELEASE_PROBES_UNREADABLE', { urls: [], bindings });
+
+  it('speaks of the one binding in the singular', () => {
+    const one = read(['coolify-a']);
+    expect(one).toContain('The live deploy binding `coolify-a` declares a verify step');
+    expect(one).toContain('it names no probe with a url');
+    expect(one).toContain('proved there and none closes past it. Give its probe a full url');
+    expect(one).toContain('or remove the verify step:');
+  });
+
+  it('speaks of two bindings in the plural throughout', () => {
+    const two = read(['coolify-a', 'coolify-b']);
+    expect(two).toContain(
+      'The live deploy bindings `coolify-a`, `coolify-b` each declare a verify step',
+    );
+    expect(two).toContain('none of them names a probe with a url');
+    expect(two).toContain(
+      'proved at any of them and none closes past them. Give each probe a full url',
+    );
+    expect(two).toContain('or remove those verify steps:');
+    expect(two).not.toMatch(/\b(?:it|its)\b/);
+  });
+});
+
 describe('the runner label warning, as a person reads it', () => {
   const warning = {
     code: 'RELEASE_RUNNER_PREFERENCE_UNMET' as const,

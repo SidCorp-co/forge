@@ -254,9 +254,14 @@ export async function transitionIssueStatus(
   const [archived] = await archivedAmong(db, [issue.id]);
   if (archived) throw new TransitionError('ISSUE_ARCHIVED', archived.message, { from: fromStatus });
   if (fromStatus === requestedStatus) {
-    throw new TransitionError('NO_OP', `issue already in status ${requestedStatus}`, {
-      status: fromStatus,
-    });
+    const same = { projectId: issue.projectId, requested: requestedStatus };
+    throw new TransitionError(
+      'NO_OP',
+      noOpSentence({ ...same, parked: requestedStatus, final: fromStatus }),
+      {
+        status: fromStatus,
+      },
+    );
   }
   const options = await withholdTransitionText(issue.id, sent);
 

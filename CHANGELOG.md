@@ -3245,6 +3245,8 @@
 - **Shape & release says what to do in words.** A check that could not run tells you to load the page again, instead of the instruction an API caller gets. (ISS-1229)
 - **How long an issue has been at its status counts from when it got there.** The issue list, Needs you, the project page and the overview no longer restart that count when someone edits the issue. (ISS-1229)
 - **A mindmap opens with its centre in view,** and a diagram wider than its box fades at the edge and says it scrolls sideways. (ISS-1229)
+- **Asking for the status an issue already has says which status it is in words and as the value to send,** "issue already in status Open (open)". A status-change notification names the status as the screen does, and a refused claim about an issue says "holds no closure", not "holds no a closure". (ISS-1229)
+- **A release reason about two live deploy bindings speaks of both,** "none of them names a probe… remove them", where it went on as if there were one. (ISS-1229)
 - **Shape & release no longer says a project ships nothing because its base branch is empty.** Under a shape that releases, the Live block says no deploy connection serves it and asks for the base branch. (ISS-1171)
 - **A refused test credential is named by its label, every time.** The form and a refused save name each row the same way, and by its number only where it has no label. (ISS-1171)
 - **Shape & release refuses a test credential with no password, or one listed twice, by name.** The row is marked where it is wrong and nothing is saved; an agent writing the same is refused too. (ISS-1171)

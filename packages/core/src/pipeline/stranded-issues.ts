@@ -2,7 +2,7 @@ import { and, asc, eq, isNotNull, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueStatuses, issues, projects } from '../db/schema.js';
 import { statusEnteredAtSql } from '../issues/status-entered-at.js';
-import { ISSUE_STATUS_LABELS } from '../issues/status-sets.js';
+import { statusLabel } from '../issues/status-sets.js';
 import { elapsedWords } from '../lib/elapsed-words.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
@@ -239,7 +239,6 @@ export async function detectOwedCloses(
       const ref = row.issSeq !== null ? formatIssueRef(row.issuePrefix, row.issSeq) : 'An issue';
       // The query admits only rows carrying a merge mark, so `mergedAt` is never null here.
       const age = elapsedWords(row.mergedAt as Date, now);
-      const status = ISSUE_STATUS_LABELS[row.status];
       const sent = await surfaceOnce({
         now,
         admins,
@@ -248,7 +247,7 @@ export async function detectOwedCloses(
         issueId: row.id,
         resolutionKey: owedCloseResolutionKey(row.id),
         title: `${ref} shipped but never closed — ${row.projectName}`,
-        body: `${ref} "${row.title}" has carried a merge mark for ${age} while it still reads ${status}, with nothing running on it.`,
+        body: `${ref} "${row.title}" has carried a merge mark for ${age} while it still reads ${statusLabel(row.status)}, with nothing running on it.`,
       });
       if (sent < 0) unreachable += 1;
       else notified += sent;
