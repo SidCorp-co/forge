@@ -157,7 +157,6 @@ describe("a session read carries core's own silence limit (ISS-1228 round 9)", (
     near(rows.find((r) => r.sessionId === run.id)?.silenceLimitMs, RUNNER_LAPSES);
     expect(rows.find((r) => r.sessionId === null)?.silenceLimitMs).toBeNull();
   });
-
 });
 
 describe('the limit against each reaper that ends a session for silence (ISS-1228 round 9)', () => {
@@ -270,7 +269,6 @@ describe('the limit against each reaper that ends a session for silence (ISS-122
     await closeIdleChatSessions(new Date());
     expect(await statusOf(id)).toBe('completed');
   });
-
 });
 
 describe('the one-shot sweep, as the limit reads it (ISS-1228 round 9)', () => {
