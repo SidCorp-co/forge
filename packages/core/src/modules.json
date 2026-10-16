@@ -1377,7 +1377,10 @@
         "REQ-4",
         "REQ-12",
         "requirement-to-delivery#accept",
-        "requirement-lifecycle#dropped"
+        "requirement-lifecycle#dropped",
+        "requirement-lifecycle#rev_draft",
+        "requirement-lifecycle#rev_proposed",
+        "requirement-to-delivery#req-head"
       ]
     },
     "run-control": {
@@ -1422,7 +1425,8 @@
         "design-reconciliation#marked-canvas",
         "design-reconciliation#reconciled-view",
         "workflow-step-health#d-overlay",
-        "workflow-step-health#d-list-summary"
+        "workflow-step-health#d-list-summary",
+        "design-reconciliation#revise-design"
       ]
     }
   },

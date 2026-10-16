@@ -1,11 +1,15 @@
 import type { DesignRevisionState, DesignStatus } from "./design-status.js";
 import { CHECKLIST_REFUSAL_CODES } from "./checklists.js";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
+import { SCHEMA_BASE } from "./project-config.js";
 import type { RefusalStatuses } from "./refusal.js";
 import type { RequirementState } from "./requirements.js";
 import type { Said } from "./said.js";
 import type { WaitingKind, WaitingOn } from "./standing.js";
 import type { WorkflowHealthSummary } from "./workflow-health.js";
+
+/** The schema every design is written at: the version-2 workflow document, core's and a client's alike. */
+export const WORKFLOW_V2_SCHEMA_ID = `${SCHEMA_BASE}/workflow-v2.json` as const;
 
 export interface WorkflowSummaryView {
 	workflowId: string;

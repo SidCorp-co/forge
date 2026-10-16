@@ -19,12 +19,13 @@ import type { RevisionChanges } from "@forge/contracts/workflows";
 import { revisionSummary } from "../revision-summary";
 import type { WorkflowBody, WorkflowDesign, WorkflowRecord, WorkflowStep } from "../types";
 import { DesignBanner } from "./design-banner";
+import { DesignEditor } from "./design-editor";
 import { OrphanedTraces } from "./design-decision";
 import { useBannerOpen, useCanvasFocus, useDetailSqueezes, useRailCollapsed } from "./design-room";
 import { WorkflowDesignProperties } from "./workflow-design-facts";
 import { DesignPill } from "./workflow-parts";
 
-const DESIGN_TABS = ["design", "steps", "revisions", "decisions", "memory"] as const;
+const DESIGN_TABS = ["design", "steps", "edit", "revisions", "decisions", "memory"] as const;
 type DesignTab = (typeof DESIGN_TABS)[number];
 
 export const useDesignTab = () => useUrlTab(DESIGN_TABS);
@@ -199,6 +200,7 @@ function RailEdge({ collapsed, onToggle }: { collapsed: boolean; onToggle: () =>
 /** The open tab's view, beside the canvas's own. */
 function TabView({ tab, projectId, slug, d, record, shown, template, diff, revision }: Pick<DesignPageProps, "tab" | "projectId" | "slug" | "d" | "record" | "template"> & { shown: WorkflowBody; diff: DesignDiff | null; revision: number }) {
   if (tab === "steps") return <StepsPane shown={shown} template={template} diff={diff} revision={revision} />;
+  if (tab === "edit") return <DesignEditor key={record.revision} projectId={projectId} d={d} record={record} template={template} />;
   if (tab === "revisions") return <RevisionsPane d={d} />;
   if (tab === "decisions") return <Decisions projectId={projectId} scope="workflow" targetRef={record.document.id} />;
   if (tab === "memory") return <ItemMemory projectId={projectId} slug={slug} cites={record.document.flow} />;
@@ -210,6 +212,7 @@ function designTabs(t: Copy, shown: WorkflowBody, d: WorkflowDesign, decisionCou
   return [
     { value: "design" as const, label: t("workflows.tab.design") },
     { value: "steps" as const, label: shown.kind === "state" ? t("workflows.tab.states") : t("workflows.tab.steps"), count: shown.steps.length },
+    { value: "edit" as const, label: t("workflows.tab.edit") },
     { value: "revisions" as const, label: t("workflows.tab.revisions"), count: d.revisions.length },
     { value: "decisions" as const, label: t("workflows.tab.decisions"), ...(decisionCount === undefined ? {} : { count: decisionCount }) },
     { value: "memory" as const, label: t("memory.title"), count: memories },
