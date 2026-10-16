@@ -9,6 +9,19 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.253] - 2026-10-16
+
+Questions lists only what is owed; a job-queue failure is logged and counted
+
+### Changed
+
+- **A comment is owed a reply only when marked as a question.** One sent with no intent is a note, so merge claims and landing notes no longer wait on an agent; a reply offers Ask as a question.
+- **The Questions page leads with what is owed.** Answered and closed fold to counts, opened twenty at a time; short forms drop markdown markers. The reply box wraps on a phone and reads in dark mode.
+
+### Fixed
+
+- **A pg-boss failure no longer ends core silently.** Its `error` event is logged with queue and worker and counted on `/health`; an uncaught throw logs one fatal line, then exits 1. Each delivery logs `outbox.deliver`; device polls log at debug.
+
 ## [0.4.0-dev.252] - 2026-10-16
 
 Your own token answers owed questions; Approvals loads; Questions lists only real questions

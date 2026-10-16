@@ -1,1 +1,0 @@
-**A pg-boss failure no longer ends core silently.** Its `error` event is logged with queue and worker and counted on `/health`; an uncaught throw logs one fatal line, then exits 1. Each delivery logs `outbox.deliver`; device polls log at debug.
