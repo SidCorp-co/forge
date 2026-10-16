@@ -1,1 +1,0 @@
-**A project has one Approvals inbox.** Suggestions, mockups, previews, designs, requirement revisions and releases waiting on your decision list oldest first, with who asked, and are approved, declined or opened in place; a suggestion's author can revise or withdraw it.
