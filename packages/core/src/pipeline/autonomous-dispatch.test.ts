@@ -28,7 +28,6 @@ const BASE = {
   projectId: 'proj-1',
   issueId: 'issue-1',
   actor: ACTOR,
-  projectCreatedBy: 'user-1',
 } as const;
 
 beforeEach(() => {

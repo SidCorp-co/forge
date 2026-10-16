@@ -1,6 +1,6 @@
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
+import { forgeAuthorId } from '../comments/forge-author.js';
 import { db } from '../db/client.js';
-import { projects } from '../db/schema.js';
 import {
   applyProjectedEvent,
   type DeliveryContext,
@@ -27,15 +27,6 @@ interface GitHubIssuePayload {
  * say what a `check_run` looks like without this file learning what one is.
  */
 export type GitHubEventPayload = GitHubIssuePayload & Record<string, unknown>;
-
-async function projectCreatedById(projectId: string): Promise<string | null> {
-  const [row] = await db
-    .select({ createdBy: projects.createdBy })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  return row?.createdBy ?? null;
-}
 
 /**
  * ISS-1076 — the door an outside contributor's report enters by, and it opens once.
@@ -86,13 +77,7 @@ export async function handleGitHubEvent(
     return { actions: await applyProjectedEvent(ctx, eventType, payload) };
   }
 
-  // System user: fall back to the project creator (`projects.createdBy`,
-  // audit-only — see risks in F4 plan).
-  const createdById = await projectCreatedById(projectId);
-  if (!createdById) {
-    logger.warn({ projectId }, 'github-adapter: project missing creator');
-    return { actions: 0 };
-  }
+  const createdById = await forgeAuthorId(db);
 
   if (eventType === 'issues' && payload.issue) {
     const externalId = String(payload.issue.id ?? '');

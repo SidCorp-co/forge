@@ -254,11 +254,12 @@ describe('the two doors are one writer', () => {
     expect(await commentsOn(issueId)).toHaveLength(1);
   });
 
-  it('attributes the comment to the project s creator, as the webhook door already does', async () => {
+  it('records the review as Forge, never as the project creator (ISS-1421)', async () => {
     const issueId = await ground.seedIssue(ground.projectId, 4242);
     await ground.mods.applyProjectedEvent(deliveryCtx(), 'pull_request_review', reviewEvent());
     const rows = await commentsOn(issueId);
-    expect(rows[0]?.author_id).toBe(ground.ownerId);
+    const { FORGE_AUTHOR_ID } = await import('../../src/comments/forge-author.js');
+    expect(rows[0]?.author_id).toBe(FORGE_AUTHOR_ID);
   });
 
   it('refuses a review id that is not a number, before it reaches the duplicate check', async () => {

@@ -1,4 +1,5 @@
 import { and, eq } from 'drizzle-orm';
+import { FORGE_AUTHOR_ID } from '../comments/forge-author.js';
 import { db } from '../db/client.js';
 import { organizationMembers, organizations, users } from '../db/schema.js';
 
@@ -7,6 +8,11 @@ import { organizationMembers, organizations, users } from '../db/schema.js';
  * satisfy this for the two inserts we need.
  */
 type DbLike = Pick<typeof db, 'insert' | 'select'>;
+
+/** Forge's own account writes what its sweeps say and is a member of nothing. */
+export function isNeverAMember(userId: string): boolean {
+  return userId === FORGE_AUTHOR_ID;
+}
 
 /**
  * Idempotently provision the user's personal org (one per user, enforced by

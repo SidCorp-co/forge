@@ -23,7 +23,6 @@ export interface DispatchAutonomousArgs {
   status: IssueStatus;
   actor: Actor;
   cfg: PipelineConfig | null;
-  projectCreatedBy: string | null;
 }
 
 /**
@@ -56,7 +55,6 @@ export async function dispatchDriveManual(args: {
   issueId: string;
   status: IssueStatus;
   actor: Actor;
-  projectCreatedBy: string | null;
 }): Promise<{ released: true }> {
   if (!autonomousStepFor(args.status)) {
     throw new Error(

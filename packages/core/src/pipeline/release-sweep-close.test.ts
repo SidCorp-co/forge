@@ -52,7 +52,7 @@ vi.mock('../release-batch/serving-reading.js', async (importActual) => ({
   readServingNow: async () => ({ kind: 'serving', served: [], unread: [], readAt: 'T' }),
 }));
 vi.mock('../release-batch/runtime-weighing.js', () => ({ readWeighingNow: async () => null }));
-vi.mock('../schedules/release-batch-dispatch.js', () => ({ loadCreatedBy: async () => 'owner-1' }));
+vi.mock('../comments/forge-author.js', () => ({ forgeAuthorId: async () => 'forge' }));
 
 const cut = vi.fn(async (args: { issueIds: string[] }) => ({
   status: 'success' as const,
@@ -99,7 +99,9 @@ describe('sweepAutomaticReleases — a row its release could not close', () => {
     const result = await sweepAutomaticReleases();
 
     expect(closeShortfalls).toHaveBeenCalledWith('proj-1', ['iss-1', 'iss-2', 'iss-3']);
-    expect(cut).toHaveBeenCalledWith(expect.objectContaining({ issueIds: ['iss-1', 'iss-3'] }));
+    expect(cut).toHaveBeenCalledWith(
+      expect.objectContaining({ issueIds: ['iss-1', 'iss-3'], userId: 'forge' }),
+    );
     expect(holds['iss-2']).toMatchObject({ code: 'RELEASE_ISSUES_UNCLOSABLE', owes: 'human' });
     expect(holds['iss-2']?.reason).toContain('holds 1 open question (`OPEN_QUESTIONS`). Answer it');
     expect(result).toMatchObject({ issuesCut: 2, issuesExcluded: 1 });

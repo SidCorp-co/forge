@@ -184,7 +184,7 @@ describe('a release batch names every issue its range carries', () => {
       sql`SELECT body FROM comments WHERE issue_id = ${parked}`,
     );
     const body = String(said.at(-1)?.body ?? '');
-    expect(body).toContain(runId);
+    expect(body).not.toContain(runId);
     expect(body).toContain(String(res.body.version));
     expect(body).toContain(why);
     expect(body).toContain(ownerEmail);

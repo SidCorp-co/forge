@@ -7,8 +7,9 @@
  */
 
 import { and, eq, inArray } from 'drizzle-orm';
+import { forgeActor } from '../comments/forge-author.js';
 import { db } from '../db/client.js';
-import { type IssueStatus, issues, pipelineRuns, projects } from '../db/schema.js';
+import { type IssueStatus, issues, pipelineRuns } from '../db/schema.js';
 import type { ActorAgency, TransitionActor } from '../issues/actor-agency.js';
 import { transitionIssueStatus } from '../issues/apply-transition.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
@@ -132,19 +133,16 @@ async function parkIssueOnCancel(run: PipelineRunRow, actorUserId?: string): Pro
         projectId: issues.projectId,
         status: issues.status,
         reopenCount: issues.reopenCount,
-        createdBy: projects.createdBy,
       })
       .from(issues)
-      .innerJoin(projects, eq(projects.id, issues.projectId))
       .where(eq(issues.id, run.issueId))
       .limit(1);
     if (!row) return false;
     if (CANCEL_PARK_SKIP_STATUSES.has(row.status)) return false;
 
-    const fallbackId = row.createdBy ?? run.projectId;
     const actor: TransitionActor = actorUserId
       ? { type: 'user', id: actorUserId }
-      : { type: 'device', id: fallbackId, ownerId: fallbackId };
+      : await forgeActor(db);
     await transitionIssueStatus(
       { id: row.id, projectId: row.projectId, status: row.status, reopenCount: row.reopenCount },
       'on_hold',

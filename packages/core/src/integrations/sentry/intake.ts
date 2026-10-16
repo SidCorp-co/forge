@@ -4,7 +4,7 @@ import {
   buildContextFromBinding,
   listActiveBindingsForProjectProvider,
 } from '../store.js';
-import { intakeSentryIssue, projectCreatedById, readSentryThresholds } from './intake-issue.js';
+import { intakeSentryIssue, readSentryThresholds } from './intake-issue.js';
 import { listSentryIssues, type SentryAdapterContext } from './issues.js';
 import { SENTRY_LIST_DEFAULT_LIMIT, SentryListingFailed } from './listing.js';
 import { resolveSentryTargets } from './targets.js';
@@ -35,7 +35,6 @@ async function pullOneTarget(
   ctx: SentryAdapterContext,
   target: SentryTarget,
   projectId: string,
-  createdById: string,
   thresholds: { minEventCount: number; minUserCount: number },
   report: string[],
 ): Promise<{ filed: number; commented: number; reopened: number }> {
@@ -61,7 +60,6 @@ async function pullOneTarget(
     for (const issue of listing.issues) {
       const outcome = await intakeSentryIssue(issue, {
         projectId,
-        createdById,
         thresholds,
         target: listing.target,
       });
@@ -107,15 +105,6 @@ export async function runSentryPull(args: { projectId: string }): Promise<Sentry
     };
   }
 
-  const createdById = await projectCreatedById(args.projectId);
-  if (!createdById) {
-    return {
-      status: 'failed',
-      output: '',
-      error: 'sentry pull: this project has no creator to file issues as',
-    };
-  }
-
   const ctx = buildContextFromBinding<
     SentryAdapterContext['config'],
     SentryAdapterContext['secrets']
@@ -140,7 +129,7 @@ export async function runSentryPull(args: { projectId: string }): Promise<Sentry
 
   for (const target of targets) {
     try {
-      const got = await pullOneTarget(ctx, target, args.projectId, createdById, thresholds, report);
+      const got = await pullOneTarget(ctx, target, args.projectId, thresholds, report);
       filed += got.filed;
       commented += got.commented;
       reopened += got.reopened;

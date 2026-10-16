@@ -335,7 +335,6 @@ describe('a report core repeats about an issue', () => {
     const here = await issue();
     const args = {
       issueId: here,
-      authorId: ownerId,
       fromStatus: 'awaiting_release' as const,
       cap: 3,
       driveSessions: 3,

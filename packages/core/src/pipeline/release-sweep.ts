@@ -7,6 +7,7 @@
 // (`release-hold.ts`), never on the log alone.
 
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { forgeAuthorId } from '../comments/forge-author.js';
 import { postSystemComment, withholdForIssue } from '../comments/system-write.js';
 import { db } from '../db/client.js';
 import { comments, issues } from '../db/schema.js';
@@ -26,7 +27,6 @@ import {
   whyUncorroborated,
 } from '../release-batch/serving-reading.js';
 import { oldestMergeFirst } from '../release-batch/waiting-order.js';
-import { loadCreatedBy } from '../schedules/release-batch-dispatch.js';
 import { cutWaitingRelease } from '../schedules/release-batch-run.js';
 import { projectAutoProdDeploy } from './release-coolify.js';
 import {
@@ -39,7 +39,6 @@ import {
   criteriaUnreadableHold,
   cutFailedHold,
   gateUnreadableHold,
-  NO_ACTOR_HOLD,
   NO_RELEASE_GATE_HOLD,
   queuedBehindHold,
   type ReleaseHold,
@@ -108,25 +107,20 @@ async function candidateProjectIds(now: Date): Promise<string[]> {
 // enqueues the job after it commits, so a failure past that point (an enqueue error, say) can
 // leave an issue claimed even though the attempt overall threw. An untouched row gets a hold
 // (`cutFailedHold`); a claimed one is off the gate, so it is told here instead.
-function claimedFailureBody(message: string, releaseBatchRunId: string | null): string {
+function claimedFailureBody(message: string): string {
   return [
     '**An automatic release attempt failed.**',
     '',
-    `This issue was named in an automatic release sweep (ISS-1117) and the attempt did not go ` +
-      `through: ${message}`,
+    `This issue was named in an automatic release and the attempt did not go through: ${message}`,
     '',
-    `This issue was already claimed into run ${releaseBatchRunId ?? '(unknown)'} before ` +
-      'the attempt failed, so it will not be picked up again by this sweep — its status and ' +
-      'claim need a person to look at them.',
+    'This issue was already claimed into that release before the attempt failed, so this sweep ' +
+      'will not pick it up again: its status and claim need a person to look at them. View ' +
+      'release on this issue shows where that release stands.',
   ].join('\n');
 }
 
 /** The rows a failed attempt claimed anyway, each told once per distinct message. */
-async function reportClaimedFailure(
-  issueIds: string[],
-  authorId: string,
-  message: string,
-): Promise<string[]> {
+async function reportClaimedFailure(issueIds: string[], message: string): Promise<string[]> {
   const rows = await db
     .select({ id: issues.id, status: issues.status, releaseBatchRunId: issues.releaseBatchRunId })
     .from(issues)
@@ -135,14 +129,14 @@ async function reportClaimedFailure(
     (r) => !(r.status === RELEASE_GATE_STATUS && r.releaseBatchRunId === null),
   );
   for (const row of claimed) {
-    const body = await withholdForIssue(row.id, claimedFailureBody(message, row.releaseBatchRunId));
+    const body = await withholdForIssue(row.id, claimedFailureBody(message));
     try {
       const existing = await db
         .select({ body: comments.body })
         .from(comments)
         .where(eq(comments.issueId, row.id));
       if (existing.some((c) => c.body === body)) continue;
-      await postSystemComment({ issueId: row.id, authorId, body });
+      await postSystemComment({ issueId: row.id, authorId: await forgeAuthorId(db), body });
     } catch (err) {
       logger.error({ err, issueId: row.id }, 'release-sweep: failed to post the failure comment');
     }
@@ -217,7 +211,6 @@ interface HoldWrite {
   projectId: string;
   issueIds: string[];
   holdFor: (issueId: string) => ReleaseHold;
-  authorId: string | null;
   now: Date;
   result: AutomaticReleaseSweepResult;
   commentOn?: ReadonlySet<string>;
@@ -348,8 +341,7 @@ async function sweepProject(
 
   const waiting = await waitingIssueIds(projectId);
   if (waiting.length === 0) return;
-  const owner = (await loadCreatedBy(projectId)) ?? null;
-  const base = { projectId, authorId: owner, now, result };
+  const base = { projectId, now, result };
 
   const gate = await readGate(projectId);
   if (!gate.ok) {
@@ -399,16 +391,11 @@ async function sweepProject(
     return;
   }
 
-  if (!owner) {
-    logger.error(
-      { projectId },
-      'release-sweep: no project owner to act as this tick — skipping, will try again next tick',
-    );
-    await holdAlike({ ...base, issueIds: eligible }, waiting, NO_ACTOR_HOLD);
-    return;
-  }
-
-  const outcome = await cutWaitingRelease({ projectId, userId: owner, issueIds: eligible });
+  const outcome = await cutWaitingRelease({
+    projectId,
+    userId: await forgeAuthorId(db),
+    issueIds: eligible,
+  });
   // One release carries at most the oldest RELEASE_ROSTER_LIMIT; the rest were never sent.
   const named = new Set(outcome.named);
   const behind = eligible.filter((id) => !named.has(id));
@@ -427,7 +414,7 @@ async function sweepProject(
   if (outcome.status === 'failed') {
     logger.error({ projectId, err: outcome.error }, `release-sweep: ${outcome.output}`);
     const message = outcome.error ?? outcome.output;
-    const claimed = await reportClaimedFailure(outcome.named, owner, message);
+    const claimed = await reportClaimedFailure(outcome.named, message);
     const untouched = outcome.named.filter((id) => !claimed.includes(id));
     await holdAlike({ ...base, issueIds: untouched }, waiting, cutFailedHold(reasons));
     return;

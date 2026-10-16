@@ -11,6 +11,7 @@
 // batch that died without either does; `releasing-settle.ts` settles a row its ended run left.
 
 import { eq, inArray, type SQL } from 'drizzle-orm';
+import { userActor } from '../comments/forge-author.js';
 import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues, type PipelineRunStatus } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
@@ -231,7 +232,7 @@ export async function createReleaseBatch(
     if (err instanceof ActiveJobConflictError) {
       await recoverStrandedReleasing(run.id, {
         reason: 'another batch was already in flight, so this one never started',
-        actorUserId: userId,
+        actor: userActor(userId),
       });
       await closeRunIfOneShot(run.id, 'cancelled');
       throw new BatchInFlightError(err.existingJobId);
@@ -239,7 +240,7 @@ export async function createReleaseBatch(
     throw err;
   }
 
-  await noteShipUnverified({ runId: run.id, version, check: report.carried, userId });
+  await noteShipUnverified({ version, check: report.carried, userId });
   return {
     runId: run.id,
     jobId,
@@ -378,8 +379,7 @@ export async function finishReleaseBatch(
   await options.onRosterClosed?.({ closed, failed });
   await recoverStrandedReleasing(runId, {
     reason: 'the release finished but this issue could not be closed',
-    actorUserId: actor.type === 'user' ? actor.id : undefined,
-    commentAuthorId: actor.type === 'device' ? actor.ownerId : undefined,
+    actor,
     comment: true,
     refusals,
     version: run?.releaseVersion ?? null,
@@ -428,8 +428,6 @@ export type PromotedRosterSettlement = 'hold' | 'return-to-gate';
 
 export interface AbortReleaseBatchOptions {
   promotedRoster?: PromotedRosterSettlement | undefined;
-  /** Who the roster's comments are written as where no person aborted: a sweep's caller names one. */
-  commentAs?: string | undefined;
   /** Abort only while this holds on the run row at the stamp; otherwise `ReleaseBatchNotAbortableError`. */
   onlyWhen?: SQL | undefined;
   /** Test seam: runs after the roster is recovered and before its account is settled. */
@@ -438,7 +436,7 @@ export interface AbortReleaseBatchOptions {
 
 /**
  * Cancel a release batch and put its roster back. `actorUserId` is the person who asked, or `null`
- * for a sweep, in which case the stamp names no person and comments go out as `commentAs`.
+ * for a sweep, in which case the stamp names no person and Forge writes the roster's comments.
  */
 export async function abortReleaseBatch(
   runId: string,
@@ -454,12 +452,10 @@ export async function abortReleaseBatch(
     ...(options.onlyWhen ? { when: options.onlyWhen } : {}),
   });
   if (stampId === null) throw new ReleaseBatchNotAbortableError(runId);
-  const commentAuthor = actorUserId ?? options.commentAs;
   const recovery = await recoverStrandedReleasing(runId, {
     reason: `batch release aborted: ${reason}`,
-    ...(actorUserId === null ? {} : { actorUserId }),
-    ...(commentAuthor === undefined ? {} : { commentAuthorId: commentAuthor }),
-    comment: commentAuthor !== undefined,
+    ...(actorUserId === null ? {} : { actor: userActor(actorUserId) }),
+    comment: true,
     settlePromotedRoster: options.promotedRoster === 'return-to-gate',
   });
   await options.afterRosterRecovered?.();

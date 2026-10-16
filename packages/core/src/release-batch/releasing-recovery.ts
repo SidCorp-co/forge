@@ -1,8 +1,9 @@
 import { REDACTED, redactedMessage, redactQueryParams } from '@forge/observability';
 import { and, eq, sql } from 'drizzle-orm';
+import { forgeActor } from '../comments/forge-author.js';
 import { postSystemComment } from '../comments/system-write.js';
 import { db, type Tx } from '../db/client.js';
-import { type IssueStatus, issues, projects } from '../db/schema.js';
+import { type IssueStatus, issues } from '../db/schema.js';
 import { releaseAttempts } from '../db/schema-release-ledger.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
@@ -238,13 +239,17 @@ export function refusedCloseComment(args: {
   return opening + howItCloses(destination, refusal);
 }
 
+/** The account a comment about this move is written as: a person's own, a device's owner's. */
+function authorOf(actor: TransitionActor): string {
+  return actor.type === 'user' ? actor.id : actor.ownerId;
+}
+
 export interface RecoverStrandedReleasingOptions {
   /** Written onto the issue as the reason, and into a comment when an author is known. */
   reason: string;
-  /** The person who caused this, when there is one. Absent for a machine sweep. */
-  actorUserId?: string | undefined;
-  /** Who the comments are written as where no person caused this, such as a device's owner. */
-  commentAuthorId?: string | undefined;
+  /** Who caused this, when someone did: the moves are theirs, and so are the comments (a device's
+   *  are its owner's). Absent for a sweep, which acts and writes as Forge. */
+  actor?: TransitionActor | undefined;
   /** Post a comment naming the reason. Off for a sweep nobody asked for. */
   comment?: boolean;
   /** Why the finish could not close each issue, by id; such an issue's comment names it. */
@@ -275,10 +280,8 @@ export async function recoverStrandedReleasing(
       projectId: issues.projectId,
       status: issues.status,
       reopenCount: issues.reopenCount,
-      projectCreatedBy: projects.createdBy,
     })
     .from(issues)
-    .innerJoin(projects, eq(projects.id, issues.projectId))
     .where(eq(issues.releaseBatchRunId, runId));
 
   const alreadyClosed = claimed.filter((r) => r.status === 'closed').map((r) => r.id);
@@ -302,12 +305,13 @@ export async function recoverStrandedReleasing(
   const destination: IssueStatus = gateStatus ?? 'reopen';
 
   const recovered: string[] = [];
+  const actor = options.actor ?? (await forgeActor(db));
+  const author = authorOf(actor);
 
   for (const issue of claimed) {
     if (issue.status !== 'releasing') continue;
 
-    const author = options.actorUserId ?? options.commentAuthorId;
-    if (options.comment && author) {
+    if (options.comment) {
       const refusal = options.refusals?.get(issue.id);
       try {
         if (refusal) {
@@ -333,11 +337,6 @@ export async function recoverStrandedReleasing(
         logger.warn({ err, issueId: issue.id, runId }, 'release-batch: recovery comment failed');
       }
     }
-
-    const fallbackId = issue.projectCreatedBy ?? issue.projectId;
-    const actor: TransitionActor = options.actorUserId
-      ? { type: 'user', id: options.actorUserId }
-      : { type: 'device', id: fallbackId, ownerId: fallbackId };
 
     try {
       await transitionIssueStatus(
@@ -459,8 +458,8 @@ async function noteOnRoster(
   options: RecoverStrandedReleasingOptions,
   note: string,
 ): Promise<void> {
-  const author = options.actorUserId ?? options.commentAuthorId;
-  if (!options.comment || !author) return;
+  if (!options.comment) return;
+  const author = authorOf(options.actor ?? (await forgeActor(db)));
   for (const issue of claimed) {
     if (issue.status !== 'releasing') continue;
     const refusal = options.refusals?.get(issue.id);

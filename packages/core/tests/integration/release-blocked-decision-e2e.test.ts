@@ -179,6 +179,18 @@ describe('a release agent stopped on a question, ended Blocked', () => {
 
     const pointers = await Promise.all(others.map((id) => fx.commentCount(id)));
     expect(pointers).toEqual([1, 1]);
+    // Forge points the others at the question; the person who pressed Release said none of it.
+    const authors = await harness.db.execute<{ kind: string; email: string }>(sql`
+      SELECT u.kind, u.email FROM comments c JOIN users u ON u.id = c.author_id
+      WHERE c.issue_id IN (${sql.join(
+        others.map((id) => sql`${id}`),
+        sql`, `,
+      )})
+    `);
+    expect(authors).toEqual([
+      { kind: 'agent', email: 'forge@agents.forge.invalid' },
+      { kind: 'agent', email: 'forge@agents.forge.invalid' },
+    ]);
     expect(await fx.commentCount(first)).toBe(0);
 
     const jobs = await jobsOf(release.runId);

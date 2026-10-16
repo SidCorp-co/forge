@@ -14,6 +14,7 @@
  */
 
 import { and, eq, sql } from 'drizzle-orm';
+import { forgeAuthorId } from '../comments/forge-author.js';
 import { postSystemComment, withholdForIssue } from '../comments/system-write.js';
 import { db, type Tx } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
@@ -75,7 +76,6 @@ function pointerBody(display: string): string {
 
 async function pointOthersAt(
   tx: Tx,
-  job: JobRow,
   others: readonly ClaimedMember[],
   anchorId: string,
 ): Promise<void> {
@@ -89,7 +89,10 @@ async function pointOthersAt(
       .where(and(eq(comments.issueId, member.id), eq(comments.body, body)))
       .limit(1);
     if (same.length === 0) {
-      await postSystemComment({ issueId: member.id, authorId: job.createdBy, body: written }, tx);
+      await postSystemComment(
+        { issueId: member.id, authorId: await forgeAuthorId(tx), body: written },
+        tx,
+      );
     }
   }
 }
@@ -143,7 +146,7 @@ export async function holdBlockedRelease(
         who: WHO,
       });
     }
-    if (anchor) await pointOthersAt(tx, job, members.slice(1), anchor);
+    if (anchor) await pointOthersAt(tx, members.slice(1), anchor);
     const held = await admitJob(tx, {
       projectId: job.projectId,
       issueId: job.issueId,

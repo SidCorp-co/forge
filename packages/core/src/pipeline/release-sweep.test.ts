@@ -57,7 +57,7 @@ vi.mock('../db/schema.js', () => ({ comments: {}, issues: {} }));
 
 type Hold = { code: string; reason: string; owes: string; waitingFor: string };
 /** Every hold written this tick, keyed by issue, with the author it was written as. */
-let holds: Record<string, Hold & { authorId: string | null }> = {};
+let holds: Record<string, Hold> = {};
 const clearedHolds: string[][] = [];
 const clearedProjects: string[] = [];
 const staleClears = vi.fn(async () => 0);
@@ -65,12 +65,8 @@ vi.mock('./release-hold.js', async () => {
   const actual = await vi.importActual<typeof import('./release-hold.js')>('./release-hold.js');
   return {
     ...actual,
-    writeReleaseHolds: async (args: {
-      issueIds: string[];
-      holdFor: (id: string) => Hold;
-      authorId: string | null;
-    }) => {
-      for (const id of args.issueIds) holds[id] = { ...args.holdFor(id), authorId: args.authorId };
+    writeReleaseHolds: async (args: { issueIds: string[]; holdFor: (id: string) => Hold }) => {
+      for (const id of args.issueIds) holds[id] = args.holdFor(id);
       return { written: args.issueIds.length, unchanged: 0, skipped: 0 };
     },
     clearReleaseHolds: async (ids: string[]) => {
@@ -127,14 +123,11 @@ const STOOD =
   'judged at dce6f354c727baa81c681f144cbadf30050eabfc, and this issue now stands at 06fa37c6dfbc841bd75c3898034a53a1529a9c74';
 const SUPERSEDED: Unearned = { criterion: 13, verdict: 'pass', standing: 'superseded', why: STOOD };
 
-const loadCreatedByMock = vi.fn(async (_projectId: string) => 'owner-1' as string | undefined);
 vi.mock('../release-batch/runtime-weighing.js', () => ({ readWeighingNow: async () => null }));
 vi.mock('../release-batch/close-shortfall.js', () => ({
   rosterCloseShortfalls: async () => new Map(),
 }));
-vi.mock('../schedules/release-batch-dispatch.js', () => ({
-  loadCreatedBy: (projectId: string) => loadCreatedByMock(projectId),
-}));
+vi.mock('../comments/forge-author.js', () => ({ forgeAuthorId: async () => 'forge' }));
 
 interface CutOutcome {
   status: 'success' | 'skipped' | 'failed';
@@ -202,8 +195,6 @@ beforeEach(() => {
   unearnedCriteriaReportsMock.mockReset().mockImplementation(noneUnearned);
   loggerInfo.mockReset();
   loggerWarn.mockReset();
-  loadCreatedByMock.mockReset();
-  loadCreatedByMock.mockResolvedValue('owner-1');
   cutWaitingReleaseMock.mockReset();
   cutWaitingReleaseMock.mockResolvedValue({
     status: 'success',
@@ -300,7 +291,6 @@ describe('sweepAutomaticReleases — the ISS-1139/ISS-1114 reproduction', () => 
     expect(held?.reason).toContain('criterion 13');
     expect(held?.reason).toContain('this issue now stands at');
     expect(held?.owes).toBe('human');
-    expect(holds['iss-1139']?.authorId).toBe('owner-1');
     expect(result).toEqual({ ...NO_HOLDS, issuesExcluded: 1, holdsWritten: 1 });
   });
 
@@ -341,7 +331,7 @@ describe('sweepAutomaticReleases — the ISS-1139/ISS-1114 reproduction', () => 
 
     expect(cutWaitingReleaseMock).toHaveBeenCalledWith({
       projectId: 'proj-1',
-      userId: 'owner-1',
+      userId: 'forge',
       issueIds: ['iss-earned'],
     });
     expect(holds).toEqual({});
@@ -360,7 +350,7 @@ describe('sweepAutomaticReleases — the ISS-1139/ISS-1114 reproduction', () => 
 
     expect(cutWaitingReleaseMock).toHaveBeenCalledWith({
       projectId: 'proj-1',
-      userId: 'owner-1',
+      userId: 'forge',
       issueIds: ['iss-earned'],
     });
     expect(Object.keys(holds)).toEqual(['iss-1139']);
@@ -382,18 +372,6 @@ describe('sweepAutomaticReleases — the ISS-1139/ISS-1114 reproduction', () => 
 });
 
 describe('sweepAutomaticReleases — declined cuts', () => {
-  it('writes RELEASE_NO_ACTOR with no author when the project has no owner', async () => {
-    candidateRows = [candidateRow('proj-1', 'iss-1', '2026-09-22T00:00:00Z')];
-    waitingIds = ['iss-1'];
-    loadCreatedByMock.mockResolvedValueOnce(undefined);
-
-    await sweepAutomaticReleases();
-
-    expect(cutWaitingReleaseMock).not.toHaveBeenCalled();
-    expect(holds['iss-1']?.code).toBe('RELEASE_NO_ACTOR');
-    expect(holds['iss-1']?.authorId).toBeNull();
-  });
-
   it.each([
     ['NO_RUNNER_ONLINE', 'human'],
     ['RELEASE_TARGET_UNDECLARED', 'human'],
@@ -437,7 +415,9 @@ describe('sweepAutomaticReleases — declined cuts', () => {
     await sweepAutomaticReleases();
     expect(insertedComments).toHaveLength(1);
     expect(insertedComments[0]?.body).not.toContain('not claimed, not moved');
-    expect(insertedComments[0]?.body).toContain('run-9');
+    expect(insertedComments[0]?.authorId).toBe('forge');
+    expect(insertedComments[0]?.body).toContain('View release on this issue');
+    expect(insertedComments[0]?.body).not.toContain('run-9');
     expect(holds['iss-1']).toBeUndefined();
 
     existingCommentsByIssue = { 'iss-1': [insertedComments[0]?.body ?? ''] };
@@ -489,7 +469,7 @@ describe('sweepAutomaticReleases — per-project fault isolation', () => {
 
     expect(cutWaitingReleaseMock).toHaveBeenCalledWith({
       projectId: 'proj-good',
-      userId: 'owner-1',
+      userId: 'forge',
       issueIds: ['iss-good'],
     });
     expect(result.projectsCut).toBe(1);

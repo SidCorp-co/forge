@@ -10,17 +10,17 @@ import {
   persistCommentAttachment,
   validateCommentAttachment,
 } from '../../comments/attachment-service.js';
+import { forgeAuthorId } from '../../comments/forge-author.js';
 import {
   deleteSystemComment,
   insertSystemComment,
   postSystemComment,
 } from '../../comments/system-write.js';
+import { db } from '../../db/client.js';
 import { failureLine, type WeeklyReport } from '../bench/history/report.js';
 
 export interface PostWeeklyArgs {
   issueId: string;
-  /** The project's creator, the actor every sweeper's comment is posted as. */
-  authorId: string;
   report: WeeklyReport;
 }
 
@@ -28,9 +28,10 @@ export interface PostWeeklyArgs {
 export async function postWeeklyComment(args: PostWeeklyArgs): Promise<{ commentId: string }> {
   const files = args.report.files.map((f) => ({ ...f, bytes: Buffer.from(f.text, 'utf8') }));
   for (const f of files) validateCommentAttachment({ name: f.name, mime: f.mime, bytes: f.bytes });
+  const authorId = await forgeAuthorId(db);
   const inserted = await insertSystemComment({
     issueId: args.issueId,
-    authorId: args.authorId,
+    authorId,
     body: args.report.body,
   });
   if (!inserted) throw new Error('the report comment was not inserted');
@@ -42,7 +43,7 @@ export async function postWeeklyComment(args: PostWeeklyArgs): Promise<{ comment
         name: f.name,
         mime: f.mime,
         bytes: f.bytes,
-        uploaderId: args.authorId,
+        uploaderId: authorId,
         uploaderDeviceId: null,
       });
       written.push(a.id);
@@ -58,13 +59,12 @@ export async function postWeeklyComment(args: PostWeeklyArgs): Promise<{ comment
 /** The one line a failed week leaves on the issue. */
 export async function postWeeklyFailure(args: {
   issueId: string;
-  authorId: string;
   windowId: string;
   error: { name: string; message: string };
 }): Promise<void> {
   await postSystemComment({
     issueId: args.issueId,
-    authorId: args.authorId,
+    authorId: await forgeAuthorId(db),
     body: failureLine(args.windowId, args.error),
   });
 }

@@ -2,6 +2,7 @@
 // moved there in ONE transaction, each move the chokepoint's own write, so either the whole roster
 // stands at Releasing under a running run or none of it does and the run is cancelled.
 
+import { userActor } from '../comments/forge-author.js';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import {
@@ -46,7 +47,7 @@ export async function enterReleasing(args: {
             await stageIssueTransition(
               { id, projectId, status: gateStatus, reopenCount: 0 },
               'releasing',
-              { type: 'user', id: userId },
+              userActor(userId),
               { releaseRun: runId },
               tx,
             ),

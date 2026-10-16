@@ -5,6 +5,7 @@
 // device, no session, no Claude runner.
 
 import { eq } from 'drizzle-orm';
+import { forgeAuthorId } from '../comments/forge-author.js';
 import { db } from '../db/client.js';
 import { projects, scheduleRuns } from '../db/schema.js';
 import { logger } from '../logger.js';
@@ -51,7 +52,9 @@ export async function dispatchScheduleReleaseBatchRun(
   const { schedule } = input;
   const resolved = await resolveScheduleTargetProject(input);
   if (!resolved) return { ok: false, reason: 'project-not-found', status: 'skipped' };
-  const { projectId, userId } = resolved;
+  const { projectId } = resolved;
+  // A tick has nobody pressing it: Forge cuts the release, never the project's creator.
+  const userId = input.actorUserId ?? (await forgeAuthorId(db));
 
   const [run] = await db
     .insert(scheduleRuns)

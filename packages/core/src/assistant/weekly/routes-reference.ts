@@ -17,7 +17,6 @@ export const runAssistantWeekly = describeOperation({
     404: fail('NOT_FOUND', 'there is no such project'),
     409: fail({
       ASSISTANT_WEEKLY_OFF: 'the project has not enabled `pipelineConfig.assistantWeekly`',
-      ASSISTANT_WEEKLY_NO_AUTHOR: 'the project has no creator to post the reading as',
     }),
   },
 });

@@ -21,7 +21,6 @@ interface TakenRow extends Record<string, unknown> {
   project_id: string;
   job_id: string;
   taken_at: Date;
-  created_by: string | null;
 }
 
 /**
@@ -41,10 +40,8 @@ export const SWEEP_MAY_ABORT: SQL = sql`(status = 'running' AND metadata -> 'fin
  */
 async function takenBatches(): Promise<TakenRow[]> {
   return (await db.execute<TakenRow>(sql`
-    SELECT r.id AS run_id, r.project_id, j.id AS job_id, j.dispatched_at AS taken_at,
-           p.created_by
+    SELECT r.id AS run_id, r.project_id, j.id AS job_id, j.dispatched_at AS taken_at
     FROM pipeline_runs r
-    JOIN projects p ON p.id = r.project_id
     JOIN LATERAL (
       SELECT id, status, dispatched_at FROM jobs
       WHERE pipeline_run_id = r.id AND type = ${RELEASE_JOB_TYPE}
@@ -127,7 +124,6 @@ export async function recoverSilentReleaseBatches(
     if (!verdict.act) continue;
     const result = await abortReleaseBatch(row.run_id, verdict.reason, null, {
       onlyWhen: SWEEP_MAY_ABORT,
-      ...(row.created_by ? { commentAs: row.created_by } : {}),
     }).catch((err: unknown) => {
       if (err instanceof ReleaseBatchNotAbortableError) return null;
       throw err;

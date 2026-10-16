@@ -15,6 +15,8 @@ const PRESENTATION_AND_MAPPING: Record<string, string> = {
   'orgs/agent-accounts.ts': 'an org admin reads and sets an agent’s label',
   'orgs/service.ts': 'the org member list returns it beside the address',
   'issues/actor-resolution.ts': 'the label an activity row is rendered by',
+  'comments/forge-author.ts':
+    'writes the label Forge’s own account is minted with, and reads nothing back: it is decided by its fixed id (ISS-1421)',
   'issues/creator.ts':
     'the label an issue’s creator is rendered by on every issue list and detail, which is the same job `actor-resolution.ts` does for an activity row. It decides nothing: `users.kind` decides whether the writer is an agent, and this is only what that writer is CALLED (ISS-1137)',
   'projects/members-routes.ts':
@@ -99,7 +101,8 @@ describe('displayName is rendered, never read to decide anything (ISS-1003)', ()
   it('lists no file that has stopped naming it', () => {
     const stale = Object.keys(PRESENTATION_AND_MAPPING).filter((rel) => {
       try {
-        return !mentionsColumn(readFileSync(join(SRC, rel), 'utf8'));
+        const source = readFileSync(join(SRC, rel), 'utf8');
+        return !mentionsColumn(source) && !importsUsersAndNamesTheLabel(source);
       } catch {
         return true;
       }

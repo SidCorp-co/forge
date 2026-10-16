@@ -1,8 +1,8 @@
 import { and, eq, like } from 'drizzle-orm';
+import { forgeAuthorId } from '../../comments/forge-author.js';
 import { insertComment } from '../../comments/service.js';
 import { db } from '../../db/client.js';
-import { comments, issues, projects } from '../../db/schema.js';
-import { logger } from '../../logger.js';
+import { comments, issues } from '../../db/schema.js';
 import { resolveIssueForHeadRef } from './issue-link.js';
 
 /** One review, in the shape both doors already hold it in. */
@@ -24,9 +24,7 @@ export type ReviewNoteOutcome =
   /** A comment for this review id is already on the issue — the other door got there first. */
   | 'already-noted'
   /** The head branch names no issue on this project. An ordinary answer, never an error. */
-  | 'no-issue'
-  /** The issue's project has no creator to attribute a system comment to. */
-  | 'no-author';
+  | 'no-issue';
 
 export interface ReviewNoteResult {
   outcome: ReviewNoteOutcome;
@@ -77,16 +75,6 @@ export function reviewNoteBody(args: {
   return `## GitHub review\n\n${head}\n\n${quoted}\n\n${reviewMarker(review.id)}`;
 }
 
-/** The user a system comment is attributed to, as `webhooks/github-adapter.ts` attributes its own. */
-async function projectCreator(projectId: string): Promise<string | null> {
-  const [row] = await db
-    .select({ createdBy: projects.createdBy })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  return row?.createdBy ?? null;
-}
-
 /**
  * Write this review onto the issue its pull request's head branch names, once.
  *
@@ -113,15 +101,6 @@ export async function noteReviewOnIssue(args: {
   });
   if (!issueId) return { outcome: 'no-issue', issueId: null, commentId: null };
 
-  const authorId = await projectCreator(args.projectId);
-  if (!authorId) {
-    logger.warn(
-      { projectId: args.projectId, issueId, reviewId: args.review.id },
-      'github review note: project has no creator to attribute the comment to, so nothing was written',
-    );
-    return { outcome: 'no-author', issueId, commentId: null };
-  }
-
   const pattern = terminalMarkerPattern(args.review.id);
   return db.transaction(async (tx) => {
     const [locked] = await tx
@@ -144,7 +123,7 @@ export async function noteReviewOnIssue(args: {
     const written = await insertComment(
       {
         issueId,
-        authorId,
+        authorId: await forgeAuthorId(tx),
         authorDeviceId: null,
         body: reviewNoteBody({
           review: args.review,

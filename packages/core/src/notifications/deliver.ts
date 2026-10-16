@@ -1,4 +1,5 @@
 import { and, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
+import { FORGE_AUTHOR_ID } from '../comments/forge-author.js';
 import { db } from '../db/client.js';
 import type { NotificationType } from '../db/schema.js';
 import {
@@ -180,6 +181,7 @@ async function deliverTo(
   // a sweep raises the same standing condition every minute and almost every pass tells nobody.
   let title = named;
   for (const userId of input.recipients) {
+    if (userId === FORGE_AUTHOR_ID) continue;
     if (await silencedFor(userId, input, now)) {
       logger.info(
         { type: input.type, projectId: input.projectId, userId },
