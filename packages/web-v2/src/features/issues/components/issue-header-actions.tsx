@@ -63,13 +63,17 @@ export function IssueHeaderActions({
         openPipeline={openPipeline}
         openRelease={(runId) => router.push(`/projects/${slug}/releases/${runId}`)}
       />
+      {/* Its label from `sm` up and its icon alone below, so at 390 the primary, this and the
+          actions menu keep one row beside the help button (ISS-1421 round 2). */}
       <Button
         variant="secondary"
         size="sm"
         icon="agent"
+        aria-label="Open session"
+        title="Open session"
         onClick={() => router.push(`/projects/${slug}/agents?issue=${issueId}`)}
       >
-        Open session
+        <span className="hidden sm:inline">Open session</span>
       </Button>
       <Menu
         align="right"

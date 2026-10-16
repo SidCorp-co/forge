@@ -14,6 +14,7 @@ import { db } from '../../db/client.js';
 import { oauthAccounts, users } from '../../db/schema.js';
 import { logger } from '../../logger.js';
 import { ensurePersonalOrg } from '../../orgs/service.js';
+import { agentAddressReserved, isAgentAddress } from '../agent-account.js';
 import { assertNotAgentUser } from '../agent-login-gate.js';
 import { setAuthCookie } from '../cookie.js';
 import { signUserToken } from '../jwt.js';
@@ -100,6 +101,9 @@ async function findOrCreateUser(
   cfg: ProviderConfig,
   identity: OAuthIdentity,
 ): Promise<{ userId: string }> {
+  // 0. An address only Forge mints is never linked or created, so no person holds Forge's account.
+  if (identity.email && isAgentAddress(identity.email)) throw agentAddressReserved(identity.email);
+
   // 1. Direct match by (provider, providerAccountId) → already linked.
   const [linked] = await db
     .select({ userId: oauthAccounts.userId })
@@ -236,6 +240,9 @@ export async function handleCallback(c: Context, providerId: ProviderId) {
     const causeCode = (err as { cause?: { code?: string } })?.cause?.code;
     if (causeCode === 'EMAIL_UNVERIFIED') {
       return oauthErrorRedirect(c, 'email_unverified');
+    }
+    if (causeCode === 'AGENT_ADDRESS_RESERVED') {
+      return oauthErrorRedirect(c, 'agent_address');
     }
     throw err;
   }

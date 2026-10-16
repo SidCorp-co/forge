@@ -72,6 +72,7 @@ import {
   readIssue,
   readIssueByDisplay,
   readJobHistory,
+  STATUS_IS_NOT_AN_UPDATE,
 } from './routes-reference.js';
 import { jobHistoryForStep } from './search.js';
 import { buildIssueOrderBy } from './sort.js';
@@ -98,8 +99,8 @@ import { withKernelMarker } from '../db/kernel-marker.js';
 const projectIdParamSchema = z.object({ id: z.uuid() });
 const issueIdParamSchema = z.object({ id: z.uuid() });
 
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
+const badRequest = (details: unknown, message = 'Invalid input') =>
+  new HTTPException(400, { message, cause: { code: 'BAD_REQUEST', details } });
 
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
@@ -442,7 +443,11 @@ issueRoutes.patch(
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   zValidator('json', issuePatchSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) {
+      // A sent `status` is said in the message itself, not only in the details (ISS-1421 r2).
+      const status = r.error.issues.some((i) => i.message === STATUS_IS_NOT_AN_UPDATE);
+      throw badRequest(z.flattenError(r.error), status ? STATUS_IS_NOT_AN_UPDATE : undefined);
+    }
   }),
   async (c) => {
     const { id } = c.req.valid('param');

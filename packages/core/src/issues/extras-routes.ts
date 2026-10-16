@@ -72,7 +72,12 @@ type BatchRow = {
 };
 type TerminalTransition = Parameters<typeof triggerTerminalDispatch>[0][number];
 type BatchRowOutcome =
-  | { kind: 'skipped'; reason: BatchSkipReason; detail?: string }
+  | {
+      kind: 'skipped';
+      reason: BatchSkipReason;
+      detail?: string;
+      refusal?: { code: TransitionError['code']; message: string };
+    }
   | { kind: 'updated'; rewritten: TransitionRewrite | null; terminal: TerminalTransition | null };
 
 const NOTHING_ELSE_WRITTEN =
@@ -135,10 +140,16 @@ async function patchBatchRow(
       }
     } catch (err) {
       if (!(err instanceof TransitionError)) throw err;
-      const reason = BATCH_SKIP_BY_CODE[err.code];
+      // The same code and sentence every other door answers this refusal with (ISS-1421 round 2).
+      const refusal = { code: err.code, message: err.detail };
       return fields.length > 0
-        ? { kind: 'skipped', reason, detail: NOTHING_ELSE_WRITTEN }
-        : { kind: 'skipped', reason };
+        ? {
+            kind: 'skipped',
+            reason: BATCH_SKIP_BY_CODE[err.code],
+            detail: NOTHING_ELSE_WRITTEN,
+            refusal,
+          }
+        : { kind: 'skipped', reason: BATCH_SKIP_BY_CODE[err.code], refusal };
     }
   }
   if (fields.length > 0) {
@@ -244,8 +255,13 @@ issueExtrasRoutes.patch(
         continue;
       }
       if (outcome.kind === 'skipped') {
-        const { reason, detail } = outcome;
-        result.skipped.push({ id: row.id, reason, ...(detail ? { detail } : {}) });
+        const { reason, detail, refusal } = outcome;
+        result.skipped.push({
+          id: row.id,
+          reason,
+          ...(refusal ?? {}),
+          ...(detail ? { detail } : {}),
+        });
         continue;
       }
       if (outcome.terminal) terminalTransitions.push(outcome.terminal);

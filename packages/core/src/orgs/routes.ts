@@ -50,7 +50,7 @@ import {
   renameOrg,
   updatedMemberSchema,
 } from './routes-reference.js';
-import { isNeverAMember, listOrgMembers, listOrgsForUser } from './service.js';
+import { listOrgMembers, listOrgsForUser, refuseForgeAsMember } from './service.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -244,6 +244,8 @@ orgRoutes.post(
       throw conflict('personal org cannot have additional members', 'PERSONAL_ORG_IMMUTABLE');
     }
 
+    // Before the lookup: an address whose account is not minted yet would otherwise be invited.
+    refuseForgeAsMember({ email });
     const [target] = await db
       .select({ id: users.id })
       .from(users)
@@ -286,12 +288,7 @@ orgRoutes.post(
       return c.json(answer(invitedSchema, body), 202);
     }
 
-    if (isNeverAMember(target.id)) {
-      throw conflict(
-        `${email} is Forge's own account, which writes what Forge's sweeps say and is never a member`,
-        'FORGE_IS_NOT_A_MEMBER',
-      );
-    }
+    refuseForgeAsMember({ userId: target.id });
     const [inserted] = await db
       .insert(organizationMembers)
       .values({ orgId, userId: target.id, role })

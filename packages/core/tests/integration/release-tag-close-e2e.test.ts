@@ -319,14 +319,26 @@ describe('PATCH /api/issues/batch (criterion 13)', () => {
       skipped: Array<{ id: string; reason: string }>;
     };
     expect(body.updated.map((u) => u.id)).toEqual([carried]);
-    expect(body.skipped).toEqual([{ id: uncarried, reason: 'close_requires_release_tag' }]);
+    expect(body.skipped).toEqual([
+      {
+        id: uncarried,
+        reason: 'close_requires_release_tag',
+        code: 'CLOSE_REQUIRES_RELEASE_TAG',
+        message: expect.any(String),
+      },
+    ]);
     expect(await statusOf(uncarried)).toBe('awaiting_release');
 
     host.answering(GITHUB_NOT_FOUND);
     const unread = await seedIssue(w, { commit: carriedAt });
     const again = await patch([unread]);
     expect(((await again.json()) as { skipped: unknown[] }).skipped).toEqual([
-      { id: unread, reason: 'release_tag_unread' },
+      {
+        id: unread,
+        reason: 'release_tag_unread',
+        code: 'RELEASE_TAG_UNREAD',
+        message: expect.any(String),
+      },
     ]);
   }, 180_000);
 });

@@ -40,19 +40,21 @@ beforeAll(async () => {
   process.env.NODE_ENV ??= 'test';
   await registerIntegrationsForTest();
 
-  const [transitionMod, extrasMod, batchMod, jwtMod, patMod, errMod] = await Promise.all([
+  const [transitionMod, extrasMod, batchMod, jwtMod, patMod, errMod, issueMod] = await Promise.all([
     import('../../src/issues/transition.js'),
     import('../../src/issues/extras-routes.js'),
     import('../../src/release-batch/routes.js'),
     import('../../src/auth/jwt.js'),
     import('../../src/auth/pat.js'),
     import('../../src/middleware/error.js'),
+    import('../../src/issues/routes.js'),
   ]);
   signUserToken = jwtMod.signUserToken;
   mintPat = patMod.mintPat;
   app = new Hono();
   app.route('/api/issues', extrasMod.issueExtrasRoutes);
   app.route('/api/issues', transitionMod.transitionRoutes);
+  app.route('/api/issues', issueMod.issueRoutes);
   app.route('/api/projects', batchMod.releaseBatchRoutes);
   app.onError(errMod.errorHandler);
 }, 60_000);
@@ -131,7 +133,13 @@ async function batch(ids: string[], data: Record<string, unknown>) {
   expect(res.status).toBe(200);
   return (await res.json()) as {
     updated: Array<{ id: string }>;
-    skipped: Array<{ id: string; reason: string; detail?: string }>;
+    skipped: Array<{
+      id: string;
+      reason: string;
+      code?: string;
+      message?: string;
+      detail?: string;
+    }>;
   };
 }
 
@@ -148,9 +156,29 @@ async function mcp(args: Record<string, unknown>) {
   }
 }
 
-describe('a move to Releasing from any door but a release batch (criteria 5, 6, 7)', () => {
-  for (const from of ['awaiting_release', 'testing', 'in_progress'] as const) {
-    it(`is refused at REST /transition from ${from}, saying where a release starts`, async () => {
+describe('a move to Releasing from any door but a release batch (criteria 5, 6, 7, 24)', () => {
+  beforeEach(async () => {
+    await fx.declareProduction();
+  });
+
+  it('is refused at REST /transition from Awaiting release, saying where a release starts', async () => {
+    const id = await plantIssue('awaiting_release');
+    const res = await rest(id, { toStatus: 'releasing' });
+
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe('RELEASING_STARTS_FROM_RELEASE');
+    expect(body.message).toContain(
+      'Releasing (releasing) means a release batch is carrying this issue to production right now',
+    );
+    expect(body.message).toContain("Release now on this issue's page or at the release gate");
+    expect(body.message).toContain(`POST /api/projects/${projectId}/release-batches`);
+    expect(await row(id)).toEqual({ status: 'awaiting_release', claim: null });
+    expect(await movesInto(id, 'releasing')).toBe(0);
+  });
+
+  for (const from of ['open', 'developed', 'testing', 'in_progress'] as const) {
+    it(`is refused at REST /transition from ${from}, saying it must reach Awaiting release first`, async () => {
       const id = await plantIssue(from);
       const res = await rest(id, { toStatus: 'releasing' });
 
@@ -158,18 +186,15 @@ describe('a move to Releasing from any door but a release batch (criteria 5, 6, 
       const body = (await res.json()) as { code: string; message: string };
       expect(body.code).toBe('RELEASING_STARTS_FROM_RELEASE');
       expect(body.message).toContain(
-        'Releasing (releasing) means a release batch is carrying this issue to production right now',
+        'so it must reach Awaiting release (awaiting_release) before a release can carry it',
       );
-      expect(body.message).toContain(
-        "the Release now button on this issue's page or at the release gate",
-      );
-      expect(body.message).toContain(`POST /api/projects/${projectId}/release-batches`);
+      expect(body.message).not.toContain('Release now');
       expect(await row(id)).toEqual({ status: from, claim: null });
       expect(await movesInto(id, 'releasing')).toBe(0);
     });
   }
 
-  it('is refused issue by issue at PATCH /issues/batch, and moves none of them', async () => {
+  it('is refused issue by issue at PATCH /issues/batch with the same code and sentence, and moves none of them', async () => {
     const a = await plantIssue('awaiting_release');
     const b = await plantIssue('awaiting_release');
     const answer = await batch([a, b], { status: 'releasing' });
@@ -177,23 +202,95 @@ describe('a move to Releasing from any door but a release batch (criteria 5, 6, 
     expect(answer.updated).toEqual([]);
     for (const id of [a, b]) {
       const result = answer.skipped.find((r) => r.id === id);
-      expect(result).toMatchObject({ reason: 'releasing_starts_from_release' });
+      expect(result).toMatchObject({
+        reason: 'releasing_starts_from_release',
+        code: 'RELEASING_STARTS_FROM_RELEASE',
+      });
+      expect(result?.message).toContain(
+        'Releasing (releasing) means a release batch is carrying this issue to production right now',
+      );
+      expect(result?.message).toContain("Release now on this issue's page");
       expect(await row(id)).toEqual({ status: 'awaiting_release', claim: null });
     }
   });
 
-  it('is refused at forge_issues transition, naming the code', async () => {
+  it('carries the refusal sentence beside the note that nothing else was written (criterion 31)', async () => {
+    const id = await plantIssue('testing');
+    const answer = await batch([id], { status: 'releasing', priority: 'high' });
+
+    expect(answer.skipped[0]).toMatchObject({
+      reason: 'releasing_starts_from_release',
+      code: 'RELEASING_STARTS_FROM_RELEASE',
+    });
+    expect(answer.skipped[0]?.message).toContain('must reach Awaiting release');
+    expect(answer.skipped[0]?.detail).toContain('nothing else this update carried was written');
+  });
+
+  for (const action of ['transition', 'update'] as const) {
+    it(`is refused at forge_issues ${action}, naming the code`, async () => {
+      const id = await plantIssue('awaiting_release');
+      const answer = await mcp({ action, documentId: id, data: { status: 'releasing' } });
+
+      expect(answer.isError).toBe(true);
+      expect(answer.text).toContain('RELEASING_STARTS_FROM_RELEASE');
+      expect(answer.text).toContain("Release now on this issue's page");
+      expect(await row(id)).toEqual({ status: 'awaiting_release', claim: null });
+    });
+  }
+
+  it('is refused at PATCH /api/issues/:id, which takes no status, naming where a status moves (criterion 23)', async () => {
     const id = await plantIssue('awaiting_release');
-    const answer = await mcp({
-      action: 'transition',
-      documentId: id,
-      data: { status: 'releasing' },
+    const res = await app.request(`/api/issues/${id}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ status: 'releasing' }),
     });
 
-    expect(answer.isError).toBe(true);
-    expect(answer.text).toContain('RELEASING_STARTS_FROM_RELEASE');
-    expect(answer.text).toContain('Release now button');
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as {
+      code: string;
+      message: string;
+      details: { formErrors: string[] };
+    };
+    expect(body.code).toBe('BAD_REQUEST');
+    expect(body.message).toContain('Unrecognized key: "status"');
+    expect(body.message).toContain('POST /api/issues/:id/transition');
+    expect(body.details.formErrors).toContain(
+      'Unrecognized key: "status" — an issue update never writes a status. A status moves through POST /api/issues/:id/transition (or `forge_issues` `transition`), and only starting a release puts an issue at Releasing.',
+    );
     expect(await row(id)).toEqual({ status: 'awaiting_release', claim: null });
+    expect(await movesInto(id, 'releasing')).toBe(0);
+  });
+});
+
+describe('the refusal names only the doors this project has (criteria 25, 26)', () => {
+  it('on a project that ships nothing, names the setting and no release door', async () => {
+    const id = await plantIssue('awaiting_release');
+    const res = await rest(id, { toStatus: 'releasing' });
+
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe('RELEASING_STARTS_FROM_RELEASE');
+    expect(body.message).toContain('This project ships nothing');
+    expect(body.message).toContain('Shape & release setting chooses a shape that releases');
+    expect(body.message).not.toMatch(/Release now|release gate|release-batches/);
+    expect(await row(id)).toEqual({ status: 'awaiting_release', claim: null });
+  });
+
+  it('on a project declaring a release with no live deploy target, says none can start until one is added', async () => {
+    await harness.db.execute(sql`
+      UPDATE projects SET base_branch = 'main', release_chain = '[{"branch": "main"}]'::jsonb
+      WHERE id = ${projectId}
+    `);
+    const id = await plantIssue('awaiting_release');
+    const res = await rest(id, { toStatus: 'releasing' });
+
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe('RELEASING_STARTS_FROM_RELEASE');
+    expect(body.message).toContain(
+      'no release can start until one is added on its integrations screen',
+    );
+    expect(body.message).not.toMatch(/Release now|release gate/);
   });
 });
 

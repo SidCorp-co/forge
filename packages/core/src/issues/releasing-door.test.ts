@@ -13,6 +13,12 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
+const declaration = vi.fn(async (): Promise<{ kind: string } | null> => ({ kind: 'gated' }));
+vi.mock('../release-batch/gate.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../release-batch/gate.js')>()),
+  resolveReleaseDeclaration: () => declaration(),
+}));
+
 const { releasingDoorRefusal } = await import('./releasing-door.js');
 
 const base = { issueId: 'iss-1', projectId: 'proj-7' } as const;
@@ -20,6 +26,8 @@ const base = { issueId: 'iss-1', projectId: 'proj-7' } as const;
 beforeEach(() => {
   claimRow.mockReset();
   claimRow.mockResolvedValue([{ run: null }]);
+  declaration.mockReset();
+  declaration.mockResolvedValue({ kind: 'gated' });
 });
 
 describe('entering releasing (ISS-1421)', () => {
@@ -33,10 +41,63 @@ describe('entering releasing (ISS-1421)', () => {
     expect(refusal?.detail).toContain(
       'Releasing (releasing) means a release batch is carrying this issue to production right now',
     );
-    expect(refusal?.detail).toContain("the Release now button on this issue's page");
+    expect(refusal?.detail).toContain("Release now on this issue's page");
     expect(refusal?.detail).toContain('at the release gate');
     expect(refusal?.detail).toContain('POST /api/projects/proj-7/release-batches');
     expect(refusal?.detail).toContain('The issue stays at Awaiting release (awaiting_release).');
+  });
+
+  it('tells an issue not yet at the gate it must reach Awaiting release first, not to press Release now', async () => {
+    for (const from of ['open', 'developed', 'testing'] as const) {
+      const refusal = await releasingDoorRefusal({ ...base, from, to: 'releasing' });
+      expect(refusal?.code, from).toBe('RELEASING_STARTS_FROM_RELEASE');
+      expect(refusal?.detail, from).toContain(
+        'so it must reach Awaiting release (awaiting_release) before a release can carry it',
+      );
+      expect(refusal?.detail, from).not.toContain('Release now');
+      expect(refusal?.detail, from).not.toContain('release-batches');
+    }
+  });
+
+  it('on a project that ships nothing, names the setting and no release door', async () => {
+    declaration.mockResolvedValue({ kind: 'no-release' });
+    const refusal = await releasingDoorRefusal({
+      ...base,
+      from: 'awaiting_release',
+      to: 'releasing',
+    });
+    expect(refusal?.code).toBe('RELEASING_STARTS_FROM_RELEASE');
+    expect(refusal?.detail).toContain('This project ships nothing');
+    expect(refusal?.detail).toContain('Shape & release setting chooses a shape that releases');
+    expect(refusal?.detail).not.toContain('Release now');
+    expect(refusal?.detail).not.toContain('release gate');
+    expect(refusal?.detail).not.toContain('release-batches');
+  });
+
+  it('on a project with no live deploy target, says no release can start until one is added', async () => {
+    declaration.mockResolvedValue({ kind: 'undeclared-target' });
+    const refusal = await releasingDoorRefusal({
+      ...base,
+      from: 'awaiting_release',
+      to: 'releasing',
+    });
+    expect(refusal?.detail).toContain(
+      'no release can start until one is added on its integrations screen',
+    );
+    expect(refusal?.detail).not.toContain('Release now');
+    expect(refusal?.detail).not.toContain('release gate');
+  });
+
+  it('names no door where the declaration cannot be read', async () => {
+    declaration.mockRejectedValue(new Error('db down'));
+    const refusal = await releasingDoorRefusal({
+      ...base,
+      from: 'awaiting_release',
+      to: 'releasing',
+    });
+    expect(refusal?.code).toBe('RELEASING_STARTS_FROM_RELEASE');
+    expect(refusal?.detail).toContain('could not be read, so no door is named here');
+    expect(refusal?.detail).not.toContain('Release now');
   });
 
   it('refuses it from any rung, not only the gate', async () => {

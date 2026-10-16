@@ -8,6 +8,7 @@ import {
 import { issuePriorities, issueStatuses } from '../db/schema.js';
 import { BATCH_SKIP_BY_CODE } from './batch-skip-reason.js';
 import { ISSUE_REF_REFUSALS } from './search-reference.js';
+import type { TransitionErrorCode } from './transition-error.js';
 import { rewrittenSchema } from './transition-reference.js';
 
 export const batchPatchBodySchema = z
@@ -65,6 +66,18 @@ export const batchResultSchema = z.object({
     z.object({
       id: z.string(),
       reason: skipReasonSchema,
+      code: z
+        .enum(Object.keys(BATCH_SKIP_BY_CODE) as [TransitionErrorCode, ...TransitionErrorCode[]])
+        .optional()
+        .describe(
+          'Set where a status move was refused: the code every other door answers it with.',
+        ),
+      message: z
+        .string()
+        .optional()
+        .describe(
+          'Set where a status move was refused: the sentence saying why, and what to do instead.',
+        ),
       detail: z
         .string()
         .optional()

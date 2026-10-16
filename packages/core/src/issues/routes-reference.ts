@@ -53,26 +53,40 @@ export const issueCreateSchema = z
 
 export type IssueCreateInput = z.infer<typeof issueCreateSchema>;
 
+/** An update that carries `status` is told where a status moves, rather than only that the key is
+ *  unknown: a reader told "unrecognized" tries another spelling (ISS-1421 round 2). */
+export const STATUS_IS_NOT_AN_UPDATE =
+  'Unrecognized key: "status" — an issue update never writes a status. A status moves through ' +
+  'POST /api/issues/:id/transition (or `forge_issues` `transition`), and only starting a release ' +
+  'puts an issue at Releasing.';
+
 export const issuePatchSchema = z
-  .object({
-    title: z.string().trim().min(1).max(500).optional(),
-    description: z.string().max(100_000).nullable().optional(),
-    descriptionFormat: z.enum(BODY_FORMATS).optional(),
-    priority: z.enum(issuePriorities).optional(),
-    category: z.string().trim().min(1).max(100).nullable().optional(),
-    complexity: z.enum(issueComplexities).nullable().optional(),
-    plan: z.string().max(200_000).nullable().optional(),
-    acceptanceCriteria: z.string().max(100_000).nullable().optional(),
-    assigneeId: z.uuid().nullable().optional(),
-    labels: z.array(labelAttachItemSchema).max(100).optional(),
-    metadata: issueMetadataSchema.optional(),
-    releaseNotes: ReleaseNotesSchema.nullable().optional(),
-    sessionContext: sessionContextSchema,
-    detectorKey: z.string().trim().min(1).max(120).optional(),
-    landingShape: landingShapeInputSchema.optional(),
-    expect: sessionContextExpectSchema.optional(),
-  })
-  .strict()
+  .strictObject(
+    {
+      title: z.string().trim().min(1).max(500).optional(),
+      description: z.string().max(100_000).nullable().optional(),
+      descriptionFormat: z.enum(BODY_FORMATS).optional(),
+      priority: z.enum(issuePriorities).optional(),
+      category: z.string().trim().min(1).max(100).nullable().optional(),
+      complexity: z.enum(issueComplexities).nullable().optional(),
+      plan: z.string().max(200_000).nullable().optional(),
+      acceptanceCriteria: z.string().max(100_000).nullable().optional(),
+      assigneeId: z.uuid().nullable().optional(),
+      labels: z.array(labelAttachItemSchema).max(100).optional(),
+      metadata: issueMetadataSchema.optional(),
+      releaseNotes: ReleaseNotesSchema.nullable().optional(),
+      sessionContext: sessionContextSchema,
+      detectorKey: z.string().trim().min(1).max(120).optional(),
+      landingShape: landingShapeInputSchema.optional(),
+      expect: sessionContextExpectSchema.optional(),
+    },
+    {
+      error: (iss) =>
+        iss.code === 'unrecognized_keys' && iss.keys.includes('status')
+          ? STATUS_IS_NOT_AN_UPDATE
+          : undefined,
+    },
+  )
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' })
   .refine((o) => o.expect === undefined || Object.keys(o).some((k) => k !== 'expect'), {
     message: '`expect` is a precondition on a write — send the field(s) to write alongside it',

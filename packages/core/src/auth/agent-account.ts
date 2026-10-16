@@ -3,6 +3,29 @@ import { HTTPException } from 'hono/http-exception';
 
 export const AGENT_EMAIL_DOMAIN = 'agents.forge.invalid';
 
+/** Forge's own account's address: the account its sweeps write as, a member of nothing. */
+export const FORGE_ADDRESS = `forge@${AGENT_EMAIL_DOMAIN}`;
+
+/** An address only Forge mints, for an agent account; no person signs up or signs in with one. */
+export function isAgentAddress(email: string): boolean {
+  return email.trim().toLowerCase().endsWith(`@${AGENT_EMAIL_DOMAIN}`);
+}
+
+export function isForgeAddress(email: string): boolean {
+  return email.trim().toLowerCase() === FORGE_ADDRESS;
+}
+
+export const AGENT_ADDRESS_RESERVED =
+  `an address on ${AGENT_EMAIL_DOMAIN} belongs to an agent account Forge mints, and no person ` +
+  'signs up or signs in with one. Use an address you receive mail at.';
+
+export function agentAddressReserved(email: string): HTTPException {
+  return new HTTPException(409, {
+    message: AGENT_ADDRESS_RESERVED,
+    cause: { code: 'AGENT_ADDRESS_RESERVED', details: { email } },
+  });
+}
+
 const HANDLE_PATTERN = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
 
 export function isAgentHandle(handle: string): boolean {

@@ -10,6 +10,9 @@ export const register = describeOperation({
   responses: {
     201: json(registeredSchema, 'The new account'),
     400: fail('WEAK_PASSWORD', 'the password is too easy to guess; `details` carries the advice'),
-    409: fail('CONFLICT', 'the email is already registered'),
+    409: fail({
+      CONFLICT: 'the email is already registered',
+      AGENT_ADDRESS_RESERVED: 'the address is on the domain Forge mints agent accounts on',
+    }),
   },
 });
