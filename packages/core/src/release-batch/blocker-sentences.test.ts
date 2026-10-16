@@ -387,7 +387,12 @@ describe('NO_RELEASE_GATE — what it means for the issues named', () => {
 
   it('says that on this project closing an issue is what ships it', () => {
     expect(sentence).toMatch(/closing an issue is what ships it/);
-    expect(sentence).toMatch(/Close these issues to ship them/);
+  });
+
+  // Every door reads this one sentence, and none of them names the issues it was sent with, so a
+  // "these issues" here points at a list the reader was never shown (ISS-1229 judge j16).
+  it('asks the reader to close no issues it does not name', () => {
+    expect(sentence).not.toMatch(/\bthese issues\b/i);
   });
 
   it('names no status in a code span and offers no remedy that is the state it is in', () => {

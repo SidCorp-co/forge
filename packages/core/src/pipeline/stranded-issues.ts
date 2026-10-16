@@ -1,6 +1,7 @@
 import { and, asc, eq, isNotNull, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueStatuses, issues, projects } from '../db/schema.js';
+import { statusEnteredAtSql } from '../issues/status-entered-at.js';
 import { ISSUE_STATUS_LABELS } from '../issues/status-sets.js';
 import { elapsedWords } from '../lib/elapsed-words.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -105,7 +106,12 @@ export async function detectStrandedIssues(
         issSeq: issues.issSeq,
         title: issues.title,
         mergedAt: issues.mergedAt,
-        updatedAt: issues.updatedAt,
+        // How long it has been parked: the row's own `updated_at` moves on any write (ISS-1229).
+        parkedAt: sql<string>`${statusEnteredAtSql({
+          id: sql`"issues"."id"`,
+          status: sql`"issues"."status"`,
+          createdAt: sql`"issues"."created_at"`,
+        })}::text`,
         cursorTs: sql<string>`"issues"."updated_at"::text`,
         projectName: projects.name,
       })
@@ -137,7 +143,7 @@ export async function detectStrandedIssues(
     let unreachable = 0;
     for (const row of rows) {
       const ref = row.issSeq !== null ? formatIssueRef(row.issuePrefix, row.issSeq) : 'An issue';
-      const age = elapsedWords(row.mergedAt ?? row.updatedAt, now);
+      const age = elapsedWords(row.mergedAt ?? row.parkedAt, now);
       const lead = row.mergedAt
         ? `its code merged ${age} ago but the issue is still parked`
         : `it has been parked for ${age}`;

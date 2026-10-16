@@ -22,9 +22,9 @@ describe('the orphan-assertion notice, in the words a reader uses (ISS-1229)', (
     expect(notice.title).toBe('ISS-78 says work is in progress with no run behind it — Desk');
   });
 
-  it('says how long the issue has asserted work, never the stored time', () => {
+  it('says how long nothing has worked the issue, never the stored time', () => {
     expect(notice.body).toBe(
-      'ISS-78 has read In progress for 1 hour and no job, issue run or run session is live for it.',
+      'ISS-78 reads In progress, and nothing has worked it for 1 hour: no job, issue run or run session is live for it.',
     );
     expect(notice.body).not.toMatch(STORED_TIME);
   });

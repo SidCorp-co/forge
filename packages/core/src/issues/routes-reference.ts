@@ -74,7 +74,7 @@ export const issuePatchSchema = z
   })
   .strict()
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' })
-  .refine((o) => Object.keys(o).some((k) => k !== 'expect'), {
+  .refine((o) => o.expect === undefined || Object.keys(o).some((k) => k !== 'expect'), {
     message: '`expect` is a precondition on a write — send the field(s) to write alongside it',
   });
 
