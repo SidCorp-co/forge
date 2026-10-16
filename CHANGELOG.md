@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.249] - 2026-10-16
+
+Claude Code connects to Forge by signing in through the browser, no copied token
+
+### Added
+
+- **Claude Code connects to Forge by signing in through the browser.** No pasted token: the consent page picks the projects and permissions, the access token lasts an hour, and revoking it under API Tokens signs the client out.
+
 ## [0.4.0-dev.248] - 2026-10-16
 
 Release pages read as release notes: a plain title and sentence for each change

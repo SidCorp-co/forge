@@ -1,1 +1,0 @@
-**Claude Code connects to Forge by signing in through the browser.** No pasted token: the consent page picks the projects and permissions, the access token lasts an hour, and revoking it under API Tokens signs the client out.
