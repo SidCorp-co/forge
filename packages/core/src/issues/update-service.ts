@@ -51,11 +51,7 @@ function declarationOnly(input: IssueUpdateInput): boolean {
   );
 }
 
-/**
- * The durable half of `updateIssueFields`, on a transaction the caller holds, so the write commits
- * or rolls back with whatever else that transaction does: a status move (ISS-1229 r10). The caller
- * announces with `announceContractInput` once it commits, and only where `wrote` is true.
- */
+/** The write on the caller's transaction; it announces with `announceContractInput` after commit. */
 export async function writeIssueFieldsIn(
   tx: IssueFieldsTx,
   input: IssueUpdateInput,

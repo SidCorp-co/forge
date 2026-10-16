@@ -63,11 +63,8 @@ export type TransitionIssueRow = {
 type TransitionTx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
 export interface ApplyStatusTransitionOptions {
-  /** Runs inside the move's transaction before the status write, so what it writes commits or
-   *  rolls back with the move; a refusal after it leaves nothing it wrote. */
   beforeStatusWrite?: (tx: TransitionTx) => Promise<void>;
-  /** The release notes `beforeStatusWrite` stores, where it stores them: the close is judged on
-   *  these rather than on the row as it stood before the transaction. */
+  /** The release notes `beforeStatusWrite` stores, which the close is judged on. */
   releaseNotesWritten?: unknown;
   /**
    * Bypass `canTransitionFree`. In practice that guard forbids `draft` and the
