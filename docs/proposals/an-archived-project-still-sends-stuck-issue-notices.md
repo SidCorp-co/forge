@@ -29,3 +29,10 @@ Either is a small change; which is right is the owner's:
   that says work is in progress, and the sweeps need no exception.
 
 Until one is taken, a judge or a person who archives a scratch project drops its live issues first.
+
+## Honest costs
+
+| Cost | What it takes |
+|---|---|
+| Skipping archived projects hides a lie the issue still tells | An archived project's issue can read In progress for ever with nothing behind it, and no notice will say so; whoever unarchives it meets that state without warning. |
+| Refusing the archive puts work before the archive | Every live issue has to be dropped or closed before a project can be put away, which for a scratch project of twenty issues is twenty moves, or a bulk drop the archive route does not offer today. |
