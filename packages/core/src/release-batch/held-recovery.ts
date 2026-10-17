@@ -178,13 +178,13 @@ export async function recoverHeldReleaseBatches(
       );
       if (!fenced) continue;
       const pages = await projectPages(row.project_id);
-      await recoverStrandedReleasing(row.run_id, {
+      const handed = await recoverStrandedReleasing(row.run_id, {
         reason: onDecision
           ? decisionHandbackSentence(decisionOf(row), row.run_id, pages)
           : heldHandbackSentence(row.hold_reason, row.run_id, pages),
         comment: true,
       });
-      await emitWedge(row);
+      await emitWedge(row, handed.promoted);
       await syncAgentSessionLifecycle(fenced, 'cancelled');
       recovered++;
     } catch (err) {
@@ -200,7 +200,14 @@ export async function recoverHeldReleaseBatches(
   return { recovered };
 }
 
-async function emitWedge(row: HeldRow): Promise<void> {
+/** Where its issues went: a release that already promoted keeps them for the releasing sweep. */
+function whereTheIssuesWent(promoted: boolean): string {
+  return promoted
+    ? 'It had already put code on production, so the releasing sweep settles its issues.'
+    : 'Every issue in it has been put back at the release gate.';
+}
+
+async function emitWedge(row: HeldRow, promoted: boolean): Promise<void> {
   if (row.decision_owed) {
     await emitPipelineWedge({
       projectId: row.project_id,
@@ -210,8 +217,7 @@ async function emitWedge(row: HeldRow): Promise<void> {
       reason: DECISION_HANDBACK_REASON,
       action: 'Answer the question the release asked, then start the release again.',
       title: 'A release waiting on a decision was handed back',
-      summary:
-        'The release waited on a decision a person owes. Every issue in it has been put back at the release gate, and the question stays open.',
+      summary: `The release waited on a decision a person owes, and the question stays open. ${whereTheIssuesWent(promoted)}`,
       nextStep:
         'Answer the question on the issue it is asked on, then start the release again from the release gate.',
     });
@@ -225,7 +231,7 @@ async function emitWedge(row: HeldRow): Promise<void> {
     reason: HELD_HANDBACK_REASON,
     action: 'Clear what held the release job, then start the release again.',
     title: 'A release was handed back because its job was held for good',
-    summary: `The release job was held because ${heldBecause(row.hold_reason)}, and nothing would have sent it again. Every issue in the release has been put back at the release gate.`,
+    summary: `The release job was held because ${heldBecause(row.hold_reason)}, and nothing would have sent it again. ${whereTheIssuesWent(promoted)}`,
     nextStep: 'Clear what held it, then start the release again from the release gate.',
   });
 }

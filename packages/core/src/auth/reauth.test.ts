@@ -52,7 +52,7 @@ function post(body: unknown, ip = '10.0.0.1') {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-forwarded-for': ip,
+      'x-forwarded-for': `${ip}, 172.70.1.1`,
     },
     body: typeof body === 'string' ? body : JSON.stringify(body),
   });

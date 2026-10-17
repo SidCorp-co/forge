@@ -41,7 +41,7 @@ describe('rateLimit middleware', () => {
 
   it('returns 429 with Retry-After once the bucket is full', async () => {
     const app = makeApp({ windowMs: 60_000, max: 2, by: 'ip' }, 'test');
-    const headers = { 'x-forwarded-for': '10.0.0.1' };
+    const headers = { 'x-forwarded-for': '10.0.0.1, 172.70.1.1' };
 
     const r1 = await app.request('/hit', { headers });
     const r2 = await app.request('/hit', { headers });
@@ -64,7 +64,7 @@ describe('rateLimit middleware', () => {
   // capitalised sentence, how long until the next attempt is accepted.
   it('says in a sentence how long until the next attempt is accepted', async () => {
     const app = makeApp({ windowMs: 60 * 60_000, max: 1, by: 'ip' }, 'test');
-    const headers = { 'x-forwarded-for': '10.0.0.9' };
+    const headers = { 'x-forwarded-for': '10.0.0.9, 172.70.1.1' };
     await app.request('/hit', { headers });
     const refused = await app.request('/hit', { headers });
 
@@ -77,7 +77,7 @@ describe('rateLimit middleware', () => {
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
 
     const app = makeApp({ windowMs: 10_000, max: 1, by: 'ip' }, 'test');
-    const headers = { 'x-forwarded-for': '10.0.0.2' };
+    const headers = { 'x-forwarded-for': '10.0.0.2, 172.70.1.1' };
 
     expect((await app.request('/hit', { headers })).status).toBe(200);
     expect((await app.request('/hit', { headers })).status).toBe(429);
@@ -90,20 +90,20 @@ describe('rateLimit middleware', () => {
   it('keeps independent buckets per IP', async () => {
     const app = makeApp({ windowMs: 60_000, max: 1, by: 'ip' }, 'test');
 
-    expect((await app.request('/hit', { headers: { 'x-forwarded-for': '1.1.1.1' } })).status).toBe(
-      200,
-    );
-    expect((await app.request('/hit', { headers: { 'x-forwarded-for': '2.2.2.2' } })).status).toBe(
-      200,
-    );
-    expect((await app.request('/hit', { headers: { 'x-forwarded-for': '1.1.1.1' } })).status).toBe(
-      429,
-    );
+    expect(
+      (await app.request('/hit', { headers: { 'x-forwarded-for': '1.1.1.1, 172.70.1.1' } })).status,
+    ).toBe(200);
+    expect(
+      (await app.request('/hit', { headers: { 'x-forwarded-for': '2.2.2.2, 172.70.1.1' } })).status,
+    ).toBe(200);
+    expect(
+      (await app.request('/hit', { headers: { 'x-forwarded-for': '1.1.1.1, 172.70.1.1' } })).status,
+    ).toBe(429);
   });
 
   it('keeps independent buckets per user when by=user', async () => {
     const app = makeApp({ windowMs: 60_000, max: 1, by: 'user' }, 'test');
-    const baseIp = { 'x-forwarded-for': '10.0.0.9' };
+    const baseIp = { 'x-forwarded-for': '10.0.0.9, 172.70.1.1' };
 
     expect(
       (await app.request('/hit', { headers: { ...baseIp, 'x-test-user': 'alice' } })).status,
@@ -120,16 +120,16 @@ describe('rateLimit middleware', () => {
     const app = makeApp({ windowMs: 60_000, max: 1, by: 'ip+user' }, 'test');
 
     // Same IP, no user → shared IP bucket → second hit 429.
-    expect((await app.request('/hit', { headers: { 'x-forwarded-for': '3.3.3.3' } })).status).toBe(
-      200,
-    );
-    expect((await app.request('/hit', { headers: { 'x-forwarded-for': '3.3.3.3' } })).status).toBe(
-      429,
-    );
+    expect(
+      (await app.request('/hit', { headers: { 'x-forwarded-for': '3.3.3.3, 172.70.1.1' } })).status,
+    ).toBe(200);
+    expect(
+      (await app.request('/hit', { headers: { 'x-forwarded-for': '3.3.3.3, 172.70.1.1' } })).status,
+    ).toBe(429);
     // Different IP, no user → separate bucket.
-    expect((await app.request('/hit', { headers: { 'x-forwarded-for': '4.4.4.4' } })).status).toBe(
-      200,
-    );
+    expect(
+      (await app.request('/hit', { headers: { 'x-forwarded-for': '4.4.4.4, 172.70.1.1' } })).status,
+    ).toBe(200);
   });
 
   it('lets the request through when no identifier is available', async () => {
@@ -144,7 +144,9 @@ describe('rateLimit middleware', () => {
 
   it('exposes X-RateLimit-* headers on allowed responses', async () => {
     const app = makeApp({ windowMs: 60_000, max: 3, by: 'ip' }, 'test');
-    const res = await app.request('/hit', { headers: { 'x-forwarded-for': '9.9.9.9' } });
+    const res = await app.request('/hit', {
+      headers: { 'x-forwarded-for': '9.9.9.9, 172.70.1.1' },
+    });
     expect(res.headers.get('X-RateLimit-Limit')).toBe('3');
     expect(res.headers.get('X-RateLimit-Remaining')).toBe('2');
     expect(res.headers.get('X-RateLimit-Reset')).toMatch(/^\d+$/);
@@ -169,6 +171,21 @@ describe('a forged X-Forwarded-For entry', () => {
       statuses.push(res.status);
     }
     expect(statuses).toEqual([200, 200, 200, 429, 429]);
+  });
+
+  it('counts a header too short to have crossed both proxies against the connection itself', async () => {
+    const app = makeApp({ windowMs: 3_600_000, max: 2, by: 'ip' }, 'register');
+    const socket = { incoming: { socket: { remoteAddress: '10.0.1.5' } } };
+    const statuses: number[] = [];
+    for (let n = 1; n <= 3; n++) {
+      const res = await app.request(
+        '/hit',
+        { headers: { 'x-forwarded-for': `198.51.100.${n}` } },
+        socket,
+      );
+      statuses.push(res.status);
+    }
+    expect(statuses).toEqual([200, 200, 429]);
   });
 
   it('keeps two real clients behind the same proxies apart', async () => {

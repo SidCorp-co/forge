@@ -267,6 +267,34 @@ describe('a release held on a decision a person owes (criterion 67)', () => {
   });
 });
 
+// Review of r5: a release that already promoted keeps its roster for the releasing sweep, so the
+// owner's notice may not say its issues were put back at the gate.
+describe('a decision-held release that had already promoted', () => {
+  it('leaves its roster to the releasing sweep, and its notice says so', async () => {
+    const a = await fx.insertIssue();
+    const { runId, jobId } = await fx.claim([a]);
+    await hold(jobId, {
+      reason: 'awaiting_decision',
+      autoRelease: false,
+      minutesAgo: 1,
+      decision: 'owed',
+    });
+    await harness.db.execute(sql`
+      INSERT INTO release_attempts (run_id, stage, idempotency_key, commit)
+      VALUES (${runId}, 'promote', 'promote-1', 'abc')
+    `);
+
+    expect(await m.recover(new Date())).toEqual({ recovered: 1 });
+
+    const [notice] = (await harness.db.execute(sql`
+      SELECT body FROM notifications
+      WHERE type = 'pipeline_wedge' AND resolution_key = ${`wedge:${jobId}`}
+    `)) as unknown as Array<{ body: string | null }>;
+    expect(notice?.body ?? '').toContain('the releasing sweep settles its issues');
+    expect(notice?.body ?? '').not.toContain('put back at the release gate');
+  });
+});
+
 describe('a held release the recovery leaves as it found it (criterion 59)', () => {
   it('leaves a self-clearing hold younger than the deadline', async () => {
     const a = await fx.insertIssue();

@@ -22,10 +22,11 @@ describe('clientAddressFrom', () => {
     expect(clientAddressFrom(`198.51.100.9`, undefined, 0)).toBeUndefined();
   });
 
-  it('answers the furthest address seen where the header is shorter than the hops', () => {
-    expect(clientAddressFrom(CLIENT, TRAEFIK, 2)).toBe(CLIENT);
+  // A header shorter than the hops did not cross every trusted proxy, so the caller wrote some of it.
+  it('answers the connection where the header is shorter than the hops', () => {
+    expect(clientAddressFrom('198.51.100.9', TRAEFIK, 2)).toBe(TRAEFIK);
     expect(clientAddressFrom(undefined, TRAEFIK, 2)).toBe(TRAEFIK);
-    expect(clientAddressFrom(undefined, undefined, 2)).toBeUndefined();
+    expect(clientAddressFrom('198.51.100.9', undefined, 2)).toBeUndefined();
   });
 
   it('ignores blank entries and spaces a proxy left', () => {

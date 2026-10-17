@@ -13,7 +13,8 @@ function connectionAddress(c: Context): string | undefined {
   }
 }
 
-/** Read as Express's numeric `trust proxy`; a header shorter than `hops` answers its left-most entry. */
+/** The entry `hops` places from the right; a header shorter than that did not cross every trusted
+ *  proxy, so it vouches for nothing and the connection's own address answers. */
 export function clientAddressFrom(
   forwardedFor: string | undefined,
   connection: string | undefined,
@@ -24,9 +25,7 @@ export function clientAddressFrom(
     .map((s) => s.trim())
     .filter((s) => s.length > 0)
     .reverse();
-  const chain = [connection, ...appended];
-  const at = Math.min(hops, chain.length - 1);
-  return chain[at];
+  return hops > 0 && appended.length >= hops ? appended[hops - 1] : connection;
 }
 
 export function clientIpOf(c: Context): string | undefined {
