@@ -23,7 +23,7 @@
 - **A box can only start work on a project it serves.** A box with no runner there, a disabled
   box or a withdrawn runner is refused before claiming anything, and told which, and what an
   admitted box is.
-- **Sign-in and register limits count the real client.** A forged X-Forwarded-For header no longer earns fresh attempts; the address the proxies vouch for is counted. (ISS-1421)
+- **Sign-in and register limits count the real client.** Behind Cloudflare that is the address Cloudflare names; a forged X-Forwarded-For or CF-Connecting-IP no longer earns fresh attempts. (ISS-1421)
 - **A new token reaches only what its creator chose.** Creating one without picking permissions used
   to hand over everything; it is now refused, and full access is something you tick on purpose.
   Tokens you already hold are unchanged.

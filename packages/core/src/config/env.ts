@@ -22,9 +22,23 @@ const EnvSchema = z.object({
   AUTH_COOKIE_DOMAIN: z.string().optional(),
   PORT: z.coerce.number().int().positive().default(8080),
   NODE_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
-  /** How many proxies in front of core append to X-Forwarded-For (`middleware/client-ip.ts`). Forge's
-   *  own deployments sit behind Cloudflare and then Coolify's Traefik, which is 2. */
-  TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(2),
+  /** Cloudflare's edge ranges, comma-separated, replacing the list in `middleware/cloudflare-ranges.ts`
+   *  where Cloudflare has published a newer one. An empty value is refused: it would leave no edge
+   *  recognised, and every person behind Cloudflare would share an edge's address. */
+  CLOUDFLARE_IP_RANGES: z
+    .string()
+    .optional()
+    .transform((v) =>
+      v === undefined
+        ? undefined
+        : v
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean),
+    )
+    .refine((v) => v === undefined || v.length > 0, {
+      message: 'CLOUDFLARE_IP_RANGES is empty; leave it unset to use the shipped list',
+    }),
   RATE_LIMIT_AUTH_LOCAL_MAX: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_AUTH_LOCAL_WINDOW_MS: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_AUTH_REGISTER_MAX: z.coerce.number().int().positive().optional(),
