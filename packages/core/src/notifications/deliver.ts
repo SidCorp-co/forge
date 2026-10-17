@@ -100,6 +100,16 @@ function textNamesSubject(title: string, name: string): boolean {
     : title.toLowerCase().includes(name.toLowerCase());
 }
 
+/** Whether this record has reached any reader's bell. */
+async function anyoneTold(recordId: string): Promise<boolean> {
+  const rows = await db
+    .select({ id: notificationDeliveryMembers.notificationId })
+    .from(notificationDeliveryMembers)
+    .where(eq(notificationDeliveryMembers.notificationId, recordId))
+    .limit(1);
+  return rows.length > 0;
+}
+
 /** A silence THIS reader set that covers this record. */
 async function silencedFor(userId: string, input: DeliverInput, now: Date): Promise<boolean> {
   const rows = await db
@@ -346,21 +356,28 @@ export async function recordAndDeliver(
     const ripe = existing.state === 'pending' && heldFor >= owed;
     const inhibitedNow = ripe || existing.state === 'firing' ? await inhibitor(input) : null;
     const promote = ripe && !inhibitedNow;
-    await db
+    // Until somebody is told: the sentence they read is what was raised, and a resolved row's
+    // account of it must not move afterwards. Firing alone is not telling — a silence can hold it.
+    const told = existing.state === 'firing' && (await anyoneTold(existing.id));
+    const [stored] = await db
       .update(notifications)
       .set({
         lastSeenAt: now,
-        // Until it is delivered: once a person has been told, the sentence they read is what was
-        // raised, and a resolved row's account of it must not move afterwards (ISS-1229 r13).
-        ...(input.body !== undefined && existing.state !== 'firing' ? { body: input.body } : {}),
+        ...(input.body !== undefined && !told ? { body: input.body } : {}),
         ...(promote ? { state: 'firing' as const } : {}),
         ...(ripe && inhibitedNow ? { state: 'inhibited' as const, inhibitedBy: inhibitedNow } : {}),
       })
-      .where(eq(notifications.id, existing.id));
+      .where(eq(notifications.id, existing.id))
+      .returning({ body: notifications.body });
     if (existing.state === 'pending' && !promote) return { id: existing.id, delivered: 0 };
     if (existing.state === 'inhibited') return { id: existing.id, delivered: 0 };
     if (inhibitedNow) return { id: existing.id, delivered: 0 };
-    const delivered = await deliverTo(existing.id, input, now, undefined);
+    const delivered = await deliverTo(
+      existing.id,
+      { ...input, body: stored ? stored.body : (input.body ?? null) },
+      now,
+      undefined,
+    );
     return { id: existing.id, delivered };
   }
 

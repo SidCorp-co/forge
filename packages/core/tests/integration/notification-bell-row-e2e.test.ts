@@ -82,4 +82,45 @@ describe('one bell row per notice, one clock, one count (ISS-1229 r13)', () => {
     expect(stored?.state).toBe('firing');
     expect(stored?.body).toBe('stood 17 minutes');
   });
+
+  it('keeps the sentence a person was told, not one a silenced sighting carried', async () => {
+    const issueId = await seedShipped(65, 'Retry failed webhooks');
+    const at = (m: number) => new Date(Date.parse('2026-10-17T10:00:00.000Z') + m * 60_000);
+    await fx.db.execute(sql`
+      INSERT INTO notification_silences (created_by, resolution_key, reason, expires_at)
+      VALUES (${fx.owner}, 'stuck:65', 'on leave', ${at(6).toISOString()})
+    `);
+    const { hooks } = await import('../../src/pipeline/hooks.js');
+    const emitted: Array<string | null> = [];
+    const off = hooks.on('notificationCreated', (p) => {
+      emitted.push(p.body ?? null);
+    });
+    const raise = (body: string, m: number) =>
+      fx.mods.recordAndDeliver(
+        {
+          recipients: [fx.owner],
+          projectId: fx.project.id,
+          issueId,
+          type: 'issue_stranded',
+          title: 'stuck',
+          body,
+          resolutionKey: 'stuck:65',
+        },
+        at(m),
+      );
+    try {
+      await raise('stood 15 minutes', 0);
+      await raise('stood 17 minutes', 2);
+      await raise('stood 19 minutes', 4);
+      expect(await inbox().then((p) => p.items)).toHaveLength(0);
+      await raise('stood 23 minutes', 8);
+      await raise('stood 30 minutes', 15);
+    } finally {
+      off();
+    }
+
+    const [row] = (await inbox()).items as [InboxRow];
+    expect(row.body).toBe('stood 23 minutes');
+    expect(emitted).toEqual(['stood 23 minutes']);
+  });
 });

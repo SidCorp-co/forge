@@ -13,14 +13,17 @@ const server: {
   attention: (orgId?: string | null) => Promise<unknown>;
   devices: () => Promise<unknown>;
   activeOrgId: string | null;
+  scopeRead: boolean;
 } = {
   attention: async () => ({}),
   devices: async () => [],
   activeOrgId: null,
+  scopeRead: true,
 };
 
 vi.mock("./api", () => ({ attentionApi: { list: (orgId?: string | null) => server.attention(orgId) } }));
-vi.mock("@/features/orgs/active-org", () => ({ useActiveOrg: () => ({ activeOrgId: server.activeOrgId }) }));
+vi.mock("@/features/orgs/active-org", () => ({ useActiveOrg: () => ({ activeOrgId: server.activeOrgId, scopeRead: server.scopeRead }),
+}));
 vi.mock("@/features/runners/hooks", async () => {
   const { useQuery } = await import("@tanstack/react-query");
   return {
@@ -53,6 +56,7 @@ beforeEach(() => {
   server.attention = async () => response;
   server.devices = async () => [];
   server.activeOrgId = null;
+  server.scopeRead = true;
 });
 afterEach(cleanup);
 
@@ -73,6 +77,24 @@ describe("useAttention", () => {
     const whole = renderHook(() => useAttention(), { wrapper: wrapper() });
     await waitFor(() => expect(whole.result.current.read).toBe("read"));
     expect(asked).toEqual(["11111111-1111-4111-8111-111111111111", null]);
+  });
+
+  it("asks nothing while the active organisation is still being read, then asks for it alone", async () => {
+    const asked: Array<string | null | undefined> = [];
+    server.attention = async (orgId) => {
+      asked.push(orgId);
+      return response;
+    };
+    server.scopeRead = false;
+    const hook = renderHook(() => useAttention(), { wrapper: wrapper() });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(asked).toEqual([]);
+    expect(hook.result.current.total).toBeUndefined();
+    server.scopeRead = true;
+    server.activeOrgId = "11111111-1111-4111-8111-111111111111";
+    hook.rerender();
+    await waitFor(() => expect(hook.result.current.read).toBe("read"));
+    expect(asked).toEqual(["11111111-1111-4111-8111-111111111111"]);
   });
 
   it("states no total while the attention answer is on its way, and one once both reads are in", async () => {

@@ -191,8 +191,8 @@ notificationRoutes.get(
       )`,
     ];
     if (unread) conditions.push(unreadDelivery);
-    // One resolution, one row (ISS-1229 r13): the row that raised a record reads it resolved, so the
-    // notice announcing that resolution is not listed beside it.
+    // One resolution, one row (ISS-1229 r13): a resolution notice stored before then is not listed
+    // beside the row that raised its record, which reads resolved itself. Nothing stores one now.
     conditions.push(sql`NOT (${notificationDeliveries.resolvedNotice} AND EXISTS (
       SELECT 1 FROM notification_delivery_members rm
       JOIN notification_delivery_members om ON om.notification_id = rm.notification_id

@@ -82,22 +82,9 @@ export async function sendResolvedNotice(notificationId: string): Promise<number
       ),
     );
 
+  // Announced, not stored: the row that raised it reads resolved already (ISS-1229 r13).
   const recipients = [...new Set(told.map((t) => t.userId))];
   for (const userId of recipients) {
-    const [delivery] = await db
-      .insert(notificationDeliveries)
-      .values({
-        userId,
-        channel: 'bell',
-        resolvedNotice: true,
-        title: `Resolved — ${record.title}`,
-      })
-      .returning({ id: notificationDeliveries.id });
-    if (!delivery) continue;
-    await db
-      .insert(notificationDeliveryMembers)
-      .values({ deliveryId: delivery.id, notificationId })
-      .onConflictDoNothing();
     await hooks.emit('notificationCreated', {
       notificationId,
       userId,

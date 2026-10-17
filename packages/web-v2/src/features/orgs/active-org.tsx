@@ -26,6 +26,8 @@ interface ActiveOrgContextValue {
   activeOrg: OrgListItem | null;
   /** Convenience: `activeOrg?.id ?? null`. Drives the projects-console scope. */
   activeOrgId: string | null;
+  /** The orgs and the stored choice have both answered, so a null `activeOrgId` means no org, not "not yet". */
+  scopeRead: boolean;
   /** Switch the active org (persists server-side, optimistic). */
   setActiveOrg: (orgId: string) => void;
   /** True when the caller has at most one org → render a static label. */
@@ -37,11 +39,13 @@ const ActiveOrgContext = createContext<ActiveOrgContextValue | null>(null);
 export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const { data: orgsData } = useOrgs();
+  const orgsQ = useOrgs();
+  const orgsData = orgsQ.data;
   const prefsQ = usePreferences();
   const prefs = prefsQ.data;
   // No active org until the stored choice is read: a stand-in it replaced would read as a switch.
   const prefsRead = prefsQ.isSuccess || prefsQ.isError;
+  const scopeRead = prefsRead && (orgsQ.isSuccess || orgsQ.isError);
 
   const orgs = useMemo(() => sortOrgs(orgsData ?? []), [orgsData]);
 
@@ -79,12 +83,13 @@ export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
       orgs,
       activeOrg,
       activeOrgId: activeOrg?.id ?? null,
+      scopeRead,
       setActiveOrg: (orgId: string) => {
         if (orgId !== activeOrg?.id) mutate(orgId);
       },
       isSingle: orgs.length <= 1,
     }),
-    [orgs, activeOrg, mutate],
+    [orgs, activeOrg, scopeRead, mutate],
   );
 
   return <ActiveOrgContext.Provider value={value}>{children}</ActiveOrgContext.Provider>;
@@ -95,5 +100,5 @@ export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
 export function useActiveOrg(): ActiveOrgContextValue {
   const ctx = useContext(ActiveOrgContext);
   if (ctx) return ctx;
-  return { orgs: [], activeOrg: null, activeOrgId: null, setActiveOrg: () => {}, isSingle: true };
+  return { orgs: [], activeOrg: null, activeOrgId: null, scopeRead: true, setActiveOrg: () => {}, isSingle: true };
 }

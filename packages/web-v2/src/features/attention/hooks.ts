@@ -14,14 +14,15 @@ import type { AttentionItem, AttentionView } from "./types";
  * offline-runner count so the rail badge and the screen agree, and is undefined
  * until both have been read: a count of what one of them has not yet said is not a count.
  * `read`/`devicesRead` say which answered; state a figure, badge or empty list only from `read`.
- * The buckets are the active organisation's, cut before the caps, so every surface counts one set.
+ * The buckets are the active organisation's, cut before the caps and read once it is known.
  * `badge` is the count where both were read, never a held count after a failed refetch.
  */
 export function useAttention() {
-  const { activeOrgId } = useActiveOrg();
+  const { activeOrgId, scopeRead } = useActiveOrg();
   const attentionQ = useQuery({
     queryKey: ["attention", activeOrgId],
     queryFn: () => attentionApi.list(activeOrgId),
+    enabled: scopeRead,
   });
   // `['devices','me']` is already WS-invalidated on device.login/paired/revoked
   // and reconnect — reusing the runners hook keeps the offline bucket live.

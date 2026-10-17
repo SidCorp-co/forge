@@ -145,10 +145,24 @@ describe('unread is state, not text', () => {
     expect(before).toHaveLength(1);
     expect(before[0]?.unread).toBe(true);
 
-    await fx.mods.resolveNotifications('wedge:50');
+    const { hooks } = await import('../../src/pipeline/hooks.js');
+    const announced: string[] = [];
+    const off = hooks.on('notificationCreated', (p) => {
+      announced.push(p.title);
+    });
+    try {
+      await fx.mods.resolveNotifications('wedge:50');
+    } finally {
+      off();
+    }
 
-    // ISS-1229 r13: one resolution, one row — the row that raised it, marked resolved, and not a
-    // second "Resolved —" row beside it.
+    // ISS-1229 r13: one resolution, one row — the row that raised it, marked resolved. The
+    // resolution is announced, but no second "Resolved —" row is stored beside it, listed or not.
+    expect(announced).toEqual(['Resolved — ISS-50 is wedged']);
+    const stored = (await fx.db.execute(
+      sql`SELECT id FROM notification_deliveries WHERE user_id = ${fx.owner}`,
+    )) as unknown as unknown[];
+    expect(stored).toHaveLength(1);
     const after = (await inbox()).items;
     expect(after).toHaveLength(1);
     const original = after[0] as InboxRow;
