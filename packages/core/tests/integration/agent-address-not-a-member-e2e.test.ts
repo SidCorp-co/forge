@@ -83,7 +83,10 @@ async function refusedAsAgent(res: Response): Promise<void> {
   expect(res.status).toBe(409);
   const body = (await res.json()) as { code: string; message: string };
   expect(body.code).toBe('AGENT_ADDRESS_RESERVED');
-  expect(body.message).toContain('belongs to an agent account Forge mints, not to a person');
+  expect(body.message).toMatch(
+    /agent account, not a person's\.|is an agent account Forge mints, not a person\./,
+  );
+  expect(body.message).toContain('No person can be invited or added as it.');
   expect(body.message).toContain('Settings → Agents');
 }
 

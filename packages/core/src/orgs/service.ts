@@ -43,7 +43,7 @@ export async function refuseNonPersonAsMember(target: {
 }): Promise<void> {
   refuseForgeAsMember(target);
   if (target.email !== undefined && isAgentAddress(target.email)) {
-    throw agentIsNotAPerson(target.email);
+    throw agentIsNotAPerson({ email: target.email });
   }
   if (target.userId === undefined) return;
   const [row] = await db
@@ -52,7 +52,7 @@ export async function refuseNonPersonAsMember(target: {
     .where(eq(users.id, target.userId))
     .limit(1);
   if (row && (row.kind === 'agent' || isAgentAddress(row.email))) {
-    throw agentIsNotAPerson(`account ${target.userId}`);
+    throw agentIsNotAPerson({ userId: target.userId });
   }
 }
 
