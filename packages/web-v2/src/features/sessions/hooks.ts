@@ -72,14 +72,27 @@ function useSessionMutation<TArgs, TData>(
  *  lists naming it, the holds it kept, the runs it ran and the issue pages showing them, whose run
  *  core closed with it (ISS-1228). */
 export function refreshAfterStop(qc: QueryClient): void {
-  for (const queryKey of [["agent-sessions"], ["agent-session"], ["sessions-and-holds"], ["run-sessions"], ["issue"]]) {
+  for (const queryKey of [
+    ["agent-sessions"],
+    ["agent-session"],
+    ["sessions-and-holds"],
+    ["run-sessions"],
+    ["issue"],
+    ["run-journal"],
+  ]) {
     void qc.invalidateQueries({ queryKey });
   }
 }
 
+/** What every surface that stops a session says once it has (ISS-1228). */
+export const SESSION_STOPPED = "Session stopped";
+
+/** What ending only the current turn says: the session itself stays open (ISS-1228). */
+export const TURN_ENDED = "Turn ended. The session stays open.";
+
 export function useCancelSession() {
   return useSessionMutation((id: string) => sessionsApi.cancel(id), {
-    successMessage: () => "Session stopped",
+    successMessage: () => SESSION_STOPPED,
     refresh: refreshAfterStop,
   });
 }
@@ -98,7 +111,7 @@ export function useRerunSession() {
 
 export function useAbortSession() {
   return useSessionMutation((sessionId: string) => sessionsApi.abort(sessionId), {
-    successMessage: () => "Session aborted",
+    successMessage: () => TURN_ENDED,
   });
 }
 

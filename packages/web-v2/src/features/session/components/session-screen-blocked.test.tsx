@@ -259,7 +259,7 @@ describe("a session that stopped checking in, on its own page", () => {
 describe("the session page's Runner pill", () => {
   it.each([
     ["offline", "Offline"],
-    ["online", "Free · 0/1"],
+    ["online", "Free"],
   ] as const)("says what the sessions strip says of a box that is %s", (status, word) => {
     box.status = status;
     try {

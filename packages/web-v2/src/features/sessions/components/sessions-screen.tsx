@@ -392,8 +392,8 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
 
       {sessionsQ.isLoading && (
         <div className="border-y border-line">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <SessionRowSkeleton key={i} />
+          {SKELETON_ROWS.map((key) => (
+            <SessionRowSkeleton key={key} />
           ))}
         </div>
       )}
@@ -506,7 +506,10 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
 interface MutationLike {
   mutate: (id: string) => void;
 }
-interface RowActions {
+/** The placeholder rows drawn while the list is read, each with a key of its own. */
+const SKELETON_ROWS = ["s1", "s2", "s3", "s4", "s5", "s6"] as const;
+
+export interface RowActions {
   cancel: MutationLike;
   retry: MutationLike;
   rerun: MutationLike;
@@ -528,8 +531,9 @@ function StatPill({ label, value, ink }: { label: string; value: string; ink?: s
   );
 }
 
-/** Build the contextual row-action menu, choosing items by display status. */
-function buildMenuItems(row: SessionRow, display: AgentSessionDisplayStatus, a: RowActions): MenuItem[] {
+/** Build the contextual row-action menu, choosing items by display status. Ending the current turn
+ *  leaves the session open, so it is named for that and kept apart from Stop session (ISS-1228). */
+export function buildMenuItems(row: SessionRow, display: AgentSessionDisplayStatus, a: RowActions): MenuItem[] {
   const items: MenuItem[] = [];
   const isLive = isLiveDisplay(display);
   const isQueued = row.status === "queued" || row.status === "idle";
@@ -539,11 +543,17 @@ function buildMenuItems(row: SessionRow, display: AgentSessionDisplayStatus, a: 
     display === "failed" ||
     display === "cancelled_stale";
 
-  if (isLive || isQueued) {
-    items.push({ label: "Stop session", icon: "stop", danger: true, onSelect: () => a.cancel.mutate(row.id) });
-  }
   if (isLive || display === "idle") {
-    items.push({ label: "Abort", icon: "stop", onSelect: () => a.abort.mutate(row.id) });
+    items.push({ label: "End this turn", icon: "pause", onSelect: () => a.abort.mutate(row.id) });
+  }
+  if (isLive || isQueued) {
+    items.push({
+      label: "Stop session",
+      icon: "stop",
+      danger: true,
+      separatorBefore: items.length > 0,
+      onSelect: () => a.cancel.mutate(row.id),
+    });
   }
   if ((display === "failed" || display === "cancelled_stale") && isRetryable(row)) {
     items.push({ label: "Retry", icon: "rerun", onSelect: () => a.retry.mutate(row.id) });

@@ -7,6 +7,7 @@ import {
   resolveFailureCause,
 } from "@forge/contracts/failure-causes";
 import { TERMINAL_AGENT_SESSION_STATUSES } from "@forge/contracts/status-sets";
+import { sessionStatusLabel } from "@/design/primitives/status-chip";
 import { type StatusKey, STOPPED_WORD } from "@/design/status";
 import { ENDING_AS_FAILED, endsAsFailedInText, sessionEndedText } from "./status-sentences";
 
@@ -273,7 +274,7 @@ export const FAILURE_REASON_ACTION: Record<SessionFailureReason, string> = {
   provider_refused_request: "The provider refused the request. Check the model and prompt settings.",
   agent_startup_failed: "The agent never got going on this runner. Check its MCP config, then Retry.",
   agent_skill_missing: "The skill hasn't reached this runner. Sync it, then Retry.",
-  agent_exited_without_result: "The agent exited before reporting. Retry to re-dispatch.",
+  agent_exited_without_result: "The agent exited before reporting. Retry to start it again.",
   agent_killed: "Something killed the agent process. Check the runner logs.",
   workspace_preflight_failed: "The runner's checkout is unusable. Fix the repo path or remote.",
   workspace_disk_full: "The runner is out of disk. Free space, then Retry.",
@@ -283,7 +284,7 @@ export const FAILURE_REASON_ACTION: Record<SessionFailureReason, string> = {
     "That runner had no session slot free. The job moves to another box on its own.",
   runner_unreachable: "The runner never picked it up. Check it's online, then Retry.",
   duplex_channel_failed: "The session channel dropped. A fresh session is the next step.",
-  session_lost: "The session died without reporting. Retry to re-dispatch.",
+  session_lost: "The session died without reporting. Retry to start it again.",
   ws_publish_failed: "The reply couldn't be delivered. Start a new chat to retry.",
   "ws-publish-failed": "The reply couldn't be delivered. Start a new chat to retry.",
   forge_budget_exhausted: "This project spent its monthly budget. Raise it or wait for the cycle.",
@@ -294,7 +295,7 @@ export const FAILURE_REASON_ACTION: Record<SessionFailureReason, string> = {
   audit_ran_blind: "The scheduled run called no tools, so it produced no evidence. Rerun.",
   unclassified: "The cause wasn't recorded. Open the run timeline to see why.",
   queue_timeout: "No runner picked it up. Check the fleet strip for an online runner.",
-  heartbeat_timeout: "The session stopped sending heartbeats. Retry to re-dispatch.",
+  heartbeat_timeout: "The session stopped sending heartbeats. Retry to start it again.",
   session_stopped_checking_in:
     "The session stopped checking in while its runner kept answering. Retry to start it again.",
   turn_never_reported:
@@ -548,6 +549,12 @@ export function classifySessionOutcome(
 export function sessionChipStatus(display: AgentSessionDisplayStatus, failureReason?: string | null): StatusKey {
   const outcome = classifySessionOutcome(display, failureReason);
   return outcome.bucket === "active" ? statusToChip(display) : outcome.statusKey;
+}
+
+/** An ended session's outcome in the one word its chip says, which its page's header, run stats and
+ *  turn line all say (ISS-1228). */
+export function sessionEndWord(display: AgentSessionDisplayStatus, failureReason?: string | null): string {
+  return sessionStatusLabel(sessionChipStatus(display, failureReason));
 }
 
 /** Whether a terminal session is a genuine failure (the only bucket that should

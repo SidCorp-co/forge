@@ -26,6 +26,12 @@ const SESSION_LABELS: Partial<Record<StatusKey, string>> = {
   archived: STOPPED_WORD,
 };
 
+/** The word a session chip says for `status` where no live word replaces it: an ended session's one
+ *  outcome word, which its page's turn line says too (ISS-1228). */
+export function sessionStatusLabel(status: StatusKey): string {
+  return SESSION_LABELS[status] ?? (STATUS_META[status] ?? STATUS_META.queued).label;
+}
+
 /** In the session domain `blocked` is a running session its box reports blocked: it waits on
  *  someone, so it takes the blocked-session tone rather than a parked issue's. */
 const SESSION_TONES: Partial<Record<StatusKey, (typeof TONE_META)[keyof typeof TONE_META]>> = {

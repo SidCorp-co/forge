@@ -17,6 +17,8 @@ export function leaseDisagreementText(keys: readonly string[]): string | null {
 
 export const boxOfflineText = (when: string): string => `The box is offline. It last reported ${when}.`;
 
+export const BOX_SENT_NO_REPORT = "The box has not reported.";
+
 export type SessionDisagreement = "box-live-core-terminal" | "box-exited-core-running";
 
 const CORE_SAYS: Record<SessionDisagreement, string> = {

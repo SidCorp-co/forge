@@ -473,6 +473,16 @@ describe("runnersSummary — a runner hosting a live session is busy (ISS-1228)"
   it("ignores a session with no device", () => {
     expect(runnersSummary(runners, queue, 0, [], [{ deviceId: null }]).busyCount).toBe(0);
   });
+
+  // ISS-1228 round 14 (judge-36): a box still read Busy after every session on it stopped.
+  it("calls a box busy only while it holds a live session, once the sessions are read", () => {
+    const active = [{ runnerId: "rn2", name: "rn2", status: "online", lastSeenAt: null, current: { jobId: "j1" } }] as never;
+    const sum = runnersSummary(runners, queue, 0, active, []);
+    expect(sum.lines.find((l) => l.id === "rn2")?.busy).toBe(false);
+    expect(sum.busyCount).toBe(0);
+    // Before the sessions are read the job snapshot still answers.
+    expect(runnersSummary(runners, queue, 0, active).lines.find((l) => l.id === "rn2")?.busy).toBe(true);
+  });
 });
 
 // ISS-1228 round 9: a session its box reports blocked on a person is something a person has to act

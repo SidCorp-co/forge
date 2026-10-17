@@ -1,3 +1,4 @@
+import { waitingOnText } from "@/features/sessions/status-sentences";
 import { describe, expect, it } from "vitest";
 import {
   checkInOf,
@@ -42,12 +43,20 @@ describe("waitingOnOf — who can end the wait, in the box's words", () => {
     ...over,
   });
 
-  it("names the blocker and what it waits on", () => {
-    expect(waitingOnOf({ report: report({}) })).toEqual({ text: "A person — the answer on ISS-7", blocked: true });
+  // ISS-1228 round 14 (judge-36): the Pipeline page said "A person — approve …" where every other
+  // surface said "Waiting on a person. Approve …." from status-sentences.ts.
+  it("names the blocker and what it waits on in the sentences every other surface says", () => {
+    expect(waitingOnOf({ report: report({}) })).toEqual({
+      text: "Waiting on a person. The answer on ISS-7.",
+      blocked: true,
+    });
+    expect(waitingOnOf({ report: report({}) }).text).toBe(waitingOnText("human", "the answer on ISS-7"));
   });
 
   it("names the blocker alone where the box said nothing more", () => {
-    expect(waitingOnOf({ report: report({ blockerKind: "machine", waitingOn: null }) }).text).toBe("A machine");
+    expect(waitingOnOf({ report: report({ blockerKind: "machine", waitingOn: null }) }).text).toBe(
+      "Waiting on a machine.",
+    );
   });
 
   it("says Nothing only where the box reported the session runnable", () => {
@@ -55,11 +64,13 @@ describe("waitingOnOf — who can end the wait, in the box's words", () => {
   });
 
   it("says the box sent no report rather than reading its silence as unblocked", () => {
-    expect(waitingOnOf({ report: null })).toEqual({ text: "Not reported by the box", blocked: false });
+    expect(waitingOnOf({ report: null })).toEqual({ text: "The box has not reported.", blocked: false });
   });
 
   it("prints an unknown blocker kind as sent rather than guessing", () => {
-    expect(waitingOnOf({ report: report({ blockerKind: "vendor", waitingOn: null }) }).text).toBe("vendor");
+    expect(waitingOnOf({ report: report({ blockerKind: "vendor", waitingOn: null }) }).text).toBe(
+      "Waiting on vendor.",
+    );
   });
 });
 

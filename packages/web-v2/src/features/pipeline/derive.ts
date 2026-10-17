@@ -1,6 +1,6 @@
 import { unrecognised } from "@/features/overview/job-kinds";
 import { liveSessionWord } from "@/features/sessions/session-word";
-import { quietWhyText } from "@/features/sessions/status-sentences";
+import { BOX_SENT_NO_REPORT, quietWhyText, waitingOnText } from "@/features/sessions/status-sentences";
 import { STALLED_THRESHOLD_MS, sessionSilence, sessionTitle } from "@/features/sessions/types";
 import { formatElapsed } from "@/lib/utils/format";
 import type { HeldIssue, Holder, LiveSession, PersonOwes } from "./types";
@@ -36,25 +36,18 @@ function isQuiet(session: Pick<LiveSession, "status" | "lastHeartbeatAt" | "star
   return state === "stale" || state === "reaping";
 }
 
-const BLOCKER: Record<string, string> = {
-  human: "A person",
-  machine: "A machine",
-  master_or_peer: "Another agent",
-  nobody: "Nobody — it stopped with a reason",
-};
-
 export interface WaitingOn {
   text: string;
   blocked: boolean;
 }
 
-/** Who can end the wait and what it waits on; a box that sent no report is said to, not read as unblocked. */
+/** Who can end the wait and what it waits on, in the sentences every surface says it in; a box that
+ *  sent no report is said to, not read as unblocked. */
 export function waitingOnOf(session: Pick<LiveSession, "report">): WaitingOn {
   const report = session.report;
-  if (!report) return { text: "Not reported by the box", blocked: false };
+  if (!report) return { text: BOX_SENT_NO_REPORT, blocked: false };
   if (report.work !== "blocked") return { text: "Nothing", blocked: false };
-  const who = report.blockerKind ? (BLOCKER[report.blockerKind] ?? report.blockerKind) : "Unnamed";
-  return { text: report.waitingOn ? `${who} — ${report.waitingOn}` : who, blocked: true };
+  return { text: waitingOnText(report.blockerKind, report.waitingOn), blocked: true };
 }
 
 export interface CheckIn {

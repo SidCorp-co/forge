@@ -951,6 +951,23 @@ export interface RunView {
 	sessions: SessionTimelineEntry[];
 }
 
+/**
+ * The session the issue page's Open session opens: one holding the issue now, else the newest
+ * session of the newest run that had one, or `null` for an issue no session has run. `runs` are
+ * newest first and each run's sessions oldest first, as `deriveRunView` gives them.
+ */
+export function issueSessionId(
+	holding: readonly string[],
+	runs: readonly Pick<RunView, "sessions">[],
+): string | null {
+	if (holding[0]) return holding[0];
+	for (const run of runs) {
+		const newest = run.sessions[run.sessions.length - 1];
+		if (newest) return newest.id;
+	}
+	return null;
+}
+
 const LIVE_RUN = new Set<JournalRun["status"]>(["running", "paused"]);
 
 function attemptState(a: JournalAttempt, run: JournalRun): AttemptState {

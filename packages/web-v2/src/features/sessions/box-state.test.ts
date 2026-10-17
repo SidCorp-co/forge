@@ -27,8 +27,10 @@ describe("a box's state", () => {
   it.each([
     [{ online: false }, "Offline", "idle"],
     [{ online: false, sessions: 1 }, "Offline · 1 live session", "attention"],
-    [{ online: true }, "Free · 0/1", "healthy"],
-    [{ online: true, busy: true }, "Busy · 1/1", "healthy"],
+    [{ online: true }, "Free", "healthy"],
+    // ISS-1228 round 14 (judge-36): a box running six sessions read "Busy · 1/1".
+    [{ online: true, busy: true, sessions: 1 }, "Busy · 1 live session", "healthy"],
+    [{ online: true, busy: true, sessions: 6 }, "Busy · 6 live sessions", "healthy"],
     [{ online: false, draining: true }, "Draining", "idle"],
   ] as const)("%o reads %s", (over, word, dot) => {
     expect(boxWord(line(over), true)).toBe(word);

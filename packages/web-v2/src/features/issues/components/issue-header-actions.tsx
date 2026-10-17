@@ -5,14 +5,15 @@ import { useRouter } from "next/navigation";
 import type { IssueStatus } from "../types";
 
 /**
- * The issue page header's primary action, Open session, and the actions menu. At Releasing a
- * release run carries the issue and only that run's finish or abort takes it out (ISS-1421), so
- * the header offers the run itself and no move: core would refuse Pause and Reopen there by name.
+ * The issue page header's primary action, Open session (the session holding the issue, else its
+ * newest), and the actions menu. At Releasing a release run carries the issue and only that run's
+ * finish or abort takes it out (ISS-1421), so the header offers the run itself and no move: core
+ * would refuse Pause and Reopen there by name.
  * At Awaiting release the page's primary is the banner's Release now, so Reopen sits in the menu.
  */
 export function IssueHeaderActions({
   slug,
-  issueId,
+  sessionHref,
   status,
   releaseRunId,
   canWrite,
@@ -24,7 +25,8 @@ export function IssueHeaderActions({
   onCopyLink,
 }: {
   slug: string;
-  issueId: string;
+  /** The page of the session holding the issue, else of its newest; `null` where none has run. */
+  sessionHref: string | null;
   status: IssueStatus;
   releaseRunId: string | null | undefined;
   canWrite: boolean;
@@ -73,16 +75,18 @@ export function IssueHeaderActions({
       />
       {/* Its label from `sm` up and its icon alone below, so at 390 the primary, this and the
           actions menu keep one row beside the help button (ISS-1421 round 2). */}
-      <Button
-        variant="secondary"
-        size="sm"
-        icon="agent"
-        aria-label="Open session"
-        title="Open session"
-        onClick={() => router.push(`/projects/${slug}/agents?issue=${issueId}`)}
-      >
-        <span className="hidden sm:inline">Open session</span>
-      </Button>
+      {sessionHref && (
+        <Button
+          variant="secondary"
+          size="sm"
+          icon="agent"
+          aria-label="Open session"
+          title="Open session"
+          onClick={() => router.push(sessionHref)}
+        >
+          <span className="hidden sm:inline">Open session</span>
+        </Button>
+      )}
       <Menu
         align="right"
         items={moreItems}
