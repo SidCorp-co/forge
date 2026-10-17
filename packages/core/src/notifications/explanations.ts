@@ -11,7 +11,7 @@ export const SWEEP_DETECTORS = {
       'The step that owed the close did not write it. Read the branch, then close the issue — or, if it never landed, clear the mark with `unmark` and move the issue to Dropped.',
   },
   stranded: {
-    groupTitle: 'Issues waiting for you',
+    groupTitle: 'Issues waiting for you for over six hours',
     explanation:
       'Each one waits for a decision or for something only a person can supply. Open it: its last comment says what is asked.',
   },

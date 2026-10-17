@@ -378,9 +378,26 @@ describe('GET /api/projects/health, the stuck issues (ISS-1229 r12)', () => {
       { id: PROJECT_B_ID, slug: 'beta', name: 'Beta', agentConfig: null },
     ]); // visibleProjects
     for (let i = 0; i < 11; i++) queryQueue.push([]); // the eleven reads before it
+    const byKind = { waiting: 3, idle: 5 };
     queryQueue.push([
-      { projectId: PROJECT_A_ID, id: 'i-3', issSeq: 3, issuePrefix: 'ALP', total: 7 },
-      { projectId: PROJECT_A_ID, id: 'i-9', issSeq: 9, issuePrefix: 'ALP', total: 7 },
+      {
+        projectId: PROJECT_A_ID,
+        id: 'i-3',
+        issSeq: 3,
+        issuePrefix: 'ALP',
+        kind: 'waiting',
+        total: 7,
+        byKind,
+      },
+      {
+        projectId: PROJECT_A_ID,
+        id: 'i-9',
+        issSeq: 9,
+        issuePrefix: 'ALP',
+        kind: 'idle',
+        total: 7,
+        byKind,
+      },
     ]); // stuckIssueRows: the first five of a project, each carrying the project's total
 
     const res = await buildApp().request('/api/projects/health', {
@@ -391,23 +408,26 @@ describe('GET /api/projects/health, the stuck issues (ISS-1229 r12)', () => {
     const body = (await res.json()) as Array<{
       projectSlug: string;
       stuckIssues: number;
-      stuckIssueRefs: Array<{ issueId: string; documentId: string }>;
+      stuckIssuesByKind: Record<string, number>;
+      stuckIssueRefs: Array<{ issueId: string; documentId: string; kind: string }>;
     }>;
     const alpha = body.find((p) => p.projectSlug === 'alpha');
     expect(alpha?.stuckIssues).toBe(7);
+    expect(alpha?.stuckIssuesByKind).toEqual(byKind);
     expect(alpha?.stuckIssueRefs).toEqual([
-      { issueId: 'ALP-3', documentId: 'i-3' },
-      { issueId: 'ALP-9', documentId: 'i-9' },
+      { issueId: 'ALP-3', documentId: 'i-3', kind: 'waiting' },
+      { issueId: 'ALP-9', documentId: 'i-9', kind: 'idle' },
     ]);
     expect(body.find((p) => p.projectSlug === 'beta')).toMatchObject({
       stuckIssues: 0,
+      stuckIssuesByKind: {},
       stuckIssueRefs: [],
     });
     const stuckRead = JSON.stringify(executedSql).replace(/\\n\s*/g, ' ');
     expect(stuckRead).toContain("n.type = 'issue_stranded'");
     expect(stuckRead).toContain("n.state = 'firing'");
     expect(stuckRead).toContain('n.resolved_at IS NULL');
-    expect(stuckRead).toContain('count(*) OVER (PARTITION BY n.project_id)');
-    expect(stuckRead).toContain('ORDER BY min(n.created_at), i.id');
+    expect(stuckRead).toContain('count(*) OVER (PARTITION BY f.project_id)');
+    expect(stuckRead).toContain('ORDER BY f.created_at, f.id');
   });
 });

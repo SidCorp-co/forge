@@ -13,6 +13,9 @@ export const NOTIFICATION_TYPES = [
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
+export const STUCK_ISSUE_KINDS = ['waiting', 'idle', 'owed_close', 'orphan', 'other'] as const;
+export type StuckIssueKind = (typeof STUCK_ISSUE_KINDS)[number];
+
 export const NOTIFICATION_KINDS = ['signal', 'condition', 'task'] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 

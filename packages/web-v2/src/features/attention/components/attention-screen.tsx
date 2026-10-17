@@ -84,7 +84,7 @@ function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (link: st
     <button
       type="button"
       onClick={() => onOpen(item.link)}
-      className="flex w-full flex-wrap items-center gap-x-3 gap-y-1.5 rounded-md border border-line bg-surface px-3 py-2.5 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] max-md:min-h-[44px] sm:flex-nowrap"
+      className="flex w-full flex-wrap items-center gap-x-3 gap-y-1.5 px-1 py-2.5 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] max-md:min-h-[44px] sm:flex-nowrap"
     >
       <KindTag kind={item.kind} />
       {item.questionId && <MonoTag hue="flame">Decision</MonoTag>}
@@ -118,14 +118,21 @@ function CountBadge({ children }: { children: ReactNode }) {
  *  must be countable without pushing every other bucket off the screen. */
 const COLLAPSE_ABOVE = 5;
 
+/** The bell and a project's headline count only parks past six hours; this group counts every one. */
+export const AWAITING_NOTE =
+  "Assigned to or filed by you, however long each has waited. The bell tells a project's admins of each after six hours.";
+
 function Group({
   title,
   items,
   onOpen,
   total,
+  note,
   collapsible: mayCollapse = false,
 }: {
   title: string;
+  /** What the group counts, where another surface counts the same things differently. */
+  note?: string;
   items: AttentionItem[];
   onOpen: (link: string) => void;
   /** Unclipped match count when the API capped `items`. Defaults to items.length. */
@@ -163,13 +170,19 @@ function Group({
           </span>
         )}
       </SectionTitle>
+      {note && <p className="fg-caption -mt-1 px-0.5 text-muted">{note}</p>}
       {expanded && (
-        <div className="flex flex-col gap-1.5">
-          {items.map((it, i) => (
-            <AttentionRow key={`${it.kind}-${it.link}-${i}`} item={it} onOpen={onOpen} />
-          ))}
+        <div>
+          {/* Flush rows divided by hairlines, never boxed: the owner's flat rule (ISS-1229 r13). */}
+          <ul className="flex flex-col divide-y divide-line-subtle border-y border-line-subtle">
+            {items.map((it, i) => (
+              <li key={`${it.kind}-${it.link}-${i}`}>
+                <AttentionRow item={it} onOpen={onOpen} />
+              </li>
+            ))}
+          </ul>
           {matched > items.length && (
-            <p className="fg-caption px-0.5 text-muted">
+            <p className="fg-caption mt-1.5 px-0.5 text-muted">
               Showing {items.length} of {matched}, highest priority first.
             </p>
           )}
@@ -253,7 +266,7 @@ export function AttentionScreen() {
       ) : (
         <div className="flex flex-col gap-6">
           <Group title="Needs review" items={view.needsReview} onOpen={open} />
-          <Group title="Awaiting input" items={view.awaitingInput} onOpen={open} />
+          <Group title="Awaiting input" note={AWAITING_NOTE} items={view.awaitingInput} onOpen={open} />
           <Group title="Mentions" items={view.mentions} onOpen={open} />
           <Group title="Failed jobs" items={view.failedJobs} onOpen={open} />
           <Group title="Skill updates" items={view.pendingSkillUpdates} onOpen={open} />

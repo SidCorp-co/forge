@@ -53,11 +53,61 @@ describe("the Needs your attention list with nothing in it", () => {
     expect(screen.getByText("All caught up")).toBeInTheDocument();
   });
 
-  it("does not say all caught up under a degraded page the list does not hold the cause of", () => {
-    render(<AttentionQueue items={[]} cut={null} shape="degraded" slug="pair" now={0} />);
-    expect(screen.queryByText("All caught up")).toBeNull();
-    expect(screen.getByText("Nothing here needs you.")).toBeInTheDocument();
-    expect(screen.getByText("The link above opens what is wrong.")).toBeInTheDocument();
+  // ISS-1229 r13 repair: "Nothing here needs you." under a red "Action needed" contradicted it.
+  it("is not shown under a degraded page it holds nothing of, rather than say nothing needs you", () => {
+    const { container } = render(<AttentionQueue items={[]} cut={null} shape="degraded" slug="pair" now={0} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("names the stuck issues the headline counts, each by what its notice says, under a degraded page", () => {
+    render(
+      <AttentionQueue
+        items={[]}
+        cut={null}
+        shape="degraded"
+        slug="pair"
+        now={0}
+        stuck={{
+          total: 3,
+          refs: [
+            { issueId: "PAIR-41", documentId: "d41", kind: "waiting" },
+            { issueId: "PAIR-50", documentId: "d50", kind: "idle" },
+          ],
+        }}
+      />,
+    );
+    const list = screen.getByRole("region", { name: "Needs your attention" });
+    expect(list).not.toHaveTextContent("Nothing here needs you");
+    expect(list).toHaveTextContent("PAIR-41");
+    expect(list).toHaveTextContent("Waiting for you for over six hours");
+    expect(list).toHaveTextContent("PAIR-50");
+    expect(list).toHaveTextContent("In a live status with no live work behind it");
+    expect(list).toHaveTextContent("And 1 more stuck. Every one is in Issues.");
+    expect(screen.getAllByRole("button", { name: "Open issue" })).toHaveLength(2);
+  });
+
+  it("names a stuck issue once where it is already listed to act on", () => {
+    render(
+      <AttentionQueue
+        items={[
+          {
+            key: "q",
+            actionKind: "input",
+            actionLabel: "Provide info",
+            title: "Which carrier?",
+            issueRef: "PAIR-41",
+            link: "/projects/pair/issues/d41",
+            since: new Date(0).toISOString(),
+          },
+        ]}
+        cut={null}
+        shape="degraded"
+        slug="pair"
+        now={0}
+        stuck={{ total: 1, refs: [{ issueId: "PAIR-41", documentId: "d41", kind: "waiting" }] }}
+      />,
+    );
+    expect(screen.getAllByText("PAIR-41")).toHaveLength(1);
   });
 });
 

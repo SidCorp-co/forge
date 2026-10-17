@@ -11,7 +11,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 expect.extend(matchers);
 
 type Read = "pending" | "failed" | "read";
-const state: { read: Read; devicesRead: Read; offline: unknown[] } = { read: "read", devicesRead: "read", offline: [] };
+const state: { read: Read; devicesRead: Read; offline: unknown[]; awaiting: unknown[] } = {
+  read: "read",
+  devicesRead: "read",
+  offline: [],
+  awaiting: [],
+};
 const refetch = vi.fn();
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
@@ -23,7 +28,7 @@ vi.mock("../hooks", () => ({
   useAttention: () => ({
     view: {
       needsReview: [],
-      awaitingInput: [],
+      awaitingInput: state.awaiting,
       mentions: [],
       failedJobs: [],
       pendingSkillUpdates: [],
@@ -47,6 +52,7 @@ afterEach(() => {
   state.read = "read";
   state.devicesRead = "read";
   state.offline = [];
+  state.awaiting = [];
   refetch.mockClear();
 });
 
@@ -96,3 +102,26 @@ describe("the Attention inbox", () => {
     expect(refetch).toHaveBeenCalledTimes(1);
   });
 });
+
+// ISS-1229 r13 repair: the rows were bordered, rounded cards against the owner's flat rule.
+describe("an Attention group", () => {
+  it("lists flush rows divided by hairlines, and says what Awaiting input counts", () => {
+    state.awaiting = [
+      {
+        kind: "awaiting_input",
+        title: "Which carrier do we keep?",
+        link: "/projects/shop/issues/SHOP-41",
+        since: new Date(0).toISOString(),
+        issueRef: "SHOP-41",
+        projectSlug: "shop",
+        projectName: "Shop",
+      },
+    ];
+    render(<AttentionScreen />);
+    const row = screen.getByRole("button", { name: /Which carrier do we keep\?/u });
+    expect(row.className).not.toMatch(/\b(border|rounded-md|bg-surface)\b/u);
+    expect(row.closest("ul")?.className).toMatch(/divide-y/u);
+    expect(screen.getByText(/however long each has waited/u)).toBeInTheDocument();
+  });
+});
+

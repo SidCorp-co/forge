@@ -1,3 +1,4 @@
+import type { StuckIssueKind } from "@forge/contracts/notifications";
 import type { HealthKey } from '@/design';
 import type { QueryRead } from '@/design/patterns/badge-read';
 import type { Project, ProjectMember } from '@forge/contracts';
@@ -71,7 +72,9 @@ export interface ProjectHealthRow {
   /** Issues with a stuck-issue notice standing, each counted once whichever sweep raised it. */
   stuckIssues: number;
   /** Up to five of them, longest-standing first. */
-  stuckIssueRefs: Array<{ issueId: string; documentId: string }>;
+  /** The same issues by what each notice says of it; an issue two sweeps hold counts under both. */
+  stuckIssuesByKind: Partial<Record<StuckIssueKind, number>>;
+  stuckIssueRefs: Array<{ issueId: string; documentId: string; kind: StuckIssueKind }>;
 }
 
 export interface CreateProjectInput {

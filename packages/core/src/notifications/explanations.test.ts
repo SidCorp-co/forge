@@ -53,7 +53,7 @@ describe('reading a group key back', () => {
 // no explanation a person reads names a stored field.
 describe('the words a person reads on a sweep group', () => {
   it('frames a park as waiting for the person and says what it asks for', () => {
-    expect(SWEEP_DETECTORS.stranded.groupTitle).toBe('Issues waiting for you');
+    expect(SWEEP_DETECTORS.stranded.groupTitle).toBe('Issues waiting for you for over six hours');
     expect(SWEEP_DETECTORS.stranded.explanation).toMatch(/decision/);
     expect(SWEEP_DETECTORS.stranded.explanation).not.toMatch(/nothing coming/);
   });

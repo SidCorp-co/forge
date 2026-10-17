@@ -48,6 +48,7 @@ const input = (over: Partial<ShapeInput> = {}): ShapeInput => ({
   releaseIssues: 0,
   stuck: { read: "ok" },
   stuckIssues: 0,
+  stuckIssuesByKind: {},
   stuckIssueRefs: [],
   now: NOW,
   ...over,
@@ -158,8 +159,8 @@ describe("a degraded project", () => {
 });
 
 describe("a project with stuck issues (ISS-1229 r12)", () => {
-  const ISS_3 = { issueId: "ISS-3", documentId: "d-3" };
-  const ISS_9 = { issueId: "ISS-9", documentId: "d-9" };
+  const ISS_3 = { issueId: "ISS-3", documentId: "d-3", kind: "idle" as const };
+  const ISS_9 = { issueId: "ISS-9", documentId: "d-9", kind: "waiting" as const };
 
   it("is degraded, never quiet, by one issue a stuck-issue notice stands for, and opens that issue", () => {
     const r = projectShape(input({ stuckIssues: 1, stuckIssueRefs: [ISS_3] }));
@@ -185,6 +186,28 @@ describe("a project with stuck issues (ISS-1229 r12)", () => {
   it("opens the issue list where the count names no issue", () => {
     const r = projectShape(input({ stuckIssues: 1, stuckIssueRefs: [] }));
     expect(r.band?.entry).toEqual({ label: "Action needed — open the issues", href: "/projects/p/issues" });
+  });
+
+  // ISS-1229 r13: the headline counts by what each notice says, in the words the bell titles each
+  // kind's group with, so the headline, the bell and Attention reconcile on sight.
+  it("says each kind of stuck issue in its own counted sentence, in the bell's words", () => {
+    const r = projectShape(
+      input({
+        stuckIssues: 6,
+        stuckIssuesByKind: { waiting: 3, idle: 2, owed_close: 1 },
+        stuckIssueRefs: [ISS_9, ISS_3],
+      }),
+    );
+    expect(r.headline).toBe(
+      "3 issues have waited for you for over six hours. 2 issues are in a live status with no live work behind them. 1 issue shipped its code and was never closed.",
+    );
+  });
+
+  it("says one of a kind in the singular", () => {
+    const r = projectShape(input({ stuckIssues: 2, stuckIssuesByKind: { waiting: 1, orphan: 1 }, stuckIssueRefs: [ISS_9] }));
+    expect(r.headline).toBe(
+      "1 issue has waited for you for over six hours. 1 issue asserts work in progress with no run behind it.",
+    );
   });
 
   it("says a failed job and stuck issues each in a sentence of its own", () => {

@@ -10,6 +10,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button, Icon, MonoTag, type IconName } from "@/design";
 import { TONE_META, type SemanticTone } from "@/design/status";
+import type { StuckIssueKind } from "@forge/contracts/notifications";
 import { WORK_STATE_LABELS } from "@forge/contracts/work-state";
 import type { AttentionActionKind, AttentionCut, DashboardAttentionItem } from "../derive";
 import type { ProjectShape } from "../shape";
@@ -36,6 +37,20 @@ const ACTION_META: Record<AttentionActionKind, { tag: string; icon: IconName }> 
 
 const TITLE = "Needs your attention";
 
+/** What a stuck issue's notice says of it, in the words its bell group is titled with. */
+const STUCK_KIND_WORDS: Record<StuckIssueKind, string> = {
+  waiting: "Waiting for you for over six hours",
+  idle: "In a live status with no live work behind it",
+  owed_close: "Shipped its code and was never closed",
+  orphan: "Asserts work in progress with no run behind it",
+  other: "Reported stuck",
+};
+
+export interface StuckIssues {
+  total: number;
+  refs: readonly { issueId: string; documentId: string; kind: StuckIssueKind }[];
+}
+
 export function AttentionQueue({
   items,
   cut,
@@ -45,8 +60,11 @@ export function AttentionQueue({
   shape = "working",
   slug,
   now,
+  stuck = { total: 0, refs: [] },
 }: {
   items: DashboardAttentionItem[];
+  /** The issues the headline counts as stuck: listed here too, so the section never says nothing needs you beside them. */
+  stuck?: StuckIssues;
   /** How much of what a person has to act on the list leaves out; null where it holds it all. */
   cut: AttentionCut | null;
   /** Said under the list where the response cannot say how much of it is left out. */
@@ -105,6 +123,69 @@ export function AttentionQueue({
     </>
   );
 
+  const listedRefs = new Set(items.map((it) => it.issueRef));
+  const stuckRows = stuck.refs.filter((r) => !listedRefs.has(r.issueId));
+  const stuckUnlisted = Math.max(stuck.total - stuck.refs.length, 0);
+  const stuckList = (
+    <>
+      {(stuckRows.length > 0 || stuckUnlisted > 0) && (
+        <p className="fg-caption mt-2 text-subtle">
+          {stuckRows.length < stuck.refs.length ? "Also reported stuck" : "Reported stuck"}
+        </p>
+      )}
+      {stuckRows.length > 0 && (
+        <RowList>
+          {stuckRows.map((r) => (
+            <li key={`stuck-${r.documentId}`} className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 py-2">
+              <span
+                className="inline-flex flex-none items-center gap-1 whitespace-nowrap rounded-pill px-1.5 py-0.5 font-semibold"
+                style={{ color: TONE_META.blocked.fg, background: TONE_META.blocked.bg, fontSize: "var(--text-11)" }}
+              >
+                <Icon name="clock" size={12} style={{ color: TONE_META.blocked.fg }} />
+                Stuck
+              </span>
+              <MonoTag>{r.issueId}</MonoTag>
+              <span className="fg-body-sm order-3 min-w-0 basis-full break-words text-fg sm:order-none sm:flex-1 sm:basis-40">
+                {STUCK_KIND_WORDS[r.kind]}
+              </span>
+              <Button
+                size="sm"
+                variant="secondary"
+                className="order-4 sm:order-none"
+                onClick={() => router.push(`/projects/${slug}/issues/${r.documentId}`)}
+              >
+                Open issue
+              </Button>
+            </li>
+          ))}
+        </RowList>
+      )}
+      {stuckUnlisted > 0 && (
+        <p className="fg-caption mt-2 text-subtle">
+          {stuckRows.length > 0 ? `And ${stuckUnlisted} more stuck. ` : `${stuckUnlisted} stuck. `}
+          <Link href={`/projects/${slug}/issues`} className="underline">
+            Every one is in Issues
+          </Link>
+          .
+        </p>
+      )}
+    </>
+  );
+  const holdsStuck = stuckRows.length > 0 || stuckUnlisted > 0;
+
+  if (items.length === 0 && holdsStuck && !refusal) {
+    return (
+      <DashboardSection title={TITLE}>
+        {stuckList}
+        {notes}
+      </DashboardSection>
+    );
+  }
+
+  // Degraded with nothing to list: the headline names the cause, and an empty line under it would
+  // say nothing needs you beside a red "Action needed" (ISS-1229 r13).
+  if (items.length === 0 && shape === "degraded" && !refusal && !cut) return null;
+
   if (items.length === 0) {
     return (
       <div>
@@ -122,8 +203,6 @@ export function AttentionQueue({
             <p className="fg-body-sm py-2 text-subtle">Nothing is listed to act on here.</p>
             {notes}
           </DashboardSection>
-        ) : shape === "degraded" ? (
-          <EmptyLine title={TITLE} status="Nothing here needs you." detail="The link above opens what is wrong." />
         ) : shape === "unread" ? (
           <EmptyLine
             title={TITLE}
@@ -173,6 +252,7 @@ export function AttentionQueue({
           );
         })}
       </RowList>
+      {stuckList}
       {notes}
     </DashboardSection>
   );

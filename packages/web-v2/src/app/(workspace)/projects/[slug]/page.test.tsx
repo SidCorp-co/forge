@@ -692,11 +692,10 @@ describe("a page whose figures sit beside other counts of the same things", () =
     runs = [run({ liveJobs: 0, startedAt: ago(5 * 3600), lastSessionBeatAt: null })];
     const { container } = mount();
     expect(shape(container)).toBe("degraded");
-    const list = screen.getByRole("region", { name: "Needs your attention" });
-    expect(list).not.toHaveTextContent("All caught up");
-    expect(list).toHaveTextContent("Nothing here needs you.");
-    expect(list).toHaveTextContent("The link above opens what is wrong.");
-    expect(list).not.toHaveTextContent("What is wrong is named above");
+    // Nothing it could list: the section is not shown, rather than contradict the band (ISS-1229 r13).
+    expect(screen.queryByRole("region", { name: "Needs your attention" })).toBeNull();
+    expect(container).not.toHaveTextContent("All caught up");
+    expect(container).not.toHaveTextContent("Nothing here needs you");
   });
 
   it("counts the sessions the Pipeline page lists, and says how many runs are open as the navigation rail counts them", () => {
