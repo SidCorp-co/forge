@@ -370,12 +370,11 @@ describe('release-readiness and the create door answer the same question', () =>
 
     expect(warned?.message).toContain("Label the box you want this project's releases to run on");
     expect(warned?.message).toContain('Settings \u2192 Runners');
+    // Both places, and why both: the binding falls back to its connection's label (ISS-1229 r13).
     expect(warned?.message).toContain(
       'clear `releaseRunnerLabel` from the live deploy binding under Settings \u2192 Integrations ' +
-        'AND from the connection behind it under Integrations in the workspace rail',
-    );
-    expect(warned?.message).toContain(
-      "Clearing it from the binding alone falls back to the connection's label rather than to none.",
+        'and from the connection behind it under Integrations in the workspace rail, ' +
+        'since the binding falls back to it.',
     );
     expect(warned?.message).not.toContain('does stop a release');
   });
