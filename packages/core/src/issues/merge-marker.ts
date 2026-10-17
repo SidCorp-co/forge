@@ -52,12 +52,6 @@ export const mergedCommitShaSchema = z
  * name. A merged pull request's own merge sha is not read again: Forge already holds it. A mark
  * naming no commit records none.
  */
-/** A clause `describeMergeMark` writes mid-sentence, standing on its own line of the thread. */
-function asSentence(clause: string): string {
-  const body = clause.charAt(0).toUpperCase() + clause.slice(1);
-  return /[.!?]$/.test(body) ? body : `${body}.`;
-}
-
 async function recordedClaim(args: {
   projectId: string;
   commit: string | undefined;
@@ -394,7 +388,7 @@ export async function applyMergeMarker(args: {
     ...(readFrom && stampResult.wrote ? { readFrom } : {}),
     claimHeldBy,
   });
-  const marked = args.op === 'mark' ? `\n${asSentence(markDetail)}` : '';
+  const marked = args.op === 'mark' ? `\n${markDetail}` : '';
   const auditComment = await writeAuditComment(
     before.id,
     args.actor.commentAuthorId,

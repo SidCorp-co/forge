@@ -4,6 +4,7 @@
  * answers for each ask, and that each refusal says what Releasing is and where a release starts.
  */
 
+import { markMergedSteps } from '@forge/contracts/mark-merged-words';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const claimRow = vi.fn(
@@ -33,7 +34,7 @@ const { releasingDoorRefusal } = await import('./releasing-door.js');
 
 const NOT_MERGED: Hold = {
   reason: 'not marked merged',
-  clears: "Use Mark merged in the issue's properties, and fill in Where it landed.",
+  clears: markMergedSteps(false),
 };
 
 const base = { issueId: 'iss-1', projectId: 'proj-7' } as const;
@@ -76,9 +77,7 @@ describe('entering releasing (ISS-1421)', () => {
     expect(refusal?.detail).toContain(
       'A release cannot close this issue yet. It is not marked merged.',
     );
-    expect(refusal?.detail).toContain(
-      "Use Mark merged in the issue's properties, and fill in Where it landed.",
-    );
+    expect(refusal?.detail).toContain(markMergedSteps(false));
     expect(refusal?.detail).toContain('Release now appears on its page once that is done.');
     expect(refusal?.detail).not.toContain('Start one with Release now');
     expect(refusal?.detail).not.toContain('release-batches');

@@ -1,17 +1,17 @@
 "use client";
 
 // Project-scoped integrations management (ISS-429). The full surface — status
-// cards, provider config drill-in (create/Test/Rotate/Disconnect + delivery
+// rows, provider config drill-in (create/Test/Rotate/Disconnect + delivery
 // log), and the Agent MCP servers panel — rendered INSIDE project settings, so
 // configuring a project never bounces through the workspace hub. The workspace
 // `/integrations` page is now the owner connection directory.
 
-import { type KeyboardEvent, useState } from "react";
-import { Button, ErrorState, Icon, type IconName, Skeleton } from "@/design";
+import { type KeyboardEvent, useEffect, useState } from "react";
+import { Button, ErrorState, Icon, type IconName, SectionTitle, Skeleton } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useIntegrationsStatus } from "../hooks";
-import { groupCardsByProvider, isProviderCard } from "../derive";
+import { cardProvider, groupCardsByProvider, isProviderCard } from "../derive";
 import { providerIcon as registryIcon } from "../providers/registry";
 import type { DeployStage, StatusCard } from "../types";
 import { ConnectionDetailDrawer } from "./connection-detail-drawer";
@@ -40,79 +40,73 @@ function externalRepoUrl(card: StatusCard): string | null {
   return null;
 }
 
-function IntegrationCard({ card, onOpen }: { card: StatusCard; onOpen?: () => void }) {
-  const lastSync = formatRelativeTime(card.lastSyncAt);
-  const repoUrl = externalRepoUrl(card);
-  const transport = typeof card.meta?.transport === "string" ? card.meta.transport : null;
-  const clickable = Boolean(onOpen);
+/** The row is the whole target: Enter or Space opens it, like a click. */
+function openable(label: string, onOpen?: () => void) {
+  if (!onOpen) return {};
+  return {
+    role: "button",
+    tabIndex: 0,
+    "aria-label": `Manage ${label}`,
+    onClick: onOpen,
+    onKeyDown: (e: KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        onOpen();
+      }
+    },
+  };
+}
 
+function ManageLink() {
   return (
-    <div className="border-t border-line pt-4">
-      <div
-        className={`flex min-h-[120px] flex-col gap-2.5 ${clickable ? "cursor-pointer" : ""}`}
-        {...(clickable
-          ? {
-              role: "button",
-              tabIndex: 0,
-              "aria-label": `Manage ${card.label}`,
-              onClick: onOpen,
-              onKeyDown: (e: KeyboardEvent) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  onOpen?.();
-                }
-              },
-            }
-          : {})}
-      >
-        <div className="flex items-center justify-between gap-2">
-          <span className="inline-flex items-center gap-2">
-            <Icon name={cardIcon(card.key)} size={18} className="text-muted" />
-            <span className="fg-h3">{card.label}</span>
-          </span>
-          <StatusPill card={card} />
-        </div>
-
-        <p className="fg-body-sm text-muted">{card.detail}</p>
-
-        {transport && (
-          <p className="fg-body-sm text-subtle">
-            transport: <span className="font-mono">{transport}</span>
-          </p>
-        )}
-
-        <div className="mt-auto flex items-center justify-between gap-2 pt-1">
-          <span className="fg-body-sm text-subtle">
-            {lastSync ? `synced ${lastSync}` : "no sync data"}
-          </span>
-          <span className="inline-flex items-center gap-3">
-            {repoUrl ? (
-              <a
-                href={repoUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 text-13 font-semibold text-accent hover:underline"
-                onClick={(e) => e.stopPropagation()}
-              >
-                Open repo
-                <Icon name="arrowRight" size={13} />
-              </a>
-            ) : null}
-            {clickable ? (
-              <span className="inline-flex items-center gap-1 text-13 font-semibold text-accent">
-                Manage
-                <Icon name="arrowRight" size={13} />
-              </span>
-            ) : null}
-          </span>
-        </div>
-      </div>
-    </div>
+    <span className="inline-flex items-center gap-1 text-13 font-semibold text-accent">
+      Manage
+      <Icon name="arrowRight" size={13} />
+    </span>
   );
 }
 
-/** Provider label with the env parenthetical stripped (`Coolify (prod)` →
- *  `Coolify`), used as the consolidated card's header. */
+/** When it was last checked, said only where it was. */
+function Checked({ card }: { card: StatusCard }) {
+  const when = formatRelativeTime(card.lastSyncAt);
+  return when ? <span className="fg-body-sm text-subtle">Checked {when}</span> : null;
+}
+
+/** One provider, one flush row: what it is and what it says on the left, its state on the right. */
+function IntegrationRow({ card, onOpen }: { card: StatusCard; onOpen?: () => void }) {
+  const repoUrl = externalRepoUrl(card);
+  return (
+    <li
+      className={`flex flex-wrap items-center gap-x-4 gap-y-2 py-3.5 ${onOpen ? "cursor-pointer hover:bg-hover" : ""}`}
+      {...openable(card.label, onOpen)}
+    >
+      <Icon name={cardIcon(card.key)} size={18} className="shrink-0 text-muted" />
+      <div className="min-w-0 flex-1 basis-[200px]">
+        <p className="fg-body font-semibold text-fg">{card.label}</p>
+        <p className="fg-body-sm text-muted">{card.detail}</p>
+      </div>
+      <div className="flex items-center gap-4 pl-[34px] sm:pl-0">
+        <Checked card={card} />
+        <StatusPill card={card} />
+        {repoUrl ? (
+          <a
+            href={repoUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-13 font-semibold text-accent hover:underline"
+            onClick={(e) => e.stopPropagation()}
+          >
+            Open repo
+            <Icon name="arrowRight" size={13} />
+          </a>
+        ) : null}
+        {onOpen ? <ManageLink /> : null}
+      </div>
+    </li>
+  );
+}
+
+/** Provider label with the stage parenthetical stripped (`Coolify (prod)` → `Coolify`). */
 function baseProviderLabel(card: StatusCard): string {
   return card.label.replace(/\s*\(.*\)$/, "");
 }
@@ -127,13 +121,10 @@ function scopeOf(card: StatusCard): string {
 }
 
 /**
- * One consolidated card for a provider with more than one binding (e.g.
- * Coolify): a single provider header followed by one sub-row per binding. Each
- * sub-row keeps its own status pill, last-health detail, synced time, and a
- * Manage affordance that opens the drawer scoped to that binding's card. No
- * aggregate health pill in the header (we never fabricate combined health).
+ * A provider with more than one binding (e.g. Coolify): its name as the row's heading, then one
+ * indented row per binding with its own state and Manage. No combined health is made up.
  */
-function GroupedIntegrationCard({
+function GroupedIntegrationRows({
   provider,
   cards,
   onOpen,
@@ -143,61 +134,34 @@ function GroupedIntegrationCard({
   onOpen?: (card: StatusCard) => void;
 }) {
   return (
-    <div className="border-t border-line pt-4">
-      <div className="flex min-h-[120px] flex-col gap-3">
-        <span className="inline-flex items-center gap-2">
-          <Icon name={cardIcon(provider)} size={18} className="text-muted" />
-          <span className="fg-h3">{baseProviderLabel(cards[0])}</span>
-        </span>
-
-        <div className="flex flex-col divide-y divide-[var(--border-subtle)]">
-          {cards.map((card) => {
-            const lastSync = formatRelativeTime(card.lastSyncAt);
-            const clickable = Boolean(onOpen);
-            const open = () => onOpen?.(card);
-            return (
-              <div
-                key={card.key}
-                className={`flex flex-col gap-1.5 py-2.5 first:pt-0 last:pb-0 ${
-                  clickable ? "cursor-pointer" : ""
-                }`}
-                {...(clickable
-                  ? {
-                      role: "button",
-                      tabIndex: 0,
-                      "aria-label": `Manage ${card.label}`,
-                      onClick: open,
-                      onKeyDown: (e: KeyboardEvent) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          open();
-                        }
-                      },
-                    }
-                  : {})}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="fg-body-sm font-semibold">{scopeOf(card)}</span>
-                  <StatusPill card={card} />
-                </div>
+    <li className="py-3.5">
+      <span className="inline-flex items-center gap-4">
+        <Icon name={cardIcon(provider)} size={18} className="text-muted" />
+        <span className="fg-body font-semibold text-fg">{baseProviderLabel(cards[0])}</span>
+      </span>
+      <ul className="mt-1 divide-y divide-line pl-[34px]">
+        {cards.map((card) => {
+          const open = onOpen ? () => onOpen(card) : undefined;
+          return (
+            <li
+              key={card.key}
+              className={`flex flex-wrap items-center gap-x-4 gap-y-1 py-2.5 ${open ? "cursor-pointer hover:bg-hover" : ""}`}
+              {...openable(card.label, open)}
+            >
+              <div className="min-w-0 flex-1 basis-[200px]">
+                <p className="fg-body-sm font-semibold text-fg">{scopeOf(card)}</p>
                 <p className="fg-body-sm text-muted">{card.detail}</p>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="fg-body-sm text-subtle">
-                    {lastSync ? `synced ${lastSync}` : "no sync data"}
-                  </span>
-                  {clickable ? (
-                    <span className="inline-flex items-center gap-1 text-13 font-semibold text-accent">
-                      Manage
-                      <Icon name="arrowRight" size={13} />
-                    </span>
-                  ) : null}
-                </div>
               </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
+              <div className="flex items-center gap-4">
+                <Checked card={card} />
+                <StatusPill card={card} />
+                {open ? <ManageLink /> : null}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </li>
   );
 }
 
@@ -209,45 +173,59 @@ function GroupedIntegrationCard({
 export function ProjectIntegrationsPanel({
   projectId,
   canEdit = true,
+  openProvider = null,
+  onOpenProvider,
 }: {
   projectId: string;
   canEdit?: boolean;
+  /** A provider to open the drawer on, asked for from outside the list, and the stage to open it
+   *  at; cleared once opened. */
+  openProvider?: { provider: string; stage?: DeployStage } | null;
+  onOpenProvider?: () => void;
 }) {
   const status = useIntegrationsStatus(projectId);
   const [selectedCard, setSelectedCard] = useState<StatusCard | null>(null);
+  const cards = status.data?.cards ?? [];
+
+  useEffect(() => {
+    if (!openProvider) return;
+    const card = cards.find((c) => cardProvider(c.key) === openProvider.provider);
+    if (!card) return;
+    // The drawer reads the stage it opens at off the card's key suffix (`coolify:live`).
+    const { stage } = openProvider;
+    setSelectedCard(stage ? { ...card, key: `${openProvider.provider}:${stage}` } : card);
+    onOpenProvider?.();
+  }, [openProvider, cards, onOpenProvider]);
 
   return (
     <div className="flex flex-col gap-4">
       {status.isLoading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="flex flex-col gap-2">
           {[0, 1, 2, 3, 4, 5].map((i) => (
-            <Skeleton key={i} className="h-[148px] w-full" />
+            <Skeleton key={i} className="h-[56px] w-full" />
           ))}
         </div>
       ) : status.isError ? (
         <ErrorState message={formatApiError(status.error)} onRetry={() => status.refetch()} />
       ) : (
         <>
-          <div className="flex justify-end">
+          <div className="flex items-center justify-between gap-2">
+            <SectionTitle className="fg-h3">Status</SectionTitle>
             <Button variant="ghost" size="sm" icon="rerun" onClick={() => status.refetch()}>
               Refresh
             </Button>
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {groupCardsByProvider(status.data?.cards ?? []).map((group) =>
+          <ul className="divide-y divide-line border-y border-line" data-testid="integration-rows">
+            {groupCardsByProvider(cards).map((group) =>
               group.cards.length > 1 ? (
-                <GroupedIntegrationCard
+                <GroupedIntegrationRows
                   key={group.provider}
                   provider={group.provider}
                   cards={group.cards}
-                  onOpen={
-                    isProviderCard(group.provider)
-                      ? (card) => setSelectedCard(card)
-                      : undefined
-                  }
+                  onOpen={isProviderCard(group.provider) ? (card) => setSelectedCard(card) : undefined}
                 />
               ) : (
-                <IntegrationCard
+                <IntegrationRow
                   key={group.provider}
                   card={group.cards[0]}
                   onOpen={
@@ -258,7 +236,7 @@ export function ProjectIntegrationsPanel({
                 />
               ),
             )}
-          </div>
+          </ul>
 
           <McpServersPanel projectId={projectId} canEdit={canEdit} />
 

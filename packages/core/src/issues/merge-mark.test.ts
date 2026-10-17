@@ -48,23 +48,25 @@ describe('the sentence a caller is given', () => {
   const assertedBare = describeMergeMark({ kind: 'asserted' });
   const observed = describeMergeMark({ kind: 'observed', commitSha: SHA });
 
-  it('says CLAIM for a mark Forge did not observe, with or without a claimed commit', () => {
-    expect(asserted).toContain('CLAIM Forge did not observe');
-    expect(assertedBare).toContain('CLAIM Forge did not observe');
+  it('says a mark Forge did not see is a claim, with or without a commit named', () => {
+    expect(assertedBare).toBe(
+      'No commit was named. Forge did not see this merge, so the mark is a claim.',
+    );
+    expect(asserted).toContain('Forge did not see this merge');
   });
 
-  it('tells a caller that named a commit that its commit is not in the column', () => {
-    expect(asserted).toContain('abc1234');
-    expect(asserted).toContain('is NOT the merge commit Forge holds');
+  it('tells a caller that named a commit that its commit is kept as a claim, not as the merge commit', () => {
+    expect(asserted).toContain('Commit abc1234 was named, and is kept as a claim.');
+    expect(asserted).toContain('so it is not the merge commit');
   });
 
   it('gives the observed mark a different sentence from the asserted one', () => {
     expect(observed).not.toBe(asserted);
-    expect(observed).not.toContain('CLAIM Forge did not observe');
-    expect(observed).toContain(SHA);
+    expect(observed).not.toContain('a claim');
+    expect(observed).toContain(`Forge saw this merge land at commit ${SHA}.`);
   });
 
-  it('says an unverified claim is NOT verified, why, and what verifies it, naming the commit once (ISS-1409)', () => {
+  it('says an unchecked claim was not checked, why, and what checks it, naming the commit once (ISS-1409)', () => {
     const unverified = describeMergeMark({
       kind: 'asserted',
       unverified: {
@@ -74,13 +76,13 @@ describe('the sentence a caller is given', () => {
         noReader: true,
       },
     });
-    expect(unverified).toContain('CLAIM Forge did not observe');
-    expect(unverified).toContain('commit abc1234');
-    expect(unverified).toContain('NOT verified');
-    expect(unverified).toContain('no way to read this project');
-    expect(unverified).toContain('attach a deploy key under Git access');
-    expect(unverified).toContain("is recorded as this call's claim and is NOT verified");
-    expect(unverified).not.toContain('observed.');
+    expect(unverified).toContain('Commit abc1234 was named, and is kept as a claim.');
+    expect(unverified).toContain(
+      "Forge has no way to read this project's repository, so it did not check it.",
+    );
+    expect(unverified).toContain(
+      'To have it checked, attach a deploy key under Git access, then mark it again.',
+    );
     expect(unverified.match(/abc1234/g)).toHaveLength(1);
   });
 
@@ -94,12 +96,13 @@ describe('the sentence a caller is given', () => {
         noReader: false,
       },
     });
-    expect(failed).toContain('NOT verified');
-    expect(failed).toContain('the git host refused the deploy key attached to this project');
     expect(failed).toContain(
-      "To have Forge verify it, mark again once the tracker can read the project's repository with the deploy key",
+      'Forge could not check it: the git host refused the deploy key attached to this project.',
     );
-    expect(failed).not.toContain('no way to read this project');
+    expect(failed).toContain(
+      "To have it checked, mark it again once the tracker can read the project's repository with the deploy key.",
+    );
+    expect(failed).not.toContain('no way to read');
   });
 
   it("says by name that a repeat's other commit was not recorded, and the first claim stands (ISS-1409)", () => {
@@ -107,8 +110,8 @@ describe('the sentence a caller is given', () => {
       kind: 'asserted',
       unverified: { commit: 'abc1234', why: 'w', clears: 'c', noReader: true, notKept: 'def5678' },
     });
-    expect(repeat).toContain('Commit def5678, which this call named, was NOT recorded');
-    expect(repeat).toContain('first claim, abc1234, stands');
+    expect(repeat).toContain('Commit def5678 was not recorded: the first claim, abc1234, stands.');
+    expect(repeat).toContain('To change it, Unmark, then Mark merged again.');
   });
 
   it('carries the claim beside the kind, and never lets it make a mark observed (ISS-1409)', () => {
@@ -118,10 +121,10 @@ describe('the sentence a caller is given', () => {
     expect(mergeMarkFields(ASSERTED).mergedClaimedCommit).toBeNull();
   });
 
-  it('names the landing on a landed mark, and never calls it a merge Forge observed', () => {
+  it('names the landing on a landed mark, and never says Forge saw it land', () => {
     const landed = describeMergeMark({ kind: 'landed', landing: LANDED.mergedLanding });
     expect(landed).toContain(LANDED.mergedLanding);
-    expect(landed).toContain('not a merge Forge observed');
+    expect(landed).toContain('Forge did not see it land');
   });
 });
 
@@ -145,6 +148,18 @@ describe('the mark sentence names no stored field (ISS-1421 r4)', () => {
   it.each(said.map((sentence, i) => [i, sentence] as const))('sentence %i', (_, sentence) => {
     expect(sentence).not.toMatch(STORED);
   });
+
+  // Repair 1 — a person reads these in the thread: plain short sentences, nothing shouted.
+  it.each(said.map((sentence, i) => [i, sentence] as const))(
+    'sentence %i is short plain sentences',
+    (_, sentence) => {
+      expect(sentence).toMatch(/^[A-Z].*\.$/s);
+      expect(sentence).not.toMatch(/\b[A-Z]{3,}\b/);
+      for (const one of sentence.split(/(?<=[.:])\s+(?=[A-Z])/)) {
+        expect(one.split(/\s+/).length, one).toBeLessThanOrEqual(20);
+      }
+    },
+  );
 
   it('a sentence naming a stored field is caught', () => {
     expect('`merged_commit_sha` holds abc').toMatch(STORED);

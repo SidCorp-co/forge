@@ -92,7 +92,7 @@ describe("ISS-1350 — every git mark's commit is one the repository holds (real
     const issue = await seed({ sessionContext: { branch: 'ISS-1350-x' } });
     const short = OWN.slice(0, 9);
     const res = await mark(issue, short, 'human');
-    expect(res.markDetail).toContain(`commit ${OWN} is recorded here as this call's claim`);
+    expect(res.markDetail).toContain(`Commit ${OWN} was named, and is kept as a claim.`);
     const audit = (await comments(issue.id)).at(-1) ?? '';
     expect(audit).toContain(`Marked merged into main, at commit ${OWN}.`);
     // ISS-1421 r4 — a person reads this thread: no action or field name an agent sends.
@@ -105,7 +105,7 @@ describe("ISS-1350 — every git mark's commit is one the repository holds (real
     const res = await mark(issue, OWN, 'human');
     expect(res.mark).toBe('asserted');
     expect((await row(issue.id)).merged_commit_sha).toBeNull();
-    expect(res.markDetail).toContain(`${repo.fullName} holds commit ${OWN}`);
+    expect(res.markDetail).toContain(`${repo.fullName} has commit ${OWN}`);
   });
 
   it('records no commit from a handoff on a mark naming none, even one the repository holds (ISS-1133 criterion 5)', async () => {
@@ -114,7 +114,7 @@ describe("ISS-1350 — every git mark's commit is one the repository holds (real
     const res = await mark(issue, undefined, 'human');
     expect(res.mark).toBe('asserted');
     expect((await row(issue.id)).merged_commit_sha).toBeNull();
-    expect(res.markDetail).toContain('no commit is recorded as its merge commit');
+    expect(res.markDetail).toContain('No commit was named.');
     expect(res.markDetail).not.toContain(OWN.slice(0, 10));
     expect(repo.reads).toEqual([]);
     expect((await comments(issue.id)).at(-1)).not.toMatch(/^Marked merged[^\n]*at commit/);

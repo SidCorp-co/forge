@@ -41,6 +41,7 @@ import { ConnectionReleaseRunnerField } from "./release-runner-field";
 import { PROVIDER_MODULES, providerIcon, providerLabel, providerModule } from "../providers/registry";
 import type { BindingSummary, ConnectionSummary, IntegrationTestResult } from "../types";
 import { DirectoryStatusPill, scopeLabel } from "./status-pill";
+import { healthLine } from "@forge/contracts/health-words";
 
 const CONNECTION_SECTIONS = new Map(
   PROVIDER_MODULES.flatMap((m) =>
@@ -204,10 +205,8 @@ function CredentialSection({
           </Button>
         )}
         <span className="fg-body-sm text-muted">
-          {connection.lastHealthStatus
-            ? `last health: ${connection.lastHealthStatus}${checked ? ` · ${checked}` : ""}`
-            : "never health-checked"}
-          {!connection.hasSecrets && " · no credential stored"}
+          {healthLine(connection.lastHealthStatus, checked)}
+          {!connection.hasSecrets && " No credential is stored."}
         </span>
       </div>
       {testResult && (

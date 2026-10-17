@@ -9,6 +9,7 @@
  * server and a GitHub double.
  */
 
+import { markMergedSteps } from '@forge/contracts/mark-merged-words';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { ProductionReading } from '../../src/release-batch/releasing-settle-reading.js';
@@ -143,9 +144,7 @@ describe("the sweep's next step names only a door the project has (criteria 27-3
     const [said] = await bodies(id);
     expect(said).toContain('It is back at Awaiting release.');
     expect(said).toContain('A release cannot close this issue yet. It is not marked merged.');
-    expect(said).toContain(
-      "Use Mark merged in the issue's properties, and fill in Where it landed.",
-    );
+    expect(said).toContain(markMergedSteps(false));
     expect(said).toContain('Release now appears on its page once that is done.');
     expect(said).not.toContain('starts a release');
     expect(said?.match(/Mark merged|Mark it merged/g)).toHaveLength(1);

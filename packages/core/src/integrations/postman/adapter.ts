@@ -194,7 +194,6 @@ export const postmanIntegration = declareIntegration<PostmanConfig, PostmanSecre
   presentation: {
     label: 'Postman',
     alwaysStageKeyed: false,
-    neverCheckedDetail: 'never test-connected',
     cardMeta: (config) => {
       const cfg = config as { region?: string; mode?: string };
       return { region: cfg.region ?? 'us', mode: cfg.mode ?? 'minimal' };

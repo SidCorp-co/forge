@@ -146,7 +146,9 @@ describe('findUnmetEntryCriteria', () => {
     expect(shortfall?.unmet.find((u) => u.key === 'release_note')?.detail).toContain(
       '`releaseNotes`',
     );
-    expect(shortfall?.unmet.find((u) => u.key === 'merged_mark')?.detail).toContain('merged mark');
+    expect(shortfall?.unmet.find((u) => u.key === 'merged_mark')?.detail).toContain(
+      'not marked merged',
+    );
   });
 
   it('fails merged_mark on a website project whose mark names no landing', async () => {
@@ -157,7 +159,9 @@ describe('findUnmetEntryCriteria', () => {
     });
     const detail = shortfall?.unmet.find((u) => u.key === 'merged_mark')?.detail ?? '';
     expect(detail).toContain('names no landing');
-    expect(detail).not.toMatch(/merged pull request|merged_commit_sha|CLAIM Forge did not observe/);
+    expect(detail).not.toMatch(
+      /merged pull request|merged_commit_sha|Forge did not see this merge/,
+    );
     expect(detail).toContain('lands outside git accepts `landed` or `observed`');
   });
 

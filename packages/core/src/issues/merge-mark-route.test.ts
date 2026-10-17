@@ -166,16 +166,16 @@ describe('POST /api/issues/:id/merge', () => {
 
   it('tells a caller whose merge was not witnessed that what it wrote is a claim', async () => {
     const claimed = await mark({ target: 'main', commit: 'abc1234' });
-    expect(claimed.detail).toContain('CLAIM Forge did not observe');
+    expect(claimed.detail).toContain('Forge did not see this merge');
     expect(claimed.detail).toContain('abc1234');
-    expect(claimed.detail).toContain('is NOT the merge commit Forge holds');
+    expect(claimed.detail).toContain('so it is not the merge commit');
   });
 
   it('carries the sha it witnessed in the answer, so the word can be checked', async () => {
     asObserved();
     const witnessed = await mark();
     expect(witnessed.detail).toContain(OBSERVED_SHA);
-    expect(witnessed.detail).not.toContain('CLAIM Forge did not observe');
+    expect(witnessed.detail).not.toContain('Forge did not see this merge');
   });
 
   it('calls a stamp of the empty string a claim, not a merge it witnessed', async () => {
@@ -193,7 +193,7 @@ describe('POST /api/issues/:id/merge', () => {
     asObserved();
     const disagreeing = await mark({ target: 'main', commit: 'abc1234' });
     expect(disagreeing.detail).toContain('abc1234');
-    expect(disagreeing.detail).toContain('is not the merge commit Forge holds');
+    expect(disagreeing.detail).toContain('named in this mark, is kept as a claim only');
   });
 });
 
@@ -224,7 +224,7 @@ describe('a second mark over a row that already holds a merge Forge witnessed', 
     alreadyObserved();
     const answer = await mark({ target: 'main', commit: 'abc1234' });
     expect(answer.detail).toContain('abc1234');
-    expect(answer.detail).toContain('is not the merge commit Forge holds');
+    expect(answer.detail).toContain('named in this mark, is kept as a claim only');
   });
 });
 
@@ -237,7 +237,7 @@ describe('DELETE /api/issues/:id/merge', () => {
     expect(res.status).toBe(200);
     const cleared = (await res.json()) as Answer;
     expect(cleared.mark).toBe('unmarked');
-    expect(cleared.detail).toContain('no merged mark');
+    expect(cleared.detail).toContain('not marked merged');
   });
 });
 

@@ -138,7 +138,7 @@ describe('the answer a caller that marks a merge is given', () => {
       target: 'main',
       actor: ACTOR,
     });
-    expect(claimed.markDetail).toContain('CLAIM Forge did not observe');
+    expect(claimed.markDetail).toContain('Forge did not see this merge');
   });
 
   it('gives the audit trail and the caller the same sentence, not two accounts of one row', async () => {
@@ -150,8 +150,7 @@ describe('the answer a caller that marks a merge is given', () => {
       actor: ACTOR,
     });
     expect(auditBodies).toHaveLength(1);
-    // The thread stands the clause on its own line, so only its first letter is capitalised.
-    expect(auditBodies[0]).toContain(claimed.markDetail.slice(1));
+    expect(auditBodies[0]).toContain(claimed.markDetail);
     expect(auditBodies[0]).toMatch(/^Marked merged into main\./);
   });
 

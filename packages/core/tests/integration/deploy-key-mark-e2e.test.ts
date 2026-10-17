@@ -67,7 +67,7 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
     const res = await mark(issue, own());
 
     expect(res.mark).toBe('observed');
-    expect(res.markDetail).toContain(`read from ${GITLAB_URL} itself`);
+    expect(res.markDetail).toContain(`It read the commit from ${GITLAB_URL}, on`);
     expect((await row(issue.id)).merged_commit_sha).toBe(own());
     await advance(issue.id, 'in_progress', 'developed');
     expect((await row(issue.id)).status).toBe('developed');
@@ -134,7 +134,7 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
     const branched = await seed({ sessionContext: { branch: `ISS-${SEQ}-elsewhere` } });
     const res = await mark(branched, (at.foreign as string).slice(0, 10));
     expect(res.mark).toBe('asserted');
-    expect(res.markDetail).toContain(`commit ${at.foreign} is recorded here as this call's claim`);
+    expect(res.markDetail).toContain(`Commit ${at.foreign} was named, and is kept as a claim.`);
 
     const person = await seed({ sessionContext: {}, seq: SEQ + 1 });
     const human = await mark(person, (at.foreign as string).slice(0, 10), 'human');
@@ -189,11 +189,11 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
       const res = await mark(issue, own());
 
       expect(res.mark).toBe('asserted');
-      expect(res.markDetail).toContain('is NOT verified');
+      expect(res.markDetail).toMatch(/(did not|could not) check it/);
       expect(res.markDetail).toContain(answer.said);
       for (const s of says) expect(res.markDetail).toContain(s);
       expect(res.markDetail).toContain(
-        `mark again once the tracker can read the project's repository with the deploy key attached under ${GIT_ACCESS}`,
+        `mark it again once the tracker can read the project's repository with the deploy key attached under ${GIT_ACCESS}`,
       );
       expect(res.markDetail).not.toMatch(/remote:\s*(\.|\))/);
       expect(res.markDetail).not.toContain('172.65.251.78');
@@ -219,7 +219,7 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
     expect(res.mark).toBe('asserted');
     expect(res.markDetail).toContain(`${GITLAB_URL} has no branch staging`);
     expect(res.markDetail).toContain(
-      `mark again once ${GITLAB_URL} has a branch staging, or the project's base branch and release chain name only branches it has`,
+      `mark it again once ${GITLAB_URL} has a branch staging, or the project's base branch and release chain name only branches it has`,
     );
     expect(res.markDetail).not.toContain('with the deploy key attached');
     expect(await row(issue.id)).toMatchObject({ merged_commit_sha: null });
@@ -235,7 +235,7 @@ describe('ISS-1409 — a project whose deploy key cannot be used to read it, or 
     const res = await mark(issue, own());
 
     expect(res.mark).toBe('asserted');
-    expect(res.markDetail).toContain('NOT verified');
+    expect(res.markDetail).toMatch(/(did not|could not) check it/);
     expect(res.markDetail).toContain(
       "Forge holds no GitHub binding and no deploy key for this project's repository on gitlab.com",
     );

@@ -40,10 +40,12 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
 
     expect(res.action).toBe('merged');
     expect(res.mark).toBe('observed');
-    expect(res.markDetail).toContain(`read from ${repo.fullName} itself`);
+    expect(res.markDetail).toContain(`It read the commit from ${repo.fullName}, on`);
     expect(res.markDetail).not.toContain('pull request');
     expect((await row(issue.id)).merged_commit_sha).toBe(OWN);
-    expect((await comments(issue.id)).at(-1)).toContain(`read from ${repo.fullName} itself`);
+    expect((await comments(issue.id)).at(-1)).toContain(
+      `It read the commit from ${repo.fullName}, on`,
+    );
 
     await advance(issue.id, 'in_progress', 'developed');
     await advance(issue.id, 'developed', 'testing');
@@ -111,11 +113,11 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
       const res = await mark(issue, OWN);
       expect(res.action).toBe('merged');
       expect(res.mark).toBe('asserted');
-      expect(res.markDetail).toContain(`commit ${OWN} is recorded as this call's claim`);
-      expect(res.markDetail).toContain('is NOT verified');
+      expect(res.markDetail).toContain(`Commit ${OWN} was named, and is kept as a claim.`);
+      expect(res.markDetail).toMatch(/(did not|could not) check it/);
       expect(res.markDetail).toContain(says);
       expect(res.markDetail).toContain(
-        `mark again once the tracker can read the project's repository${route}`,
+        `mark it again once the tracker can read the project's repository${route}`,
       );
       expect(await row(issue.id)).toMatchObject({ merged_commit_sha: null });
       const refused = await refusal(() => mark(issue, OWN, 'human'));
@@ -136,7 +138,7 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
     const issue = await seed({ sessionContext: { branch: 'ISS-1318-mark-landed-base' } });
     const res = await mark(issue, FOREIGN);
     expect(res.mark).toBe('asserted');
-    expect(res.markDetail).toContain(`commit ${FOREIGN} is recorded here as this call's claim`);
+    expect(res.markDetail).toContain(`Commit ${FOREIGN} was named, and is kept as a claim.`);
     expect((await row(issue.id)).merged_commit_sha).toBeNull();
     expect(repo.reads).toEqual([`/repos/${repo.fullName}/commits/${FOREIGN}`]);
   });
@@ -160,8 +162,10 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
     const issue = await seed();
     const res = await mark(issue, OWN);
     expect((await row(issue.id)).merged_commit_sha).toBe(pr);
-    expect(res.markDetail).not.toContain(`read from ${repo.fullName} itself`);
-    expect((await comments(issue.id)).at(-1)).not.toContain(`read from ${repo.fullName} itself`);
+    expect(res.markDetail).not.toContain(`It read the commit from ${repo.fullName}, on`);
+    expect((await comments(issue.id)).at(-1)).not.toContain(
+      `It read the commit from ${repo.fullName}, on`,
+    );
   });
 
   it('takes no commit route on an outside_git project, naming the landing route (criterion 15, ISS-1384)', async () => {
@@ -243,7 +247,7 @@ describe('ISS-1318 r3 — each refusal names a route its reader can take (real P
     const res = await mark(issue, OWN);
     expect(res.mark).toBe('asserted');
     expect(res.markDetail).toContain('the project names no base branch to look for it on');
-    expect(res.markDetail).toContain('mark again once the project names its base branch');
+    expect(res.markDetail).toContain('mark it again once the project names its base branch');
     expect(repo.reads).toEqual([]);
   });
 

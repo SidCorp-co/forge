@@ -24,7 +24,7 @@ const defaultDeps: RepositoryAccessDeps = {
   deployKey: withDeployKey,
 };
 
-/** How "mark again once …" ends for a repository read through `route`. */
+/** How "mark it again once …" ends for a repository read through `route`. */
 export function readableThrough(route: RepositoryRoute): string {
   return route === 'binding'
     ? "once the tracker can read the project's repository, through a GitHub binding whose installation can read it"

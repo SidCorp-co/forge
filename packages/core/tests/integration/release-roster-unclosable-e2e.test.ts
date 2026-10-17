@@ -11,6 +11,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { markMergedSteps } from '@forge/contracts/mark-merged-words';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -154,7 +155,7 @@ describe('a release names, before the press, the rows its finish could not close
       expect.objectContaining({
         code: 'CLOSE_REQUIRES_SHIPPED',
         reason: 'no mark naming where its work landed',
-        clears: expect.stringContaining('landing'),
+        clears: markMergedSteps(true),
       }),
     ]);
     expect(refusalsOf(rows.asked)).toEqual([

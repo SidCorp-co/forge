@@ -5,6 +5,7 @@
  * to at most 25 words. The words themselves are proved where they are read, in `releasing-door`.
  */
 
+import { markMergedSteps } from '@forge/contracts/mark-merged-words';
 import { describe, expect, it } from 'vitest';
 import type { IssueStatus } from '../db/schema.js';
 import {
@@ -25,7 +26,7 @@ const HOLDS: GateHolds[] = [
     holds: [
       {
         reason: 'not marked merged',
-        clears: "Use Mark merged in the issue's properties, and fill in Where it landed.",
+        clears: markMergedSteps(false),
       },
     ],
   },
@@ -34,8 +35,7 @@ const HOLDS: GateHolds[] = [
     holds: [
       {
         reason: 'no mark naming where its work landed',
-        clears:
-          "Use Mark merged in the issue's properties, and give Where it landed its landing: the live URL, CMS entry or storefront resource.",
+        clears: markMergedSteps(true),
       },
       {
         reason: 'holds 2 open questions',

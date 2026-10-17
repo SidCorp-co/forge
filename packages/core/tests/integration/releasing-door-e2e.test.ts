@@ -10,6 +10,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { markMergedSteps } from '@forge/contracts/mark-merged-words';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -191,9 +192,7 @@ describe('a move to Releasing from any door but a release batch (criteria 5, 6, 
     expect(body.message).toContain(
       'A release cannot close this issue yet. It is not marked merged.',
     );
-    expect(body.message).toContain(
-      "Use Mark merged in the issue's properties, and fill in Where it landed.",
-    );
+    expect(body.message).toContain(markMergedSteps(false));
     expect(body.message).toContain('Release now appears on its page once that is done.');
     expect(body.message).not.toContain('Start one with Release now');
     expect(body.message).not.toContain('release-batches');
