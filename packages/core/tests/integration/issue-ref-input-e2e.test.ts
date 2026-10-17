@@ -154,9 +154,19 @@ describe('every registered issue reference takes the display key (ISS-1179)', ()
     expect(Object.keys(ARGS).sort()).toEqual(ISSUE_REF_INPUTS.map((i) => i.action).sort());
   });
 
+  // Unmark on an issue holding no mark is refused by name (NOT_MARKED_MERGED, ISS-1421), so the
+  // door is asked about an issue that holds one.
+  const seedFor = async (action: string): Promise<World> => {
+    const w = await seed();
+    if (action === 'unmark') {
+      await harness.db.execute(sql`UPDATE issues SET merged_at = now() WHERE id = ${w.issueId}`);
+    }
+    return w;
+  };
+
   for (const { action, field } of ISSUE_REF_INPUTS) {
     it(`${action} resolves ${field} given as ${KEY}`, async () => {
-      const w = await seed();
+      const w = await seedFor(action);
       const res = await call(w.pat, {
         ...ARGS[action]?.(KEY, w.projectId),
         projectId: w.projectId,
@@ -165,7 +175,7 @@ describe('every registered issue reference takes the display key (ISS-1179)', ()
     });
 
     it(`${action} still takes ${field} as a uuid`, async () => {
-      const w = await seed();
+      const w = await seedFor(action);
       const res = await call(w.pat, {
         ...ARGS[action]?.(w.issueId, w.projectId),
         projectId: w.projectId,

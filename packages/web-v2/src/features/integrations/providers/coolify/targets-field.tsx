@@ -46,6 +46,10 @@ export function CoolifyTargetsField({
   const identityFor = (uuid: string) =>
     (identities.data?.targets ?? []).find((t) => t.uuid === uuid);
 
+  // Each row's inputs carry their own name: the column labels above them show on the first row only.
+  const applicationName = (idx: number) =>
+    targets.length > 1 ? `Coolify application of target ${idx + 1}` : "Coolify application";
+
   function updateTarget(idx: number, patch: Partial<CoolifyTargetInput>) {
     onChange(targets.map((t, i) => (i === idx ? { ...t, ...patch } : t)));
   }
@@ -81,6 +85,7 @@ export function CoolifyTargetsField({
                   <span className="fg-label mb-1 block text-subtle">Label</span>
                 )}
                 <Input
+                  aria-label={targets.length > 1 ? `Label of target ${idx + 1}` : "Label"}
                   value={t.label}
                   onChange={(e) => updateTarget(idx, { label: e.target.value })}
                   placeholder="Backend"
@@ -94,7 +99,7 @@ export function CoolifyTargetsField({
                 )}
                 {options.length > 0 ? (
                   <NativeSelect
-                    aria-label="Coolify application"
+                    aria-label={applicationName(idx)}
                     value={t.resourceUuid}
                     options={[
                       { value: "", label: "Select an application…" },
@@ -106,6 +111,7 @@ export function CoolifyTargetsField({
                   />
                 ) : (
                   <Input
+                    aria-label={applicationName(idx)}
                     value={t.resourceUuid}
                     onChange={(e) =>
                       updateTarget(idx, { resourceUuid: e.target.value })

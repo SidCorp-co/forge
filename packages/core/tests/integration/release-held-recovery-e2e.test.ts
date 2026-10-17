@@ -4,8 +4,8 @@
  * sweep counts a running run as live, the silent recovery reads only a job a box took and the
  * unstarted one only a queued job, so nothing ever read it. The held recovery reads it: a hold that
  * does not clear by itself, or one past the deadline a release may wait for a box, is fenced and its
- * roster handed back with a comment naming the run in words and why its job was held. A hold on a
- * decision is a question a person owes, and waits for the answer however long it takes.
+ * roster handed back with a comment saying why its job was held and carrying the run's page. A hold
+ * on a decision a person owes is handed back too (r5): Releasing is not a state an issue waits in.
  *
  * Integration because the subject is which rows each pass's SQL reads, and only Postgres answers it.
  */
@@ -143,9 +143,15 @@ describe('a release batch whose job is held with nothing to send it (criterion 5
       expect(await fx.stored(id)).toMatchObject({ status: 'awaiting_release', claim: null });
       const said = (await bodies(id)).join('\n');
       expect(said).toContain(
-        'The release run carrying this issue could never move: its job was held because it failed on every retry, and nothing would send it again.',
+        'Its release could never move: its job was held because it failed on every retry, and nothing would send it again.',
       );
-      expect(said).not.toContain(runId);
+      // ISS-1421 r5: the run is linked by its page, never named in words a reader cannot open.
+      expect(said).toMatch(
+        new RegExp(
+          `The release it was in is at https?://\\S+/projects/[^/\\s]+/releases/${runId}\\.`,
+        ),
+      );
+      expect(said).not.toMatch(/\/api\//);
       expect(said).not.toMatch(/retry_rounds_exhausted|failure_reason/);
     }
     expect(await fx.runStatus(runId)).not.toBe('running');
@@ -209,23 +215,89 @@ describe('a release batch whose job is held with nothing to send it (criterion 5
   });
 });
 
-describe('a held release the recovery leaves as it found it (criterion 59)', () => {
-  it('leaves a release held on a decision a person owes, however long it has waited', async () => {
+// ISS-1421 r5 — anhome ISS-783 stood at Releasing from 2026-10-13 because its release job was held
+// on question b210f881, and the r4 pass left a decision hold alone however long it waited.
+describe('a release held on a decision a person owes (criterion 67)', () => {
+  it('is handed back on the first pass, however young the hold', async () => {
+    const a = await fx.insertIssue();
+    const b = await fx.insertIssue();
+    const { runId, jobId } = await fx.claim([a, b]);
+    await hold(jobId, {
+      reason: 'awaiting_decision',
+      autoRelease: false,
+      minutesAgo: 1,
+      decision: 'owed',
+    });
+
+    expect(await m.recover(new Date())).toEqual({ recovered: 1 });
+
+    const { DECISION_HANDBACK_REASON } = await import('../../src/release-batch/decision-state.js');
+    expect(await job(jobId)).toEqual({ status: 'cancelled', error: DECISION_HANDBACK_REASON });
+    for (const id of [a, b]) {
+      expect(await fx.stored(id)).toMatchObject({ status: 'awaiting_release', claim: null });
+      const said = (await bodies(id)).join('\n');
+      expect(said).toContain(
+        'This release waited on a decision a person owes, so it was handed back',
+      );
+      expect(said).toContain(`/releases/${runId}.`);
+    }
+    expect(await fx.runStatus(runId)).not.toBe('running');
+    expect(await m.recover(new Date())).toEqual({ recovered: 0 });
+  });
+
+  it('finishes a decision hand-back a pass cut short after fencing the job, and says the same', async () => {
     const a = await fx.insertIssue();
     const { runId, jobId } = await fx.claim([a]);
     await hold(jobId, {
       reason: 'awaiting_decision',
       autoRelease: false,
-      minutesAgo: 10 * deadlineMinutes(),
+      minutesAgo: 1,
       decision: 'owed',
     });
+    const { DECISION_HANDBACK_REASON } = await import('../../src/release-batch/decision-state.js');
+    await harness.db.execute(sql`
+      UPDATE jobs SET status = 'cancelled', finished_at = now(), error = ${DECISION_HANDBACK_REASON}
+      WHERE id = ${jobId}
+    `);
 
-    expect(await m.recover(new Date())).toEqual({ recovered: 0 });
-    expect(await job(jobId)).toMatchObject({ status: 'held' });
-    expect(await fx.stored(a)).toMatchObject({ status: 'releasing', claim: runId });
-    expect(await bodies(a)).toEqual([]);
+    expect(await m.recover(new Date())).toEqual({ recovered: 1 });
+    expect(await fx.stored(a)).toMatchObject({ status: 'awaiting_release', claim: null });
+    expect((await bodies(a)).join('\n')).toContain('waited on a decision a person owes');
+    expect(await fx.runStatus(runId)).not.toBe('running');
   });
+});
 
+// Review of r5: a release that already promoted keeps its roster for the releasing sweep, so the
+// owner's notice may not say its issues were put back at the gate.
+describe('a decision-held release that had already promoted', () => {
+  it('leaves its roster to the releasing sweep, and its notice says so', async () => {
+    const a = await fx.insertIssue();
+    const { runId, jobId } = await fx.claim([a]);
+    await hold(jobId, {
+      reason: 'awaiting_decision',
+      autoRelease: false,
+      minutesAgo: 1,
+      decision: 'owed',
+    });
+    await harness.db.execute(sql`
+      INSERT INTO release_attempts (run_id, stage, idempotency_key, commit)
+      VALUES (${runId}, 'promote', 'promote-1', 'abc')
+    `);
+
+    expect(await m.recover(new Date())).toEqual({ recovered: 1 });
+
+    const [notice] = (await harness.db.execute(sql`
+      SELECT body FROM notifications
+      WHERE type = 'pipeline_wedge' AND resolution_key = ${`wedge:${jobId}`}
+    `)) as unknown as Array<{ body: string | null }>;
+    expect(notice?.body ?? '').toContain('the releasing sweep settles its issues');
+    expect(notice?.body ?? '').not.toContain('put back at the release gate');
+    expect(notice?.body ?? '').not.toMatch(/start the release again/);
+    expect(notice?.body ?? '').toContain('no new release is needed');
+  });
+});
+
+describe('a held release the recovery leaves as it found it (criterion 59)', () => {
   it('leaves a self-clearing hold younger than the deadline', async () => {
     const a = await fx.insertIssue();
     const { runId, jobId } = await fx.claim([a]);

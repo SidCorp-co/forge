@@ -51,14 +51,14 @@ interface BadgeView {
   tone: NonNullable<BadgeProps["tone"]>;
 }
 
-function badgeFor(existing: IntegrationSummary | undefined): BadgeView {
+/** What the binding's own fields hold: a health check is not a deploy, and turned off is not a breaker. */
+export function badgeFor(existing: IntegrationSummary | undefined): BadgeView {
   if (!existing) return { label: "Not configured", tone: "amber" };
-  if (!existing.active) return { label: "Breaker open", tone: "red" };
-  if (existing.lastHealthStatus === "ok")
-    return { label: "Connected", tone: "green" };
-  if (existing.lastHealthStatus === "error")
-    return { label: "Last deploy failed", tone: "red" };
-  return { label: "Untested", tone: "neutral" };
+  if (!existing.active) return { label: "Turned off", tone: "neutral" };
+  if (existing.breakerOpenedAt !== null) return { label: "Degraded", tone: "amber" };
+  if (existing.lastHealthStatus === "ok") return { label: "Connected", tone: "green" };
+  if (existing.lastHealthStatus === "error") return { label: "Last check failed", tone: "red" };
+  return { label: "Not checked yet", tone: "neutral" };
 }
 
 export function CoolifySection({ projectId, stage: openedAt }: { projectId: string; stage?: DeployStage }) {

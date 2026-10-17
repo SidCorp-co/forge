@@ -352,6 +352,42 @@ describe('the decision is answered, or the release ends first', () => {
   });
 });
 
+// ISS-1421 r5 — Releasing is not a state an issue waits in: the held recovery hands a release held
+// on a decision back, and the question stays open on the issue it is asked on, holding that issue.
+describe('a release handed back while it waits on a decision (criterion 67, 68)', () => {
+  it('returns the roster to the gate, links the open question, and keeps it open after the run ends', async () => {
+    const release = await runningRelease();
+    const { questionIds } = await (await blocked(release.jobId)).json();
+    const [first, second] = release.ids as [string, string, string];
+
+    const { recoverHeldReleaseBatches } = await import('../../src/release-batch/held-recovery.js');
+    expect(await recoverHeldReleaseBatches(new Date())).toEqual({ recovered: 1 });
+    await fx.waitFor(async () => (await fx.runStatus(release.runId)) !== 'running');
+
+    for (const id of release.ids) {
+      expect(await fx.stored(id)).toMatchObject({ status: 'awaiting_release', claim: null });
+    }
+    const comments = await harness.db.execute<{ body: string }>(sql`
+      SELECT body FROM comments WHERE issue_id = ${second} ORDER BY created_at DESC LIMIT 1
+    `);
+    expect(comments[0]?.body).toMatch(
+      new RegExp(`The question stays open at https?://\\S+/projects/[^/\\s]+/issues/${first}\\.`),
+    );
+    expect(comments[0]?.body).toContain(`/releases/${release.runId}.`);
+
+    // The run's end voids nothing: the question waits on the issue it is asked on.
+    await new Promise((r) => setTimeout(r, 200));
+    const asked = await questionsOn(first);
+    expect(asked.map((q) => q.id)).toEqual(questionIds);
+    expect(asked[0]?.status).toBe('open');
+
+    const { rosterCloseShortfalls } = await import('../../src/release-batch/close-shortfall.js');
+    const held = await rosterCloseShortfalls(projectId, [first, second]);
+    expect(held.get(first)?.map((s) => s.code)).toContain('OPEN_QUESTIONS');
+    expect(held.get(second)?.map((s) => s.code) ?? []).not.toContain('OPEN_QUESTIONS');
+  });
+});
+
 describe('two moments the answer and the hold can meet', () => {
   it('leaves one held job when two reports of one blocked job are taken at the same moment', async () => {
     const release = await runningRelease();

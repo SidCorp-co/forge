@@ -364,17 +364,25 @@ asks it again.
   what was refused. A question that cannot sit on an issue sits on the project.
 - **The run stays open and holds one successor.** The failed job gets a `held` successor under the
   same run, reason `awaiting_decision`, carrying the typed reference in
-  `packages/core/src/release-batch/decision-state.ts:DecisionRef`. No retry is scheduled, the run
-  is not reaped (it has a non-terminal job), and the roster is not recut. A second press for the
-  same members is refused `BATCH_IN_FLIGHT`, and the sentence says the release waits on a person
-  and names the question.
+  `packages/core/src/release-batch/decision-state.ts:DecisionRef`. No retry is scheduled and the
+  roster is not recut. Until the held recovery's next pass, a second press for the same members is
+  refused `BATCH_IN_FLIGHT`, and the sentence says the release waits on a person and names the
+  question.
 - **An answer requeues it.** `packages/core/src/release-batch/decision-hold.ts:requeueOnAnswer`
   runs on the `questionAnswered` hook; once every question of the decision is answered it releases
   the held job once, with the answers appended to its prompt
   (`packages/core/src/release-batch/prompt.ts:decisionsGivenSection`). Resuming the job by hand
   while a question is open is refused `DECISION_OPEN`.
-- **A run that ends voids its questions.** `voidOnRunEnd` closes the open questions when the run
-  is aborted or fails, so an answer after that finds nothing to requeue.
+- **Releasing is not a state an issue waits in.** `packages/core/src/release-batch/held-recovery.ts:recoverHeldReleaseBatches`
+  hands a release held on an owed decision back on its next once-a-minute pass: the held job is
+  cancelled with `packages/core/src/release-batch/decision-state.ts:DECISION_HANDBACK_REASON`, every roster issue returns to
+  Awaiting release unclaimed, and each one's comment carries the page the question is open on and
+  the release run's page. An answer given inside that minute still requeues the job; after it, the
+  answer reaches no release agent, and the issue is released again with Release now.
+- **The question outlives the release handed back on it.** `voidOnRunEnd` closes the open
+  questions when the run is aborted or fails, except a run the held recovery handed back on its
+  decision: that question stays open on the issue it is asked on, and its `OPEN_QUESTIONS`
+  shortfall keeps Release now off that issue until it is answered.
 
 Only `release_batch` jobs are held this way. Another job kind that ends `Blocked` fails with its
 question carried at project level and no successor.

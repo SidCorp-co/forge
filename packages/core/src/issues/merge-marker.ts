@@ -25,6 +25,7 @@ import {
   type MergeRecord,
   mergeMarkKindOf,
   observedMergeForIssue,
+  quoted,
   recordIssueMerge,
 } from './merge-record.js';
 import { refuseUnmarkOnClosed } from './merged-at.js';
@@ -82,6 +83,7 @@ export class MergeMarkerError extends Error {
       | 'NO_WORK_EVIDENCE'
       | 'ISSUE_NOT_FOUND'
       | 'UNMARK_REQUIRES_NOT_CLOSED'
+      | 'NOT_MARKED_MERGED'
       | 'LANDING_REQUIRED'
       | 'LANDING_NOT_THIS_SHAPE'
       | 'MARK_ALREADY_STANDS'
@@ -192,25 +194,43 @@ function namesAnother(named: string, kept: string): string | null {
   return a.startsWith(b) || b.startsWith(a) ? null : named;
 }
 
+export const NOT_MARKED_MERGED_DETAIL =
+  'This issue is not marked merged, so there is no mark to remove. Nothing changed.';
+
 /**
- * Clear the mark. The `closed` guard is the UPDATE's own WHERE, so nothing can close the row between
- * the decision and the write. A zero-row answer is read back rather than guessed at: the row is gone,
- * or it is closed, and anything else is a state those two conditions cannot produce.
+ * Clear the mark. The `closed` and the no-mark guards are the UPDATE's own WHERE, so nothing can
+ * close or clear the row between the decision and the write. A zero-row answer is read back rather
+ * than guessed at: the row is gone, closed or unmarked, and anything else is a state those three
+ * conditions cannot produce.
  */
 async function unmarkOrRefuse(issueId: string): Promise<void> {
   if (await clearIssueMerge(db, issueId)) return;
   const still = await findIssueById(issueId);
   if (!still) throw new MergeMarkerError('ISSUE_NOT_FOUND', 'issue not found');
   const refusal = refuseUnmarkOnClosed(still.status);
-  if (!refusal) {
-    throw new Error(
-      `unmark cleared no row on issue ${issueId}, which is neither missing nor Closed (closed) but ` +
-        `${statusForCaller(still.status)}. The UPDATE's only other condition is the id, so this is a state ` +
-        `clearIssueMerge cannot produce and must not be reported as either of them.`,
-    );
+  if (refusal) throw new MergeMarkerError('UNMARK_REQUIRES_NOT_CLOSED', refusal.detail);
+  if (still.mergedAt == null) {
+    throw new MergeMarkerError('NOT_MARKED_MERGED', NOT_MARKED_MERGED_DETAIL);
   }
-  throw new MergeMarkerError('UNMARK_REQUIRES_NOT_CLOSED', refusal.detail);
+  throw new Error(
+    `unmark cleared no row on issue ${issueId}, which is neither missing, Closed (closed) nor unmarked but ` +
+      `${statusForCaller(still.status)}. The UPDATE's only other condition is the id, so this is a state ` +
+      `clearIssueMerge cannot produce and must not be reported as any of them.`,
+  );
 }
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** A repeated mark changes nothing, and says so in a sentence: no capitals of its own, no stored
+ *  timestamp, and never the "Marked merged" a first mark opens with. */
+export function alreadyMarkedSentence(mergedAt: Date | null): string {
+  const on = mergedAt
+    ? ` on ${mergedAt.getUTCDate()} ${MONTHS[mergedAt.getUTCMonth()]} ${mergedAt.getUTCFullYear()}`
+    : '';
+  return `Already marked merged${on}, so this call changed nothing`;
+}
+
+export const CHANGE_THE_MARK = 'To change the mark, use Unmark, then Mark merged again.';
 
 export type MergeMarkerActor = {
   agency: ActorAgency;
@@ -361,15 +381,15 @@ export async function applyMergeMarker(args: {
   }
 
   const labelled = stampResult.commitSha ?? claimedCommit ?? stampResult.claimedCommit;
-  // The thread is read by people: words, never the action or field names an agent sends.
-  const label =
-    args.op === 'mark'
+  const repeated = args.op === 'mark' && !stampResult.wrote;
+  // The thread is read by people: words, never the action or field names an agent sends. A repeat
+  // opens with what it did — nothing — and keeps the caller's note, which a landing's account reads.
+  const label = repeated
+    ? alreadyMarkedSentence(stampResult.mergedAt)
+    : args.op === 'mark'
       ? `Marked merged${args.target ? ` into ${args.target}` : ''}${labelled ? `, at commit ${labelled}` : ''}`
       : 'Merge mark removed';
-  const unchanged =
-    args.op === 'mark' && !stampResult.wrote
-      ? `\nNOT stamped by this call: this issue was already marked merged ${stampResult.mergedAt ? `at ${stampResult.mergedAt.toISOString()}` : 'before'}, and the first mark stands. Unmark, then Mark merged again, is the only correction. It does not re-block dependents: those are held by the issue's status, not by its merge mark.`
-      : '';
+
   // Read off the ROW, not off the branch this call took: docs/modules/issues/merge-mark.md.
   const mark: MergeMarkKind =
     args.op === 'mark'
@@ -379,20 +399,30 @@ export async function applyMergeMarker(args: {
           mergedLanding: stampResult.landing,
         })
       : 'unmarked';
-  const markDetail = describeMergeMark({
+  const kept = unverified && keptClaim(unverified, stampResult.claimedCommit);
+  const standingDetail = describeMergeMark({
     kind: mark,
     commitSha: stampResult.commitSha,
     claimedCommit,
     landing: stampResult.landing,
-    unverified: unverified && keptClaim(unverified, stampResult.claimedCommit),
+    unverified: kept,
     ...(readFrom && stampResult.wrote ? { readFrom } : {}),
     claimHeldBy,
   });
-  const marked = args.op === 'mark' ? `\n${markDetail}` : '';
+  // A repeat naming another commit is already told how to change the claim, by the claim's own words.
+  const step = repeated && !kept?.notKept ? CHANGE_THE_MARK : null;
+  const after = [step, standingDetail].filter(Boolean).join(' ');
+  const markDetail = repeated
+    ? `${alreadyMarkedSentence(stampResult.mergedAt)}. ${after}`
+    : standingDetail;
+  const marked = args.op === 'mark' ? `\n${standingDetail}` : '';
   const auditComment = await writeAuditComment(
     before.id,
     args.actor.commentAuthorId,
-    `${label}${args.note ? ` — ${args.note}` : '.'}${unchanged}${marked}`,
+    // The thread renders markdown: a repeat's parts are paragraphs, the note quoted whole.
+    repeated
+      ? [`${label}.`, args.note ? quoted(args.note) : null, after].filter(Boolean).join('\n\n')
+      : `${label}${args.note ? ` — ${args.note}` : '.'}${marked}`,
   );
   if (auditComment) {
     await hooks.emit('commentCreated', {
@@ -426,11 +456,6 @@ export async function applyMergeMarker(args: {
     reason: args.op === 'mark' ? 'merged mark written' : 'merged mark cleared',
   });
 
-  if (args.op !== 'mark') return { issue, action: 'unmarked', mark, markDetail };
-  return {
-    issue,
-    action: stampResult.wrote ? 'merged' : 'already_merged',
-    mark,
-    markDetail,
-  };
+  const action = args.op !== 'mark' ? 'unmarked' : repeated ? 'already_merged' : 'merged';
+  return { issue, action, mark, markDetail };
 }

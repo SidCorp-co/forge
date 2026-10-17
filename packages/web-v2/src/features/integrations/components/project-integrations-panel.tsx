@@ -170,6 +170,25 @@ function GroupedIntegrationRows({
  * provider card to configure/test/rotate/disconnect in the drawer) + the Agent
  * MCP servers preview. Used by project settings → Integrations.
  */
+/**
+ * The card the drawer shows, read from the current list rather than kept from the click that opened
+ * it: a save refetches the list, and a kept copy went on reading Not connected (ISS-1421). A key the
+ * list no longer has is found by provider and stage — `coolify` becomes `coolify:preview` once
+ * connected — and a stage no card serves reads as not set up, never as another stage's state.
+ */
+export function liveCard(opened: StatusCard | null, cards: StatusCard[]): StatusCard | null {
+  if (!opened) return null;
+  const exact = cards.find((c) => c.key === opened.key);
+  if (exact) return exact;
+  const provider = cardProvider(opened.key);
+  const same = cards.filter((c) => cardProvider(c.key) === provider);
+  const stage = opened.key.split(":")[1];
+  if (!stage) return same.length === 1 ? same[0] : opened;
+  const serving = same.find((c) => c.key.split(":")[1]?.split("+").includes(stage));
+  if (serving) return { ...serving, key: opened.key };
+  return { ...opened, status: "not_configured", configured: false, detail: "", lastSyncAt: null };
+}
+
 export function ProjectIntegrationsPanel({
   projectId,
   canEdit = true,
@@ -242,7 +261,7 @@ export function ProjectIntegrationsPanel({
 
           <ConnectionDetailDrawer
             projectId={projectId}
-            card={selectedCard}
+            card={liveCard(selectedCard, cards)}
             onClose={() => setSelectedCard(null)}
             canEdit={canEdit}
           />

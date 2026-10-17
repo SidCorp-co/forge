@@ -286,4 +286,20 @@ describe('resolveCoolifyTargets', () => {
     expect(targets[0]).toMatchObject({ found: true, name: 'forge-api', gitBranch: 'main' });
     expect(targets[1]).toMatchObject({ found: false, label: 'Frontend', uuid: 'app-gone' });
   });
+  // ISS-1421 r5: the Integrations tab read this as a bare 500 when Coolify could not be reached.
+  it('names a Coolify it could not reach rather than passing on what the transport threw', async () => {
+    activeCoolifyIntegrations.mockResolvedValue([
+      integration({ targets: [{ id: 't1', label: 'Backend', resourceUuid: 'app-1' }] }),
+    ]);
+    client.listApplications.mockRejectedValue(
+      new TypeError('fetch failed', { cause: { code: 'ENOTFOUND' } }),
+    );
+
+    const err = await resolveCoolifyTargets({ projectId: PROJECT_ID }).catch((e) => e);
+
+    expect(err.name).toBe('CoolifyReadFailedError');
+    expect(err.message).toBe(
+      'Could not reach Coolify for GET /api/v1/applications (fetch failed ENOTFOUND), so Forge has no application list to read.',
+    );
+  });
 });

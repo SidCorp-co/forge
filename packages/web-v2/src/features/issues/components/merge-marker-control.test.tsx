@@ -8,7 +8,7 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api/client";
-import { MergeMarkerControl } from "./merge-marker-control";
+import { BLURB, LANDING_BLURB, MergeMarkerControl } from "./merge-marker-control";
 
 expect.extend(matchers);
 
@@ -27,19 +27,33 @@ afterEach(() => {
 
 describe("MergeMarkerControl", () => {
   it("offers the claim when nothing has been claimed, and sends the target it was given", () => {
-    render(<MergeMarkerControl issueId="i1" mergedAt={null} suggestedTarget="ISS-791" />);
+    render(<MergeMarkerControl issueId="i1" mergedAt={null} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
+    fireEvent.change(screen.getByPlaceholderText(/branch or PR/i), { target: { value: "main" } });
     const buttons = screen.getAllByRole("button", { name: "Mark merged" });
     expect(buttons).toHaveLength(2);
     fireEvent.click(buttons[1] as HTMLElement);
 
-    expect(mark).toHaveBeenCalledWith({ target: "ISS-791" }, expect.anything());
+    expect(mark).toHaveBeenCalledWith({ target: "main" }, expect.anything());
     expect(unmark).not.toHaveBeenCalled();
   });
 
+  // ISS-1421 round 5: the field once opened holding the issue's own key, so one click marked the
+  // work "merged into ISS-2". It opens empty, and nothing is sent until somebody says where.
+  it("opens with Where it landed empty, and sends nothing until it is filled", () => {
+    render(<MergeMarkerControl issueId="i1" mergedAt={null} />);
+    fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
+
+    expect(screen.getByRole("textbox", { name: /Where it landed/ })).toHaveValue("");
+    const buttons = screen.getAllByRole("button", { name: "Mark merged" });
+    expect(buttons[1]).toBeDisabled();
+    fireEvent.click(buttons[1] as HTMLElement);
+    expect(mark).not.toHaveBeenCalled();
+  });
+
   it("omits an untouched note instead of sending an empty one", () => {
-    render(<MergeMarkerControl issueId="i1" mergedAt={null} suggestedTarget="ISS-791" />);
+    render(<MergeMarkerControl issueId="i1" mergedAt={null} />);
     fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
     fireEvent.change(screen.getByPlaceholderText(/where it landed|branch or PR/i), {
       target: { value: "  feature/by-hand  " },
@@ -52,7 +66,7 @@ describe("MergeMarkerControl", () => {
 
   it("offers the retraction once a claim exists, and never the claim", () => {
     render(
-      <MergeMarkerControl issueId="i1" mergedAt="2026-09-01T00:00:00.000Z" suggestedTarget="ISS-791" />,
+      <MergeMarkerControl issueId="i1" mergedAt="2026-09-01T00:00:00.000Z" />,
     );
 
     expect(screen.queryByRole("button", { name: "Mark merged" })).toBeNull();
@@ -67,7 +81,6 @@ describe("MergeMarkerControl on a project whose work lands outside git (ISS-1327
       <MergeMarkerControl
         issueId="i1"
         mergedAt={null}
-        suggestedTarget="ISS-38"
         landingShape="outside_git"
       />,
     );
@@ -80,7 +93,7 @@ describe("MergeMarkerControl on a project whose work lands outside git (ISS-1327
 
   it("asks where the work landed, as a URL, a CMS entry or a storefront resource", () => {
     open();
-    expect(screen.getByText(/the live URL, the CMS entry or the storefront resource/)).toBeInTheDocument();
+    expect(screen.getByText(/the live URL, the CMS entry or the storefront resource\./)).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/https:\/\/shop\.example\.com/)).toHaveValue("");
   });
 
@@ -149,39 +162,40 @@ describe("MergeMarkerControl on a project whose work lands outside git (ISS-1327
 });
 
 describe("MergeMarkerControl on a project that lands in git keeps its form", () => {
-  it("prefills the branch target and sends no landing", () => {
+  it("sends the branch it was given as the target, and no landing", () => {
     render(
-      <MergeMarkerControl issueId="i1" mergedAt={null} suggestedTarget="ISS-791" landingShape="git" />,
+      <MergeMarkerControl issueId="i1" mergedAt={null} landingShape="git" />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
-    expect(screen.getByPlaceholderText(/branch or PR/)).toHaveValue("ISS-791");
+    expect(screen.getByPlaceholderText(/branch or PR/)).toHaveValue("");
+    fireEvent.change(screen.getByPlaceholderText(/branch or PR/), { target: { value: "main" } });
     const buttons = screen.getAllByRole("button", { name: "Mark merged" });
     fireEvent.click(buttons[buttons.length - 1] as HTMLElement);
-    expect(mark).toHaveBeenCalledWith({ target: "ISS-791" }, expect.anything());
+    expect(mark).toHaveBeenCalledWith({ target: "main" }, expect.anything());
   });
 
   it("explains the claim in the words it always had, never the landing's", () => {
     render(
-      <MergeMarkerControl issueId="i1" mergedAt={null} suggestedTarget="ISS-791" landingShape="git" />,
+      <MergeMarkerControl issueId="i1" mergedAt={null} landingShape="git" />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
-    expect(screen.getByText(/This is a claim that the code shipped, not a date field/)).toBeInTheDocument();
+    expect(screen.getByText(BLURB)).toBeInTheDocument();
     expect(screen.queryByText(/lands outside git/)).toBeNull();
   });
 
   it.each(["git", "outside_git"] as const)("shows no literal backtick in the panel of an issue landing %s", (landingShape) => {
     render(
-      <MergeMarkerControl issueId="i1" mergedAt={null} suggestedTarget="ISS-791" landingShape={landingShape} landingSource="project" />,
+      <MergeMarkerControl issueId="i1" mergedAt={null} landingShape={landingShape} landingSource="project" />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
     const panel = screen.getByRole("dialog");
     expect(panel.textContent).not.toContain("`");
-    if (landingShape === "git") expect(panel).toHaveTextContent(/because Closed means the work shipped/);
+    if (landingShape === "git") expect(panel).toHaveTextContent(/which lets the issue close/);
   });
 
   it("takes a target past 200 characters whole, as it did before", () => {
     render(
-      <MergeMarkerControl issueId="i1" mergedAt={null} suggestedTarget="ISS-791" landingShape="git" />,
+      <MergeMarkerControl issueId="i1" mergedAt={null} landingShape="git" />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
     const long = `feature/${"y".repeat(240)}`;
@@ -195,7 +209,7 @@ describe("MergeMarkerControl on a project that lands in git keeps its form", () 
 
 describe("MergeMarkerControl names whose answer the lane is", () => {
   const openWith = (props: { landingShape: "git" | "outside_git"; landingSource?: "issue" | "project" }) => {
-    render(<MergeMarkerControl issueId="i1" mergedAt={null} suggestedTarget="ISS-5" {...props} />);
+    render(<MergeMarkerControl issueId="i1" mergedAt={null} {...props} />);
     fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
     return screen.getByTestId("landing-line");
   };
@@ -220,5 +234,25 @@ describe("MergeMarkerControl names whose answer the lane is", () => {
 
   it("names no source where the server did not say whose answer it is", () => {
     expect(openWith({ landingShape: "outside_git" })).toHaveTextContent(/^This issue's work lands outside git\.$/);
+  });
+});
+
+// ISS-1421 r5 repair 1: the panel opened on seven lines of reasoning ("not a date field … a state
+// nothing here can hold"). It says what the mark does and how it is undone, in short sentences.
+describe("the Mark merged panel's introduction", () => {
+  it.each([
+    ["git", BLURB],
+    ["outside_git", LANDING_BLURB],
+  ] as const)("on an issue landing %s is at most three plain sentences of at most 25 words", (_shape, text) => {
+    const sentences = text.trim().split(/(?<=\.)\s+/);
+    expect(sentences.length).toBeLessThanOrEqual(3);
+    for (const sentence of sentences) {
+      expect(sentence).toMatch(/^[A-Z]/);
+      expect(sentence).toMatch(/\.$/);
+      expect(sentence.split(/\s+/).length).toBeLessThanOrEqual(25);
+    }
+    expect(text).toMatch(/lets the issue close/);
+    expect(text).toMatch(/Unmark takes it back, unless the issue is closed\./);
+    expect(text).not.toMatch(/date field|nothing here can hold|—/);
   });
 });

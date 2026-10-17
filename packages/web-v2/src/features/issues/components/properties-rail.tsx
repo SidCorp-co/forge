@@ -351,7 +351,6 @@ export function PropertiesRail({
               <MergeMarkerControl
                 issueId={issue.id}
                 mergedAt={issue.mergedAt}
-                suggestedTarget={issue.displayId}
                 landingShape={issue.landingShape}
                 landingSource={landingSource}
               />
@@ -394,7 +393,6 @@ export function PropertiesRail({
               <MergeMarkerControl
                 issueId={issue.id}
                 mergedAt={null}
-                suggestedTarget={issue.displayId}
                 landingShape={issue.landingShape}
                 landingSource={landingSource}
               />

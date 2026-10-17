@@ -16,8 +16,8 @@ export function isForgeAddress(email: string): boolean {
 }
 
 export const AGENT_ADDRESS_RESERVED =
-  `an address on ${AGENT_EMAIL_DOMAIN} belongs to an agent account Forge mints, and no person ` +
-  'signs up or signs in with one. Use an address you receive mail at.';
+  'That address belongs to an agent account Forge runs, and no person signs up or signs in with it. ' +
+  'Use an address you receive mail at.';
 
 export function agentAddressReserved(email: string): HTTPException {
   return new HTTPException(409, {

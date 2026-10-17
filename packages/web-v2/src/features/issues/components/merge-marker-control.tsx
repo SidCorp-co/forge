@@ -18,27 +18,19 @@ import { MARK_MERGED_ACTION, WHERE_IT_LANDED_FIELD, WORK_LANDS_ROW } from "@forg
 /** Core's cap on a landing (`MERGED_LANDING_MAX`). Said and enforced here, never silently cut. */
 const LANDING_MAX = 2000;
 
-const BLURB =
-  "For work finished outside the pipeline. This is a claim that the code shipped, not a date " +
-  "field: it is what lets the issue close, because Closed means the work shipped and a close " +
-  "without it is refused. It does not release the issues blocked on this one — a status does " +
-  "that. Unmark withdraws a claim made wrongly, and is refused once the issue is closed: " +
-  "reopen it first, because a closed issue with no claim is a state nothing here can hold.";
+/** Two short sentences: what the mark does, and how it is undone (ISS-1421, criterion 85). */
+export const BLURB =
+  "Marking merged says this work shipped, which lets the issue close. Unmark takes it back, unless the issue is closed.";
 
-// ISS-1327 — where an issue's work lands outside git there is no branch to name: what landed is
-// a live page, a CMS entry, a storefront resource, and the close accepts a mark only if it says so.
-const LANDING_BLURB =
-  "Say where it landed: the live URL, the CMS entry or " +
-  "the storefront resource the work now is. That is what lets the issue close — a mark naming no " +
-  "landing is not accepted here. It does not release the issues blocked on this one — a status " +
-  "does that. Unmark withdraws a claim made wrongly, and is refused once the issue is closed.";
+/** Outside git the mark names where the work now is, since there is no branch to name (ISS-1327). */
+export const LANDING_BLURB =
+  "Say where the work now is: the live URL, the CMS entry or the storefront resource. " +
+  "Marking merged lets the issue close. Unmark takes it back, unless the issue is closed.";
 
 interface MergeMarkerControlProps {
   issueId: string;
   /** `null` when no claim has been made — the control offers to make one. */
   mergedAt: string | null;
-  /** Default `target`, offered because the repo's branch convention is `ISS-<seq>`. */
-  suggestedTarget: string;
   /** Core's answer for this issue's lane; an older server that sends none reads as `git`. */
   landingShape?: LandingShape | undefined;
   /** Whose answer `landingShape` is: the issue's own declaration, or its project's shape. Absent
@@ -57,24 +49,25 @@ function landingLine(shape: LandingShape, source: "issue" | "project" | undefine
 export function MergeMarkerControl({
   issueId,
   mergedAt,
-  suggestedTarget,
   landingShape,
   landingSource,
 }: MergeMarkerControlProps) {
   const outsideGit = landingShape === "outside_git";
   const [open, setOpen] = useState(false);
-  const [target, setTarget] = useState(outsideGit ? "" : suggestedTarget);
+  // Starts empty: whatever it holds is sent as where the work landed, so a value filled in for the
+  // reader (once the issue's own key) became a mark saying the work merged into the issue.
+  const [target, setTarget] = useState("");
   const [note, setNote] = useState("");
   const [refusal, setRefusal] = useState<string | null>(null);
   const marker = useMergeMarker(issueId);
 
   useEffect(() => {
     if (open) {
-      setTarget(outsideGit ? "" : suggestedTarget);
+      setTarget("");
       setNote("");
       setRefusal(null);
     }
-  }, [open, suggestedTarget, outsideGit]);
+  }, [open]);
 
   if (mergedAt) {
     return (
@@ -118,7 +111,7 @@ export function MergeMarkerControl({
                 placeholder={
                   outsideGit
                     ? "e.g. https://shop.example.com/products/linen-tee, or the CMS entry it is"
-                    : "e.g. ISS-791, or the branch or PR it merged through"
+                    : "e.g. main, or the branch or PR it merged into"
                 }
                 onChange={(e) => {
                   setTarget(e.target.value);

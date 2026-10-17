@@ -31,6 +31,7 @@ import { provisionGitCredential } from '../git/provision-credential.js';
 import { assertOrgAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
+import { clientIpOf } from '../middleware/client-ip.js';
 import { assertMayMintFullCredential, mintEpochFor } from '../middleware/pat-rest-surface.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { Sentry } from '../observability/sentry.js';
@@ -85,17 +86,6 @@ function sha256Hex(input: string): string {
   return createHash('sha256').update(input, 'utf8').digest('hex');
 }
 
-function clientIp(c: import('hono').Context): string | undefined {
-  const xff = c.req.header('x-forwarded-for');
-  if (xff) {
-    const first = xff.split(',')[0]?.trim();
-    if (first) return first;
-  }
-  const real = c.req.header('x-real-ip');
-  if (real) return real.trim();
-  return undefined;
-}
-
 async function publishLoginEvent(
   userId: string,
   event: string,
@@ -131,7 +121,7 @@ deviceLoginRoutes.post(
     const deviceHostname = body.device_hostname || null;
     const machineId = body.machine_id ? body.machine_id.slice(0, 256) : null;
 
-    const createdIp = clientIp(c) ?? null;
+    const createdIp = clientIpOf(c) ?? null;
     const uaRaw = c.req.header('user-agent') ?? '';
     const createdUserAgent = uaRaw ? uaRaw.slice(0, MAX_USER_AGENT_LEN) : null;
     const expiresAt = new Date(Date.now() + LOGIN_TTL_SECONDS * 1000);

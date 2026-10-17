@@ -14,6 +14,10 @@ export interface CloseRefusal {
   code: string;
   reason: string;
   clears: string;
+  /** The shortfall and what clears it as core words them, whole sentences shown as they are. */
+  said: string;
+  /** The same sentences for the issue's own page, whose doors are right there. */
+  saidHere: string;
 }
 
 export interface ReleaseRosterEntry {
@@ -140,6 +144,8 @@ function refusalsAt(o: Record<string, unknown>, endpoint: string, where: string)
       code: stringAt(r, "code", endpoint, `${where}[${i}].code`),
       reason: stringAt(r, "reason", endpoint, `${where}[${i}].reason`),
       clears: stringAt(r, "clears", endpoint, `${where}[${i}].clears`),
+      said: stringAt(r, "said", endpoint, `${where}[${i}].said`),
+      saidHere: stringAt(r, "saidHere", endpoint, `${where}[${i}].saidHere`),
     };
   });
 }

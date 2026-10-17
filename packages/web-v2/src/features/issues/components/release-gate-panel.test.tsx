@@ -231,6 +231,8 @@ describe("ReleaseGatePanel — a row a release could not close", () => {
         code: "CLOSE_REQUIRES_SHIPPED",
         reason: "no mark naming where its work landed",
         clears: "Mark it merged with its landing.",
+        said: "It has no mark naming where its work landed. Mark it merged with its landing.",
+        saidHere: "It has no mark naming where its work landed. Mark it merged with its landing.",
       },
     ],
     closeFailure: null,
@@ -243,7 +245,7 @@ describe("ReleaseGatePanel — a row a release could not close", () => {
     expect(screen.getByText("can't close")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "A release could not close this: no mark naming where its work landed. Mark it merged with its landing.",
+        "It has no mark naming where its work landed. Mark it merged with its landing.",
       ),
     ).toBeInTheDocument();
   });

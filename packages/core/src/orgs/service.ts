@@ -20,7 +20,7 @@ export function isNeverAMember(userId: string): boolean {
  *  address in any letter case, whether or not its account has been minted yet. */
 export function forgeIsNotAMember(named: string): HTTPException {
   return new HTTPException(409, {
-    message: `${named} is Forge's own account, which writes what Forge's sweeps say and is never a member of an organization or a project`,
+    message: `Forge's own account (${named}) is never a member of an organization or a project. It only writes what Forge's sweeps say.`,
     cause: { code: 'FORGE_IS_NOT_A_MEMBER' },
   });
 }

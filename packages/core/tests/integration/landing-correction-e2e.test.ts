@@ -94,7 +94,7 @@ describe('a landing sent over a mark that stands is refused by name, never dropp
     const [last] = await harness.db.execute<{ body: string }>(
       sql`SELECT body FROM comments WHERE issue_id = ${id} ORDER BY created_at DESC LIMIT 1`,
     );
-    expect(last?.body).toContain('NOT stamped by this call');
+    expect(last?.body).toMatch(/^Already marked merged on .+, so this call changed nothing/);
   });
 
   it('records the correction once the standing mark is unmarked, which is the route it names', async () => {

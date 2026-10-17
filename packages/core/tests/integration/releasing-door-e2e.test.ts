@@ -342,9 +342,10 @@ describe('a move off Releasing from any door but a release path (criterion 11)',
       expect(res.status, body.toStatus).toBe(409);
       const answer = (await res.json()) as { code: string; message: string };
       expect(answer.code).toBe('RELEASING_ENDS_BY_RELEASE');
-      expect(answer.message).toContain(`/release-batches/${run}/abort`);
+      expect(answer.message).toContain(`/releases/${run}.`);
+      expect(answer.message).not.toMatch(/\/api\/|release-batches/);
       expect(answer.message).toContain(
-        'Its abort, or the recovery of a batch run that stopped, never started or whose job nothing will send, returns it to the release gate.',
+        'Its abort, or the recovery of a release that stopped or could not go on, returns it to the release gate.',
       );
       expect(await row(id)).toEqual({ status: 'releasing', claim: run });
     }

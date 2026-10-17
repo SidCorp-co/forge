@@ -71,7 +71,8 @@ export function mergeMarkFields(row: MergeMarkColumns): {
   };
 }
 
-function quoted(words: string): string {
+/** Another part of Forge's words, quoted on a line of their own so they never run on inside ours. */
+export function quoted(words: string): string {
   return `> ${words.replace(/\s+/g, ' ').trim()}`;
 }
 
@@ -245,7 +246,8 @@ export async function recordIssueMerge(
 
 /** Clear the claim, and report whether the row took it. It re-blocks nothing (ISS-1100). The
  *  `closed` guard is IN the statement: a read then a write leaves a window where the row is closed
- *  by somebody else, and what arrives then is the trigger's raw exception (ISS-1108). */
+ *  by somebody else, and what arrives then is the trigger's raw exception (ISS-1108). A row holding
+ *  no mark is not taken either, so a call that would clear nothing is never reported as a clear. */
 export async function clearIssueMerge(
   executor: MergeRecordExecutor,
   issueId: string,
@@ -259,7 +261,7 @@ export async function clearIssueMerge(
       mergedClaimedCommit: null,
       updatedAt: sql`now()`,
     })
-    .where(and(eq(issues.id, issueId), ne(issues.status, 'closed')))
+    .where(and(eq(issues.id, issueId), ne(issues.status, 'closed'), isNotNull(issues.mergedAt)))
     .returning({ id: issues.id });
   return rows.length > 0;
 }

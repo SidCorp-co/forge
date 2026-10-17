@@ -163,13 +163,16 @@ describe('a release names, before the press, the rows its finish could not close
         code: 'OPEN_QUESTIONS',
         reason: 'holds 1 open question',
         clears: expect.stringContaining('Answer it'),
+        // The issue's own page shows the card right above its banner (ISS-1421 r5 repair 1).
+        saidHere: 'It holds 1 open question. Answer it in the Decision waiting card above.',
       }),
     ]);
     expect(refusalsOf(rows.unplanned)).toEqual([
       expect.objectContaining({
         code: 'ENTRY_CRITERIA_UNMET',
         reason: 'missing a plan, which this project requires before a close',
-        clears: "The agent working this issue writes them, through Forge's issue tools.",
+        clears:
+          "An agent writes them through Forge's issue tools. To start one, press Open session at the top of the issue's page.",
       }),
     ]);
   });
@@ -297,10 +300,12 @@ describe('a release still ships every row whose close stands', () => {
     expect(outcome.named).toEqual([rows.clean]);
     expect((await fx.stored(rows.clean)).status).toBe('releasing');
     expect(outcome.leftOff).toEqual([
-      expect.stringMatching(new RegExp(`^${unmarkedKey}: no mark naming where its work landed`)),
-      expect.stringMatching(new RegExp(`^${askedKey}: holds 1 open question`)),
       expect.stringMatching(
-        new RegExp(`^${unplannedKey}: missing a plan, which this project requires`),
+        new RegExp(`^${unmarkedKey}: It has no mark naming where its work landed`),
+      ),
+      expect.stringMatching(new RegExp(`^${askedKey}: It holds 1 open question`)),
+      expect.stringMatching(
+        new RegExp(`^${unplannedKey}: It is missing a plan, which this project requires`),
       ),
     ]);
     expect(outcome.output).toContain('left off 3 issues whose close');

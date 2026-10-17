@@ -2,6 +2,7 @@ import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/
 import { type Context, Hono } from 'hono';
 import { z } from 'zod';
 import { describeOperation, empty, json, raw } from '../api-reference/declare/describe.js';
+import { clientIpOf } from '../middleware/client-ip.js';
 import type { PrincipalVars } from '../middleware/require-pat.js';
 import { formatDeprecationHeader } from './deprecation.js';
 import { createMcpServer } from './server.js';
@@ -71,8 +72,7 @@ export async function mcpHandler(c: Context<{ Variables: PrincipalVars }>): Prom
   const projectSlug = c.req.header('x-forge-project-slug') ?? null;
   const boundProjectId = principal.boundProjectId;
   const requestId = c.req.header('x-request-id') ?? c.req.header('cf-ray') ?? crypto.randomUUID();
-  const ip =
-    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? c.req.header('x-real-ip') ?? null;
+  const ip = clientIpOf(c) ?? null;
   const userAgent = c.req.header('user-agent') ?? null;
 
   const deprecations = new Set<string>();

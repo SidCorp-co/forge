@@ -110,14 +110,49 @@ describe("AwaitingReleaseBanner — an issue a release could not close", () => {
     code: "OPEN_QUESTIONS",
     reason: "holds 1 open question",
     clears: 'Answer it in its "Decision waiting" card on the issue\'s page.',
+    said: 'It holds 1 open question. Answer it in its "Decision waiting" card on the issue\'s page.',
+    saidHere: "It holds 1 open question. Answer it in the Decision waiting card above.",
+  };
+  const NOT_MERGED = {
+    code: "CLOSE_REQUIRES_SHIPPED",
+    reason: "not marked merged",
+    clears: "Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed.",
+    said: "It is not marked merged. Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed.",
+    saidHere: "It is not marked merged. Use Mark merged in the issue's properties. In the panel it opens, fill in Where it landed.",
   };
 
   it("offers no Release now and says what the close is refused for and what clears it", () => {
     state({}, null, [REFUSAL]);
     renderBanner();
     expect(screen.queryByRole("button", { name: /release now/i })).not.toBeInTheDocument();
-    expect(screen.getByText(/A release could not close this issue yet/)).toBeInTheDocument();
-    expect(screen.getByText(/holds 1 open question\. Answer it in its "Decision waiting" card/)).toBeInTheDocument();
+    expect(screen.getByText("Not ready to release.")).toBeInTheDocument();
+    expect(screen.getByText("It holds 1 open question. Answer it in the Decision waiting card above.")).toBeInTheDocument();
+  });
+
+  // ISS-1421 r5: two shortfalls were joined into "… fill in Where it landed. holds 1 open question.",
+  // under a lead that read as if a release had failed.
+  it("says two shortfalls as whole sentences, each opening with a capital, and never that a release failed", () => {
+    state({}, null, [NOT_MERGED, REFUSAL]);
+    const { container } = renderBanner();
+    const text = container.textContent ?? "";
+    expect(text).not.toMatch(/could not close/);
+    for (const line of screen.getAllByRole("listitem")) {
+      for (const sentence of (line.textContent ?? "").trim().split(/(?<=\.)\s+/)) {
+        expect(sentence).toMatch(/^[A-Z"]/);
+        expect(sentence).toMatch(/\.$/);
+      }
+    }
+  });
+
+  // ISS-1421 r5 repair 1: both shortfalls ran on in one paragraph, and the reader already on the
+  // issue's page was sent to "the issue's page".
+  it("lays each shortfall on a line of its own under the lead, each naming its door on this page", () => {
+    state({}, null, [NOT_MERGED, REFUSAL]);
+    const { container } = renderBanner();
+    const lines = screen.getAllByRole("listitem").map((li) => li.textContent);
+    expect(lines).toEqual([NOT_MERGED.saidHere, REFUSAL.saidHere]);
+    expect(screen.getByRole("list", { name: "What is missing" })).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/on the issue's page/);
   });
 
   // ISS-1381 r3: the comment a finish leaves says answer, then Release now on this page.

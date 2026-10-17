@@ -15,6 +15,7 @@ import {
   saying,
 } from '../projects/repository-reader.js';
 import { heldIssuePrefixes, issueRefFormatter } from './issue-prefix-read.js';
+import { quoted } from './merge-record.js';
 
 export type CommitLandingRefusalCode =
   | 'COMMIT_NOT_IN_REPOSITORY'
@@ -23,7 +24,13 @@ export type CommitLandingRefusalCode =
   | 'COMMIT_UNVERIFIED';
 
 export type CommitLanding =
-  | { ok: true; sha: string; committedAt: Date; branch: string; repository: string }
+  | {
+      ok: true;
+      sha: string;
+      committedAt: Date;
+      branch: string;
+      repository: string;
+    }
   | {
       ok: false;
       code: CommitLandingRefusalCode;
@@ -63,10 +70,27 @@ function unreadable(
   const { noReader = false, claimable = true } = how;
   return refuse(
     'COMMIT_UNVERIFIED',
-    `commit ${commit} could not be checked against this project's repository: ${why}. Mark again ${clears}`,
+    uncheckedCommit(commit, why, clears),
     { commit },
     claimable ? { why, clears, noReader } : undefined,
   );
+}
+
+/** Short whole sentences, the cause and the step another part of Forge words each quoted on its own
+ *  line (ISS-1421 r5: this ran 66 words with no full stop). */
+function uncheckedCommit(
+  commit: string,
+  why: string,
+  clears: string,
+  after: string[] = [],
+): string {
+  return [
+    `Commit ${commit} could not be checked against this project's repository. The reason:`,
+    quoted(why),
+    'Mark it again once this holds:',
+    quoted(clears.replace(/^once\s+/, '')),
+    ...after,
+  ].join('\n');
 }
 
 /**
@@ -115,7 +139,13 @@ export async function readCommitLanding(
           noReader: access.unbound,
         });
       }
-      return landingIn(access.reader, { projectId, issSeq, commit, baseBranch, branches });
+      return landingIn(access.reader, {
+        projectId,
+        issSeq,
+        commit,
+        baseBranch,
+        branches,
+      });
     },
     deps,
   );
@@ -199,10 +229,10 @@ export async function resolveMarkCommit(
   const unresolved = (why: string, route: RepositoryRoute): CommitResolution => ({
     ok: false,
     code: 'COMMIT_UNVERIFIED',
-    detail:
-      `commit ${commit} could not be checked against this project's repository, so the mark is ` +
-      `not recorded naming it unchecked: ${why}. Mark again ${readableThrough(route)}, or mark it naming no ` +
-      'commit, which records a claim that names none',
+    detail: uncheckedCommit(commit, why, readableThrough(route), [
+      'The mark was not recorded naming it unchecked.',
+      'Or mark it naming no commit, which records a claim that names none.',
+    ]),
     details: { commit },
     reason: `the repository could not be read: ${why}`,
   });

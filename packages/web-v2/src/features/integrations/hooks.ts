@@ -34,6 +34,8 @@ export function useIntegrationsList(projectId: string | undefined) {
 function useInvalidateIntegrations(projectId: string | undefined) {
   const qc = useQueryClient();
   return () => {
+    // A save from the tab makes or changes a connection, which the Share section lists (ISS-1421).
+    qc.invalidateQueries({ queryKey: ["integration-connections"] });
     qc.invalidateQueries({ queryKey: ["integrations", "list", projectId] });
     qc.invalidateQueries({ queryKey: ["integrations", "status", projectId] });
     qc.invalidateQueries({

@@ -155,8 +155,7 @@ integrationConnectionsRoutes.post(
       ownerType: body.orgId ? 'org' : 'user',
       ownerId: body.orgId ?? userId,
       provider: body.provider,
-      displayName:
-        body.displayName ?? defaultConnectionDisplayName(body.provider, body.config ?? {}),
+      displayName: body.displayName ?? defaultConnectionDisplayName(body.config ?? {}),
       config: body.config,
       secrets: body.secrets,
     });

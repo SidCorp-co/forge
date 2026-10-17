@@ -216,6 +216,13 @@ export const rollbackCoolify = onProject(
   }),
 );
 
+/** A read of Coolify that got no answer Forge could use, named: 424, which Cloudflare passes through. */
+const coolifyReadFailed = fail({
+  COOLIFY_API_ERROR: 'Coolify refused the read, which the message names',
+  COOLIFY_ANSWER_NOT_JSON: 'Coolify answered something that is not JSON',
+  COOLIFY_UNREACHABLE: 'Forge could not connect to Coolify',
+});
+
 export const readRollbackImages = onProject(
   describeOperation({
     summary: 'The image tags a Coolify target can be rolled back to',
@@ -224,11 +231,7 @@ export const readRollbackImages = onProject(
       400: commandRefused,
       403: noRoleOnProject,
       404: noSuchBinding,
-      424: fail({
-        COOLIFY_API_ERROR: 'Coolify refused the read, which the message names',
-        COOLIFY_ANSWER_NOT_JSON: 'Coolify answered something that is not JSON',
-        COOLIFY_UNREACHABLE: 'Forge could not connect to Coolify',
-      }),
+      424: coolifyReadFailed,
       502: coolifyAnswered,
     },
   }),
@@ -244,6 +247,7 @@ export const listCoolifyApplications = onProject(
       403: noRoleOnProject,
       404: fail('NOT_FOUND', 'the integration is not a Coolify binding of this project'),
       409: fail('MISSING_CREDENTIALS', 'the stored connection has no base url or api token'),
+      424: coolifyReadFailed,
     },
   }),
 );
@@ -256,7 +260,7 @@ export const readTargets = onProject(
       400: commandRefused,
       403: noRoleOnProject,
       404: noSuchBinding,
-      502: coolifyAnswered,
+      424: coolifyReadFailed,
     },
   }),
 );

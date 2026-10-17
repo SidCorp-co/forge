@@ -23,6 +23,7 @@
 - **A box can only start work on a project it serves.** A box with no runner there, a disabled
   box or a withdrawn runner is refused before claiming anything, and told which, and what an
   admitted box is.
+- **Sign-in and register limits count the real client.** Behind Cloudflare that is the address Cloudflare names; a forged X-Forwarded-For or CF-Connecting-IP no longer earns fresh attempts. (ISS-1421)
 - **A new token reaches only what its creator chose.** Creating one without picking permissions used
   to hand over everything; it is now refused, and full access is something you tick on purpose.
   Tokens you already hold are unchanged.
@@ -3208,6 +3209,14 @@
 - **A merge mark says what it is in short plain sentences**, such as "No commit was named. Forge did not see this merge, so the mark is a claim." (ISS-1421)
 - **The Integrations tab is a flat list in plain words.** Each provider is one row saying whether it is set up and what its last check found; health reads the same on the Connections page. (ISS-1421)
 - **Similar-issue search lists equal matches in the same order every time.** (ISS-1421)
+- **Marking an issue merged twice says nothing changed.** "Already marked merged on 17 Oct 2026, so this call changed nothing." Unmark on an issue with no mark is refused and writes nothing. (ISS-1421)
+- **The Mark merged panel opens with Where it landed empty, under two short sentences.** It no longer offers the issue's own key as the branch it merged into. (ISS-1421)
+- **The release banner lists what is missing, one line each.** Under "Not ready to release.", each line names its fix on the page, such as the Decision waiting card above. (ISS-1421)
+- **A release waiting on a person's answer is handed back.** Its issues return to Awaiting release within a minute, linking the question, which stays open until it is answered. (ISS-1421)
+- **A refusal to leave Releasing links the release's page** instead of naming API routes, and a release handed back links its page too. (ISS-1421)
+- **The Agent MCP servers panel names each tool by its provider, in plain words**, and the Coolify form's target fields have screen-reader names. (ISS-1421)
+- **A connection made from the Integrations tab is named by its host**, such as "coolify.example.com · Coolify deploy", not by its provider's lower-case id. (ISS-1421)
+- **The Coolify form and the Share section show a new connection the moment it saves, and the form names an unreachable Coolify.** Its badge reads Last check failed or Turned off, never a deploy that did not happen. (ISS-1421)
 - **An issue's Branch row shows the branch Forge counts as its work.** It printed the issue's key even when moving the issue on said no branch was recorded; it now shows that branch, or None recorded. (ISS-1133)
 - **A job started as its run ends goes to a run still open.** It could land under the run that just finished; it now starts a fresh run, or is refused where only that run would do. (ISS-1133)
 - **Cancelling a run's only job ends the run.** It read Running for up to an hour with nothing left to run; it now reads Cancelled at once. A run with another job still going keeps running. (ISS-1133)

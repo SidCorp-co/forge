@@ -30,7 +30,9 @@ vi.mock('../issues/transition-evidence.js', () => ({
   checkTransitionEvidence: (...a: unknown[]) => evidence(...a),
 }));
 
-const { rosterCloseShortfalls, shortfallLine } = await import('./close-shortfall.js');
+const { ENTRY_RECORDS_CLEAR, rosterCloseShortfalls, shortfallLine, shortfallSaid } = await import(
+  './close-shortfall.js'
+);
 
 const PROJECT = 'p-1';
 
@@ -82,6 +84,9 @@ describe('rosterCloseShortfalls', () => {
     expect(found?.clears).toBe(
       'Answer them in their "Decision waiting" cards on the issue\'s page.',
     );
+    // On the issue's own page the cards sit right above the banner (ISS-1421 r5 repair 1).
+    expect(found?.clearsHere).toBe('Answer them in the Decision waiting cards above.');
+    expect(found?.clearsHere).not.toMatch(/issue's page/);
     expect(found?.detail).toContain('this issue holds 2 open questions (q-1, q-2)');
     expect(found?.details).toEqual({ to: 'closed', openQuestionIds: ['q-1', 'q-2'] });
   });
@@ -97,6 +102,8 @@ describe('rosterCloseShortfalls', () => {
     expect(found).toMatchObject({
       code: 'ENTRY_CRITERIA_UNMET',
       reason: 'missing a plan and a release note, which this project requires before a close',
+      clearsHere:
+        "An agent writes them through Forge's issue tools. To start one, press Open session at the top of this page.",
     });
     expect(evidence).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -133,12 +140,40 @@ describe('rosterCloseShortfalls', () => {
 });
 
 describe('shortfallLine', () => {
-  it('names the issue, each reason and what clears it', () => {
+  it('names the issue, then each reason and what clears it as whole sentences', () => {
     expect(
       shortfallLine('ISS-4', [
         { reason: 'holds 1 open question', clears: 'Answer it.' },
         { reason: 'not marked merged', clears: 'Mark it merged.' },
       ]),
-    ).toBe('ISS-4: holds 1 open question. Answer it. not marked merged. Mark it merged.');
+    ).toBe('ISS-4: It holds 1 open question. Answer it. It is not marked merged. Mark it merged.');
+  });
+});
+
+// ISS-1421 r5: the banner and the gate panel joined `${reason}. ${clears}`, so a second shortfall
+// opened lower case after the first one's full stop ("… Where it landed. holds 1 open question.").
+describe('shortfallSaid', () => {
+  it.each([
+    ['not marked merged', 'It is not marked merged.'],
+    ['no mark naming where its work landed', 'It has no mark naming where its work landed.'],
+    ['holds 2 open questions', 'It holds 2 open questions.'],
+    [
+      'missing a plan, which this project requires before a close',
+      'It is missing a plan, which this project requires before a close.',
+    ],
+  ])('says "%s" as a sentence of its own, ahead of what clears it', (reason, sentence) => {
+    const said = shortfallSaid({ reason, clears: 'Do this.' });
+    expect(said).toBe(`${sentence} Do this.`);
+    for (const s of said.split(/(?<=\.)\s+/)) {
+      expect(s).toMatch(/^[A-Z]/);
+      expect(s).toMatch(/\.$/);
+    }
+  });
+
+  it('names who writes a missing record, and the door that starts one where none is working', () => {
+    expect(ENTRY_RECORDS_CLEAR).toBe(
+      "An agent writes them through Forge's issue tools. To start one, press Open session at the top of the issue's page.",
+    );
+    expect(ENTRY_RECORDS_CLEAR).not.toMatch(/agent working this issue/);
   });
 });

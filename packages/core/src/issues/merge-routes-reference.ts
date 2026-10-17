@@ -24,6 +24,7 @@ const NOT_A_WRITER = fail('FORBIDDEN', 'the caller is not a project member with 
 const MARK_REFUSALS = {
   NO_WORK_EVIDENCE: 'the issue holds no evidence of work to mark as shipped',
   UNMARK_REQUIRES_NOT_CLOSED: 'a closed issue cannot be unmarked',
+  NOT_MARKED_MERGED: 'the issue holds no merge mark, so an unmark has nothing to remove',
   LANDING_REQUIRED:
     'the work lands outside git, Forge holds no merged pull request, and `landing` was not sent',
   LANDING_NOT_THIS_SHAPE: '`landing` was sent for an issue whose work lands in git',

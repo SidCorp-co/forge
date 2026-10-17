@@ -26,9 +26,25 @@ function refusals() {
   return [
     ...(server.merged
       ? []
-      : [{ code: "CLOSE_REQUIRES_SHIPPED", reason: "not marked merged", clears: "Use Mark merged in the issue's properties." }]),
+      : [
+          {
+            code: "CLOSE_REQUIRES_SHIPPED",
+            reason: "not marked merged",
+            clears: "Use Mark merged in the issue's properties.",
+            said: "It is not marked merged. Use Mark merged in the issue's properties.",
+            saidHere: "It is not marked merged. Use Mark merged in the issue's properties.",
+          },
+        ]),
     ...(server.question
-      ? [{ code: "OPEN_QUESTIONS", reason: "holds 1 open question", clears: "Answer it in its card." }]
+      ? [
+          {
+            code: "OPEN_QUESTIONS",
+            reason: "holds 1 open question",
+            clears: "Answer it in its card.",
+            said: "It holds 1 open question. Answer it in its card.",
+            saidHere: "It holds 1 open question. Answer it in the Decision waiting card above.",
+          },
+        ]
       : []),
   ];
 }
