@@ -1,3 +1,4 @@
+import { type SQL, sql } from 'drizzle-orm';
 import { terminalAgentSessionStatuses } from '../db/session-vocabulary.js';
 import {
   CHAT_IDLE_CLOSE_MS,
@@ -17,8 +18,29 @@ const CLIENT_KINDS: ReadonlySet<string> = new Set(CLIENT_SESSION_KINDS);
 const LIVE: ReadonlySet<string> = new Set(LIVE_SESSION_STATUSES);
 const TERMINAL: ReadonlySet<string> = new Set(terminalAgentSessionStatuses);
 
+/**
+ * A session the one-shot sweep leaves to the reaper of its own kind: a running run session and a
+ * master, each ended ten minutes after its own last beat whether or not its box answers. One kind,
+ * one deadline, so a countdown never drops by minutes the moment a box goes silent (ISS-1228).
+ */
+export function endsOnItsOwnClock(kind: string, status: string): boolean {
+  return (
+    kind === MASTER_SESSION_METADATA_TYPE ||
+    (kind === RUN_SESSION_METADATA_TYPE && status === 'running')
+  );
+}
+
+/** {@link endsOnItsOwnClock} over the `agent_sessions` row aliased `s`. */
+export function endsOnItsOwnClockSql(s: string): SQL {
+  const kind = sql.raw(`${s}.kind`);
+  const status = sql.raw(`${s}.status`);
+  return sql`(${kind} = ${MASTER_SESSION_METADATA_TYPE} OR (${kind} = ${RUN_SESSION_METADATA_TYPE} AND ${status} = 'running'))`;
+}
+
 /** A live session on the same jobless one-shot run, the subject included. */
 export interface OneShotSibling {
+  /** Ended by its own kind's reaper, never by the sweep ({@link endsOnItsOwnClock}). */
+  ownClock: boolean;
   beatAt: number;
   /** When its box's runner was last heard, `null` where the box has none. */
   runnerSeenAt: number | null;
@@ -91,7 +113,7 @@ function noClientHop(s: SilenceSubject, hb: number, ackFastMs: number): number |
  * A box that has stopped answering holds the sibling to its last answer, which no longer moves.
  */
 function sweepTakes(t: OneShotSibling, hb: number, grace: number): number {
-  if (t.parked) return Number.POSITIVE_INFINITY;
+  if (t.parked || t.ownClock) return Number.POSITIVE_INFINITY;
   if (t.runnerSeenAt === null) return t.beatAt + hb;
   const boxHolds = t.runnerAnswers
     ? t.beatAt + grace

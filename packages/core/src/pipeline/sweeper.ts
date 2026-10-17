@@ -2,6 +2,7 @@ import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { type AlertSweepResult, runAlertSweep } from '../admin/alert-sweeper.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
+import { endsOnItsOwnClockSql } from '../devices/session-silence.js';
 import { broadcastSessionEvent } from '../jobs/agent-session-link.js';
 import { boxAnswersSql } from '../jobs/box-answers.js';
 import { killGraceMs } from '../jobs/kill-gate.js';
@@ -479,6 +480,7 @@ export async function reapOrphanedOneShotRuns(
               )
             )
             OR ${parkedOnAHuman(sql`s.id`)}
+            OR ${endsOnItsOwnClockSql('s')}
           )
       )
       ${projectClause}

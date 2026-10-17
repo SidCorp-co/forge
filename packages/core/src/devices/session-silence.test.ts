@@ -3,7 +3,12 @@ import {
   CHAT_IDLE_CLOSE_MS,
   ONE_SHOT_DEVICE_GRACE_FLOOR_MS,
 } from '../jobs/loop-monitor-thresholds.js';
-import { type SilenceSubject, silenceDeadline, silenceLimitFrom } from './session-silence.js';
+import {
+  endsOnItsOwnClock,
+  type SilenceSubject,
+  silenceDeadline,
+  silenceLimitFrom,
+} from './session-silence.js';
 
 const MIN = 60_000;
 
@@ -34,11 +39,13 @@ const alone = (
     runnerAnswers?: boolean;
     parked?: boolean;
     runStartedAt?: number;
+    ownClock?: boolean;
   } = {},
 ) => ({
   runStartedAt: over.runStartedAt ?? T - 60 * MIN,
   sessions: [
     {
+      ownClock: over.ownClock ?? false,
       beatAt: T,
       runnerSeenAt: over.runnerSeenAt ?? null,
       runnerAnswers: over.runnerAnswers ?? false,
@@ -170,6 +177,23 @@ describe('silenceLimitMs', () => {
     expect(chat(T + MIN)).toBe(T + ONE_SHOT_DEVICE_GRACE_FLOOR_MS);
   });
 
+  // ISS-1228 round 14 (judge-36): the sweep took a run session three minutes after its box's last
+  // answer, so the countdown fell from 8m 44s to 1m 20s the moment the box went silent.
+  it('publishes one end for a run session or a master, ten minutes from its own beat, whatever its box does', () => {
+    for (const kind of ['run_session', 'master']) {
+      const end = (seen: number | null, answers: boolean) =>
+        silenceDeadline(
+          subject({
+            kind,
+            oneShot: alone({ runnerSeenAt: seen, runnerAnswers: answers, ownClock: true }),
+          }),
+        );
+      expect(end(T + MIN, true)).toBe(T + 10 * MIN);
+      expect(end(T + 20_000, false)).toBe(T + 10 * MIN);
+      expect(end(null, false)).toBe(T + 10 * MIN);
+    }
+  });
+
   it('keeps both bounds once the box stops answering: its last answer, never past the grace, never before the beat', () => {
     // Heard at minute 0, its box last at minute 19 and silent since: the sweep may take it at 20.
     expect(silenceDeadline(subject({ oneShot: alone({ runnerSeenAt: T + 19 * MIN }) }))).toBe(
@@ -199,6 +223,7 @@ describe('silenceLimitMs', () => {
       sessions: [
         ...alone().sessions,
         {
+          ownClock: false,
           beatAt: T + 90_000,
           runnerSeenAt: null,
           runnerAnswers: false,
@@ -230,7 +255,14 @@ describe('silenceLimitMs', () => {
       runStartedAt: T - 60 * MIN,
       sessions: [
         ...alone().sessions,
-        { beatAt: T, runnerSeenAt: T + 10 * MIN, runnerAnswers: false, parked, endsBy },
+        {
+          ownClock: false,
+          beatAt: T,
+          runnerSeenAt: T + 10 * MIN,
+          runnerAnswers: false,
+          parked,
+          endsBy,
+        },
       ],
     });
     expect(silenceLimitMs(subject({ oneShot: run(null) }))).toBe(13 * MIN);
@@ -250,5 +282,15 @@ describe('silenceLimitMs', () => {
   it('states no limit where no reaper ends the session for silence', () => {
     expect(silenceLimitMs(subject({}))).toBeNull();
     expect(silenceLimitMs(subject({ kind: 'run_session', status: 'completed' }))).toBeNull();
+  });
+});
+
+describe('endsOnItsOwnClock', () => {
+  it('names a running run session and a master of any status, which their own reapers end', () => {
+    expect(endsOnItsOwnClock('run_session', 'running')).toBe(true);
+    expect(endsOnItsOwnClock('master', 'idle')).toBe(true);
+    // The run-session reaper reads only a running one, so the sweep keeps every other.
+    expect(endsOnItsOwnClock('run_session', 'queued')).toBe(false);
+    expect(endsOnItsOwnClock('chat', 'running')).toBe(false);
   });
 });
