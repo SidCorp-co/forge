@@ -70,18 +70,16 @@ describe("the Needs your attention list with nothing in it", () => {
         stuck={{
           total: 3,
           refs: [
-            { issueId: "PAIR-41", documentId: "d41", kind: "waiting" },
-            { issueId: "PAIR-50", documentId: "d50", kind: "idle" },
+            { issueId: "PAIR-41", documentId: "d41", title: "Pick a carrier", kind: "waiting" },
+            { issueId: "PAIR-50", documentId: "d50", title: "Export invoices", kind: "idle" },
           ],
         }}
       />,
     );
     const list = screen.getByRole("region", { name: "Needs your attention" });
     expect(list).not.toHaveTextContent("Nothing here needs you");
-    expect(list).toHaveTextContent("PAIR-41");
-    expect(list).toHaveTextContent("Waiting for you for over six hours");
-    expect(list).toHaveTextContent("PAIR-50");
-    expect(list).toHaveTextContent("In a live status with no live work behind it");
+    expect(list).toHaveTextContent("PAIR-41Pick a carrierWaiting for you for over six hours");
+    expect(list).toHaveTextContent("PAIR-50Export invoicesIn a live status with no live work behind it");
     expect(list).toHaveTextContent("And 1 more stuck. Every one is in Issues.");
     expect(screen.getAllByRole("button", { name: "Open issue" })).toHaveLength(2);
   });
@@ -107,8 +105,8 @@ describe("the Needs your attention list with nothing in it", () => {
         stuck={{
           total: 2,
           refs: [
-            { issueId: "PAIR-50", documentId: "d50", kind: "idle" },
-            { issueId: "PAIR-53", documentId: "d53", kind: "idle" },
+            { issueId: "PAIR-50", documentId: "d50", title: "Export invoices", kind: "idle" },
+            { issueId: "PAIR-53", documentId: "d53", title: "Rotate the SMTP key", kind: "idle" },
           ],
         }}
       />,
@@ -136,7 +134,7 @@ describe("the Needs your attention list with nothing in it", () => {
         shape="degraded"
         slug="pair"
         now={0}
-        stuck={{ total: 1, refs: [{ issueId: "PAIR-41", documentId: "d41", kind: "waiting" }] }}
+        stuck={{ total: 1, refs: [{ issueId: "PAIR-41", documentId: "d41", title: "Pick a carrier", kind: "waiting" }] }}
       />,
     );
     expect(screen.getAllByText("PAIR-41")).toHaveLength(1);

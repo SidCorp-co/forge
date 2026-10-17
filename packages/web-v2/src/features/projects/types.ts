@@ -50,7 +50,7 @@ export interface ProjectHealthRow {
   /** Issues in each work state, counted by core's one fold. */
   work: Record<WorkState, number>;
   /** The most recently updated parked issues, a capped list. */
-  blockers: Array<{ issueId: string; documentId: string; status: string }>;
+  blockers: Array<{ issueId: string; documentId: string; title: string; status: string }>;
   /** Every parked issue: the count behind the capped `blockers`. */
   blockersTotal: number;
   pendingEscalations: number;
@@ -74,7 +74,7 @@ export interface ProjectHealthRow {
   /** Up to five of them, longest-standing first. */
   /** The same issues by what each notice says of it; an issue two sweeps hold counts under both. */
   stuckIssuesByKind: Partial<Record<StuckIssueKind, number>>;
-  stuckIssueRefs: Array<{ issueId: string; documentId: string; kind: StuckIssueKind }>;
+  stuckIssueRefs: Array<{ issueId: string; documentId: string; title: string; kind: StuckIssueKind }>;
 }
 
 export interface CreateProjectInput {

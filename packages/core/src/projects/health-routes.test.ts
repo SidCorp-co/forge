@@ -383,6 +383,7 @@ describe('GET /api/projects/health, the stuck issues (ISS-1229 r12)', () => {
       {
         projectId: PROJECT_A_ID,
         id: 'i-3',
+        title: 'Pick a carrier',
         issSeq: 3,
         issuePrefix: 'ALP',
         kind: 'waiting',
@@ -392,6 +393,7 @@ describe('GET /api/projects/health, the stuck issues (ISS-1229 r12)', () => {
       {
         projectId: PROJECT_A_ID,
         id: 'i-9',
+        title: 'Export invoices',
         issSeq: 9,
         issuePrefix: 'ALP',
         kind: 'idle',
@@ -415,8 +417,8 @@ describe('GET /api/projects/health, the stuck issues (ISS-1229 r12)', () => {
     expect(alpha?.stuckIssues).toBe(7);
     expect(alpha?.stuckIssuesByKind).toEqual(byKind);
     expect(alpha?.stuckIssueRefs).toEqual([
-      { issueId: 'ALP-3', documentId: 'i-3', kind: 'waiting' },
-      { issueId: 'ALP-9', documentId: 'i-9', kind: 'idle' },
+      { issueId: 'ALP-3', documentId: 'i-3', title: 'Pick a carrier', kind: 'waiting' },
+      { issueId: 'ALP-9', documentId: 'i-9', title: 'Export invoices', kind: 'idle' },
     ]);
     expect(body.find((p) => p.projectSlug === 'beta')).toMatchObject({
       stuckIssues: 0,

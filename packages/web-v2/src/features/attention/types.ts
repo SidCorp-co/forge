@@ -15,6 +15,8 @@ export interface AttentionItem {
   /** ISO timestamp the item entered this state (sorts/relative-time). */
   since: string;
   issueRef?: string;
+  /** Failed job only: the title of the issue it ran for. */
+  issueTitle?: string;
   status?: string;
   projectSlug?: string;
   projectName?: string;

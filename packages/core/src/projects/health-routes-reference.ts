@@ -20,7 +20,14 @@ const projectHealthSchema = z.object({
   throughput: z.number(),
   totalActive: z.number(),
   work: workStateCountsSchema,
-  blockers: z.array(z.object({ issueId: z.string(), documentId: z.string(), status: z.string() })),
+  blockers: z.array(
+    z.object({
+      issueId: z.string(),
+      documentId: z.string(),
+      title: z.string(),
+      status: z.string(),
+    }),
+  ),
   blockersTotal: z.number(),
   pendingEscalations: z.number(),
   avgCycleTimeDays: z.number(),
@@ -39,7 +46,12 @@ const projectHealthSchema = z.object({
   stuckIssues: z.number(),
   stuckIssuesByKind: z.partialRecord(z.enum(STUCK_ISSUE_KINDS), z.number()),
   stuckIssueRefs: z.array(
-    z.object({ issueId: z.string(), documentId: z.string(), kind: z.enum(STUCK_ISSUE_KINDS) }),
+    z.object({
+      issueId: z.string(),
+      documentId: z.string(),
+      title: z.string(),
+      kind: z.enum(STUCK_ISSUE_KINDS),
+    }),
   ),
 });
 

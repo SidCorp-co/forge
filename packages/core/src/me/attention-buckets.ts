@@ -94,6 +94,7 @@ export interface AttentionFailedJobRow {
   createdAt: Date;
   error: string | null;
   issueDocId: string | null;
+  issueTitle: string | null;
   issSeq: number | null;
   issuePrefix: string | null;
   projectSlug: string;
@@ -379,6 +380,7 @@ export function selectFailedJobs(
       createdAt: jobs.createdAt,
       error: jobs.error,
       issueDocId: issues.id,
+      issueTitle: issues.title,
       issSeq: issues.issSeq,
       issuePrefix: projects.issuePrefix,
       projectSlug: projects.slug,

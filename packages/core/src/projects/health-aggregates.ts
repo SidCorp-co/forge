@@ -35,6 +35,7 @@ export type BlockerRow = {
   id: string;
   issSeq: number;
   issuePrefix: string | null;
+  title: string;
   status: string;
 };
 
@@ -56,6 +57,7 @@ const readBlockerRows = (projectIds: string[]) =>
       id: issues.id,
       issSeq: issues.issSeq,
       issuePrefix: projects.issuePrefix,
+      title: issues.title,
       status: issues.status,
       updatedAt: issues.updatedAt,
     })
@@ -175,6 +177,7 @@ export type StuckIssueRow = {
   id: string;
   issSeq: number;
   issuePrefix: string | null;
+  title: string;
   /** What the issue's longest-standing notice says of it. */
   kind: StuckIssueKind;
   /** How many issues of the project a notice stands for, beside the first `STUCK_ISSUES_LISTED`. */
@@ -189,7 +192,7 @@ export const STUCK_ISSUES_LISTED = 5;
 const readStuckIssueRows = (projectIds: string[]) =>
   db.execute(sql`
     WITH stuck AS (
-      SELECT n.project_id, i.id, i.iss_seq, p.issue_prefix, n.created_at,
+      SELECT n.project_id, i.id, i.iss_seq, p.issue_prefix, i.title, n.created_at,
              CASE
                WHEN n.resolution_key LIKE '%:stranded' THEN 'waiting'
                WHEN n.resolution_key LIKE '%:idle' THEN 'idle'
@@ -205,7 +208,7 @@ const readStuckIssueRows = (projectIds: string[]) =>
          AND n.resolved_at IS NULL
          AND n.project_id IN (${idList(projectIds)})
     ), first_notice AS (
-      SELECT DISTINCT ON (project_id, id) project_id, id, iss_seq, issue_prefix, created_at, kind
+      SELECT DISTINCT ON (project_id, id) project_id, id, iss_seq, issue_prefix, title, created_at, kind
         FROM stuck
        ORDER BY project_id, id, created_at
     ), by_kind AS (
@@ -213,9 +216,9 @@ const readStuckIssueRows = (projectIds: string[]) =>
         FROM (SELECT project_id, kind, count(DISTINCT id)::int AS n FROM stuck GROUP BY project_id, kind) k
        GROUP BY project_id
     )
-    SELECT "projectId", id, "issSeq", "issuePrefix", kind, total::int AS total, "byKind" FROM (
+    SELECT "projectId", id, "issSeq", "issuePrefix", title, kind, total::int AS total, "byKind" FROM (
       SELECT f.project_id AS "projectId", f.id, f.iss_seq AS "issSeq", f.issue_prefix AS "issuePrefix",
-             f.kind, b."byKind",
+             f.title, f.kind, b."byKind",
              count(*) OVER (PARTITION BY f.project_id) AS total,
              row_number() OVER (PARTITION BY f.project_id ORDER BY f.created_at, f.id) AS rank
         FROM first_notice f

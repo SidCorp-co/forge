@@ -37,7 +37,7 @@ let attentionRead: "pending" | "failed" | "read";
 let attentionError: unknown;
 let blockers: unknown[];
 let stuckIssues: number;
-let stuckIssueRefs: Array<{ issueId: string; documentId: string }>;
+let stuckIssueRefs: Array<{ issueId: string; documentId: string; title?: string; kind?: string }>;
 let work: Record<string, number>;
 let runs: unknown[] | undefined;
 let runsError: unknown;
@@ -433,6 +433,33 @@ describe("a project with an issue a stuck-issue notice stands for (ISS-1229 r12)
     const band = screen.getByTestId("degraded-band");
     expect(band).toHaveTextContent("2 issues are reported stuck.");
     expect(within(band).getByRole("link")).toHaveTextContent("Action needed — open ISS-3, stuck longest");
+  });
+});
+
+// ISS-1229 r13 repair 2: SHOP-44 read only "Blocked on a person — Waiting" and SHOP-53 only its
+// notice's words, so no row said which work it was.
+describe("a Needs you row on a project with parked and stuck issues", () => {
+  it("names each row by its issue's title, with why it is listed after it", () => {
+    blockers = [{ issueId: "SHOP-44", documentId: "d44", title: "Production SMTP credentials", status: "waiting" }];
+    stuckIssues = 2;
+    stuckIssueRefs = [
+      { issueId: "SHOP-53", documentId: "d53", title: "Nightly stock import", kind: "idle" },
+      { issueId: "SHOP-50", documentId: "d50", title: "Refund webhook retries", kind: "idle" },
+    ];
+    mount();
+    const rows = within(screen.getByRole("region", { name: "Needs your attention" })).getAllByRole("listitem");
+    const owed = [
+      ["Production SMTP credentials", "Blocked on a person — Waiting"],
+      ["Nightly stock import", "In a live status with no live work behind it"],
+      ["Refund webhook retries", "In a live status with no live work behind it"],
+    ] as const;
+    expect(rows).toHaveLength(owed.length);
+    owed.forEach(([title, why], i) => {
+      const row = rows[i] as HTMLElement;
+      expect(row).toHaveTextContent(title);
+      const said = within(row).getByText(why);
+      expect(within(row).getByText(title).compareDocumentPosition(said) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
   });
 });
 

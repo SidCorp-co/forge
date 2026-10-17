@@ -147,27 +147,47 @@ describe("projectAttention (ISS-1156)", () => {
 
   it("lists an issue once even where it is both holding a question and in the project's blockers", () => {
     const items = projectAttention(view([awaiting(1, "q1", "needs_info")]), "sable", [
-      { issueId: "ISS-1", documentId: "doc-1", status: "needs_info" },
+      { issueId: "ISS-1", documentId: "doc-1", title: "Issue 1", status: "needs_info" },
     ]);
     expect(items).toHaveLength(1);
     expect(items[0]?.actionKind).toBe("input");
   });
 
-  it("words a parked issue in the work-state vocabulary, never with the raw status key", () => {
+  // ISS-1229 r13 repair 2: a parked row read "Blocked on a person — Waiting" where its title belonged.
+  it("names a parked issue by its title, and why it is listed in the work-state vocabulary, never the raw status key", () => {
     const [item] = projectAttention(undefined, "sable", [
-      { issueId: "ISS-9", documentId: "doc-9", status: "needs_info" },
+      { issueId: "ISS-9", documentId: "doc-9", title: "Production SMTP credentials", status: "needs_info" },
     ]);
-    expect(item?.title).toBe("Blocked on a person — Needs info");
-    expect(item?.title).not.toContain("needs_info");
+    expect(item).toMatchObject({ title: "Production SMTP credentials", detail: "Blocked on a person — Needs info" });
+    expect(item?.detail).not.toContain("needs_info");
     const [hold] = projectAttention(undefined, "sable", [
-      { issueId: "ISS-8", documentId: "doc-8", status: "on_hold" },
+      { issueId: "ISS-8", documentId: "doc-8", title: "Issue 8", status: "on_hold" },
     ]);
-    expect(hold?.title).toBe("Blocked on a person — On hold");
+    expect(hold?.detail).toBe("Blocked on a person — On hold");
+    const [silent] = projectAttention(view([awaiting(3, null, "waiting")]), "sable", []);
+    expect(silent).toMatchObject({ title: "Issue 3", detail: "Blocked on a person — Waiting" });
+  });
+
+  it("names a failed job's row by its issue's title, with what failed under it, and a job on no issue by what failed", () => {
+    const failed = (issueTitle?: string): AttentionItem => ({
+      kind: "failed_job",
+      title: "drive failed: exit 1",
+      link: "/projects/sable/issues/doc-4",
+      since: "2026-10-08T00:00:00Z",
+      status: "failed",
+      projectSlug: "sable",
+      ...(issueTitle ? { issueRef: "ISS-4", issueTitle } : {}),
+    });
+    const [onIssue] = projectAttention({ ...view([]), failedJobs: [failed("Nightly stock import")] }, "sable", []);
+    expect(onIssue).toMatchObject({ title: "Nightly stock import", detail: "drive failed: exit 1" });
+    const [onNone] = projectAttention({ ...view([]), failedJobs: [failed()] }, "sable", []);
+    expect(onNone?.title).toBe("drive failed: exit 1");
+    expect(onNone?.detail).toBeUndefined();
   });
 
   it("refuses a parked issue at a status the kernel does not have, by name, rather than word it by a guess", () => {
     expect(() =>
-      projectAttention(undefined, "sable", [{ issueId: "ISS-3", documentId: "doc-3", status: "banana" }]),
+      projectAttention(undefined, "sable", [{ issueId: "ISS-3", documentId: "doc-3", title: "Issue 3", status: "banana" }]),
     ).toThrow(/parked at `banana`.*not one of the issue statuses/u);
   });
 
@@ -182,8 +202,8 @@ describe("projectAttention (ISS-1156)", () => {
       undefined,
       "sable",
       [
-        { issueId: "ISS-9", documentId: "doc-9", status: "needs_info" },
-        { issueId: "ISS-8", documentId: "doc-8", status: "on_hold" },
+        { issueId: "ISS-9", documentId: "doc-9", title: "Issue 9", status: "needs_info" },
+        { issueId: "ISS-8", documentId: "doc-8", title: "Issue 8", status: "on_hold" },
       ],
       ages,
     );

@@ -2,6 +2,7 @@
  * ISS-1229 r13 repair — the project headline, the bell and Attention count the same stuck work. On
  * one board they read three numbers nobody could reconcile. Here one fixture is read through all
  * three, and each count is held to the one reading they share: what each stuck-issue notice says.
+ * Repair 2: each row a person acts on carries its issue's title, which the page names the row by.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -76,5 +77,33 @@ describe('one board read through the headline, the bell and Attention', () => {
     expect(awaiting.map((a) => a.id).sort()).toEqual([...parkedLong, parkedRecently].sort());
     const pastSix = awaiting.filter((a) => Date.now() - a.waitingSince.getTime() > 6 * HOUR);
     expect(pastSix.map((a) => a.id).sort()).toEqual(await held('stranded'));
+  });
+
+  it("carries each listed issue's title: parked, reported stuck, and a failed job's", async () => {
+    const parked = await issue(1, 'waiting', 7);
+    const idle = await issue(2, 'open', 1);
+    const runId = randomUUID();
+    await fx.db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, kind, status, started_at)
+      VALUES (${runId}, ${fx.project.id}, 'system', 'failed', now())
+    `);
+    await fx.db.execute(sql`
+      INSERT INTO jobs (id, project_id, pipeline_run_id, issue_id, type, status, created_by, created_at)
+      VALUES (${randomUUID()}, ${fx.project.id}, ${runId}, ${idle}, 'drive', 'failed', ${fx.owner}, now())
+    `);
+
+    const { reconcileIdleIssues } = await import('../../src/pipeline/idle-issues.js');
+    const { resetSweepCursorsForTest } = await import('../../src/pipeline/sweep-cursor.js');
+    resetSweepCursorsForTest();
+    await announce(() => reconcileIdleIssues(new Date()));
+
+    const { readHealthAggregates } = await import('../../src/projects/health-aggregates.js');
+    const { blockerRowsAll, stuckIssueRows } = await readHealthAggregates([fx.project.id]);
+    expect(blockerRowsAll.map((b) => [b.id, b.title])).toEqual([[parked, 'issue 1']]);
+    expect(stuckIssueRows.map((r) => [r.id, r.title])).toEqual([[idle, 'issue 2']]);
+
+    const { selectFailedJobs } = await import('../../src/me/attention-buckets.js');
+    const [failed] = await selectFailedJobs(fx.owner);
+    expect(failed).toMatchObject({ issueDocId: idle, issueTitle: 'issue 2' });
   });
 });

@@ -37,6 +37,8 @@ interface AttentionItem {
   link: string;
   since: string;
   issueRef?: string;
+  /** Failed-job only: the title of the issue the job ran for, where it ran for one. */
+  issueTitle?: string;
   status?: string;
   projectSlug?: string;
   projectName?: string;
@@ -115,6 +117,7 @@ function failedJobItem(r: AttentionFailedJobRow): AttentionItem {
     projectName: r.projectName,
   };
   if (r.issSeq != null) item.issueRef = formatIssueRef(r.issuePrefix, r.issSeq);
+  if (r.issueTitle != null) item.issueTitle = r.issueTitle;
   return item;
 }
 

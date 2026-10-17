@@ -91,7 +91,9 @@ function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (link: st
       {/* At phone width the tags take the row, so the title gets a line of its own and wraps there
           rather than being cut to a word (ISS-1229 r13). */}
       <span className="fg-body-sm order-last min-w-0 basis-full text-fg sm:order-none sm:flex-1 sm:basis-auto sm:truncate">
-        {item.title}
+        {item.issueTitle ?? item.title}
+        {/* A failed job is named by its issue; what failed is read under it. */}
+        {item.issueTitle && <span className="fg-caption block text-subtle sm:truncate">{item.title}</span>}
       </span>
       {item.issueRef && <MonoTag>{item.issueRef}</MonoTag>}
       {item.projectName && (

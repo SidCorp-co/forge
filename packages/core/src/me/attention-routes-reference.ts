@@ -14,6 +14,7 @@ const attentionItem = z.object({
   link: z.string().describe('A path in the web app'),
   since: z.string(),
   issueRef: z.string().optional(),
+  issueTitle: z.string().optional().describe('Failed job only: the title of its issue'),
   status: z.string().optional(),
   projectSlug: z.string().optional(),
   projectName: z.string().optional(),

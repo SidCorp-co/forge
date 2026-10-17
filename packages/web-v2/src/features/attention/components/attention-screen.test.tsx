@@ -11,11 +11,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 expect.extend(matchers);
 
 type Read = "pending" | "failed" | "read";
-const state: { read: Read; devicesRead: Read; offline: unknown[]; awaiting: unknown[] } = {
+const state: { read: Read; devicesRead: Read; offline: unknown[]; awaiting: unknown[]; failed: unknown[] } = {
   read: "read",
   devicesRead: "read",
   offline: [],
   awaiting: [],
+  failed: [],
 };
 const refetch = vi.fn();
 
@@ -30,7 +31,7 @@ vi.mock("../hooks", () => ({
       needsReview: [],
       awaitingInput: state.awaiting,
       mentions: [],
-      failedJobs: [],
+      failedJobs: state.failed,
       pendingSkillUpdates: [],
       unseenDrafts: [],
       unseenDraftsTotal: 0,
@@ -53,6 +54,7 @@ afterEach(() => {
   state.devicesRead = "read";
   state.offline = [];
   state.awaiting = [];
+  state.failed = [];
   refetch.mockClear();
 });
 
@@ -125,5 +127,27 @@ describe("an Attention group", () => {
     // The bell's six-hour notice is a park's at Waiting only: Needs info and a question elsewhere are not promised one.
     expect(screen.getByText(/of those at Waiting after six hours/u)).toBeInTheDocument();
   });
-});
 
+  // ISS-1229 r13 repair 2: a failed job read "drive failed: …" and only its ref, not which work it was.
+  it("names a failed job's row by its issue's title, with what failed after it", () => {
+    state.failed = [
+      {
+        kind: "failed_job",
+        title: "drive failed: exit 1",
+        link: "/projects/shop/issues/d50",
+        since: new Date(0).toISOString(),
+        issueRef: "SHOP-50",
+        issueTitle: "Refund webhook retries",
+        status: "failed",
+        projectSlug: "shop",
+        projectName: "Shop",
+      },
+    ];
+    render(<AttentionScreen />);
+    const row = screen.getByRole("button", { name: /Refund webhook retries/u });
+    const named = screen.getByText("Refund webhook retries");
+    const said = screen.getByText("drive failed: exit 1");
+    expect(row).toContainElement(said);
+    expect(named.compareDocumentPosition(said) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});

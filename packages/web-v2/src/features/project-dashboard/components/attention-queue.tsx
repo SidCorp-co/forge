@@ -48,7 +48,17 @@ const STUCK_KIND_WORDS: Record<StuckIssueKind, string> = {
 
 export interface StuckIssues {
   total: number;
-  refs: readonly { issueId: string; documentId: string; kind: StuckIssueKind }[];
+  refs: readonly { issueId: string; documentId: string; title: string; kind: StuckIssueKind }[];
+}
+
+/** A row's title, whole and wrapping, with why it is listed read under it. */
+function RowText({ title, detail }: { title: string; detail?: string }) {
+  return (
+    <span className="fg-body-sm order-3 min-w-0 basis-full break-words text-fg sm:order-none sm:flex-1 sm:basis-40">
+      {title}
+      {detail && <span className="fg-caption block text-subtle">{detail}</span>}
+    </span>
+  );
 }
 
 export function AttentionQueue({
@@ -146,9 +156,7 @@ export function AttentionQueue({
                 Stuck
               </span>
               <MonoTag>{r.issueId}</MonoTag>
-              <span className="fg-body-sm order-3 min-w-0 basis-full break-words text-fg sm:order-none sm:flex-1 sm:basis-40">
-                {STUCK_KIND_WORDS[r.kind]}
-              </span>
+              <RowText title={r.title} detail={STUCK_KIND_WORDS[r.kind]} />
               <Button
                 size="sm"
                 variant="secondary"
@@ -235,9 +243,7 @@ export function AttentionQueue({
               {it.issueRef && <MonoTag>{it.issueRef}</MonoTag>}
               {/* Narrow: kind, ref and age share the first line, then the whole title wraps on its own,
                   then the action. Wide: one line, in the order they are read; the title wraps there too. */}
-              <span className="fg-body-sm order-3 min-w-0 basis-full break-words text-fg sm:order-none sm:flex-1 sm:basis-40">
-                {it.title}
-              </span>
+              <RowText title={it.title} detail={it.detail} />
               <span className="ml-auto flex-none sm:ml-0">
                 <AgeChip since={it.since} now={now} />
               </span>
