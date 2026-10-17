@@ -58,6 +58,10 @@ export const acceptInvitation = describeOperation({
     401: USER_GONE,
     403: fail('INVITATION_EMAIL_MISMATCH', 'the invitation was sent to a different email address'),
     404: fail('INVITATION_NOT_FOUND', 'no invitation has this token'),
+    409: fail({
+      FORGE_IS_NOT_A_MEMBER: "the signed-in account is Forge's own, which is never a member",
+      AGENT_ADDRESS_RESERVED: 'the signed-in account is an agent account, which no invitation adds',
+    }),
     410: fail({
       ALREADY_ACCEPTED: 'the invitation was accepted already',
       EXPIRED_TOKEN: 'the invitation has expired',

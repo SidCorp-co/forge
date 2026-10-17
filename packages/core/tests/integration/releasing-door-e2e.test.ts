@@ -108,10 +108,14 @@ async function plantRun(status: string): Promise<string> {
   return id;
 }
 
-async function plantIssue(status: string, claim: string | null = null): Promise<string> {
+async function plantIssue(
+  status: string,
+  claim: string | null = null,
+  merged = true,
+): Promise<string> {
   const rows = await harness.db.execute<{ id: string }>(sql`
     INSERT INTO issues (project_id, title, created_by_id, status, merged_at, release_batch_run_id)
-    VALUES (${projectId}, 'the subject', ${ownerId}, ${status}, now(), ${claim})
+    VALUES (${projectId}, 'the subject', ${ownerId}, ${status}, ${merged ? sql`now()` : null}, ${claim})
     RETURNING id
   `);
   return (rows[0] as { id: string }).id;
@@ -177,6 +181,23 @@ describe('a move to Releasing from any door but a release batch (criteria 5, 6, 
     expect(await movesInto(id, 'releasing')).toBe(0);
   });
 
+  it('tells an issue at Awaiting release that is not marked merged to mark it, not to press Release now (criterion 38)', async () => {
+    const id = await plantIssue('awaiting_release', null, false);
+    const res = await rest(id, { toStatus: 'releasing' });
+
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe('RELEASING_STARTS_FROM_RELEASE');
+    expect(body.message).toContain('A release cannot close this issue yet: not marked merged.');
+    expect(body.message).toContain(
+      "Use Mark merged in the issue's properties, and fill in Where it landed.",
+    );
+    expect(body.message).toContain('Release now appears on its page once that is done.');
+    expect(body.message).not.toContain('Start one with Release now');
+    expect(body.message).not.toContain('release-batches');
+    expect(await row(id)).toEqual({ status: 'awaiting_release', claim: null });
+  });
+
   for (const from of ['open', 'developed', 'testing', 'in_progress'] as const) {
     it(`is refused at REST /transition from ${from}, saying it must reach Awaiting release first`, async () => {
       const id = await plantIssue(from);
@@ -186,7 +207,7 @@ describe('a move to Releasing from any door but a release batch (criteria 5, 6, 
       const body = (await res.json()) as { code: string; message: string };
       expect(body.code).toBe('RELEASING_STARTS_FROM_RELEASE');
       expect(body.message).toContain(
-        'so it must reach Awaiting release (awaiting_release) before a release can carry it',
+        'A release carries only issues at Awaiting release (awaiting_release), so it must reach that first.',
       );
       expect(body.message).not.toContain('Release now');
       expect(await row(id)).toEqual({ status: from, claim: null });
@@ -222,7 +243,7 @@ describe('a move to Releasing from any door but a release batch (criteria 5, 6, 
       reason: 'releasing_starts_from_release',
       code: 'RELEASING_STARTS_FROM_RELEASE',
     });
-    expect(answer.skipped[0]?.message).toContain('must reach Awaiting release');
+    expect(answer.skipped[0]?.message).toContain('so it must reach that first');
     expect(answer.skipped[0]?.detail).toContain('nothing else this update carried was written');
   });
 
@@ -272,7 +293,9 @@ describe('the refusal names only the doors this project has (criteria 25, 26)', 
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('RELEASING_STARTS_FROM_RELEASE');
     expect(body.message).toContain('This project ships nothing');
-    expect(body.message).toContain('Shape & release setting chooses a shape that releases');
+    expect(body.message).toContain(
+      "To release them, choose a shape that releases under Shape & release in the project's settings.",
+    );
     expect(body.message).not.toMatch(/Release now|release gate|release-batches/);
     expect(await row(id)).toEqual({ status: 'awaiting_release', claim: null });
   });
@@ -288,7 +311,7 @@ describe('the refusal names only the doors this project has (criteria 25, 26)', 
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('RELEASING_STARTS_FROM_RELEASE');
     expect(body.message).toContain(
-      'no release can start until one is added on its integrations screen',
+      "No release can start until one is added on the project's integrations screen.",
     );
     expect(body.message).not.toMatch(/Release now|release gate/);
   });
@@ -312,6 +335,9 @@ describe('a move off Releasing from any door but a release path (criterion 11)',
       const answer = (await res.json()) as { code: string; message: string };
       expect(answer.code).toBe('RELEASING_ENDS_BY_RELEASE');
       expect(answer.message).toContain(`/release-batches/${run}/abort`);
+      expect(answer.message).toContain(
+        'Its abort, or the recovery of a batch run that stopped or never started, returns it to the release gate.',
+      );
       expect(await row(id)).toEqual({ status: 'releasing', claim: run });
     }
   });

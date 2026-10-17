@@ -26,6 +26,18 @@ export function agentAddressReserved(email: string): HTTPException {
   });
 }
 
+/** What every door that adds a person answers an agent address or account with: no person can
+ *  accept an invitation there, and an agent's projects are set on the agent itself
+ *  (`orgs/agent-accounts.ts`), never through a person's door (ISS-1421 round 3). */
+export function agentIsNotAPerson(named: string): HTTPException {
+  return new HTTPException(409, {
+    message:
+      `${named} belongs to an agent account Forge mints, not to a person, so no person can be ` +
+      'invited or added at it. An agent account is given its projects under Settings → Agents.',
+    cause: { code: 'AGENT_ADDRESS_RESERVED', details: { named } },
+  });
+}
+
 const HANDLE_PATTERN = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
 
 export function isAgentHandle(handle: string): boolean {

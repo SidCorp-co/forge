@@ -35,9 +35,10 @@ function landingShortfallOf(refusal: {
   return {
     code: 'CLOSE_REQUIRES_SHIPPED',
     reason: outside ? 'no mark naming where its work landed' : 'not marked merged',
+    // Mark merged sits in the issue's properties, and asks where the work landed (ISS-1421 r3).
     clears: outside
-      ? 'Mark it merged with its landing: the live URL, CMS entry or storefront resource the work now is.'
-      : 'Mark it merged where its work landed.',
+      ? "Use Mark merged in the issue's properties, and give Where it landed its landing: the live URL, CMS entry or storefront resource."
+      : "Use Mark merged in the issue's properties, and fill in Where it landed.",
     detail: refusal.detail,
     details: { ...refusal.details, shape: outside ? 'outside_git' : 'git' },
   };

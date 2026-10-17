@@ -12,6 +12,7 @@ import {
   users,
 } from '../db/schema.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
+import { refuseNonPersonAsMember } from '../orgs/service.js';
 import { consumeInvitationToken } from './invitation-token.js';
 import {
   acceptInvitation,
@@ -172,6 +173,8 @@ invitationRoutes.post(
       });
     }
 
+    // An agent account is never a member through a person's invitation (ISS-1421 round 3).
+    await refuseNonPersonAsMember({ email: user.email, userId: user.id });
     const result = await consumeInvitationToken(token, { userId: user.id, email: user.email });
 
     switch (result.status) {

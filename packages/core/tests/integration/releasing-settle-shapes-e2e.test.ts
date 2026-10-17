@@ -83,9 +83,13 @@ async function production(opts: { probe?: 'none' | 'down' } = {}): Promise<void>
 }
 
 async function plant(
-  opts: { claim?: string | null; landing?: string | null; note?: unknown } = {},
+  opts: { claim?: string | null; landing?: string | null; note?: unknown; merged?: boolean } = {},
 ) {
-  const id = await fx.insertIssue('releasing', opts.note === undefined ? undefined : opts.note);
+  const id = await fx.insertIssue(
+    'releasing',
+    opts.note === undefined ? undefined : opts.note,
+    opts.merged ?? true,
+  );
   await harness.db.execute(sql`
     UPDATE issues
        SET release_batch_run_id = ${opts.claim ?? null},
@@ -115,7 +119,7 @@ async function recordFor(issueId: string): Promise<Record<string, unknown> | nul
   return rows[0]?.metadata ?? null;
 }
 
-describe("the sweep's next step names only a door the project has (criteria 27, 28, 29, 30)", () => {
+describe("the sweep's next step names only a door the project has (criteria 27-30, 39)", () => {
   const GATE_DOORS = /Release now|release gate/;
 
   it('on a project with a release gate, says a release starts from Release now or the release gate', async () => {
@@ -125,8 +129,26 @@ describe("the sweep's next step names only a door the project has (criteria 27, 
     await settle();
 
     expect((await bodies(id))[0]).toContain(
-      'Release now on this page, or at the release gate on the issues list, starts a release that carries it.',
+      'Release now on this page, or at the release gate on the issues list, starts a release.',
     );
+  });
+
+  it('on a project with a release gate, tells an issue not marked merged to mark it, not to press Release now', async () => {
+    await production();
+    const id = await plant({ landing: null, merged: false });
+
+    expect(await settle()).toEqual({ settled: 1, closed: 0, failed: 0 });
+
+    expect(await fx.stored(id)).toMatchObject({ status: 'awaiting_release', claim: null });
+    const [said] = await bodies(id);
+    expect(said).toContain('It is back at Awaiting release.');
+    expect(said).toContain('A release cannot close this issue yet: not marked merged.');
+    expect(said).toContain(
+      "Use Mark merged in the issue's properties, and fill in Where it landed.",
+    );
+    expect(said).toContain('Release now appears on its page once that is done.');
+    expect(said).not.toContain('starts a release');
+    expect(said?.match(/Mark merged|Mark it merged/g)).toHaveLength(1);
   });
 
   it('on a project that ships nothing, offers a releasing shape or Reopen and reads no production', async () => {
@@ -153,7 +175,7 @@ describe("the sweep's next step names only a door the project has (criteria 27, 
     const [said] = await bodies(id);
     expect(said).toContain('This project ships nothing, so no release will carry it');
     expect(said).toContain('choose a shape that releases under Shape & release');
-    expect(said).toContain('or reopen it if work remains');
+    expect(said).toContain('If work remains, reopen it instead.');
     expect(said).not.toMatch(GATE_DOORS);
     expect(said).not.toMatch(/Production's|production serves|verify probe|landing commit/);
     expect(await recordFor(id)).toBeNull();
@@ -169,7 +191,7 @@ describe("the sweep's next step names only a door the project has (criteria 27, 
     expect(await fx.stored(id)).toMatchObject({ status: 'awaiting_release', claim: null });
     const [said] = await bodies(id);
     expect(said).toContain(
-      'This project declares a release but has no live deploy target, so no release can start until one is added on its integrations screen.',
+      "This project declares a release but has no live deploy target. No release can start until one is added on the project's integrations screen.",
     );
     expect(said).not.toMatch(GATE_DOORS);
   });
