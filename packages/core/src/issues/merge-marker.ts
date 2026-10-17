@@ -419,8 +419,7 @@ export async function applyMergeMarker(args: {
   const auditComment = await writeAuditComment(
     before.id,
     args.actor.commentAuthorId,
-    // The thread renders markdown, so a repeat's parts are paragraphs: its sentence, the caller's
-    // note quoted whole, then the step and the standing mark.
+    // The thread renders markdown: a repeat's parts are paragraphs, the note quoted whole.
     repeated
       ? [`${label}.`, args.note ? quoted(args.note) : null, after].filter(Boolean).join('\n\n')
       : `${label}${args.note ? ` — ${args.note}` : '.'}${marked}`,
