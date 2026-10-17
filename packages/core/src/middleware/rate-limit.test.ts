@@ -60,6 +60,18 @@ describe('rateLimit middleware', () => {
     expect(body.details.retryAfterSeconds).toBeGreaterThanOrEqual(1);
   });
 
+  // ISS-1421 r4 — judge-32 read a bare "rate limit exceeded" on register: a person is told, in a
+  // capitalised sentence, how long until the next attempt is accepted.
+  it('says in a sentence how long until the next attempt is accepted', async () => {
+    const app = makeApp({ windowMs: 60 * 60_000, max: 1, by: 'ip' }, 'test');
+    const headers = { 'x-forwarded-for': '10.0.0.9' };
+    await app.request('/hit', { headers });
+    const refused = await app.request('/hit', { headers });
+
+    const body = (await refused.json()) as { message: string };
+    expect(body.message).toBe('Too many requests in a short time. Try again in 1 hour.');
+  });
+
   it('resets the bucket after the window elapses', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));

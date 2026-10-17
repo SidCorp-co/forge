@@ -93,10 +93,10 @@ export function describeMergeMark(args: {
   } | null;
 }): string {
   if (args.kind === 'unmarked') {
-    return 'this issue carries no merged mark: `merged_at` is empty, so nothing here says the work landed';
+    return 'this issue carries no merged mark, so nothing here says the work landed';
   }
   if (args.kind === 'landed') {
-    return `this mark names where the work landed outside git: \`merged_landing\` holds ${args.landing ?? 'the landing it was given'}. It is the word of whoever marked it, not a merge Forge observed`;
+    return `this mark names where the work landed outside git: ${args.landing ?? 'the landing it was given'}. It is the word of whoever marked it, not a merge Forge observed`;
   }
   if (args.kind === 'observed') {
     // Against the COLUMN, not the row this call selected: docs/modules/issues/merge-mark.md.
@@ -104,16 +104,16 @@ export function describeMergeMark(args: {
       !!args.claimedCommit &&
       args.claimedCommit.toLowerCase() !== (args.commitSha ?? '').toLowerCase();
     const overruled = differs
-      ? `. Commit ${args.claimedCommit}, which this call named, is recorded as its claim and is not what the column holds`
+      ? `. Commit ${args.claimedCommit}, which this call named, is recorded as its claim and is not the merge commit Forge holds`
       : '';
     const source = args.readFrom
       ? `read from ${args.readFrom.repository} itself, which resolves it, gives it to this issue by its subject and holds it on ${args.readFrom.branch}`
       : "read by Forge itself, from its record of the pull request or from the project's repository";
-    return `this mark is a merge Forge observed: \`merged_commit_sha\` holds ${args.commitSha ?? 'the commit it landed at'}, ${source}, rather than from anybody's word for it${overruled}`;
+    return `this mark is a merge Forge observed: it landed at commit ${args.commitSha ?? 'the commit it landed at'}, ${source}, rather than from anybody's word for it${overruled}`;
   }
   if (args.unverified) {
     const notKept = args.unverified.notKept
-      ? `. Commit ${args.unverified.notKept}, which this call named, was NOT recorded: this issue's first claim, ${args.unverified.commit}, stands, and \`unmark\` then \`mark\` is the only correction`
+      ? `. Commit ${args.unverified.notKept}, which this call named, was NOT recorded: this issue's first claim, ${args.unverified.commit}, stands. Unmark, then Mark merged again, is the only correction`
       : '';
     const { noReader, why, clears } = args.unverified;
     const because = noReader
@@ -124,21 +124,21 @@ export function describeMergeMark(args: {
       : `To have Forge verify it, mark again ${clears}`;
     return (
       'this mark is a CLAIM Forge did not observe, not a merge it witnessed: ' +
-      `commit ${args.unverified.commit} is recorded as this call's claim in \`merged_claimed_commit\` ` +
+      `commit ${args.unverified.commit} is recorded as this call's claim ` +
       `and is NOT verified, ${because}; it did not ` +
       'check that the commit exists, declares this issue or is on the base branch, and ' +
-      `\`merged_commit_sha\` stays empty. ${toVerify}, naming the commit or none, and Forge checks ` +
+      `Forge holds no merge commit for it. ${toVerify}, naming the commit or none, and Forge checks ` +
       `the claim and upgrades this mark to observed, or refuses it by name${notKept}`
     );
   }
   const claim = args.claimedCommit
-    ? `commit ${args.claimedCommit} is recorded here as this call's claim and is NOT in \`merged_commit_sha\``
-    : 'no commit is recorded in `merged_commit_sha`';
+    ? `commit ${args.claimedCommit} is recorded here as this call's claim and is NOT the merge commit Forge holds`
+    : 'no commit is recorded as its merge commit';
   const held =
     args.claimedCommit && args.claimHeldBy
       ? `. ${args.claimHeldBy} holds commit ${args.claimedCommit}: Forge read that much there, and not whether it is this issue's landing`
       : '';
-  return `this mark is a CLAIM Forge did not observe, not a merge it witnessed: ${claim}, because that column holds only a merge Forge has its own record of. Forge holds no merged pull request for this issue${held}`;
+  return `this mark is a CLAIM Forge did not observe, not a merge it witnessed: ${claim}, because Forge holds a merge commit only for a merge it has its own record of. Forge holds no merged pull request for this issue${held}`;
 }
 
 async function readBack(

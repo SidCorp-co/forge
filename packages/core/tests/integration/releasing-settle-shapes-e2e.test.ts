@@ -191,7 +191,11 @@ describe("the sweep's next step names only a door the project has (criteria 27-3
     expect(await fx.stored(id)).toMatchObject({ status: 'awaiting_release', claim: null });
     const [said] = await bodies(id);
     expect(said).toContain(
-      "This project declares a release but has no live deploy target. No release can start until one is added on the project's integrations screen.",
+      "This project declares a release but has no live deploy target. No release can start until one is added in the project's Settings, on the Integrations tab. There, share a connection as Deploy target, with Live ticked.",
+    );
+    // ISS-1421 r4: and it carries the address that opens that place (judge-32).
+    expect(said).toMatch(
+      /It opens at https?:\/\/[^ ]+\/projects\/[^/ ]+\/settings\?tab=integrations&add=live-deploy-target\./,
     );
     expect(said).not.toMatch(GATE_DOORS);
   });

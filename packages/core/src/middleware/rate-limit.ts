@@ -79,6 +79,20 @@ function deriveKey(
   return null;
 }
 
+/** How long until the bucket renews, in the largest whole unit, rounded up. */
+function waitWords(seconds: number): string {
+  if (seconds < 60) return `${seconds} second${seconds === 1 ? '' : 's'}`;
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+  const hours = Math.ceil(minutes / 60);
+  return `${hours} hour${hours === 1 ? '' : 's'}`;
+}
+
+/** What a refused caller reads: a sentence with the wait in it, never a bare status (ISS-1421 r4). */
+export function rateLimitedMessage(retryAfterSeconds: number): string {
+  return `Too many requests in a short time. Try again in ${waitWords(retryAfterSeconds)}.`;
+}
+
 export type RateLimitOptions = {
   name?: string;
 };
@@ -114,7 +128,7 @@ export function rateLimit(rule: RateLimitRule, opts: RateLimitOptions = {}): Mid
       const retryAfterSeconds = Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
       c.header('Retry-After', String(retryAfterSeconds));
       throw new HTTPException(429, {
-        message: 'rate limit exceeded',
+        message: rateLimitedMessage(retryAfterSeconds),
         cause: { code: 'RATE_LIMITED', details: { retryAfterSeconds } },
       });
     }

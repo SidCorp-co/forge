@@ -168,7 +168,7 @@ describe('POST /api/issues/:id/merge', () => {
     const claimed = await mark({ target: 'main', commit: 'abc1234' });
     expect(claimed.detail).toContain('CLAIM Forge did not observe');
     expect(claimed.detail).toContain('abc1234');
-    expect(claimed.detail).toContain('NOT in `merged_commit_sha`');
+    expect(claimed.detail).toContain('is NOT the merge commit Forge holds');
   });
 
   it('carries the sha it witnessed in the answer, so the word can be checked', async () => {
@@ -186,14 +186,14 @@ describe('POST /api/issues/:id/merge', () => {
   it('does not tell a caller its own commit was overruled when the column holds it', async () => {
     asObserved();
     const agreeing = await mark({ target: 'main', commit: OBSERVED_SHA.toUpperCase() });
-    expect(agreeing.detail).not.toContain('is not what the column holds');
+    expect(agreeing.detail).not.toContain('is not the merge commit Forge holds');
   });
 
   it('tells a caller that named a different commit that the column holds another', async () => {
     asObserved();
     const disagreeing = await mark({ target: 'main', commit: 'abc1234' });
     expect(disagreeing.detail).toContain('abc1234');
-    expect(disagreeing.detail).toContain('is not what the column holds');
+    expect(disagreeing.detail).toContain('is not the merge commit Forge holds');
   });
 });
 
@@ -217,14 +217,14 @@ describe('a second mark over a row that already holds a merge Forge witnessed', 
   it('does not tell a caller its commit was overruled by the very commit it named', async () => {
     alreadyObserved();
     const answer = await mark({ target: 'main', commit: OBSERVED_SHA });
-    expect(answer.detail).not.toContain('is not what the column holds');
+    expect(answer.detail).not.toContain('is not the merge commit Forge holds');
   });
 
   it('still tells a caller that named a different commit which one the column holds', async () => {
     alreadyObserved();
     const answer = await mark({ target: 'main', commit: 'abc1234' });
     expect(answer.detail).toContain('abc1234');
-    expect(answer.detail).toContain('is not what the column holds');
+    expect(answer.detail).toContain('is not the merge commit Forge holds');
   });
 });
 

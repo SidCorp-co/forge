@@ -167,8 +167,8 @@ describe('a release names, before the press, the rows its finish could not close
     expect(refusalsOf(rows.unplanned)).toEqual([
       expect.objectContaining({
         code: 'ENTRY_CRITERIA_UNMET',
-        reason: 'missing what this project requires to close: plan',
-        clears: 'Write each missing record on the issue.',
+        reason: 'missing a plan, which this project requires before a close',
+        clears: "The agent working this issue writes them, through Forge's issue tools.",
       }),
     ]);
   });
@@ -191,7 +191,9 @@ describe('a release names, before the press, the rows its finish could not close
     expect(body).toContain(String(unmarkedKey));
     expect(body).toContain('RELEASE_ISSUES_UNCLOSABLE');
     expect(body).toContain(`\`${askedKey}\` holds 1 open question`);
-    expect(body).toContain(`\`${unplannedKey}\` missing what this project requires to close: plan`);
+    expect(body).toContain(
+      `\`${unplannedKey}\` missing a plan, which this project requires before a close`,
+    );
     for (const id of Object.values(rows)) {
       expect(await fx.stored(id)).toMatchObject({ status: 'awaiting_release', claim: null });
     }
@@ -296,7 +298,9 @@ describe('a release still ships every row whose close stands', () => {
     expect(outcome.leftOff).toEqual([
       expect.stringMatching(new RegExp(`^${unmarkedKey}: no mark naming where its work landed`)),
       expect.stringMatching(new RegExp(`^${askedKey}: holds 1 open question`)),
-      expect.stringMatching(new RegExp(`^${unplannedKey}: missing what this project requires`)),
+      expect.stringMatching(
+        new RegExp(`^${unplannedKey}: missing a plan, which this project requires`),
+      ),
     ]);
     expect(outcome.output).toContain('left off 3 issues whose close');
     for (const id of [rows.unmarked, rows.asked, rows.unplanned]) {

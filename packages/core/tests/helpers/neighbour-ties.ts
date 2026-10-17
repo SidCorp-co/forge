@@ -9,9 +9,10 @@ const SCORE_EPSILON = 10 ** -SCORE_DIGITS;
 const ladder = (hits: readonly ScoredHit[]) => hits.map((h) => h.score.toFixed(SCORE_DIGITS));
 
 /**
- * Search orders by score alone, so equal scores have no order and a cut inside a tie has no member:
- * two lists agree when they climb one score ladder and hold the same hits above the lowest score
- * kept. `null` is agreement, anything else names the first difference.
+ * Search lists a tie by memory id, but which tied rows a cut keeps is the vector index's choice on
+ * the flat read, so a cut inside a tie has no member: two lists agree when they climb one score
+ * ladder and hold the same hits above the lowest score kept. `null` is agreement, anything else
+ * names the first difference.
  */
 export function neighbourFault(
   stored: readonly ScoredHit[],

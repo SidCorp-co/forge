@@ -6,12 +6,16 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const claimRow = vi.fn(async () => [{ run: null as string | null }]);
+const claimRow = vi.fn(
+  async (): Promise<Array<{ run: string | null; slug?: string }>> => [{ run: null }],
+);
 vi.mock('../db/client.js', () => ({
   db: {
     select: () => ({ from: () => ({ where: () => ({ limit: () => claimRow() }) }) }),
   },
 }));
+
+vi.mock('../config/env.js', () => ({ env: { APP_BASE_URL: 'https://forge.example/' } }));
 
 const declaration = vi.fn(async (): Promise<{ kind: string } | null> => ({ kind: 'gated' }));
 vi.mock('../release-batch/gate.js', async (importOriginal) => ({
@@ -149,14 +153,20 @@ describe('entering releasing (ISS-1421)', () => {
 
   it('on a project with no live deploy target, says no release can start until one is added', async () => {
     declaration.mockResolvedValue({ kind: 'undeclared-target' });
+    claimRow.mockResolvedValue([{ run: null, slug: 'acme-shop' }]);
     const refusal = await releasingDoorRefusal({
       ...base,
       from: 'awaiting_release',
       to: 'releasing',
     });
     expect(refusal?.detail).toContain(
-      "No release can start until one is added on the project's integrations screen.",
+      "No release can start until one is added in the project's Settings, on the Integrations tab. There, share a connection as Deploy target, with Live ticked.",
     );
+    // ISS-1421 r4: the place is named, and the address that opens it is carried (judge-32).
+    const link =
+      'https://forge.example/projects/acme-shop/settings?tab=integrations&add=live-deploy-target';
+    expect(refusal?.detail).toContain(`It opens at ${link}.`);
+    expect(refusal?.details).toMatchObject({ addLiveTarget: link });
     expect(refusal?.detail).not.toContain('Release now');
     expect(refusal?.detail).not.toContain('release gate');
   });
@@ -224,7 +234,7 @@ describe('leaving releasing (ISS-1421)', () => {
       expect(refusal?.detail).toContain('POST /api/projects/proj-7/release-batches/run-9/abort');
       expect(refusal?.detail).toContain('The issue stays at Releasing (releasing)');
       expect(refusal?.detail).toContain(
-        'Its abort, or the recovery of a batch run that stopped or never started, returns it to the release gate.',
+        'Its abort, or the recovery of a batch run that stopped, never started or whose job nothing will send, returns it to the release gate.',
       );
     }
   });

@@ -255,7 +255,7 @@ describe('ISS-959 B — the merged mark records its commit', () => {
     // caller's commit appears as the full sha the repository resolved its abbreviation to.
     expect(said).toContain(FEEDFACE);
     expect(said).toContain(SHA);
-    expect(said).toContain('is not what the column holds');
+    expect(said).toContain('is not the merge commit Forge holds');
     expect(said).toContain('merge Forge observed');
     expect((await storedMark(id)).merged_commit_sha).toBe(SHA);
   });
@@ -385,7 +385,7 @@ describe('ISS-959 B — what the mark still refuses, and how a mark is corrected
       200,
     );
     // ISS-1350 — the trail names the commit the repository resolved, never the abbreviation sent.
-    expect((await commentsOn(short.id)).join('\n')).toContain(`commit=${ABC}`);
+    expect((await commentsOn(short.id)).join('\n')).toContain(`at commit ${ABC}.`);
 
     const tooShort = await seed();
     expect(
@@ -399,7 +399,9 @@ describe('ISS-959 B — what the mark still refuses, and how a mark is corrected
     const rows = await harness.db.execute<{ body: string }>(
       sql`SELECT body FROM comments WHERE issue_id = ${id}`,
     );
-    expect((rows[0] as { body: string }).body).toContain(`commit=${SHA}`);
+    expect((rows[0] as { body: string }).body).toContain(
+      `Marked merged into base, at commit ${SHA}.`,
+    );
   });
 
   it('re-marking after an unmark re-adopts whatever Forge now observes', async () => {

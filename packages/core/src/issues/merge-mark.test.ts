@@ -55,7 +55,7 @@ describe('the sentence a caller is given', () => {
 
   it('tells a caller that named a commit that its commit is not in the column', () => {
     expect(asserted).toContain('abc1234');
-    expect(asserted).toContain('NOT in `merged_commit_sha`');
+    expect(asserted).toContain('is NOT the merge commit Forge holds');
   });
 
   it('gives the observed mark a different sentence from the asserted one', () => {
@@ -79,7 +79,7 @@ describe('the sentence a caller is given', () => {
     expect(unverified).toContain('NOT verified');
     expect(unverified).toContain('no way to read this project');
     expect(unverified).toContain('attach a deploy key under Git access');
-    expect(unverified).toContain('`merged_claimed_commit`');
+    expect(unverified).toContain("is recorded as this call's claim and is NOT verified");
     expect(unverified).not.toContain('observed.');
     expect(unverified.match(/abc1234/g)).toHaveLength(1);
   });
@@ -122,5 +122,31 @@ describe('the sentence a caller is given', () => {
     const landed = describeMergeMark({ kind: 'landed', landing: LANDED.mergedLanding });
     expect(landed).toContain(LANDED.mergedLanding);
     expect(landed).toContain('not a merge Forge observed');
+  });
+});
+
+// ISS-1421 r4 — the mark's sentence is the comment a person reads on the issue: judge-32 found
+// `merged_commit_sha` in it. Every kind, and every branch inside one, speaks of the merge in words.
+describe('the mark sentence names no stored field (ISS-1421 r4)', () => {
+  const STORED = /merged_(at|commit_sha|landing|claimed_commit)|\bcolumn\b|`(un)?mark`/;
+  const said = [
+    describeMergeMark({ kind: 'unmarked' }),
+    describeMergeMark({ kind: 'landed', landing: LANDED.mergedLanding }),
+    describeMergeMark({ kind: 'observed', commitSha: SHA }),
+    describeMergeMark({ kind: 'observed', commitSha: SHA, claimedCommit: 'abc1234' }),
+    describeMergeMark({ kind: 'asserted' }),
+    describeMergeMark({ kind: 'asserted', claimedCommit: 'abc1234', claimHeldBy: 'acme/shop' }),
+    describeMergeMark({
+      kind: 'asserted',
+      unverified: { commit: 'abc1234', why: 'w', clears: 'c', noReader: true, notKept: 'def5678' },
+    }),
+  ];
+
+  it.each(said.map((sentence, i) => [i, sentence] as const))('sentence %i', (_, sentence) => {
+    expect(sentence).not.toMatch(STORED);
+  });
+
+  it('a sentence naming a stored field is caught', () => {
+    expect('`merged_commit_sha` holds abc').toMatch(STORED);
   });
 });

@@ -3,6 +3,7 @@
 
 import { db } from '../db/client.js';
 import { resolveDeclaredEntryCriteria } from '../issues/entry-criteria.js';
+import { entryRecordsInWords } from '../issues/entry-criteria-keys.js';
 import { refuseUnshippedClose } from '../issues/merged-at.js';
 import { checkTransitionEvidence } from '../issues/transition-evidence.js';
 import { openQuestionIdsOn, openQuestionsFault } from '../questions/issue-coupling.js';
@@ -84,8 +85,9 @@ async function shortfallsOf(
       : [];
     found.push({
       code: 'ENTRY_CRITERIA_UNMET',
-      reason: `missing what this project requires to close: ${unmet.join(', ')}`,
-      clears: 'Write each missing record on the issue.',
+      // Named in words, never by stored key (ISS-1421 r4); the agent working the issue writes them.
+      reason: `missing ${entryRecordsInWords(unmet)}, which this project requires before a close`,
+      clears: "The agent working this issue writes them, through Forge's issue tools.",
       detail: violation.detail,
       details: violation.details,
     });

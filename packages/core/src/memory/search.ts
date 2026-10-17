@@ -86,6 +86,19 @@ function baseWhereClauses(input: BaseSearchInput) {
   return whereClauses;
 }
 
+/**
+ * Better score first, and a tie by memory id: every read rewrites its hits' rows
+ * (`touchMemories`), and Postgres gives a tie no order of its own, so without this the next read of
+ * the same query can list tied hits another way (ISS-1421 r4). The flat read sorts here rather
+ * than in SQL because a second ORDER BY key would take the HNSW index off the distance scan.
+ */
+export function bestFirstThenId(
+  a: Pick<MemoryHit, 'id' | 'score'>,
+  b: Pick<MemoryHit, 'id' | 'score'>,
+): number {
+  return b.score - a.score || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+}
+
 /** Semantic (dense vector) strategy — cosine over the HNSW index. */
 export async function searchMemories(input: SearchInput): Promise<MemoryHit[]> {
   if (input.memoryModel === 'chunked') return chunkedSearch(input, 'semantic');
@@ -111,7 +124,7 @@ export async function searchMemories(input: SearchInput): Promise<MemoryHit[]> {
     .orderBy(asc(sql`distance`))
     .limit(topK);
 
-  return rows.map((r) => ({
+  const hits: MemoryHit[] = rows.map((r) => ({
     id: r.id,
     source: r.source as MemorySource,
     sourceRef: r.sourceRef,
@@ -121,6 +134,7 @@ export async function searchMemories(input: SearchInput): Promise<MemoryHit[]> {
     embeddedAt: r.embeddedAt,
     ...deriveMemoryStaleness(r.metadata),
   }));
+  return hits.sort(bestFirstThenId);
 }
 
 /**
@@ -161,7 +175,7 @@ export async function keywordSearchMemories(input: KeywordSearchInput): Promise<
     })
     .from(memories)
     .where(and(...whereClauses))
-    .orderBy(desc(sql`rank`))
+    .orderBy(desc(sql`rank`), asc(memories.id))
     .limit(topK);
 
   return rows.map((r) => ({
@@ -258,7 +272,7 @@ async function chunkedSearch(
     SELECT m.id, m.source, m.source_ref, m.text_content, m.metadata, m.embedded_at,
            r.measure, r.chunk_index, r.chunk_text
     FROM ranked r JOIN memories m ON m.id = r.id
-    ORDER BY r.measure ${bestFirst}
+    ORDER BY r.measure ${bestFirst}, m.id
     LIMIT ${topK}
   `)) as unknown as ChunkedRow[];
 

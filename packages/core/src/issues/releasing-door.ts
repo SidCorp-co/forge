@@ -1,8 +1,8 @@
 // `releasing` means a release batch run is carrying the issue to production right now (ISS-1421).
 // So one door writes it — creating a release batch, which names its run — and only the release
-// paths take an issue off it: the batch's finish, its abort, the recovery of a run that stopped or
-// never started, and the sweep that settles a row whose run has ended. Every other door asking for
-// either move is refused here, by name.
+// paths take an issue off it: the batch's finish, its abort, the recovery of a run that stopped,
+// never started or whose job nothing will send, and the sweep that settles a row whose run has
+// ended. Every other door asking for either move is refused here, by name.
 
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -10,9 +10,12 @@ import { type IssueStatus, issues, pipelineRuns } from '../db/schema.js';
 import { RELEASE_GATE_STATUS } from '../release-batch/gate.js';
 import {
   type GateHolds,
+  NO_DOORS,
   NO_HOLDS,
+  type ReleaseDoors,
   type ReleasePath,
   readGateHolds,
+  readReleaseDoors,
   readReleasePath,
   releaseStartsFor,
 } from '../release-batch/release-path-words.js';
@@ -37,16 +40,22 @@ export function releasingEntryRefusal(
   from: IssueStatus,
   path: ReleasePath,
   holds: GateHolds = NO_HOLDS,
+  doors: ReleaseDoors = NO_DOORS,
 ): TransitionError {
   return new TransitionError(
     'RELEASING_STARTS_FROM_RELEASE',
     [
       `${statusForCaller(RELEASING)} means a release batch is carrying this issue to production right now.`,
       'Only starting a release puts an issue there.',
-      ...releaseStartsFor(path, projectId, from, holds),
+      ...releaseStartsFor(path, projectId, from, holds, doors),
       `The issue stays at ${statusForCaller(from)}.`,
     ].join(' '),
-    { from, to: RELEASING, releasePath: path },
+    {
+      from,
+      to: RELEASING,
+      releasePath: path,
+      ...(doors.addLiveTarget ? { addLiveTarget: doors.addLiveTarget } : {}),
+    },
   );
 }
 
@@ -55,7 +64,8 @@ async function entryRefusal(ask: ReleasingDoorAsk): Promise<TransitionError> {
   const path = await readReleasePath(ask.projectId);
   const atGate = path === 'gated' && ask.from === RELEASE_GATE_STATUS;
   const holds = atGate ? await readGateHolds(ask.projectId, ask.issueId) : NO_HOLDS;
-  return releasingEntryRefusal(ask.projectId, ask.from, path, holds);
+  const doors = await readReleaseDoors(ask.projectId, path);
+  return releasingEntryRefusal(ask.projectId, ask.from, path, holds, doors);
 }
 
 async function claimingRun(issueId: string): Promise<string | null> {
@@ -76,7 +86,7 @@ export async function releasingExitRefusal(
     : 'No release batch claims it, so the releasing sweep returns it to the release gate within a minute.';
   return new TransitionError(
     'RELEASING_ENDS_BY_RELEASE',
-    `${statusForCaller(RELEASING)} is left only through the release carrying the issue. Its finish closes the issue. Its abort, or the recovery of a batch run that stopped or never started, returns it to the release gate. The releasing sweep settles an issue whose release has ended. ${where} ` +
+    `${statusForCaller(RELEASING)} is left only through the release carrying the issue. Its finish closes the issue. Its abort, or the recovery of a batch run that stopped, never started or whose job nothing will send, returns it to the release gate. The releasing sweep settles an issue whose release has ended. ${where} ` +
       `The issue stays at ${statusForCaller(RELEASING)}, and ${statusForCaller(ask.to)} was not written.`,
     { from: RELEASING, to: ask.to, releaseBatchRunId: runId },
   );

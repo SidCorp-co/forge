@@ -112,7 +112,7 @@ describe('ISS-940 re-marking an already-merged issue (real Postgres)', () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]?.body).not.toMatch(/NOT stamped by this call/);
     expect(rows[1]?.body).toMatch(/NOT stamped by this call/);
-    expect(rows[1]?.body).toMatch(/unmark/);
+    expect(rows[1]?.body).toMatch(/Unmark, then Mark merged again/);
   });
 
   it("leaves the caller's note whole on its own line when it does not stamp", async () => {

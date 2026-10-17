@@ -93,7 +93,7 @@ describe('rosterCloseShortfalls', () => {
     const [found] = (await rosterCloseShortfalls(PROJECT, ['a'])).get('a') ?? [];
     expect(found).toMatchObject({
       code: 'ENTRY_CRITERIA_UNMET',
-      reason: 'missing what this project requires to close: plan, release_note',
+      reason: 'missing a plan and a release note, which this project requires before a close',
     });
     expect(evidence).toHaveBeenCalledWith(
       expect.objectContaining({

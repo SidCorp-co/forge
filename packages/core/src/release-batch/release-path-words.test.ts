@@ -9,7 +9,9 @@ import { describe, expect, it } from 'vitest';
 import type { IssueStatus } from '../db/schema.js';
 import {
   type GateHolds,
+  NO_DOORS,
   nextAtGateFor,
+  type ReleaseDoors,
   type ReleasePath,
   releaseStartsFor,
 } from './release-path-words.js';
@@ -41,12 +43,20 @@ const HOLDS: GateHolds[] = [
       },
       {
         reason:
-          'missing what this project requires to close: plan, acceptance_criteria, release_note',
-        clears: 'Write each missing record on the issue.',
+          'missing a plan, acceptance criteria and a release note, which this project requires before a close',
+        clears: "The agent working this issue writes them, through Forge's issue tools.",
       },
     ],
   },
   { kind: 'unread' },
+];
+
+const DOORS: ReleaseDoors[] = [
+  NO_DOORS,
+  {
+    addLiveTarget:
+      'https://forge.example/projects/acme/settings?tab=integrations&add=live-deploy-target',
+  },
 ];
 
 const MAX_WORDS = 25;
@@ -64,15 +74,15 @@ function everySentence(): Array<{ where: string; sentence: string }> {
   const out: Array<{ where: string; sentence: string }> = [];
   for (const path of PATHS) {
     for (const holds of HOLDS) {
-      for (const sentence of nextAtGateFor(path, holds)) {
-        out.push({ where: `nextAtGateFor(${path}, ${JSON.stringify(holds)})`, sentence });
-      }
-      for (const from of FROM) {
-        for (const sentence of releaseStartsFor(path, 'proj-7', from, holds)) {
-          out.push({
-            where: `releaseStartsFor(${path}, ${from}, ${JSON.stringify(holds)})`,
-            sentence,
-          });
+      for (const doors of DOORS) {
+        const said = JSON.stringify({ holds, doors });
+        for (const sentence of nextAtGateFor(path, holds, doors)) {
+          out.push({ where: `nextAtGateFor(${path}, ${said})`, sentence });
+        }
+        for (const from of FROM) {
+          for (const sentence of releaseStartsFor(path, 'proj-7', from, holds, doors)) {
+            out.push({ where: `releaseStartsFor(${path}, ${from}, ${said})`, sentence });
+          }
         }
       }
     }
@@ -99,6 +109,16 @@ describe('release-path sentences (ISS-1421 round 3)', () => {
       ).not.toContain('Start one with Release now');
       expect(nextAtGateFor('gated', holds).join(' ')).not.toContain('starts a release');
     }
+  });
+
+  it('send a project with no live target to the place that adds one, by its address (r4)', () => {
+    const [, linked] = DOORS as [ReleaseDoors, ReleaseDoors];
+    const said = nextAtGateFor('no-live-target', undefined, linked).join(' ');
+    expect(said).toContain(
+      'Settings, on the Integrations tab. There, share a connection as Deploy target, with Live ticked.',
+    );
+    expect(said).toContain(`It opens at ${linked.addLiveTarget}.`);
+    expect(nextAtGateFor('no-live-target').join(' ')).not.toContain('It opens at');
   });
 
   it('a sentence that breaks the rule is caught', () => {

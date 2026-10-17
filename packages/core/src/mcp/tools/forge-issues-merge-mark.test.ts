@@ -261,7 +261,7 @@ describe('forge_issues action=mark_merged, the answer to the call that writes on
       data: { issueId: ISSUE_ID, target: 'base', commit: 'abc1234' },
     });
     expect(claimed.detail).toContain('CLAIM Forge did not observe');
-    expect(claimed.detail).toContain('NOT in `merged_commit_sha`');
+    expect(claimed.detail).toContain('is NOT the merge commit Forge holds');
   });
 
   it('answers unmark with unmarked rather than the kind it cleared', async () => {
