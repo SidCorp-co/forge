@@ -79,17 +79,21 @@ import {
 } from './routes-reference.js';
 import type { CoolifyConfig, CoolifySecrets } from './types.js';
 
+const describeCoolifyAnswer = (err: CoolifyApiError): string =>
+  err.status === 403
+    ? describeCoolifyForbidden(err)
+    : `Coolify answered HTTP ${err.status} to ${err.route ?? 'the request Forge made'}`;
+
 const asHttp = (err: unknown): never => {
   if (err instanceof CoolifyCommandError) {
     throw new HTTPException(400, { message: err.message, cause: { code: 'BAD_REQUEST' } });
   }
   // Coolify's own answer, named: unmapped it reached the caller as a bare INTERNAL_ERROR (ISS-1346).
   if (err instanceof CoolifyApiError) {
-    const said =
-      err.status === 403
-        ? describeCoolifyForbidden(err)
-        : `Coolify answered HTTP ${err.status} to ${err.route ?? 'the request Forge made'}`;
-    throw new HTTPException(502, { message: said, cause: { code: 'COOLIFY_API_ERROR' } });
+    throw new HTTPException(502, {
+      message: describeCoolifyAnswer(err),
+      cause: { code: 'COOLIFY_API_ERROR' },
+    });
   }
   throw err;
 };
@@ -109,6 +113,24 @@ const lockedAsHttp = (err: unknown): never => {
     });
   }
   throw err;
+};
+
+/**
+ * A read of Coolify that failed, named. 424, not the 502 the writes answer: Cloudflare replaces an
+ * origin 502's body with its own `error code: 502`, so the refusal named here never reached a
+ * caller (ISS-1194).
+ */
+const readAsHttp = (err: unknown, describe: (e: CoolifyApiError) => string): never => {
+  if (err instanceof CoolifyApiError) {
+    throw new HTTPException(424, { message: describe(err), cause: { code: 'COOLIFY_API_ERROR' } });
+  }
+  if (err instanceof CoolifyReadFailedError) {
+    // Coolify answering something that is not JSON did reach Coolify: its own code, so a caller
+    // acting on the code is not told Forge could not connect.
+    const code = err.kind === 'not-json' ? 'COOLIFY_ANSWER_NOT_JSON' : 'COOLIFY_UNREACHABLE';
+    throw new HTTPException(424, { message: err.message, cause: { code } });
+  }
+  return asHttp(err);
 };
 
 const invalidBody = (error: z.core.$ZodError) =>
@@ -209,29 +231,7 @@ function registerCoolifyCommandRoutes(routes: Hono<{ Variables: AuthVars }>): vo
           ),
         );
       } catch (err) {
-        // 424, not the 502 the writes answer: Cloudflare replaces an origin 502's body with its own
-        // `error code: 502`, so the refusal named here never reached a caller (ISS-1194).
-        if (err instanceof CoolifyApiError) {
-          throw new HTTPException(424, {
-            message: describeCoolifyRollbackImagesRefusal(err),
-            cause: { code: 'COOLIFY_API_ERROR' },
-          });
-        }
-        if (err instanceof CoolifyReadFailedError) {
-          // Coolify answering something that is not JSON did reach Coolify: its own code, so a caller
-          // acting on the code is not told Forge could not connect.
-          if (err.kind === 'not-json') {
-            throw new HTTPException(424, {
-              message: err.message,
-              cause: { code: 'COOLIFY_ANSWER_NOT_JSON' },
-            });
-          }
-          throw new HTTPException(424, {
-            message: err.message,
-            cause: { code: 'COOLIFY_UNREACHABLE' },
-          });
-        }
-        return asHttp(err);
+        return readAsHttp(err, describeCoolifyRollbackImagesRefusal);
       }
     },
   );
@@ -290,11 +290,15 @@ function registerCoolifyPickerRoutes(routes: Hono<{ Variables: AuthVars }>): voi
       } else {
         auth = { baseUrl: body.baseUrl, apiToken: body.apiToken };
       }
-      return c.json(
-        answer(applicationsSchema, {
-          applications: (await fetchCoolifyApplications(auth)).slice(0, 500),
-        }),
-      );
+      try {
+        return c.json(
+          answer(applicationsSchema, {
+            applications: (await fetchCoolifyApplications(auth)).slice(0, 500),
+          }),
+        );
+      } catch (err) {
+        return readAsHttp(err, describeCoolifyAnswer);
+      }
     },
   );
 
@@ -317,7 +321,7 @@ function registerCoolifyPickerRoutes(routes: Hono<{ Variables: AuthVars }>): voi
           ),
         );
       } catch (err) {
-        return asHttp(err);
+        return readAsHttp(err, describeCoolifyAnswer);
       }
     },
   );
