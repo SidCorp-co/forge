@@ -11,6 +11,7 @@ import type { SessionRow } from "@/features/sessions/types";
 import { WORKING_WORD } from "@/design";
 import { SessionScreen } from "./session-screen";
 import { BLOCKED_HOLD } from "./turn-stage";
+import { LAST_TURN_SHOWS_WHERE } from "./context-rail";
 
 expect.extend(matchers);
 
@@ -146,6 +147,57 @@ describe("a session's own page says what it is doing (ISS-1228 round 10)", () =>
       expect(screen.getByTestId("turn-stage")).toHaveTextContent(word);
       expect(screen.getAllByText(word).length).toBeGreaterThan(1);
       expect(screen.queryByText(new RegExp(WORKING_WORD))).not.toBeInTheDocument();
+    } finally {
+      page.session = session;
+    }
+  });
+});
+
+// ISS-1228 r11 repair: an ended session's turn line ran its clock to the moment the page loaded while
+// Run stats read started to ended, and its blocked card sent the reader to the session they were on
+// and to a Retry the page does not have (criterion 70).
+describe("a session that stopped checking in, on its own page", () => {
+  const ended: SessionRow = {
+    ...session,
+    status: "failed",
+    failureReason: "session_stopped_checking_in",
+    report: null,
+    startedAt: new Date(NOW - 41 * 60_000).toISOString(),
+    updatedAt: new Date(NOW - 32_000).toISOString(),
+  };
+
+  it("shows one duration, started to ended, that does not move as time passes", () => {
+    page.session = ended;
+    try {
+      const { rerender } = render(<SessionScreen sessionId="s1" projectSlug="qa" />);
+      expect(screen.getByTestId("turn-stage")).toHaveTextContent(/Failed\s*· 40m 28s/);
+      expect(screen.getByTitle("Duration")).toHaveTextContent("40m 28s");
+      vi.setSystemTime(NOW + 3 * 60_000);
+      rerender(<SessionScreen sessionId="s1" projectSlug="qa" />);
+      expect(screen.getByTestId("turn-stage")).toHaveTextContent(/Failed\s*· 40m 28s/);
+    } finally {
+      page.session = session;
+    }
+  });
+
+  it("names the button the page has, and points at no conversation it does not hold", () => {
+    page.session = ended;
+    try {
+      render(<SessionScreen sessionId="s1" projectSlug="qa" />);
+      const card = screen.getByText(/runner kept answering/).closest("[role]") ?? document.body;
+      expect(screen.getByRole("button", { name: "Rerun" })).toBeVisible();
+      expect(card).toHaveTextContent("Rerun");
+      expect(card).not.toHaveTextContent(/Retry|open the session|conversation/);
+    } finally {
+      page.session = session;
+    }
+  });
+
+  it("sends the reader to the conversation's last turn where the page holds one", () => {
+    page.session = { ...ended, messages: [{ role: "assistant", content: "Restoring the staging database" }] };
+    try {
+      render(<SessionScreen sessionId="s1" projectSlug="qa" />);
+      expect(screen.getByText(LAST_TURN_SHOWS_WHERE)).toBeVisible();
     } finally {
       page.session = session;
     }

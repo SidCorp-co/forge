@@ -260,6 +260,14 @@ describe("classifySessionOutcome (ISS-322 four-bucket classifier)", () => {
     }
   });
 
+  it("ISS-1228: on a page whose button says Rerun, no remedy tells the reader to press Retry", () => {
+    for (const cause of FAILURE_CAUSES) {
+      const action = failureReasonAction(cause, "Rerun") ?? "";
+      expect(action, cause).not.toMatch(/\bRetry\b/);
+      expect(action, cause).toBe(failureReasonAction(cause)?.replace(/\bRetry\b/g, "Rerun"));
+    }
+  });
+
   it("ISS-877: every cause reads the same way here as it does to the failure metric", () => {
     for (const cause of FAILURE_CAUSES) {
       const bucket = classifySessionOutcome("failed", cause).bucket;

@@ -109,7 +109,7 @@ export {
 } from "./skeletons";
 
 export { useDebounced } from "./hooks/use-debounced";
-export { useElapsed } from "./hooks/use-elapsed";
+export { formatElapsed, useElapsed } from "./hooks/use-elapsed";
 export { useNow } from "./hooks/use-now";
 export { useAnimatedNumber } from "./hooks/use-animated-number";
 export { useMediaQuery } from "./hooks/use-media-query";

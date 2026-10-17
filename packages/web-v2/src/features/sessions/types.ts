@@ -295,7 +295,7 @@ export const FAILURE_REASON_ACTION: Record<SessionFailureReason, string> = {
   queue_timeout: "No runner picked it up — check the fleet strip for an online runner.",
   heartbeat_timeout: "The session stopped sending heartbeats — Retry to re-dispatch.",
   session_stopped_checking_in:
-    "The session stopped checking in while its runner kept answering — open the session to see where it stopped, then Retry.",
+    "The session stopped checking in while its runner kept answering — Retry to start it again.",
   turn_never_reported:
     "A runner picked this up but nothing ever reported the agent starting a turn — check whether its prompt was actually submitted, then Rerun.",
   no_worker_online: "Bring a runner online or check device pairing, then Retry.",
@@ -329,12 +329,16 @@ export function failureReasonLabel(reason: string | null | undefined): string | 
   );
 }
 
-export function failureReasonAction(reason: string | null | undefined): string | null {
+/** The remedy in the words of the page it is read on: `button` names that page's own button where it is not Retry. */
+export function failureReasonAction(
+  reason: string | null | undefined,
+  button: "Retry" | "Rerun" = "Retry",
+): string | null {
   if (!reason) return null;
-  return (
+  const action =
     FAILURE_REASON_ACTION[reason as SessionFailureReason] ??
-    FAILURE_REASON_ACTION[resolveFailureCause(reason)]
-  );
+    FAILURE_REASON_ACTION[resolveFailureCause(reason)];
+  return action.replace(/\bRetry\b/g, button);
 }
 
 /** What a running session's silence is measured on, whichever read the session came from. */
