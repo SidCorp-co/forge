@@ -277,3 +277,12 @@ describe("what the page of a session doing something specific draws (ISS-1228 ro
     expect(screen.getByTestId("turn-stage")).toHaveTextContent("Working…");
   });
 });
+
+// ISS-1228 round 13: a person's stop, stored as failed, read Failed on the session page's turn line.
+describe("a stopped session's turn line", () => {
+  it("draws nothing for a person's stop, as for a cancelled session, and Failed for a failure", () => {
+    expect(sessionTurnStage({ live: false, display: "failed", failureReason: "user_cancelled" })).toBeNull();
+    expect(sessionTurnStage({ live: false, display: "cancelled" })).toBeNull();
+    expect(sessionTurnStage({ live: false, display: "failed", failureReason: "heartbeat_timeout" })).toBe("failed");
+  });
+});

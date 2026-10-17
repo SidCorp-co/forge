@@ -218,11 +218,11 @@ describe("a session that stopped checking in, on its own page", () => {
 
   // ISS-1228 round 13: a person's stop read Failed on its page and "Blocked: Cancelled by a user" on
   // its rail, while the sessions list said Swept and the toast Session cancelled.
-  it("calls a session a person stopped Stopped, on its chip, its turn line and its rail", () => {
+  it("calls a session a person stopped Stopped, on its chip and its rail, and draws no Failed turn line", () => {
     page.session = { ...ended, failureReason: "user_cancelled" };
     try {
       render(<SessionScreen sessionId="s1" projectSlug="qa" />);
-      expect(screen.getByTestId("turn-stage")).toHaveTextContent(/^Stopped/);
+      expect(screen.queryByTestId("turn-stage")).toBeNull();
       expect(screen.getAllByText("Stopped").length).toBeGreaterThan(0);
       expect(screen.getByText("Why it ended")).toBeVisible();
       expect(screen.getByText("A person stopped the session.")).toBeVisible();
