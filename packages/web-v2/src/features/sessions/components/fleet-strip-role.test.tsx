@@ -13,6 +13,7 @@ expect.extend(matchers);
 const BOXES = [
   { id: "dev-a", name: "box-a", platform: "linux", status: "online" },
   { id: "dev-b", name: "box-b", platform: "linux", status: "offline" },
+  { id: "dev-c", name: "box-c", platform: "linux", status: "online" },
 ];
 const runner = (deviceId: string, name: string, online: boolean) => ({
   runnerId: `r-${deviceId}`,
@@ -33,7 +34,7 @@ vi.mock("../hooks", () => ({
 vi.mock("@/features/runners/hooks", () => ({
   useDevices: () => ({ data: [] }),
   useProjectRunners: () => ({
-    data: [runner("dev-a", "box-a", true), runner("dev-b", "box-b", false)],
+    data: [runner("dev-a", "box-a", true), runner("dev-b", "box-b", false), runner("dev-c", "box-c", true)],
     isError: false,
     error: null,
   }),
@@ -46,6 +47,7 @@ vi.mock("@/features/pipeline/hooks", () => ({
         { id: "s-a1", deviceId: "dev-a" },
         { id: "s-a2", deviceId: "dev-a" },
         { id: "s-b1", deviceId: "dev-b" },
+        { id: "s-c1", deviceId: "dev-c" },
       ],
       holds: [],
       readAt: "",
@@ -79,9 +81,12 @@ describe("a box on the sessions page reads one way", () => {
     expect(within(row).getByTestId("box-word")).toHaveTextContent("Busy · 2 live sessions");
   });
 
-  it("calls no box Spare, whether it is working or offline", async () => {
-    const row = await boxRow("box-b");
-    expect(within(row).getByTestId("box-word")).toHaveTextContent("Offline · 1 live session");
+  it("calls a box that is not the default nothing but its state, busy or offline", async () => {
+    const busy = await boxRow("box-c");
+    expect(within(busy).getByTestId("box-word")).toHaveTextContent("Busy · 1 live session");
+    const offline = within(screen.getByRole("list", { name: "Boxes" })).getByText("box-b").closest("li") as HTMLElement;
+    expect(within(offline).getByTestId("box-word")).toHaveTextContent("Offline · 1 live session");
     expect(screen.queryByText(/spare/i)).toBeNull();
+    expect(screen.getAllByText("Primary")).toHaveLength(1);
   });
 });

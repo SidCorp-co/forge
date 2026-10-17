@@ -26,7 +26,7 @@ describe("End silent sessions on the sessions page", () => {
     fireEvent.click(screen.getByRole("button", { name: "End silent sessions" }));
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveTextContent(
-      "Every step or agent chat on this project that stopped checking in, or waited in the queue past its limit, ends now as failed, as core would end it on its next pass. Run sessions and masters keep their own clock.",
+      "Every step or agent chat on this project that stopped checking in, never reported a turn, never had a client attach, or waited in the queue past its limit, ends now as failed, as core would end it on its next pass. Run sessions and masters keep their own clock.",
     );
     expect(mutate).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole("button", { name: "Keep them" }));
@@ -46,9 +46,13 @@ describe("End silent sessions on the sessions page", () => {
     expect(screen.queryByText(/zombie/i)).toBeNull();
   });
 
-  it("says how many it ended in words, and when there was none", () => {
-    expect(endedSilentText({ queueTimedOut: 1, heartbeatTimedOut: 0 })).toBe("Ended 1 silent session.");
-    expect(endedSilentText({ queueTimedOut: 2, heartbeatTimedOut: 1 })).toBe("Ended 3 silent sessions.");
-    expect(endedSilentText({ queueTimedOut: 0, heartbeatTimedOut: 0 })).toBe("No session was silent.");
+  it("counts every session each pass ended, in words, and says when there was none", () => {
+    const none = { queueTimedOut: 0, turnNeverReported: 0, heartbeatTimedOut: 0, noClientAcked: 0 };
+    expect(endedSilentText({ ...none, queueTimedOut: 1 })).toBe("Ended 1 silent session.");
+    expect(endedSilentText({ queueTimedOut: 1, turnNeverReported: 1, heartbeatTimedOut: 1, noClientAcked: 1 })).toBe(
+      "Ended 4 silent sessions.",
+    );
+    expect(endedSilentText({ ...none, noClientAcked: 2 })).toBe("Ended 2 silent sessions.");
+    expect(endedSilentText(none)).toBe("No session was silent.");
   });
 });

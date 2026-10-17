@@ -7,7 +7,7 @@ import { useSweepZombies } from "../hooks";
 const LABEL = "End silent sessions";
 
 export const END_SILENT_MESSAGE =
-  "Every step or agent chat on this project that stopped checking in, or waited in the queue past its limit, ends now as failed, as core would end it on its next pass. Run sessions and masters keep their own clock.";
+  "Every step or agent chat on this project that stopped checking in, never reported a turn, never had a client attach, or waited in the queue past its limit, ends now as failed, as core would end it on its next pass. Run sessions and masters keep their own clock.";
 
 /** Ends now what core's loop monitor would end on its next pass, asked first as Stop session is. */
 export function EndSilentSessions({ projectId }: { projectId: string | null }) {
