@@ -90,7 +90,9 @@ describe('The three instances recorded on ISS-1122, 2026-09-20', () => {
     expect(result.detected).toBe(1);
     const strand = await strandOf(issueId);
     expect(strand?.status).toBe('open');
-    expect(String(strand?.reason)).toContain('job pool');
+    expect(String(strand?.reason)).toContain(
+      'no runner that takes this project’s work is connected',
+    );
     expect(strand?.owes).toBe('human');
     expect((strand?.evidence as Record<string, unknown>)?.poolHasRunner).toBe(false);
   });
@@ -242,16 +244,16 @@ describe('The inverses: a detector that flags everything is the same defect', ()
   it('reads a row as stranded once the session holding its lease is terminal', async () => {
     const issueId = await seedIssue({ status: 'testing' });
     await fx.seedIssueLease(fx.lastSeq, 'completed');
+    // The session ended long ago, not at the wall clock this suite's NOW predates.
+    await fx.db.execute(sql`UPDATE agent_sessions SET updated_at = ${LONG_AGO}::timestamptz`);
 
     expect((await mods.reconcileIdleIssues(NOW)).detected).toBe(1);
     expect(await strandOf(issueId)).not.toBeNull();
   });
 
   it('leaves a row alone that has not yet spent its own status grace', async () => {
-    const issueId = await seedIssue({
-      status: 'awaiting_release',
-      updatedAt: '2026-09-19T20:00:00.000Z',
-    });
+    const issueId = await seedIssue({ status: 'awaiting_release' });
+    await fx.enterStatus(issueId, 'testing', 'awaiting_release', '2026-09-19T20:00:00.000Z');
 
     expect((await mods.reconcileIdleIssues(NOW)).detected).toBe(0);
     expect(await strandOf(issueId)).toBeNull();
@@ -484,6 +486,7 @@ describe('The finding does not outlive what it claims', () => {
       UPDATE issues SET status='testing', updated_at=${NOW.toISOString()}::timestamptz
        WHERE id=${issueId}
     `);
+    await fx.enterStatus(issueId, 'in_progress', 'testing', NOW.toISOString());
     const result = await mods.reconcileIdleIssues(new Date('2026-09-20T16:05:00.000Z'));
 
     expect(result.cleared).toBe(1);
@@ -493,8 +496,9 @@ describe('The finding does not outlive what it claims', () => {
   /**
    * The consult's F1 — the recovery arm writes only to the rows it clears, so a page full of rows
    * that are still stranded would be re-read every tick and hide every row behind them for ever.
+   * ISS-1229 r13: it no longer pages, so the row behind them is reached on the first pass.
    */
-  it('walks past a full page of rows that stay stranded to reach one that recovered', async () => {
+  it('reaches a row that recovered behind a full page of rows that stay stranded, on the first pass', async () => {
     await fx.db.execute(sql`
       INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id,
                           session_context, created_at, updated_at)
@@ -516,12 +520,8 @@ describe('The finding does not outlive what it claims', () => {
     `);
 
     const first = await mods.reconcileIdleIssues(NOW);
-    expect(first.cleared).toBe(0);
-    expect(await strandOf(recovered)).not.toBeNull();
 
-    const second = await mods.reconcileIdleIssues(NOW);
-
-    expect(second.cleared).toBe(1);
+    expect(first.cleared).toBe(1);
     expect(await strandOf(recovered)).toBeNull();
   });
 

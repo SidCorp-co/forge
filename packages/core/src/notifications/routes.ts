@@ -109,13 +109,13 @@ notificationRoutes.use('*', requireAuth(), assertEmailVerified());
 notificationRoutes.route('/silences', silenceRoutes);
 
 /**
- * How many things are still true for the caller.
+ * How many bell rows are still open for the caller.
  *
  * ISS-1063 replaced `GET /unread-count` with this rather than redefining it: a route
- * named `unread-count` returning an open count is a silent substitution, and web-v2's
- * only caller moved in the same change. The count is over DISTINCT RECORDS reachable
- * through the caller's deliveries, not over deliveries — a grouped delivery carrying
- * fifteen firing parks reads fifteen, and resolving one of them reads fourteen.
+ * named `unread-count` returning an open count is a silent substitution. It counted the
+ * records inside the rows until ISS-1229 r13, when an Org Member's badge read 623 over three
+ * grouped rows: the badge sits on the panel, so it counts what the panel shows — each row
+ * carrying a record still true is one, however many records it groups.
  */
 notificationRoutes.get(
   '/open-count',
@@ -136,7 +136,7 @@ notificationRoutes.get(
     if (projectId) conditions.push(eq(notifications.projectId, projectId));
 
     const [row] = await db
-      .select({ n: countDistinct(notifications.id) })
+      .select({ n: countDistinct(notificationDeliveries.id) })
       .from(notificationDeliveries)
       .innerJoin(
         notificationDeliveryMembers,
@@ -191,6 +191,16 @@ notificationRoutes.get(
       )`,
     ];
     if (unread) conditions.push(unreadDelivery);
+    // One resolution, one row (ISS-1229 r13): a resolution notice stored before then is not listed
+    // beside the row that raised its record, which reads resolved itself. Nothing stores one now.
+    conditions.push(sql`NOT (${notificationDeliveries.resolvedNotice} AND EXISTS (
+      SELECT 1 FROM notification_delivery_members rm
+      JOIN notification_delivery_members om ON om.notification_id = rm.notification_id
+      JOIN notification_deliveries od ON od.id = om.delivery_id
+      WHERE rm.delivery_id = ${notificationDeliveries.id}
+        AND od.user_id = ${notificationDeliveries.userId}
+        AND NOT od.resolved_notice
+    ))`);
     const where = and(...conditions);
 
     const [totalRow] = await db
@@ -209,6 +219,9 @@ notificationRoutes.get(
         groupKey: notificationDeliveries.groupKey,
         resolvedNotice: notificationDeliveries.resolvedNotice,
         createdAt: notificationDeliveries.createdAt,
+        toldAt: sql<Date>`max(${notificationDeliveryMembers.deliveredAt})`.mapWith(
+          notificationDeliveries.createdAt,
+        ),
         unread: sql<boolean>`${unreadDelivery}`,
         members: sql<number>`count(${notificationDeliveryMembers.notificationId})::int`,
         openMembers: sql<number>`(count(*) FILTER (WHERE ${notifications.resolvedAt} IS NULL AND ${stillTrue}))::int`,
@@ -242,7 +255,10 @@ notificationRoutes.get(
       .innerJoin(notifications, eq(notifications.id, notificationDeliveryMembers.notificationId))
       .where(where)
       .groupBy(notificationDeliveries.id, notificationDeliveries.title)
-      .orderBy(desc(notificationDeliveries.createdAt))
+      .orderBy(
+        desc(sql`max(${notificationDeliveryMembers.deliveredAt})`),
+        desc(notificationDeliveries.createdAt),
+      )
       .limit(pageSize)
       .offset((page - 1) * pageSize);
 
@@ -351,6 +367,7 @@ notificationRoutes.get(
         secondaryIssueId: notifications.secondaryIssueId,
         resolvedAt: notifications.resolvedAt,
         createdAt: notifications.createdAt,
+        deliveredAt: notificationDeliveryMembers.deliveredAt,
         open: sql<boolean>`(${notifications.resolvedAt} IS NULL AND ${stillTrue})`,
       })
       .from(notificationDeliveryMembers)
@@ -359,7 +376,7 @@ notificationRoutes.get(
       .where(eq(notificationDeliveryMembers.deliveryId, id))
       .orderBy(
         desc(sql`(${notifications.resolvedAt} IS NULL AND ${stillTrue})`),
-        desc(notifications.createdAt),
+        desc(notificationDeliveryMembers.deliveredAt),
       );
 
     return c.json(answer(deliveryMembersSchema, rows));

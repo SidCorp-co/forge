@@ -14,6 +14,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { ADMITTED_RUNNER } from '../devices/pool-admission.js';
+import { lastWorkedAtSql } from '../issues/status-entered-at.js';
 import { statusLabel } from '../issues/status-sets.js';
 import { elapsedWords } from '../lib/elapsed-words.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -28,7 +29,6 @@ import {
   graceWaived,
   hasMoved,
   IDLE_KEY_SUFFIX,
-  IDLE_SCAN_LIMIT,
   NOTHING_LIVE_ON_THIS_ISSUE,
   readCandidates,
   strandResolutionKey,
@@ -43,12 +43,12 @@ import {
   leaseShowsHolderGone,
 } from './session-claim.js';
 import {
+  AT_REST_STATUSES,
   heldReleaseWait,
   type StrandEvidence,
   strandReason,
   strandRuleFor,
 } from './strand-rules.js';
-import { advanceSweep, sweepWindow } from './sweep-cursor.js';
 
 export interface IdleIssuesResult {
   /** Rows read as stranded this pass. */
@@ -173,9 +173,9 @@ function judge(
     };
   }
   if (!rule.watch) return null;
-  // At `in_progress` the two hours run from the holder's last write, so the grace, not the lease
-  // term, decides when a dead run's row is reached — and waiting it out buys the reading nothing.
-  if (!graceWaived(row, lease) && !graceSpent(row.updated_at, rule.graceMs, now)) {
+  // The grace runs from when nothing has worked the row since, so at `in_progress` a dead run's row is
+  // reached two hours after its run last did anything, whatever was written to the row meanwhile.
+  if (!graceWaived(row, lease) && !graceSpent(row.idle_since, rule.graceMs, now)) {
     return null;
   }
 
@@ -298,52 +298,57 @@ async function writeStrand(args: {
   return true;
 }
 
+/** The candidates' clock, on the recovery read's alias. */
+const RECOVERY_CLOCK = lastWorkedAtSql({
+  id: sql`i.id`,
+  status: sql`i.status`,
+  createdAt: sql`i.created_at`,
+  projectId: sql`i.project_id`,
+  issueKey: sql`'ISS-' || i.iss_seq`, // ISS-992:canonical
+});
+
 /**
  * Clear a finding that has stopped holding.
  *
  * Without it the first strand a row is given is the last thing it ever says about itself, and a
  * recovered issue goes on claiming to be stuck — the same defect this pass exists to close, written
- * by the pass itself.
+ * by the pass itself. One unpaged read (ISS-1229 r13) of only the rows that could have recovered —
+ * work running, the status left, an unwatched status, or an unreleased claim — so a recovery is
+ * cleared on the first sweep that sees it however many rows carry a finding; any other row is still
+ * stranded on every reading `stillStranded` can make.
  */
 async function clearRecovered(now: Date, scope: { projectId?: string }): Promise<number> {
   const scoped = scope.projectId ? sql`AND i.project_id = ${scope.projectId}` : sql``;
-  // This arm writes only to the rows it clears, so a page full of rows that are STILL stranded
-  // would be re-read every tick and hide every row behind them for ever. The cursor is what walks
-  // past them; it resumes after the last row read and wraps when a page comes back short.
-  const cursorKey = `idle-recovered:${scope.projectId ?? '*'}`;
-  const window = sweepWindow(cursorKey, now.toISOString());
-  const resume = window.after
-    ? sql`AND (i.updated_at, i.id) > (${window.after.ts}::timestamptz, ${window.after.id}::uuid)`
-    : sql``;
+  const lease = sql`i.session_context -> 'lease'`;
   const rows = (await db.execute(sql`
-    SELECT i.id, i.status, i.updated_at,
-           i.updated_at::text AS cursor_ts,
-           i.session_context -> 'lease'  AS lease,
-           i.session_context -> 'strand' AS strand,
-           (${NOTHING_LIVE_ON_THIS_ISSUE}) AS nothing_running
-      FROM issues i
-     WHERE i.session_context ? 'strand'
-       AND i.updated_at <= ${window.until}::timestamptz
-       ${scoped}
-       ${resume}
-     ORDER BY i.updated_at ASC, i.id ASC
-     LIMIT ${IDLE_SCAN_LIMIT}
+    SELECT r.* FROM (
+      SELECT i.id, i.status,
+             (${RECOVERY_CLOCK})::text AS idle_since,
+             i.session_context -> 'lease'  AS lease,
+             i.session_context -> 'strand' AS strand,
+             (${NOTHING_LIVE_ON_THIS_ISSUE}) AS nothing_running
+        FROM issues i
+       WHERE i.session_context ? 'strand'
+         ${scoped}
+         AND (
+           NOT (${NOTHING_LIVE_ON_THIS_ISSUE})
+           OR (i.session_context -> 'strand' ->> 'status') IS DISTINCT FROM i.status
+           OR i.status IN (${sql.join(
+             AT_REST_STATUSES.map((s) => sql`${s}`),
+             sql`, `,
+           )})
+           OR (jsonb_typeof(${lease}) = 'object'
+               AND jsonb_typeof(${lease} -> 'stopped') IS DISTINCT FROM 'string')
+         )
+    ) r
   `)) as unknown as Array<{
     id: string;
     status: string;
-    updated_at: string;
-    cursor_ts: string;
+    idle_since: string;
     lease: unknown;
     strand: unknown;
     nothing_running: boolean;
   }>;
-  const lastRow = rows.at(-1);
-  advanceSweep(
-    cursorKey,
-    window,
-    lastRow ? { ts: lastRow.cursor_ts, id: lastRow.id } : null,
-    rows.length === IDLE_SCAN_LIMIT,
-  );
   if (rows.length === 0) return 0;
 
   const fanout = await holderFanout(
@@ -395,7 +400,7 @@ async function resolveClearedNotices(scope: { projectId?: string }): Promise<num
 function stillStranded(
   row: {
     status: string;
-    updated_at: string;
+    idle_since: string;
     lease: unknown;
     strand: unknown;
     nothing_running: boolean;
@@ -414,7 +419,7 @@ function stillStranded(
     hasMoved(row.status, row.strand) &&
     !leaseShowsHolderGone(lease.verdict) &&
     rule?.watch &&
-    !graceSpent(row.updated_at, rule.graceMs, now)
+    !graceSpent(row.idle_since, rule.graceMs, now)
   ) {
     return false;
   }
@@ -422,8 +427,8 @@ function stillStranded(
 }
 
 /** Whether a row has stood at its status long enough for that status's own clock to say anything. */
-function graceSpent(updatedAt: string, graceMs: number, now: Date): boolean {
-  return now.getTime() - Date.parse(updatedAt) >= graceMs;
+function graceSpent(idleSince: string, graceMs: number, now: Date): boolean {
+  return now.getTime() - Date.parse(idleSince) >= graceMs;
 }
 
 /** A reason as a sentence of its own: opened by a capital, closed by one full stop (a release hold's reason already ends in its own). */

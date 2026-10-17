@@ -31,6 +31,8 @@ export interface NotificationItem {
 export interface NotificationGroupMember {
   id: string;
   text: string;
+  /** The record's own sentence, under its title. */
+  sub?: string;
   time: string;
   open: boolean;
 }
@@ -170,10 +172,13 @@ export function NotificationsMenu({
                                   }}
                                   className="flex min-h-11 w-full items-center py-1 text-left hover:underline"
                                 >
-                                  <span
-                                    className={`fg-caption min-w-0 ${m.open ? "text-fg" : "text-muted line-through"}`}
-                                  >
-                                    {m.text}
+                                  <span className="flex min-w-0 flex-col">
+                                    <span
+                                      className={`fg-caption ${m.open ? "text-fg" : "text-muted line-through"}`}
+                                    >
+                                      {m.text}
+                                    </span>
+                                    {m.sub && <span className="fg-caption text-muted">{m.sub}</span>}
                                   </span>
                                   <span className="fg-caption ml-2 flex-none whitespace-nowrap text-muted">{m.time}</span>
                                 </button>

@@ -48,6 +48,7 @@ const input = (over: Partial<ShapeInput> = {}): ShapeInput => ({
   releaseIssues: 0,
   stuck: { read: "ok" },
   stuckIssues: 0,
+  stuckIssuesByKind: {},
   stuckIssueRefs: [],
   now: NOW,
   ...over,
@@ -107,14 +108,14 @@ describe("a degraded project", () => {
     const failed = item({ actionKind: "retry", link: "/projects/p/issues/f1", since: ago(3 * 3600) });
     const r = projectShape(input({ items: [failed] }));
     expect(r.shape).toBe("degraded");
-    expect(r.band?.text).toBe("Work is failing — 1 failed job");
+    expect(r.band?.text).toBe("1 job failed.");
     expect(r.band?.entry).toEqual({ label: "Action needed — oldest item failed 3h", href: "/projects/p/issues/f1" });
   });
 
   it("is degraded by a failed job the response counts but the capped list does not show, offering the runs", () => {
     const r = projectShape(input({ failedJobs: 2 }));
     expect(r.shape).toBe("degraded");
-    expect(r.band?.text).toBe("Work is failing — 2 failed jobs");
+    expect(r.band?.text).toBe("2 jobs failed.");
     expect(r.band?.entry).toEqual({ label: "Action needed — open the runs", href: "/projects/p/agents" });
   });
 
@@ -140,13 +141,13 @@ describe("a degraded project", () => {
   it("is degraded by a stuck run and offers the runs, which the Pipeline page no longer lists", () => {
     const r = projectShape(input({ stuckRuns: [run({})] }));
     expect(r.shape).toBe("degraded");
-    expect(r.band?.text).toBe("Work is blocked — 1 run stuck, nothing heard for an hour");
+    expect(r.band?.text).toBe("1 run has not been heard from for an hour.");
     expect(r.band?.entry).toEqual({ label: "Action needed — open the runs", href: "/projects/p/agents" });
   });
 
-  it("words a failure and a block together", () => {
+  it("says a failed job and a stuck run each in a sentence of its own", () => {
     const r = projectShape(input({ items: [item({ actionKind: "retry" })], stuckRuns: [run({})] }));
-    expect(r.band?.text).toBe("Work is blocked and failing — 1 failed job · 1 run stuck, nothing heard for an hour");
+    expect(r.band?.text).toBe("1 job failed. 1 run has not been heard from for an hour.");
   });
 
   it("holds a run stuck only after an hour with no job and no beat", () => {
@@ -158,19 +159,19 @@ describe("a degraded project", () => {
 });
 
 describe("a project with stuck issues (ISS-1229 r12)", () => {
-  const ISS_3 = { issueId: "ISS-3", documentId: "d-3" };
-  const ISS_9 = { issueId: "ISS-9", documentId: "d-9" };
+  const ISS_3 = { issueId: "ISS-3", documentId: "d-3", kind: "idle" as const };
+  const ISS_9 = { issueId: "ISS-9", documentId: "d-9", kind: "waiting" as const };
 
   it("is degraded, never quiet, by one issue a stuck-issue notice stands for, and opens that issue", () => {
     const r = projectShape(input({ stuckIssues: 1, stuckIssueRefs: [ISS_3] }));
     expect(r.shape).toBe("degraded");
-    expect(r.headline).toBe("Work is blocked — 1 issue reported stuck");
+    expect(r.headline).toBe("1 issue is reported stuck.");
     expect(r.band?.entry).toEqual({ label: "Action needed — open ISS-3", href: "/projects/p/issues/d-3" });
   });
 
   it("counts two in the plural and opens the one stuck longest", () => {
     const r = projectShape(input({ stuckIssues: 2, stuckIssueRefs: [ISS_3, ISS_9] }));
-    expect(r.headline).toBe("Work is blocked — 2 issues reported stuck");
+    expect(r.headline).toBe("2 issues are reported stuck.");
     expect(r.band?.entry).toEqual({
       label: "Action needed — open ISS-3, stuck longest",
       href: "/projects/p/issues/d-3",
@@ -187,9 +188,31 @@ describe("a project with stuck issues (ISS-1229 r12)", () => {
     expect(r.band?.entry).toEqual({ label: "Action needed — open the issues", href: "/projects/p/issues" });
   });
 
-  it("words stuck issues beside a failed job as blocked and failing", () => {
+  // ISS-1229 r13: the headline counts by what each notice says, in the words the bell titles each
+  // kind's group with, so the headline, the bell and Attention reconcile on sight.
+  it("says each kind of stuck issue in its own counted sentence, in the bell's words", () => {
+    const r = projectShape(
+      input({
+        stuckIssues: 6,
+        stuckIssuesByKind: { waiting: 3, idle: 2, owed_close: 1 },
+        stuckIssueRefs: [ISS_9, ISS_3],
+      }),
+    );
+    expect(r.headline).toBe(
+      "3 issues have waited for you for over six hours. 2 issues are in a live status with no live work behind them. 1 issue shipped its code and was never closed.",
+    );
+  });
+
+  it("says one of a kind in the singular", () => {
+    const r = projectShape(input({ stuckIssues: 2, stuckIssuesByKind: { waiting: 1, orphan: 1 }, stuckIssueRefs: [ISS_9] }));
+    expect(r.headline).toBe(
+      "1 issue has waited for you for over six hours. 1 issue asserts work in progress with no run behind it.",
+    );
+  });
+
+  it("says a failed job and stuck issues each in a sentence of its own", () => {
     const r = projectShape(input({ failedJobs: 1, stuckIssues: 3, stuckIssueRefs: [ISS_3] }));
-    expect(r.headline).toBe("Work is blocked and failing — 1 failed job · 3 issues reported stuck");
+    expect(r.headline).toBe("1 job failed. 3 issues are reported stuck.");
   });
 
   it("is unread, never quiet, where the stuck-issue count did not arrive", () => {

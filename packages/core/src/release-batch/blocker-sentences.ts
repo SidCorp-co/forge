@@ -505,6 +505,6 @@ export function runnerPreferenceUnmetSentence(
 ): string {
   return withCosts(
     'RELEASE_RUNNER_PREFERENCE_UNMET',
-    `No box on this project carries the declared release label \`${label}\`, so this release goes to the pool this project has. Two ways out, either one complete. Label the box you want this project's releases to run on with \`${label}\` under ${RUNNERS_TAB}. Or clear ${field} from the live deploy binding under ${INTEGRATIONS_TAB} AND from the connection behind it under ${CONNECTIONS_DIRECTORY}, which asks for no box and stops nothing: a project declaring no release runner releases on the pool it has, and this warning goes with the label. Clearing it from the binding alone falls back to the connection's label rather than to none.`,
+    `No box carries the release label \`${label}\`, so this release goes to the pool this project has. Label the box you want this project's releases to run on with \`${label}\` under ${RUNNERS_TAB}. Or clear ${field} from the live deploy binding under ${INTEGRATIONS_TAB} and from the connection behind it under ${CONNECTIONS_DIRECTORY}, since the binding falls back to it. Either one is complete, and this warning goes with the label.`,
   );
 }

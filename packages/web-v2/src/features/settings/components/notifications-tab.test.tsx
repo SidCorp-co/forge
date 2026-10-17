@@ -88,6 +88,7 @@ const row = (n: number, over: Partial<NotificationRow> = {}): NotificationRow =>
   tier: "log",
   severity: null,
   createdAt: "2026-10-01T10:00:00.000Z",
+  toldAt: "2026-10-01T10:00:00.000Z",
   ...over,
 });
 
@@ -426,6 +427,7 @@ describe("a sweep's row", () => {
     secondaryIssueId: null,
     resolvedAt: null,
     createdAt: "2026-10-01T10:00:00.000Z",
+    deliveredAt: "2026-10-01T10:00:00.000Z",
     open: true,
     ...over,
   });

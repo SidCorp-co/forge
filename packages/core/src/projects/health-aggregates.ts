@@ -1,3 +1,4 @@
+import type { StuckIssueKind } from '@forge/contracts/notifications';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns, projectMembers, projects, runners, users } from '../db/schema.js';
@@ -34,6 +35,7 @@ export type BlockerRow = {
   id: string;
   issSeq: number;
   issuePrefix: string | null;
+  title: string;
   status: string;
 };
 
@@ -55,6 +57,7 @@ const readBlockerRows = (projectIds: string[]) =>
       id: issues.id,
       issSeq: issues.issSeq,
       issuePrefix: projects.issuePrefix,
+      title: issues.title,
       status: issues.status,
       updatedAt: issues.updatedAt,
     })
@@ -174,8 +177,13 @@ export type StuckIssueRow = {
   id: string;
   issSeq: number;
   issuePrefix: string | null;
+  title: string;
+  /** What the issue's longest-standing notice says of it. */
+  kind: StuckIssueKind;
   /** How many issues of the project a notice stands for, beside the first `STUCK_ISSUES_LISTED`. */
   total: number;
+  /** The same issues counted by what each notice says; an issue two sweeps hold counts under both. */
+  byKind: Partial<Record<StuckIssueKind, number>>;
 };
 
 export const STUCK_ISSUES_LISTED = 5;
@@ -183,10 +191,15 @@ export const STUCK_ISSUES_LISTED = 5;
 /** Issues with a stuck-issue notice standing, longest-standing first: what every stuck-issue sweep raises, once per issue. */
 const readStuckIssueRows = (projectIds: string[]) =>
   db.execute(sql`
-    SELECT "projectId", id, "issSeq", "issuePrefix", total::int AS total FROM (
-      SELECT n.project_id AS "projectId", i.id, i.iss_seq AS "issSeq", p.issue_prefix AS "issuePrefix",
-             count(*) OVER (PARTITION BY n.project_id) AS total,
-             row_number() OVER (PARTITION BY n.project_id ORDER BY min(n.created_at), i.id) AS rank
+    WITH stuck AS (
+      SELECT n.project_id, i.id, i.iss_seq, p.issue_prefix, i.title, n.created_at,
+             CASE
+               WHEN n.resolution_key LIKE '%:stranded' THEN 'waiting'
+               WHEN n.resolution_key LIKE '%:idle' THEN 'idle'
+               WHEN n.resolution_key LIKE '%:owed-close' THEN 'owed_close'
+               WHEN n.resolution_key LIKE '%:run-assertion-orphaned' THEN 'orphan'
+               ELSE 'other'
+             END AS kind
         FROM notifications n
         JOIN issues i ON i.id = n.issue_id
         JOIN projects p ON p.id = i.project_id
@@ -194,8 +207,23 @@ const readStuckIssueRows = (projectIds: string[]) =>
          AND n.state = 'firing'
          AND n.resolved_at IS NULL
          AND n.project_id IN (${idList(projectIds)})
-       GROUP BY n.project_id, i.id, i.iss_seq, p.issue_prefix
-    ) stuck
+    ), first_notice AS (
+      SELECT DISTINCT ON (project_id, id) project_id, id, iss_seq, issue_prefix, title, created_at, kind
+        FROM stuck
+       ORDER BY project_id, id, created_at
+    ), by_kind AS (
+      SELECT project_id, jsonb_object_agg(kind, n) AS "byKind"
+        FROM (SELECT project_id, kind, count(DISTINCT id)::int AS n FROM stuck GROUP BY project_id, kind) k
+       GROUP BY project_id
+    )
+    SELECT "projectId", id, "issSeq", "issuePrefix", title, kind, total::int AS total, "byKind" FROM (
+      SELECT f.project_id AS "projectId", f.id, f.iss_seq AS "issSeq", f.issue_prefix AS "issuePrefix",
+             f.title, f.kind, b."byKind",
+             count(*) OVER (PARTITION BY f.project_id) AS total,
+             row_number() OVER (PARTITION BY f.project_id ORDER BY f.created_at, f.id) AS rank
+        FROM first_notice f
+        JOIN by_kind b ON b.project_id = f.project_id
+    ) ranked
      WHERE rank <= ${STUCK_ISSUES_LISTED}
      ORDER BY "projectId", rank
   `) as unknown as Promise<StuckIssueRow[]>;

@@ -104,12 +104,12 @@ describe("a sibling session's name on the context rail", () => {
 		expect(name.className).not.toMatch(/(^|\s)(capitalize|uppercase)(\s|$)/);
 	});
 
-	it("names a step's slug in words", () => {
+	it("says a step slug it has no words for is unrecognised, showing the slug", () => {
 		useDevices.mockReturnValue({ data: [] });
 		siblingRows = [sibling("s3", "j14 scratch", { step: "plan" })];
 
 		render(<ContextRail session={onIssue} items={[]} />);
 
-		expect(screen.getByText("Plan").textContent).toBe("Plan");
+		expect(screen.getByText("Unrecognised work (plan)").textContent).toBe("Unrecognised work (plan)");
 	});
 });

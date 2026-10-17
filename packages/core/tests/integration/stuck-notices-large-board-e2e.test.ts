@@ -276,6 +276,49 @@ describe('a delivered idle notice whose issue is no longer stuck', () => {
     expect(notices).toHaveLength(1);
     expect(notices[0]?.state).toBe('resolved');
   }, 600_000);
+
+  /**
+   * ISS-1229 r13, judge-30 on criterion 71: on beta the recovery arm paged 4,060 rows carrying a
+   * finding 200 a tick behind a cursor frozen at the start of its traversal, so a live claim written
+   * beside a delivered idle notice took 36 minutes to resolve it. One sweep reads every row that
+   * could have recovered, however many rows carry a finding.
+   */
+  it('resolves on the next sweep once a live claim is on it, beside 4,100 more rows carrying a finding', async () => {
+    const { watched, t } = await delivered();
+    const owner = await createTestUser(harness.db);
+    const org = await seedOrg(harness.db, owner.id);
+    const nobody = await createTestProject(harness.db, owner.id, { orgId: org.id });
+    await harness.db.execute(
+      sql`DELETE FROM project_members WHERE project_id = ${nobody.id}::uuid`,
+    );
+    await harness.db.execute(sql`DELETE FROM organization_members WHERE org_id = ${org.id}::uuid`);
+    const long = new Date(t - 48 * HOUR).toISOString();
+    await harness.db.execute(sql`
+      INSERT INTO issues (id, project_id, title, status, created_by_id, iss_seq, session_context, created_at, updated_at)
+      SELECT gen_random_uuid(), ${nobody.id}::uuid, 'found ' || g, 'open', ${owner.id}::uuid, g,
+             jsonb_build_object('strand', jsonb_build_object('status', 'open', 'lease', 'none')),
+             ${long}::timestamptz + (g || ' seconds')::interval,
+             ${long}::timestamptz + (g || ' seconds')::interval
+        FROM generate_series(1, 4100) g
+    `);
+    const claimed = new Date(t).toISOString();
+    await harness.db.execute(sql`
+      UPDATE issues SET session_context = session_context || jsonb_build_object('lease', jsonb_build_object(
+        'holder', 'the-run-that-took-it', 'minutes', 60, 'renewedAt', ${claimed}::text,
+        'history', jsonb_build_array(jsonb_build_object('at', ${claimed}::text, 'how', 'claim'))))
+       WHERE id = ${watched}::uuid
+    `);
+    const found = (await harness.db.execute(sql`
+      SELECT count(*)::int AS n FROM issues WHERE session_context ? 'strand'
+    `)) as unknown as Array<{ n: number }>;
+    expect(found[0]?.n).toBeGreaterThan(4_000);
+
+    await tick(sweeps.idle, new Date(t + MINUTE));
+
+    const notices = await noticesOf(watched);
+    expect(notices).toHaveLength(1);
+    expect(notices[0]?.state).toBe('resolved');
+  }, 600_000);
 });
 
 describe('the rows a pass owes a sighting, on a board that is hard to read', () => {

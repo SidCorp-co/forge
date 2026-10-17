@@ -93,7 +93,7 @@ export function toNotificationItem(
     label: row.resolvedNotice || cleared ? "RESOLVED" : typeLabel(row.type),
     text: row.title,
     sub: subOf(row),
-    time: formatRelativeTime(row.createdAt),
+    time: formatRelativeTime(row.toldAt),
     // The server says whether anything is left to read: a resolved row is history, read or not.
     unread: row.unread,
     hue: cleared ? "green" : hueFor(row),

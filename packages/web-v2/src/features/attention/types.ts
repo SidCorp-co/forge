@@ -15,6 +15,7 @@ export interface AttentionItem {
   /** ISO timestamp the item entered this state (sorts/relative-time). */
   since: string;
   issueRef?: string;
+  issueTitle?: string;
   status?: string;
   projectSlug?: string;
   projectName?: string;

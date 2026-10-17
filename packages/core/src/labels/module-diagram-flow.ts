@@ -48,23 +48,34 @@ export function extractMermaidBlock(body: string): string | null {
   return (close === -1 ? rest : rest.slice(0, close)).join('\n');
 }
 
-function remember(steps: Map<string, FlowStep>, id: string, label: string | undefined): void {
-  const text = label === undefined || label === '' ? null : label;
-  const existing = steps.get(id);
-  if (!existing) {
-    steps.set(id, { id, label: text ?? id });
-    return;
-  }
-  if (text !== null && existing.label === id) steps.set(id, { id, label: text });
+/** A step named only by its id is drawn in words: a reader is never shown `pipeline_run` (ISS-1229 r13). */
+function idInWords(id: string): string {
+  const words = id.split(/[_-]+/).filter(Boolean).join(' ').toLowerCase();
+  return words === '' ? id : words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-function readNode(raw: string, steps: Map<string, FlowStep>): string {
+function remember(
+  steps: Map<string, FlowStep>,
+  named: Set<string>,
+  id: string,
+  label: string | undefined,
+): void {
+  const text = label === undefined || label === '' ? null : label;
+  if (text !== null && !named.has(id)) {
+    named.add(id);
+    steps.set(id, { id, label: text });
+    return;
+  }
+  if (!steps.has(id)) steps.set(id, { id, label: idInWords(id) });
+}
+
+function readNode(raw: string, steps: Map<string, FlowStep>, named: Set<string>): string {
   const m = NODE.exec(raw.trim());
   if (!m?.[1]) {
     throw new ModuleFlowParseError(raw.trim(), `cannot read \`${raw.trim()}\` as a flow step`);
   }
   const id = m[1];
-  remember(steps, id, m[2] ?? m[3] ?? m[4]);
+  remember(steps, named, id, m[2] ?? m[3] ?? m[4]);
   return id;
 }
 
@@ -78,6 +89,7 @@ export function parseModuleFlow(body: string): ModuleFlow | null {
   if (block === null) return null;
 
   const steps = new Map<string, FlowStep>();
+  const named = new Set<string>();
   const arrows: FlowArrow[] = [];
   let sawHeader = false;
 
@@ -98,8 +110,8 @@ export function parseModuleFlow(body: string): ModuleFlow | null {
     if (!arrow?.[1] || !arrow[3]) {
       throw new ModuleFlowParseError(line, `cannot read \`${line}\` as a flow arrow`);
     }
-    const from = readNode(arrow[1], steps);
-    const to = readNode(arrow[3], steps);
+    const from = readNode(arrow[1], steps, named);
+    const to = readNode(arrow[3], steps, named);
     arrows.push({ from, to, label: arrow[2]?.trim() || null });
   }
 

@@ -158,7 +158,8 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
     return members.map((m, i) => ({
         id: m.id,
         text: texts[i] ?? m.title,
-        time: formatRelativeTime(m.createdAt),
+        sub: m.body ?? undefined,
+        time: formatRelativeTime(m.deliveredAt),
         open: m.open,
     }));
   }, [membersQuery.data]);

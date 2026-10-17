@@ -1,3 +1,4 @@
+import type { StuckIssueKind } from '@forge/contracts/notifications';
 import { inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { answer } from '../api-reference/declare/describe.js';
@@ -36,7 +37,7 @@ interface ProjectHealthRow {
   /** How many issues are in each work state, by the same rule the pulse and the issues search count by. */
   work: WorkStateCounts;
   /** The most recently updated parked issues, capped at `PER_PROJECT_BLOCKER_CAP`. */
-  blockers: Array<{ issueId: string; documentId: string; status: string }>;
+  blockers: Array<{ issueId: string; documentId: string; title: string; status: string }>;
   /** Every parked issue, the count behind the capped `blockers` list. */
   blockersTotal: number;
   pendingEscalations: number;
@@ -60,7 +61,14 @@ interface ProjectHealthRow {
    *  field's absence, which is what callers had before, said nothing at all. */
   loopMonitor: LoopMonitorCoverage;
   stuckIssues: number;
-  stuckIssueRefs: Array<{ issueId: string; documentId: string }>;
+  /** The same issues by what each notice says of it; an issue two sweeps hold counts under both. */
+  stuckIssuesByKind: Partial<Record<StuckIssueKind, number>>;
+  stuckIssueRefs: Array<{
+    issueId: string;
+    documentId: string;
+    title: string;
+    kind: StuckIssueKind;
+  }>;
 }
 
 /** First 2 chars of the email local-part, uppercased — the avatar initials. */
@@ -88,6 +96,7 @@ function groupBlockers(rows: BlockerRow[]): Map<string, ProjectHealthRow['blocke
     arr.push({
       issueId: formatIssueRef(r.issuePrefix, r.issSeq),
       documentId: r.id,
+      title: r.title,
       status: r.status,
     });
     byProject.set(r.projectId, arr);
@@ -147,11 +156,18 @@ projectHealthRoutes.get('/health', readProjectHealth, async (c) => {
   for (const r of agg.liveSessionRows) liveSessionsByProject.set(r.projectId, Number(r.n));
 
   const stuckIssuesByProject = new Map<string, number>();
+  const stuckKindsByProject = new Map<string, ProjectHealthRow['stuckIssuesByKind']>();
   const stuckRefsByProject = new Map<string, ProjectHealthRow['stuckIssueRefs']>();
   for (const r of agg.stuckIssueRows) {
     stuckIssuesByProject.set(r.projectId, Number(r.total));
+    stuckKindsByProject.set(r.projectId, r.byKind);
     const refs = stuckRefsByProject.get(r.projectId) ?? [];
-    refs.push({ issueId: formatIssueRef(r.issuePrefix, r.issSeq), documentId: r.id });
+    refs.push({
+      issueId: formatIssueRef(r.issuePrefix, r.issSeq),
+      documentId: r.id,
+      title: r.title,
+      kind: r.kind,
+    });
     stuckRefsByProject.set(r.projectId, refs);
   }
 
@@ -205,6 +221,7 @@ projectHealthRoutes.get('/health', readProjectHealth, async (c) => {
       lastActivityAt: lastActivityByProject.get(p.id) ?? null,
       loopMonitor: loopMonitorCoverage(claimHeldByProject.get(p.id) ?? 0),
       stuckIssues: stuckIssuesByProject.get(p.id) ?? 0,
+      stuckIssuesByKind: stuckKindsByProject.get(p.id) ?? {},
       stuckIssueRefs: stuckRefsByProject.get(p.id) ?? [],
     };
   });

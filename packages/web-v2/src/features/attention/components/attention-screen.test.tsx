@@ -11,7 +11,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 expect.extend(matchers);
 
 type Read = "pending" | "failed" | "read";
-const state: { read: Read; devicesRead: Read; offline: unknown[] } = { read: "read", devicesRead: "read", offline: [] };
+const state: { read: Read; devicesRead: Read; offline: unknown[]; awaiting: unknown[]; failed: unknown[] } = {
+  read: "read",
+  devicesRead: "read",
+  offline: [],
+  awaiting: [],
+  failed: [],
+};
 const refetch = vi.fn();
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
@@ -23,9 +29,9 @@ vi.mock("../hooks", () => ({
   useAttention: () => ({
     view: {
       needsReview: [],
-      awaitingInput: [],
+      awaitingInput: state.awaiting,
       mentions: [],
-      failedJobs: [],
+      failedJobs: state.failed,
       pendingSkillUpdates: [],
       unseenDrafts: [],
       unseenDraftsTotal: 0,
@@ -47,6 +53,8 @@ afterEach(() => {
   state.read = "read";
   state.devicesRead = "read";
   state.offline = [];
+  state.awaiting = [];
+  state.failed = [];
   refetch.mockClear();
 });
 
@@ -94,5 +102,52 @@ describe("the Attention inbox", () => {
     expect(note).toHaveTextContent("does not say nothing needs you");
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(refetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ISS-1229 r13 repair: the rows were bordered, rounded cards against the owner's flat rule.
+describe("an Attention group", () => {
+  it("lists flush rows divided by hairlines, and says what Awaiting input counts", () => {
+    state.awaiting = [
+      {
+        kind: "awaiting_input",
+        title: "Which carrier do we keep?",
+        link: "/projects/shop/issues/SHOP-41",
+        since: new Date(0).toISOString(),
+        issueRef: "SHOP-41",
+        projectSlug: "shop",
+        projectName: "Shop",
+      },
+    ];
+    render(<AttentionScreen />);
+    const row = screen.getByRole("button", { name: /Which carrier do we keep\?/u });
+    expect(row.className).not.toMatch(/\b(border|rounded-md|bg-surface)\b/u);
+    expect(row.closest("ul")?.className).toMatch(/divide-y/u);
+    expect(screen.getByText(/filed by you and assigned to nobody, however long each has waited/u)).toBeInTheDocument();
+    // The bell's six-hour notice is a park's at Waiting only: Needs info and a question elsewhere are not promised one.
+    expect(screen.getByText(/of those at Waiting after six hours/u)).toBeInTheDocument();
+  });
+
+  // ISS-1229 r13 repair 2: a failed job read "drive failed: …" and only its ref, not which work it was.
+  it("names a failed job's row by its issue's title, with what failed after it", () => {
+    state.failed = [
+      {
+        kind: "failed_job",
+        title: "drive failed: exit 1",
+        link: "/projects/shop/issues/d50",
+        since: new Date(0).toISOString(),
+        issueRef: "SHOP-50",
+        issueTitle: "Refund webhook retries",
+        status: "failed",
+        projectSlug: "shop",
+        projectName: "Shop",
+      },
+    ];
+    render(<AttentionScreen />);
+    const row = screen.getByRole("button", { name: /Refund webhook retries/u });
+    const named = screen.getByText("Refund webhook retries");
+    const said = screen.getByText("drive failed: exit 1");
+    expect(row).toContainElement(said);
+    expect(named.compareDocumentPosition(said) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

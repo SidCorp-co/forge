@@ -209,6 +209,7 @@ export default function ProjectOverviewPage() {
     releaseIssues: awaitingReleaseIssues,
     stuck: health ? { read: "ok" } : { read: "failed", reason: "the health read returned no row for this project" },
     stuckIssues: health?.stuckIssues ?? 0,
+    stuckIssuesByKind: health?.stuckIssuesByKind ?? {},
     stuckIssueRefs: health?.stuckIssueRefs ?? [],
     now,
   });
@@ -330,6 +331,7 @@ export default function ProjectOverviewPage() {
                     : undefined
                 }
                 shape={reading.shape}
+                stuck={health ? { total: health.stuckIssues, refs: health.stuckIssueRefs } : undefined}
                 slug={project.slug}
                 now={now}
               />

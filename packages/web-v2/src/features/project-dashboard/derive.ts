@@ -189,8 +189,10 @@ export interface DashboardAttentionItem {
   actionKind: AttentionActionKind;
   /** Primary-action button label. */
   actionLabel: string;
-  /** What is wrong + at which step. */
+  /** What is wrong + at which step, or the issue's own title where `detail` says why it is listed. */
   title: string;
+  /** Why the issue is listed, read under its title. */
+  detail?: string;
   issueRef?: string;
   /** basePath-relative destination (Next prepends `/v2`). */
   link: string;
@@ -211,7 +213,7 @@ function mapAttention(
       key: `${actionKind}-${it.link}-${i}`,
       actionKind,
       actionLabel,
-      title: it.title,
+      ...(it.issueTitle ? { title: it.issueTitle, detail: it.title } : { title: it.title }),
       issueRef: it.issueRef,
       link: it.link,
       since: it.since,
@@ -223,7 +225,7 @@ function ageOf(since: string | undefined): { since?: string } {
   return since ? { since } : {};
 }
 
-/** The work state's word, then the status the issue sits at. */
+/** Why a parked issue is listed: the work state's word, then the status it sits at. */
 function parkedTitle(status: string): string {
   if (!(REGISTRY_ISSUE_STATUSES as readonly string[]).includes(status)) {
     throw new Error(
@@ -259,7 +261,7 @@ export function projectAttention(
     parked.push(
       ...mapAttention(silent, slug, "parked", "Open issue").map((it) => ({
         ...it,
-        title: it.status ? parkedTitle(it.status) : it.title,
+        ...(it.status ? { detail: parkedTitle(it.status) } : {}),
       })),
     );
   }
@@ -272,7 +274,8 @@ export function projectAttention(
       key: `parked-${b.documentId}`,
       actionKind: "parked",
       actionLabel: "Open issue",
-      title: parkedTitle(b.status),
+      title: b.title,
+      detail: parkedTitle(b.status),
       issueRef: b.issueId,
       link,
       status: b.status,

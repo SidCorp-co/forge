@@ -44,6 +44,7 @@ vi.mock("../hooks", () => {
   };
 });
 
+import { formatRelativeTime } from "@/lib/utils/format";
 import { NotificationsBell } from "./notifications-bell";
 
 const row = (over: Partial<NotificationRow> = {}): NotificationRow => ({
@@ -69,6 +70,7 @@ const row = (over: Partial<NotificationRow> = {}): NotificationRow => ({
   secondaryIssueId: null,
   agentSessionId: null,
   createdAt: "2026-10-01T10:00:00.000Z",
+  toldAt: "2026-10-01T10:00:00.000Z",
   ...over,
 });
 
@@ -87,6 +89,7 @@ const member = (n: number, over: Partial<NotificationMember> = {}): Notification
   secondaryIssueId: null,
   resolvedAt: null,
   createdAt: "2026-10-01T10:00:00.000Z",
+  deliveredAt: "2026-10-01T10:00:00.000Z",
   open: true,
   ...over,
 });
@@ -121,6 +124,29 @@ describe("a grouped row in the bell", () => {
     fireEvent.click(screen.getByRole("button", { name: /^ISS-1 shipped but never closed/ }));
     expect(state.marked).toEqual(["d1"]);
     expect(state.pushed).toEqual(["/projects/invoicing/issues/00000000-0000-4000-8000-000000000001"]);
+  });
+
+  // ISS-1229 r13, judge-30: an expanded member showed only its title, so "parked for 6 hours" was never
+  // read in the bell.
+  it("shows each member's own sentence under its title", () => {
+    state.members = [member(1, { body: 'ISS-1 "Repair export": it has been parked for 6 hours.' })];
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "3 of 3 still open — show" }));
+    expect(screen.getByText('ISS-1 "Repair export": it has been parked for 6 hours.')).toBeInTheDocument();
+  });
+
+  // ISS-1229 r13, judge-30: the group read "1m ago" while its members read "3m ago" — the group by when
+  // it reached the reader, each member by when its condition was first seen pending.
+  it("reads the group and its members on one clock: when each reached the reader", () => {
+    const told = new Date(Date.now() - 60_000).toISOString();
+    const seenPending = new Date(Date.now() - 3 * 3_600_000).toISOString();
+    state.rows = [row({ createdAt: told, toldAt: told })];
+    state.members = [member(1, { createdAt: seenPending, deliveredAt: told })];
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "3 of 3 still open — show" }));
+    const memberButton = screen.getByRole("button", { name: /^ISS-1 shipped but never closed/ });
+    expect(memberButton.textContent).toContain(formatRelativeTime(told));
+    expect(memberButton.textContent).not.toContain(formatRelativeTime(seenPending));
   });
 
   it("names the project on each record where the group spans two, so ISS-1 and ISS-1 read apart", () => {

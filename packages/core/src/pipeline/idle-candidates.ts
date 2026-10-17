@@ -7,7 +7,7 @@ import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueStatuses } from '../db/schema.js';
 import { issueWorkInFlightSql } from '../issues/issue-lease.js';
-import { statusEnteredAtSql } from '../issues/status-entered-at.js';
+import { lastWorkedAtSql, statusEnteredAtSql } from '../issues/status-entered-at.js';
 import { logger } from '../logger.js';
 import { projectHasAdminSql } from '../notifications/project-admins.js';
 import {
@@ -56,10 +56,11 @@ export interface CandidateRow {
   project_name: string;
   status: string;
   title: string;
-  /** Text, not a `Date`: `db.execute` hands raw SQL results back unparsed. */
-  updated_at: string;
   /** When the row entered its status, which is what its notice counts from; `updated_at` moves on any write. */
   entered_at: string;
+  /** When nothing has worked the row since — the later of `entered_at` and its last job, run or run
+   *  session ending — as text: what its status's grace runs from, and what the cursors page by. */
+  idle_since: string;
   merged_at: string | null;
   lease: unknown;
   strand: unknown;
@@ -96,12 +97,23 @@ function dueAtSql(): SQL {
   const arms = WATCHED_STATUSES.map((status) => {
     const rule = STRAND_RULES[status];
     const ms = rule.watch ? rule.graceMs : 0;
-    return sql`WHEN ${status} THEN i.updated_at + (${ms} * interval '1 millisecond')`;
+    return sql`WHEN ${status} THEN ${ms} * interval '1 millisecond'`;
   });
-  return sql`(CASE i.status ${sql.join(arms, sql` `)} ELSE i.updated_at END)`;
+  return sql`(i.idle_since + CASE i.status ${sql.join(arms, sql` `)} ELSE interval '0' END)`;
 }
 
-/** One read of the candidates: a watched status, a live project, nothing running, then `where`. */
+/** When nothing has worked the row since, never its last write: a title edit is not work (ISS-1229). */
+const IDLE_SINCE = lastWorkedAtSql({
+  id: sql`w.id`,
+  status: sql`w.status`,
+  createdAt: sql`w.created_at`,
+  projectId: sql`w.project_id`,
+  issueKey: sql`'ISS-' || w.iss_seq`, // ISS-992:canonical
+});
+
+/** One read of the candidates: a watched status, a live project, nothing running, then `where`.
+ *  `OFFSET 0` keeps the inner read whole, so `i.idle_since` is computed once a row: inlined into
+ *  every clause, a 1,000-row board planned past the JIT threshold and spent 24s compiling it. */
 async function selectCandidates(args: {
   scope: { projectId?: string };
   where: SQL;
@@ -114,24 +126,36 @@ async function selectCandidates(args: {
     NOT_WATCHED.map((s) => sql`${s}`),
     sql`, `,
   );
-  const scoped = args.scope.projectId ? sql`AND i.project_id = ${args.scope.projectId}` : sql``;
+  const scoped = args.scope.projectId ? sql`AND w.project_id = ${args.scope.projectId}` : sql``;
+  const live = sql`NOT ${issueWorkInFlightSql({
+    issueId: sql`w.id`,
+    projectId: sql`w.project_id`,
+    issueKey: sql`'ISS-' || w.iss_seq`, // ISS-992:canonical
+  })}`;
   return (await db.execute(sql`
-    SELECT i.id, i.project_id, i.iss_seq, i.status, i.title, i.updated_at, i.merged_at,
-           ${statusEnteredAtSql({ id: sql`i.id`, status: sql`i.status`, createdAt: sql`i.created_at` })}::text AS entered_at,
-           p.issue_prefix, p.name AS project_name,
-           i.session_context -> 'lease'  AS lease,
-           i.session_context -> 'strand' AS strand,
-           i.session_context -> 'releaseHold' AS release_hold,
-           i.updated_at::text AS cursor_ts,
-           to_char(${dueAtSql()} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS due_at,
-           EXISTS (SELECT 1 FROM pipeline_runs pr WHERE pr.issue_id = i.id) AS ever_ran
-      FROM issues i
-      JOIN projects p ON p.id = i.project_id
-     WHERE i.status NOT IN (${excluded})
-       AND p.archived_at IS NULL
-       AND ${NOTHING_LIVE_ON_THIS_ISSUE}
-       ${scoped}
-       AND ${args.where}
+    SELECT i.id, i.project_id, i.iss_seq, i.status, i.title, i.merged_at, i.entered_at,
+           i.issue_prefix, i.project_name, i.lease, i.strand, i.release_hold, i.ever_ran,
+           i.idle_since::text AS idle_since,
+           i.idle_since::text AS cursor_ts,
+           to_char(${dueAtSql()} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS due_at
+      FROM (
+        SELECT w.id, w.project_id, w.iss_seq, w.status, w.title, w.merged_at,
+               ${statusEnteredAtSql({ id: sql`w.id`, status: sql`w.status`, createdAt: sql`w.created_at` })}::text AS entered_at,
+               ${IDLE_SINCE} AS idle_since,
+               p.issue_prefix, p.name AS project_name,
+               w.session_context -> 'lease'  AS lease,
+               w.session_context -> 'strand' AS strand,
+               w.session_context -> 'releaseHold' AS release_hold,
+               EXISTS (SELECT 1 FROM pipeline_runs pr WHERE pr.issue_id = w.id) AS ever_ran
+          FROM issues w
+          JOIN projects p ON p.id = w.project_id
+         WHERE w.status NOT IN (${excluded})
+           AND p.archived_at IS NULL
+           AND ${live}
+           ${scoped}
+        OFFSET 0
+      ) i
+     WHERE ${args.where}
      ORDER BY ${args.order}
      LIMIT ${args.limit}
   `)) as unknown as CandidateRow[];
@@ -156,13 +180,13 @@ export async function readCandidates(
   const window = sweepWindow(cursorKey, until);
   const after = window.after;
   const resume = after
-    ? sql`AND (i.updated_at, i.id) > (${after.ts}::timestamptz, ${after.id}::uuid)`
+    ? sql`AND (i.idle_since, i.id) > (${after.ts}::timestamptz, ${after.id}::uuid)`
     : sql``;
 
   const rows = await selectCandidates({
     scope,
-    where: sql`i.updated_at < ${window.until}::timestamptz ${resume}`,
-    order: sql`i.updated_at ASC, i.id ASC`,
+    where: sql`i.idle_since < ${window.until}::timestamptz ${resume}`,
+    order: sql`i.idle_since ASC, i.id ASC`,
     limit: IDLE_SCAN_LIMIT,
   });
 
@@ -183,7 +207,7 @@ export async function readCandidates(
     order: sql`${pendingSinceSql(sql`i.id`, IDLE_KEY_SUFFIX)} ASC, i.id ASC`,
     limit: pendingSightingLimit(IDLE_SCAN_LIMIT),
   });
-  const unraisedDue = sql`${unraisedConditionSql(sql`i.id`, IDLE_KEY_SUFFIX)} AND i.updated_at < ${dueBeforeSql(now)}
+  const unraisedDue = sql`${unraisedConditionSql(sql`i.id`, IDLE_KEY_SUFFIX)} AND i.idle_since < ${dueBeforeSql(now)}
       AND ${projectHasAdminSql(sql`i.project_id`)}`;
   // The fresh cursor passes a position once a traversal, so a row coming due behind it would wait
   // for the wrap: every row that came due since the last pass is read in the order it came due.
@@ -207,12 +231,12 @@ export async function readCandidates(
   const freshKey = `idle-fresh:${scope.projectId ?? '*'}`;
   const freshWindow = sweepWindow(freshKey, now.toISOString());
   const older = freshWindow.after
-    ? sql`AND (i.updated_at, i.id) < (${freshWindow.after.ts}::timestamptz, ${freshWindow.after.id}::uuid)`
+    ? sql`AND (i.idle_since, i.id) < (${freshWindow.after.ts}::timestamptz, ${freshWindow.after.id}::uuid)`
     : sql``;
   const fresh = await selectCandidates({
     scope,
     where: sql`${unraisedDue} ${older}`,
-    order: sql`i.updated_at DESC, i.id DESC`,
+    order: sql`i.idle_since DESC, i.id DESC`,
     limit: FRESH_SIGHTING_LIMIT,
   });
   const lastFresh = fresh.at(-1);

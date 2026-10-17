@@ -160,8 +160,9 @@ describe("holderLine — who holds an issue, why, and since when", () => {
     expect(holderLine(h, NOW, [step]).who).toBe("Issue work: Rename the export column on box-a");
   });
 
-  it("says no session kind by its stored name", () => {
-    expect(sessionKindLabel("review_bot")).toBe("Review bot");
+  // ISS-1229 round 13, the master's ruling: a kind with no words reads as unrecognised beside its type.
+  it("says a session kind it has no words for is unrecognised, showing the kind it carries", () => {
+    expect(sessionKindLabel("review_bot")).toBe("Unrecognised session (review_bot)");
   });
 
   it("claims nothing for a session holder whose session the read did not return", () => {

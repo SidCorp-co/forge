@@ -37,7 +37,7 @@ let attentionRead: "pending" | "failed" | "read";
 let attentionError: unknown;
 let blockers: unknown[];
 let stuckIssues: number;
-let stuckIssueRefs: Array<{ issueId: string; documentId: string }>;
+let stuckIssueRefs: Array<{ issueId: string; documentId: string; title?: string; kind?: string }>;
 let work: Record<string, number>;
 let runs: unknown[] | undefined;
 let runsError: unknown;
@@ -333,7 +333,7 @@ describe("a working project", () => {
     attentionView = view({ pair: { needsReview: 0, awaitingInput: 0, awaitingOutsideBlockers: 0, failedJobs: 1 } });
     const { container } = mount();
     expect(shape(container)).toBe("degraded");
-    expect(screen.getByTestId("degraded-band")).toHaveTextContent("Work is failing — 1 failed job");
+    expect(screen.getByTestId("degraded-band")).toHaveTextContent("1 job failed.");
     expect(screen.queryByText(/Nothing needs anyone/)).toBeNull();
   });
 
@@ -362,7 +362,7 @@ describe("a degraded project", () => {
     const { container } = mount();
     expect(shape(container)).toBe("degraded");
     const band = screen.getByTestId("degraded-band");
-    expect(band).toHaveTextContent("Work is blocked and failing — 1 failed job · 1 item waiting on a person for over 14 days");
+    expect(band).toHaveTextContent("1 job failed. 1 item has waited on a person for over 14 days.");
     const link = within(band).getByRole("link");
     expect(link).toHaveTextContent("Action needed — oldest item waiting 112d");
     expect(link).toHaveAttribute("href", "/projects/pair/issues/d7");
@@ -373,7 +373,7 @@ describe("a degraded project", () => {
   it("is degraded by a run stuck with no job, and offers the pipeline", () => {
     runs = [run({ liveJobs: 0, startedAt: ago(5 * 3600), lastSessionBeatAt: null })];
     mount();
-    expect(screen.getByTestId("degraded-band")).toHaveTextContent("1 run stuck, nothing heard for an hour");
+    expect(screen.getByTestId("degraded-band")).toHaveTextContent("1 run has not been heard from for an hour.");
     expect(within(screen.getByTestId("degraded-band")).getByRole("link")).toHaveAttribute("href", "/projects/pair/agents");
   });
 
@@ -418,7 +418,7 @@ describe("a project with an issue a stuck-issue notice stands for (ISS-1229 r12)
     expect(shape(container)).toBe("degraded");
     expect(screen.queryByText(/Nothing needs anyone/)).toBeNull();
     const band = screen.getByTestId("degraded-band");
-    expect(band).toHaveTextContent("Work is blocked — 1 issue reported stuck");
+    expect(band).toHaveTextContent("1 issue is reported stuck.");
     expect(within(band).getByRole("link")).toHaveTextContent("Action needed — open ISS-4");
     expect(within(band).getByRole("link")).toHaveAttribute("href", "/projects/pair/issues/d-4");
   });
@@ -431,8 +431,35 @@ describe("a project with an issue a stuck-issue notice stands for (ISS-1229 r12)
     ];
     mount();
     const band = screen.getByTestId("degraded-band");
-    expect(band).toHaveTextContent("Work is blocked — 2 issues reported stuck");
+    expect(band).toHaveTextContent("2 issues are reported stuck.");
     expect(within(band).getByRole("link")).toHaveTextContent("Action needed — open ISS-3, stuck longest");
+  });
+});
+
+// ISS-1229 r13 repair 2: SHOP-44 read only "Blocked on a person — Waiting" and SHOP-53 only its
+// notice's words, so no row said which work it was.
+describe("a Needs you row on a project with parked and stuck issues", () => {
+  it("names each row by its issue's title, with why it is listed after it", () => {
+    blockers = [{ issueId: "SHOP-44", documentId: "d44", title: "Production SMTP credentials", status: "waiting" }];
+    stuckIssues = 2;
+    stuckIssueRefs = [
+      { issueId: "SHOP-53", documentId: "d53", title: "Nightly stock import", kind: "idle" },
+      { issueId: "SHOP-50", documentId: "d50", title: "Refund webhook retries", kind: "idle" },
+    ];
+    mount();
+    const rows = within(screen.getByRole("region", { name: "Needs your attention" })).getAllByRole("listitem");
+    const owed = [
+      ["Production SMTP credentials", "Blocked on a person — Waiting"],
+      ["Nightly stock import", "In a live status with no live work behind it"],
+      ["Refund webhook retries", "In a live status with no live work behind it"],
+    ] as const;
+    expect(rows).toHaveLength(owed.length);
+    owed.forEach(([title, why], i) => {
+      const row = rows[i] as HTMLElement;
+      expect(row).toHaveTextContent(title);
+      const said = within(row).getByText(why);
+      expect(within(row).getByText(title).compareDocumentPosition(said) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
   });
 });
 
@@ -692,9 +719,10 @@ describe("a page whose figures sit beside other counts of the same things", () =
     runs = [run({ liveJobs: 0, startedAt: ago(5 * 3600), lastSessionBeatAt: null })];
     const { container } = mount();
     expect(shape(container)).toBe("degraded");
-    const list = screen.getByRole("region", { name: "Needs your attention" });
-    expect(list).not.toHaveTextContent("All caught up");
-    expect(list).toHaveTextContent("What is wrong is named above");
+    // Nothing it could list: the section is not shown, rather than contradict the band (ISS-1229 r13).
+    expect(screen.queryByRole("region", { name: "Needs your attention" })).toBeNull();
+    expect(container).not.toHaveTextContent("All caught up");
+    expect(container).not.toHaveTextContent("Nothing here needs you");
   });
 
   it("counts the sessions the Pipeline page lists, and says how many runs are open as the navigation rail counts them", () => {

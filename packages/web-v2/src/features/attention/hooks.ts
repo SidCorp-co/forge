@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useActiveOrg } from "@/features/orgs/active-org";
 import { useDevices } from "@/features/runners/hooks";
 import { badgeFigure, queryRead } from "@/design/patterns/badge-read";
 import { attentionApi } from "./api";
@@ -12,14 +13,16 @@ import type { AttentionItem, AttentionView } from "./types";
  * offline runners derived client-side from `/me/devices`. `total` includes the
  * offline-runner count so the rail badge and the screen agree, and is undefined
  * until both have been read: a count of what one of them has not yet said is not a count.
- * `read` and `devicesRead` say which of the two answered, and a reader states a figure, a
- * badge or an empty list only from `read`. `badge` is what the rails carry: the count where both were
- * read, else the read on its way or failed, never a held count after a failed refetch.
+ * `read`/`devicesRead` say which answered; state a figure, badge or empty list only from `read`.
+ * The buckets are the active organisation's, cut before the caps and read once it is known.
+ * `badge` is the count where both were read, never a held count after a failed refetch.
  */
 export function useAttention() {
+  const { activeOrgId, scopeRead, scopeError, retryScope } = useActiveOrg();
   const attentionQ = useQuery({
-    queryKey: ["attention"],
-    queryFn: () => attentionApi.list(),
+    queryKey: ["attention", activeOrgId],
+    queryFn: () => attentionApi.list(activeOrgId),
+    enabled: scopeRead,
   });
   // `['devices','me']` is already WS-invalidated on device.login/paired/revoked
   // and reconnect — reusing the runners hook keeps the offline bucket live.
@@ -69,7 +72,7 @@ export function useAttention() {
     view.unseenDrafts.length +
     view.offlineRunners.length;
 
-  const read = queryRead(attentionQ);
+  const read = scopeError ? "failed" : queryRead(attentionQ);
   const devicesRead = queryRead(devicesQ);
   const badge = useMemo(() => badgeFigure([read, devicesRead], held), [read, devicesRead, held]);
 
@@ -79,10 +82,11 @@ export function useAttention() {
     read,
     devicesRead,
     badge,
-    error: attentionQ.error,
+    error: scopeError ?? attentionQ.error,
     devicesError: devicesQ.error,
     refetch: () => {
-      attentionQ.refetch();
+      if (scopeError) retryScope();
+      else attentionQ.refetch();
       devicesQ.refetch();
     },
   };

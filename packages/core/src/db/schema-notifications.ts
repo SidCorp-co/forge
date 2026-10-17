@@ -141,6 +141,7 @@ export const notificationDeliveryMembers = pgTable(
     notificationId: uuid('notification_id')
       .notNull()
       .references(() => notifications.id, { onDelete: 'cascade' }),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.deliveryId, t.notificationId] }),

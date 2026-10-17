@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectListItem } from "@/features/projects/types";
 import { useProjectOrgScopeSync } from "@/features/shell/use-project-org-scope-sync";
 import { ToastProvider } from "@/providers/toast-provider";
+import { useAttention } from "@/features/attention/hooks";
 import { ActiveOrgProvider, useActiveOrg } from "./active-org";
 import type { OrgListItem } from "./types";
 
@@ -39,9 +40,27 @@ function askable() {
   return { asked: false, answer, promise };
 }
 
+let orgsAnswer: () => Promise<OrgListItem[]> = async () => [SCRATCH, QA];
 vi.mock("./hooks", async () => {
   const { useQuery } = await import("@tanstack/react-query");
-  return { useOrgs: () => useQuery({ queryKey: ["orgs"], queryFn: async () => [SCRATCH, QA] }) };
+  return { useOrgs: () => useQuery({ queryKey: ["orgs"], queryFn: () => orgsAnswer() }) };
+});
+
+const attentionAsked: Array<string | null | undefined> = [];
+vi.mock("@/features/attention/api", () => ({
+  attentionApi: {
+    list: async (orgId?: string | null) => {
+      attentionAsked.push(orgId);
+      return {
+        needsReview: [], awaitingInput: [], mentions: [], failedJobs: [], pendingSkillUpdates: [],
+        unseenDrafts: [], unseenDraftsTotal: 0, projectTotals: {}, total: 0,
+      };
+    },
+  },
+}));
+vi.mock("@/features/runners/hooks", async () => {
+  const { useQuery } = await import("@tanstack/react-query");
+  return { useDevices: () => useQuery({ queryKey: ["devices", "me"], queryFn: async () => [] }) };
 });
 
 vi.mock("@/features/settings/hooks", async () => {
@@ -103,6 +122,8 @@ async function answerPreferences(activeOrgId: string | null) {
 }
 
 beforeEach(() => {
+  orgsAnswer = async () => [SCRATCH, QA];
+  attentionAsked.length = 0;
   pushed.length = 0;
   seen.length = 0;
   orgsRead = 0;
@@ -134,5 +155,38 @@ describe("the active org, while the stored preference is still being read", () =
     await orgsAnswered();
     await answerPreferences(null);
     await waitFor(() => expect({ pushed, active: seen.find((id) => id !== null) }).toEqual({ pushed: [], active: QA.id }));
+  });
+});
+
+describe("Attention, while the active org cannot be read", () => {
+  let attention: ReturnType<typeof useAttention> | undefined;
+  function Inbox() {
+    attention = useAttention();
+    return null;
+  }
+
+  it("reads nothing unscoped, says the read failed, and reads the stored org once a retry finds it", async () => {
+    orgsAnswer = async () => {
+      throw new Error("orgs unavailable");
+    };
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <ToastProvider>
+          <ActiveOrgProvider>
+            <Inbox />
+          </ActiveOrgProvider>
+        </ToastProvider>
+      </QueryClientProvider>,
+    );
+    await answerPreferences(QA.id);
+    await waitFor(() => expect(attention?.read).toBe("failed"));
+    expect(attentionAsked).toEqual([]);
+    expect(attention?.total).toBeUndefined();
+
+    orgsAnswer = async () => [SCRATCH, QA];
+    await act(async () => attention?.refetch());
+    await waitFor(() => expect(attention?.read).toBe("read"));
+    expect(attentionAsked).toEqual([QA.id]);
   });
 });

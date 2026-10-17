@@ -6,7 +6,9 @@ import { notificationDeliveries, notificationTypes } from '../db/schema.js';
 const NOT_FOUND = 'The notification is not one of the caller’s own';
 
 export const openCountSchema = z.object({
-  count: z.number().describe('Distinct records still true for the caller'),
+  count: z
+    .number()
+    .describe('Bell rows still open for the caller: a row carrying a record still true is one'),
 });
 
 export const markAllReadSchema = z.object({ updated: z.number() });
@@ -27,6 +29,9 @@ export const deliveryListItemSchema = z.object({
   groupKey: z.string().nullable(),
   resolvedNotice: z.boolean(),
   createdAt: z.date(),
+  toldAt: z
+    .date()
+    .describe('When the newest record this delivery carries reached the caller: the row’s clock'),
   members: z.number().describe('Records the delivery carries'),
   openMembers: z.number().describe('Of those, the ones still true'),
   type: z.string(),
@@ -82,6 +87,7 @@ export const deliveryMemberSchema = z.object({
   secondaryIssueId: z.string().nullable(),
   resolvedAt: z.date().nullable(),
   createdAt: z.date(),
+  deliveredAt: z.date().describe('When this record reached the caller: the member’s clock'),
   open: z.boolean(),
 });
 
@@ -90,7 +96,7 @@ export const deliveryMembersSchema = z.array(deliveryMemberSchema);
 export const openCount = describeOperation({
   summary: 'Count the things still true for the caller',
   description:
-    'Counts distinct records, not deliveries: a grouped delivery of fifteen firing conditions reads fifteen. Signals never count.',
+    'Counts the bell rows still open, not the records inside them: a grouped delivery of fifteen firing conditions reads one. Signals never count.',
   responses: { 200: json(openCountSchema) },
 });
 
@@ -104,7 +110,7 @@ export const markAllRead = describeOperation({
 export const listNotifications = describeOperation({
   summary: 'List the caller’s notifications, newest first',
   description:
-    'One row per delivery. `type` and `unread=true` narrow the list before it is paged, so the total and every page count only the matches.',
+    'One row per delivery, newest `toldAt` first; a resolved notice is not listed beside the row that raised its record, which reads resolved itself. `type` and `unread=true` narrow the list before it is paged, so the total and every page count only the matches.',
   responses: { 200: json(deliveryListSchema, 'One page of deliveries, with the list envelope') },
 });
 

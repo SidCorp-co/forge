@@ -13,12 +13,12 @@ export const JOB_KIND_LABEL: Record<JobType, string> = {
   custom: "Custom prompts",
 };
 
-/** A stored name nobody gave words to, in its own words, so a reader is shown no code. */
-export function storedNameInWords(type: string): string {
-  const words = type.split(/[_\-\s]+/).filter(Boolean).join(" ").toLowerCase();
-  return words === "" ? "Unnamed work" : words.charAt(0).toUpperCase() + words.slice(1);
+/** A stored name with no words reads as unknown beside it: made-up words would pass as known (ISS-1229). */
+export function unrecognised(noun: string, stored: string): string {
+  const name = stored.trim();
+  return name === "" ? `Unrecognised ${noun}` : `Unrecognised ${noun} (${name})`;
 }
 
 export function jobKindLabel(type: string): string {
-  return JOB_KIND_LABEL[type as JobType] ?? storedNameInWords(type);
+  return JOB_KIND_LABEL[type as JobType] ?? unrecognised("work", type);
 }

@@ -28,6 +28,8 @@ export interface NotificationRow {
   secondaryIssueId: string | null;
   agentSessionId: string | null;
   createdAt: string;
+  /** When the newest record it carries reached the reader: the row's clock, which its members share. */
+  toldAt: string;
 }
 
 /** One record behind a delivery — `GET /api/notifications/:id/members`. */
@@ -46,6 +48,8 @@ export interface NotificationMember {
   secondaryIssueId: string | null;
   resolvedAt: string | null;
   createdAt: string;
+  /** When this record reached the reader: the member's clock. */
+  deliveredAt: string;
   /** Still true for this reader: a firing condition or an unfinished task. */
   open: boolean;
 }

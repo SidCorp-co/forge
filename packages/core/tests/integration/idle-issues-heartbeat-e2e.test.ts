@@ -169,6 +169,7 @@ describe('A holder that stopped reporting (ISS-1195)', () => {
              })}::jsonb
        WHERE id = ${issueId}
     `);
+    await fx.enterStatus(issueId, 'in_progress', 'testing', NOW.toISOString());
 
     const result = await mods.reconcileIdleIssues(NOW);
 

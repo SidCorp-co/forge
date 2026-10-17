@@ -2,6 +2,7 @@
 // needs anyone" is a claim about every read, so a read that is pending, failed or refused makes the
 // project unread, never quiet.
 
+import { STUCK_ISSUE_KINDS, type StuckIssueKind } from "@forge/contracts/notifications";
 import { formatElapsed } from "@/features/overview/derive";
 import { formatApiError } from "@/lib/api/error";
 import type { IssueRow } from "@/features/issues/types";
@@ -88,7 +89,8 @@ export interface ShapeInput {
   stuck: ReadState;
   /** Issues a stuck-issue notice stands for, and the first few of them, longest-standing first. */
   stuckIssues: number;
-  stuckIssueRefs: readonly { issueId: string; documentId: string }[];
+  stuckIssuesByKind: Partial<Record<StuckIssueKind, number>>;
+  stuckIssueRefs: readonly { issueId: string; documentId: string; kind: StuckIssueKind }[];
   now: number;
 }
 
@@ -158,6 +160,22 @@ function qualifiers(input: ShapeInput): Qualifier[] {
   return out;
 }
 
+/** One sentence per kind of stuck-issue notice, in the words the bell titles that kind's group with. */
+export const STUCK_KIND_SENTENCE: Record<StuckIssueKind, (n: number) => string> = {
+  waiting: (n) => `${plural(n, "issue has", "issues have")} waited for you for over six hours.`,
+  idle: (n) => `${plural(n, "issue is", "issues are")} in a live status with no live work behind ${n === 1 ? "it" : "them"}.`,
+  owed_close: (n) => `${plural(n, "issue", "issues")} shipped ${n === 1 ? "its" : "their"} code and ${n === 1 ? "was" : "were"} never closed.`,
+  orphan: (n) => `${plural(n, "issue asserts", "issues assert")} work in progress with no run behind ${n === 1 ? "it" : "them"}.`,
+  other: (n) => `${plural(n, "issue is", "issues are")} reported stuck.`,
+};
+
+function stuckSentences(byKind: ShapeInput["stuckIssuesByKind"], total: number): string[] {
+  const said = STUCK_ISSUE_KINDS.filter((k) => (byKind[k] ?? 0) > 0);
+  // A read that names no kind still says how many: the count is whole even where its split is not.
+  if (said.length === 0) return [STUCK_KIND_SENTENCE.other(total)];
+  return said.map((k) => STUCK_KIND_SENTENCE[k](byKind[k] ?? 0));
+}
+
 function stuckIssuesOf(input: ShapeInput): number {
   return input.stuck.read === "ok" ? input.stuckIssues : 0;
 }
@@ -172,18 +190,14 @@ function degradedBand(input: ShapeInput, quals: readonly Qualifier[], stuck: rea
   const overdue = quals.filter((q) => q.kind === "overdue").length;
   const stuckIssues = stuckIssuesOf(input);
   const parts: string[] = [];
-  if (failed > 0) parts.push(plural(failed, "failed job", "failed jobs"));
-  if (stuck.length > 0) parts.push(`${plural(stuck.length, "run", "runs")} stuck, nothing heard for an hour`);
-  if (stuckIssues > 0) parts.push(`${plural(stuckIssues, "issue", "issues")} reported stuck`);
-  if (overdue > 0) {
-    parts.push(`${plural(overdue, "item", "items")} waiting on a person for over ${OVERDUE_WAIT_SECONDS / DAY} days`);
+  if (failed > 0) parts.push(`${plural(failed, "job", "jobs")} failed.`);
+  if (stuck.length > 0) {
+    parts.push(`${plural(stuck.length, "run has", "runs have")} not been heard from for an hour.`);
   }
-  const lead =
-    failed > 0 && (stuck.length > 0 || stuckIssues > 0 || overdue > 0)
-      ? "Work is blocked and failing"
-      : failed > 0
-        ? "Work is failing"
-        : "Work is blocked";
+  if (stuckIssues > 0) parts.push(...stuckSentences(input.stuckIssuesByKind, stuckIssues));
+  if (overdue > 0) {
+    parts.push(`${plural(overdue, "item has", "items have")} waited on a person for over ${OVERDUE_WAIT_SECONDS / DAY} days.`);
+  }
 
   const oldest = input.cut ? "oldest listed item" : "oldest item";
   const aged = quals.reduce<(typeof quals)[number] | undefined>(
@@ -201,7 +215,7 @@ function degradedBand(input: ShapeInput, quals: readonly Qualifier[], stuck: rea
   } else if (stuckIssues > 0) {
     entry = stuckEntry(input.slug, stuckIssues, input.stuckIssueRefs[0]);
   }
-  return { text: `${lead} — ${parts.join(" · ")}`, entry };
+  return { text: parts.join(" "), entry };
 }
 
 /** The one reading of what this project is doing. */

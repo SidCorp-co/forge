@@ -42,7 +42,7 @@ describe("QualitySection", () => {
 
   it("marks no pipeline-flow row as looping back, whatever its type", () => {
     render(<QualitySection quality={{ ...quality, pipelineFlow: [{ type: "fix", count: 2, medianSeconds: 120 }] }} />);
-    expect(screen.getByText("Fix")).toBeInTheDocument();
+    expect(screen.getByText("Unrecognised work (fix)")).toBeInTheDocument();
     expect(screen.queryByText(/loops back/)).toBeNull();
   });
 });
@@ -66,13 +66,14 @@ describe("QualitySection, in the words a reader uses", () => {
     expect(container.textContent).not.toMatch(/\b(?:drive|release_batch|verify_skill|reconcile)\b/);
   });
 
-  // ISS-1228 round 9: a kind this build has no word for reads as its own words, never its stored type.
-  it("names a kind this build does not know in words, never its stored type", () => {
-    const { container } = render(
-      <QualitySection quality={{ ...quality, pipelineFlow: [{ type: "future_kind", count: 1, medianSeconds: 30 }] }} />,
+  // ISS-1229 round 13, the master's ruling on criterion 23: a kind this build does not know reads as
+  // unrecognised, beside the stored type it carries, never as words made up for it.
+  it("says a kind this build does not know is unrecognised, and shows its stored type", () => {
+    render(
+      <QualitySection quality={{ ...quality, pipelineFlow: [{ type: "triage_legacy_x", count: 1, medianSeconds: 30 }] }} />,
     );
-    expect(screen.getByRole("cell", { name: "Future kind" })).toBeInTheDocument();
-    expect(container.textContent).not.toContain("future_kind");
+    expect(screen.getByRole("cell", { name: "Unrecognised work (triage_legacy_x)" })).toBeInTheDocument();
+    expect(screen.queryByText("Triage legacy x")).toBeNull();
   });
 
   it("names each session failure by its cause, never its stored code", () => {

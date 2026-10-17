@@ -1,4 +1,4 @@
-import { storedNameInWords } from "@/features/overview/job-kinds";
+import { unrecognised } from "@/features/overview/job-kinds";
 import { liveSessionWord } from "@/features/sessions/session-word";
 import { quietWhyText } from "@/features/sessions/status-sentences";
 import { STALLED_THRESHOLD_MS, sessionSilence, sessionTitle } from "@/features/sessions/types";
@@ -15,9 +15,9 @@ const KIND_LABEL: Record<string, string> = {
   pm: "PM",
 };
 
-/** What kind of session this is, in a person's word; an unknown kind is its stored name in words. */
+/** What kind of session this is, in a person's word; an unknown kind says so beside its stored name. */
 export function sessionKindLabel(kind: string): string {
-  return KIND_LABEL[kind] ?? storedNameInWords(kind);
+  return KIND_LABEL[kind] ?? unrecognised("session", kind);
 }
 
 /** The session's name: its title where it has one, its step kind in words, else its kind. */

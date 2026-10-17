@@ -54,6 +54,7 @@ function strand(projectId: string, i: number) {
     parkedAt: '2026-08-01 00:00:00+00',
     cursorTs: `2026-08-01 00:00:0${i}+00`,
     projectName: 'Seed',
+    waitingKind: null as string | null,
   };
 }
 
@@ -197,7 +198,18 @@ describe('what a stranded notice says, in the words a reader uses (ISS-1229)', (
     rows.value = [strand('p1', 1)];
     await detectStrandedIssues(now);
     expect(sent().body).toBe('ISS-1 "strand 1": it has been parked for 3 days.');
-    expect(sent().title).toBe('ISS-1 is waiting on you — Seed');
+    expect(sent().title).toBe('ISS-1 is waiting for you — Seed');
+  });
+
+  // ISS-1229 r13: "is waiting on you" and "parked with nothing coming for them" framed one state two
+  // ways, and neither said what the person was asked for.
+  it.each([
+    ['needs_decision', 'ISS-1 is waiting for your decision — Seed'],
+    ['needs_resource', 'ISS-1 is waiting for something only a person can supply — Seed'],
+  ])('says in its title what a %s park asks of the person', async (kind, title) => {
+    rows.value = [{ ...strand('p1', 1), waitingKind: kind }];
+    await detectStrandedIssues(now);
+    expect(sent().title).toBe(title);
   });
 
   it('says how many hours, not the bare word, for a park younger than a day', async () => {

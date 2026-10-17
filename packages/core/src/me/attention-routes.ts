@@ -1,5 +1,8 @@
 import { Hono } from 'hono';
+import { HTTPException } from 'hono/http-exception';
+import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
@@ -34,6 +37,8 @@ interface AttentionItem {
   link: string;
   since: string;
   issueRef?: string;
+  /** Failed-job only: the title of the issue the job ran for, where it ran for one. */
+  issueTitle?: string;
   status?: string;
   projectSlug?: string;
   projectName?: string;
@@ -112,6 +117,7 @@ function failedJobItem(r: AttentionFailedJobRow): AttentionItem {
     projectName: r.projectName,
   };
   if (r.issSeq != null) item.issueRef = formatIssueRef(r.issuePrefix, r.issSeq);
+  if (r.issueTitle != null) item.issueTitle = r.issueTitle;
   return item;
 }
 
@@ -130,54 +136,70 @@ function skillUpdateItem(r: AttentionReconcileRow): AttentionItem {
 export const meAttentionRoutes = new Hono<{ Variables: AuthVars }>();
 meAttentionRoutes.use('/attention', requireAuth(), assertEmailVerified());
 
-meAttentionRoutes.get('/attention', readAttention, async (c) => {
-  const userId = c.get('userId');
+/** The organisation the caller has open: every bucket and total is cut to it before its cap. */
+const attentionQuerySchema = z.object({ orgId: z.uuid().optional() });
 
-  const [
-    needsReviewRows,
-    awaitingInputRows,
-    mentionRows,
-    failedJobRows,
-    pendingSkillUpdateRows,
-    unseenDraftRows,
-    unseenDraftCountRows,
-    projectTotals,
-  ] = await Promise.all([
-    selectNeedsReview(userId),
-    selectAwaitingInput(userId),
-    selectMentions(userId),
-    selectFailedJobs(userId),
-    selectPendingSkillUpdates(userId),
-    selectUnseenDrafts(userId),
-    selectUnseenDraftCount(userId),
-    selectAttentionTotals(userId),
-  ]);
+meAttentionRoutes.get(
+  '/attention',
+  readAttention,
+  zValidator('query', attentionQuerySchema, (r) => {
+    if (!r.success) {
+      throw new HTTPException(400, {
+        message: 'orgId must be the uuid of an organisation, or left out to read every one',
+        cause: { code: 'BAD_REQUEST', details: z.flattenError(r.error) },
+      });
+    }
+  }),
+  async (c) => {
+    const userId = c.get('userId');
+    const scope = c.req.valid('query');
 
-  const needsReview = needsReviewRows.map((r) => issueItem('needs_review', r));
-  const awaitingInput = awaitingInputRows.map(awaitingItem);
-  const mentions = mentionRows.map(mentionItem);
-  const failedJobs = failedJobRows.map(failedJobItem);
-  const pendingSkillUpdates = pendingSkillUpdateRows.map(skillUpdateItem);
-  const unseenDrafts = unseenDraftRows.map((r) => issueItem('unseen_draft', r));
-  const unseenDraftsTotal = Number(unseenDraftCountRows[0]?.total ?? 0);
+    const [
+      needsReviewRows,
+      awaitingInputRows,
+      mentionRows,
+      failedJobRows,
+      pendingSkillUpdateRows,
+      unseenDraftRows,
+      unseenDraftCountRows,
+      projectTotals,
+    ] = await Promise.all([
+      selectNeedsReview(userId, scope),
+      selectAwaitingInput(userId, scope),
+      selectMentions(userId, scope),
+      selectFailedJobs(userId, scope),
+      selectPendingSkillUpdates(userId, scope),
+      selectUnseenDrafts(userId, scope),
+      selectUnseenDraftCount(userId, scope),
+      selectAttentionTotals(userId, scope),
+    ]);
 
-  const response: AttentionResponse = {
-    needsReview,
-    awaitingInput,
-    mentions,
-    failedJobs,
-    pendingSkillUpdates,
-    unseenDrafts,
-    unseenDraftsTotal,
-    projectTotals,
-    total:
-      needsReview.length +
-      awaitingInput.length +
-      mentions.length +
-      failedJobs.length +
-      pendingSkillUpdates.length +
-      unseenDrafts.length,
-  };
+    const needsReview = needsReviewRows.map((r) => issueItem('needs_review', r));
+    const awaitingInput = awaitingInputRows.map(awaitingItem);
+    const mentions = mentionRows.map(mentionItem);
+    const failedJobs = failedJobRows.map(failedJobItem);
+    const pendingSkillUpdates = pendingSkillUpdateRows.map(skillUpdateItem);
+    const unseenDrafts = unseenDraftRows.map((r) => issueItem('unseen_draft', r));
+    const unseenDraftsTotal = Number(unseenDraftCountRows[0]?.total ?? 0);
 
-  return c.json(answer(attentionSchema, response));
-});
+    const response: AttentionResponse = {
+      needsReview,
+      awaitingInput,
+      mentions,
+      failedJobs,
+      pendingSkillUpdates,
+      unseenDrafts,
+      unseenDraftsTotal,
+      projectTotals,
+      total:
+        needsReview.length +
+        awaitingInput.length +
+        mentions.length +
+        failedJobs.length +
+        pendingSkillUpdates.length +
+        unseenDrafts.length,
+    };
+
+    return c.json(answer(attentionSchema, response));
+  },
+);

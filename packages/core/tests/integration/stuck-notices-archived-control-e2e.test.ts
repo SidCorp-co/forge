@@ -173,7 +173,7 @@ describe('the idle sweep, on the issue judge-25 stood up', () => {
 });
 
 describe.each([
-  ['waiting-park', 'waiting', false, 'is waiting on you'],
+  ['waiting-park', 'waiting', false, 'is waiting for'],
   ['owed-close', 'developed', true, 'shipped but never closed'],
 ] as const)('the %s sweep', (name, status, merged, says) => {
   it('tells the admin about the live project and nobody about the archived one', async () => {
@@ -220,7 +220,7 @@ describe('the waiting-park sweep counts from the park, not from the last write (
 
     await twoTicks(sweeps['waiting-park'], new Date());
 
-    expect(await told(w.ownerId, control)).toEqual([expect.stringContaining('is waiting on you')]);
+    expect(await told(w.ownerId, control)).toEqual([expect.stringContaining('is waiting for')]);
   });
 
   it('tells nobody about a park of five hours whose issue was last written a day ago', async () => {

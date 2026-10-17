@@ -36,6 +36,8 @@ export interface IdleFixture {
   seedIssueLease(issSeq: number, sessionStatus: string, heartbeatAt?: string): Promise<void>;
   /** A terminal pipeline session under `runId` that last beat at `heartbeatAt` (ISS-1213). */
   seedRunSession(runId: string, heartbeatAt: string): Promise<void>;
+  /** The transition by which the issue entered `to` at `at`: what the idle clock reads, never `updated_at`. */
+  enterStatus(issueId: string, from: string, to: string, at: string): Promise<void>;
 }
 
 /**
@@ -138,6 +140,12 @@ export function registerIdleFixture(seqFrom: number): IdleFixture {
       await harness.db.execute(sql`
         INSERT INTO issue_leases (project_id, issue_key, device_id, session_id, run_id)
         VALUES (${projectId}, ${`ISS-${issSeq}`}, ${device.id}, ${sessionId}, ${runId})
+      `);
+    },
+    async enterStatus(issueId, from, to, at) {
+      await harness.db.execute(sql`
+        INSERT INTO kernel_transitions (entity, entity_id, from_status, to_status, actor_type, source, created_at)
+        VALUES ('issue', ${issueId}, ${from}, ${to}, 'user', 'test', ${at}::timestamptz)
       `);
     },
     async seedRunSession(runId, heartbeatAt) {

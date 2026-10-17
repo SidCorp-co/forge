@@ -11,14 +11,13 @@ export const SWEEP_DETECTORS = {
       'The step that owed the close did not write it. Read the branch, then close the issue — or, if it never landed, clear the mark with `unmark` and move the issue to Dropped.',
   },
   stranded: {
-    groupTitle: 'Issues are parked with nothing coming for them',
+    groupTitle: 'Issues waiting for you for over six hours',
     explanation:
-      'Nothing will move a parked issue forward until you decide. Open it and read the last comment: a step that could not finish its checks leaves the decision there.',
+      'Each one waits for a decision or for something only a person can supply. Open it: its last comment says what is asked.',
   },
   'idle-issues': {
     groupTitle: 'Issues in a live status with no live work behind them',
-    explanation:
-      'Nothing was moved: the finding is on each issue itself, under `strand`, and says who owes the next move.',
+    explanation: 'Nothing was moved. Each issue says what it waits for and who owes the next move.',
   },
   'orphan-assertion': {
     groupTitle: 'Issues asserting work in progress with no run behind them',
