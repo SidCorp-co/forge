@@ -137,7 +137,7 @@ describe("a Held row a session holds (ISS-1228 criterion 35)", () => {
     render(<HoldsList holds={[returned]} sessions={[quiet]} slug="pair" now={NOW} />);
     expect(
       screen.getByText(
-        "Last reported working · 3m ago · the box says it returned ISS-1 · core still holds it · stop the session to free it",
+        "Last reported working · 3m ago. The box says it returned ISS-1. Core still holds it. Stop the session to free it.",
       ),
     ).toBeInTheDocument();
   });

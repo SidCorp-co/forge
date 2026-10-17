@@ -360,7 +360,8 @@ export function useRunPipelineStep() {
     mutationFn: (id: string) => issuesApi.runPipelineStep(id),
     onSuccess: (answer) => {
       qc.invalidateQueries({ queryKey: ["issues"] });
-      toast({ title: runAnswerText(answer), tone: "success" });
+      // An offer no box heard started nothing, so it does not wear the success check.
+      toast({ title: runAnswerText(answer), tone: answer.boxesReached > 0 ? "success" : "default" });
     },
     onError: (err) => {
       toast({ title: "Run refused", description: formatApiError(err), tone: "error" });

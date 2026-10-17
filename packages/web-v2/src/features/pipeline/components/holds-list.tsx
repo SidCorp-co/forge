@@ -18,10 +18,10 @@ function holderKey(holder: Holder): string {
 }
 
 /** Why the holder holds the issue; a session whose run reports the issue returned while core still
- *  holds it says so after what the session is doing, in the runs tab's words (ISS-1228 round 12). */
+ *  holds it says so, as its own sentences after what the session is doing (ISS-1228 round 12). */
 function whyOf(holder: Holder, displayId: string, why: string): string {
   if (holder.by !== "session" || !holder.boxReturned) return why;
-  return `${why} · ${leaseDisagreementText([displayId])}`;
+  return `${why.replace(/\.$/, "")}. ${leaseDisagreementText([displayId])}`;
 }
 
 function Label({ children }: { children: string }) {

@@ -97,7 +97,7 @@ describe("an offline box and a lease core still holds", () => {
       total: 2,
     });
     expect(runLeaseDisagreementText({ issues })).toBe(
-      "the box says it returned ISS-4 · core still holds it · stop the session to free it",
+      "The box says it returned ISS-4. Core still holds it. Stop the session to free it.",
     );
     expect(runLeaseDisagreementText({ issues: [issues[1]] })).toBeNull();
   });

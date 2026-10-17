@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 //
 // ISS-1228 round 12: core still held ISS-3 for run r6 while r6's box said it returned it, so another
-// run on ISS-3 was refused, and the issue's page said nothing. It now says so in the runs tab's
-// words, names the session to stop and links to it; where the box and core agree it says nothing.
+// run on ISS-3 was refused, and the issue's page said nothing. It now says so in the sentences every
+// surface uses, stops the session from here and links to it; where box and core agree it says nothing.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Holder, SessionsAndHolds } from "@/features/pipeline/types";
 import { LeaseDisagreementNotice } from "./lease-disagreement-notice";
@@ -22,6 +22,10 @@ vi.mock("next/link", () => ({
 }));
 let reading: SessionsAndHolds | undefined;
 vi.mock("@/features/pipeline/hooks", () => ({ useSessionsAndHolds: () => ({ data: reading }) }));
+const stop = vi.fn();
+vi.mock("@/features/sessions/hooks", () => ({
+  useCancelSession: () => ({ mutate: stop, isPending: false, variables: undefined }),
+}));
 
 const holder = (boxReturned: boolean): Holder => ({
   by: "session",
@@ -42,12 +46,14 @@ const read = (holders: Holder[]): SessionsAndHolds => ({
 const notice = () => render(<LeaseDisagreementNotice projectId="p1" issueId="i3" slug="qa" />);
 
 describe("the issue page's word on a lease its box returned (ISS-1228 round 12)", () => {
-  it("says core still holds it though the box returned it, and links to the session to stop", () => {
+  it("says core still holds it though the box returned it, stops that session, and links to it", () => {
     reading = read([holder(true)]);
     notice();
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Held by run: r6-lease-disagree on j31-a · the box says it returned ISS-3 · core still holds it · stop the session to free it.",
+      "Held by run: r6-lease-disagree on j31-a. The box says it returned ISS-3. Core still holds it. Stop the session to free it.",
     );
+    fireEvent.click(screen.getByRole("button", { name: "Stop session" }));
+    expect(stop).toHaveBeenCalledWith("s6");
     expect(screen.getByRole("link", { name: "Open session" })).toHaveAttribute("href", "/projects/qa/agents/s6");
   });
 

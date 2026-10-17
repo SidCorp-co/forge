@@ -160,11 +160,11 @@ describe("the Pipeline page with a reading", () => {
   });
 
   // ISS-1228 round 12: core still held ISS-3 while r6's box called it returned, and the page said
-  // nothing of it. The session's row and the Held row both say it, in the runs tab's words.
+  // nothing of it. The session's row and the Held row both say it, in the sentences every surface uses.
   it("names, on the session's row and its Held row, a lease the box returned and core still holds", () => {
     const [master, run] = reading.sessions as [SessionsAndHolds["sessions"][number], SessionsAndHolds["sessions"][number]];
     const [hold, person] = reading.holds as [SessionsAndHolds["holds"][number], SessionsAndHolds["holds"][number]];
-    const sentence = "the box says it returned ISS-7 · core still holds it · stop the session to free it";
+    const sentence = "The box says it returned ISS-7. Core still holds it. Stop the session to free it.";
     query = {
       ...query,
       data: {
@@ -181,12 +181,12 @@ describe("the Pipeline page with a reading", () => {
     expect(within(row).getByRole("link", { name: /^ISS-7/ })).toBeInTheDocument();
     expect(within(row).getByText(sentence)).toBeInTheDocument();
     const held = screen.getAllByRole("listitem").find((r) => r.getAttribute("data-issue-id") === "i7") as HTMLElement;
-    expect(within(held).getByText(new RegExp(`· ${sentence}$`))).toBeInTheDocument();
+    expect(within(held).getByText((text) => text.endsWith(`. ${sentence}`))).toBeInTheDocument();
   });
 
   it("says nothing of a disagreement where the box and core agree", () => {
     const { container } = screenFor();
-    expect(container.textContent).not.toMatch(/the box says it returned/);
+    expect(container.textContent).not.toMatch(/The box says it returned/);
   });
 
   it("names no stage, no pipeline run and no job anywhere, and offers no run control", () => {

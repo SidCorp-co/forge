@@ -277,3 +277,19 @@ describe("a list that failed to load", () => {
 		).toBeNull();
 	});
 });
+
+// ISS-1228 round 12, the owner's flat-UI rule: "Pair a device" and "Devices" were bordered, rounded,
+// shadowed cards. Each is now a section on the page, ruled off by one hairline, held by its heading.
+describe("the page's sections", () => {
+	it("draws each as a flush section under a hairline, inside no card", async () => {
+		listDevices.mockResolvedValue([device()]);
+		await show();
+		for (const name of ["Pair a device", "Devices"]) {
+			const section = screen.getByRole("region", { name });
+			expect(section.className).toMatch(/(^|\s)border-t(\s|$)/);
+			for (let box: HTMLElement | null = section; box; box = box.parentElement) {
+				expect(box.className).not.toMatch(/(^|\s)(rounded-lg|shadow-sm|bg-surface)(\s|$)/);
+			}
+		}
+	});
+});

@@ -358,7 +358,7 @@ describe("what a box and core each say of a run (ISS-1228 round 11)", () => {
     pane();
     expect(row()).toHaveTextContent("leases 1/2");
     expect(row()).toHaveTextContent(
-      "the box says it returned ISS-4 · core still holds it · stop the session to free it",
+      "The box says it returned ISS-4. Core still holds it. Stop the session to free it.",
     );
   });
 

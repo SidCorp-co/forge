@@ -69,7 +69,7 @@ function run(id: string, issues: SessionRow["issues"]): SessionRow {
 
 let rows: SessionRow[] = [];
 
-const SENTENCE = "the box says it returned ISS-3 · core still holds it · stop the session to free it";
+const SENTENCE = "The box says it returned ISS-3. Core still holds it. Stop the session to free it.";
 
 describe("the sessions list and a lease the box returned (ISS-1228 round 12)", () => {
   it("names the issue core still holds and says its box returned it", () => {
@@ -87,6 +87,6 @@ describe("the sessions list and a lease the box returned (ISS-1228 round 12)", (
   it("says nothing of a disagreement where the box and core agree", () => {
     rows = [run("r7", [{ id: "i3", displayId: "ISS-3", title: "Three", boxReturned: false }])];
     const { container } = render(<SessionsScreen scope={{ projectId: "p1" }} />);
-    expect(container.textContent).not.toMatch(/the box says it returned/);
+    expect(container.textContent).not.toMatch(/The box says it returned/);
   });
 });

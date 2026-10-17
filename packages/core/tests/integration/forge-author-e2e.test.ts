@@ -153,3 +153,35 @@ describe("Forge's account is never shown or counted as a person (ISS-1421)", () 
     expect(stored).toEqual({ password_hash: null, kind: 'agent' });
   });
 });
+
+// ISS-1228 round 12: two first writers at once collided on users_email_unique, the conflict rule
+// naming only the id, and the loser's write failed (release-hold-e2e's race, under the full suite).
+describe("Forge's account minted by first writers racing (ISS-1228)", () => {
+  it('gives every concurrent first writer the one account and fails none of them', async () => {
+    const { db } = await import('../../src/db/client.js');
+    for (let round = 0; round < 25; round++) {
+      await harness.db.execute(sql`DELETE FROM users WHERE id = ${forge.FORGE_AUTHOR_ID}`);
+      const minted = await Promise.allSettled(
+        Array.from({ length: 6 }, () => db.transaction((tx) => forge.forgeAuthorId(tx))),
+      );
+      const failed = minted.filter((m) => m.status === 'rejected');
+      expect(failed.map((m) => String((m as PromiseRejectedResult).reason?.cause ?? m))).toEqual(
+        [],
+      );
+      expect(minted.map((m) => (m as PromiseFulfilledResult<string>).value)).toEqual(
+        Array(6).fill(forge.FORGE_AUTHOR_ID),
+      );
+    }
+    const [accounts] = await harness.db.execute<{ n: number }>(sql`
+      SELECT count(*)::int AS n FROM users WHERE email = ${FORGE_EMAIL}
+    `);
+    expect(accounts?.n).toBe(1);
+  });
+
+  it('refuses by name where another account already holds its address', async () => {
+    await harness.db.execute(sql`DELETE FROM users WHERE id = ${forge.FORGE_AUTHOR_ID}`);
+    await createTestUser(harness.db, { email: FORGE_EMAIL });
+    const { db } = await import('../../src/db/client.js');
+    await expect(forge.forgeAuthorId(db)).rejects.toThrow(/FORGE_ACCOUNT_ADDRESS_TAKEN/);
+  });
+});

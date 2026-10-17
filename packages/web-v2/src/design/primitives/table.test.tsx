@@ -153,27 +153,6 @@ describe("Table — drawn flush on the page", () => {
     expect(frame).toHaveClass("border-b", "border-line");
     expect(frame.className).not.toMatch(/(^|\s)rounded/);
   });
-
-  // The Devices table on Runners sits inside a card: a page-coloured sticky cell or cue there reads as
-  // a grey band over the white surface.
-  it("paints its opaque parts the page's colour, or the card's when it rests on a surface", () => {
-    Object.assign(geometry, { scrollWidth: 1218, clientWidth: 882 });
-    const page = render(<Sample />).container;
-    expect(page.firstElementChild).toHaveAttribute("data-table-on", "page");
-    expect(page.querySelector("[data-table-edge=end]")).toHaveStyle({ "--cue-fill": "var(--bg-app)" });
-    const card = render(
-      <Table surface stickyStart>
-        <TBody>
-          <TR>
-            <TD sticky>pinned</TD>
-          </TR>
-        </TBody>
-      </Table>,
-    ).container;
-    expect(card.firstElementChild).toHaveAttribute("data-table-on", "surface");
-    expect(card.querySelector("[data-table-edge=end]")).toHaveStyle({ "--cue-fill": "var(--bg-surface)" });
-    expect(screen.getByText("pinned")).toHaveClass("in-data-[table-on=surface]:bg-surface");
-  });
 });
 
 describe("Table — the table element", () => {

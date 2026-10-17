@@ -2,7 +2,6 @@
 
 import {
   type ComponentProps,
-  type CSSProperties,
   type HTMLAttributes,
   type RefObject,
   type TdHTMLAttributes,
@@ -12,8 +11,8 @@ import {
 import { useScrollEdges } from "@/design/hooks/use-scroll-edges";
 import { cn } from "@/lib/utils/cn";
 
-/* Flush on what it rests on: hairlines divide header and rows, no frame, corner or fill; the opaque
-   parts (sticky cell, stuck header, edge cues) paint the page's background, or a card's on `surface`. */
+/* Flush on the page: hairlines divide header and rows, no frame, corner or fill; the opaque parts
+   (sticky cell, stuck header, edge cues) paint the page's own background. */
 
 const DEFAULT_REGION_NAME = "Table, scrolls sideways";
 const BOUNDED_REGION_NAME = "Table, scrolls";
@@ -31,7 +30,6 @@ export function Table({
   className,
   stickyStart = false,
   bounded = false,
-  surface = false,
   scrollerRef: outerRef,
   scrollerProps,
   "aria-label": ariaLabel,
@@ -42,8 +40,6 @@ export function Table({
   stickyStart?: boolean;
   /** A height of its own, which a windowed table needs to know what is in view; it is a tab stop. */
   bounded?: boolean;
-  /** It rests inside a card, so its opaque parts paint the card's surface, not the page. */
-  surface?: boolean;
   /** The scroller element, for a table that windows its rows by what the scroller shows. */
   scrollerRef?: RefObject<HTMLDivElement | null>;
   scrollerProps?: Pick<HTMLAttributes<HTMLDivElement>, "onFocus" | "onBlur">;
@@ -62,7 +58,6 @@ export function Table({
     : { "aria-label": ariaLabel ?? (bounded ? BOUNDED_REGION_NAME : DEFAULT_REGION_NAME) };
   return (
     <div
-      data-table-on={surface ? "surface" : "page"}
       className="relative overflow-hidden border-b border-line has-[>[role=region]:focus-visible]:outline-2 has-[>[role=region]:focus-visible]:outline-offset-2 has-[>[role=region]:focus-visible]:outline-cobalt"
     >
       <div
@@ -79,14 +74,13 @@ export function Table({
           {...props}
         />
       </div>
-      <EdgeCue side="start" visible={edges.start && !stickyStart} surface={surface} />
-      <EdgeCue side="end" visible={edges.end} surface={surface} />
+      <EdgeCue side="start" visible={edges.start && !stickyStart} />
+      <EdgeCue side="end" visible={edges.end} />
     </div>
   );
 }
 
-function EdgeCue({ side, visible, surface }: { side: "start" | "end"; visible: boolean; surface: boolean }) {
-  const fill = surface ? "var(--bg-surface)" : "var(--bg-app)";
+function EdgeCue({ side, visible }: { side: "start" | "end"; visible: boolean }) {
   return (
     <span
       aria-hidden
@@ -95,17 +89,16 @@ function EdgeCue({ side, visible, surface }: { side: "start" | "end"; visible: b
       className={cn(
         "pointer-events-none absolute inset-y-0 w-8 opacity-0 motion-safe:transition-opacity data-[visible=true]:opacity-100",
         side === "start"
-          ? "left-0 bg-[linear-gradient(to_right,var(--scrim),transparent_10px),linear-gradient(to_right,var(--cue-fill),transparent)]"
-          : "right-0 bg-[linear-gradient(to_left,var(--scrim),transparent_10px),linear-gradient(to_left,var(--cue-fill),transparent)]",
+          ? "left-0 bg-[linear-gradient(to_right,var(--scrim),transparent_10px),linear-gradient(to_right,var(--bg-app),transparent)]"
+          : "right-0 bg-[linear-gradient(to_left,var(--scrim),transparent_10px),linear-gradient(to_left,var(--bg-app),transparent)]",
       )}
-      style={{ "--cue-fill": fill } as CSSProperties}
     />
   );
 }
 
 // The hairline is a pseudo-element because a collapsed table's cell border stays behind when it sticks.
 const STUCK_HEAD =
-  "[&_th]:sticky [&_th]:top-0 [&_th]:z-[2] [&_th]:bg-app in-data-[table-on=surface]:[&_th]:bg-surface [&_th]:after:absolute [&_th]:after:inset-x-0 [&_th]:after:bottom-0 [&_th]:after:h-px [&_th]:after:bg-line [&_th]:after:content-['']";
+  "[&_th]:sticky [&_th]:top-0 [&_th]:z-[2] [&_th]:bg-app [&_th]:after:absolute [&_th]:after:inset-x-0 [&_th]:after:bottom-0 [&_th]:after:h-px [&_th]:after:bg-line [&_th]:after:content-['']";
 
 export function THead({ className, stuck = false, ...props }: HTMLAttributes<HTMLTableSectionElement> & { stuck?: boolean }) {
   return <thead className={cn("border-b border-line", stuck && STUCK_HEAD, className)} {...props} />;
@@ -132,7 +125,7 @@ const DENSITY_PY = { paddingTop: "var(--density-row-py)", paddingBottom: "var(--
 // Opaque, so the row scrolls out of sight under it; floor and cap keep it from taking the width the
 // other columns need on a phone. A name longer than the cap is cut by `Truncated`, never broken mid-word.
 const STICKY =
-  "sticky left-0 z-[1] min-w-32 max-w-40 bg-app in-data-[table-on=surface]:bg-surface sm:max-w-72 in-data-[edge-start=true]:shadow-[1px_0_0_var(--color-line)]";
+  "sticky left-0 z-[1] min-w-32 max-w-40 bg-app sm:max-w-72 in-data-[edge-start=true]:shadow-[1px_0_0_var(--color-line)]";
 
 interface StickyCell {
   sticky?: boolean;
