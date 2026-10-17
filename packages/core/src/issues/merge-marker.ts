@@ -25,6 +25,7 @@ import {
   type MergeRecord,
   mergeMarkKindOf,
   observedMergeForIssue,
+  quoted,
   recordIssueMerge,
 } from './merge-record.js';
 import { refuseUnmarkOnClosed } from './merged-at.js';
@@ -410,20 +411,19 @@ export async function applyMergeMarker(args: {
   });
   // A repeat naming another commit is already told how to change the claim, by the claim's own words.
   const step = repeated && !kept?.notKept ? CHANGE_THE_MARK : null;
-  const unchanged = step ? `\n${step}` : '';
+  const after = [step, standingDetail].filter(Boolean).join(' ');
   const markDetail = repeated
-    ? [`${alreadyMarkedSentence(stampResult.mergedAt)}.`, step, standingDetail]
-        .filter(Boolean)
-        .join(' ')
+    ? `${alreadyMarkedSentence(stampResult.mergedAt)}. ${after}`
     : standingDetail;
   const marked = args.op === 'mark' ? `\n${standingDetail}` : '';
   const auditComment = await writeAuditComment(
     before.id,
     args.actor.commentAuthorId,
-    // A repeat's sentence ends where it says nothing changed; the caller's note keeps a line of its own.
+    // The thread renders markdown, so a repeat's parts are paragraphs: its sentence, the caller's
+    // note quoted whole, then the step and the standing mark.
     repeated
-      ? `${label}.${args.note ? `\n${args.note}` : ''}${unchanged}${marked}`
-      : `${label}${args.note ? ` — ${args.note}` : '.'}${unchanged}${marked}`,
+      ? [`${label}.`, args.note ? quoted(args.note) : null, after].filter(Boolean).join('\n\n')
+      : `${label}${args.note ? ` — ${args.note}` : '.'}${marked}`,
   );
   if (auditComment) {
     await hooks.emit('commentCreated', {

@@ -169,9 +169,9 @@ describe('ISS-940 re-marking an already-merged issue (real Postgres)', () => {
     const rows = await harness.db.execute<{ body: string }>(
       sql`SELECT body FROM comments WHERE issue_id = ${issue.id} ORDER BY created_at ASC`,
     );
-    const [first, kept, ...rest] = (rows[1]?.body ?? '').split('\n');
+    const [first, kept, ...rest] = (rows[1]?.body ?? '').split('\n\n');
     expect(first).toMatch(/^Already marked merged on .+, so this call changed nothing\.$/);
-    expect(kept).toBe(note);
+    expect(kept).toBe(`> ${note}`);
     expect(/\blanding wrote ([^;\n]+)/u.exec(rows[1]?.body ?? '')?.[1]).toBe(
       'packages/core/src/a.ts',
     );
