@@ -26,8 +26,11 @@ interface ActiveOrgContextValue {
   activeOrg: OrgListItem | null;
   /** Convenience: `activeOrg?.id ?? null`. Drives the projects-console scope. */
   activeOrgId: string | null;
-  /** The orgs and the stored choice have both answered, so a null `activeOrgId` means no org, not "not yet". */
+  /** The orgs and the stored choice have both been read, so a null `activeOrgId` means no org, not "not yet". */
   scopeRead: boolean;
+  /** Why the orgs could not be read, where they could not: no scope is known, so nothing scoped is read. */
+  scopeError: Error | null;
+  retryScope: () => void;
   /** Switch the active org (persists server-side, optimistic). */
   setActiveOrg: (orgId: string) => void;
   /** True when the caller has at most one org → render a static label. */
@@ -45,7 +48,9 @@ export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
   const prefs = prefsQ.data;
   // No active org until the stored choice is read: a stand-in it replaced would read as a switch.
   const prefsRead = prefsQ.isSuccess || prefsQ.isError;
-  const scopeRead = prefsRead && (orgsQ.isSuccess || orgsQ.isError);
+  const scopeRead = prefsRead && orgsQ.data !== undefined;
+  const scopeError = orgsQ.data === undefined && orgsQ.isError ? orgsQ.error : null;
+  const { refetch: refetchOrgs } = orgsQ;
 
   const orgs = useMemo(() => sortOrgs(orgsData ?? []), [orgsData]);
 
@@ -84,12 +89,16 @@ export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
       activeOrg,
       activeOrgId: activeOrg?.id ?? null,
       scopeRead,
+      scopeError,
+      retryScope: () => {
+        void refetchOrgs();
+      },
       setActiveOrg: (orgId: string) => {
         if (orgId !== activeOrg?.id) mutate(orgId);
       },
       isSingle: orgs.length <= 1,
     }),
-    [orgs, activeOrg, scopeRead, mutate],
+    [orgs, activeOrg, scopeRead, scopeError, refetchOrgs, mutate],
   );
 
   return <ActiveOrgContext.Provider value={value}>{children}</ActiveOrgContext.Provider>;
@@ -100,5 +109,11 @@ export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
 export function useActiveOrg(): ActiveOrgContextValue {
   const ctx = useContext(ActiveOrgContext);
   if (ctx) return ctx;
-  return { orgs: [], activeOrg: null, activeOrgId: null, scopeRead: true, setActiveOrg: () => {}, isSingle: true };
+  return { orgs: [], activeOrg: null, activeOrgId: null,
+    scopeRead: true,
+    scopeError: null,
+    retryScope: () => {},
+    setActiveOrg: () => {},
+    isSingle: true,
+  };
 }

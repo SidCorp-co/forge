@@ -18,7 +18,7 @@ import type { AttentionItem, AttentionView } from "./types";
  * `badge` is the count where both were read, never a held count after a failed refetch.
  */
 export function useAttention() {
-  const { activeOrgId, scopeRead } = useActiveOrg();
+  const { activeOrgId, scopeRead, scopeError, retryScope } = useActiveOrg();
   const attentionQ = useQuery({
     queryKey: ["attention", activeOrgId],
     queryFn: () => attentionApi.list(activeOrgId),
@@ -72,7 +72,7 @@ export function useAttention() {
     view.unseenDrafts.length +
     view.offlineRunners.length;
 
-  const read = queryRead(attentionQ);
+  const read = scopeError ? "failed" : queryRead(attentionQ);
   const devicesRead = queryRead(devicesQ);
   const badge = useMemo(() => badgeFigure([read, devicesRead], held), [read, devicesRead, held]);
 
@@ -82,10 +82,11 @@ export function useAttention() {
     read,
     devicesRead,
     badge,
-    error: attentionQ.error,
+    error: scopeError ?? attentionQ.error,
     devicesError: devicesQ.error,
     refetch: () => {
-      attentionQ.refetch();
+      if (scopeError) retryScope();
+      else attentionQ.refetch();
       devicesQ.refetch();
     },
   };
