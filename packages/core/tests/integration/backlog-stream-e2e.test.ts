@@ -372,7 +372,11 @@ describe('the alike endpoint', () => {
     const hits = (streamed as unknown as { hits: Array<{ sourceRef: string; score: number }> })
       .hits;
 
-    expect(hits.map((h) => h.sourceRef)).toEqual(route.hits.map((h) => h.sourceRef));
+    // Seeds 1, 3 and 4 share no axis with seed 2, so all three tie at score 0, and the index orders
+    // ties as it finds them: each source's score and the score sequence are the contract, not that order.
+    const scoreOf = (hs: Array<{ sourceRef: string; score: number }>) =>
+      Object.fromEntries(hs.map((h) => [h.sourceRef, h.score]));
+    expect(scoreOf(hits)).toEqual(scoreOf(route.hits));
     expect(hits.map((h) => h.score)).toEqual(route.hits.map((h) => h.score));
   });
 
