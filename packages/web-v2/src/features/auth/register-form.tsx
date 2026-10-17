@@ -8,6 +8,7 @@ import { useAuth } from '@/providers/auth-provider';
 import { AGENT_ADDRESS_MESSAGE } from './agent-address';
 import { PasswordMeter } from './components/password-meter';
 import { extractFieldErrors } from './extract-field-errors';
+import { rateLimitedOf } from './rate-limit-words';
 import { validateRegister, type RegisterFieldErrors } from './validation';
 
 // The server only validates email + password; confirmPassword is client-only.
@@ -58,9 +59,7 @@ export function RegisterForm() {
         setTopError(
           agentAddress
             ? AGENT_ADDRESS_MESSAGE
-            : err instanceof Error
-              ? err.message
-              : 'Registration failed',
+            : (rateLimitedOf(err) ?? (err instanceof Error ? err.message : 'Registration failed')),
         );
         bannerAddress.current = aboutAddress ? email : null;
       }

@@ -115,11 +115,14 @@ let registered = false;
 export async function registerReleaseUnstartedRecovery(): Promise<void> {
   if (registered) return;
   // The release batch's background work registers as one: the finish job, the sweep of a box gone
-  // quiet, and the sweep of a row at Releasing that nothing carries.
+  // quiet, the sweep of a job held with nothing to send it, and the sweep of a row at Releasing
+  // that nothing carries.
   const { registerReleaseBatchFinish } = await import('./finish-job.js');
   await registerReleaseBatchFinish();
   const { registerReleaseSilentRecovery } = await import('./silent-recovery.js');
   await registerReleaseSilentRecovery();
+  const { registerReleaseHeldRecovery } = await import('./held-recovery.js');
+  await registerReleaseHeldRecovery();
   const { registerReleasingSettle } = await import('./releasing-settle.js');
   await registerReleasingSettle();
   const { boss } = await import('../queue/boss.js');

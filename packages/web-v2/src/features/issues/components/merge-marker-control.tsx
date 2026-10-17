@@ -13,6 +13,7 @@ import { SlideOver } from "@/design/patterns/slide-over";
 import { formatApiError } from "@/lib/api/error";
 import { useMergeMarker } from "../hooks";
 import type { LandingShape } from "../types";
+import { MARK_MERGED_ACTION, WHERE_IT_LANDED_FIELD, WORK_LANDS_ROW } from "@forge/contracts/mark-merged-words";
 
 /** Core's cap on a landing (`MERGED_LANDING_MAX`). Said and enforced here, never silently cut. */
 const LANDING_MAX = 2000;
@@ -48,7 +49,7 @@ interface MergeMarkerControlProps {
 /** Where this issue's work lands and who said so, since the two can differ. */
 function landingLine(shape: LandingShape, source: "issue" | "project" | undefined): string {
   const where = shape === "outside_git" ? "outside git" : "in git";
-  if (source === "issue") return `This issue's work lands ${where}: the issue declares it itself, under Work lands.`;
+  if (source === "issue") return `This issue's work lands ${where}: the issue declares it itself, under ${WORK_LANDS_ROW}.`;
   if (source === "project") return `This issue's work lands ${where}: that is its project's shape.`;
   return `This issue's work lands ${where}.`;
 }
@@ -94,7 +95,7 @@ export function MergeMarkerControl({
   return (
     <>
       <Button variant="ghost" size="sm" icon="check" onClick={() => setOpen(true)}>
-        Mark merged
+        {MARK_MERGED_ACTION}
       </Button>
       {open && (
         <SlideOver open onClose={() => setOpen(false)} title="Mark this work merged" width={480}>
@@ -104,7 +105,7 @@ export function MergeMarkerControl({
             </p>
             <p className="fg-body-sm text-muted">{outsideGit ? LANDING_BLURB : BLURB}</p>
             <Field
-              label="Where it landed"
+              label={WHERE_IT_LANDED_FIELD}
               required
               error={
                 overLimit

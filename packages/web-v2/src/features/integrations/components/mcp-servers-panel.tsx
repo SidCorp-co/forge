@@ -22,6 +22,7 @@ import { providerLabel } from "../providers/registry";
 import type { IntegrationSummary, IntegrationTestResult, McpServerPreviewEntry } from "../types";
 import { AgentAccessControl, GRANT_LABEL } from "./agent-access-control";
 import { Pill, scopeLabel } from "./status-pill";
+import { healthLine } from "@forge/contracts/health-words";
 
 const REASON_META: Record<
   McpServerPreviewEntry["reason"],
@@ -138,7 +139,7 @@ function McpServerRow({
         </p>
       ) : entry.provider ? (
         <p className="fg-body-sm text-subtle">
-          Configure the {providerLabel(entry.provider)} integration below to inject its MCP server.
+          Set up {providerLabel(entry.provider)} in the list above to give agents its MCP server.
         </p>
       ) : null}
 
@@ -153,9 +154,7 @@ function McpServerRow({
       {entry.configured && (
         <div className="flex items-center justify-between gap-2">
           <span className="fg-body-sm text-subtle">
-            {entry.lastHealthStatus
-              ? `health: ${entry.lastHealthStatus}${checked ? ` · ${checked}` : ""}`
-              : "never health-checked"}
+            {healthLine(entry.lastHealthStatus, checked)}
           </span>
           {entry.bindingId && (
             <Button variant="ghost" size="sm" onClick={verify} loading={test.isPending}>

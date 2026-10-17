@@ -71,6 +71,10 @@ export function mergeMarkFields(row: MergeMarkColumns): {
   };
 }
 
+function quoted(words: string): string {
+  return `> ${words.replace(/\s+/g, ' ').trim()}`;
+}
+
 /** The sentence saying which kind this is, written once: the audit comment and the caller's
  *  answer are both built from it. `claimedCommit` is the caller's word, not the column. */
 export function describeMergeMark(args: {
@@ -93,52 +97,42 @@ export function describeMergeMark(args: {
   } | null;
 }): string {
   if (args.kind === 'unmarked') {
-    return 'this issue carries no merged mark: `merged_at` is empty, so nothing here says the work landed';
+    return 'This issue is not marked merged, so nothing here says the work landed.';
   }
   if (args.kind === 'landed') {
-    return `this mark names where the work landed outside git: \`merged_landing\` holds ${args.landing ?? 'the landing it was given'}. It is the word of whoever marked it, not a merge Forge observed`;
+    return `Marked as landed outside git, at ${args.landing ?? 'the landing it was given'}. Forge did not see it land; this is the marker's word.`;
   }
   if (args.kind === 'observed') {
     // Against the COLUMN, not the row this call selected: docs/modules/issues/merge-mark.md.
     const differs =
       !!args.claimedCommit &&
       args.claimedCommit.toLowerCase() !== (args.commitSha ?? '').toLowerCase();
-    const overruled = differs
-      ? `. Commit ${args.claimedCommit}, which this call named, is recorded as its claim and is not what the column holds`
-      : '';
     const source = args.readFrom
-      ? `read from ${args.readFrom.repository} itself, which resolves it, gives it to this issue by its subject and holds it on ${args.readFrom.branch}`
-      : "read by Forge itself, from its record of the pull request or from the project's repository";
-    return `this mark is a merge Forge observed: \`merged_commit_sha\` holds ${args.commitSha ?? 'the commit it landed at'}, ${source}, rather than from anybody's word for it${overruled}`;
+      ? `It read the commit from ${args.readFrom.repository}, on ${args.readFrom.branch}.`
+      : 'It read it from the pull request or the repository.';
+    const overruled = differs
+      ? ` Commit ${args.claimedCommit}, named in this mark, is kept as a claim only.`
+      : '';
+    return `Forge saw this merge land at commit ${args.commitSha ?? 'the commit it landed at'}. ${source}${overruled}`;
   }
   if (args.unverified) {
-    const notKept = args.unverified.notKept
-      ? `. Commit ${args.unverified.notKept}, which this call named, was NOT recorded: this issue's first claim, ${args.unverified.commit}, stands, and \`unmark\` then \`mark\` is the only correction`
+    const { commit, noReader, why, clears, notKept } = args.unverified;
+    const repeat = notKept
+      ? ` Commit ${notKept} was not recorded: the first claim, ${commit}, stands. To change it, Unmark, then Mark merged again.`
       : '';
-    const { noReader, why, clears } = args.unverified;
-    const because = noReader
-      ? "because Forge has no way to read this project's repository"
-      : `because Forge could not check it against this project's repository: ${why}`;
-    const toVerify = noReader
-      ? `To have Forge verify it: ${why}. Then mark again`
-      : `To have Forge verify it, mark again ${clears}`;
-    return (
-      'this mark is a CLAIM Forge did not observe, not a merge it witnessed: ' +
-      `commit ${args.unverified.commit} is recorded as this call's claim in \`merged_claimed_commit\` ` +
-      `and is NOT verified, ${because}; it did not ` +
-      'check that the commit exists, declares this issue or is on the base branch, and ' +
-      `\`merged_commit_sha\` stays empty. ${toVerify}, naming the commit or none, and Forge checks ` +
-      `the claim and upgrades this mark to observed, or refuses it by name${notKept}`
-    );
+    // The reason and the step are worded where the reading failed, so each stands quoted as its own.
+    const steps = noReader
+      ? `Forge has no way to read this project's repository, so it did not check it. To have it checked, do this, then mark it again:\n${quoted(why)}`
+      : `Forge could not check it. The reason:\n${quoted(why)}\nMark it again once this holds:\n${quoted(clears.replace(/^once\s+/, ''))}`;
+    return `Commit ${commit} was named, and is kept as a claim.${repeat} ${steps}`;
   }
-  const claim = args.claimedCommit
-    ? `commit ${args.claimedCommit} is recorded here as this call's claim and is NOT in \`merged_commit_sha\``
-    : 'no commit is recorded in `merged_commit_sha`';
-  const held =
-    args.claimedCommit && args.claimHeldBy
-      ? `. ${args.claimHeldBy} holds commit ${args.claimedCommit}: Forge read that much there, and not whether it is this issue's landing`
-      : '';
-  return `this mark is a CLAIM Forge did not observe, not a merge it witnessed: ${claim}, because that column holds only a merge Forge has its own record of. Forge holds no merged pull request for this issue${held}`;
+  if (!args.claimedCommit) {
+    return 'No commit was named. Forge did not see this merge, so the mark is a claim.';
+  }
+  const held = args.claimHeldBy
+    ? ` ${args.claimHeldBy} has commit ${args.claimedCommit}. Forge did not check that it is this issue's work.`
+    : '';
+  return `Commit ${args.claimedCommit} was named, and is kept as a claim. Forge did not see this merge, so it is not the merge commit.${held}`;
 }
 
 async function readBack(

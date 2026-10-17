@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { healthWords, NOT_CHECKED } from '@forge/contracts/health-words';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices, projects, runners } from '../db/schema.js';
@@ -28,6 +29,20 @@ export interface StatusCard {
   configured: boolean;
   meta?: Record<string, unknown>;
 }
+
+/** What a card says to the person reading the Integrations tab: plain sentences, never a field. */
+export const CARD_WORDS = {
+  notSetUp: 'Not set up for this project.',
+  neverChecked: `${NOT_CHECKED} Test it under Manage.`,
+  disabled: 'Turned off.',
+  githubNotSetUp: 'No GitHub App is set up for this project.',
+  githubNoRepository: 'Set up, but no repository is chosen.',
+  noRunners: 'No runner works on this project yet.',
+  runnersOnline: (online: number, total: number) => `Online: ${online} of ${total} runners.`,
+  postgres: 'The core database answers.',
+  mcp: "Forge's MCP server is running.",
+  claude: 'Each runner signs in to Claude and keeps its own quota.',
+} as const;
 
 /** Best-effort `git remote get-url origin` against a local checkout. */
 async function readGitRemote(repoPath: string): Promise<string | null> {
@@ -107,7 +122,6 @@ export function buildProviderCards(opts: {
    *  MCP providers keep the bare key unless a second binding appears (keeps
    *  existing drill-ins stable, ISS-429). */
   alwaysEnvKeyed: boolean;
-  neverCheckedDetail: string;
   extraMeta?: (row: ProviderRow) => Record<string, unknown>;
 }): StatusCard[] {
   const caps = providerCapabilities(opts.provider);
@@ -117,7 +131,7 @@ export function buildProviderCards(opts: {
         key: opts.provider,
         label: opts.label,
         status: 'not_configured',
-        detail: `no ${opts.label} integration configured`,
+        detail: CARD_WORDS.notSetUp,
         lastSyncAt: null,
         configured: false,
         meta: { capabilities: caps },
@@ -133,10 +147,10 @@ export function buildProviderCards(opts: {
     label: envKeyed ? `${opts.label} (${stageLabel(row)})` : opts.label,
     status: healthToStatus(row.lastHealthStatus, row.active),
     detail: !row.active
-      ? 'integration disabled'
+      ? CARD_WORDS.disabled
       : row.lastHealthStatus
-        ? `last health: ${row.lastHealthStatus}`
-        : opts.neverCheckedDetail,
+        ? healthWords(row.lastHealthStatus)
+        : CARD_WORDS.neverChecked,
     lastSyncAt: toIso(row.lastHealthAt),
     configured: true,
     meta: {
@@ -213,10 +227,10 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
       ? healthToStatus(githubBinding.lastHealthStatus, githubBinding.active)
       : 'not_configured',
     detail: !githubBinding
-      ? 'no GitHub App is bound to this project'
+      ? CARD_WORDS.githubNotSetUp
       : !githubBinding.active
-        ? 'integration disabled'
-        : (githubRepository ?? remoteUrl ?? 'bound, no repository chosen'),
+        ? CARD_WORDS.disabled
+        : (githubRepository ?? remoteUrl ?? CARD_WORDS.githubNoRepository),
     lastSyncAt: toIso(githubBinding?.lastHealthAt ?? null),
     configured: Boolean(githubBinding),
     meta: {
@@ -241,7 +255,6 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
         provider: decl.provider,
         label: presentation.label,
         alwaysEnvKeyed: presentation.alwaysStageKeyed,
-        neverCheckedDetail: presentation.neverCheckedDetail,
         ...(presentation.cardMeta
           ? { extraMeta: (row: ProviderRow) => presentation.cardMeta?.(row.config ?? {}) ?? {} }
           : {}),
@@ -258,8 +271,8 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
     status: totalRunners === 0 ? 'not_configured' : onlineRunners > 0 ? 'connected' : 'attention',
     detail:
       totalRunners === 0
-        ? 'no runners bound to this project'
-        : `${onlineRunners}/${totalRunners} online`,
+        ? CARD_WORDS.noRunners
+        : CARD_WORDS.runnersOnline(onlineRunners, totalRunners),
     lastSyncAt: null,
     configured: totalRunners > 0,
     meta: { online: onlineRunners, total: totalRunners },
@@ -270,7 +283,7 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
     key: 'postgres',
     label: 'Postgres',
     status: 'connected',
-    detail: 'core database reachable',
+    detail: CARD_WORDS.postgres,
     lastSyncAt: null,
     configured: true,
   });
@@ -280,7 +293,7 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
     key: 'mcp',
     label: 'MCP server',
     status: 'connected',
-    detail: 'Forge MCP server mounted at /mcp',
+    detail: CARD_WORDS.mcp,
     lastSyncAt: null,
     configured: true,
   });
@@ -293,7 +306,7 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
     key: 'claude',
     label: 'Claude',
     status: 'not_configured',
-    detail: 'auth + quota managed per-runner (no core-side metric)',
+    detail: CARD_WORDS.claude,
     lastSyncAt: null,
     configured: false,
   });

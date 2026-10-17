@@ -1,5 +1,6 @@
 import { parsePath } from '@forge/contracts/document-patch';
 import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
+import { MARK_MERGED_ACTION, WHERE_IT_LANDED_FIELD, WORK_LANDS_ROW } from '@forge/contracts/mark-merged-words';
 import { claimConflictSentence } from './claim-conflict';
 import { ApiError, isReasonPhrase, unsaidFailure } from './client';
 
@@ -61,7 +62,7 @@ function mergeMarkSentence(err: ApiError): string | null {
       detailStr(err.details, 'held') === 'asserted'
         ? 'Its mark names no landing, so press Unmark first, then '
         : 'Use ';
-    return `Nothing on this issue says where the work landed, so it cannot close. ${unmarkFirst}Mark merged in the issue’s properties and fill in “Where it landed” — the live URL, CMS entry or storefront resource — then close. Use Dropped if it never landed.`;
+    return `Nothing on this issue says where the work landed, so it cannot close. ${unmarkFirst}${MARK_MERGED_ACTION} in the issue’s properties and fill in “${WHERE_IT_LANDED_FIELD}” — the live URL, CMS entry or storefront resource — then close. Use Dropped if it never landed.`;
   }
   if (err.code === 'MARK_ALREADY_STANDS') {
     const held = detailStr(err.details, 'heldLanding');
@@ -72,7 +73,7 @@ function mergeMarkSentence(err: ApiError): string | null {
 }
 
 /** The issue page's row a person sets an issue's own landing shape on; refusals point at it by name. */
-export const LANDING_SHAPE_ROW = 'Work lands';
+export const LANDING_SHAPE_ROW = WORK_LANDS_ROW;
 
 /**
  * The two project writes refused for the work they would strand, in the web's own words. Core's

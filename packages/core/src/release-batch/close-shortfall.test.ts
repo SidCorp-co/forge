@@ -4,6 +4,7 @@
  * chain is held against Postgres in `tests/integration/release-roster-unclosable-e2e.test.ts`.
  */
 
+import { markMergedSteps } from '@forge/contracts/mark-merged-words';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../db/client.js', () => ({ db: {} }));
@@ -60,7 +61,8 @@ describe('rosterCloseShortfalls', () => {
       detail: 'no landing',
       details: { shape: 'outside_git' },
     });
-    expect(found?.clears).toContain('landing');
+    // Repair 1 — the field is named as the page labels it, read from the page's own words.
+    expect(found?.clears).toBe(markMergedSteps(true));
     expect(unshipped).toHaveBeenCalledWith({}, { issueId: 'a', toStatus: 'closed' });
   });
 
@@ -68,6 +70,7 @@ describe('rosterCloseShortfalls', () => {
     unshipped.mockResolvedValue({ detail: 'no merged_at', details: { requires: 'mergedAt' } });
     const [found] = (await rosterCloseShortfalls(PROJECT, ['a'])).get('a') ?? [];
     expect(found).toMatchObject({ reason: 'not marked merged', details: { shape: 'git' } });
+    expect(found?.clears).toBe(markMergedSteps(false));
   });
 
   it('names open questions with the sentence the close prints', async () => {
@@ -93,7 +96,7 @@ describe('rosterCloseShortfalls', () => {
     const [found] = (await rosterCloseShortfalls(PROJECT, ['a'])).get('a') ?? [];
     expect(found).toMatchObject({
       code: 'ENTRY_CRITERIA_UNMET',
-      reason: 'missing what this project requires to close: plan, release_note',
+      reason: 'missing a plan and a release note, which this project requires before a close',
     });
     expect(evidence).toHaveBeenCalledWith(
       expect.objectContaining({

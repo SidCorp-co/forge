@@ -56,6 +56,20 @@ export type ReleaseStart =
   | { kind: 'ended'; status: JobStatus; at: string | null; why: string }
   | { kind: 'none'; why: string };
 
+/** Why a release job was held, in a reader's words; never the stored reason (ISS-1421 r4). */
+const HELD_BECAUSE: Readonly<Record<string, string>> = {
+  retry_rounds_exhausted: 'it failed on every retry',
+  non_retryable_terminal: 'it failed in a way Forge does not retry',
+  verify_unavailable: 'whether it had already finished could not be checked',
+  all_devices_exhausted: 'every box that could run it was rate-limited',
+  monthly_budget_exhausted: "the project's monthly budget was spent",
+  awaiting_decision: 'it waits on a decision a person owes on the issue',
+};
+
+export function heldBecause(reason: string | null | undefined): string {
+  return (reason && HELD_BECAUSE[reason]) ?? 'it was held for a reason Forge does not name';
+}
+
 export interface ReleaseJobRow {
   status: JobStatus;
   queuedAt: Date;
@@ -64,6 +78,8 @@ export interface ReleaseJobRow {
   heldBy: string | null;
   error: string | null;
   deviceName: string | null;
+  /** Why a `held` job is held; read only for that status. */
+  failureReason?: string | null;
 }
 
 const TAKEN_STATUSES: ReadonlySet<JobStatus> = new Set(['dispatched', 'running', 'done']);
@@ -132,6 +148,7 @@ async function readReleaseJob(runId: string): Promise<ReleaseJobRow | null> {
       heldBy: jobs.heldBy,
       error: jobs.error,
       deviceName: devices.name,
+      failureReason: jobs.failureReason,
     })
     .from(jobs)
     .leftJoin(devices, eq(devices.id, jobs.deviceId))
@@ -175,7 +192,10 @@ export async function readReleaseStart(
       return {
         kind: 'claimed',
         since,
-        why: 'A session holds this release and has not started it on a box yet.',
+        why:
+          row.status === 'held'
+            ? `Its job is held because ${heldBecause(row.failureReason)}.`
+            : 'A session holds this release and has not started it on a box yet.',
       };
     case 'waiting': {
       const handedBackAt = new Date(

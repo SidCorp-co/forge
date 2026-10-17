@@ -361,14 +361,14 @@ export async function applyMergeMarker(args: {
   }
 
   const labelled = stampResult.commitSha ?? claimedCommit ?? stampResult.claimedCommit;
-  const commitLabel = labelled ? ` commit=${labelled}` : '';
+  // The thread is read by people: words, never the action or field names an agent sends.
   const label =
     args.op === 'mark'
-      ? `mark_merged${args.target ? ` target=${args.target}` : ''}${commitLabel}`
-      : 'unmark';
+      ? `Marked merged${args.target ? ` into ${args.target}` : ''}${labelled ? `, at commit ${labelled}` : ''}`
+      : 'Merge mark removed';
   const unchanged =
     args.op === 'mark' && !stampResult.wrote
-      ? `\nNOT stamped by this call: merged_at was already ${stampResult.mergedAt?.toISOString() ?? 'set'} and the first stamp wins; \`unmark\` then \`mark\` is the only correction. It does not re-block dependents: those are held by the issue's STATUS and not by this column (ISS-1100)`
+      ? `\nNOT stamped by this call: this issue was already marked merged ${stampResult.mergedAt ? `at ${stampResult.mergedAt.toISOString()}` : 'before'}, and the first mark stands. Unmark, then Mark merged again, is the only correction. It does not re-block dependents: those are held by the issue's status, not by its merge mark.`
       : '';
   // Read off the ROW, not off the branch this call took: docs/modules/issues/merge-mark.md.
   const mark: MergeMarkKind =
@@ -392,7 +392,7 @@ export async function applyMergeMarker(args: {
   const auditComment = await writeAuditComment(
     before.id,
     args.actor.commentAuthorId,
-    `${label}${args.note ? ` — ${args.note}` : ''}${unchanged}${marked}`,
+    `${label}${args.note ? ` — ${args.note}` : '.'}${unchanged}${marked}`,
   );
   if (auditComment) {
     await hooks.emit('commentCreated', {

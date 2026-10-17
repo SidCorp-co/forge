@@ -251,8 +251,6 @@ export interface IntegrationPresentation {
    *  by design. Others keep the bare key until a second binding appears, which keeps an existing
    *  drill-in's bookmark working. */
   alwaysStageKeyed: boolean;
-  /** What the card says when the connection has never been health-checked. */
-  neverCheckedDetail: string;
   /** Non-secret config fields this provider's card surfaces. Never a credential. */
   cardMeta?: (config: Record<string, unknown>) => Record<string, unknown>;
 }
