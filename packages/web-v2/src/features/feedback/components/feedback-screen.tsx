@@ -8,8 +8,6 @@ import Link from "next/link";
 import {
   Badge,
   Button,
-  Card,
-  CardContent,
   EmptyState,
   ErrorState,
   MonoTag,
@@ -155,7 +153,7 @@ function ReportRow({
   );
 }
 
-function ReportCard({
+function ReportPhoneRow({
   report,
   slug,
   projectId,
@@ -166,8 +164,7 @@ function ReportCard({
 }) {
   const muted = !!report.reviewedAt;
   return (
-    <Card>
-      <CardContent>
+    <div className="py-3">
         <div className="flex flex-wrap items-center gap-1.5 mb-2">
           <Badge tone={kindToBadgeTone(report.kind)}>{report.kind.replace(/_/g, " ")}</Badge>
           <Badge tone={severityToBadgeTone(report.severity)}>{report.severity}</Badge>
@@ -184,8 +181,7 @@ function ReportCard({
             <SessionLink sessionId={report.sessionId} slug={slug} />
           </div>
         </div>
-      </CardContent>
-    </Card>
+    </div>
   );
 }
 
@@ -285,9 +281,9 @@ export function FeedbackScreen({ scope }: FeedbackScreenProps) {
           </div>
 
           {/* Mobile: stacked cards */}
-          <div className="space-y-2.5 md:hidden">
+          <div className="divide-y divide-line-subtle border-y border-line md:hidden">
             {reports.map((r) => (
-              <ReportCard key={r.id} report={r} slug={slug} projectId={projectId} />
+              <ReportPhoneRow key={r.id} report={r} slug={slug} projectId={projectId} />
             ))}
           </div>
         </>

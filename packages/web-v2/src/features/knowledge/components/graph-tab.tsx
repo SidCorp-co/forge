@@ -4,8 +4,6 @@
 import { useRef, useState } from "react";
 import {
   Button,
-  Card,
-  CardContent,
   EmptyState,
   ErrorState,
   Field,
@@ -118,9 +116,9 @@ export function GraphTab({ projectId, canManage }: GraphTabProps) {
             </Table>
           </div>
 
-          <div className="space-y-2.5 md:hidden">
+          <div className="divide-y divide-line-subtle border-y border-line md:hidden">
             {edges.map((edge) => (
-              <EdgeMobileCard
+              <EdgeMobileRow
                 key={edge.id}
                 edge={edge}
                 canManage={canManage}
@@ -257,7 +255,7 @@ function AddSourceDialog({
   );
 }
 
-function EdgeMobileCard({
+function EdgeMobileRow({
   edge,
   canManage,
   onDelete,
@@ -269,8 +267,7 @@ function EdgeMobileCard({
   pending: boolean;
 }) {
   return (
-    <Card>
-      <CardContent>
+    <div className="py-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-1.5">
@@ -289,7 +286,6 @@ function EdgeMobileCard({
             />
           )}
         </div>
-      </CardContent>
-    </Card>
+    </div>
   );
 }

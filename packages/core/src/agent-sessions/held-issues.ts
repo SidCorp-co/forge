@@ -22,9 +22,20 @@ export interface HeldIssueRow {
   title: string;
   status: string;
   issue_prefix: string | null;
-  /** False only where every ledger entry naming the issue says the run has returned its lease. */
+  /** False only where core holds no lease or job on the issue and the run has returned it. */
   held: boolean;
+  /** Every ledger entry of the session naming the issue says the run returned it; with `held`, the
+   *  box and core disagree. */
+  box_returned: boolean;
 }
+
+const boxReturned = sql`coalesce((
+      SELECT bool_and(coalesce((e.item ->> 'leaseReturned')::boolean, false))
+        FROM device_run_ledger lr
+       CROSS JOIN LATERAL jsonb_array_elements(lr.issues) AS e(item)
+       WHERE lr.session_id = s.id AND lr.project_id = s.project_id
+         AND e.item ->> 'issueKey' = 'ISS-' || issues.iss_seq -- ISS-992:canonical
+    ), false)`;
 
 /**
  * Every issue each session `where` admits holds, ordered by issue number. `where` reads the session
@@ -35,7 +46,7 @@ export function heldIssueRowsSql(where: SQL): SQL {
   return sql`
     SELECT l.session_id, s.title AS session_title, s.kind AS session_kind, d.name AS device_name,
            l.acquired_at, issues.id AS issue_id, issues.iss_seq, issues.title, issues.status,
-           p.issue_prefix, true AS held
+           p.issue_prefix, true AS held, ${boxReturned} AS box_returned
       FROM issue_leases l
       JOIN agent_sessions s ON s.id = l.session_id
       JOIN issues ON issues.project_id = l.project_id
@@ -45,7 +56,8 @@ export function heldIssueRowsSql(where: SQL): SQL {
      WHERE ${where}
     UNION ALL
     SELECT s.id, s.title, s.kind, d.name, coalesce(s.started_at, s.created_at),
-           issues.id, issues.iss_seq, issues.title, issues.status, p.issue_prefix, true
+           issues.id, issues.iss_seq, issues.title, issues.status, p.issue_prefix, true,
+           ${boxReturned}
       FROM agent_sessions s
       JOIN issues ON issues.project_id = s.project_id AND issues.id::text = s.metadata ->> 'issueId'
       JOIN projects p ON p.id = issues.project_id
@@ -58,7 +70,8 @@ export function heldIssueRowsSql(where: SQL): SQL {
     UNION ALL
     SELECT s.id, s.title, s.kind, d.name, coalesce(s.started_at, s.created_at),
            issues.id, issues.iss_seq, issues.title, issues.status, p.issue_prefix,
-           bool_or(NOT coalesce((e.item ->> 'leaseReturned')::boolean, false))
+           bool_or(NOT coalesce((e.item ->> 'leaseReturned')::boolean, false)),
+           bool_and(coalesce((e.item ->> 'leaseReturned')::boolean, false))
       FROM device_run_ledger lr
       JOIN agent_sessions s ON s.id = lr.session_id AND s.project_id = lr.project_id
       CROSS JOIN LATERAL jsonb_array_elements(lr.issues) AS e(item)
@@ -82,9 +95,11 @@ export interface SessionIssueRef {
   id: string;
   displayId: string;
   title: string;
+  boxReturned: boolean;
 }
 
-/** Each listed session's issues by session id, in issue order; a session holding none is absent. */
+/** Each listed session's issues by session id, in issue order; a session holding none is absent, and
+ *  an issue core let go is not the session's. */
 export async function loadSessionIssues(
   sessionIds: readonly string[],
 ): Promise<Map<string, SessionIssueRef[]>> {
@@ -98,12 +113,14 @@ export async function loadSessionIssues(
     heldIssueRowsSql(sql`s.id IN (${ids})`),
   )) as unknown as HeldIssueRow[];
   for (const r of rows) {
+    if (!r.held) continue;
     const held = out.get(r.session_id) ?? [];
     if (held.some((h) => h.id === r.issue_id)) continue;
     held.push({
       id: r.issue_id,
       displayId: formatIssueRef(r.issue_prefix, r.iss_seq),
       title: r.title,
+      boxReturned: r.box_returned,
     });
     out.set(r.session_id, held);
   }

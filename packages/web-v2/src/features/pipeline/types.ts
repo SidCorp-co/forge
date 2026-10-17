@@ -6,6 +6,11 @@ export interface HeldIssueRef {
   title: string;
 }
 
+/** `boxReturned`: the run reports the issue returned while core still holds it. */
+export interface SessionIssueRef extends HeldIssueRef {
+  boxReturned?: boolean;
+}
+
 /** What the box itself last reported about a session. */
 export interface SessionReport {
   incarnation: string;
@@ -29,7 +34,7 @@ export interface LiveSession {
   startedAt: string | null;
   lastHeartbeatAt: string | null;
   createdAt: string;
-  issues: HeldIssueRef[];
+  issues: SessionIssueRef[];
   report: SessionReport | null;
   /** How long core lets this session go unheard before it ends it; `null` where no silence does;
    *  absent on a read that predates it. */
@@ -49,6 +54,7 @@ export type Holder =
       sessionKind: string;
       deviceName: string | null;
       since: string;
+      boxReturned?: boolean;
     }
   | {
       by: "claim";

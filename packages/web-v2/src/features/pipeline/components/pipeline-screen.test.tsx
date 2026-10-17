@@ -8,7 +8,7 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api/client";
-import type { SessionsAndHolds } from "../types";
+import type { Holder, SessionsAndHolds } from "../types";
 import { PipelineScreen } from "./pipeline-screen";
 
 expect.extend(matchers);
@@ -63,7 +63,7 @@ const reading: SessionsAndHolds = {
       startedAt: "2026-10-15T01:00:00.000Z",
       lastHeartbeatAt: "2026-10-15T01:55:00.000Z",
       createdAt: "2026-10-15T01:00:00.000Z",
-      issues: [{ issueId: "i7", displayId: "ISS-7", title: "Seven" }],
+      issues: [{ issueId: "i7", displayId: "ISS-7", title: "Seven", boxReturned: false }],
       report: {
         incarnation: "live",
         work: "blocked",
@@ -88,6 +88,7 @@ const reading: SessionsAndHolds = {
           sessionKind: "run_session",
           deviceName: "box-a",
           since: "2026-10-15T01:00:05.000Z",
+          boxReturned: false,
         },
       ],
     },
@@ -156,6 +157,36 @@ describe("the Pipeline page with a reading", () => {
     expect(within(rows[0] as HTMLElement).getByText("which reading ships")).toBeInTheDocument();
     expect(within(rows[0] as HTMLElement).getByText("30m ago")).toBeInTheDocument();
     expect(within(rows[1] as HTMLElement).getByText("run: ISS-7 on box-a")).toBeInTheDocument();
+  });
+
+  // ISS-1228 round 12: core still held ISS-3 while r6's box called it returned, and the page said
+  // nothing of it. The session's row and the Held row both say it, in the runs tab's words.
+  it("names, on the session's row and its Held row, a lease the box returned and core still holds", () => {
+    const [master, run] = reading.sessions as [SessionsAndHolds["sessions"][number], SessionsAndHolds["sessions"][number]];
+    const [hold, person] = reading.holds as [SessionsAndHolds["holds"][number], SessionsAndHolds["holds"][number]];
+    const sentence = "the box says it returned ISS-7 · core still holds it · stop the session to free it";
+    query = {
+      ...query,
+      data: {
+        ...reading,
+        sessions: [master, { ...run, issues: [{ issueId: "i7", displayId: "ISS-7", title: "Seven", boxReturned: true }] }],
+        holds: [
+          { ...hold, holders: [{ ...(hold.holders[0] as Extract<Holder, { by: "session" }>), boxReturned: true }] },
+          person,
+        ],
+      },
+    };
+    screenFor();
+    const row = screen.getAllByRole("listitem").find((r) => r.getAttribute("data-session-id") === "s1") as HTMLElement;
+    expect(within(row).getByRole("link", { name: /^ISS-7/ })).toBeInTheDocument();
+    expect(within(row).getByText(sentence)).toBeInTheDocument();
+    const held = screen.getAllByRole("listitem").find((r) => r.getAttribute("data-issue-id") === "i7") as HTMLElement;
+    expect(within(held).getByText(new RegExp(`· ${sentence}$`))).toBeInTheDocument();
+  });
+
+  it("says nothing of a disagreement where the box and core agree", () => {
+    const { container } = screenFor();
+    expect(container.textContent).not.toMatch(/the box says it returned/);
   });
 
   it("names no stage, no pipeline run and no job anywhere, and offers no run control", () => {

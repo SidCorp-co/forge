@@ -316,7 +316,7 @@ export function RunnersScreen() {
           ) : rows.length === 0 ? (
             <EmptyState title={empty.title} message={empty.message} mascot={false} />
           ) : (
-            <Table>
+            <Table surface>
               <THead>
                 <TR>
                   <TH>Device</TH>

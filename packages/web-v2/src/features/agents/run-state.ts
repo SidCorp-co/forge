@@ -1,4 +1,5 @@
 import { lastReported, SILENCE_WORD, type SemanticTone, WORKING_WORD } from "@/design/status";
+import { leaseDisagreementText } from "@/features/sessions/lease-words";
 import { liveSessionWord } from "@/features/sessions/session-word";
 import {
   ENDING_AS_FAILED,
@@ -100,14 +101,10 @@ export function closeMarks(row: Pick<RunSessionRow, "sessionTerminalAt" | "workt
   };
 }
 
-/** The box and core disagreeing about a lease, which is the one a second run is refused on. */
-export function leaseDisagreementText(row: Pick<RunSessionRow, "issues">): string | null {
-  const held = leasesCoreStillHolds(row);
-  if (held.length === 0) return null;
-  return held.length === 1
-    ? `the box says it returned ${held[0]} · core still holds it`
-    : `the box says it returned ${held.join(", ")} · core still holds them`;
-}
+/** The box and core disagreeing about a lease, which is the one a second run is refused on, in the
+ *  words every surface showing the hold uses. */
+export const runLeaseDisagreementText = (row: Pick<RunSessionRow, "issues">): string | null =>
+  leaseDisagreementText(leasesCoreStillHolds(row));
 
 /** Core reads the box as offline, so nothing it last said is true now. */
 export const boxOffline = (row: Pick<RunSessionRow, "deviceStatus">): boolean =>

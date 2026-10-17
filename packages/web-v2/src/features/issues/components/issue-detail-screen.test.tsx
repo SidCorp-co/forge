@@ -51,6 +51,7 @@ vi.mock("@/features/shell", () => ({ buildShareLink: (p: string) => p, useRecent
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock("./awaiting-release-banner", () => ({ AwaitingReleaseBanner: () => null }));
+vi.mock("./lease-disagreement-notice", () => ({ LeaseDisagreementNotice: () => null }));
 vi.mock("./use-guarded-transition", () => ({
   useGuardedTransition: () => ({ requestTransition, requestParkLeave: vi.fn(), dialog: null, isPending: false }),
 }));

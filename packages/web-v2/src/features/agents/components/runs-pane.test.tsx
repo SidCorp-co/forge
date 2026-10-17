@@ -96,6 +96,25 @@ describe("the Agents runs tab with nothing running on a box", () => {
     ]);
   });
 
+  // Round 12: at 390 some rows dropped the age to a line of its own and others did not. Every row
+  // holds its outcome and age in one unbreakable block beside what the run worked.
+  it("keeps every closed run's outcome and age together on one line, whatever the run worked", () => {
+    state.runs = [
+      run({ id: "a", issueTitle: "a title long enough to wrap twice at a phone's width, and then some more" }),
+      run({ id: "b", issueId: null, issueRef: null, issueTitle: null, kind: "pm" }),
+    ];
+    state.total = 2;
+    pane();
+    for (const row of within(screen.getByRole("list", { name: "Closed runs" })).getAllByRole("listitem")) {
+      const outcome = row.querySelector("[data-run-outcome]") as HTMLElement;
+      expect(outcome.className).toMatch(/\bflex-none\b/);
+      expect(outcome.className).toMatch(/\bwhitespace-nowrap\b/);
+      expect(outcome.querySelector("[data-run-status]")).not.toBeNull();
+      expect(outcome).toHaveTextContent(/ago$/);
+      expect(row.className).not.toMatch(/flex-wrap/);
+    }
+  });
+
   it("leaves an open run out of the closed list", () => {
     state.runs = [run({ id: "o", status: "running", finishedAt: null }), run({ id: "c", issueRef: "ISS-9" })];
     state.total = 2;
@@ -178,6 +197,29 @@ describe("a closed run a box opened over issues (ISS-1228 criterion 37)", () => 
     expect(within(list).queryByText("System run")).not.toBeInTheDocument();
   });
 
+  // Round 12: judge-31 read "ISS-2 Completed" here while a job run beside it named its issue's title.
+  it("shows each issue's title beside its key, as a job run does", () => {
+    state.runs = [
+      run({
+        id: "rs",
+        issueId: null,
+        issueRef: null,
+        issueTitle: null,
+        kind: "system",
+        lane: "run_session",
+        group: { source: "run_group", issues: ["ISS-2", "ISS-3"], detail: null },
+        groupTitles: { "ISS-2": "j31 bravo", "ISS-3": "j31 charlie" },
+      }),
+    ];
+    state.total = 1;
+    pane();
+    const row = within(screen.getByRole("list", { name: "Closed runs" })).getByRole("listitem");
+    for (const [key, title] of [["ISS-2", "j31 bravo"], ["ISS-3", "j31 charlie"]]) {
+      const link = within(row).getByRole("link", { name: key as string });
+      expect(link.parentElement).toHaveTextContent(`${key}${title}`);
+    }
+  });
+
   it("still names the kind of a closed run that carries no issue and no group", () => {
     state.runs = [
       run({
@@ -251,6 +293,32 @@ describe("the runs a box reports (ISS-1228 round 8)", () => {
     expect(within(list).getByRole("link", { name: "ISS-12" })).toHaveAttribute("href", "/projects/qa/issues/ISS-12");
   });
 
+  // Round 12: a run a box reports showed only its keys.
+  it("shows each issue's title beside its key", () => {
+    state.ledger = [
+      ledgerRow({
+        issues: [
+          { issueKey: "ISS-2", leaseReturned: false, title: "j31 bravo" },
+          { issueKey: "ISS-3", leaseReturned: false, title: "j31 charlie" },
+        ],
+      }),
+    ];
+    pane();
+    const list = screen.getByRole("list", { name: "Runs a box reports" });
+    expect(within(list).getByRole("link", { name: /^ISS-2\s*j31 bravo$/ })).toHaveAttribute("href", "/projects/qa/issues/ISS-2");
+    expect(within(list).getByRole("link", { name: /^ISS-3\s*j31 charlie$/ })).toBeInTheDocument();
+  });
+
+  it("keeps the box's name and the age on one line", () => {
+    state.ledger = [ledgerRow({ deviceName: "a-box-with-a-rather-long-name" })];
+    pane();
+    const box = within(screen.getByRole("list", { name: "Runs a box reports" })).getByText("a-box-with-a-rather-long-name");
+    const line = box.parentElement as HTMLElement;
+    expect(line.className).toMatch(/\bflex\b/);
+    expect(line.className).not.toMatch(/flex-col|flex-wrap/);
+    expect(line).toHaveTextContent(/ago$/);
+  });
+
   it("draws each run as a flush row under a hairline, not a bordered card", () => {
     state.ledger = [ledgerRow({})];
     pane();
@@ -289,7 +357,9 @@ describe("what a box and core each say of a run (ISS-1228 round 11)", () => {
     ];
     pane();
     expect(row()).toHaveTextContent("leases 1/2");
-    expect(row()).toHaveTextContent("the box says it returned ISS-4 · core still holds it");
+    expect(row()).toHaveTextContent(
+      "the box says it returned ISS-4 · core still holds it · stop the session to free it",
+    );
   });
 
   it("names the box on the row at every width, never hidden below sm", () => {

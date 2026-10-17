@@ -142,6 +142,40 @@ describe("Table — size changes without a scroll", () => {
   });
 });
 
+// ISS-1228 round 12: the frame drew a rounded, bordered white box around every table at md+, which
+// read as a card under the flat box strip on Agents > Sessions (owner's flat-UI rule).
+describe("Table — drawn flush on the page", () => {
+  it("draws no frame, corner or fill of its own, only the hairline that ends it", () => {
+    Object.assign(geometry, { scrollWidth: 800, clientWidth: 800 });
+    const { container } = render(<Sample />);
+    const frame = container.firstElementChild as HTMLElement;
+    for (const boxy of ["rounded-lg", "border", "bg-surface"]) expect(frame).not.toHaveClass(boxy);
+    expect(frame).toHaveClass("border-b", "border-line");
+    expect(frame.className).not.toMatch(/(^|\s)rounded/);
+  });
+
+  // The Devices table on Runners sits inside a card: a page-coloured sticky cell or cue there reads as
+  // a grey band over the white surface.
+  it("paints its opaque parts the page's colour, or the card's when it rests on a surface", () => {
+    Object.assign(geometry, { scrollWidth: 1218, clientWidth: 882 });
+    const page = render(<Sample />).container;
+    expect(page.firstElementChild).toHaveAttribute("data-table-on", "page");
+    expect(page.querySelector("[data-table-edge=end]")).toHaveStyle({ "--cue-fill": "var(--bg-app)" });
+    const card = render(
+      <Table surface stickyStart>
+        <TBody>
+          <TR>
+            <TD sticky>pinned</TD>
+          </TR>
+        </TBody>
+      </Table>,
+    ).container;
+    expect(card.firstElementChild).toHaveAttribute("data-table-on", "surface");
+    expect(card.querySelector("[data-table-edge=end]")).toHaveStyle({ "--cue-fill": "var(--bg-surface)" });
+    expect(screen.getByText("pinned")).toHaveClass("in-data-[table-on=surface]:bg-surface");
+  });
+});
+
 describe("Table — the table element", () => {
   it("still receives className and every other prop", () => {
     Object.assign(geometry, { scrollWidth: 800, clientWidth: 800 });
@@ -179,7 +213,7 @@ describe("Table — a sticky first column holds the start edge", () => {
   it("gives the sticky cells, and only them, the classes that pin them to the start edge", () => {
     render(<Stuck />);
     for (const name of ["Name", "first"]) {
-      expect(screen.getByText(name)).toHaveClass("sticky", "left-0", "bg-surface");
+      expect(screen.getByText(name)).toHaveClass("sticky", "left-0", "bg-app");
     }
     for (const name of ["Other", "second"]) expect(screen.getByText(name)).not.toHaveClass("sticky");
   });

@@ -76,6 +76,7 @@ import { CommentThread } from "./comment-thread";
 import { DescriptionSection } from "./description-section";
 import { FlatSection } from "./flat-section";
 import { ReleaseNoteSection } from "./release-note-section";
+import { LeaseDisagreementNotice } from "./lease-disagreement-notice";
 import { type LiveAgentState, LiveAgentPanel } from "./live-agent-panel";
 import { ModulePicker } from "./module-picker";
 import { PropertiesRail } from "./properties-rail";
@@ -336,6 +337,8 @@ export function IssueDetailScreen({
           />
 
           {reasonDialog}
+
+          <LeaseDisagreementNotice projectId={projectId} issueId={issue.id} slug={slug} />
 
           {agentState && (
             <LiveAgentPanel

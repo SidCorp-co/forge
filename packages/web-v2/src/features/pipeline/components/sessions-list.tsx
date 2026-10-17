@@ -10,6 +10,7 @@ import {
   sessionName,
   waitingOnOf,
 } from "../derive";
+import { leaseDisagreementText } from "@/features/sessions/lease-words";
 import { liveSessionWord } from "@/features/sessions/session-word";
 import type { LiveSession } from "../types";
 
@@ -36,6 +37,9 @@ function SessionRow({
   const waiting = waitingOnOf(session);
   const checkIn = checkInOf(session, now);
   const name = sessionName(session);
+  const disagreement = leaseDisagreementText(
+    session.issues.filter((i) => i.boxReturned).map((i) => i.displayId),
+  );
   return (
     <li className={`flex flex-col gap-1.5 py-3 ${COLUMNS} sm:items-baseline`} data-session-id={session.id}>
       <div className={`min-w-0 ${depth === 1 ? "sm:pl-5" : ""}`}>
@@ -50,29 +54,32 @@ function SessionRow({
           {sessionKindLabel(session.kind)} · {session.deviceName ?? "an unnamed box"}
         </span>
       </div>
-      <div className="flex min-w-0 items-baseline">
-        <Label>On</Label>
-        {session.issues.length === 0 ? (
-          <span className="fg-body-sm">No issue held</span>
-        ) : (
-          <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-1">
-            {session.issues.map((issue) => (
-              <Link
-                key={issue.issueId}
-                href={`/projects/${slug}/issues/${issue.issueId}`}
-                className="inline-flex min-w-0 max-w-full items-baseline gap-1.5 hover:underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-                title={issue.title}
-              >
-                <span className="flex-none whitespace-nowrap">
-                  <MonoTag>{issue.displayId}</MonoTag>
-                </span>
-                {session.issues.length === 1 && (
-                  <span className="fg-body-sm min-w-0 truncate">{issue.title}</span>
-                )}
-              </Link>
-            ))}
-          </span>
-        )}
+      <div className="min-w-0">
+        <div className="flex min-w-0 items-baseline">
+          <Label>On</Label>
+          {session.issues.length === 0 ? (
+            <span className="fg-body-sm">No issue held</span>
+          ) : (
+            <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-1">
+              {session.issues.map((issue) => (
+                <Link
+                  key={issue.issueId}
+                  href={`/projects/${slug}/issues/${issue.issueId}`}
+                  className="inline-flex min-w-0 max-w-full items-baseline gap-1.5 hover:underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+                  title={issue.title}
+                >
+                  <span className="flex-none whitespace-nowrap">
+                    <MonoTag>{issue.displayId}</MonoTag>
+                  </span>
+                  {session.issues.length === 1 && (
+                    <span className="fg-body-sm min-w-0 truncate">{issue.title}</span>
+                  )}
+                </Link>
+              ))}
+            </span>
+          )}
+        </div>
+        {disagreement && <p className="fg-caption mt-1 break-words text-muted">{disagreement}</p>}
       </div>
       <div className="fg-body-sm flex items-center gap-1.5 text-fg">
         <Label>Doing</Label>

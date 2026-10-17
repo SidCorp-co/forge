@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useLayoutEffect, useRef, useState } from "react";
 import { MonoTag } from "@/design";
+import { leaseDisagreementText } from "@/features/sessions/lease-words";
 import { holderLine, orderHolds } from "../derive";
 import type { HeldIssue, Holder, LiveSession } from "../types";
 
@@ -14,6 +15,13 @@ function holderKey(holder: Holder): string {
   if (holder.by === "session") return `session-${holder.sessionId}`;
   if (holder.by === "claim") return `claim-${holder.holder}`;
   return `person-${holder.status}`;
+}
+
+/** Why the holder holds the issue; a session whose run reports the issue returned while core still
+ *  holds it says so after what the session is doing, in the runs tab's words (ISS-1228 round 12). */
+function whyOf(holder: Holder, displayId: string, why: string): string {
+  if (holder.by !== "session" || !holder.boxReturned) return why;
+  return `${why} · ${leaseDisagreementText([displayId])}`;
 }
 
 function Label({ children }: { children: string }) {
@@ -89,6 +97,7 @@ function HoldRow({
       <ul className="flex min-w-0 flex-col gap-1.5">
         {hold.holders.map((holder) => {
           const line = holderLine(holder, now, sessions);
+          const why = whyOf(holder, hold.displayId, line.why);
           return (
             <li key={holderKey(holder)} className={`fg-body-sm flex min-w-0 flex-col gap-0.5 ${INNER}`}>
               <span className="min-w-0 text-fg">
@@ -97,7 +106,7 @@ function HoldRow({
               </span>
               <span className="flex min-w-0 items-baseline">
                 <Label>Why</Label>
-                <ClampedReason key={line.why} text={line.why} />
+                <ClampedReason key={why} text={why} />
               </span>
               <span>
                 <Label>Since</Label>

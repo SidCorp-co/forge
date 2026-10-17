@@ -399,13 +399,13 @@ function RunsTab({
   return (
     <>
       {/* Mobile: stacked cards */}
-      <div className="flex flex-col gap-2.5 sm:hidden">
+      <div className="flex flex-col divide-y divide-line-subtle border-y border-line sm:hidden">
         {rows.map((r) => (
           <button
             type="button"
             key={`${r.runId}-${r.step}-${r.startedAt}`}
             onClick={() => onOpen(r.runId)}
-            className="flex flex-col gap-1.5 rounded-md border border-line bg-surface p-3 text-left hover:bg-hover"
+            className="flex flex-col gap-1.5 py-3 text-left hover:bg-hover"
           >
             <div className="flex items-center gap-2">
               <span className="fg-body-sm text-fg">{jobKindLabel(r.step)}</span>

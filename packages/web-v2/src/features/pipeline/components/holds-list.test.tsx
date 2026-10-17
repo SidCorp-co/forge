@@ -6,7 +6,7 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { HeldIssue, LiveSession } from "../types";
+import type { HeldIssue, Holder, LiveSession } from "../types";
 import { HoldsList } from "./holds-list";
 
 expect.extend(matchers);
@@ -116,6 +116,7 @@ describe("a Held row a session holds (ISS-1228 criterion 35)", () => {
         sessionKind: "run_session",
         deviceName: "box-a",
         since: "2026-10-15T04:00:00Z",
+        boxReturned: false,
       },
     ],
   };
@@ -124,5 +125,20 @@ describe("a Held row a session holds (ISS-1228 criterion 35)", () => {
     render(<HoldsList holds={[bySession]} sessions={[quiet]} slug="pair" now={NOW} />);
     expect(screen.getByText("Last reported working · 3m ago")).toBeInTheDocument();
     expect(screen.queryByText(/is working it/)).not.toBeInTheDocument();
+  });
+
+  // Round 12: judge-31 saw ISS-3 held by r6 reading "Why: Working" while r6's box said it returned
+  // ISS-3. Core's hold stands, and the row says what the session is doing, then the disagreement.
+  it("names a lease its run reports returned while core holds it, after what the session is doing", () => {
+    const returned: HeldIssue = {
+      ...bySession,
+      holders: [{ ...(bySession.holders[0] as Extract<Holder, { by: "session" }>), boxReturned: true }],
+    };
+    render(<HoldsList holds={[returned]} sessions={[quiet]} slug="pair" now={NOW} />);
+    expect(
+      screen.getByText(
+        "Last reported working · 3m ago · the box says it returned ISS-1 · core still holds it · stop the session to free it",
+      ),
+    ).toBeInTheDocument();
   });
 });

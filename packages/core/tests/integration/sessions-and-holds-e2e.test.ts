@@ -115,6 +115,28 @@ describe('readSessionsAndHolds — sessions (ISS-1228)', () => {
     expect(out.holds[0]?.holders).toHaveLength(1);
   });
 
+  // ISS-1228 round 12: the route answered `report.since`, which the reference did not declare.
+  it("answers exactly the shape its reference declares, a box's report and a returned lease included", async () => {
+    await fx.seedIssue({ status: 'in_progress' });
+    await fx.seedIssueLease(fx.lastSeq, 'running');
+    await fx.db.execute(sql`
+      INSERT INTO device_run_ledger (device_id, run_id, project_id, session_id, worktree_path, boot_id,
+                                     incarnation, work, blocker_kind, waiting_on, issues, observed_at)
+      SELECT s.device_id, 'run-shape', s.project_id, s.id, '/w', 'boot-1', 'live', 'blocked', 'human',
+             'a decision', ${JSON.stringify([{ issueKey: `ISS-${fx.lastSeq}`, leaseReturned: true }])}::jsonb,
+             now()
+        FROM agent_sessions s WHERE s.project_id = ${fx.projectId} AND s.kind = 'run_session'
+    `);
+    const out = await read();
+    expect(out.sessions[0]?.report?.since).toEqual(expect.any(String));
+    expect(out.sessions[0]?.issues[0]?.boxReturned).toBe(true);
+    const { sessionsAndHoldsSchema } = await import(
+      '../../src/pipeline/sessions-and-holds-routes-reference.js'
+    );
+    const parsed = sessionsAndHoldsSchema.safeParse(JSON.parse(JSON.stringify(out)));
+    expect(parsed.success ? [] : parsed.error.issues).toEqual([]);
+  });
+
   it('holds nothing for a lease whose session has ended', async () => {
     await fx.seedIssue({ status: 'in_progress' });
     await fx.seedIssueLease(fx.lastSeq, 'failed');

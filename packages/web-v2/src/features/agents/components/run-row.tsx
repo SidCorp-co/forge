@@ -11,9 +11,9 @@ import {
   disagreement,
   disagreementText,
   endReasonText,
-  leaseDisagreementText,
   offlineText,
   pendingReasonText,
+  runLeaseDisagreementText,
   silenceText,
   stateLabelAt,
 } from "../run-state";
@@ -75,7 +75,7 @@ function coreReadingLines(row: RunSessionRow, now: number): { lines: string[]; s
     silence,
     split && disagreementText(split, row),
     offlineText(row),
-    leaseDisagreementText(row),
+    runLeaseDisagreementText(row),
     ended,
     note,
   ].filter(Boolean) as string[];
@@ -129,8 +129,9 @@ function WaitingOn({ row, who }: { row: RunSessionRow; who: string }) {
 }
 
 /**
- * One run, on two lines from `sm` up: what it is (its state, its issues, the close marks, its box and
- * when it last reported), and beneath, full width, what it waits on and core's reading of it. The
+ * One run, on two lines from `sm` up: what it is (its state, its issues by key and title, the close
+ * marks, its box and when it last reported), and beneath, full width, what it waits on and core's
+ * reading of it. The
  * readings never share a line with the issue keys, and the key block keeps its own width, so no
  * reading can be drawn over a key however long it runs. Below `sm` every part stacks.
  */
@@ -149,9 +150,12 @@ export function RunRow({ row, now, slug }: RunRowProps) {
             <Link
               key={i.issueKey}
               href={`/projects/${slug}/issues/${encodeURIComponent(i.issueKey)}`}
-              className="flex-none hover:underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+              className="inline-flex min-w-0 max-w-full items-baseline gap-1.5 hover:underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
             >
-              <MonoTag>{i.issueKey}</MonoTag>
+              <span className="flex-none">
+                <MonoTag>{i.issueKey}</MonoTag>
+              </span>
+              {i.title && <span className="fg-body-sm min-w-0 truncate text-muted">{i.title}</span>}
             </Link>
           ))
         )}
@@ -163,11 +167,14 @@ export function RunRow({ row, now, slug }: RunRowProps) {
         </span>
       )}
       <Marks row={row} />
-      <span className="fg-caption break-words text-subtle sm:max-w-[12rem]">
-        {row.deviceName ?? row.deviceId}
-      </span>
-      <span className="fg-caption flex-none whitespace-nowrap text-subtle">
-        {formatRelativeTime(row.observedAt)}
+      {/* The box and the age share one line at every width, the age never wrapping off alone. */}
+      <span className="flex min-w-0 items-baseline gap-2">
+        <span className="fg-caption min-w-0 break-words text-subtle sm:max-w-[12rem]">
+          {row.deviceName ?? row.deviceId}
+        </span>
+        <span className="fg-caption flex-none whitespace-nowrap text-subtle">
+          {formatRelativeTime(row.observedAt)}
+        </span>
       </span>
     </li>
   );

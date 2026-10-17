@@ -54,23 +54,42 @@ function IssueLink({ slug, href, label }: { slug: string; href: string; label: s
   );
 }
 
+/** One issue a closed run worked, by its key and, where core knows it, its title. */
+function WorkedIssue({ slug, href, label, title }: { slug: string; href: string; label: string; title: string | null }) {
+  return (
+    <span className="flex min-w-0 max-w-full items-baseline gap-2">
+      <IssueLink slug={slug} href={href} label={label} />
+      {title && <span className="fg-body-sm min-w-0 truncate text-muted">{title}</span>}
+    </span>
+  );
+}
+
 /**
  * What a closed run worked: its one issue, or each issue a box opened it over (an issue page takes a
- * display key as its id, ISS-1160), and only where it names neither, the kind of run it was.
+ * display key as its id, ISS-1160), each with its title as a job run shows its one issue's, and only
+ * where it names neither, the kind of run it was.
  */
 function ClosedRunWork({ run, slug }: { run: PipelineRunListItem; slug: string }) {
-  if (run.issueId && run.issueRef) return <IssueLink slug={slug} href={run.issueId} label={run.issueRef} />;
+  if (run.issueId && run.issueRef) {
+    return <WorkedIssue slug={slug} href={run.issueId} label={run.issueRef} title={run.issueTitle} />;
+  }
   const group = run.group.issues;
   if (group.length > 0) {
     return (
-      <span className="flex flex-none flex-wrap items-baseline gap-1.5">
+      <span className="flex min-w-0 flex-col gap-1">
         {group.map((key) => (
-          <IssueLink key={key} slug={slug} href={encodeURIComponent(key)} label={key} />
+          <WorkedIssue
+            key={key}
+            slug={slug}
+            href={encodeURIComponent(key)}
+            label={key}
+            title={run.groupTitles?.[key] ?? null}
+          />
         ))}
       </span>
     );
   }
-  return <span className="fg-body-sm flex-none text-fg">{RUN_KIND_WORD[run.kind] ?? run.kind}</span>;
+  return <span className="fg-body-sm text-fg">{RUN_KIND_WORD[run.kind] ?? run.kind}</span>;
 }
 
 /**
@@ -123,14 +142,17 @@ function NothingRunning({ projectId, slug }: { projectId: string; slug: string }
           </h3>
           <ul aria-label="Closed runs" className="flex flex-col divide-y divide-line border-y border-line">
             {closed.map((r) => (
-              <li key={r.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2">
-                <ClosedRunWork run={r} slug={slug} />
-                <span className="fg-body-sm min-w-0 flex-1 basis-40 truncate text-muted">{r.issueTitle ?? ""}</span>
-                <span data-run-status className="fg-body-sm flex-none text-fg">
-                  {CLOSED_STATUS_WORD[r.status]}
+              // One rule at every width: what the run worked takes the rest of the line and wraps
+              // within itself; its outcome and age hold one line of their own at the right.
+              <li key={r.id} className="flex items-baseline gap-3 py-2">
+                <span className="min-w-0 flex-1">
+                  <ClosedRunWork run={r} slug={slug} />
                 </span>
-                <span className="fg-caption flex-none tabular-nums">
-                  {formatRelativeTime(r.finishedAt ?? r.startedAt)}
+                <span data-run-outcome className="flex flex-none items-baseline gap-3 whitespace-nowrap">
+                  <span data-run-status className="fg-body-sm text-fg">
+                    {CLOSED_STATUS_WORD[r.status]}
+                  </span>
+                  <span className="fg-caption tabular-nums">{formatRelativeTime(r.finishedAt ?? r.startedAt)}</span>
                 </span>
               </li>
             ))}

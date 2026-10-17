@@ -27,6 +27,7 @@ import { type RunPolicy, readRunPolicy } from '../devices/policy-copy.js';
 import { RETRY_MAX_ROUNDS, readAutoRetryPayload } from '../jobs/retry.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { usageSessionMatch } from '../usage-records/rollup.js';
+import { groupTitlesOf, loadGroupTitles } from './runs-group-titles.js';
 import {
   groupOf,
   laneOf,
@@ -130,6 +131,8 @@ export interface PipelineRunSummary {
   issueRef: string | null;
   /** ISS-460 — title of the run's issue; null when the run has no issue. */
   issueTitle: string | null;
+  /** ISS-1228 — each `group` issue's title by its key; a key no issue of the project has is absent. */
+  groupTitles: Record<string, string>;
   kind: PipelineRunKind;
   status: PipelineRunStatus;
   currentStep: string | null;
@@ -354,6 +357,7 @@ function rowToListItem(row: RunRow): PipelineRunListItem {
     // ISS-460 — resolved by callers that join `issues`; default null here.
     issueRef: null,
     issueTitle: null,
+    groupTitles: {},
     kind: row.kind,
     status: row.status,
     startedAt: toIsoRequired(row.startedAt),
@@ -441,6 +445,7 @@ export async function loadPipelineRunSummary(runId: string): Promise<PipelineRun
     loadRunLivenessByRunIds([runId]),
     loadOpenPhaseByRunIds(listItem.lane === 'run_session' ? [runId] : []),
   ]);
+  const groupTitles = groupTitlesOf(listItem, await loadGroupTitles([listItem]));
 
   const ref = row.issueId ? issueRefs.get(row.issueId) : undefined;
   const residentMaster = residentMasterOn(listItem.lane, liveMap.get(runId));
@@ -455,6 +460,7 @@ export async function loadPipelineRunSummary(runId: string): Promise<PipelineRun
     ),
     issueRef: ref?.issueRef ?? null,
     issueTitle: ref?.issueTitle ?? null,
+    groupTitles,
     liveJobs: liveMap.get(runId)?.liveJobs ?? 0,
     lastSessionBeatAt: liveMap.get(runId)?.beat ?? null,
     residentMaster,
@@ -519,11 +525,12 @@ export async function listItemsFromRows(rows: RunRow[]): Promise<PipelineRunList
   const ids = rows.map((r) => r.id);
   const items = rows.map(rowToListItem);
   const issueIds = [...new Set(rows.map((r) => r.issueId).filter((v): v is string => v != null))];
-  const [costMap, issueRefs, liveMap, openPhases] = await Promise.all([
+  const [costMap, issueRefs, liveMap, openPhases, groupTitles] = await Promise.all([
     loadCostByRunIds(ids),
     loadIssueRefs(issueIds),
     loadRunLivenessByRunIds(ids),
     loadOpenPhaseByRunIds(items.filter((i) => i.lane === 'run_session').map((i) => i.id)),
+    loadGroupTitles(items),
   ]);
   return items.map((item, index) => {
     const r = rows[index] as RunRow;
@@ -534,6 +541,7 @@ export async function listItemsFromRows(rows: RunRow[]): Promise<PipelineRunList
       ...withStep(item.lane, r.currentStep, openPhases.get(r.id), item.group, residentMaster),
       issueRef: ref?.issueRef ?? null,
       issueTitle: ref?.issueTitle ?? null,
+      groupTitles: groupTitlesOf(item, groupTitles),
       cost: costMap.get(r.id) ?? EMPTY_COST,
       liveJobs: liveMap.get(r.id)?.liveJobs ?? 0,
       lastSessionBeatAt: liveMap.get(r.id)?.beat ?? null,

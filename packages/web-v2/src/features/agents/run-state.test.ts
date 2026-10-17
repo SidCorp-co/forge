@@ -3,7 +3,7 @@
 // line, what it last reported; a run with no process keeps the run's own words.
 
 import { describe, expect, it } from "vitest";
-import { closeMarks, disagreementText, leaseDisagreementText, offlineText, pulseText, stateLabelAt } from "./run-state";
+import { closeMarks, disagreementText, offlineText, pulseText, runLeaseDisagreementText, stateLabelAt } from "./run-state";
 
 const NOW = Date.parse("2026-10-16T10:00:00.000Z");
 const HEARD = new Date(NOW - 10_000).toISOString();
@@ -96,7 +96,9 @@ describe("an offline box and a lease core still holds", () => {
       returned: 1,
       total: 2,
     });
-    expect(leaseDisagreementText({ issues })).toBe("the box says it returned ISS-4 · core still holds it");
-    expect(leaseDisagreementText({ issues: [issues[1]] })).toBeNull();
+    expect(runLeaseDisagreementText({ issues })).toBe(
+      "the box says it returned ISS-4 · core still holds it · stop the session to free it",
+    );
+    expect(runLeaseDisagreementText({ issues: [issues[1]] })).toBeNull();
   });
 });

@@ -127,7 +127,7 @@ export interface SessionRow {
   /** How long core lets this session go unheard before ending it; `null` where nothing does. */
   silenceLimitMs?: number | null;
   /** Every issue the session holds — its leases and its job's issue — as the list names them. */
-  issues?: Array<{ id: string; displayId: string; title: string }>;
+  issues?: Array<{ id: string; displayId: string; title: string; boxReturned?: boolean }>;
   runtimeState?: string | null;
   /** One-line preview of the last user/assistant turn, attached by the list
    *  endpoint (ISS-698). Null when no previewable turn exists yet (e.g. a

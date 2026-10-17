@@ -48,6 +48,9 @@ export const pipelineRunListItemSchema = z.object({
   runIssues: z.array(z.string()),
   issueRef: z.string().nullable(),
   issueTitle: z.string().nullable(),
+  groupTitles: z
+    .record(z.string(), z.string())
+    .describe("each `group` issue's title by its key; a key no issue of the project has is absent"),
   kind: z.enum(pipelineRunKinds),
   status: z.enum(pipelineRunStatuses),
   currentStep: z.string().nullable(),
