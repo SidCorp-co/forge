@@ -68,7 +68,6 @@ async function shortfallsOf(
         n === 1
           ? 'Answer it in its "Decision waiting" card on the issue\'s page.'
           : 'Answer them in their "Decision waiting" cards on the issue\'s page.',
-      // The banner sits right under the question cards.
       clearsHere:
         n === 1
           ? 'Answer it in the Decision waiting card above.'

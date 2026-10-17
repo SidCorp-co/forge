@@ -16,12 +16,12 @@ const { defaultConnectionDisplayName } = await import('./route-helpers.js');
 
 describe('defaultConnectionDisplayName', () => {
   it('names a new connection by the host its owner typed, without the provider id', () => {
-    expect(
-      defaultConnectionDisplayName('coolify', { baseUrl: 'https://coolify.example.com/' }),
-    ).toBe('coolify.example.com');
+    expect(defaultConnectionDisplayName({ baseUrl: 'https://coolify.example.com/' })).toBe(
+      'coolify.example.com',
+    );
   });
 
   it('answers null where the config says nothing that tells one connection from another', () => {
-    expect(defaultConnectionDisplayName('coolify', {})).toBeNull();
+    expect(defaultConnectionDisplayName({})).toBeNull();
   });
 });
