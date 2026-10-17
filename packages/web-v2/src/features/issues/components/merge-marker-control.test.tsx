@@ -8,7 +8,7 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api/client";
-import { MergeMarkerControl } from "./merge-marker-control";
+import { BLURB, LANDING_BLURB, MergeMarkerControl } from "./merge-marker-control";
 
 expect.extend(matchers);
 
@@ -93,7 +93,7 @@ describe("MergeMarkerControl on a project whose work lands outside git (ISS-1327
 
   it("asks where the work landed, as a URL, a CMS entry or a storefront resource", () => {
     open();
-    expect(screen.getByText(/the live URL, the CMS entry or the storefront resource/)).toBeInTheDocument();
+    expect(screen.getByText(/the live URL, the CMS entry or the storefront resource\./)).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/https:\/\/shop\.example\.com/)).toHaveValue("");
   });
 
@@ -179,7 +179,7 @@ describe("MergeMarkerControl on a project that lands in git keeps its form", () 
       <MergeMarkerControl issueId="i1" mergedAt={null} landingShape="git" />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
-    expect(screen.getByText(/This is a claim that the code shipped, not a date field/)).toBeInTheDocument();
+    expect(screen.getByText(BLURB)).toBeInTheDocument();
     expect(screen.queryByText(/lands outside git/)).toBeNull();
   });
 
@@ -190,7 +190,7 @@ describe("MergeMarkerControl on a project that lands in git keeps its form", () 
     fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
     const panel = screen.getByRole("dialog");
     expect(panel.textContent).not.toContain("`");
-    if (landingShape === "git") expect(panel).toHaveTextContent(/because Closed means the work shipped/);
+    if (landingShape === "git") expect(panel).toHaveTextContent(/which lets the issue close/);
   });
 
   it("takes a target past 200 characters whole, as it did before", () => {
@@ -234,5 +234,25 @@ describe("MergeMarkerControl names whose answer the lane is", () => {
 
   it("names no source where the server did not say whose answer it is", () => {
     expect(openWith({ landingShape: "outside_git" })).toHaveTextContent(/^This issue's work lands outside git\.$/);
+  });
+});
+
+// ISS-1421 r5 repair 1: the panel opened on seven lines of reasoning ("not a date field … a state
+// nothing here can hold"). It says what the mark does and how it is undone, in short sentences.
+describe("the Mark merged panel's introduction", () => {
+  it.each([
+    ["git", BLURB],
+    ["outside_git", LANDING_BLURB],
+  ] as const)("on an issue landing %s is at most three plain sentences of at most 25 words", (_shape, text) => {
+    const sentences = text.trim().split(/(?<=\.)\s+/);
+    expect(sentences.length).toBeLessThanOrEqual(3);
+    for (const sentence of sentences) {
+      expect(sentence).toMatch(/^[A-Z]/);
+      expect(sentence).toMatch(/\.$/);
+      expect(sentence.split(/\s+/).length).toBeLessThanOrEqual(25);
+    }
+    expect(text).toMatch(/lets the issue close/);
+    expect(text).toMatch(/Unmark takes it back, unless the issue is closed\./);
+    expect(text).not.toMatch(/date field|nothing here can hold|—/);
   });
 });
