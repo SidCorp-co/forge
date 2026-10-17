@@ -9,6 +9,7 @@ export interface RunIssue {
   leaseReturned: boolean;
   /** Core still holds the lease for the run's session, whatever the box says. */
   coreHolds?: boolean;
+  title?: string | null;
 }
 
 export interface RunSessionRow {

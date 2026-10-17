@@ -38,6 +38,7 @@ const lease = (over: Partial<LeaseRow> = {}): LeaseRow => ({
   title: 'Seven',
   status: 'in_progress',
   held: true,
+  box_returned: false,
   ...over,
 });
 
@@ -85,7 +86,7 @@ describe('projectSessionsAndHolds — sessions', () => {
     });
     expect(out.sessions).toHaveLength(1);
     expect(out.sessions[0]?.issues).toEqual([
-      { issueId: 'i-7', displayId: 'FRG-7', title: 'Seven' },
+      { issueId: 'i-7', displayId: 'FRG-7', title: 'Seven', boxReturned: false },
     ]);
     expect(out.sessions[0]?.report).toEqual({
       incarnation: 'live',
@@ -98,10 +99,25 @@ describe('projectSessionsAndHolds — sessions', () => {
     expect(out.readAt).toBe(NOW.toISOString());
   });
 
-  it('names an issue whose lease the run reports returned, and holds nothing for it', () => {
-    const out = project({ sessions: [session()], leases: [lease({ held: false })] });
-    expect(out.sessions[0]?.issues.map((i) => i.issueId)).toEqual(['i-7']);
+  // ISS-1228 round 12: r6's row read "On ISS-2 ISS-3" after core had let ISS-2 go.
+  it('neither names nor holds an issue the run returned and core let go', () => {
+    const out = project({
+      sessions: [session()],
+      leases: [lease({ held: false, box_returned: true })],
+    });
+    expect(out.sessions[0]?.issues).toEqual([]);
     expect(out.holds).toEqual([]);
+  });
+
+  // Round 12: core still held ISS-3 while the box called it returned; the hold stands and says so.
+  it('holds an issue core still holds though its run reports it returned, and says the box returned it', () => {
+    const out = project({ sessions: [session()], leases: [lease({ box_returned: true })] });
+    expect(out.sessions[0]?.issues).toEqual([
+      { issueId: 'i-7', displayId: 'FRG-7', title: 'Seven', boxReturned: true },
+    ]);
+    expect(out.holds[0]?.holders).toEqual([
+      expect.objectContaining({ by: 'session', sessionId: 's-run', boxReturned: true }),
+    ]);
   });
 
   it('keeps the newest of two ledger entries for one session', () => {
@@ -147,6 +163,7 @@ describe('projectSessionsAndHolds — holds', () => {
         sessionKind: 'run_session',
         deviceName: 'box-a',
         since: '2026-10-15T01:00:05.000Z',
+        boxReturned: false,
       },
     ]);
   });

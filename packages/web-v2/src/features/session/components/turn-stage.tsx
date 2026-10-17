@@ -1,9 +1,10 @@
 "use client";
 
-import { BLOCKED_TONE, BLOCKED_WORD, Icon, lastReported, SILENCE_TONE, SILENCE_WORD, Spinner, WORKING_WORD } from "@/design";
+import { BLOCKED_TONE, Icon, lastReported, SILENCE_TONE, Spinner, WORKING_WORD } from "@/design";
 import { TONE_META } from "@/design/status";
 import { formatElapsed } from "@/lib/utils/format";
 import { WAITING_FOR_INPUT_WORD } from "@/features/sessions/session-word";
+import { blockedText, quietLastReportedText } from "@/features/sessions/status-sentences";
 import { type AgentSessionDisplayStatus, isLiveDisplay } from "@/features/sessions/types";
 import type { ConversationItem, RenderBlock } from "../types";
 
@@ -122,12 +123,8 @@ export function TurnStage({
 }) {
   if (stage === "quiet" || stage === "blocked") {
     const quiet = stage === "quiet";
-    const since = quiet && silentForMs != null ? ` ${formatElapsed(Math.max(0, silentForMs))} ago` : "";
-    const text = quiet
-      ? `${SILENCE_WORD} · ${lastReported(reported).toLowerCase()}${since}`
-      : waitingOn
-        ? `${BLOCKED_WORD} · ${waitingOn}`
-        : BLOCKED_WORD;
+    const ago = quiet && silentForMs != null ? `${formatElapsed(Math.max(0, silentForMs))} ago` : null;
+    const text = quiet ? quietLastReportedText(lastReported(reported), ago) : blockedText(waitingOn);
     return (
       <div
         data-testid="turn-stage"

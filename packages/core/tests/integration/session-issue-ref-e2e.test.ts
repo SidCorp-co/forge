@@ -141,6 +141,7 @@ describe("the sessions list names a session's issues (ISS-1228)", () => {
         id: issueId,
         displayId: formatIssueRef(await prefix(), 2),
         title: 'Rename the export column',
+        boxReturned: false,
       },
     ]);
   });
@@ -154,8 +155,8 @@ describe("the sessions list names a session's issues (ISS-1228)", () => {
     const { formatIssueRef } = await import('../../src/lib/issue-ref.js');
     const p = await prefix();
     expect((await listed()).get(run)).toEqual([
-      { id: three, displayId: formatIssueRef(p, 3), title: 'Three' },
-      { id: four, displayId: formatIssueRef(p, 4), title: 'Four' },
+      { id: three, displayId: formatIssueRef(p, 3), title: 'Three', boxReturned: false },
+      { id: four, displayId: formatIssueRef(p, 4), title: 'Four', boxReturned: false },
     ]);
   });
 
@@ -182,9 +183,11 @@ describe("the sessions list names a session's issues (ISS-1228)", () => {
 
   // ISS-1228 round 10: "run: quiet india" named no issue on the list while its Needs you row and
   // the runs tab showed it waiting on ISS-3 — the run's ledger entry named it, and no lease did.
-  it('gives a run session the issues its ledger entry reports, held or returned, once each', async () => {
+  // Round 12: an issue the run returned and core let go is no longer the session's (judge-31 saw
+  // r6 read "On ISS-2 ISS-3" after ISS-2 was returned).
+  it('gives a run session the issues its ledger entry holds, once each, and none it returned', async () => {
     const three = await issue(projectId, 3, 'Three');
-    const six = await issue(projectId, 6, 'Six');
+    await issue(projectId, 6, 'Six');
     const run = await runSession();
     await ledger(run, 'run-india', [
       [3, false],
@@ -194,20 +197,69 @@ describe("the sessions list names a session's issues (ISS-1228)", () => {
     const { formatIssueRef } = await import('../../src/lib/issue-ref.js');
     const p = await prefix();
     expect((await listed()).get(run)).toEqual([
-      { id: three, displayId: formatIssueRef(p, 3), title: 'Three' },
-      { id: six, displayId: formatIssueRef(p, 6), title: 'Six' },
+      { id: three, displayId: formatIssueRef(p, 3), title: 'Three', boxReturned: false },
     ]);
 
     const { readSessionsAndHolds } = await import('../../src/pipeline/sessions-and-holds.js');
     const pipeline = await readSessionsAndHolds(projectId, new Date());
     expect(pipeline.sessions.find((s) => s.id === run)?.issues.map((i) => i.issueId)).toEqual([
       three,
-      six,
     ]);
-    // A lease the run has returned is no hold, though the run worked that issue.
     expect(pipeline.holds.map((h) => [h.issueId, h.holders.map((x) => x.by)])).toEqual([
       [three, ['session']],
     ]);
+  });
+
+  // Round 12: core still held ISS-3 while r6's box called it returned. The hold stands, and every
+  // read the screens take says the box returned it.
+  it('keeps an issue core still leases though the run reports it returned, and says the box returned it', async () => {
+    const two = await issue(projectId, 2, 'Two');
+    const three = await issue(projectId, 3, 'Three');
+    const run = await runSession();
+    await lease(run, 3);
+    await ledger(run, 'run-r6', [
+      [2, true],
+      [3, true],
+    ]);
+    const { formatIssueRef } = await import('../../src/lib/issue-ref.js');
+    const p = await prefix();
+    expect((await listed()).get(run)).toEqual([
+      { id: three, displayId: formatIssueRef(p, 3), title: 'Three', boxReturned: true },
+    ]);
+
+    const { readSessionsAndHolds } = await import('../../src/pipeline/sessions-and-holds.js');
+    const pipeline = await readSessionsAndHolds(projectId, new Date());
+    expect(pipeline.sessions.find((s) => s.id === run)?.issues).toEqual([
+      { issueId: three, displayId: formatIssueRef(p, 3), title: 'Three', boxReturned: true },
+    ]);
+    expect(pipeline.holds.map((h) => [h.issueId, h.holders])).toEqual([
+      [three, [expect.objectContaining({ by: 'session', sessionId: run, boxReturned: true })]],
+    ]);
+    expect(pipeline.holds.some((h) => h.issueId === two)).toBe(false);
+
+    // Through the route the web reads, under the suite's response-conformance gate, which refuses a
+    // key the route's reference does not declare: judge-31 found `report.since` undeclared.
+    const res = await fetch(`${server.baseUrl}/api/projects/${projectId}/sessions-and-holds`, {
+      headers: { authorization: `Bearer ${jwt}` },
+    });
+    const body = (await res.json()) as {
+      sessions: Array<{ id: string; report: { since: string } | null }>;
+    };
+    expect([res.status, body.sessions.find((s) => s.id === run)?.report?.since]).toEqual([
+      200,
+      expect.any(String),
+    ]);
+  });
+
+  it('says a leased issue is not returned where one of its ledger entries still holds it', async () => {
+    await issue(projectId, 3, 'Three');
+    const run = await runSession();
+    await lease(run, 3);
+    await ledger(run, 'run-a', [[3, true]]);
+    await ledger(run, 'run-b', [[3, false]]);
+    expect(((await listed()).get(run) as Array<{ boxReturned: boolean }>)[0]?.boxReturned).toBe(
+      false,
+    );
   });
 
   it('names an issue a lease and the ledger both name once, and none the ledger names in another project', async () => {

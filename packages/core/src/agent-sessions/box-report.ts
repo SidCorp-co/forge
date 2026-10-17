@@ -21,7 +21,7 @@ export interface SessionReport {
 }
 
 export const sessionReportSchema = z
-  .object({
+  .strictObject({
     incarnation: z.string(),
     work: z.string(),
     blockerKind: z.string().nullable(),

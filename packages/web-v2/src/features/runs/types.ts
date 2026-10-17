@@ -90,6 +90,7 @@ export interface PipelineRunSummary {
   /** ISS-460 — human ref (`ISS-<seq>`) of the run's issue; null for pm/system runs. */
   issueRef: string | null;
   issueTitle: string | null;
+  groupTitles?: Record<string, string>;
   kind: PipelineRunKind;
   status: PipelineRunStatus;
   currentStep: string | null;

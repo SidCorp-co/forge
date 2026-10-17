@@ -56,7 +56,12 @@ type Row = {
   runId: string;
   deviceStatus: string | null;
   deviceLastSeenAt: string | null;
-  issues: Array<{ issueKey: string; leaseReturned: boolean; coreHolds: boolean }>;
+  issues: Array<{
+    issueKey: string;
+    leaseReturned: boolean;
+    coreHolds: boolean;
+    title: string | null;
+  }>;
 };
 
 async function rows(): Promise<Row[]> {
@@ -112,8 +117,34 @@ describe("the runs tab reads core's word on the box and the leases (ISS-1228 rou
     const row = (await rows()).find((r) => r.runId === runId);
 
     expect(row?.issues).toEqual([
-      { issueKey: 'ISS-4', leaseReturned: true, coreHolds: true },
-      { issueKey: 'ISS-5', leaseReturned: true, coreHolds: false },
+      { issueKey: 'ISS-4', leaseReturned: true, coreHolds: true, title: null },
+      { issueKey: 'ISS-5', leaseReturned: true, coreHolds: false, title: null },
+    ]);
+  });
+
+  // ISS-1228 round 12: a run a box opened showed only its keys where a job run shows the title.
+  it("names each issue's title in the run's own project, and none for a key no issue there has", async () => {
+    const author = (await createTestUser(harness.db)).id;
+    const other = (await createTestProject(harness.db, author)).id;
+    for (const [project, seq, title] of [
+      [projectId, 4, 'Rename the export column'],
+      [other, 5, 'Not this project'],
+    ] as const) {
+      await harness.db.execute(sql`
+        INSERT INTO issues (project_id, iss_seq, title, status, created_by_id)
+        VALUES (${project}::uuid, ${seq}, ${title}, 'in_progress', ${author}::uuid)
+      `);
+    }
+    const runId = await run([
+      { issueKey: 'ISS-4', leaseReturned: false },
+      { issueKey: 'ISS-5', leaseReturned: false },
+    ]);
+
+    const row = (await rows()).find((r) => r.runId === runId);
+
+    expect(row?.issues.map((i) => [i.issueKey, i.title])).toEqual([
+      ['ISS-4', 'Rename the export column'],
+      ['ISS-5', null],
     ]);
   });
 });

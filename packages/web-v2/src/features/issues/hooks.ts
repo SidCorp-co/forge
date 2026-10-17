@@ -344,13 +344,13 @@ export function useDeclareLandingShape(issueId: string) {
   });
 }
 
-/** What a press of Run did, in words: it offers the issue and queues nothing (ISS-1228 round 11). */
+/** What a press of Run did, in short sentences: it offers the issue and queues nothing (ISS-1228). */
 export function runAnswerText(a: RunAnswer): string {
   const heard =
     a.boxesReached === 0
-      ? "no box heard it now; a master reads it on its next pass"
-      : `${a.boxesReached} ${a.boxesReached === 1 ? "box" : "boxes"} heard it`;
-  return a.released ? `Released past the entry gate — ${heard}` : `Offered to this project's masters — ${heard}`;
+      ? "No box has picked it up yet. A master reads it on its next pass."
+      : `${a.boxesReached} ${a.boxesReached === 1 ? "box has" : "boxes have"} picked it up.`;
+  return `${a.released ? "Released past the entry gate" : "Offered to this project's masters"}. ${heard}`;
 }
 
 export function useRunPipelineStep() {
@@ -360,7 +360,8 @@ export function useRunPipelineStep() {
     mutationFn: (id: string) => issuesApi.runPipelineStep(id),
     onSuccess: (answer) => {
       qc.invalidateQueries({ queryKey: ["issues"] });
-      toast({ title: runAnswerText(answer), tone: "success" });
+      // An offer no box heard started nothing, so it does not wear the success check.
+      toast({ title: runAnswerText(answer), tone: answer.boxesReached > 0 ? "success" : "default" });
     },
     onError: (err) => {
       toast({ title: "Run refused", description: formatApiError(err), tone: "error" });

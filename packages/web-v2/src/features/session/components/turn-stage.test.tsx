@@ -138,7 +138,7 @@ describe("the line a reader sees", () => {
   it("spins nothing on a quiet session, and says what it last reported and how long ago", () => {
     render(<TurnStage stage="quiet" elapsed="31m" silentForMs={101_000} />);
     const line = screen.getByTestId("turn-stage");
-    expect(line).toHaveTextContent("Quiet · last reported working 1m ago");
+    expect(line).toHaveTextContent("Quiet. Last reported working 1m ago.");
     expect(line).not.toHaveTextContent("Working…");
     expect(line).toHaveAttribute("data-stage", "quiet");
     expect(screen.queryByRole("status")).toBeNull();
@@ -146,7 +146,7 @@ describe("the line a reader sees", () => {
 
   it("says a quiet session's line without a time where none was measured", () => {
     render(<TurnStage stage="quiet" />);
-    expect(screen.getByTestId("turn-stage")).toHaveTextContent(/^Quiet · last reported working$/);
+    expect(screen.getByTestId("turn-stage")).toHaveTextContent(/^Quiet\. Last reported working\.$/);
   });
 
   it("spins while the turn is running and does not once it has failed", () => {
@@ -231,14 +231,14 @@ describe("what a blocked session's page draws (ISS-1228 criteria 40, 41)", () =>
   it("says Blocked in the box's own words and spins nothing", () => {
     render(<TurnStage stage="blocked" waitingOn="A person — approve the database restore in Coolify" />);
     const line = screen.getByTestId("turn-stage");
-    expect(line).toHaveTextContent("Blocked · A person — approve the database restore in Coolify");
+    expect(line).toHaveTextContent("Blocked. A person — approve the database restore in Coolify.");
     expect(line).not.toHaveTextContent(/Working/);
     expect(screen.queryByRole("status")).toBeNull();
   });
 
   it("says what a quiet session last reported, blocked included", () => {
     render(<TurnStage stage="quiet" silentForMs={101_000} reported="Blocked" />);
-    expect(screen.getByTestId("turn-stage")).toHaveTextContent("Quiet · last reported blocked 1m ago");
+    expect(screen.getByTestId("turn-stage")).toHaveTextContent("Quiet. Last reported blocked 1m ago.");
   });
 
   it("takes no message from a blocked session's composer, by key or by button, and says why", () => {

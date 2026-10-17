@@ -35,6 +35,11 @@ export interface HeldIssueRef {
   title: string;
 }
 
+/** An issue a live session holds, and whether its run reports it returned while core still holds it. */
+export interface SessionIssueRef extends HeldIssueRef {
+  boxReturned: boolean;
+}
+
 export interface LiveSession {
   id: string;
   kind: string;
@@ -50,7 +55,7 @@ export interface LiveSession {
   startedAt: string | null;
   lastHeartbeatAt: string | null;
   createdAt: string;
-  issues: HeldIssueRef[];
+  issues: SessionIssueRef[];
   report: SessionReport | null;
   /** How long core lets this session go unheard before it ends it; `null` where no silence does. */
   silenceLimitMs: number | null;
@@ -64,6 +69,7 @@ export type Holder =
       sessionKind: string;
       deviceName: string | null;
       since: string;
+      boxReturned: boolean;
     }
   | {
       by: 'claim';
@@ -173,7 +179,7 @@ export function projectSessionsAndHolds(input: {
 
   const reportOf = newestReports(input.ledger);
 
-  const issuesOf = new Map<string, HeldIssueRef[]>();
+  const issuesOf = new Map<string, SessionIssueRef[]>();
   const held = new Map<string, HeldIssue>();
   const holdOn = (issue: HeldIssueRef & { status: string }): HeldIssue => {
     const existing = held.get(issue.issueId);
@@ -184,10 +190,11 @@ export function projectSessionsAndHolds(input: {
   };
 
   for (const l of input.leases) {
-    const issue = ref(l);
-    issuesOf.set(l.session_id, [...(issuesOf.get(l.session_id) ?? []), issue]);
-    // A lease its run reports returned names the issue the session worked, and holds nothing.
+    // An issue its run returned and core let go is no longer the session's: not named, not held.
     if (!l.held) continue;
+    const issue = ref(l);
+    const boxReturned = l.box_returned;
+    issuesOf.set(l.session_id, [...(issuesOf.get(l.session_id) ?? []), { ...issue, boxReturned }]);
     holdOn({ ...issue, status: l.status }).holders.push({
       by: 'session',
       sessionId: l.session_id,
@@ -195,6 +202,7 @@ export function projectSessionsAndHolds(input: {
       sessionKind: l.session_kind,
       deviceName: l.device_name,
       since: iso(l.acquired_at) as string,
+      boxReturned,
     });
   }
 

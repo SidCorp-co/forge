@@ -38,6 +38,7 @@ import {
 import { TONE_META } from "@/design/status";
 import { SessionChip } from "./session-chip";
 import { useSessionDuration } from "../session-duration";
+import { leaseDisagreementText } from "../status-sentences";
 import { isWaitingForInput, sessionWord } from "../session-word";
 import { useOrgScopedProjects, useProject, useProjects } from "@/features/projects/hooks";
 import { useDevices } from "@/features/runners/hooks";
@@ -572,6 +573,7 @@ function SessionIdentity({
   const router = useRouter();
   const issues = row.issues ?? [];
   const title = sessionTitle(row) ?? "Untitled session";
+  const disagreement = leaseDisagreementText(issues.filter((i) => i.boxReturned).map((i) => i.displayId));
   return (
     <div className="min-w-0">
       {onOpen ? (
@@ -620,6 +622,7 @@ function SessionIdentity({
           </Tooltip>
         )}
       </div>
+      {disagreement && <p className="fg-caption mt-1 break-words text-muted">{disagreement}</p>}
     </div>
   );
 }

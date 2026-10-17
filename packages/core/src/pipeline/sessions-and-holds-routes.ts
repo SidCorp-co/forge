@@ -5,12 +5,20 @@ import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { readSessionsAndHolds } from './sessions-and-holds.js';
+import { readSessionsAndHolds, type SessionsAndHolds } from './sessions-and-holds.js';
 import {
   paramSchema,
   readProjectSessionsAndHolds,
   sessionsAndHoldsSchema,
 } from './sessions-and-holds-routes-reference.js';
+
+/** True only where each type is assignable to the other: a key either side has alone makes it false. */
+type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+
+/** The reference declares exactly what the reader answers, so a field added to either alone fails
+ *  `tsc` here rather than reaching the published shape late (ISS-1228 round 12). */
+const referenceIsTheReading: Same<z.input<typeof sessionsAndHoldsSchema>, SessionsAndHolds> = true;
+void referenceIsTheReading;
 
 /** Mounted at `/api/projects`, so the route is `/api/projects/:id/sessions-and-holds`. */
 export const sessionsAndHoldsRoutes = new Hono<{ Variables: AuthVars }>();

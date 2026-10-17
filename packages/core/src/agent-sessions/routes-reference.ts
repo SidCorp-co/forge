@@ -70,9 +70,16 @@ export const sessionReadSchema = sessionSchema.extend({
 
 /** A session as a list shows it: no transcript, with its cost, the last line said and every issue
  *  it holds, named (its leases and its job's issue, as `held-issues.ts` reads them; empty where it
- *  holds none). */
+ *  holds none), each saying whether its run reports it returned while core still holds it. */
 export const sessionListItemSchema = sessionSchema.omit({ messages: true }).extend({
-  issues: z.array(z.object({ id: z.string(), displayId: z.string(), title: z.string() })),
+  issues: z.array(
+    z.object({
+      id: z.string(),
+      displayId: z.string(),
+      title: z.string(),
+      boxReturned: z.boolean(),
+    }),
+  ),
   messageCount: z.number().nullable(),
   transcript: z.enum(sessionTranscripts),
   estimatedCost: z.number(),

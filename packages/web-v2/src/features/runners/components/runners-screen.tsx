@@ -4,10 +4,6 @@ import { useState } from "react";
 import { formatRelativeTime } from "@/lib/utils/format";
 import {
   Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
   EmptyState,
   ErrorState,
   HealthDot,
@@ -83,9 +79,11 @@ function PairPanel() {
     : "";
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Pair a device</CardTitle>
+    <section aria-labelledby="pair-a-device" className="flex flex-col gap-4 border-t border-line pt-5">
+      <div className="flex items-center justify-between gap-3">
+        <h2 id="pair-a-device" className="fg-h3">
+          Pair a device
+        </h2>
         <HelpButton
           summary="Pair a headless runner with your account using a browser-approved device login (like `claude login`). Run the CLI command on the runner machine — it prints a code to approve here, then writes a device-scoped token locally."
           actions={[
@@ -94,9 +92,8 @@ function PairPanel() {
             "Revoke a device below to cut off its access immediately",
           ]}
         />
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-col gap-4">
+      </div>
+      <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <span className="fg-label">Recommended — run on the runner machine</span>
             <div className="flex items-center justify-between gap-2 rounded-md border border-line bg-sunken px-3 py-2">
@@ -132,7 +129,7 @@ function PairPanel() {
             </div>
 
             {code && (
-              <div className="mt-3 flex flex-col gap-2 rounded-lg border border-line bg-surface p-3">
+              <div className="mt-3 flex flex-col gap-2">
                 <div className="flex items-center justify-center rounded-md border border-line bg-sunken py-3">
                   <span className="font-mono text-xl font-semibold tracking-[0.25em] text-fg">
                     {code.pairing_code}
@@ -156,9 +153,8 @@ function PairPanel() {
               </div>
             )}
           </div>
-        </div>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }
 
@@ -292,12 +288,14 @@ export function RunnersScreen() {
 
       <PairPanel />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Devices</CardTitle>
+      <section aria-labelledby="devices" className="flex flex-col gap-3 border-t border-line pt-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 id="devices" className="fg-h3">
+            Devices
+          </h2>
           <ScopeTabs scope={scope} counts={counts} onChange={setScope} />
-        </CardHeader>
-        <CardContent>
+        </div>
+        <div>
           <p className="mb-3 fg-body-sm text-muted">
             {populationLine(scope)}
             {bridge ? ` ${bridge}` : null}
@@ -426,8 +424,8 @@ export function RunnersScreen() {
               </TBody>
             </Table>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
       <DeviceDetail device={detailDevice} onClose={() => setDetailId(null)} />
     </PageContainer>

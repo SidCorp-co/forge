@@ -1,16 +1,19 @@
 import { z } from 'zod';
+import { sessionReportSchema } from '../agent-sessions/box-report.js';
 import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
 import { issueStatuses } from '../db/schema.js';
 
 export const paramSchema = z.object({ id: z.uuid() });
 
-const issueRefSchema = z.object({
+/** Every object here is strict: a body carrying a key the reference does not declare is refused,
+ *  so the published shape cannot fall behind what the route answers. */
+const issueRefSchema = z.strictObject({
   issueId: z.string(),
   displayId: z.string(),
   title: z.string(),
 });
 
-const liveSessionSchema = z.object({
+const liveSessionSchema = z.strictObject({
   id: z.string(),
   kind: z.string(),
   title: z.string().nullable(),
@@ -24,36 +27,29 @@ const liveSessionSchema = z.object({
   startedAt: z.string().nullable(),
   lastHeartbeatAt: z.string().nullable(),
   createdAt: z.string(),
-  issues: z.array(issueRefSchema),
-  report: z
-    .object({
-      incarnation: z.string(),
-      work: z.string(),
-      blockerKind: z.string().nullable(),
-      waitingOn: z.string().nullable(),
-      observedAt: z.string(),
-    })
-    .nullable(),
+  issues: z.array(issueRefSchema.extend({ boxReturned: z.boolean() })),
+  report: sessionReportSchema,
   silenceLimitMs: z.number().int().nonnegative().nullable(),
 });
 
 const holderSchema = z.discriminatedUnion('by', [
-  z.object({
+  z.strictObject({
     by: z.literal('session'),
     sessionId: z.string(),
     sessionTitle: z.string().nullable(),
     sessionKind: z.string(),
     deviceName: z.string().nullable(),
     since: z.string(),
+    boxReturned: z.boolean(),
   }),
-  z.object({
+  z.strictObject({
     by: z.literal('claim'),
     holder: z.string(),
     renewedAt: z.string().nullable(),
     expiresAt: z.string().nullable(),
     next: z.string().nullable(),
   }),
-  z.object({
+  z.strictObject({
     by: z.literal('person'),
     status: z.enum(issueStatuses),
     owes: z.enum(['information', 'decision', 'resource']).nullable(),
@@ -62,7 +58,7 @@ const holderSchema = z.discriminatedUnion('by', [
   }),
 ]);
 
-export const sessionsAndHoldsSchema = z.object({
+export const sessionsAndHoldsSchema = z.strictObject({
   sessions: z.array(liveSessionSchema),
   holds: z.array(issueRefSchema.extend({ status: z.string(), holders: z.array(holderSchema) })),
   readAt: z.string(),
@@ -71,7 +67,7 @@ export const sessionsAndHoldsSchema = z.object({
 export const readProjectSessionsAndHolds = describeOperation({
   summary: "Read a project's live agent sessions and the issues held on it",
   description:
-    "`sessions` is every session of the project that has not ended, chat sessions excepted, each with the job type and skill a step session was opened under (`jobType`, `skillName`, `null` for any other), the issues it holds (those it leases, or a step session's job's issue) and the box's own last report (`report`, `null` where the box reported none) and how long core lets it go unheard before it ends it (`silenceLimitMs`, `null` where no silence ends it). `holds` is one entry per issue held by a live session, by a claim whose verdict is live, or by a person (`needs_info`, `waiting`, `on_hold`). An archived issue is neither held nor listed under a session. A claim records no time it began, so it carries `renewedAt`, its last renewal; a person's `owes` and `since` are `null` where the park did not record them.",
+    "`sessions` is every session of the project that has not ended, chat sessions excepted, each with the job type and skill a step session was opened under (`jobType`, `skillName`, `null` for any other), the issues it holds (those it leases, or a step session's job's issue), each with `boxReturned`, whether its run's own report says the lease was returned while core still holds it, and the box's own last report (`report`, `null` where the box reported none) and how long core lets it go unheard before it ends it (`silenceLimitMs`, `null` where no silence ends it). `holds` is one entry per issue held by a live session, by a claim whose verdict is live, or by a person (`needs_info`, `waiting`, `on_hold`); a session's hold carries the same `boxReturned`. An archived issue is neither held nor listed under a session. A claim records no time it began, so it carries `renewedAt`, its last renewal; a person's `owes` and `since` are `null` where the park did not record them.",
   responses: {
     200: json(sessionsAndHoldsSchema),
     400: fail('BAD_REQUEST', 'the project id is not a UUID'),

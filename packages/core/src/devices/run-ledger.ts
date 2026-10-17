@@ -166,6 +166,8 @@ export async function applyRunLedgerSnapshot(args: {
 export interface ProjectRunSessionIssue extends RunLedgerIssue {
   /** Core still holds this issue's lease for the run's own session, whatever the box says. */
   coreHolds: boolean;
+  /** The issue's title in this project, `null` where no issue of the project has that key. */
+  title: string | null;
 }
 
 export interface ProjectRunSessionRow
@@ -229,6 +231,14 @@ export async function readProjectRunSessions(projectId: string): Promise<Project
            AND l.project_id = ${deviceRunLedger.projectId}
            AND ls.status NOT IN (${TERMINAL_SESSIONS})
       ), '{}')`,
+      issueTitles: sql<Record<string, string> | null>`(
+        SELECT jsonb_object_agg('ISS-' || i.iss_seq, i.title) -- ISS-992:canonical
+          FROM issues i
+         WHERE i.project_id = ${deviceRunLedger.projectId}
+           AND 'ISS-' || i.iss_seq IN ( -- ISS-992:canonical
+             SELECT e.item ->> 'issueKey' FROM jsonb_array_elements(${deviceRunLedger.issues}) AS e(item)
+           )
+      )`,
       sessionStatus: sql<
         string | null
       >`(SELECT s.status FROM agent_sessions s WHERE s.id = ${deviceRunLedger.sessionId})`,
@@ -252,7 +262,7 @@ export async function readProjectRunSessions(projectId: string): Promise<Project
   const deadlines = await loadSilenceDeadlines(
     rows.flatMap((r) => (r.sessionId ? [r.sessionId] : [])),
   );
-  return rows.map(({ coreHeldKeys, ...r }) => ({
+  return rows.map(({ coreHeldKeys, issueTitles, ...r }) => ({
     ...r,
     silenceLimitMs: r.sessionId
       ? silenceLimitFrom(deadlines.get(r.sessionId) ?? null, r.lastActivityAt)
@@ -260,6 +270,7 @@ export async function readProjectRunSessions(projectId: string): Promise<Project
     issues: ((r.issues ?? []) as RunLedgerIssue[]).map((i) => ({
       ...i,
       coreHolds: (coreHeldKeys ?? []).includes(i.issueKey),
+      title: issueTitles?.[i.issueKey] ?? null,
     })),
     deviceLastSeenAt: r.deviceLastSeenAt ? new Date(r.deviceLastSeenAt).toISOString() : null,
     observedAt: new Date(r.observedAt).toISOString(),

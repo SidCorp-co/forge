@@ -1,7 +1,15 @@
-import { lastReported, SILENCE_WORD, type SemanticTone, WORKING_WORD } from "@/design/status";
+import { lastReported, type SemanticTone, WORKING_WORD } from "@/design/status";
+import {
+  boxOfflineText,
+  coreNoteText,
+  leaseDisagreementText,
+  offlineSessionDisagreementText,
+  quietForText,
+  type SessionDisagreement,
+  sessionDisagreementText,
+} from "@/features/sessions/status-sentences";
 import { liveSessionWord } from "@/features/sessions/session-word";
 import {
-  ENDING_AS_FAILED,
   failureReasonLabel,
   sessionSilence,
   TERMINAL_SESSION_STATUSES,
@@ -100,14 +108,10 @@ export function closeMarks(row: Pick<RunSessionRow, "sessionTerminalAt" | "workt
   };
 }
 
-/** The box and core disagreeing about a lease, which is the one a second run is refused on. */
-export function leaseDisagreementText(row: Pick<RunSessionRow, "issues">): string | null {
-  const held = leasesCoreStillHolds(row);
-  if (held.length === 0) return null;
-  return held.length === 1
-    ? `the box says it returned ${held[0]} · core still holds it`
-    : `the box says it returned ${held.join(", ")} · core still holds them`;
-}
+/** The box and core disagreeing about a lease, which is the one a second run is refused on, in the
+ *  words every surface showing the hold uses. */
+export const runLeaseDisagreementText = (row: Pick<RunSessionRow, "issues">): string | null =>
+  leaseDisagreementText(leasesCoreStillHolds(row));
 
 /** Core reads the box as offline, so nothing it last said is true now. */
 export const boxOffline = (row: Pick<RunSessionRow, "deviceStatus">): boolean =>
@@ -160,9 +164,7 @@ export function pulseIsStalling(p: Pulse): boolean {
 export function pulseText(p: Pulse): string | null {
   if (p.state === "beating" || p.state === "unheard" || p.sinceMs == null) return null;
   const since = formatElapsed(p.sinceMs);
-  return p.state === "silent"
-    ? `${SILENCE_WORD} · no report for ${since}`
-    : `${SILENCE_WORD} · ${ENDING_AS_FAILED} · no report for ${since}`;
+  return quietForText(since, p.state !== "silent");
 }
 
 const QUIET_DETAIL =
@@ -220,7 +222,7 @@ export function silenceText(
 }
 
 /** The two readings of one run disagreeing, which is the signal rather than an error. */
-export type Disagreement = "box-live-core-terminal" | "box-exited-core-running";
+export type Disagreement = SessionDisagreement;
 
 export function disagreement(
   row: Pick<RunSessionRow, "incarnation" | "sessionStatus" | "sessionId">,
@@ -235,24 +237,11 @@ export function disagreement(
   return null;
 }
 
-const DISAGREEMENT_TEXT: Record<Disagreement, string> = {
-  "box-live-core-terminal": "the box says this is live · core says the session ended",
-  "box-exited-core-running": "the box says the process is gone · core still has the session running",
-};
-
-/** What an offline box last said is quoted with when it said it, never in the present tense. */
-const OFFLINE_DISAGREEMENT_TEXT: Record<Disagreement, (when: string) => string> = {
-  "box-live-core-terminal": (when) =>
-    `the box said this was live ${when} and is offline now · core says the session ended`,
-  "box-exited-core-running": (when) =>
-    `the box said the process was gone ${when} and is offline now · core still has the session running`,
-};
-
 export function disagreementText(
   d: Disagreement,
   row: Pick<RunSessionRow, "observedAt"> & Partial<Pick<RunSessionRow, "deviceStatus">>,
 ): string {
-  return boxOffline(row) ? OFFLINE_DISAGREEMENT_TEXT[d](formatRelativeTime(row.observedAt)) : DISAGREEMENT_TEXT[d];
+  return boxOffline(row) ? offlineSessionDisagreementText(d, formatRelativeTime(row.observedAt)) : sessionDisagreementText(d);
 }
 
 /** An offline box claiming a process, where nothing else on the row already says the box is offline. */
@@ -261,7 +250,7 @@ export function offlineText(
     Partial<Pick<RunSessionRow, "deviceStatus">>,
 ): string | null {
   if (!boxOffline(row) || !boxClaimsAProcess(row.incarnation) || disagreement(row)) return null;
-  return `the box is offline · it last reported ${formatRelativeTime(row.observedAt)}`;
+  return boxOfflineText(formatRelativeTime(row.observedAt));
 }
 
 /** Why core failed this run's session, in words, or `null` where core holds no reason. */
@@ -278,5 +267,5 @@ export function pendingReasonText(
 ): string | null {
   if (!row.sessionStatus || TERMINAL_SESSION_STATUSES.has(row.sessionStatus)) return null;
   if (!row.sessionFailureReason) return null;
-  return `core's note on this session: ${failureReasonLabel(row.sessionFailureReason)}`;
+  return coreNoteText(failureReasonLabel(row.sessionFailureReason) ?? row.sessionFailureReason);
 }

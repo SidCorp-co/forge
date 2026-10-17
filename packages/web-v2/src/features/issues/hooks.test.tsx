@@ -24,22 +24,24 @@ async function answerAll() {
 }
 const roster = vi.fn();
 const search = vi.fn();
+const runPipelineStep = vi.fn();
 vi.mock("./api", async () => {
   const actual = await vi.importActual<typeof import("./api")>("./api");
   return {
     ...actual,
-    issuesApi: { ...actual.issuesApi, search },
+    issuesApi: { ...actual.issuesApi, search, runPipelineStep },
     releaseBatchApi: { ...actual.releaseBatchApi, create, roster },
   };
 });
 
-const { useBatchRelease, useIssues, useReleaseRoster } = await import("./hooks");
+const { useBatchRelease, useIssues, useReleaseRoster, useRunPipelineStep } = await import("./hooks");
 
 afterEach(() => {
   cleanup();
   create.mockClear();
   roster.mockReset();
   search.mockReset();
+  runPipelineStep.mockReset();
   toast.mockClear();
   answers.length = 0;
 });
@@ -136,5 +138,28 @@ describe("useBatchRelease — Release now refused", () => {
 
     await waitFor(() => expect(result.current.batch.isError).toBe(true));
     await waitFor(() => expect(search).toHaveBeenCalledTimes(2));
+  });
+});
+
+// ISS-1228 round 12: an offer no box heard wore the green success check, though nothing started.
+describe("useRunPipelineStep — the toast's tone says whether anything started", () => {
+  async function pressRun(boxesReached: number) {
+    runPipelineStep.mockResolvedValue({ issueId: "iss-1", status: "open", released: false, masters: 1, boxesReached });
+    const { result } = renderHook(() => useRunPipelineStep(), { wrapper });
+    act(() => result.current.mutate("iss-1"));
+    await waitFor(() => expect(toast).toHaveBeenCalledTimes(1));
+    return toast.mock.calls[0]?.[0] as { title: string; tone: string };
+  }
+
+  it("is neutral where no box heard the offer", async () => {
+    const said = await pressRun(0);
+    expect(said.title).toBe("Offered to this project's masters. No box has picked it up yet. A master reads it on its next pass.");
+    expect(said.tone).toBe("default");
+  });
+
+  it("is a success only where a box took it", async () => {
+    const said = await pressRun(1);
+    expect(said.title).toBe("Offered to this project's masters. 1 box has picked it up.");
+    expect(said.tone).toBe("success");
   });
 });
