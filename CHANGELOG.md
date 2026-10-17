@@ -3215,6 +3215,7 @@
 - **A release waiting on a person's answer is handed back.** Its issues return to Awaiting release within a minute, linking the question, which stays open until it is answered. (ISS-1421)
 - **A refusal to leave Releasing links the release's page** instead of naming API routes, and a release handed back links its page too. (ISS-1421)
 - **The Agent MCP servers panel names each tool by its provider, in plain words**, and the Coolify form's target fields have screen-reader names. (ISS-1421)
+- **A connection made from the Integrations tab is named by its host**, such as "coolify.example.com · Coolify deploy", not by its provider's lower-case id. (ISS-1421)
 - **The Coolify form and the Share section show a new connection the moment it saves, and the form names an unreachable Coolify.** Its badge reads Last check failed or Turned off, never a deploy that did not happen. (ISS-1421)
 - **An issue's Branch row shows the branch Forge counts as its work.** It printed the issue's key even when moving the issue on said no branch was recorded; it now shows that branch, or None recorded. (ISS-1133)
 - **A job started as its run ends goes to a run still open.** It could land under the run that just finished; it now starts a fresh run, or is refused where only that run would do. (ISS-1133)

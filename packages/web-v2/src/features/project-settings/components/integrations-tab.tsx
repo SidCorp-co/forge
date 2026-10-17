@@ -56,9 +56,12 @@ const STAGE_CHOICES: { value: DeployStage; label: string; hint: string }[] = [
 /** The section an "add a live deploy target" link lands on, named by its `?add=` and its id. */
 export const LIVE_DEPLOY_TARGET = "live-deploy-target";
 
-function connectionLabel(c: ConnectionSummary): string {
+/** A connection as the picker lists it: its name, then its provider's. A name stored before
+ *  ISS-1421 opens with the provider's lower-case id, which the label already says. */
+export function connectionLabel(c: Pick<ConnectionSummary, "provider" | "displayName">): string {
   const provider = providerLabel(c.provider);
-  return c.displayName ? `${c.displayName} · ${provider}` : provider;
+  const name = c.displayName?.replace(new RegExp(`^${c.provider} · `), "");
+  return name ? `${name} · ${provider}` : provider;
 }
 
 /** The providers this tab can start a live deploy target on, named as their rows name them. */

@@ -246,7 +246,8 @@ function str(config: Record<string, unknown>, key: string): string | null {
 /**
  * A name for a connection its owner will recognise, from the non-secret config
  * they just typed. Returns null when the config says nothing distinguishing —
- * an honest null the caller falls back on, never a fabricated detail.
+ * an honest null the caller falls back on, never a fabricated detail. Every
+ * surface names the provider beside it, so the name is the detail alone (ISS-1421).
  */
 export function defaultConnectionDisplayName(
   provider: IntegrationProvider,
@@ -260,7 +261,7 @@ export function defaultConnectionDisplayName(
     str(config, 'org') ??
     str(config, 'organization') ??
     hostOf(config.url);
-  return detail ? `${provider} · ${detail}` : null;
+  return detail;
 }
 
 export function broadcastIntegrationChanged(

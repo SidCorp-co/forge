@@ -33,6 +33,8 @@ function entriesIn(forwardedFor: string | undefined): number {
   return (forwardedFor ?? '').split(',').filter((s) => s.trim().length > 0).length;
 }
 
+const counted = (n: number) => `${n} X-Forwarded-For ${n === 1 ? 'entry' : 'entries'}`;
+
 let shapeSaid = false;
 let shortSaid = false;
 
@@ -47,14 +49,14 @@ export function reportChainShape(forwardedFor: string | undefined, hops: number)
     shapeSaid = true;
     logger.info(
       { entries, hops },
-      `client-ip: the first forwarded request carried ${entries} X-Forwarded-For entries; TRUSTED_PROXY_HOPS=${hops} reads the one ${hops} from the right`,
+      `client-ip: the first forwarded request carried ${counted(entries)}; TRUSTED_PROXY_HOPS=${hops} reads the entry ${hops} places from the right`,
     );
   }
   if (entries < hops && !shortSaid) {
     shortSaid = true;
     logger.warn(
       { entries, hops },
-      `client-ip: X-Forwarded-For carried ${entries} entries, fewer than TRUSTED_PROXY_HOPS=${hops}, so the connection's own address answers, and every client behind the proxy shares it. Set TRUSTED_PROXY_HOPS to the proxies that append to the header, or have the inner proxy trust the outer one`,
+      `client-ip: X-Forwarded-For carried ${counted(entries)}, fewer than TRUSTED_PROXY_HOPS=${hops}, so the connection's own address answers, and every client behind the proxy shares it. Set TRUSTED_PROXY_HOPS to the proxies that append to the header, or have the inner proxy trust the outer one`,
     );
   }
 }
