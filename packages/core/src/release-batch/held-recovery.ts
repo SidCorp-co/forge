@@ -200,39 +200,42 @@ export async function recoverHeldReleaseBatches(
   return { recovered };
 }
 
-/** Where its issues went: a release that already promoted keeps them for the releasing sweep. */
-function whereTheIssuesWent(promoted: boolean): string {
+/** Where its issues went and what is left to do: a release that already promoted keeps its roster
+ *  for the releasing sweep, so it asks for no new release. */
+function afterHandBack(promoted: boolean, clear: string): { went: string; next: string } {
   return promoted
-    ? 'It had already put code on production, so the releasing sweep settles its issues.'
-    : 'Every issue in it has been put back at the release gate.';
+    ? {
+        went: 'It had already put code on production, so the releasing sweep settles its issues.',
+        next: `${clear}. The releasing sweep settles its issues; no new release is needed.`,
+      }
+    : {
+        went: 'Every issue in it has been put back at the release gate.',
+        next: `${clear}, then start the release again from the release gate.`,
+      };
 }
 
 async function emitWedge(row: HeldRow, promoted: boolean): Promise<void> {
-  if (row.decision_owed) {
-    await emitPipelineWedge({
-      projectId: row.project_id,
-      hop: 'dispatch',
-      entity: 'job',
-      entityId: row.job_id,
-      reason: DECISION_HANDBACK_REASON,
-      action: 'Answer the question the release asked, then start the release again.',
-      title: 'A release waiting on a decision was handed back',
-      summary: `The release waited on a decision a person owes, and the question stays open. ${whereTheIssuesWent(promoted)}`,
-      nextStep:
-        'Answer the question on the issue it is asked on, then start the release again from the release gate.',
-    });
-    return;
-  }
+  const decision = row.decision_owed;
+  const { went, next } = afterHandBack(
+    promoted,
+    decision
+      ? 'Answer the question on the issue it is asked on'
+      : 'Clear what held the release job',
+  );
   await emitPipelineWedge({
     projectId: row.project_id,
     hop: 'dispatch',
     entity: 'job',
     entityId: row.job_id,
-    reason: HELD_HANDBACK_REASON,
-    action: 'Clear what held the release job, then start the release again.',
-    title: 'A release was handed back because its job was held for good',
-    summary: `The release job was held because ${heldBecause(row.hold_reason)}, and nothing would have sent it again. ${whereTheIssuesWent(promoted)}`,
-    nextStep: 'Clear what held it, then start the release again from the release gate.',
+    reason: decision ? DECISION_HANDBACK_REASON : HELD_HANDBACK_REASON,
+    action: next,
+    title: decision
+      ? 'A release waiting on a decision was handed back'
+      : 'A release was handed back because its job was held for good',
+    summary: decision
+      ? `The release waited on a decision a person owes, and the question stays open. ${went}`
+      : `The release job was held because ${heldBecause(row.hold_reason)}, and nothing would have sent it again. ${went}`,
+    nextStep: next,
   });
 }
 

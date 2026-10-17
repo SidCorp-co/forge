@@ -292,6 +292,8 @@ describe('a decision-held release that had already promoted', () => {
     `)) as unknown as Array<{ body: string | null }>;
     expect(notice?.body ?? '').toContain('the releasing sweep settles its issues');
     expect(notice?.body ?? '').not.toContain('put back at the release gate');
+    expect(notice?.body ?? '').not.toMatch(/start the release again/);
+    expect(notice?.body ?? '').toContain('no new release is needed');
   });
 });
 
