@@ -1,6 +1,6 @@
 "use client";
 
-import { BLOCKED_TONE, Icon, lastReported, SILENCE_TONE, Spinner, WORKING_WORD } from "@/design";
+import { BLOCKED_TONE, Icon, type IconName, lastReported, SILENCE_TONE, Spinner, WORKING_WORD } from "@/design";
 import { TONE_META } from "@/design/status";
 import { formatElapsed } from "@/lib/utils/format";
 import { WAITING_FOR_INPUT_WORD } from "@/features/sessions/session-word";
@@ -113,6 +113,7 @@ export function TurnStage({
   reported = WORKING_WORD,
   waitingOn,
   activity,
+  ended,
 }: {
   stage: TurnStage;
   elapsed?: string;
@@ -124,6 +125,8 @@ export function TurnStage({
   waitingOn?: string;
   /** The session's word (`sessionWord`), which a `working` line says in place of Working. */
   activity?: string;
+  /** An ended session's `sessionEndWord`, said in place of Failed. */
+  ended?: { word: string; icon: IconName; failure: boolean };
 }) {
   if (stage === "quiet" || stage === "blocked") {
     const quiet = stage === "quiet";
@@ -146,7 +149,8 @@ export function TurnStage({
   }
   const named = stage === "working" && activity !== undefined && activity !== WORKING_WORD;
   const waitingForInput = named && activity === WAITING_FOR_INPUT_WORD;
-  const label = named ? (waitingForInput ? activity : `${activity}…`) : LABEL[stage];
+  const endedWord = stage === "failed" ? ended?.word : undefined;
+  const label = named ? (waitingForInput ? activity : `${activity}…`) : (endedWord ?? LABEL[stage]);
   return (
     <div
       data-testid="turn-stage"
@@ -157,7 +161,11 @@ export function TurnStage({
     >
       <span className="flex h-[14px] w-[14px] flex-none items-center justify-center">
         {stage === "failed" ? (
-          <Icon name="alert" size={12} className="text-danger" />
+          ended && !ended.failure ? (
+            <Icon name={ended.icon} size={12} />
+          ) : (
+            <Icon name="alert" size={12} className="text-danger" />
+          )
         ) : waitingForInput ? (
           <Icon name="pause" size={12} />
         ) : (

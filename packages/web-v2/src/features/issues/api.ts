@@ -114,6 +114,7 @@ export const issuesApi = {
     if (workState) params.set("workState", workState);
     for (const s of opts.status ?? []) params.append("status", s);
     if (opts.origin) params.set("origin", opts.origin);
+    if (opts.stuck) params.set("stuck", "true");
     const result = await apiClientList<IssueRow, { buckets?: IssueBuckets }>(
       `/projects/${projectId}/issues/search?${params}`,
     );

@@ -26,6 +26,10 @@ const SESSION_LABELS: Partial<Record<StatusKey, string>> = {
   archived: STOPPED_WORD,
 };
 
+export function sessionStatusLabel(status: StatusKey): string {
+  return SESSION_LABELS[status] ?? (STATUS_META[status] ?? STATUS_META.queued).label;
+}
+
 /** In the session domain `blocked` is a running session its box reports blocked: it waits on
  *  someone, so it takes the blocked-session tone rather than a parked issue's. */
 const SESSION_TONES: Partial<Record<StatusKey, (typeof TONE_META)[keyof typeof TONE_META]>> = {

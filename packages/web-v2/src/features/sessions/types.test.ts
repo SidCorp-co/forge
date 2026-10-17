@@ -20,6 +20,7 @@ import {
   statusToChip,
   sessionChipStatus,
   sessionEndText,
+  sessionEndWord,
   classifySessionOutcome,
   isRealFailure,
   type SessionRow,
@@ -447,3 +448,25 @@ describe("sessionStep — the step a session recorded, or none (ISS-999)", () =>
 		expect(sessionStep(null)).toBeNull();
 	});
 });
+
+// ISS-1228 round 14 (judge-36): one ended session's page read Swept in its header and Failed in its
+// turn line, and its remedy said "Rerun to re-dispatch.".
+describe("an ended session's one outcome word", () => {
+  it("is the word its chip says, whatever the reason", () => {
+    expect(sessionEndWord("failed", "heartbeat_timeout")).toBe("Swept");
+    expect(sessionEndWord("failed", "agent_killed")).toBe("Failed");
+    expect(sessionEndWord("failed", "user_cancelled")).toBe("Stopped");
+    expect(sessionEndWord("failed", "pipeline_cancelled")).toBe("Swept");
+    expect(sessionEndWord("completed", null)).toBe("Completed");
+  });
+
+  it("names no remedy with re-dispatch", () => {
+    for (const action of Object.values(FAILURE_REASON_ACTION)) {
+      expect(action).not.toMatch(/re-?dispatch/i);
+    }
+    expect(failureReasonAction("heartbeat_timeout", "Rerun")).toBe(
+      "The session stopped sending heartbeats. Rerun to start it again.",
+    );
+  });
+});
+

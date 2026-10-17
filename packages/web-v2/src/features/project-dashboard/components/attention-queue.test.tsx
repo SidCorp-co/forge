@@ -20,10 +20,17 @@ describe("the Needs your attention list with nothing in it", () => {
   });
 
   it("does not say all caught up where more is owed than the list reached", () => {
-    render(<AttentionQueue items={[]} cut={{ shown: 0, atLeast: 3, peopleCut: true }} slug="pair" now={0} />);
+    render(<AttentionQueue items={[]} cut={{ shown: 0, whole: 3, peopleCut: true }} slug="pair" now={0} />);
     expect(screen.queryByText("All caught up")).toBeNull();
     expect(screen.getByText("Nothing is listed to act on here.")).toBeInTheDocument();
-    expect(screen.getByText(/Showing 0 of at least 3\./u)).toBeInTheDocument();
+    expect(screen.getByText(/Showing 0 of 3\./u)).toBeInTheDocument();
+  });
+
+  // ISS-1229 r14, the master on the shots: the footer read "Every blocked on a person issue is in Issues".
+  it("says where the rest are in a sentence", () => {
+    render(<AttentionQueue items={[]} cut={{ shown: 0, whole: 3, peopleCut: true }} slug="pair" now={0} />);
+    const link = screen.getByRole("link", { name: "Every issue blocked on a person is in Issues" });
+    expect(link).toHaveAttribute("href", "/projects/pair/issues?filter=blocked_on_person");
   });
 
   it("does not say all caught up where the response was refused", () => {
@@ -41,11 +48,11 @@ describe("the Needs your attention list with nothing in it", () => {
   });
 
   it("keeps the cut under an unread page and says nothing is listed to act on only where the read is whole", () => {
-    render(<AttentionQueue items={[]} cut={{ shown: 0, atLeast: 3, peopleCut: true }} shape="unread" slug="pair" now={0} />);
+    render(<AttentionQueue items={[]} cut={{ shown: 0, whole: 3, peopleCut: true }} shape="unread" slug="pair" now={0} />);
     expect(screen.queryByText("All caught up")).toBeNull();
     expect(screen.queryByText("Nothing is listed to act on here.")).toBeNull();
     expect(screen.getByText(/not all of this page is read yet/iu)).toBeInTheDocument();
-    expect(screen.getByText(/Showing 0 of at least 3\./u)).toBeInTheDocument();
+    expect(screen.getByText(/Showing 0 of 3\./u)).toBeInTheDocument();
   });
 
   it.each(["quiet", "working"] as const)("says all caught up under a %s page", (shape) => {
@@ -78,9 +85,14 @@ describe("the Needs your attention list with nothing in it", () => {
     );
     const list = screen.getByRole("region", { name: "Needs your attention" });
     expect(list).not.toHaveTextContent("Nothing here needs you");
-    expect(list).toHaveTextContent("PAIR-41Pick a carrierWaiting for you for over six hours");
-    expect(list).toHaveTextContent("PAIR-50Export invoicesIn a live status with no live work behind it");
-    expect(list).toHaveTextContent("And 1 more stuck. Every one is in Issues.");
+    expect(list).toHaveTextContent("PAIR-41Pick a carrierHas been waiting for you for over six hours");
+    expect(list).toHaveTextContent("PAIR-50Export invoicesIs in a live status with no live work behind it");
+    expect(list).toHaveTextContent("And 1 more stuck. All 3 stuck issues are in Issues.");
+    // The link lands on the Issues list of exactly the stuck issues, not an unfiltered one (ISS-1229 r14).
+    expect(screen.getByRole("link", { name: "All 3 stuck issues are in Issues" })).toHaveAttribute(
+      "href",
+      "/projects/pair/issues?stuck=1",
+    );
     expect(screen.getAllByRole("button", { name: "Open issue" })).toHaveLength(2);
   });
 

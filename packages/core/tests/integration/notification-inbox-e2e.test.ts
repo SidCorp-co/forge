@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { type InboxRow, registerInboxFixture } from '../helpers/inbox-fixture.js';
 import { createTestProject } from '../helpers/index.js';
 
-const OWED_CLOSE_CAUSE = 'Issues whose code shipped and whose close was never written';
+const OWED_CLOSE_CAUSE = 'Issues that shipped their code and were never closed';
 
 const fx = registerInboxFixture();
 const { announce, auth, inbox, markRead, membersOf, seedShipped, sweepRows } = fx;
@@ -259,7 +259,7 @@ describe('the list filters before it paginates', () => {
   it('keeps a group whole when a filter would leave one of its records', async () => {
     const other = await createTestProject(fx.db, fx.owner, { name: 'Billing' });
     const groupKey = 'sweep:owed-close:29866100';
-    const groupTitle = 'Issues whose code shipped and whose close was never written';
+    const groupTitle = 'Issues that shipped their code and were never closed';
     for (const [n, projectId] of [
       [1, fx.project.id],
       [2, other.id],

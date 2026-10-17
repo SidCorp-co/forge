@@ -91,7 +91,7 @@ function SessionRow({
         {doing.label}
       </div>
       <div className="fg-body-sm min-w-0">
-        <Label>Waiting on</Label>
+        <Label>Wait</Label>
         {waiting.blocked ? waiting.text : <span className="text-subtle">{waiting.text}</span>}
       </div>
       <div className="fg-body-sm">
@@ -126,7 +126,7 @@ export function SessionsList({
         <span>Session</span>
         <span>On</span>
         <span>Doing</span>
-        <span>Waiting on</span>
+        <span>Wait</span>
         <span>Last check-in</span>
       </div>
       <ul className="flex flex-col divide-y divide-line border-b border-line" aria-label="Live sessions">

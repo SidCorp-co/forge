@@ -30,6 +30,7 @@ import {
 	deriveCommentKind,
 	filterCount,
 	deriveRunView,
+	issueSessionId,
 	filterToQueryParams,
 	groupRows,
 	groupedTransitions,
@@ -1345,6 +1346,7 @@ describe("deriveRunView — one view of what each run did (ISS-1133)", () => {
 		startedAt: "2026-10-15T07:00:00.000Z",
 		finishedAt: "2026-10-15T07:30:00.000Z",
 		costUsd: null,
+		sessionId: null,
 		attempts: [],
 		...over,
 	});
@@ -1385,6 +1387,10 @@ describe("deriveRunView — one view of what each run did (ISS-1133)", () => {
 			["drive#1", true],
 			["drive#2", true],
 		]);
+	});
+
+	it("carries the session a run session ran, though no session it was hydrated with names the issue", () => {
+		expect(deriveRunView([run("r1", { sessionId: "s-run" })], [])[0]?.sessionId).toBe("s-run");
 	});
 
 	it("reads an open attempt as running only while its run is live, and as left open once it ended", () => {
@@ -1699,3 +1705,27 @@ describe("originFromParams", () => {
 		expect(originFromParams(["human", "human"]).dropped).toEqual([]);
 	});
 });
+
+// ISS-1228 round 14 (judge-36): Open session landed on the unfiltered runs list, where no row opens
+// a session.
+describe("issueSessionId — the session Open session opens", () => {
+	const runs = (...sessionIds: (string | null)[]) => sessionIds.map((sessionId) => ({ sessionId }));
+
+	it("opens the live session holding the issue before any that ran it", () => {
+		expect(issueSessionId(["live-1"], runs("s-new"))).toBe("live-1");
+	});
+
+	it("else opens the newest session of the newest run that had one", () => {
+		expect(issueSessionId([], runs("s-b", "s-old"))).toBe("s-b");
+	});
+
+	it("skips a newest run that had no session for an older run's newest", () => {
+		expect(issueSessionId([], runs(null, "s-2"))).toBe("s-2");
+	});
+
+	it("opens nothing for an issue that never had a session", () => {
+		expect(issueSessionId([], runs(null, null))).toBeNull();
+		expect(issueSessionId([], [])).toBeNull();
+	});
+});
+

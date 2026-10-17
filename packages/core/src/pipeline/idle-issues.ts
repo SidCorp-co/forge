@@ -49,6 +49,7 @@ import {
   strandReason,
   strandRuleFor,
 } from './strand-rules.js';
+import { outrankedIssueIds, retireOutrankedNotices } from './stuck-precedence.js';
 
 export interface IdleIssuesResult {
   /** Rows read as stranded this pass. */
@@ -97,6 +98,11 @@ export async function reconcileIdleIssues(
   );
   const pooled = await projectsWithAdmittedRunner(rows.map((r) => r.project_id));
   const admins = await projectAdminUserIdsFor(rows.map((r) => r.project_id));
+  // A row another sweep names for a more specific reason is not told again as idle (ISS-1229 r14).
+  const outranked = await outrankedIssueIds(
+    rows.map((r) => r.id),
+    IDLE_KEY_SUFFIX,
+  );
 
   const result: IdleIssuesResult = {
     detected: 0,
@@ -119,11 +125,13 @@ export async function reconcileIdleIssues(
     const rewrite = release || !unchangedStrand(row.strand, judged.record);
     const stands = rewrite ? await writeStrand({ row, record: judged.record, release, now }) : true;
     if (stands && release) result.leasesReleased += 1;
-    if (stands) result.reported += await surface({ row, record: judged.record, admins, now });
+    if (stands && !outranked.has(row.id)) {
+      result.reported += await surface({ row, record: judged.record, admins, now });
+    }
   }
 
   result.cleared = await clearRecovered(now, scope);
-  result.resolved = await resolveClearedNotices(scope);
+  result.resolved = (await resolveClearedNotices(scope)) + (await retireOutrankedNotices());
   await resolveArchivedProjectNotices(IDLE_KEY_SUFFIX);
   return result;
 }

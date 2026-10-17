@@ -42,6 +42,8 @@ export interface JournalRunHead {
   ordinal: number;
   /** The issue keys a group run was opened over; null for a run of this issue alone. */
   group: string[] | null;
+  /** A run session names no issue of its own, so this is how its issues reach it once it ends. */
+  sessionId: string | null;
 }
 
 const asObject = (v: unknown): Record<string, unknown> | null =>
@@ -104,6 +106,7 @@ export function groupByRun(
     startedAt: run.startedAt,
     finishedAt: run.finishedAt,
     costUsd: costs.get(run.id) ?? null,
+    sessionId: run.sessionId,
     attempts: (attempts.get(run.id) ?? []).sort(
       (a, b) => a.startedAt.getTime() - b.startedAt.getTime() || a.attempt - b.attempt,
     ),
@@ -119,6 +122,7 @@ interface RunRow extends Record<string, unknown> {
   started_at: string | Date;
   finished_at: string | Date | null;
   grp: string[] | null;
+  session_id: string | null;
 }
 
 /**
@@ -137,7 +141,9 @@ async function runsOfIssue(projectId: string, issueId: string, key: string): Pro
                 THEN COALESCE(${keysOf(RUN_GROUP_METADATA_KEY, 'array')},
                               ${keysOf(RUN_ISSUE_STATUSES_METADATA_KEY, 'object')},
                               ARRAY[]::text[])
-           END AS grp
+           END AS grp,
+           (SELECT s.id FROM agent_sessions s WHERE s.pipeline_run_id = r.id
+             ORDER BY s.started_at DESC, s.id DESC LIMIT 1) AS session_id
       FROM pipeline_runs r
      WHERE r.project_id = ${projectId}
        AND (r.issue_id = ${issueId}
@@ -185,6 +191,7 @@ runJournalRoutes.get(
         finishedAt: r.finished_at === null ? null : asDate(r.finished_at),
         ordinal: i + 1,
         group: r.grp,
+        sessionId: r.session_id,
       }))
       .slice(-RUN_LIMIT);
     const runIds = heads.map((r) => r.id);

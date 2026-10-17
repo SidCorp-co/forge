@@ -1,3 +1,4 @@
+import { stuckCountSentence, stuckGroupTitle, stuckRowWords } from '@forge/contracts/stuck-words';
 import { describe, expect, it } from 'vitest';
 import {
   detectorOfGroupKey,
@@ -53,7 +54,9 @@ describe('reading a group key back', () => {
 // no explanation a person reads names a stored field.
 describe('the words a person reads on a sweep group', () => {
   it('frames a park as waiting for the person and says what it asks for', () => {
-    expect(SWEEP_DETECTORS.stranded.groupTitle).toBe('Issues waiting for you for over six hours');
+    expect(SWEEP_DETECTORS.stranded.groupTitle).toBe(
+      'Issues that have been waiting for you for over six hours',
+    );
     expect(SWEEP_DETECTORS.stranded.explanation).toMatch(/decision/);
     expect(SWEEP_DETECTORS.stranded.explanation).not.toMatch(/nothing coming/);
   });
@@ -65,4 +68,30 @@ describe('the words a person reads on a sweep group', () => {
       expect(explanation).not.toMatch(/`strand`|job pool|\bwake\b/);
     },
   );
+});
+
+// ISS-1229 r14, judge-35's failure of 90: the headline said an owed close in other words than the
+// bell's group. One sentence per kind now; this fails the moment a surface words a kind its own way.
+describe('one sentence per stuck kind, on the bell and the project page alike', () => {
+  it.each(Object.keys(SWEEP_DETECTORS))('titles the %s group with its kind’s sentence', (id) => {
+    const { kind, groupTitle } = SWEEP_DETECTORS[id as keyof typeof SWEEP_DETECTORS];
+    expect(groupTitle).toBe(stuckGroupTitle(kind));
+    const predicate = groupTitle.replace(/^Issues that /, '');
+    expect(stuckCountSentence(kind, 2)).toBe(`2 issues ${predicate}.`);
+    expect(stuckRowWords(kind).toLowerCase()).toBe(
+      stuckCountSentence(kind, 1)
+        .replace(/^1 issue /, '')
+        .replace(/\.$/, '')
+        .toLowerCase(),
+    );
+  });
+
+  it('says an owed close in the bell group’s words on the headline', () => {
+    expect(SWEEP_DETECTORS['owed-close'].groupTitle).toBe(
+      'Issues that shipped their code and were never closed',
+    );
+    expect(stuckCountSentence('owed_close', 2)).toBe(
+      '2 issues shipped their code and were never closed.',
+    );
+  });
 });

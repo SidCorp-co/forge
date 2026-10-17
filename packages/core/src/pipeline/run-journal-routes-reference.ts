@@ -36,6 +36,10 @@ export const journalRunSchema = z.object({
     .number()
     .nullable()
     .describe("usage of the run's sessions, the whole group's on a group run"),
+  sessionId: z
+    .string()
+    .nullable()
+    .describe('the newest agent session the run started; null where none ran it'),
   attempts: z.array(journalAttemptSchema),
 });
 

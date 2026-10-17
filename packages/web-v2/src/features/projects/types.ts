@@ -72,7 +72,7 @@ export interface ProjectHealthRow {
   /** Issues with a stuck-issue notice standing, each counted once whichever sweep raised it. */
   stuckIssues: number;
   /** Up to five of them, longest-standing first. */
-  /** The same issues by what each notice says of it; an issue two sweeps hold counts under both. */
+  /** The same issues, each once under its most specific reason, so the kinds add up to `stuckIssues`. */
   stuckIssuesByKind: Partial<Record<StuckIssueKind, number>>;
   stuckIssueRefs: Array<{ issueId: string; documentId: string; title: string; kind: StuckIssueKind }>;
 }

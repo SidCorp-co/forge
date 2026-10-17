@@ -946,9 +946,22 @@ export interface RunView {
 	startedAt: string;
 	finishedAt: string | null;
 	costUsd: number | null;
+	sessionId: string | null;
 	attempts: AttemptView[];
 	/** The agent sessions that ran it, oldest first, with whether each resumed or started fresh. */
 	sessions: SessionTimelineEntry[];
+}
+
+/**
+ * The session the issue page's Open session opens: one holding the issue now, else the newest
+ * session of the newest run that had one, or `null` for an issue no session has run. `runs` are
+ * newest first, as `deriveRunView` gives them.
+ */
+export function issueSessionId(
+	holding: readonly string[],
+	runs: readonly Pick<RunView, "sessionId">[],
+): string | null {
+	return holding[0] ?? runs.find((run) => run.sessionId)?.sessionId ?? null;
 }
 
 const LIVE_RUN = new Set<JournalRun["status"]>(["running", "paused"]);
@@ -1000,6 +1013,7 @@ export function deriveRunView(
 			startedAt: run.startedAt,
 			finishedAt: run.finishedAt,
 			costUsd: run.costUsd,
+			sessionId: run.sessionId,
 			sessions: byRun.get(run.runId) ?? [],
 			attempts: run.attempts.map((a) => ({
 				key: `${a.phase}#${a.attempt}`,

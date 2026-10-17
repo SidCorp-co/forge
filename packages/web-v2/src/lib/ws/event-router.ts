@@ -5,6 +5,9 @@ import { invalidateThroughInFlight } from "./invalidate-through-inflight";
 import { scheduleInvalidation } from "./invalidation-coalescer";
 import { trackJobSeq } from "./seq-tracker";
 
+/** The issue page's run journal, `runJournalKey` in features/issues/detail-hooks.ts. */
+const RUN_JOURNAL = "run-journal";
+
 interface EventEnvelope {
 	event: string;
 	// biome-ignore lint/suspicious/noExplicitAny: heterogeneous payloads
@@ -31,6 +34,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			scheduleInvalidation(qc, ["pulse"]);
 			if (data?.issueId) {
 				scheduleInvalidation(qc, ["issue", data.issueId]);
+				scheduleInvalidation(qc, [RUN_JOURNAL, data.issueId]);
 				scheduleInvalidation(qc, ["activities", data.issueId]);
 			}
 			return;
@@ -44,6 +48,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			scheduleInvalidation(qc, ["attention"]);
 			if (data?.issueId) {
 				scheduleInvalidation(qc, ["issue", data.issueId]);
+				scheduleInvalidation(qc, [RUN_JOURNAL, data.issueId]);
 				scheduleInvalidation(qc, ["activities", data.issueId]);
 				scheduleInvalidation(qc, ["questions", data.issueId]);
 			}
@@ -53,6 +58,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			scheduleInvalidation(qc, ["issues", "list"]);
 			if (data?.issueId) {
 				scheduleInvalidation(qc, ["issue", data.issueId]);
+				scheduleInvalidation(qc, [RUN_JOURNAL, data.issueId]);
 			}
 			if (data?.projectId) {
 				scheduleInvalidation(qc, ["projects", data.projectId, "active-runners"]);
@@ -122,6 +128,8 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "agent-session.deleted": {
 			scheduleInvalidation(qc, ["agent-sessions"]);
 			scheduleInvalidation(qc, ["sessions-and-holds"]);
+			// A session's events name no issue, so every open issue page re-reads its runs (ISS-1228).
+			scheduleInvalidation(qc, [RUN_JOURNAL]);
 			// The rail and the projects console count live sessions off the health rollup.
 			scheduleInvalidation(qc, ["projects", "health"]);
 			scheduleInvalidation(qc, ["pulse"]);
@@ -184,6 +192,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "pipeline_run.status_changed": {
 			scheduleInvalidation(qc, ["pipeline-runs", "list"]);
 			scheduleInvalidation(qc, ["admin", "ops"]);
+			scheduleInvalidation(qc, data?.issueId ? [RUN_JOURNAL, data.issueId] : [RUN_JOURNAL]);
 			// Projects console (ISS-290): spend rolls up from pipeline_runs.
 			scheduleInvalidation(qc, ["projects", "health"]);
 			scheduleInvalidation(qc, ["pulse"]);
@@ -328,6 +337,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
  */
 const REPLAY_PREFIXES: readonly (readonly unknown[])[] = [
 	["issues"],
+	[RUN_JOURNAL],
 	["jobs"],
 	["projects"],
 	["agent-sessions"],

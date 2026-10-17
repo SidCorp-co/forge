@@ -5,14 +5,15 @@ import { useRouter } from "next/navigation";
 import type { IssueStatus } from "../types";
 
 /**
- * The issue page header's primary action, Open session, and the actions menu. At Releasing a
- * release run carries the issue and only that run's finish or abort takes it out (ISS-1421), so
- * the header offers the run itself and no move: core would refuse Pause and Reopen there by name.
+ * The issue page header's primary action, Open session (the session holding the issue, else its
+ * newest), and the actions menu. At Releasing a release run carries the issue and only that run's
+ * finish or abort takes it out (ISS-1421), so the header offers the run itself and no move: core
+ * would refuse Pause and Reopen there by name.
  * At Awaiting release the page's primary is the banner's Release now, so Reopen sits in the menu.
  */
 export function IssueHeaderActions({
   slug,
-  issueId,
+  sessionHref,
   status,
   releaseRunId,
   canWrite,
@@ -24,7 +25,7 @@ export function IssueHeaderActions({
   onCopyLink,
 }: {
   slug: string;
-  issueId: string;
+  sessionHref: string | null;
   status: IssueStatus;
   releaseRunId: string | null | undefined;
   canWrite: boolean;
@@ -73,14 +74,16 @@ export function IssueHeaderActions({
       />
       {/* Its words at every width: the release banner sends a reader to "Open session at the top
           of this page", so at 390 it cannot be an icon alone (ISS-1421 round 6, criterion 86). */}
-      <Button
-        variant="secondary"
-        size="sm"
-        icon="agent"
-        onClick={() => router.push(`/projects/${slug}/agents?issue=${issueId}`)}
-      >
-        Open session
-      </Button>
+      {sessionHref && (
+        <Button
+          variant="secondary"
+          size="sm"
+          icon="agent"
+          onClick={() => router.push(sessionHref)}
+        >
+          Open session
+        </Button>
+      )}
       <Menu
         align="right"
         items={moreItems}

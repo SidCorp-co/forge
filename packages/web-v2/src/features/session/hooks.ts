@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";
 import type { TurnRow, TurnsResponse } from "./types";
-import { refreshAfterStop } from "@/features/sessions/hooks";
+import { refreshAfterStop, SESSION_STOPPED } from "@/features/sessions/hooks";
 import { type EditTurnOpts, type ForkOpts, type SendOpts, sessionApi } from "./api";
 
 /** Session detail row. Keyed `['agent-session', id]` — WS-invalidated. */
@@ -122,9 +122,13 @@ export function useForkSession(id: string) {
 export function useCancelSession(id: string) {
   const qc = useQueryClient();
   const onError = useToastError();
+  const { toast } = useToast();
   return useMutation({
     mutationFn: () => sessionApi.cancel(id),
-    onSuccess: () => refreshAfterStop(qc),
+    onSuccess: () => {
+      refreshAfterStop(qc);
+      toast({ title: SESSION_STOPPED, tone: "success" });
+    },
     onError,
   });
 }

@@ -4,7 +4,7 @@ import { BulletBar, CardTitle, SectionTitle, Waffle } from "@/design";
 import { TONE_META } from "@/design/status";
 import { failureReasonLabel } from "@/features/sessions/types";
 import { formatElapsed, qualityRates } from "../derive";
-import { jobKindLabel } from "../job-kinds";
+import { jobKindsLabel } from "../job-kinds";
 import type { PulseQuality } from "../types";
 
 const LANE_LABEL: Record<string, string> = {
@@ -117,7 +117,7 @@ export function QualitySection({ quality }: QualitySectionProps) {
             <tbody>
               {pipelineFlow.map((n) => (
                 <tr key={n.type} className="fg-body-sm">
-                  <td className="py-0.5 text-left">{jobKindLabel(n.type)}</td>
+                  <td className="py-0.5 text-left">{jobKindsLabel(n.type)}</td>
                   <td className="py-0.5 text-right tabular-nums">{n.count}</td>
                   <td className="py-0.5 text-right tabular-nums text-muted">
                     {n.medianSeconds === null ? "—" : formatElapsed(n.medianSeconds)}

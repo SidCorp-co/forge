@@ -16,6 +16,7 @@ import {
   runLeaseDisagreementText,
   silenceText,
   stateLabelAt,
+  waitsNow,
 } from "../run-state";
 import type { RunSessionRow } from "../types";
 
@@ -135,7 +136,7 @@ function WaitingOn({ row }: { row: RunSessionRow }) {
  */
 export function RunRow({ row, now, slug }: RunRowProps) {
   const issues = row.issues ?? [];
-  const waits = row.blockerKind != null;
+  const waits = waitsNow(row);
   const core = coreReadingLines(row, now);
   return (
     <li className="flex flex-col gap-2 py-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3 sm:gap-y-1.5">

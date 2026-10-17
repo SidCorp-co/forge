@@ -13,18 +13,23 @@ import { IssueHeaderActions } from "./issue-header-actions";
 
 expect.extend(matchers);
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+const push = vi.hoisted(() => vi.fn());
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 
 afterEach(cleanup);
 
 const onRun = vi.fn();
 
-function renderAt(status: IssueStatus, releaseRunId: string | null = null) {
+function renderAt(
+  status: IssueStatus,
+  releaseRunId: string | null = null,
+  sessionHref: string | null = "/projects/forge/agents/s-1",
+) {
   render(
     <div data-testid="row">
       <IssueHeaderActions
         slug="forge"
-        issueId="i-1"
+        sessionHref={sessionHref}
         status={status}
         releaseRunId={releaseRunId}
         canWrite
@@ -78,3 +83,21 @@ describe("the issue header's primary says what it does", () => {
     },
   );
 });
+
+// ISS-1228 round 14 (judge-36): Open session landed on the unfiltered Agents runs list.
+describe("Open session opens the issue's session", () => {
+  it("goes to the session page it is given", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    push.mockClear();
+    renderAt("in_progress", null, "/projects/forge/agents/s-9");
+    fireEvent.click(screen.getByRole("button", { name: "Open session" }));
+    expect(push).toHaveBeenCalledWith("/projects/forge/agents/s-9");
+  });
+
+  it("is not offered for an issue no session has run", () => {
+    renderAt("open", null, null);
+    expect(screen.queryByRole("button", { name: "Open session" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Issue actions" })).toBeInTheDocument();
+  });
+});
+

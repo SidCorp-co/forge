@@ -26,8 +26,9 @@ import { useOrgScopedProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
+import { failedJobWords } from "../failed-job-words";
 import { useAttention } from "../hooks";
-import type { AttentionItem, AttentionKind } from "../types";
+import type { AttentionBucket, AttentionItem, AttentionKind } from "../types";
 import { PageTitle, SectionTitle } from "@/design/primitives/heading";
 
 /** Per-kind presentation. ISS-509: color resolves through the semantic tone
@@ -80,6 +81,7 @@ function KindTag({ kind }: { kind: AttentionKind }) {
 }
 
 function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (link: string) => void }) {
+  const said = item.kind === "failed_job" ? failedJobWords(item) : item.title;
   return (
     <button
       type="button"
@@ -91,9 +93,9 @@ function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (link: st
       {/* At phone width the tags take the row, so the title gets a line of its own and wraps there
           rather than being cut to a word (ISS-1229 r13). */}
       <span className="fg-body-sm order-last min-w-0 basis-full text-fg sm:order-none sm:flex-1 sm:basis-auto sm:truncate">
-        {item.issueTitle ?? item.title}
-        {/* A failed job is named by its issue; what failed is read under it. */}
-        {item.issueTitle && <span className="fg-caption block text-subtle sm:truncate">{item.title}</span>}
+        {item.issueTitle ?? said}
+        {/* A failed job is named by its issue; what failed is read under it, in words (ISS-1229 r14). */}
+        {item.issueTitle && <span className="fg-caption block text-subtle sm:truncate">{said}</span>}
       </span>
       {item.issueRef && <MonoTag>{item.issueRef}</MonoTag>}
       {item.projectName && (
@@ -130,6 +132,8 @@ function Group({
   onOpen,
   total,
   note,
+  onListAll,
+  listing = false,
   collapsible: mayCollapse = false,
 }: {
   title: string;
@@ -137,8 +141,12 @@ function Group({
   note?: string;
   items: AttentionItem[];
   onOpen: (link: string) => void;
-  /** Unclipped match count when the API capped `items`. Defaults to items.length. */
+  /** Every item the group holds, listed or not: what its heading says. Defaults to items.length. */
   total?: number;
+  /** Lists the group whole where its list is capped; absent once it has been asked for. */
+  onListAll?: () => void;
+  /** Asked for whole and not yet read. */
+  listing?: boolean;
   collapsible?: boolean;
 }) {
   const matched = total ?? items.length;
@@ -184,8 +192,13 @@ function Group({
             ))}
           </ul>
           {matched > items.length && (
-            <p className="fg-caption mt-1.5 px-0.5 text-muted">
+            <p className="fg-caption mt-1.5 flex flex-wrap items-center gap-2 px-0.5 text-muted">
               Showing {items.length} of {matched}, highest priority first.
+              {(onListAll || listing) && (
+                <Button size="sm" variant="secondary" onClick={onListAll} disabled={listing}>
+                  {listing ? `Listing all ${matched}…` : `Show all ${matched}`}
+                </Button>
+              )}
             </p>
           )}
         </div>
@@ -196,18 +209,18 @@ function Group({
 
 export function AttentionScreen() {
   const router = useRouter();
-  const { view, read, devicesRead, error, devicesError, refetch } = useAttention();
+  // A capped group the person asked to see whole is read whole; the others keep their caps.
+  const [expand, setExpand] = useState<AttentionBucket[]>([]);
+  const { view, read, devicesRead, expanding, error, devicesError, refetch } = useAttention({
+    expand,
+  });
+  const listAll = (bucket: AttentionBucket) =>
+    expand.includes(bucket) ? undefined : () => setExpand([...expand, bucket]);
   // ISS-477 scoped the inbox to the active org by dropping other orgs' rows here, after the route's
   // caps; ISS-1229 r13 moved that cut into the route, before them. Offline runners are the box's own.
   const { projects } = useOrgScopedProjects();
-  const total =
-    view.needsReview.length +
-    view.awaitingInput.length +
-    view.mentions.length +
-    view.failedJobs.length +
-    view.pendingSkillUpdates.length +
-    view.unseenDrafts.length +
-    view.offlineRunners.length;
+  // Every item the page holds, listed or not: what the rail badge says too (ISS-1229 r14).
+  const total = view.total + view.offlineRunners.length;
 
   const open = (link: string) => router.push(link);
 
@@ -267,16 +280,54 @@ export function AttentionScreen() {
         </div>
       ) : (
         <div className="flex flex-col gap-6">
-          <Group title="Needs review" items={view.needsReview} onOpen={open} />
-          <Group title="Awaiting input" note={AWAITING_NOTE} items={view.awaitingInput} onOpen={open} />
-          <Group title="Mentions" items={view.mentions} onOpen={open} />
-          <Group title="Failed jobs" items={view.failedJobs} onOpen={open} />
-          <Group title="Skill updates" items={view.pendingSkillUpdates} onOpen={open} />
+          <Group
+            title="Needs review"
+            items={view.needsReview}
+            total={view.bucketTotals.needsReview}
+            onListAll={listAll("needsReview")}
+            listing={expanding && expand.includes("needsReview")}
+            onOpen={open}
+          />
+          <Group
+            title="Awaiting input"
+            note={AWAITING_NOTE}
+            items={view.awaitingInput}
+            total={view.bucketTotals.awaitingInput}
+            onListAll={listAll("awaitingInput")}
+            listing={expanding && expand.includes("awaitingInput")}
+            onOpen={open}
+          />
+          <Group
+            title="Mentions"
+            items={view.mentions}
+            total={view.bucketTotals.mentions}
+            onListAll={listAll("mentions")}
+            listing={expanding && expand.includes("mentions")}
+            onOpen={open}
+          />
+          <Group
+            title="Failed jobs"
+            items={view.failedJobs}
+            total={view.bucketTotals.failedJobs}
+            onListAll={listAll("failedJobs")}
+            listing={expanding && expand.includes("failedJobs")}
+            onOpen={open}
+          />
+          <Group
+            title="Skill updates"
+            items={view.pendingSkillUpdates}
+            total={view.bucketTotals.pendingSkillUpdates}
+            onListAll={listAll("pendingSkillUpdates")}
+            listing={expanding && expand.includes("pendingSkillUpdates")}
+            onOpen={open}
+          />
           <Group
             title="Unseen drafts"
             items={view.unseenDrafts}
             onOpen={open}
-            total={view.unseenDraftsTotal}
+            total={view.bucketTotals.unseenDrafts}
+            onListAll={listAll("unseenDrafts")}
+            listing={expanding && expand.includes("unseenDrafts")}
             collapsible
           />
           <Group title="Offline runners" items={view.offlineRunners} onOpen={open} />

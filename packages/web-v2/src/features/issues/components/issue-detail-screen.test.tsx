@@ -167,7 +167,7 @@ describe("the issue detail's main column", () => {
 
   it("keeps the header's actions on screen at phone width, on a row of their own", () => {
     renderScreen();
-    const actions = screen.getByRole("button", { name: "Open session" }).parentElement;
+    const actions = screen.getByRole("button", { name: "Issue actions" }).closest("[class*='basis-full']");
     for (let el: Element | null = actions; el && el !== document.body; el = el.parentElement) {
       expect(el.className.split(/\s+/), "a bare `hidden` removes it below sm").not.toContain("hidden");
     }

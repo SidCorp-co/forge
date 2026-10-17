@@ -53,12 +53,14 @@ export function useAttachments(id: string | undefined, projectId?: string) {
   });
 }
 
-/** What each run of the issue did, from the run journal (ISS-1133). Keyed under the
- *  `['issue', id, …]` prefix so the event-router's `['issue', id]` invalidation
- *  (issue.updated / pipelineHealth.changed) refreshes it for free. */
+/** What each run of the issue did, from the run journal (ISS-1133). Keyed under its own prefix,
+ *  `runJournalKey`, which the event router re-reads on every session and run event as well as on
+ *  the issue's own, so a stop made in another tab reaches an open issue page (ISS-1228). */
+export const runJournalKey = (id: string | undefined) => ["run-journal", id] as const;
+
 export function useRunJournal(projectId: string | undefined, id: string | undefined) {
   return useQuery({
-    queryKey: ["issue", id, "run-journal"],
+    queryKey: runJournalKey(id),
     queryFn: () => issueDetailApi.runJournal(projectId as string, id as string),
     enabled: !!id && !!projectId,
     staleTime: 30_000,

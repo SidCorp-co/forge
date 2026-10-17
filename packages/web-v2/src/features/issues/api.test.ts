@@ -80,6 +80,15 @@ describe("issuesApi.search (ISS-1156)", () => {
     await expect(issuesApi.search("p1", {})).rejects.toThrow(/byWorkState/);
   });
 
+  it("asks for the stuck issues only where the list was opened on them (ISS-1229 r14)", async () => {
+    answers(page({ byStatus: {}, byWorkState: BY_WORK_STATE }));
+    await issuesApi.search("p1", { stuck: true });
+    await issuesApi.search("p1", {});
+    const urls = vi.mocked(fetch).mock.calls.map(([url]) => String(url));
+    expect(new URL(urls[0] ?? "", "http://x").searchParams.get("stuck")).toBe("true");
+    expect(new URL(urls[1] ?? "", "http://x").searchParams.has("stuck")).toBe(false);
+  });
+
   it("rejects buckets that leave one state uncounted rather than reading it as zero", async () => {
     const { finished, ...short } = BY_WORK_STATE;
     answers(page({ byStatus: {}, byWorkState: short }));

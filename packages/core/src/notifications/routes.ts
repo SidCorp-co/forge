@@ -16,6 +16,7 @@ import {
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
+import { readPendingInvitations } from '../projects/pending-invitations.js';
 import { recordAndDeliver } from './deliver.js';
 import { explanationOfGroupKey } from './explanations.js';
 import {
@@ -109,13 +110,16 @@ notificationRoutes.use('*', requireAuth(), assertEmailVerified());
 notificationRoutes.route('/silences', silenceRoutes);
 
 /**
- * How many bell rows are still open for the caller.
+ * How many bell rows are still open for the caller: what the badge on the panel counts.
  *
  * ISS-1063 replaced `GET /unread-count` with this rather than redefining it: a route
  * named `unread-count` returning an open count is a silent substitution. It counted the
  * records inside the rows until ISS-1229 r13, when an Org Member's badge read 623 over three
  * grouped rows: the badge sits on the panel, so it counts what the panel shows — each row
- * carrying a record still true is one, however many records it groups.
+ * carrying a record still true is one, however many records it groups. The panel offers an
+ * invitation as the pending invitation, with Accept and Decline, and never as its
+ * `invitation_received` record, so the count does the same (ISS-1229 r14): a record whose
+ * invitation was accepted, declined or expired is counted by nothing the reader can see.
  */
 notificationRoutes.get(
   '/open-count',
@@ -127,25 +131,33 @@ notificationRoutes.get(
     const { projectId } = c.req.valid('query');
     const userId = c.get('userId');
 
-    const conditions = [
-      eq(notificationDeliveries.userId, userId),
-      eq(notificationDeliveries.resolvedNotice, false),
-      isNull(notifications.resolvedAt),
-      stillTrue,
-    ];
-    if (projectId) conditions.push(eq(notifications.projectId, projectId));
+    const ofProject = projectId ? sql`AND cn.project_id = ${projectId}` : sql``;
+    const [[row], invitations] = await Promise.all([
+      db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(notificationDeliveries)
+        .where(
+          and(
+            eq(notificationDeliveries.userId, userId),
+            eq(notificationDeliveries.resolvedNotice, false),
+            sql`EXISTS (
+              SELECT 1 FROM notification_delivery_members cb
+              JOIN notifications cn ON cn.id = cb.notification_id
+              WHERE cb.delivery_id = ${notificationDeliveries.id}
+                AND cn.type <> 'invitation_received'
+                AND cn.resolved_at IS NULL
+                AND ${stillTrueOf(carried)}
+                ${ofProject}
+            )`,
+          ),
+        ),
+      readPendingInvitations(userId),
+    ]);
+    const offered = (invitations ?? []).filter(
+      (inv) => projectId === undefined || inv.projectId === projectId,
+    ).length;
 
-    const [row] = await db
-      .select({ n: countDistinct(notificationDeliveries.id) })
-      .from(notificationDeliveries)
-      .innerJoin(
-        notificationDeliveryMembers,
-        eq(notificationDeliveryMembers.deliveryId, notificationDeliveries.id),
-      )
-      .innerJoin(notifications, eq(notifications.id, notificationDeliveryMembers.notificationId))
-      .where(and(...conditions));
-
-    return c.json(answer(openCountSchema, { count: row?.n ?? 0 }));
+    return c.json(answer(openCountSchema, { count: (row?.n ?? 0) + offered }));
   },
 );
 

@@ -122,11 +122,11 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
                 </div>
 
                 <div className="flex items-center gap-1.5">
-                  <Tooltip label={isPrimary ? "Primary runner (pinned default)" : "Cold spare — idle is normal"}>
-                    <MonoTag hue={isPrimary ? "cobalt" : "neutral"}>
-                      {isPrimary ? "Primary" : "Spare"}
-                    </MonoTag>
-                  </Tooltip>
+                  {isPrimary && (
+                    <Tooltip label="Primary runner (pinned default)">
+                      <MonoTag hue="cobalt">Primary</MonoTag>
+                    </Tooltip>
+                  )}
                   <span className="fg-caption text-subtle">
                     {PLATFORM_LABEL[d.platform] ?? d.platform}
                   </span>

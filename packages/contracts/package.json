@@ -38,6 +38,10 @@
       "types": "./dist/health-words.d.ts",
       "default": "./dist/health-words.js"
     },
+    "./stuck-words": {
+      "types": "./dist/stuck-words.d.ts",
+      "default": "./dist/stuck-words.js"
+    },
     "./deploy-capability": {
       "types": "./src/deploy-capability.ts",
       "default": "./src/deploy-capability.ts"

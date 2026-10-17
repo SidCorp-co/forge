@@ -10,7 +10,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const server: {
-  attention: (orgId?: string | null) => Promise<unknown>;
+  attention: (orgId?: string | null, expand?: readonly string[]) => Promise<unknown>;
   devices: () => Promise<unknown>;
   activeOrgId: string | null;
   scopeRead: boolean;
@@ -21,7 +21,11 @@ const server: {
   scopeRead: true,
 };
 
-vi.mock("./api", () => ({ attentionApi: { list: (orgId?: string | null) => server.attention(orgId) } }));
+vi.mock("./api", () => ({
+  attentionApi: {
+    list: (orgId?: string | null, expand?: readonly string[]) => server.attention(orgId, expand),
+  },
+}));
 vi.mock("@/features/orgs/active-org", () => ({ useActiveOrg: () => ({ activeOrgId: server.activeOrgId, scopeRead: server.scopeRead }),
 }));
 vi.mock("@/features/runners/hooks", async () => {
@@ -41,6 +45,14 @@ const response = {
   pendingSkillUpdates: [],
   unseenDrafts: [],
   unseenDraftsTotal: 0,
+  bucketTotals: {
+    needsReview: 0,
+    awaitingInput: 1,
+    mentions: 0,
+    failedJobs: 0,
+    pendingSkillUpdates: 0,
+    unseenDrafts: 0,
+  },
   projectTotals: {},
   total: 1,
 };
@@ -144,7 +156,12 @@ describe("useAttention", () => {
   });
 
   it("states a read zero as a zero, and a refetch that fails over a held count as failed rather than as the count", async () => {
-    server.attention = async () => ({ ...response, awaitingInput: [] });
+    server.attention = async () => ({
+      ...response,
+      awaitingInput: [],
+      bucketTotals: { ...response.bucketTotals, awaitingInput: 0 },
+      total: 0,
+    });
     const zero = renderHook(() => useAttention(), { wrapper: wrapper() });
     await waitFor(() => expect(zero.result.current.read).toBe("read"));
     await waitFor(() => expect(zero.result.current.devicesRead).toBe("read"));
@@ -160,6 +177,37 @@ describe("useAttention", () => {
     await waitFor(() => expect(held.result.current.read).toBe("failed"));
     expect(held.result.current.badge).toEqual({ badgeRead: "failed", badgeCounts: "need attention" });
     expect(held.result.current.total).toBeUndefined();
-    expect("total" in held.result.current.view).toBe(false);
+  });
+
+  // ISS-1229 r14, judge-35: 32 parks read 20 on the badge, the rows the capped bucket returned.
+  it("counts every item the buckets hold, listed or not, on the badge and the total", async () => {
+    server.attention = async () => ({
+      ...response,
+      bucketTotals: { ...response.bucketTotals, awaitingInput: 32 },
+      total: 32,
+    });
+    const { result } = renderHook(() => useAttention(), { wrapper: wrapper() });
+    await waitFor(() => expect(result.current.total).toBe(32));
+    expect(result.current.view.awaitingInput).toHaveLength(1);
+    expect(result.current.badge).toEqual({ badge: 32, badgeCounts: "need attention" });
+  });
+
+  it("asks for a group whole where it is named, and for the project's own organisation where one is given", async () => {
+    const asked: Array<[string | null | undefined, readonly string[] | undefined]> = [];
+    server.attention = async (orgId, expand) => {
+      asked.push([orgId, expand]);
+      return response;
+    };
+    server.activeOrgId = "11111111-1111-4111-8111-111111111111";
+    const whole = renderHook(() => useAttention({ expand: ["awaitingInput"] }), { wrapper: wrapper() });
+    await waitFor(() => expect(whole.result.current.read).toBe("read"));
+    const own = renderHook(() => useAttention({ orgId: "22222222-2222-4222-8222-222222222222" }), {
+      wrapper: wrapper(),
+    });
+    await waitFor(() => expect(own.result.current.read).toBe("read"));
+    expect(asked).toEqual([
+      ["11111111-1111-4111-8111-111111111111", ["awaitingInput"]],
+      ["22222222-2222-4222-8222-222222222222", []],
+    ]);
   });
 });

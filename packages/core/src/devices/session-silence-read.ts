@@ -3,6 +3,7 @@ import { db } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/session-vocabulary.js';
 import { boxAnswersSql } from '../jobs/box-answers.js';
 import { parkedOnAHuman, residencySeconds } from '../jobs/park-deadline.js';
+import { endsOnItsOwnClock } from '../jobs/session-kinds.js';
 import { LIVE_SESSION_STATUSES } from '../lifecycle/status-sets.js';
 import { type SilenceSubject, silenceDeadline } from './session-silence.js';
 
@@ -172,6 +173,7 @@ export async function loadSilenceDeadlines(
                 sessions: siblings.map((t) => {
                   const above = owner(t);
                   return {
+                    ownClock: endsOnItsOwnClock(t.kind, t.status),
                     beatAt: Number(t.sweep_beat_at),
                     runnerSeenAt: ms(t.runner_seen_at),
                     runnerAnswers: t.runner_answers,

@@ -79,7 +79,7 @@ describe("the busy device's detail row (ISS-999)", () => {
 
   it("renders no detail row at all when there is neither a step nor an issue", async () => {
     await renderStrip(row({ metadata: { type: "pipeline" }, title: null }));
-    expect(screen.getByText("Busy · 1/1")).toBeInTheDocument();
+    expect(screen.getByText("Busy · 1 live session")).toBeInTheDocument();
     expect(screen.queryByText("·")).toBeNull();
     expect(screen.queryByText("stalled")).toBeNull();
   });

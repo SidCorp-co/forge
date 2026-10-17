@@ -1,7 +1,8 @@
 /**
  * ISS-1229 r13 — the bell shows one row per notice, dates a group and its members on one clock, counts
  * the rows it shows rather than the records inside them, and keeps the sentence a notice was
- * delivered with. Each case was planted against the old route and seen red before the fix.
+ * delivered with. Each case was planted against the old route and seen red before the fix; round 14
+ * adds that an invitation counts as the pending invitation the bell offers, never as its record.
  */
 
 import { sql } from 'drizzle-orm';
@@ -22,6 +23,43 @@ describe('one bell row per notice, one clock, one count (ISS-1229 r13)', () => {
     const res = await fx.app.request('/api/notifications/open-count', { headers: auth() });
     expect(res.status).toBe(200);
     expect(((await res.json()) as { count: number }).count).toBe(1);
+  });
+
+  it('counts an invitation once while the bell offers it, never a record whose invitation is gone', async () => {
+    // Two invitation records the bell never shows: their invitations were accepted long ago, so the
+    // panel offers neither, and judge-35 read a badge 4 above the rows behind it (ISS-1229 r14).
+    for (const title of [
+      'Ann invited you to Billing as member',
+      'Bo invited you to Ledger as admin',
+    ]) {
+      await fx.mods.recordAndDeliver({
+        recipients: [fx.owner],
+        projectId: fx.project.id,
+        type: 'invitation_received',
+        title,
+      });
+    }
+    await seedShipped(64, 'Close the ledger export');
+    await announce(() => fx.mods.detectOwedCloses());
+    const openCount = async () => {
+      const res = await fx.app.request('/api/notifications/open-count', { headers: auth() });
+      expect(res.status).toBe(200);
+      return ((await res.json()) as { count: number }).count;
+    };
+    expect(await openCount()).toBe(1);
+
+    // An invitation still pending is a row the bell offers, so it counts, once.
+    const [reader] = (await fx.db.execute(
+      sql`SELECT email FROM users WHERE id = ${fx.owner}`,
+    )) as unknown as { email: string }[];
+    const email = reader?.email ?? '';
+    expect(email).not.toBe('');
+    await fx.db.execute(sql`
+      INSERT INTO project_invitations (token, project_id, email, role, inviter_id, expires_at)
+      VALUES ('pending-r14', ${fx.project.id}, ${email.toUpperCase()}, 'member', ${fx.owner},
+              now() + interval '7 days')
+    `);
+    expect(await openCount()).toBe(2);
   });
 
   it('dates each member by when it reached the reader, and the row by its newest member', async () => {

@@ -8,7 +8,7 @@ export function boxWord(line: RunnerLine, activityRead: boolean): string {
   if (line.draining) return `Draining${hosting}`;
   if (!line.online) return `Offline${hosting}`;
   if (!activityRead) return "activity not read";
-  return line.busy ? "Busy · 1/1" : "Free · 0/1";
+  return line.busy ? `Busy${hosting}` : "Free";
 }
 
 /** The dot beside that word; `stale` is whether the live session it hosts has gone quiet. */

@@ -19,6 +19,7 @@ const TERMINAL: ReadonlySet<string> = new Set(terminalAgentSessionStatuses);
 
 /** A live session on the same jobless one-shot run, the subject included. */
 export interface OneShotSibling {
+  ownClock: boolean;
   beatAt: number;
   /** When its box's runner was last heard, `null` where the box has none. */
   runnerSeenAt: number | null;
@@ -91,7 +92,7 @@ function noClientHop(s: SilenceSubject, hb: number, ackFastMs: number): number |
  * A box that has stopped answering holds the sibling to its last answer, which no longer moves.
  */
 function sweepTakes(t: OneShotSibling, hb: number, grace: number): number {
-  if (t.parked) return Number.POSITIVE_INFINITY;
+  if (t.parked || t.ownClock) return Number.POSITIVE_INFINITY;
   if (t.runnerSeenAt === null) return t.beatAt + hb;
   const boxHolds = t.runnerAnswers
     ? t.beatAt + grace
