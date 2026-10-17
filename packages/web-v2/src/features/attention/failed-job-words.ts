@@ -14,10 +14,7 @@ export function failureWords(failure: string | null | undefined): string | null 
   return STORED_CODE.test(said) ? unrecognised("failure", said) : said.slice(0, 80);
 }
 
-/**
- * What a failed job's row says: its kind of work and its failure, in words, as in "Issue work failed:
- * Session lost" — never the stored `drive` or `session_lost` (ISS-1229 r14).
- */
+/** A failed job's row in words, as in "Issue work failed: Session lost", never stored codes (ISS-1229 r14). */
 export function failedJobWords(item: Pick<AttentionItem, "jobType" | "failure">): string {
   if (item.jobType === undefined) {
     throw new Error(

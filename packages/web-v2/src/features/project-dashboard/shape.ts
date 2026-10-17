@@ -165,7 +165,6 @@ function stuckSentences(byKind: ShapeInput["stuckIssuesByKind"], total: number):
   const said = STUCK_ISSUE_KINDS.filter((k) => (byKind[k] ?? 0) > 0);
   // A read that names no kind still says how many: the count is whole even where its split is not.
   if (said.length === 0) return [stuckCountSentence("other", total)];
-  // In the words the bell titles each kind's group with: one source for both (ISS-1229 r14).
   return said.map((k) => stuckCountSentence(k, byKind[k] ?? 0));
 }
 
@@ -222,8 +221,7 @@ export function projectShape(input: ShapeInput): ProjectReading {
       ? Math.max(input.failedJobs, quals.filter((q) => q.kind === "failed").length)
       : 0;
 
-  // Degraded stands on the reads that did arrive: a failed job is a failed job whether or not the
-  // parked ages did.
+  // Degraded stands on the reads that did arrive, whether or not the parked ages did.
   if (quals.length > 0 || stuck.length > 0 || failed > 0 || stuckIssuesOf(input) > 0) {
     const band = degradedBand(input, quals, stuck, failed);
     return { shape: "degraded", headline: band.text, detail: null, band, unread };
@@ -245,9 +243,8 @@ export function projectShape(input: ShapeInput): ProjectReading {
   const parts: string[] = [];
   if (input.liveSessions > 0) parts.push(`${plural(input.liveSessions, "session is", "sessions are")} live`);
   if (input.items.length > 0 || input.cut) {
-    parts.push(
-      plural(input.cut ? input.cut.whole : input.items.length, "item needs", "items need") + " a person",
-    );
+    const whole = input.cut ? input.cut.whole : input.items.length;
+    parts.push(`${plural(whole, "item needs", "items need")} a person`);
   }
   if (input.releaseRuns > 0) {
     parts.push(`${plural(input.releaseRuns, "run waits", "runs wait")} on a release decision`);

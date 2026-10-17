@@ -19,11 +19,7 @@ const kindsWorded: readonly StuckIssueKind[] = [] as StuckKind[];
 void wordedKinds;
 void kindsWorded;
 
-/**
- * Whether a stuck-issue notice stands for this issue: the condition the project page's stuck count
- * and the Issues list's `stuck` filter both read, so the list opened from that count holds exactly
- * the issues it counted (ISS-1229 r14).
- */
+/** Whether a stuck-issue notice stands for this issue: what the stuck count and filter both read. */
 export function stuckNoticeStandsSql(issueId: SQL): SQL {
   return sql`EXISTS (
     SELECT 1 FROM notifications sn

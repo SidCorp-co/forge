@@ -353,7 +353,6 @@ export function attentionRefusal(view: AttentionView | undefined, slug: string):
   return null;
 }
 
-/** How many items Needs you holds for this project, listed or not. */
 export function attentionWhole(
   items: readonly DashboardAttentionItem[],
   view: AttentionView | undefined,

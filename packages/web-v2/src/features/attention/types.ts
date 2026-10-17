@@ -18,7 +18,6 @@ export interface AttentionItem {
   issueTitle?: string;
   /** Failed job only: its kind of work, as stored; `failedJobWords` says it in words. */
   jobType?: string;
-  /** Failed job only: the classifier's cause, else the job's own error. */
   failure?: string | null;
   status?: string;
   projectSlug?: string;
@@ -28,7 +27,6 @@ export interface AttentionItem {
   cost?: { claimsHeld: number; workspacesPinned: number; dependents: number };
 }
 
-/** The six buckets the route lists, by their response keys. */
 export const ATTENTION_BUCKETS = [
   "needsReview",
   "awaitingInput",
@@ -63,7 +61,6 @@ export interface AttentionResponse {
       parkedOnly: number;
     }
   >;
-  /** Every item the buckets hold, listed or not. */
   total: number;
 }
 

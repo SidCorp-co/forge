@@ -14,15 +14,11 @@ const NO_BUCKET_TOTALS = Object.fromEntries(ATTENTION_BUCKETS.map((b) => [b, 0])
 >;
 
 /**
- * Cross-project attention/inbox view: the `/me/attention` buckets merged with
- * offline runners derived client-side from `/me/devices`. `total` is every item the buckets hold,
- * listed or not, plus the offline runners, so the rail badge and the screen say one number for one
- * set (ISS-1229 r14), and is undefined until both have been read: a count of what one of them has
- * not yet said is not a count. `expand` names the buckets to list whole rather than capped, and
- * `orgId` reads one organisation in place of the active one: a project's page reads its own.
- * `read`/`devicesRead` say which answered; state a figure, badge or empty list only from `read`.
- * The buckets are the active organisation's, cut before the caps and read once it is known.
- * `badge` is the count where both were read, never a held count after a failed refetch.
+ * The `/me/attention` buckets merged with offline runners from `/me/devices`. `total` is every item
+ * the buckets hold, listed or not, plus the offline runners, undefined until both were read
+ * (ISS-1229 r14). `expand` lists buckets whole; `orgId` reads one organisation in place of the
+ * active one. State a figure or empty list only from `read`; `badge` is never a held count after a
+ * failed refetch.
  */
 export function useAttention(
   opts: { expand?: readonly AttentionBucket[]; orgId?: string | null } = {},

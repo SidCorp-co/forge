@@ -35,10 +35,7 @@ import {
 
 const count = sql<number>`count(*)::int`;
 
-/**
- * Each bucket counted whole, from the predicate its rows come from, before any cap: the one number a
- * screen says for the set, whatever part of it the list holds (ISS-1229 r14).
- */
+/** Each bucket counted whole. */
 export async function selectBucketTotals(
   userId: string,
   scope: AttentionScope = {},
@@ -99,10 +96,7 @@ export interface AttentionProjectTotals {
   parkedOnly: number;
 }
 
-/**
- * Each project's whole count of the buckets its Needs you list is made of, by project slug, from the
- * same predicates the buckets' rows come from. A project with nothing in any of them has no entry.
- */
+/** The same, by project slug; a project with nothing in any of them has no entry. */
 export async function selectAttentionTotals(
   userId: string,
   scope: AttentionScope = {},

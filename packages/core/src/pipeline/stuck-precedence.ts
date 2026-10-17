@@ -1,9 +1,6 @@
 /**
- * ISS-1229 r14 — one issue, one stuck reason. Four sweeps each tell a project's admins about an issue
- * nothing is working, and their conditions overlap: an In progress issue with no run is named an
- * orphan at ten minutes and idle at two hours, so judge-35's bell held it twice and the project
- * page's headline counted ten for eight issues. The most specific reason tells it, and a less
- * specific one neither raises beside it nor outlives it.
+ * ISS-1229 r14 — one issue, one stuck reason. The four sweeps' conditions overlap, so the most
+ * specific reason tells it, and a less specific one neither raises beside it nor outlives it.
  */
 
 import { type SQL, sql } from 'drizzle-orm';
@@ -53,7 +50,6 @@ export async function resolveOutrankedNotices(suffix: StuckNoticeSuffix): Promis
   return resolved;
 }
 
-/** Of these issues, the ones a more specific stuck-issue notice already stands for. */
 export async function outrankedIssueIds(
   issueIds: readonly string[],
   suffix: StuckNoticeSuffix,

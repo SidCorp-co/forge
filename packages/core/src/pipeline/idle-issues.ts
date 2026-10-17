@@ -98,8 +98,7 @@ export async function reconcileIdleIssues(
   );
   const pooled = await projectsWithAdmittedRunner(rows.map((r) => r.project_id));
   const admins = await projectAdminUserIdsFor(rows.map((r) => r.project_id));
-  // A row another sweep already names for a more specific reason keeps its finding and is not told
-  // again as idle (ISS-1229 r14).
+  // A row another sweep names for a more specific reason is not told again as idle (ISS-1229 r14).
   const outranked = await outrankedIssueIds(
     rows.map((r) => r.id),
     IDLE_KEY_SUFFIX,

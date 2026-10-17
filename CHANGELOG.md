@@ -3324,7 +3324,7 @@
 - **On a phone, an Attention row gives its title a line of its own** instead of cutting it to one word beside the tags. (ISS-1229)
 - **The project page, the bell and Attention count stuck work alike:** the headline counts each kind in the bell's words; Needs you names each stuck or parked issue by its title, the reason after it; Attention rows are flat. (ISS-1229)
 - **The bell's badge counts the rows you can see.** An invitation counts once while the bell offers it, never again after you accepted or declined it. (ISS-1229)
-- **One number for one set of waiting items.** Attention's headings and its badge, the project page's Needs you and its headline all count every item, not just the ones listed; a long group says "Showing 20 of 32" and lists them all when you ask. (ISS-1229)
+- **One number for one set of waiting items.** Attention, its badge and the project page's Needs you count every item, not only those listed; a long group says "Showing 20 of 32" and lists all on asking. (ISS-1229)
 - **"And 3 more stuck" opens the Issues list of exactly the stuck issues,** and the list says it is showing only those. (ISS-1229)
 - **A stuck issue is told once, for its most specific reason,** and each kind of stuck issue reads the same on the project page as in the bell, such as "shipped their code and were never closed". (ISS-1229)
 - **A failed job reads in words,** such as "Issue work failed: Session lost". (ISS-1229)

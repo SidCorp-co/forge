@@ -1,11 +1,8 @@
-// What each kind of stuck-issue notice says of an issue, said once. The bell titles a kind's group
-// with it, the project page's headline counts by it and Needs you names a row by it, so the three
-// cannot drift into two wordings of one reason (ISS-1229 r14). The kinds are the contracts' stuck
-// kinds (`notifications.ts`), restated here because this file is built on its own for core.
+// What each kind of stuck-issue notice says of an issue, once, for the bell, the headline and Needs
+// you alike (ISS-1229 r14). The kinds restate `notifications.ts`'s: this file is built on its own.
 
 export type StuckKind = 'waiting' | 'idle' | 'owed_close' | 'orphan' | 'other';
 
-/** The predicate, for one issue and for several: the sentence each surface builds around it. */
 const SAID: Readonly<Record<StuckKind, { one: string; many: string }>> = {
   waiting: {
     one: 'has been waiting for you for over six hours',
@@ -31,7 +28,6 @@ export function stuckGroupTitle(kind: StuckKind): string {
   return `Issues that ${SAID[kind].many}`;
 }
 
-/** The headline's counted sentence, as in "2 issues shipped their code and were never closed." */
 export function stuckCountSentence(kind: StuckKind, n: number): string {
   return n === 1 ? `1 issue ${SAID[kind].one}.` : `${n} issues ${SAID[kind].many}.`;
 }
