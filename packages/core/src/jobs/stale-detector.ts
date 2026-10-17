@@ -61,6 +61,9 @@ let registered = false;
 
 export async function registerStaleDetector(): Promise<void> {
   if (registered) return;
+  // The job pool's background passes register as one: this sweep, and the release of held jobs.
+  const { registerHeldJobRelease } = await import('./held-release.js');
+  await registerHeldJobRelease();
   await boss.createQueue(STALE_DETECTOR_QUEUE);
   await boss.work(STALE_DETECTOR_QUEUE, async () => {
     try {

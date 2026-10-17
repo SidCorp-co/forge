@@ -103,3 +103,24 @@ describe("the register form's refusal of an agent address", () => {
     expect(screen.queryByText(AGENT_ADDRESS_MESSAGE)).not.toBeInTheDocument();
   });
 });
+
+// ISS-1421 r4 — judge-32 hit register's limit and read a bare "rate limit exceeded". Register and
+// sign-in now show one capitalised sentence for it, saying when the next attempt is accepted.
+describe("the register form's refusal by its rate limit", () => {
+  it("says when to try again, in the sentence sign-in shows", async () => {
+    const { rateLimitedSentence } = await import("./rate-limit-words");
+    register.mockRejectedValueOnce(
+      new ApiError(429, "rate limit exceeded", "RATE_LIMITED", { retryAfterSeconds: 2520 }),
+    );
+    render(<RegisterForm />);
+    fill("Email", "a.person@example.test");
+    fill("Password", "a-long-enough-password");
+    fill("Confirm password", "a-long-enough-password");
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    const said = rateLimitedSentence({ retryAfterSeconds: 2520 });
+    await waitFor(() => expect(screen.getByText(said)).toBeInTheDocument());
+    expect(said).toBe("Too many attempts from this network. Try again in 42 minutes.");
+    expect(screen.queryByText("rate limit exceeded")).not.toBeInTheDocument();
+  });
+});

@@ -11,6 +11,7 @@ import { connectionTarget, connectionTitle } from "../connection-identity";
 import { deriveConnectionStatus } from "../derive";
 import { providerIcon, providerLabel as labelFor } from "../providers/registry";
 import { DirectoryStatusPill, scopeLabel } from "./status-pill";
+import { healthLine } from "@forge/contracts/health-words";
 
 /** Projects a connection is bound to, named — the line that tells two credentials apart. */
 function UsageLine({
@@ -194,10 +195,8 @@ export function ConnectionRow({
           )}
           <UsageLine connection={connection} projectName={projectName} emptyId={usageEmptyId} />
           <span id={healthId} className="fg-body-sm text-subtle">
-            {connection.lastHealthStatus
-              ? `last health: ${connection.lastHealthStatus}${checked ? ` · ${checked}` : ""}`
-              : "never health-checked"}
-            {!connection.hasSecrets && " · no credential stored"}
+            {healthLine(connection.lastHealthStatus, checked)}
+            {!connection.hasSecrets && " No credential is stored."}
           </span>
         </span>
       </button>

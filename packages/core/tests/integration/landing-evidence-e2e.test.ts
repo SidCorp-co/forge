@@ -85,7 +85,7 @@ describe('a project whose work lands outside git (kind website)', () => {
     // Outside git the mark is short of a landing, never of a commit Forge did not watch land.
     expect(refusal.message).toContain('names no landing');
     expect(refusal.message).not.toMatch(
-      /merged pull request|merged_commit_sha|CLAIM Forge did not observe/,
+      /merged pull request|merged_commit_sha|Forge did not see this merge/,
     );
     expect((await stored(id)).status).toBe('awaiting_release');
 

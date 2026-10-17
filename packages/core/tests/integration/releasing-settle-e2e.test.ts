@@ -147,7 +147,7 @@ describe('a row at Releasing that nothing carries (criteria 13, 14, 15, 16, 17)'
     const [said] = await bodies(id);
     expect(said).toContain('No release run claims this issue, so nothing was releasing it');
     expect(said).toContain(
-      `serves \`${SERVING}\`, which carries this issue's landing commit \`${SHIPPED}\``,
+      `serves \`${SERVING}\`. That carries this issue's landing commit \`${SHIPPED}\``,
     );
     const record = await recordFor(id);
     expect(record).toMatchObject({ commit: SERVING, identity: SERVING, verification: 'probed' });
@@ -195,8 +195,9 @@ describe('a row at Releasing that nothing carries (criteria 13, 14, 15, 16, 17)'
     expect(await fx.stored(id)).toMatchObject({ status: 'awaiting_release', claim: null });
     const [said] = await bodies(id);
     expect(said).toContain(
-      'What production serves could not be read: the probe of the live deployment reports it down.',
+      'What production serves could not be read, so the sweep did not close it.',
     );
+    expect(said).toContain('\n\n> the probe of the live deployment reports it down');
     expect(said).not.toContain('answered down');
     expect(await recordFor(id)).toBeNull();
   });
@@ -219,7 +220,7 @@ describe('a row at Releasing that nothing carries (criteria 13, 14, 15, 16, 17)'
 
     expect(await fx.stored(id)).toMatchObject({ status: 'awaiting_release', claim: null });
     const said = await bodies(id);
-    expect(said[0]).toContain('a release record closes it now');
+    expect(said[0]).toContain('A release record closes it now.');
     expect(said.at(-1)).toContain('The release record that would close this issue was refused');
     expect(said.at(-1)).toContain('It stays at Awaiting release');
   });
@@ -427,7 +428,10 @@ describe('a landing marked while the sweep judges it (criterion 15)', () => {
     expect(await closes(id)).toBe(0);
     const said = await bodies(id);
     expect(said.at(-1)).toContain(
-      `The release record that would close this issue was refused: its landing commit is now ${SHIPPED}, not ${judged}, which production was read as carrying`,
+      `The release record that would close this issue was refused. It stays at Awaiting release.`,
+    );
+    expect(said.at(-1)).toContain(
+      `\n\n> its landing commit is now ${SHIPPED}, not ${judged}, which production was read as carrying`,
     );
   });
 });

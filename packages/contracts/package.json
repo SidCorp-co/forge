@@ -30,6 +30,14 @@
       "types": "./dist/attachments.d.ts",
       "default": "./dist/attachments.js"
     },
+    "./mark-merged-words": {
+      "types": "./dist/mark-merged-words.d.ts",
+      "default": "./dist/mark-merged-words.js"
+    },
+    "./health-words": {
+      "types": "./dist/health-words.d.ts",
+      "default": "./dist/health-words.js"
+    },
     "./deploy-capability": {
       "types": "./src/deploy-capability.ts",
       "default": "./src/deploy-capability.ts"

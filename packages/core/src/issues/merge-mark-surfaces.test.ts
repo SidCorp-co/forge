@@ -138,7 +138,7 @@ describe('the answer a caller that marks a merge is given', () => {
       target: 'main',
       actor: ACTOR,
     });
-    expect(claimed.markDetail).toContain('CLAIM Forge did not observe');
+    expect(claimed.markDetail).toContain('Forge did not see this merge');
   });
 
   it('gives the audit trail and the caller the same sentence, not two accounts of one row', async () => {
@@ -151,6 +151,7 @@ describe('the answer a caller that marks a merge is given', () => {
     });
     expect(auditBodies).toHaveLength(1);
     expect(auditBodies[0]).toContain(claimed.markDetail);
+    expect(auditBodies[0]).toMatch(/^Marked merged into main\./);
   });
 
   it('reports an unmark as unmarked rather than as the kind it cleared', async () => {

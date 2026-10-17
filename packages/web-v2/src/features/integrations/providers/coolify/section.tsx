@@ -61,8 +61,8 @@ function badgeFor(existing: IntegrationSummary | undefined): BadgeView {
   return { label: "Untested", tone: "neutral" };
 }
 
-export function CoolifySection({ projectId }: { projectId: string }) {
-  const [stage, setStage] = useState<DeployStage>("preview");
+export function CoolifySection({ projectId, stage: openedAt }: { projectId: string; stage?: DeployStage }) {
+  const [stage, setStage] = useState<DeployStage>(openedAt ?? "preview");
   const list = useIntegrationsList(projectId);
   const rows = useMemo(
     () => (list.data?.items ?? []).filter((i) => i.provider === "coolify"),

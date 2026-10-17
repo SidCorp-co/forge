@@ -50,3 +50,36 @@ describe('where the sign-in form goes once the person is signed in', () => {
     expect(push).not.toHaveBeenCalled();
   });
 });
+
+// ISS-1421 r4 — sign-in and register show one sentence for a rate-limited attempt.
+describe("the sign-in form's refusal by its rate limit", () => {
+  it('says when to try again, in the sentence register shows', async () => {
+    const { ApiError } = await import('@/lib/api/client');
+    const { rateLimitedSentence } = await import('./rate-limit-words');
+    login.mockRejectedValueOnce(
+      new ApiError(429, 'rate limit exceeded', 'RATE_LIMITED', { retryAfterSeconds: 61 }),
+    );
+    render(<LoginForm />);
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'a@example.test' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'a-long-enough-password' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    await screen.findByText('Too many attempts from this network. Try again in 2 minutes.');
+    expect(rateLimitedSentence({ retryAfterSeconds: 61 })).toBe(
+      'Too many attempts from this network. Try again in 2 minutes.',
+    );
+    expect(screen.queryByText('rate limit exceeded')).not.toBeInTheDocument();
+  });
+
+  it('says a moment where the answer names no wait', async () => {
+    const { rateLimitedSentence } = await import('./rate-limit-words');
+    expect(rateLimitedSentence(undefined)).toBe(
+      'Too many attempts from this network. Wait a moment, then try again.',
+    );
+    expect(rateLimitedSentence({ retryAfterSeconds: 30 })).toBe(
+      'Too many attempts from this network. Try again in 30 seconds.',
+    );
+    expect(rateLimitedSentence({ retryAfterSeconds: 7200 })).toBe(
+      'Too many attempts from this network. Try again in 2 hours.',
+    );
+  });
+});

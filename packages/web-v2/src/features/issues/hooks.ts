@@ -289,10 +289,14 @@ export function useTransitionIssue() {
 export function useMergeMarker(issueId: string) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  // Everything a mark changes (ISS-1421 r4): the gate banner reads the roster, and the mark's own
+  // comment, with the park keyed beside it, lands in the thread.
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["issue", issueId] });
     qc.invalidateQueries({ queryKey: ["activities", issueId] });
     qc.invalidateQueries({ queryKey: ["issues"] });
+    qc.invalidateQueries({ queryKey: ["comments", issueId] });
+    qc.invalidateQueries({ queryKey: ["release-roster"] });
   };
   // ISS-1327 — the answer says whether this call moved the row; a toast that ignores it tells a
   // person their landing was recorded when the mark that stood was kept.

@@ -9,6 +9,7 @@
  * server and a GitHub double.
  */
 
+import { markMergedSteps } from '@forge/contracts/mark-merged-words';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { ProductionReading } from '../../src/release-batch/releasing-settle-reading.js';
@@ -143,9 +144,7 @@ describe("the sweep's next step names only a door the project has (criteria 27-3
     const [said] = await bodies(id);
     expect(said).toContain('It is back at Awaiting release.');
     expect(said).toContain('A release cannot close this issue yet. It is not marked merged.');
-    expect(said).toContain(
-      "Use Mark merged in the issue's properties, and fill in Where it landed.",
-    );
+    expect(said).toContain(markMergedSteps(false));
     expect(said).toContain('Release now appears on its page once that is done.');
     expect(said).not.toContain('starts a release');
     expect(said?.match(/Mark merged|Mark it merged/g)).toHaveLength(1);
@@ -191,7 +190,11 @@ describe("the sweep's next step names only a door the project has (criteria 27-3
     expect(await fx.stored(id)).toMatchObject({ status: 'awaiting_release', claim: null });
     const [said] = await bodies(id);
     expect(said).toContain(
-      "This project declares a release but has no live deploy target. No release can start until one is added on the project's integrations screen.",
+      "This project declares a release but has no live deploy target. No release can start until one is added in the project's Settings, on the Integrations tab. There, share a connection as Deploy target, with Live ticked.",
+    );
+    // ISS-1421 r4: and it carries the address that opens that place (judge-32).
+    expect(said).toMatch(
+      /It opens at https?:\/\/[^ ]+\/projects\/[^/ ]+\/settings\?tab=integrations&add=live-deploy-target\./,
     );
     expect(said).not.toMatch(GATE_DOORS);
   });

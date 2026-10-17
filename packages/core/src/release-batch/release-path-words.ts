@@ -5,7 +5,10 @@
 // these sentences read the same shortfalls the page reads (`close-shortfall.ts`) before naming it.
 // Every sentence here is short and whole: `release-path-words.test.ts` holds each to that.
 
-import type { IssueStatus } from '../db/schema.js';
+import { eq } from 'drizzle-orm';
+import { env } from '../config/env.js';
+import { db } from '../db/client.js';
+import { type IssueStatus, projects } from '../db/schema.js';
 import { statusForCaller } from '../issues/status-sets.js';
 import { type CloseShortfall, rosterCloseShortfalls } from './close-shortfall.js';
 import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
@@ -50,10 +53,46 @@ const SHIPS_NOTHING_AT_GATE = [
   'If work remains, reopen it instead.',
 ];
 
-const NO_LIVE_TARGET = [
-  'This project declares a release but has no live deploy target.',
-  "No release can start until one is added on the project's integrations screen.",
-];
+/** The pages a sentence may send its reader to, where this project's address could be read. */
+export interface ReleaseDoors {
+  /** Opens the project's Integrations settings at the section that adds a live deploy target. */
+  addLiveTarget: string | null;
+}
+
+export const NO_DOORS: ReleaseDoors = { addLiveTarget: null };
+
+// `integrations-tab.tsx:LIVE_DEPLOY_TARGET` is the web's name for that section.
+const ADD_LIVE_TARGET_QUERY = 'tab=integrations&add=live-deploy-target';
+
+export async function readReleaseDoors(
+  projectId: string,
+  path: ReleasePath,
+): Promise<ReleaseDoors> {
+  if (path !== 'no-live-target') return NO_DOORS;
+  try {
+    const [row] = await db
+      .select({ slug: projects.slug })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
+    if (!row?.slug) return NO_DOORS;
+    const base = env.APP_BASE_URL.replace(/\/+$/, '');
+    return {
+      addLiveTarget: `${base}/projects/${encodeURIComponent(row.slug)}/settings?${ADD_LIVE_TARGET_QUERY}`,
+    };
+  } catch {
+    return NO_DOORS;
+  }
+}
+
+function noLiveTarget(doors: ReleaseDoors): string[] {
+  return [
+    'This project declares a release but has no live deploy target.',
+    "No release can start until one is added in the project's Settings, on the Integrations tab.",
+    'There, share a connection as Deploy target, with Live ticked.',
+    ...(doors.addLiveTarget ? [`It opens at ${doors.addLiveTarget}.`] : []),
+  ];
+}
 
 const UNREAD_DECLARATION = [
   "This project's release settings could not be read, so this names no way to start a release.",
@@ -87,6 +126,7 @@ export function releaseStartsFor(
   projectId: string,
   from: IssueStatus,
   holds: GateHolds = NO_HOLDS,
+  doors: ReleaseDoors = NO_DOORS,
 ): string[] {
   switch (path) {
     case 'gated':
@@ -105,14 +145,18 @@ export function releaseStartsFor(
     case 'ships-nothing':
       return SHIPS_NOTHING_REFUSAL;
     case 'no-live-target':
-      return NO_LIVE_TARGET;
+      return noLiveTarget(doors);
     case 'unread':
       return UNREAD_DECLARATION;
   }
 }
 
 /** What a person reading an issue returned to the gate can do next, with no route in it. */
-export function nextAtGateFor(path: ReleasePath, holds: GateHolds = NO_HOLDS): string[] {
+export function nextAtGateFor(
+  path: ReleasePath,
+  holds: GateHolds = NO_HOLDS,
+  doors: ReleaseDoors = NO_DOORS,
+): string[] {
   switch (path) {
     case 'gated':
       return (
@@ -123,7 +167,7 @@ export function nextAtGateFor(path: ReleasePath, holds: GateHolds = NO_HOLDS): s
     case 'ships-nothing':
       return SHIPS_NOTHING_AT_GATE;
     case 'no-live-target':
-      return NO_LIVE_TARGET;
+      return noLiveTarget(doors);
     case 'unread':
       return UNREAD_DECLARATION;
   }
