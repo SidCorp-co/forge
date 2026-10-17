@@ -382,7 +382,7 @@ describe("spendByStep — the kinds of work the rows name, in the Overview's wor
 
   it("names a step no kind of work names in its own words, keeping the name the row carries as its key", () => {
     const out = spendByStep([row("code", 1)]);
-    expect(out.segments.map((s) => [s.key, s.label])).toEqual([["code", "Code"]]);
+    expect(out.segments.map((s) => [s.key, s.label])).toEqual([["code", "Unrecognised work (code)"]]);
     expect(out.segments.every((s) => !s.color.includes("stage"))).toBe(true);
   });
 

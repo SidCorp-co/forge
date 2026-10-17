@@ -48,3 +48,21 @@ describe('reading a group key back', () => {
     expect(explanationOfGroupKey('sweep:nothing-writes-this:29866175')).toBeNull();
   });
 });
+
+// ISS-1229 r13: a park reads as one state, waiting for the person, in its group as in each notice, and
+// no explanation a person reads names a stored field.
+describe('the words a person reads on a sweep group', () => {
+  it('frames a park as waiting for the person and says what it asks for', () => {
+    expect(SWEEP_DETECTORS.stranded.groupTitle).toBe('Issues waiting for you');
+    expect(SWEEP_DETECTORS.stranded.explanation).toMatch(/decision/);
+    expect(SWEEP_DETECTORS.stranded.explanation).not.toMatch(/nothing coming/);
+  });
+
+  it.each(Object.keys(SWEEP_DETECTORS))(
+    'explains %s without a stored field or engine word',
+    (id) => {
+      const { explanation } = SWEEP_DETECTORS[id as keyof typeof SWEEP_DETECTORS];
+      expect(explanation).not.toMatch(/`strand`|job pool|\bwake\b/);
+    },
+  );
+});

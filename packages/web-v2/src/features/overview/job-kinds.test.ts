@@ -21,19 +21,17 @@ describe("jobKindLabel", () => {
     for (const type of REGISTRY_JOB_TYPES) expect(jobKindLabel(type)).not.toMatch(/_|^[a-z]/);
   });
 
+  // ISS-1229 r13: a kind with no words reads as unknown with its type; made-up words would pass as known.
+  // The ruling is the forge-dev master's, on criterion 23.
   it.each([
-    ["triage", "Triage"],
-    ["review_followup_rework_after_codex_consult", "Review followup rework after codex consult"],
-    ["verify-skill", "Verify skill"],
-  ])("reads the retired kind %j as %j", (stored, words) => {
-    expect(jobKindLabel(stored)).toBe(words);
+    ["triage", "Unrecognised work (triage)"],
+    ["triage_legacy_x", "Unrecognised work (triage_legacy_x)"],
+    ["verify-skill", "Unrecognised work (verify-skill)"],
+  ])("reads the kind %j it has no words for as %j", (stored, label) => {
+    expect(jobKindLabel(stored)).toBe(label);
   });
 
-  it("never shows a stored name, an underscore or the word Unrecognised", () => {
-    for (const stored of ["triage", "review_followup_rework_after_codex_consult", "x__y"]) {
-      const label = jobKindLabel(stored);
-      expect(label).not.toMatch(/_|Unrecognised|\(/);
-      expect(label).not.toBe(stored);
-    }
+  it("reads a kind with no name at all as unrecognised, with nothing in brackets", () => {
+    expect(jobKindLabel("  ")).toBe("Unrecognised work");
   });
 });

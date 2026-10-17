@@ -97,7 +97,10 @@ describe('strandReason draws on evidence, never on the status alone (ISS-1122)',
       rule: WATCHED,
       evidence: evidence({ poolHasRunner: false, everRan: false }),
     });
-    expect(reason).toContain('job pool');
+    expect(reason).toBe(
+      'no runner that takes this project’s work is connected, so nothing can pick it up',
+    );
+    expect(reason).not.toMatch(/job pool|wake/);
     expect(owes).toBe('human');
   });
 

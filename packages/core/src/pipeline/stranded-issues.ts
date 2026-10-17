@@ -95,6 +95,12 @@ async function surfaceOnce(args: {
   return sent?.delivered ?? 0;
 }
 
+/** What a park asks of the person, by the kind it stored; a park that stored none is waiting for them. */
+const PARK_ASKS: Record<string, string> = {
+  needs_decision: 'your decision',
+  needs_resource: 'something only a person can supply',
+};
+
 /** When the issue was parked: the row's own `updated_at` moves on any write (ISS-1229). */
 const PARKED_AT = statusEnteredAtSql({
   id: sql`"issues"."id"`,
@@ -115,6 +121,7 @@ function readParks(args: { scope: Scope; where: SQL[]; order: SQL[]; limit: numb
       title: issues.title,
       mergedAt: issues.mergedAt,
       parkedAt: sql<string>`${PARKED_AT}::text`,
+      waitingKind: issues.waitingKind,
       cursorTs: sql<string>`${PARKED_AT}::text`,
       projectName: projects.name,
     })
@@ -241,7 +248,7 @@ export async function detectStrandedIssues(
         projectId: row.projectId,
         issueId: row.id,
         resolutionKey: strandedResolutionKey(row.id),
-        title: `${ref} is waiting on you — ${row.projectName}`,
+        title: `${ref} is waiting for ${PARK_ASKS[row.waitingKind ?? ''] ?? 'you'} — ${row.projectName}`,
         body: `${ref} "${row.title}": ${lead}.`,
       });
       if (sent < 0) unreachable += 1;

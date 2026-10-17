@@ -242,7 +242,7 @@ async function deliverTo(
     if (!deliveryId) continue;
     await db
       .insert(notificationDeliveryMembers)
-      .values({ deliveryId, notificationId: recordId })
+      .values({ deliveryId, notificationId: recordId, deliveredAt: now })
       .onConflictDoNothing();
     told += 1;
 
@@ -336,9 +336,9 @@ export async function recordAndDeliver(
   }
 
   // A condition already carrying this identity is the SAME condition. Stamp that it was
-  // seen again, and promote it out of `pending` once it has held long enough. The body is this
-  // sighting's: one that says how long would otherwise reach the inbox counted to the first
-  // sighting, a pending wait behind (ISS-1229 j17).
+  // seen again, and promote it out of `pending` once it has held long enough. While it waits the
+  // body is this sighting's: one that says how long would otherwise reach the inbox counted to the
+  // first sighting, a pending wait behind (ISS-1229 j17).
   const existing = kind === 'condition' ? await activeRecord(input) : null;
   if (existing) {
     const heldFor = existing.pendingSince ? now.getTime() - existing.pendingSince.getTime() : 0;
@@ -350,7 +350,9 @@ export async function recordAndDeliver(
       .update(notifications)
       .set({
         lastSeenAt: now,
-        ...(input.body !== undefined ? { body: input.body } : {}),
+        // Until it is delivered: once a person has been told, the sentence they read is what was
+        // raised, and a resolved row's account of it must not move afterwards (ISS-1229 r13).
+        ...(input.body !== undefined && existing.state !== 'firing' ? { body: input.body } : {}),
         ...(promote ? { state: 'firing' as const } : {}),
         ...(ripe && inhibitedNow ? { state: 'inhibited' as const, inhibitedBy: inhibitedNow } : {}),
       })

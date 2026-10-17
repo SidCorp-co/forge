@@ -333,7 +333,7 @@ describe("a working project", () => {
     attentionView = view({ pair: { needsReview: 0, awaitingInput: 0, awaitingOutsideBlockers: 0, failedJobs: 1 } });
     const { container } = mount();
     expect(shape(container)).toBe("degraded");
-    expect(screen.getByTestId("degraded-band")).toHaveTextContent("Work is failing — 1 failed job");
+    expect(screen.getByTestId("degraded-band")).toHaveTextContent("1 job failed.");
     expect(screen.queryByText(/Nothing needs anyone/)).toBeNull();
   });
 
@@ -362,7 +362,7 @@ describe("a degraded project", () => {
     const { container } = mount();
     expect(shape(container)).toBe("degraded");
     const band = screen.getByTestId("degraded-band");
-    expect(band).toHaveTextContent("Work is blocked and failing — 1 failed job · 1 item waiting on a person for over 14 days");
+    expect(band).toHaveTextContent("1 job failed. 1 item has waited on a person for over 14 days.");
     const link = within(band).getByRole("link");
     expect(link).toHaveTextContent("Action needed — oldest item waiting 112d");
     expect(link).toHaveAttribute("href", "/projects/pair/issues/d7");
@@ -373,7 +373,7 @@ describe("a degraded project", () => {
   it("is degraded by a run stuck with no job, and offers the pipeline", () => {
     runs = [run({ liveJobs: 0, startedAt: ago(5 * 3600), lastSessionBeatAt: null })];
     mount();
-    expect(screen.getByTestId("degraded-band")).toHaveTextContent("1 run stuck, nothing heard for an hour");
+    expect(screen.getByTestId("degraded-band")).toHaveTextContent("1 run has not been heard from for an hour.");
     expect(within(screen.getByTestId("degraded-band")).getByRole("link")).toHaveAttribute("href", "/projects/pair/agents");
   });
 
@@ -418,7 +418,7 @@ describe("a project with an issue a stuck-issue notice stands for (ISS-1229 r12)
     expect(shape(container)).toBe("degraded");
     expect(screen.queryByText(/Nothing needs anyone/)).toBeNull();
     const band = screen.getByTestId("degraded-band");
-    expect(band).toHaveTextContent("Work is blocked — 1 issue reported stuck");
+    expect(band).toHaveTextContent("1 issue is reported stuck.");
     expect(within(band).getByRole("link")).toHaveTextContent("Action needed — open ISS-4");
     expect(within(band).getByRole("link")).toHaveAttribute("href", "/projects/pair/issues/d-4");
   });
@@ -431,7 +431,7 @@ describe("a project with an issue a stuck-issue notice stands for (ISS-1229 r12)
     ];
     mount();
     const band = screen.getByTestId("degraded-band");
-    expect(band).toHaveTextContent("Work is blocked — 2 issues reported stuck");
+    expect(band).toHaveTextContent("2 issues are reported stuck.");
     expect(within(band).getByRole("link")).toHaveTextContent("Action needed — open ISS-3, stuck longest");
   });
 });
@@ -694,7 +694,9 @@ describe("a page whose figures sit beside other counts of the same things", () =
     expect(shape(container)).toBe("degraded");
     const list = screen.getByRole("region", { name: "Needs your attention" });
     expect(list).not.toHaveTextContent("All caught up");
-    expect(list).toHaveTextContent("What is wrong is named above");
+    expect(list).toHaveTextContent("Nothing here needs you.");
+    expect(list).toHaveTextContent("The link above opens what is wrong.");
+    expect(list).not.toHaveTextContent("What is wrong is named above");
   });
 
   it("counts the sessions the Pipeline page lists, and says how many runs are open as the navigation rail counts them", () => {

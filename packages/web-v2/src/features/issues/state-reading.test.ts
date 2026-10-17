@@ -133,7 +133,7 @@ describe("what the run is doing", () => {
       }),
       NOW,
     );
-    expect(reading.runs).toEqual([{ word: "Running", step: "Code", detail: null }]);
+    expect(reading.runs).toEqual([{ word: "Running", step: "Unrecognised work (code)", detail: null }]);
   });
 
   // ISS-1228 round 9: the issue list said "Running · forge-code" where spend calls the work Issue work.

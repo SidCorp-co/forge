@@ -160,7 +160,7 @@ export function strandReason(args: {
 
   if (status === 'open' && !evidence.poolHasRunner) {
     return {
-      reason: 'no runner is admitted to this project’s job pool, so no wake can be acted on',
+      reason: 'no runner that takes this project’s work is connected, so nothing can pick it up',
       owes: 'human',
     };
   }

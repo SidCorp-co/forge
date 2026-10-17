@@ -27,10 +27,10 @@ const row = (step: string, costUsd: number): StepDurationRow => ({
 
 describe("the 7-day spend legend", () => {
   it("shows every label whole, wrapping instead of clipping, so no two read alike", () => {
-    const data = spendByStep([row("forge-code", 3), row("forge-test", 2), row("drive", 1)]);
+    const data = spendByStep([row("verify_skill", 3), row("release_batch", 2), row("drive", 1)]);
     render(<SpendCard data={data} inFlightUsd={0} read={{ read: "ok" }} />);
     const labels = [...document.querySelectorAll<HTMLElement>("[data-spend-label]")];
-    expect(labels.map((l) => l.textContent)).toEqual(["Forge code", "Forge test", "Issue work"]);
+    expect(labels.map((l) => l.textContent)).toEqual(["Skill checks", "Releases", "Issue work"]);
     for (const l of labels) {
       expect(l.className).not.toMatch(/\b(truncate|line-clamp-\d|whitespace-nowrap)\b/);
       expect(l.className).toMatch(/\bbreak-words\b/);
@@ -38,15 +38,17 @@ describe("the 7-day spend legend", () => {
     }
   });
 
-  // ISS-1228 round 9 (criteria 55, 56): a retired kind still in the window reads in words, so its
-  // label breaks between them at 390 rather than through a stored name with no spaces.
-  it("names a retired kind in words, with no stored name anywhere on the card", () => {
+  // ISS-1229 round 13, the master's ruling over ISS-1228's criteria 55 and 56: a retired kind still in
+  // the window reads as unrecognised beside the stored step it carries, and wraps rather than clips.
+  it("says a retired kind is unrecognised and shows its stored step, wrapping whole", () => {
     const stored = "review_followup_rework_after_codex_consult";
     const data = spendByStep([row(stored, 3), row("triage", 2)]);
-    const { container } = render(<SpendCard data={data} inFlightUsd={0} read={{ read: "ok" }} />);
-    const labels = [...document.querySelectorAll<HTMLElement>("[data-spend-label]")].map((l) => l.textContent);
-    expect(labels).toEqual(["Review followup rework after codex consult", "Triage"]);
-    expect(container.innerHTML).not.toContain(stored);
-    expect(container.innerHTML).not.toContain("Unrecognised");
+    render(<SpendCard data={data} inFlightUsd={0} read={{ read: "ok" }} />);
+    const labels = [...document.querySelectorAll<HTMLElement>("[data-spend-label]")];
+    expect(labels.map((l) => l.textContent)).toEqual([
+      `Unrecognised work (${stored})`,
+      "Unrecognised work (triage)",
+    ]);
+    for (const l of labels) expect(l.className).toMatch(/\bbreak-words\b/);
   });
 });

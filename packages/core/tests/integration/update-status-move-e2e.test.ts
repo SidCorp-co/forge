@@ -393,6 +393,29 @@ describe('forge_issues update — every refusal before the write says first that
     expect(await whole(id)).toEqual(before);
   });
 
+  // ISS-1229 r13, judge-30 on criterion 41: `data: {}` answered `updated` and wrote nothing, where
+  // the REST door refuses the same empty update by name.
+  it.each([
+    ['an empty data object', {}],
+    ['a reason with no status to carry it', { reason: 'nothing to move' }],
+    ['an empty relation list', { relations: [] }],
+  ] as const)(
+    'an update carrying %s is refused as having no fields to update',
+    async (_how, data) => {
+      const w = await plainWorld();
+      const id = await insertIssue(w, 'confirmed');
+      const before = await whole(id);
+
+      const said = await refusal(w.token, { action: 'update', documentId: id, data });
+
+      expect(said).toMatch(
+        /^forge_issues refused: Error: (?:BAD_REQUEST: )?Nothing this update carried was written\. No fields to update: /,
+      );
+      expect(said).not.toContain('expect');
+      expect(await whole(id)).toEqual(before);
+    },
+  );
+
   it('a create the input check refuses keeps its own words: it is no update', async () => {
     const w = await plainWorld();
 

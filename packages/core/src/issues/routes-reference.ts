@@ -60,6 +60,9 @@ export const STATUS_IS_NOT_AN_UPDATE =
   'POST /api/issues/:id/transition (or `forge_issues` `transition`), and only starting a release ' +
   'puts an issue at Releasing.';
 
+/** What both update doors say to an update that writes nothing (ISS-1229 r13). */
+export const NO_FIELDS_TO_UPDATE = 'no fields to update';
+
 export const issuePatchSchema = z
   .strictObject(
     {
@@ -87,7 +90,7 @@ export const issuePatchSchema = z
           : undefined,
     },
   )
-  .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' })
+  .refine((o) => Object.keys(o).length > 0, { message: NO_FIELDS_TO_UPDATE })
   .refine((o) => o.expect === undefined || Object.keys(o).some((k) => k !== 'expect'), {
     message: '`expect` is a precondition on a write — send the field(s) to write alongside it',
   });

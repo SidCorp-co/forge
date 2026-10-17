@@ -84,11 +84,15 @@ function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (link: st
     <button
       type="button"
       onClick={() => onOpen(item.link)}
-      className="flex w-full items-center gap-3 rounded-md border border-line bg-surface px-3 py-2.5 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] max-md:min-h-[44px]"
+      className="flex w-full flex-wrap items-center gap-x-3 gap-y-1.5 rounded-md border border-line bg-surface px-3 py-2.5 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] max-md:min-h-[44px] sm:flex-nowrap"
     >
       <KindTag kind={item.kind} />
       {item.questionId && <MonoTag hue="flame">Decision</MonoTag>}
-      <span className="fg-body-sm min-w-0 flex-1 truncate text-fg">{item.title}</span>
+      {/* At phone width the tags take the row, so the title gets a line of its own and wraps there
+          rather than being cut to a word (ISS-1229 r13). */}
+      <span className="fg-body-sm order-last min-w-0 basis-full text-fg sm:order-none sm:flex-1 sm:basis-auto sm:truncate">
+        {item.title}
+      </span>
       {item.issueRef && <MonoTag>{item.issueRef}</MonoTag>}
       {item.projectName && (
         <span className="fg-caption hidden truncate text-muted sm:inline">{item.projectName}</span>
@@ -178,32 +182,17 @@ function Group({
 export function AttentionScreen() {
   const router = useRouter();
   const { view, read, devicesRead, error, devicesError, refetch } = useAttention();
-  // ISS-477 — scope the inbox to the active org's projects. Items carrying a
-  // `projectSlug` outside the active org are dropped; items without one (e.g.
-  // offline runners) are kept so device-level alerts never silently vanish.
-  const { projects, projectSlugs } = useOrgScopedProjects();
-  const keep = (it: AttentionItem) => !it.projectSlug || projectSlugs.has(it.projectSlug);
-  const scoped = {
-    needsReview: view.needsReview.filter(keep),
-    awaitingInput: view.awaitingInput.filter(keep),
-    mentions: view.mentions.filter(keep),
-    failedJobs: view.failedJobs.filter(keep),
-    pendingSkillUpdates: view.pendingSkillUpdates.filter(keep),
-    unseenDrafts: view.unseenDrafts.filter(keep),
-    offlineRunners: view.offlineRunners.filter(keep),
-  };
-  const unseenDraftsTotal =
-    scoped.unseenDrafts.length === view.unseenDrafts.length
-      ? view.unseenDraftsTotal
-      : scoped.unseenDrafts.length;
+  // ISS-477 scoped the inbox to the active org by dropping other orgs' rows here, after the route's
+  // caps; ISS-1229 r13 moved that cut into the route, before them. Offline runners are the box's own.
+  const { projects } = useOrgScopedProjects();
   const total =
-    scoped.needsReview.length +
-    scoped.awaitingInput.length +
-    scoped.mentions.length +
-    scoped.failedJobs.length +
-    scoped.pendingSkillUpdates.length +
-    scoped.unseenDrafts.length +
-    scoped.offlineRunners.length;
+    view.needsReview.length +
+    view.awaitingInput.length +
+    view.mentions.length +
+    view.failedJobs.length +
+    view.pendingSkillUpdates.length +
+    view.unseenDrafts.length +
+    view.offlineRunners.length;
 
   const open = (link: string) => router.push(link);
 
@@ -263,19 +252,19 @@ export function AttentionScreen() {
         </div>
       ) : (
         <div className="flex flex-col gap-6">
-          <Group title="Needs review" items={scoped.needsReview} onOpen={open} />
-          <Group title="Awaiting input" items={scoped.awaitingInput} onOpen={open} />
-          <Group title="Mentions" items={scoped.mentions} onOpen={open} />
-          <Group title="Failed jobs" items={scoped.failedJobs} onOpen={open} />
-          <Group title="Skill updates" items={scoped.pendingSkillUpdates} onOpen={open} />
+          <Group title="Needs review" items={view.needsReview} onOpen={open} />
+          <Group title="Awaiting input" items={view.awaitingInput} onOpen={open} />
+          <Group title="Mentions" items={view.mentions} onOpen={open} />
+          <Group title="Failed jobs" items={view.failedJobs} onOpen={open} />
+          <Group title="Skill updates" items={view.pendingSkillUpdates} onOpen={open} />
           <Group
             title="Unseen drafts"
-            items={scoped.unseenDrafts}
+            items={view.unseenDrafts}
             onOpen={open}
-            total={unseenDraftsTotal}
+            total={view.unseenDraftsTotal}
             collapsible
           />
-          <Group title="Offline runners" items={scoped.offlineRunners} onOpen={open} />
+          <Group title="Offline runners" items={view.offlineRunners} onOpen={open} />
         </div>
       )}
     </PageContainer>

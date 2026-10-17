@@ -9,12 +9,18 @@ import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const server: { attention: () => Promise<unknown>; devices: () => Promise<unknown> } = {
+const server: {
+  attention: (orgId?: string | null) => Promise<unknown>;
+  devices: () => Promise<unknown>;
+  activeOrgId: string | null;
+} = {
   attention: async () => ({}),
   devices: async () => [],
+  activeOrgId: null,
 };
 
-vi.mock("./api", () => ({ attentionApi: { list: () => server.attention() } }));
+vi.mock("./api", () => ({ attentionApi: { list: (orgId?: string | null) => server.attention(orgId) } }));
+vi.mock("@/features/orgs/active-org", () => ({ useActiveOrg: () => ({ activeOrgId: server.activeOrgId }) }));
 vi.mock("@/features/runners/hooks", async () => {
   const { useQuery } = await import("@tanstack/react-query");
   return {
@@ -46,10 +52,29 @@ function wrapper() {
 beforeEach(() => {
   server.attention = async () => response;
   server.devices = async () => [];
+  server.activeOrgId = null;
 });
 afterEach(cleanup);
 
 describe("useAttention", () => {
+  // ISS-1229 r13, judge-30: the cap was filled across organisations and the screen filtered after it,
+  // so the active organisation's items could be cut before the filter saw them. The read asks the
+  // route for the active organisation, which cuts before its cap.
+  it("asks for the active organisation's items, and every organisation's where none is active", async () => {
+    const asked: Array<string | null | undefined> = [];
+    server.attention = async (orgId) => {
+      asked.push(orgId);
+      return response;
+    };
+    server.activeOrgId = "11111111-1111-4111-8111-111111111111";
+    const scoped = renderHook(() => useAttention(), { wrapper: wrapper() });
+    await waitFor(() => expect(scoped.result.current.read).toBe("read"));
+    server.activeOrgId = null;
+    const whole = renderHook(() => useAttention(), { wrapper: wrapper() });
+    await waitFor(() => expect(whole.result.current.read).toBe("read"));
+    expect(asked).toEqual(["11111111-1111-4111-8111-111111111111", null]);
+  });
+
   it("states no total while the attention answer is on its way, and one once both reads are in", async () => {
     server.attention = () => new Promise(() => {});
     const slow = renderHook(() => useAttention(), { wrapper: wrapper() });

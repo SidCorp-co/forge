@@ -49,7 +49,8 @@ vi.mock("./hooks", () => ({
 }));
 
 const AT = "2026-10-16T10:00:00.000Z";
-const RAW = /release_batch|review_followup|\bdrive\b|forge-code/;
+/** Stored names of kinds this build has words for; an unknown kind shows its own, said to be unrecognised. */
+const RAW = /release_batch|\bdrive\b|forge-code/;
 
 function step(id: string, title: string, metadata: SessionRow["metadata"]): SessionRow {
   return {
@@ -97,7 +98,7 @@ describe("a session's step kind, wherever it is named", () => {
   it("reads a step session's title in words, keeping the issue it names", () => {
     expect(sessionTitle(rows[1])).toBe("Releases");
     expect(sessionTitle(rows[2])).toBe("Issue work: Fix the export");
-    expect(sessionTitle(rows[4])).toBe("Review followup rework after codex consult");
+    expect(sessionTitle(rows[4])).toBe("Unrecognised work (review_followup_rework_after_codex_consult)");
   });
 
   it("prints a title someone wrote, or one with no recorded step, as written", () => {
@@ -116,6 +117,7 @@ describe("a session's step kind, wherever it is named", () => {
     expect(container.textContent).not.toMatch(RAW);
     expect(container.textContent).toContain("Releases");
     expect(container.textContent).toContain("Issue work: Fix the export");
+    expect(container.textContent).toContain("Unrecognised work (review_followup_rework_after_codex_consult)");
   });
 
   // ISS-1228 r9: each row also wore its stored kind, `run_session` or `pipeline`, beside the words.

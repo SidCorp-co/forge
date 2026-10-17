@@ -52,13 +52,13 @@ describe("StepTimes", () => {
   });
 
   // ISS-1228 round 9 (criterion 55): a retired kind reads in words, on the row and in its title.
-  it("names a step the registry no longer has in words, its title included", () => {
+  // ISS-1229 round 13, the master's ruling: a step the registry no longer has reads as unrecognised.
+  it("says a step the registry no longer has is unrecognised, showing its stored name, its title included", () => {
     const stored = "review_followup_rework_after_codex_consult";
-    const { container } = mount({ durations: [duration(stored, 600, 1.5)] });
+    mount({ durations: [duration(stored, 600, 1.5)] });
     const label = document.querySelector<HTMLElement>("[data-step-label]");
-    expect(label).toHaveTextContent("Review followup rework after codex consult");
-    expect(label?.title).toBe("Review followup rework after codex consult");
-    expect(container.innerHTML).not.toContain(stored);
+    expect(label).toHaveTextContent(`Unrecognised work (${stored})`);
+    expect(label?.title).toBe(`Unrecognised work (${stored})`);
   });
 
   it("says no step finished, in one flat line, when the window holds nothing", () => {
@@ -90,7 +90,10 @@ describe("StepTimes — every step label reads whole (ISS-1228 criterion 38)", (
   it("wraps a label rather than clipping it, so two unrecognised steps never read alike", () => {
     mount({ durations: [duration("forge-code", 600, 1), duration("forge-test", 300, 1)] });
     const labels = [...document.querySelectorAll<HTMLElement>("[data-step-label]")];
-    expect(labels.map((l) => l.textContent)).toEqual(["Forge code", "Forge test"]);
+    expect(labels.map((l) => l.textContent)).toEqual([
+      "Unrecognised work (forge-code)",
+      "Unrecognised work (forge-test)",
+    ]);
     for (const l of labels) {
       expect(l.className).not.toMatch(/\b(truncate|line-clamp-\d|whitespace-nowrap)\b/);
       expect(l.className).toMatch(/\bbreak-words\b/);

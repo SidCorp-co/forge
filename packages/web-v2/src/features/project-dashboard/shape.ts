@@ -172,18 +172,16 @@ function degradedBand(input: ShapeInput, quals: readonly Qualifier[], stuck: rea
   const overdue = quals.filter((q) => q.kind === "overdue").length;
   const stuckIssues = stuckIssuesOf(input);
   const parts: string[] = [];
-  if (failed > 0) parts.push(plural(failed, "failed job", "failed jobs"));
-  if (stuck.length > 0) parts.push(`${plural(stuck.length, "run", "runs")} stuck, nothing heard for an hour`);
-  if (stuckIssues > 0) parts.push(`${plural(stuckIssues, "issue", "issues")} reported stuck`);
-  if (overdue > 0) {
-    parts.push(`${plural(overdue, "item", "items")} waiting on a person for over ${OVERDUE_WAIT_SECONDS / DAY} days`);
+  if (failed > 0) parts.push(`${plural(failed, "job", "jobs")} failed.`);
+  if (stuck.length > 0) {
+    parts.push(`${plural(stuck.length, "run has", "runs have")} not been heard from for an hour.`);
   }
-  const lead =
-    failed > 0 && (stuck.length > 0 || stuckIssues > 0 || overdue > 0)
-      ? "Work is blocked and failing"
-      : failed > 0
-        ? "Work is failing"
-        : "Work is blocked";
+  if (stuckIssues > 0) {
+    parts.push(`${plural(stuckIssues, "issue is", "issues are")} reported stuck.`);
+  }
+  if (overdue > 0) {
+    parts.push(`${plural(overdue, "item has", "items have")} waited on a person for over ${OVERDUE_WAIT_SECONDS / DAY} days.`);
+  }
 
   const oldest = input.cut ? "oldest listed item" : "oldest item";
   const aged = quals.reduce<(typeof quals)[number] | undefined>(
@@ -201,7 +199,7 @@ function degradedBand(input: ShapeInput, quals: readonly Qualifier[], stuck: rea
   } else if (stuckIssues > 0) {
     entry = stuckEntry(input.slug, stuckIssues, input.stuckIssueRefs[0]);
   }
-  return { text: `${lead} — ${parts.join(" · ")}`, entry };
+  return { text: parts.join(" "), entry };
 }
 
 /** The one reading of what this project is doing. */

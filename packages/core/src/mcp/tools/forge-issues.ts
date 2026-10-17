@@ -43,6 +43,7 @@ import {
   issueRelationInputSchema,
 } from '../../issues/relations-service.js';
 import { ReleaseNotesSchema } from '../../issues/release-notes.js';
+import { NO_FIELDS_TO_UPDATE } from '../../issues/routes-reference.js';
 import { IssueSearchKeyRefused } from '../../issues/search-term.js';
 import { sessionContextExpectSchema, sessionContextSchema } from '../../issues/session-context.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
@@ -641,6 +642,13 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             ...SHARED_ISSUE_PATCH_FIELDS,
           ]);
           const writesFields = Object.keys(collected.updates).length > 0 || labelIds !== undefined;
+          const writesAnything =
+            writesFields || data.status !== undefined || (data.relations?.length ?? 0) > 0;
+          if (!writesAnything && !data.expect) {
+            throw new Error(
+              `BAD_REQUEST: ${NO_FIELDS_TO_UPDATE}: \`data\` carries no field, label, relation or status to write.`,
+            );
+          }
           if (data.expect && !writesFields) {
             throw new Error(
               'BAD_REQUEST: data.expect is a precondition on a FIELD write — it holds nothing against a status or relations change. Send the field(s) to write alongside it.',

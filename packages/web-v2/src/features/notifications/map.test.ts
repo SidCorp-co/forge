@@ -1,5 +1,6 @@
 import { NOTIFICATION_TYPES } from "@forge/contracts/notifications";
 import { describe, expect, it } from "vitest";
+import { formatRelativeTime } from "@/lib/utils/format";
 import { TYPE_FILTER_OPTIONS, TYPE_NAMES, toNotificationItem } from "./map";
 import type { NotificationRow } from "./types";
 
@@ -26,6 +27,7 @@ const row = (over: Partial<NotificationRow> = {}): NotificationRow => ({
   secondaryIssueId: null,
   agentSessionId: null,
   createdAt: "2026-10-01T10:00:00.000Z",
+  toldAt: "2026-10-01T10:00:00.000Z",
   ...over,
 });
 
@@ -38,6 +40,13 @@ describe("the type filter", () => {
 });
 
 describe("toNotificationItem", () => {
+  // ISS-1229 r13: a row reads when its newest record reached the reader, the clock its members read.
+  it("dates the row by when it last told the reader, not by when the delivery was made", () => {
+    const made = new Date(Date.now() - 5 * 3_600_000).toISOString();
+    const told = new Date(Date.now() - 60_000).toISOString();
+    expect(toNotificationItem(row({ createdAt: made, toldAt: told })).time).toBe(formatRelativeTime(told));
+  });
+
   it("reads unread off the server's state, not off the read stamp", () => {
     expect(toNotificationItem(row({ unread: false, readAt: null })).unread).toBe(false);
     expect(toNotificationItem(row({ unread: true, readAt: "2026-10-01T11:00:00.000Z" })).unread).toBe(true);

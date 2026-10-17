@@ -123,11 +123,7 @@ export function AttentionQueue({
             {notes}
           </DashboardSection>
         ) : shape === "degraded" ? (
-          <EmptyLine
-            title={TITLE}
-            status="No item is waiting on you"
-            detail="What is wrong is named above, and it is not an item listed here."
-          />
+          <EmptyLine title={TITLE} status="Nothing here needs you." detail="The link above opens what is wrong." />
         ) : shape === "unread" ? (
           <EmptyLine
             title={TITLE}

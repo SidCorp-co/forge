@@ -43,6 +43,16 @@ export const UNSEEN_DRAFTS_CAP = 20;
 
 export const AWAITING_INPUT_CAP = 20;
 
+/** Which organisation's projects a read covers; none named reads every one the caller can see. */
+export interface AttentionScope {
+  orgId?: string | undefined;
+}
+
+/** Applied before each cap, so a cap filled by one organisation cannot empty another (ISS-1229 r13). */
+function inScope(scope: AttentionScope): SQL | undefined {
+  return scope.orgId ? eq(projects.orgId, scope.orgId) : undefined;
+}
+
 const retryJobs = alias(jobs, 'retry_jobs');
 
 export interface AttentionIssueRow {
@@ -131,12 +141,15 @@ function needsReviewWhere(userId: string): SQL {
   ) as SQL;
 }
 
-export function selectNeedsReview(userId: string): Promise<AttentionIssueRow[]> {
+export function selectNeedsReview(
+  userId: string,
+  scope: AttentionScope = {},
+): Promise<AttentionIssueRow[]> {
   return db
     .select(issueFields)
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
-    .where(needsReviewWhere(userId))
+    .where(and(needsReviewWhere(userId), inScope(scope)))
     .orderBy(desc(issues.updatedAt))
     .limit(PER_BUCKET) as Promise<AttentionIssueRow[]>;
 }
@@ -172,7 +185,10 @@ function awaitingInputWhere(userId: string): SQL {
   ) as SQL;
 }
 
-export function selectAwaitingInput(userId: string): Promise<AttentionAwaitingRow[]> {
+export function selectAwaitingInput(
+  userId: string,
+  scope: AttentionScope = {},
+): Promise<AttentionAwaitingRow[]> {
   return db
     .select({
       ...issueFields,
@@ -195,7 +211,7 @@ export function selectAwaitingInput(userId: string): Promise<AttentionAwaitingRo
       organizationMembers,
       and(eq(organizationMembers.orgId, projects.orgId), eq(organizationMembers.userId, userId)),
     )
-    .where(awaitingInputWhere(userId))
+    .where(and(awaitingInputWhere(userId), inScope(scope)))
     .orderBy(...AWAITING_COST_ORDER)
     .limit(AWAITING_INPUT_CAP) as Promise<AttentionAwaitingRow[]>;
 }
@@ -259,25 +275,36 @@ function unseenDraftCondition(userId: string): SQL {
 
 const PRIORITY_RANK = sql`case ${issues.priority} when 'critical' then 0 when 'high' then 1 when 'medium' then 2 when 'low' then 3 else 4 end`;
 
-export function selectUnseenDrafts(userId: string): Promise<AttentionIssueRow[]> {
+export function selectUnseenDrafts(
+  userId: string,
+  scope: AttentionScope = {},
+): Promise<AttentionIssueRow[]> {
   return db
     .select(issueFields)
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
-    .where(unseenDraftCondition(userId))
+    .where(and(unseenDraftCondition(userId), inScope(scope)))
     .orderBy(PRIORITY_RANK, desc(issues.updatedAt))
     .limit(UNSEEN_DRAFTS_CAP) as Promise<AttentionIssueRow[]>;
 }
 
-export function selectUnseenDraftCount(userId: string): Promise<{ total: number | null }[]> {
+export function selectUnseenDraftCount(
+  userId: string,
+  scope: AttentionScope = {},
+): Promise<{ total: number | null }[]> {
   return db
     .select({ total: sql<number>`count(*)::int` })
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
-    .where(unseenDraftCondition(userId)) as Promise<{ total: number | null }[]>;
+    .where(and(unseenDraftCondition(userId), inScope(scope))) as Promise<
+    { total: number | null }[]
+  >;
 }
 
-export function selectMentions(userId: string): Promise<AttentionMentionRow[]> {
+export function selectMentions(
+  userId: string,
+  scope: AttentionScope = {},
+): Promise<AttentionMentionRow[]> {
   return db
     .select({
       notificationTitle: notifications.title,
@@ -317,7 +344,13 @@ export function selectMentions(userId: string): Promise<AttentionMentionRow[]> {
         eq(notificationDeliveries.userId, commentMentions.userId),
       ),
     )
-    .where(and(eq(commentMentions.userId, userId), sql`${notificationDeliveries.readAt} IS NULL`))
+    .where(
+      and(
+        eq(commentMentions.userId, userId),
+        sql`${notificationDeliveries.readAt} IS NULL`,
+        inScope(scope),
+      ),
+    )
     .orderBy(desc(commentMentions.createdAt))
     .limit(PER_BUCKET) as Promise<AttentionMentionRow[]>;
 }
@@ -335,7 +368,10 @@ function failedJobsWhere(userId: string): SQL {
   ) as SQL;
 }
 
-export function selectFailedJobs(userId: string): Promise<AttentionFailedJobRow[]> {
+export function selectFailedJobs(
+  userId: string,
+  scope: AttentionScope = {},
+): Promise<AttentionFailedJobRow[]> {
   return db
     .select({
       type: jobs.type,
@@ -351,12 +387,15 @@ export function selectFailedJobs(userId: string): Promise<AttentionFailedJobRow[
     .from(jobs)
     .innerJoin(projects, eq(projects.id, jobs.projectId))
     .leftJoin(issues, eq(issues.id, jobs.issueId))
-    .where(failedJobsWhere(userId))
+    .where(and(failedJobsWhere(userId), inScope(scope)))
     .orderBy(desc(sql`coalesce(${jobs.finishedAt}, ${jobs.createdAt})`))
     .limit(PER_BUCKET) as Promise<AttentionFailedJobRow[]>;
 }
 
-export function selectPendingSkillUpdates(userId: string): Promise<AttentionReconcileRow[]> {
+export function selectPendingSkillUpdates(
+  userId: string,
+  scope: AttentionScope = {},
+): Promise<AttentionReconcileRow[]> {
   return db
     .select({
       status: reconcileRuns.status,
@@ -370,6 +409,7 @@ export function selectPendingSkillUpdates(userId: string): Promise<AttentionReco
     .where(
       and(
         adminsProject(userId),
+        inScope(scope),
         or(
           and(eq(reconcileRuns.status, 'decided'), eq(reconcileRuns.gate, 'human')),
           and(
@@ -404,6 +444,7 @@ export interface AttentionProjectTotals {
  */
 export async function selectAttentionTotals(
   userId: string,
+  scope: AttentionScope = {},
 ): Promise<Record<string, AttentionProjectTotals>> {
   const count = sql<number>`count(*)::int`;
   const [review, awaiting, failed] = await Promise.all([
@@ -411,7 +452,7 @@ export async function selectAttentionTotals(
       .select({ slug: projects.slug, n: count })
       .from(issues)
       .innerJoin(projects, eq(projects.id, issues.projectId))
-      .where(needsReviewWhere(userId))
+      .where(and(needsReviewWhere(userId), inScope(scope)))
       .groupBy(projects.slug),
     db
       .select({
@@ -429,14 +470,14 @@ export async function selectAttentionTotals(
         organizationMembers,
         and(eq(organizationMembers.orgId, projects.orgId), eq(organizationMembers.userId, userId)),
       )
-      .where(awaitingInputWhere(userId))
+      .where(and(awaitingInputWhere(userId), inScope(scope)))
       .groupBy(projects.slug),
     db
       .select({ slug: projects.slug, n: count })
       .from(jobs)
       .innerJoin(projects, eq(projects.id, jobs.projectId))
       .leftJoin(issues, eq(issues.id, jobs.issueId))
-      .where(failedJobsWhere(userId))
+      .where(and(failedJobsWhere(userId), inScope(scope)))
       .groupBy(projects.slug),
   ]);
   const totals: Record<string, AttentionProjectTotals> = {};

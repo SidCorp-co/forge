@@ -454,7 +454,7 @@ function NotificationItem({
           )}
         </div>
         <span className="fg-caption mt-3 flex-none whitespace-nowrap font-mono">
-          {fmtTime(row.createdAt)}
+          {fmtTime(row.toldAt)}
         </span>
       </div>
       {open && (
@@ -488,8 +488,9 @@ function MemberList({ deliveryId, onOpened }: { deliveryId: string; onOpened: ()
       {members.map((m, i) => {
         const href = subjectHref(m);
         const text = (
-          <span className={m.open ? "text-fg" : "text-muted line-through"}>
-            {texts[i] ?? m.title}
+          <span className="flex flex-col">
+            <span className={m.open ? "text-fg" : "text-muted line-through"}>{texts[i] ?? m.title}</span>
+            {m.body && <span className="fg-caption text-muted">{m.body}</span>}
           </span>
         );
         return (
@@ -502,7 +503,7 @@ function MemberList({ deliveryId, onOpened }: { deliveryId: string; onOpened: ()
               <span className="fg-body-sm py-3">{text}</span>
             )}
             <span className="fg-caption flex-none whitespace-nowrap font-mono">
-              {fmtTime(m.createdAt)}
+              {fmtTime(m.deliveredAt)}
             </span>
           </li>
         );

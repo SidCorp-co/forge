@@ -180,6 +180,18 @@ describe('the release runner label', () => {
 
     expect(message).toContain('so this release goes to the pool this project has');
   });
+
+  // ISS-1229 r13: the master read this warning as about 110 words on Shape & release. A few short
+  // sentences, still naming both ways out and the screen each is taken on (the cases above).
+  it.each([
+    ['a caller', '`releaseRunnerLabel`'],
+    ['a person', 'the Release runner label'],
+  ])('reads to %s in at most four sentences and 80 words', (_who, field) => {
+    const message = runnerPreferenceUnmetSentence('release', field);
+    const sentences = message.split(/(?<=[.!?])\s+(?=[A-Z])/).filter(Boolean);
+    expect(sentences.length).toBeLessThanOrEqual(4);
+    expect(message.split(/\s+/).length).toBeLessThanOrEqual(80);
+  });
 });
 
 describe('RELEASE_ROSTER_EMPTY', () => {
