@@ -130,7 +130,8 @@ export function AttentionQueue({
     <>
       {(stuckRows.length > 0 || stuckUnlisted > 0) && (
         <p className="fg-caption mt-2 text-subtle">
-          {stuckRows.length < stuck.refs.length ? "Also reported stuck" : "Reported stuck"}
+          {stuckRows.length < stuck.refs.length || items.length > 0 ? "Also reported stuck" : "Reported stuck"} ·{" "}
+          {stuckRows.length + stuckUnlisted}
         </p>
       )}
       {stuckRows.length > 0 && (

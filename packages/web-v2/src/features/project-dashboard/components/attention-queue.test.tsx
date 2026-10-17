@@ -86,6 +86,38 @@ describe("the Needs your attention list with nothing in it", () => {
     expect(screen.getAllByRole("button", { name: "Open issue" })).toHaveLength(2);
   });
 
+  it("counts its own items in the heading and the stuck issues beside them on their own line", () => {
+    render(
+      <AttentionQueue
+        items={[
+          {
+            key: "q",
+            actionKind: "input",
+            actionLabel: "Provide info",
+            title: "Which carrier?",
+            issueRef: "PAIR-41",
+            link: "/projects/pair/issues/d41",
+            since: new Date(0).toISOString(),
+          },
+        ]}
+        cut={null}
+        shape="degraded"
+        slug="pair"
+        now={0}
+        stuck={{
+          total: 2,
+          refs: [
+            { issueId: "PAIR-50", documentId: "d50", kind: "idle" },
+            { issueId: "PAIR-53", documentId: "d53", kind: "idle" },
+          ],
+        }}
+      />,
+    );
+    const list = screen.getByRole("region", { name: "Needs your attention" });
+    expect(list).toHaveTextContent(/^Needs your attention1/u);
+    expect(list).toHaveTextContent("Also reported stuck · 2");
+  });
+
   it("names a stuck issue once where it is already listed to act on", () => {
     render(
       <AttentionQueue

@@ -120,7 +120,7 @@ const COLLAPSE_ABOVE = 5;
 
 /** The bell and a project's headline count only parks past six hours; this group counts every one. */
 export const AWAITING_NOTE =
-  "Assigned to or filed by you, however long each has waited. The bell tells a project's admins of each after six hours.";
+  "Assigned to you, or filed by you and assigned to nobody, however long each has waited. The bell tells a project's admins of those at Waiting after six hours.";
 
 function Group({
   title,

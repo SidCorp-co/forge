@@ -121,7 +121,9 @@ describe("an Attention group", () => {
     const row = screen.getByRole("button", { name: /Which carrier do we keep\?/u });
     expect(row.className).not.toMatch(/\b(border|rounded-md|bg-surface)\b/u);
     expect(row.closest("ul")?.className).toMatch(/divide-y/u);
-    expect(screen.getByText(/however long each has waited/u)).toBeInTheDocument();
+    expect(screen.getByText(/filed by you and assigned to nobody, however long each has waited/u)).toBeInTheDocument();
+    // The bell's six-hour notice is a park's at Waiting only: Needs info and a question elsewhere are not promised one.
+    expect(screen.getByText(/of those at Waiting after six hours/u)).toBeInTheDocument();
   });
 });
 
