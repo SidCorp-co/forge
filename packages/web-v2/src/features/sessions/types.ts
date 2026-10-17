@@ -301,7 +301,7 @@ export const FAILURE_REASON_ACTION: Record<SessionFailureReason, string> = {
     "A runner picked this up but nothing ever reported the agent starting a turn. Check whether its prompt was actually submitted, then Rerun.",
   no_worker_online: "Bring a runner online or check device pairing, then Retry.",
   no_client_ack: "The runner never acknowledged the dispatch. Retry to re-send.",
-  user_cancelled: "A person stopped this session. Rerun to start a fresh one.",
+  user_cancelled: "Rerun to start a fresh session.",
   job_failed: "The cause wasn't recorded. Open the run timeline to see why.",
   issue_busy: "Another session holds this issue. It will retry once that frees.",
   runner_full: "The runner is at capacity. It will dispatch when a slot frees.",

@@ -286,7 +286,7 @@ export function ContextRail({
 
       {showBlocker && (
         <Section title={display === "stalled" ? "Core's note" : "Why it ended"}>
-          <Banner tone={failureReason === "user_cancelled" ? "attention" : "danger"}>
+          <Banner tone={failureReason === "user_cancelled" ? "info" : "danger"}>
             <span className="font-semibold">
               {display === "stalled"
                 ? coreNoteText(failureReasonLabel(failureReason) ?? failureReason)
