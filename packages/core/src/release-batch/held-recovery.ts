@@ -56,7 +56,6 @@ function runPageSentence(runId: string, pages: ProjectPages | null): string {
     : 'The release it was in has been stopped';
 }
 
-/** What each roster issue is told where nothing would send its release's job again. */
 export function heldHandbackSentence(
   reason: string | null,
   runId: string,
@@ -65,7 +64,6 @@ export function heldHandbackSentence(
   return `Its release could never move: its job was held because ${heldBecause(reason)}, and nothing would send it again. ${runPageSentence(runId, pages)}`;
 }
 
-/** What each roster issue is told where its release waited on a decision a person owes. */
 export function decisionHandbackSentence(
   ref: Pick<DecisionRef, 'issueId'> | null,
   runId: string,
@@ -214,7 +212,8 @@ async function emitWedge(row: HeldRow): Promise<void> {
       title: 'A release waiting on a decision was handed back',
       summary:
         'The release waited on a decision a person owes. Every issue in it has been put back at the release gate, and the question stays open.',
-      nextStep: 'Answer the question on the issue it is asked on, then start the release again from the release gate.',
+      nextStep:
+        'Answer the question on the issue it is asked on, then start the release again from the release gate.',
     });
     return;
   }

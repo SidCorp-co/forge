@@ -7,7 +7,11 @@
 
 import type { IssueStatus } from '../db/schema.js';
 import { statusForCaller } from '../issues/status-sets.js';
-import { type CloseShortfall, rosterCloseShortfalls, shortfallSentence } from './close-shortfall.js';
+import {
+  type CloseShortfall,
+  rosterCloseShortfalls,
+  shortfallSentence,
+} from './close-shortfall.js';
 import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
 import { projectPages } from './release-links.js';
 

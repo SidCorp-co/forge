@@ -84,8 +84,7 @@ async function shortfallsOf(
       : [];
     found.push({
       code: 'ENTRY_CRITERIA_UNMET',
-      // Named in words, never by stored key (ISS-1421 r4). The page has no editor for them, so the
-      // door is the agent that writes them, and one may not be working the issue yet (r5).
+      // The page has no editor for these records, so the door is the agent that writes them (r5).
       reason: `missing ${entryRecordsInWords(unmet)}, which this project requires before a close`,
       clears: ENTRY_RECORDS_CLEAR,
       detail: violation.detail,
@@ -113,7 +112,6 @@ export async function rosterCloseShortfalls(
   return out;
 }
 
-/** Who writes an entry record a close is missing, and the door that starts one where none is working. */
 export const ENTRY_RECORDS_CLEAR =
   "An agent writes them through Forge's issue tools. To start one, press Open session at the top of the issue's page.";
 
@@ -123,7 +121,6 @@ export function shortfallSentence(reason: string): string {
   return `${verb} ${reason}.`;
 }
 
-/** One shortfall in whole sentences: what holds the issue, then the act that clears it. */
 export function shortfallSaid(s: Pick<CloseShortfall, 'reason' | 'clears'>): string {
   return `${shortfallSentence(s.reason)} ${s.clears}`;
 }

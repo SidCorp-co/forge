@@ -146,7 +146,11 @@ describe('a release batch whose job is held with nothing to send it (criterion 5
         'Its release could never move: its job was held because it failed on every retry, and nothing would send it again.',
       );
       // ISS-1421 r5: the run is linked by its page, never named in words a reader cannot open.
-      expect(said).toMatch(new RegExp(`The release it was in is at https?://\\S+/projects/[^/\\s]+/releases/${runId}\\.`));
+      expect(said).toMatch(
+        new RegExp(
+          `The release it was in is at https?://\\S+/projects/[^/\\s]+/releases/${runId}\\.`,
+        ),
+      );
       expect(said).not.toMatch(/\/api\//);
       expect(said).not.toMatch(/retry_rounds_exhausted|failure_reason/);
     }
@@ -218,7 +222,12 @@ describe('a release held on a decision a person owes (criterion 67)', () => {
     const a = await fx.insertIssue();
     const b = await fx.insertIssue();
     const { runId, jobId } = await fx.claim([a, b]);
-    await hold(jobId, { reason: 'awaiting_decision', autoRelease: false, minutesAgo: 1, decision: 'owed' });
+    await hold(jobId, {
+      reason: 'awaiting_decision',
+      autoRelease: false,
+      minutesAgo: 1,
+      decision: 'owed',
+    });
 
     expect(await m.recover(new Date())).toEqual({ recovered: 1 });
 
@@ -227,7 +236,9 @@ describe('a release held on a decision a person owes (criterion 67)', () => {
     for (const id of [a, b]) {
       expect(await fx.stored(id)).toMatchObject({ status: 'awaiting_release', claim: null });
       const said = (await bodies(id)).join('\n');
-      expect(said).toContain('This release waited on a decision a person owes, so it was handed back');
+      expect(said).toContain(
+        'This release waited on a decision a person owes, so it was handed back',
+      );
       expect(said).toContain(`/releases/${runId}.`);
     }
     expect(await fx.runStatus(runId)).not.toBe('running');
@@ -237,7 +248,12 @@ describe('a release held on a decision a person owes (criterion 67)', () => {
   it('finishes a decision hand-back a pass cut short after fencing the job, and says the same', async () => {
     const a = await fx.insertIssue();
     const { runId, jobId } = await fx.claim([a]);
-    await hold(jobId, { reason: 'awaiting_decision', autoRelease: false, minutesAgo: 1, decision: 'owed' });
+    await hold(jobId, {
+      reason: 'awaiting_decision',
+      autoRelease: false,
+      minutesAgo: 1,
+      decision: 'owed',
+    });
     const { DECISION_HANDBACK_REASON } = await import('../../src/release-batch/decision-state.js');
     await harness.db.execute(sql`
       UPDATE jobs SET status = 'cancelled', finished_at = now(), error = ${DECISION_HANDBACK_REASON}

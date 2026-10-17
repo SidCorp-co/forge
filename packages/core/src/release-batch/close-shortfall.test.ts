@@ -30,7 +30,9 @@ vi.mock('../issues/transition-evidence.js', () => ({
   checkTransitionEvidence: (...a: unknown[]) => evidence(...a),
 }));
 
-const { ENTRY_RECORDS_CLEAR, rosterCloseShortfalls, shortfallLine, shortfallSaid } = await import('./close-shortfall.js');
+const { ENTRY_RECORDS_CLEAR, rosterCloseShortfalls, shortfallLine, shortfallSaid } = await import(
+  './close-shortfall.js'
+);
 
 const PROJECT = 'p-1';
 
@@ -150,7 +152,10 @@ describe('shortfallSaid', () => {
     ['not marked merged', 'It is not marked merged.'],
     ['no mark naming where its work landed', 'It has no mark naming where its work landed.'],
     ['holds 2 open questions', 'It holds 2 open questions.'],
-    ['missing a plan, which this project requires before a close', 'It is missing a plan, which this project requires before a close.'],
+    [
+      'missing a plan, which this project requires before a close',
+      'It is missing a plan, which this project requires before a close.',
+    ],
   ])('says "%s" as a sentence of its own, ahead of what clears it', (reason, sentence) => {
     const said = shortfallSaid({ reason, clears: 'Do this.' });
     expect(said).toBe(`${sentence} Do this.`);

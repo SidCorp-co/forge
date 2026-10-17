@@ -111,7 +111,9 @@ describe('ISS-940 re-marking an already-merged issue (real Postgres)', () => {
     );
     expect(rows).toHaveLength(2);
     expect(rows[0]?.body).toMatch(/^Marked merged into main/);
-    expect(rows[1]?.body).toMatch(/^Already marked merged on \d{1,2} [A-Z][a-z]{2} \d{4}, so this call changed nothing/);
+    expect(rows[1]?.body).toMatch(
+      /^Already marked merged on \d{1,2} [A-Z][a-z]{2} \d{4}, so this call changed nothing/,
+    );
     expect(rows[1]?.body).toMatch(/To change the mark, use Unmark, then Mark merged again\./);
   });
 
@@ -136,13 +138,17 @@ describe('ISS-940 re-marking an already-merged issue (real Postgres)', () => {
         expect(sentence.split(/\s+/).length).toBeLessThanOrEqual(20);
       }
     }
-    expect(again.markDetail).toMatch(/^Already marked merged on .+, so this call changed nothing\./);
+    expect(again.markDetail).toMatch(
+      /^Already marked merged on .+, so this call changed nothing\./,
+    );
   });
 
   it('refuses an unmark with no mark by name, and writes no comment', async () => {
     const issue = await insertIssue();
     const { applyMergeMarker, MergeMarkerError } = await import('../../src/issues/merge-marker.js');
-    const err = await applyMergeMarker({ issue, op: 'unmark', actor: actor() }).catch((e: unknown) => e);
+    const err = await applyMergeMarker({ issue, op: 'unmark', actor: actor() }).catch(
+      (e: unknown) => e,
+    );
 
     expect(err).toBeInstanceOf(MergeMarkerError);
     expect((err as InstanceType<typeof MergeMarkerError>).code).toBe('NOT_MARKED_MERGED');

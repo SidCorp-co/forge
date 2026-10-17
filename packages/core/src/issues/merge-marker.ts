@@ -193,8 +193,6 @@ function namesAnother(named: string, kept: string): string | null {
   return a.startsWith(b) || b.startsWith(a) ? null : named;
 }
 
-/** The refusal for an unmark with no mark to remove: a 200 and a "Merge mark removed." comment
- *  would put a removal on the record that never happened. */
 export const NOT_MARKED_MERGED_DETAIL =
   'This issue is not marked merged, so there is no mark to remove. Nothing changed.';
 
@@ -414,7 +412,9 @@ export async function applyMergeMarker(args: {
   const step = repeated && !kept?.notKept ? CHANGE_THE_MARK : null;
   const unchanged = step ? `\n${step}` : '';
   const markDetail = repeated
-    ? [`${alreadyMarkedSentence(stampResult.mergedAt)}.`, step, standingDetail].filter(Boolean).join(' ')
+    ? [`${alreadyMarkedSentence(stampResult.mergedAt)}.`, step, standingDetail]
+        .filter(Boolean)
+        .join(' ')
     : standingDetail;
   const marked = args.op === 'mark' ? `\n${standingDetail}` : '';
   const auditComment = await writeAuditComment(

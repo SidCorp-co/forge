@@ -163,7 +163,12 @@ it does not clear it, and names `statusEntryCriteria` as the
 declaration to change where the project's work leaves none of these.
 
 Where the row already holds a stamp, the gated UPDATE moves nothing and the answer
-describes what the row HOLDS, not which branch this call took. So the "your commit is not
+describes what the row HOLDS, not which branch this call took. Both the answer and the thread
+comment open by saying so — "Already marked merged on 17 Oct 2026, so this call changed
+nothing." — with the caller's note whole on a line of its own and never the "Marked merged" a
+first mark opens with (`packages/core/src/issues/merge-marker.ts:alreadyMarkedSentence`). An `unmark`
+on a row holding no mark is refused `NOT_MARKED_MERGED` and writes no comment: `clearIssueMerge`
+takes only a marked row, so a removal never reaches the record that did not happen. So the "your commit is not
 what the column holds" clause compares the claim against the column. Comparing it against
 the row the call happened to select tells a caller its own commit was overruled by that
 same commit.

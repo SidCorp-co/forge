@@ -375,7 +375,7 @@ asks it again.
   while a question is open is refused `DECISION_OPEN`.
 - **Releasing is not a state an issue waits in.** `packages/core/src/release-batch/held-recovery.ts:recoverHeldReleaseBatches`
   hands a release held on an owed decision back on its next once-a-minute pass: the held job is
-  cancelled with `decision-state.ts:DECISION_HANDBACK_REASON`, every roster issue returns to
+  cancelled with `packages/core/src/release-batch/decision-state.ts:DECISION_HANDBACK_REASON`, every roster issue returns to
   Awaiting release unclaimed, and each one's comment carries the page the question is open on and
   the release run's page. An answer given inside that minute still requeues the job; after it, the
   answer reaches no release agent, and the issue is released again with Release now.

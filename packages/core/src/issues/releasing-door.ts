@@ -88,7 +88,9 @@ export async function releasingExitRefusal(
     ? pages
       ? [`The release carrying it shows where it stands at ${pages.releaseRun(runId)}.`]
       : ['A release is carrying it now.']
-    : ['No release carries it, so the releasing sweep returns it to the release gate within a minute.'];
+    : [
+        'No release carries it, so the releasing sweep returns it to the release gate within a minute.',
+      ];
   return new TransitionError(
     'RELEASING_ENDS_BY_RELEASE',
     [

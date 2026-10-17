@@ -15,7 +15,6 @@ export function isForgeAddress(email: string): boolean {
   return email.trim().toLowerCase() === FORGE_ADDRESS;
 }
 
-/** The sign-in and register pages say the same words (`web-v2/src/features/auth/agent-address.ts`). */
 export const AGENT_ADDRESS_RESERVED =
   'That address belongs to an agent account Forge runs, and no person signs up or signs in with it. ' +
   'Use an address you receive mail at.';

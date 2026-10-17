@@ -44,7 +44,8 @@ const HOLDS: GateHolds[] = [
       {
         reason:
           'missing a plan, acceptance criteria and a release note, which this project requires before a close',
-        clears: "An agent writes them through Forge's issue tools. To start one, press Open session at the top of the issue's page.",
+        clears:
+          "An agent writes them through Forge's issue tools. To start one, press Open session at the top of the issue's page.",
       },
     ],
   },

@@ -169,7 +169,8 @@ describe('a release names, before the press, the rows its finish could not close
       expect.objectContaining({
         code: 'ENTRY_CRITERIA_UNMET',
         reason: 'missing a plan, which this project requires before a close',
-        clears: "An agent writes them through Forge's issue tools. To start one, press Open session at the top of the issue's page.",
+        clears:
+          "An agent writes them through Forge's issue tools. To start one, press Open session at the top of the issue's page.",
       }),
     ]);
   });
@@ -297,7 +298,9 @@ describe('a release still ships every row whose close stands', () => {
     expect(outcome.named).toEqual([rows.clean]);
     expect((await fx.stored(rows.clean)).status).toBe('releasing');
     expect(outcome.leftOff).toEqual([
-      expect.stringMatching(new RegExp(`^${unmarkedKey}: It has no mark naming where its work landed`)),
+      expect.stringMatching(
+        new RegExp(`^${unmarkedKey}: It has no mark naming where its work landed`),
+      ),
       expect.stringMatching(new RegExp(`^${askedKey}: It holds 1 open question`)),
       expect.stringMatching(
         new RegExp(`^${unplannedKey}: It is missing a plan, which this project requires`),
