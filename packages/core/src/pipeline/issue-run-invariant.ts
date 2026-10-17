@@ -11,7 +11,11 @@ import { resolveNotifications } from '../notifications/auto-resolve.js';
 import { emitNotification } from '../notifications/emit.js';
 import { sweepGroup } from '../notifications/explanations.js';
 import { projectAdminUserIds } from '../notifications/project-admins.js';
-import { outrankedSql, type StuckNoticeSuffix } from './stuck-precedence.js';
+import {
+  outrankedSql,
+  retireOutrankedNotices,
+  type StuckNoticeSuffix,
+} from './stuck-precedence.js';
 
 /**
  * How long an issue may assert work with no run behind it before it is named.
@@ -68,8 +72,6 @@ export async function resolveEndedOrphanAssertions(): Promise<number> {
          )})
          -- An archived project raises no stuck-issue notice (archived-project-notices.ts).
          OR p.archived_at IS NOT NULL
-         -- A more specific reason names it now, so this one ends (ISS-1229 r14).
-         OR ${outrankedSql(sql`i.id`, ORPHAN_KEY_SUFFIX)}
          OR ${issueWorkInFlightSql({
            issueId: sql`i.id`,
            projectId: sql`i.project_id`,
@@ -239,5 +241,5 @@ export async function detectOrphanedRunAssertions(
     const ref = formatIssueRef(row.issuePrefix, row.issSeq);
     if (await nameOnce({ now, row, ref })) reported += 1;
   }
-  return { detected: rows.length, reported, resolved };
+  return { detected: rows.length, reported, resolved: resolved + (await retireOutrankedNotices()) };
 }

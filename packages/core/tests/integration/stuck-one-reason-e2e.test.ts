@@ -71,11 +71,13 @@ describe('one issue, one stuck reason', () => {
     const orphan = await issue(1, 'in_progress', 3);
     const s = await sweeps();
 
-    // Whichever sweep reaches it first, once both have run the orphan notice alone stands.
+    // Told as idle first, the orphan sweep that tells it more specifically ends the idle notice itself.
     await announce(() => s.reconcileIdleIssues(new Date()));
     await announce(() => s.detectOrphanedRunAssertions(new Date()));
-    await s.reconcileIdleIssues(new Date());
 
+    expect(await standing(orphan)).toEqual(['run-assertion-orphaned']);
+    // And the idle sweep running again raises nothing beside it.
+    await s.reconcileIdleIssues(new Date());
     expect(await standing(orphan)).toEqual(['run-assertion-orphaned']);
     const { readHealthAggregates } = await import('../../src/projects/health-aggregates.js');
     const { stuckIssueRows } = await readHealthAggregates([fx.project.id]);
@@ -90,8 +92,9 @@ describe('one issue, one stuck reason', () => {
 
     await announce(() => s.detectOwedCloses(new Date()));
     await announce(() => s.detectStrandedIssues(new Date()));
-    await s.detectOwedCloses(new Date());
 
+    expect(await standing(parked)).toEqual(['stranded']);
+    await s.detectOwedCloses(new Date());
     expect(await standing(parked)).toEqual(['stranded']);
     const rows = fx.sweepRows(await fx.inbox()).filter((r) => r.openMembers > 0);
     expect(rows.map((r) => r.title)).toEqual([
@@ -106,7 +109,6 @@ describe('one issue, one stuck reason', () => {
     const s = await sweeps();
     await announce(() => s.reconcileIdleIssues(new Date()));
     await announce(() => s.detectOrphanedRunAssertions(new Date()));
-    await s.reconcileIdleIssues(new Date());
 
     const { readHealthAggregates } = await import('../../src/projects/health-aggregates.js');
     const [row] = (await readHealthAggregates([fx.project.id])).stuckIssueRows;

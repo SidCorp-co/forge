@@ -133,6 +133,7 @@ function Group({
   total,
   note,
   onListAll,
+  listing = false,
   collapsible: mayCollapse = false,
 }: {
   title: string;
@@ -144,6 +145,8 @@ function Group({
   total?: number;
   /** Lists the group whole where its list is capped; absent once it has been asked for. */
   onListAll?: () => void;
+  /** Asked for whole and not yet read. */
+  listing?: boolean;
   collapsible?: boolean;
 }) {
   const matched = total ?? items.length;
@@ -191,9 +194,9 @@ function Group({
           {matched > items.length && (
             <p className="fg-caption mt-1.5 flex flex-wrap items-center gap-2 px-0.5 text-muted">
               Showing {items.length} of {matched}, highest priority first.
-              {onListAll && (
-                <Button size="sm" variant="secondary" onClick={onListAll}>
-                  Show all {matched}
+              {(onListAll || listing) && (
+                <Button size="sm" variant="secondary" onClick={onListAll} disabled={listing}>
+                  {listing ? `Listing all ${matched}…` : `Show all ${matched}`}
                 </Button>
               )}
             </p>
@@ -208,7 +211,9 @@ export function AttentionScreen() {
   const router = useRouter();
   // A capped group the person asked to see whole is read whole; the others keep their caps.
   const [expand, setExpand] = useState<AttentionBucket[]>([]);
-  const { view, read, devicesRead, error, devicesError, refetch } = useAttention({ expand });
+  const { view, read, devicesRead, expanding, error, devicesError, refetch } = useAttention({
+    expand,
+  });
   const listAll = (bucket: AttentionBucket) =>
     expand.includes(bucket) ? undefined : () => setExpand([...expand, bucket]);
   // ISS-477 scoped the inbox to the active org by dropping other orgs' rows here, after the route's
@@ -280,6 +285,7 @@ export function AttentionScreen() {
             items={view.needsReview}
             total={view.bucketTotals.needsReview}
             onListAll={listAll("needsReview")}
+            listing={expanding && expand.includes("needsReview")}
             onOpen={open}
           />
           <Group
@@ -288,6 +294,7 @@ export function AttentionScreen() {
             items={view.awaitingInput}
             total={view.bucketTotals.awaitingInput}
             onListAll={listAll("awaitingInput")}
+            listing={expanding && expand.includes("awaitingInput")}
             onOpen={open}
           />
           <Group
@@ -295,6 +302,7 @@ export function AttentionScreen() {
             items={view.mentions}
             total={view.bucketTotals.mentions}
             onListAll={listAll("mentions")}
+            listing={expanding && expand.includes("mentions")}
             onOpen={open}
           />
           <Group
@@ -302,6 +310,7 @@ export function AttentionScreen() {
             items={view.failedJobs}
             total={view.bucketTotals.failedJobs}
             onListAll={listAll("failedJobs")}
+            listing={expanding && expand.includes("failedJobs")}
             onOpen={open}
           />
           <Group
@@ -309,6 +318,7 @@ export function AttentionScreen() {
             items={view.pendingSkillUpdates}
             total={view.bucketTotals.pendingSkillUpdates}
             onListAll={listAll("pendingSkillUpdates")}
+            listing={expanding && expand.includes("pendingSkillUpdates")}
             onOpen={open}
           />
           <Group
@@ -317,6 +327,7 @@ export function AttentionScreen() {
             onOpen={open}
             total={view.bucketTotals.unseenDrafts}
             onListAll={listAll("unseenDrafts")}
+            listing={expanding && expand.includes("unseenDrafts")}
             collapsible
           />
           <Group title="Offline runners" items={view.offlineRunners} onOpen={open} />

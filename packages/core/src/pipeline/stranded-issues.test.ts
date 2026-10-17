@@ -37,7 +37,7 @@ vi.mock('../db/client.js', () => {
 // proves against Postgres; here no notice outranks any row (ISS-1229 r14).
 vi.mock('./stuck-precedence.js', async () => {
   const { sql } = await import('drizzle-orm');
-  return { outrankedSql: () => sql`false`, resolveOutrankedNotices: async () => 0 };
+  return { outrankedSql: () => sql`false`, retireOutrankedNotices: async () => 0 };
 });
 vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },

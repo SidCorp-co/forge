@@ -49,7 +49,7 @@ import {
   strandReason,
   strandRuleFor,
 } from './strand-rules.js';
-import { outrankedIssueIds, resolveOutrankedNotices } from './stuck-precedence.js';
+import { outrankedIssueIds, retireOutrankedNotices } from './stuck-precedence.js';
 
 export interface IdleIssuesResult {
   /** Rows read as stranded this pass. */
@@ -131,8 +131,7 @@ export async function reconcileIdleIssues(
   }
 
   result.cleared = await clearRecovered(now, scope);
-  result.resolved =
-    (await resolveClearedNotices(scope)) + (await resolveOutrankedNotices(IDLE_KEY_SUFFIX));
+  result.resolved = (await resolveClearedNotices(scope)) + (await retireOutrankedNotices());
   await resolveArchivedProjectNotices(IDLE_KEY_SUFFIX);
   return result;
 }

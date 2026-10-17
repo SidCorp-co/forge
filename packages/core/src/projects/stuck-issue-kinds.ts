@@ -19,6 +19,31 @@ const kindsWorded: readonly StuckIssueKind[] = [] as StuckKind[];
 void wordedKinds;
 void kindsWorded;
 
+/** Each sweep's resolution-key suffix and the kind it tells, most specific first (ISS-1229 r14). */
+export const STUCK_NOTICES = [
+  { suffix: ':stranded', kind: 'waiting' },
+  { suffix: ':owed-close', kind: 'owed_close' },
+  { suffix: ':run-assertion-orphaned', kind: 'orphan' },
+  { suffix: ':idle', kind: 'idle' },
+] as const satisfies readonly { suffix: string; kind: StuckIssueKind }[];
+
+function byNotice(key: SQL, said: (i: number) => SQL, otherwise: SQL): SQL {
+  const whens = STUCK_NOTICES.map(
+    (n, i) => sql`WHEN ${key} LIKE ${`%${n.suffix}`} THEN ${said(i)}`,
+  );
+  return sql`(CASE ${sql.join(whens, sql` `)} ELSE ${otherwise} END)`;
+}
+
+/** The kind a notice's resolution key tells. */
+export function stuckKindSql(key: SQL): SQL {
+  return byNotice(key, (i) => sql.raw(`'${STUCK_NOTICES[i]?.kind}'`), sql.raw(`'other'`));
+}
+
+/** Where a notice's reason stands among the others, most specific lowest. */
+export function stuckRankSql(key: SQL): SQL {
+  return byNotice(key, (i) => sql.raw(String(i)), sql.raw(String(STUCK_NOTICES.length)));
+}
+
 /** Whether a stuck-issue notice stands for this issue: what the stuck count and filter both read. */
 export function stuckNoticeStandsSql(issueId: SQL): SQL {
   return sql`EXISTS (

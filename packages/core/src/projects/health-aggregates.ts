@@ -7,6 +7,7 @@ import { readWorkStateRows } from '../issues/work-state-read.js';
 import { createLimiter } from '../lib/bounded-concurrency.js';
 import { readLiveSessionCounts } from '../pipeline/live-session.js';
 import { firstShipped } from '../pipeline/shipped-at.js';
+import { stuckKindSql, stuckRankSql } from './stuck-issue-kinds.js';
 
 /**
  * The twelve independent per-project reads behind `GET /api/projects/health`, and
@@ -178,7 +179,7 @@ export type StuckIssueRow = {
   issSeq: number;
   issuePrefix: string | null;
   title: string;
-  /** The most specific reason a standing notice gives for it (`pipeline/stuck-precedence.ts`). */
+  /** The most specific reason a standing notice gives for it (`STUCK_NOTICES`). */
   kind: StuckIssueKind;
   /** How many issues of the project a notice stands for, beside the first `STUCK_ISSUES_LISTED`. */
   total: number;
@@ -193,20 +194,8 @@ const readStuckIssueRows = (projectIds: string[]) =>
   db.execute(sql`
     WITH stuck AS (
       SELECT n.project_id, i.id, i.iss_seq, p.issue_prefix, i.title, n.created_at,
-             CASE
-               WHEN n.resolution_key LIKE '%:stranded' THEN 'waiting'
-               WHEN n.resolution_key LIKE '%:idle' THEN 'idle'
-               WHEN n.resolution_key LIKE '%:owed-close' THEN 'owed_close'
-               WHEN n.resolution_key LIKE '%:run-assertion-orphaned' THEN 'orphan'
-               ELSE 'other'
-             END AS kind,
-             CASE
-               WHEN n.resolution_key LIKE '%:stranded' THEN 0
-               WHEN n.resolution_key LIKE '%:owed-close' THEN 1
-               WHEN n.resolution_key LIKE '%:run-assertion-orphaned' THEN 2
-               WHEN n.resolution_key LIKE '%:idle' THEN 3
-               ELSE 4
-             END AS rank
+             ${stuckKindSql(sql`n.resolution_key`)} AS kind,
+             ${stuckRankSql(sql`n.resolution_key`)} AS rank
         FROM notifications n
         JOIN issues i ON i.id = n.issue_id
         JOIN projects p ON p.id = i.project_id

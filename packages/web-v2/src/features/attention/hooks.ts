@@ -89,6 +89,8 @@ export function useAttention(
     total: read === "read" && devicesRead === "read" ? held : undefined,
     read,
     devicesRead,
+    /** A group asked for whole is still on its way: the rows on screen are the capped ones. */
+    expanding: attentionQ.isPlaceholderData,
     badge,
     error: scopeError ?? attentionQ.error,
     devicesError: devicesQ.error,

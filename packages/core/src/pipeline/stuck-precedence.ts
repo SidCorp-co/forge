@@ -6,18 +6,16 @@
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { resolveNotifications } from '../notifications/auto-resolve.js';
+import { STUCK_NOTICES } from '../projects/stuck-issue-kinds.js';
 
-/** Each sweep's resolution-key suffix, most specific first: a park waiting for a person, a shipped
- *  issue never closed, work asserted with no run behind it, then a live status nothing works. */
-export const STUCK_NOTICE_PRECEDENCE = [
-  ':stranded',
-  ':owed-close',
-  ':run-assertion-orphaned',
-  ':idle',
-] as const;
-export type StuckNoticeSuffix = (typeof STUCK_NOTICE_PRECEDENCE)[number];
+/** Each sweep's resolution-key suffix, most specific first. */
+export const STUCK_NOTICE_PRECEDENCE = STUCK_NOTICES.map((n) => n.suffix);
+export type StuckNoticeSuffix = (typeof STUCK_NOTICES)[number]['suffix'];
 
-/** Whether a more specific stuck-issue notice stands for this issue: then this sweep says nothing. */
+/**
+ * Whether a more specific stuck-issue notice is told for this issue: then this sweep says nothing.
+ * Only a firing one outranks, so an issue is never left told nothing while the other waits to fire.
+ */
 export function outrankedSql(issueId: SQL, suffix: StuckNoticeSuffix): SQL {
   const above = STUCK_NOTICE_PRECEDENCE.slice(0, STUCK_NOTICE_PRECEDENCE.indexOf(suffix));
   if (above.length === 0) return sql`false`;
@@ -26,7 +24,7 @@ export function outrankedSql(issueId: SQL, suffix: StuckNoticeSuffix): SQL {
      WHERE pn.issue_id = ${issueId}
        AND pn.type = 'issue_stranded'
        AND pn.resolved_at IS NULL
-       AND pn.state IN ('pending', 'firing', 'inhibited')
+       AND pn.state = 'firing'
        AND (${sql.join(
          above.map((s) => sql`pn.resolution_key LIKE ${`issue:%${s}`}`),
          sql` OR `,
@@ -47,6 +45,18 @@ export async function resolveOutrankedNotices(suffix: StuckNoticeSuffix): Promis
   `)) as unknown as Array<{ key: string }>;
   let resolved = 0;
   for (const { key } of rows) resolved += await resolveNotifications(key);
+  return resolved;
+}
+
+/**
+ * End every stuck-issue notice a more specific one is now told beside, whichever sweep raised either:
+ * each sweep calls it once it has told what it found, so the reason it just raised retires the
+ * lesser one in the same pass (ISS-1229 r14).
+ */
+export async function retireOutrankedNotices(): Promise<number> {
+  let resolved = 0;
+  for (const suffix of STUCK_NOTICE_PRECEDENCE.slice(1))
+    resolved += await resolveOutrankedNotices(suffix);
   return resolved;
 }
 

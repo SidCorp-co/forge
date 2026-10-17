@@ -21,7 +21,7 @@ import {
 import { isTerminalPlacement } from './status-assertions.js';
 import {
   outrankedSql,
-  resolveOutrankedNotices,
+  retireOutrankedNotices,
   type StuckNoticeSuffix,
 } from './stuck-precedence.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
@@ -276,6 +276,7 @@ export async function detectStrandedIssues(
       );
     }
 
+    await retireOutrankedNotices();
     return { detected: rows.length, notified };
   } catch (err) {
     logger.error({ err }, 'stranded-issues: detection failed');
@@ -289,7 +290,6 @@ export async function detectOwedCloses(
 ): Promise<StrandedIssuesResult> {
   try {
     await resolveArchivedProjectNotices(OWED_CLOSE_KEY_SUFFIX);
-    await resolveOutrankedNotices(OWED_CLOSE_KEY_SUFFIX);
     const cutoff = new Date(now.getTime() - STRANDED_GRACE_MS);
 
     const cursorKey = `owed-close:${scope.projectId ?? '*'}`;
@@ -370,6 +370,7 @@ export async function detectOwedCloses(
       );
     }
 
+    await retireOutrankedNotices();
     return { detected: rows.length, notified };
   } catch (err) {
     logger.error({ err }, 'stranded-issues: owed-close detection failed');
