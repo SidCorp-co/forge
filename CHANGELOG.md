@@ -3303,7 +3303,7 @@
 - **Attention shows the open organisation's items** even when another organisation holds more than the list's limit, so it no longer reads "Inbox zero" while items wait. (ISS-1229)
 - **The User flow diagram names a step in words** where its module gave it no label, "Pipeline run" rather than `pipeline_run`. (ISS-1229)
 - **On a phone, an Attention row gives its title a line of its own** instead of cutting it to one word beside the tags. (ISS-1229)
-- **The project page, the bell and Attention count stuck work alike:** the headline counts each kind in the bell's words, Needs you lists those issues instead of saying nothing needs you, and Attention rows are flat. (ISS-1229)
+- **The project page, the bell and Attention count stuck work alike:** the headline counts each kind in the bell's words; Needs you names each stuck or parked issue by its title, the reason after it; Attention rows are flat. (ISS-1229)
 - **Shape & release no longer says a project ships nothing because its base branch is empty.** Under a shape that releases, the Live block says no deploy connection serves it and asks for the base branch. (ISS-1171)
 - **A refused test credential is named by its label, every time.** The form and a refused save name each row the same way, and by its number only where it has no label. (ISS-1171)
 - **Shape & release refuses a test credential with no password, or one listed twice, by name.** The row is marked where it is wrong and nothing is saved; an agent writing the same is refused too. (ISS-1171)

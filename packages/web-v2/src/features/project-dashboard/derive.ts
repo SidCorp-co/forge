@@ -213,7 +213,6 @@ function mapAttention(
       key: `${actionKind}-${it.link}-${i}`,
       actionKind,
       actionLabel,
-      // A failed job's own title is what failed; the issue it ran for names the row.
       ...(it.issueTitle ? { title: it.issueTitle, detail: it.title } : { title: it.title }),
       issueRef: it.issueRef,
       link: it.link,
