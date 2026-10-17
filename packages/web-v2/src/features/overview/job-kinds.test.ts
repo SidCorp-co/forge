@@ -2,9 +2,7 @@ import { REGISTRY_JOB_TYPES } from "@forge/contracts/pipeline-registry";
 import { describe, expect, it } from "vitest";
 import { jobKindLabel, jobKindsLabel } from "./job-kinds";
 
-// ISS-1228 round 9: every kind of work reads in words. A stored step name the registry no longer
-// names — a retired kind still inside the dashboard's window — reads as its words, never as code.
-// ISS-1229 r14: one job is named in the singular ("Release failed"), a group of them in the plural.
+// Every kind of work reads in words, one job in the singular and a group in the plural (ISS-1228, ISS-1229).
 describe("jobKindLabel", () => {
   it.each([
     ["drive", "Issue work", "Issue work"],
