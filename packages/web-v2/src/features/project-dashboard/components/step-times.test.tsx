@@ -34,10 +34,10 @@ describe("StepTimes", () => {
     mount({
       durations: [duration("drive", 600, 1.5), duration("drive", 1200, 2), duration("release_batch", 60, 0.25)],
     });
-    const steps = screen.getAllByTitle(/^(Issue work|Releases)$/).map((n) => n.textContent);
-    expect(steps).toEqual(["Issue work", "Releases"]);
+    const steps = screen.getAllByTitle(/^(Issue work|Release)$/).map((n) => n.textContent);
+    expect(steps).toEqual(["Issue work", "Release"]);
     expect(screen.getByText(/Slowest step:/)).toHaveTextContent(
-      "Slowest step: Issue work at a 15m 00s median over 2 runs, 15.0× slower than Releases.",
+      "Slowest step: Issue work at a 15m 00s median over 2 runs, 15.0× slower than Release.",
     );
     // ISS-1228 round 8: the header counts the steps it lists, and says what its other figure counts.
     expect(screen.getByText("2 steps · 3 finished · 7d")).toBeInTheDocument();
@@ -47,7 +47,7 @@ describe("StepTimes", () => {
   it("names no comparison where there is only one step to compare", () => {
     mount({ durations: [duration("reconcile", 600, 1.5)] });
     expect(screen.getByText(/Slowest step:/)).toHaveTextContent(
-      "Slowest step: Skill updates at a 10m 00s median over 1 run.",
+      "Slowest step: Skill update at a 10m 00s median over 1 run.",
     );
   });
 

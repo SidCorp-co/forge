@@ -133,18 +133,19 @@ describe('the counts beside the lists the Needs you tile is read from', () => {
     await issueAt('needs_info', true);
 
     const attention = await get<{
-      projectTotals: Record<string, { awaitingInput: number; awaitingOutsideBlockers: number }>;
+      projectTotals: Record<string, { awaitingInput: number; parkedOnly: number }>;
     }>('/api/me/attention');
     const health =
       await get<Array<{ projectSlug: string; blockersTotal: number }>>('/api/projects/health');
 
     const totals = attention.projectTotals[slug];
     expect(totals?.awaitingInput).toBe(2);
-    expect(totals?.awaitingOutsideBlockers).toBe(0);
+    expect(totals?.parkedOnly).toBe(2);
     const blockersTotal = health.find((h) => h.projectSlug === slug)?.blockersTotal ?? 0;
     expect(blockersTotal).toBe(4);
-    // four distinct issues are owed to this viewer or parked; the two sources sum to four.
-    expect((totals?.awaitingOutsideBlockers ?? 0) + blockersTotal).toBe(4);
+    // four distinct issues are owed to this viewer or parked: the viewer's two, and the two parked
+    // by someone else that only the health row's list holds (ISS-1229 r14).
+    expect((totals?.awaitingInput ?? 0) + (totals?.parkedOnly ?? 0)).toBe(4);
   });
 
   it("lists a waiting issue somebody else owns, which the viewer's attention response leaves out", async () => {
@@ -159,7 +160,12 @@ describe('the counts beside the lists the Needs you tile is read from', () => {
         Array<{ projectSlug: string; blockers: Array<{ status: string }>; blockersTotal: number }>
       >('/api/projects/health');
 
-    expect(attention.projectTotals[slug]).toBeUndefined();
+    expect(attention.projectTotals[slug]).toEqual({
+      needsReview: 0,
+      awaitingInput: 0,
+      failedJobs: 0,
+      parkedOnly: 1,
+    });
     const row = health.find((h) => h.projectSlug === slug);
     expect({ listed: row?.blockers.map((b) => b.status), total: row?.blockersTotal }).toEqual({
       listed: ['waiting'],

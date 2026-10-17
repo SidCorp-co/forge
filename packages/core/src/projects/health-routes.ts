@@ -61,7 +61,7 @@ interface ProjectHealthRow {
    *  field's absence, which is what callers had before, said nothing at all. */
   loopMonitor: LoopMonitorCoverage;
   stuckIssues: number;
-  /** The same issues by what each notice says of it; an issue two sweeps hold counts under both. */
+  /** The same issues, each once under its most specific reason, so the kinds add up to `stuckIssues`. */
   stuckIssuesByKind: Partial<Record<StuckIssueKind, number>>;
   stuckIssueRefs: Array<{
     issueId: string;

@@ -128,7 +128,9 @@ describe("projectAttention (ISS-1156)", () => {
     pendingSkillUpdates: [],
     unseenDrafts: [],
     unseenDraftsTotal: 0,
+    bucketTotals: { needsReview: 0, awaitingInput: 0, mentions: 0, failedJobs: 0, pendingSkillUpdates: 0, unseenDrafts: 0 },
     projectTotals: {},
+    total: 0,
     offlineRunners: [],
   });
 
@@ -171,17 +173,20 @@ describe("projectAttention (ISS-1156)", () => {
   it("names a failed job's row by its issue's title, with what failed under it, and a job on no issue by what failed", () => {
     const failed = (issueTitle?: string): AttentionItem => ({
       kind: "failed_job",
-      title: "drive failed: exit 1",
+      title: "drive failed: session_lost",
+      jobType: issueTitle ? "drive" : "release_batch",
+      failure: issueTitle ? "session_lost" : "runner_unreachable",
       link: "/projects/sable/issues/doc-4",
       since: "2026-10-08T00:00:00Z",
       status: "failed",
       projectSlug: "sable",
       ...(issueTitle ? { issueRef: "ISS-4", issueTitle } : {}),
     });
+    // In the overview's words, never the stored codes (ISS-1229 r14).
     const [onIssue] = projectAttention({ ...view([]), failedJobs: [failed("Nightly stock import")] }, "sable", []);
-    expect(onIssue).toMatchObject({ title: "Nightly stock import", detail: "drive failed: exit 1" });
+    expect(onIssue).toMatchObject({ title: "Nightly stock import", detail: "Issue work failed: Session lost" });
     const [onNone] = projectAttention({ ...view([]), failedJobs: [failed()] }, "sable", []);
-    expect(onNone?.title).toBe("drive failed: exit 1");
+    expect(onNone?.title).toBe("Release failed: Runner unreachable");
     expect(onNone?.detail).toBeUndefined();
   });
 
@@ -230,24 +235,24 @@ describe("attentionRefusal (ISS-1156)", () => {
       projectTotals,
       total: 0,
       offlineRunners: [],
-    }) as AttentionView;
+    }) as unknown as AttentionView;
 
   it("names the field a response lacks, so the tile can say it where the figure would be", () => {
     expect(attentionRefusal(view(undefined), "sable")).toMatch(/no `projectTotals`.*not the release/u);
     expect(
       attentionRefusal(view({ sable: { needsReview: 0, awaitingInput: 1, failedJobs: 0 } }), "sable"),
-    ).toMatch(/no `awaitingOutsideBlockers`/u);
+    ).toMatch(/no `parkedOnly`/u);
   });
 
   it("says nothing of a response that carries both, a project with no entry, or one not loaded yet", () => {
-    const ok = { needsReview: 0, awaitingInput: 1, awaitingOutsideBlockers: 1, failedJobs: 0 };
+    const ok = { needsReview: 0, awaitingInput: 1, parkedOnly: 1, failedJobs: 0 };
     expect(attentionRefusal(view({ sable: ok }), "sable")).toBeNull();
     expect(attentionRefusal(view({}), "sable")).toBeNull();
     expect(attentionRefusal(undefined, "sable")).toBeNull();
   });
 });
 
-describe("attentionCut (ISS-1156)", () => {
+describe("attentionCut (ISS-1156, whole since ISS-1229 r14)", () => {
   const item = (actionKind: AttentionActionKind, i: number): DashboardAttentionItem => ({
     key: `${actionKind}-${i}`,
     actionKind,
@@ -259,7 +264,7 @@ describe("attentionCut (ISS-1156)", () => {
   const viewWith = (totals: {
     needsReview?: number;
     awaitingInput?: number;
-    awaitingOutsideBlockers?: number;
+    parkedOnly?: number;
     failedJobs?: number;
   }): AttentionView => ({
     needsReview: [],
@@ -269,95 +274,69 @@ describe("attentionCut (ISS-1156)", () => {
     pendingSkillUpdates: [],
     unseenDrafts: [],
     unseenDraftsTotal: 0,
+    bucketTotals: { needsReview: 0, awaitingInput: 0, mentions: 0, failedJobs: 0, pendingSkillUpdates: 0, unseenDrafts: 0 },
     projectTotals: {
-      sable: { needsReview: 0, awaitingInput: 0, awaitingOutsideBlockers: 0, failedJobs: 0, ...totals },
+      sable: { needsReview: 0, awaitingInput: 0, parkedOnly: 0, failedJobs: 0, ...totals },
     },
+    total: 0,
     offlineRunners: [],
   });
 
-  it("is null where every source's count is what the list holds", () => {
+  it("is null where every source's whole count is what the list holds", () => {
     const items = [...many("input", 3), ...many("parked", 2)];
-    expect(attentionCut(items, viewWith({ awaitingInput: 3 }), "sable", 2)).toBeNull();
+    expect(attentionCut(items, viewWith({ awaitingInput: 3, parkedOnly: 2 }), "sable")).toBeNull();
   });
 
-  it("counts at least as many people as Open work counts blocked on one, whichever source listed them", () => {
-    const items = many("input", 2);
-    expect(attentionCut(items, viewWith({ awaitingInput: 2 }), "sable", 0, 5)).toEqual({ shown: 2, atLeast: 5, peopleCut: true });
-    expect(attentionCut(items, viewWith({ awaitingInput: 2 }), "sable", 0, 2)).toBeNull();
-    expect(attentionCut(items, viewWith({ awaitingInput: 2 }), "sable", 0)).toBeNull();
+  it("says 25 of 32 for judge-35's 32 parks the reader owes, never at least 32", () => {
+    // 20 parks listed from the reader's capped bucket and 5 more from the health row's parked list.
+    const items = many("parked", 25);
+    const cut = attentionCut(items, viewWith({ awaitingInput: 32 }), "sable");
+    expect(cut).toEqual({ shown: 25, whole: 32, peopleCut: true });
+    expect(attentionCaption(items, cut)).toBe("to act on: 25 issues parked with no question — 25 of 32 listed");
   });
 
-  it("says 8 of at least 10 where 1 question and 9 parked read as 8 parked: the parked read stops at 5 and the questions at the viewer's 20", () => {
-    // j3's seed: one issue with a question and nine at needs_info, 10 to act on. The question
-    // source lists all ten (its cap is 20) but the viewer's other projects took 12 of the 20.
-    const items = [...many("input", 1), ...many("parked", 7)];
-    const cut = attentionCut(items, viewWith({ awaitingInput: 10, awaitingOutsideBlockers: 1 }), "sable", 9);
-    expect(cut).toEqual({ shown: 8, atLeast: 10, peopleCut: true });
-    expect(attentionCaption(items, cut)).toBe(
-      "to act on: 1 issue with an open question · 7 issues parked with no question — 8 of at least 10",
-    );
-  });
-
-  it("does not add an issue both sources hold twice: 6 awaiting, 5 of them at a status the parked list holds, 46 parked", () => {
-    const items = many("parked", 5);
-    expect(attentionCut(items, viewWith({ awaitingInput: 6, awaitingOutsideBlockers: 1 }), "sable", 46)?.atLeast).toBe(47);
-  });
-
-  it("counts the viewer's own waiting issue the cross-project list never reached, which the parked list never holds (j4's F1)", () => {
-    // pair: ISS-4 waiting (the viewer's) is owed, ISS-2 on_hold and ISS-3 needs_info are parked and
-    // listed, and the viewer's 20-item question list is all another project's, so nothing of ISS-4 is listed.
+  it("adds the parks someone else owes once, beside the reader's own", () => {
+    // j4's shape: the reader owes 2, two more are parked by someone else and only the parked list holds them.
     const items = many("parked", 3);
-    const cut = attentionCut(items, viewWith({ awaitingInput: 1, awaitingOutsideBlockers: 1 }), "sable", 3);
-    expect(cut).toEqual({ shown: 3, atLeast: 4, peopleCut: true });
-    expect(attentionCaption(items, cut)).toBe("to act on: 3 issues parked with no question — 3 of at least 4");
-  });
-
-  it("does not overstate where the unlisted question's issue is one the parked list already shows", () => {
-    // one needs_info issue the viewer owns with a question: in both sources, listed from the parked one only.
-    const items = many("parked", 1);
-    expect(attentionCut(items, viewWith({ awaitingInput: 1, awaitingOutsideBlockers: 0 }), "sable", 1)).toBeNull();
-  });
-
-  it("holds the least that is true where the parked total is not loaded yet", () => {
-    const items = many("input", 1);
-    expect(attentionCut(items, viewWith({ awaitingInput: 4, awaitingOutsideBlockers: 4 }), "sable", undefined)?.atLeast).toBe(4);
+    const cut = attentionCut(items, viewWith({ awaitingInput: 2, parkedOnly: 2 }), "sable");
+    expect(cut).toEqual({ shown: 3, whole: 4, peopleCut: true });
   });
 
   it("adds a cut failed-jobs or review bucket to the people it lists", () => {
     const items = [...many("retry", 5), ...many("diff", 5), ...many("input", 2)];
-    const cut = attentionCut(items, viewWith({ failedJobs: 8, needsReview: 6, awaitingInput: 2 }), "sable", 0);
-    expect(cut).toEqual({ shown: 12, atLeast: 16, peopleCut: false });
+    const cut = attentionCut(items, viewWith({ failedJobs: 8, needsReview: 6, awaitingInput: 2 }), "sable");
+    expect(cut).toEqual({ shown: 12, whole: 16, peopleCut: false });
   });
 
   it("does not link to the people it lists where only another bucket is cut", () => {
     const items = many("retry", 5);
-    expect(attentionCut(items, viewWith({ failedJobs: 9 }), "sable", 0)?.peopleCut).toBe(false);
+    expect(attentionCut(items, viewWith({ failedJobs: 9 }), "sable")?.peopleCut).toBe(false);
   });
 
   it("reads a project core has no totals for as holding nothing beyond its list", () => {
-    expect(attentionCut(many("diff", 1), { ...viewWith({}), projectTotals: {} }, "sable", 0)).toBeNull();
+    expect(attentionCut(many("diff", 1), { ...viewWith({}), projectTotals: {} }, "sable")).toBeNull();
   });
 
   it("refuses a response with no projectTotals, by name, rather than say the list is whole", () => {
     const old = { ...viewWith({}), projectTotals: undefined } as unknown as AttentionView;
-    expect(() => attentionCut([], old, "sable", 0)).toThrow(/no `projectTotals`.*not the release/u);
+    expect(() => attentionCut([], old, "sable")).toThrow(/no `projectTotals`.*not the release/u);
   });
 
-  it("refuses a response whose totals carry no awaitingOutsideBlockers, by name, since the two sources could then be counted twice", () => {
+  it("refuses a response whose totals carry no parkedOnly, by name, since its whole could not be said", () => {
     const old = {
       ...viewWith({}),
       projectTotals: { sable: { needsReview: 0, awaitingInput: 2, failedJobs: 0 } },
     } as unknown as AttentionView;
-    expect(() => attentionCut([], old, "sable", 1)).toThrow(/no `awaitingOutsideBlockers`.*not the release/u);
+    expect(() => attentionCut([], old, "sable")).toThrow(/no `parkedOnly`.*not the release/u);
   });
 
   it("says nothing before the attention response has loaded", () => {
-    expect(attentionCut([], undefined, "sable", 5)).toBeNull();
+    expect(attentionCut([], undefined, "sable")).toBeNull();
   });
 
   it("names an empty list that is cut as nothing listed rather than nothing to act on", () => {
-    const cut = attentionCut([], viewWith({ awaitingInput: 3 }), "sable", 0);
-    expect(attentionCaption([], cut)).toBe("nothing listed to act on — 0 of at least 3");
+    const cut = attentionCut([], viewWith({ awaitingInput: 3 }), "sable");
+    expect(attentionCaption([], cut)).toBe("nothing listed to act on — 0 of 3 listed");
   });
 });
 
@@ -552,11 +531,11 @@ describe("sessions waiting on you", () => {
       pendingSkillUpdates: [],
       unseenDrafts: [],
       unseenDraftsTotal: 0,
-      projectTotals: { sable: { needsReview: 0, awaitingInput: 1, awaitingOutsideBlockers: 0, failedJobs: 0 } },
+      projectTotals: { sable: { needsReview: 0, awaitingInput: 1, parkedOnly: 0, failedJobs: 0 } },
       offlineRunners: [],
     } as unknown as AttentionView;
     // One person is owed an answer the list did not reach: the session listed beside it does not
-    // stand in for that person, so the list says it holds one of at least two.
-    expect(attentionCut(items, view, "sable", 0)).toEqual({ shown: 1, atLeast: 2, peopleCut: true });
+    // stand in for that person, so the list says it holds one of two.
+    expect(attentionCut(items, view, "sable")).toEqual({ shown: 1, whole: 2, peopleCut: true });
   });
 });

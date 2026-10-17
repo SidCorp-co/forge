@@ -6,22 +6,26 @@ import { zValidator } from '../api-reference/declare/validator.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
+  ATTENTION_BUCKETS,
   type AttentionAwaitingRow,
+  type AttentionBucket,
   type AttentionFailedJobRow,
   type AttentionIssueRow,
   type AttentionMentionRow,
-  type AttentionProjectTotals,
   type AttentionReconcileRow,
-  selectAttentionTotals,
   selectAwaitingInput,
   selectFailedJobs,
   selectMentions,
   selectNeedsReview,
   selectPendingSkillUpdates,
-  selectUnseenDraftCount,
   selectUnseenDrafts,
 } from './attention-buckets.js';
 import { attentionSchema, readAttention } from './attention-routes-reference.js';
+import {
+  type AttentionProjectTotals,
+  selectAttentionTotals,
+  selectBucketTotals,
+} from './attention-totals.js';
 
 type AttentionKind =
   | 'needs_review'
@@ -39,6 +43,10 @@ interface AttentionItem {
   issueRef?: string;
   /** Failed-job only: the title of the issue the job ran for, where it ran for one. */
   issueTitle?: string;
+  /** Failed-job only: the kind of work, as stored, which a screen words. */
+  jobType?: string;
+  /** Failed-job only: what the classifier named, else the job's own error; a screen words a known cause. */
+  failure?: string | null;
   status?: string;
   projectSlug?: string;
   projectName?: string;
@@ -57,11 +65,11 @@ interface AttentionResponse {
   unseenDrafts: AttentionItem[];
   /** Unclipped count behind `unseenDrafts`, which is capped. */
   unseenDraftsTotal: number;
-  /**
-   * Per project slug, the unclipped count behind `needsReview`, `awaitingInput` and `failedJobs`,
-   * which are each capped across every project the viewer sees.
-   */
+  /** Each bucket counted whole before its cap: what a screen says however many rows it lists. */
+  bucketTotals: Record<AttentionBucket, number>;
+  /** Per project slug, the whole counts the project's Needs you list is made of. */
   projectTotals: Record<string, AttentionProjectTotals>;
+  /** Every item the buckets hold, listed or not: the buckets' whole counts summed. */
   total: number;
 }
 
@@ -110,6 +118,8 @@ function failedJobItem(r: AttentionFailedJobRow): AttentionItem {
   const item: AttentionItem = {
     kind: 'failed_job',
     title: r.error ? `${r.type} failed: ${r.error.slice(0, 80)}` : `${r.type} job failed`,
+    jobType: r.type,
+    failure: r.failureReason ?? r.error,
     link: r.issueDocId ? issueLink(r.projectSlug, r.issueDocId) : `/projects/${r.projectSlug}`,
     since: (r.finishedAt ?? r.createdAt).toISOString(),
     status: 'failed',
@@ -136,8 +146,18 @@ function skillUpdateItem(r: AttentionReconcileRow): AttentionItem {
 export const meAttentionRoutes = new Hono<{ Variables: AuthVars }>();
 meAttentionRoutes.use('/attention', requireAuth(), assertEmailVerified());
 
-/** The organisation the caller has open: every bucket and total is cut to it before its cap. */
-const attentionQuerySchema = z.object({ orgId: z.uuid().optional() });
+/**
+ * The organisation the caller has open: every bucket and total is cut to it before its cap. `expand`
+ * names the buckets to list whole rather than capped, so a person can reach every item a count names
+ * without answering the ones above it first (ISS-1229 r14).
+ */
+const attentionQuerySchema = z.object({
+  orgId: z.uuid().optional(),
+  expand: z
+    .union([z.enum(ATTENTION_BUCKETS), z.array(z.enum(ATTENTION_BUCKETS))])
+    .optional()
+    .transform((v) => new Set<AttentionBucket>(v === undefined ? [] : Array.isArray(v) ? v : [v])),
+});
 
 meAttentionRoutes.get(
   '/attention',
@@ -145,14 +165,16 @@ meAttentionRoutes.get(
   zValidator('query', attentionQuerySchema, (r) => {
     if (!r.success) {
       throw new HTTPException(400, {
-        message: 'orgId must be the uuid of an organisation, or left out to read every one',
+        message: `orgId must be the uuid of an organisation, or left out to read every one; expand names buckets to list whole, each one of ${ATTENTION_BUCKETS.join(', ')}`,
         cause: { code: 'BAD_REQUEST', details: z.flattenError(r.error) },
       });
     }
   }),
   async (c) => {
     const userId = c.get('userId');
-    const scope = c.req.valid('query');
+    const { orgId, expand } = c.req.valid('query');
+    const scope = { orgId };
+    const whole = (bucket: AttentionBucket) => (expand.has(bucket) ? null : undefined);
 
     const [
       needsReviewRows,
@@ -161,16 +183,16 @@ meAttentionRoutes.get(
       failedJobRows,
       pendingSkillUpdateRows,
       unseenDraftRows,
-      unseenDraftCountRows,
+      bucketTotals,
       projectTotals,
     ] = await Promise.all([
-      selectNeedsReview(userId, scope),
-      selectAwaitingInput(userId, scope),
-      selectMentions(userId, scope),
-      selectFailedJobs(userId, scope),
-      selectPendingSkillUpdates(userId, scope),
-      selectUnseenDrafts(userId, scope),
-      selectUnseenDraftCount(userId, scope),
+      selectNeedsReview(userId, scope, whole('needsReview')),
+      selectAwaitingInput(userId, scope, whole('awaitingInput')),
+      selectMentions(userId, scope, whole('mentions')),
+      selectFailedJobs(userId, scope, whole('failedJobs')),
+      selectPendingSkillUpdates(userId, scope, whole('pendingSkillUpdates')),
+      selectUnseenDrafts(userId, scope, whole('unseenDrafts')),
+      selectBucketTotals(userId, scope),
       selectAttentionTotals(userId, scope),
     ]);
 
@@ -180,7 +202,6 @@ meAttentionRoutes.get(
     const failedJobs = failedJobRows.map(failedJobItem);
     const pendingSkillUpdates = pendingSkillUpdateRows.map(skillUpdateItem);
     const unseenDrafts = unseenDraftRows.map((r) => issueItem('unseen_draft', r));
-    const unseenDraftsTotal = Number(unseenDraftCountRows[0]?.total ?? 0);
 
     const response: AttentionResponse = {
       needsReview,
@@ -189,15 +210,10 @@ meAttentionRoutes.get(
       failedJobs,
       pendingSkillUpdates,
       unseenDrafts,
-      unseenDraftsTotal,
+      unseenDraftsTotal: bucketTotals.unseenDrafts,
+      bucketTotals,
       projectTotals,
-      total:
-        needsReview.length +
-        awaitingInput.length +
-        mentions.length +
-        failedJobs.length +
-        pendingSkillUpdates.length +
-        unseenDrafts.length,
+      total: ATTENTION_BUCKETS.reduce((n, b) => n + bucketTotals[b], 0),
     };
 
     return c.json(answer(attentionSchema, response));

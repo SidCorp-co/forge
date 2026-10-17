@@ -15,6 +15,12 @@ const attentionItem = z.object({
   since: z.string(),
   issueRef: z.string().optional(),
   issueTitle: z.string().optional().describe('Failed job only: the title of its issue'),
+  jobType: z.string().optional().describe('Failed job only: its kind of work, as stored'),
+  failure: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("Failed job only: the classifier's cause, else the job's own error"),
   status: z.string().optional(),
   projectSlug: z.string().optional(),
   projectName: z.string().optional(),
@@ -44,23 +50,36 @@ export const attentionSchema = z.object({
   pendingSkillUpdates: bucket,
   unseenDrafts: bucket,
   unseenDraftsTotal: z.number().int().describe('The count behind `unseenDrafts`, which is capped'),
+  bucketTotals: z
+    .object({
+      needsReview: z.number().int(),
+      awaitingInput: z.number().int(),
+      mentions: z.number().int(),
+      failedJobs: z.number().int(),
+      pendingSkillUpdates: z.number().int(),
+      unseenDrafts: z.number().int(),
+    })
+    .describe('Each bucket counted whole, before its cap'),
   projectTotals: z
     .record(
       z.string(),
       z.object({
         needsReview: z.number().int(),
         awaitingInput: z.number().int(),
-        awaitingOutsideBlockers: z.number().int(),
         failedJobs: z.number().int(),
+        parkedOnly: z
+          .number()
+          .int()
+          .describe("Parked issues of the project the health row's list holds and no bucket lists"),
       }),
     )
-    .describe('By project slug, the whole count behind the capped buckets'),
-  total: z.number().int(),
+    .describe("By project slug, the whole counts the project's Needs you list is made of"),
+  total: z.number().int().describe('Every item the buckets hold, listed or not'),
 });
 
 export const readAttention = describeOperation({
   summary: 'Read what needs the caller across every project they can see',
   description:
-    'Six buckets, each capped: issues to review, issues waiting for an answer, mentions, failed jobs, pending skill updates and unseen drafts. `projectTotals` counts them whole.',
+    "Six buckets, each capped unless `expand` names it: issues to review, issues waiting for an answer, mentions, failed jobs, pending skill updates and unseen drafts. `bucketTotals` counts each whole, `total` sums them, and `projectTotals` counts what each project's Needs you list is made of.",
   responses: { 200: json(attentionSchema) },
 });

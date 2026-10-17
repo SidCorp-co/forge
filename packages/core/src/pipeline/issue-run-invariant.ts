@@ -11,6 +11,11 @@ import { resolveNotifications } from '../notifications/auto-resolve.js';
 import { emitNotification } from '../notifications/emit.js';
 import { sweepGroup } from '../notifications/explanations.js';
 import { projectAdminUserIds } from '../notifications/project-admins.js';
+import {
+  outrankedSql,
+  retireOutrankedNotices,
+  type StuckNoticeSuffix,
+} from './stuck-precedence.js';
 
 /**
  * How long an issue may assert work with no run behind it before it is named.
@@ -44,7 +49,7 @@ export function orphanedAssertionResolutionKey(issueId: string): string {
   return `issue:${issueId}:run-assertion-orphaned`;
 }
 
-const ORPHAN_KEY_SUFFIX = ':run-assertion-orphaned';
+const ORPHAN_KEY_SUFFIX = ':run-assertion-orphaned' satisfies StuckNoticeSuffix;
 
 /**
  * Resolve every named orphan whose cause has ended: the issue left the asserting statuses, its
@@ -148,6 +153,8 @@ async function orphanedAssertions(now: Date): Promise<OrphanRow[]> {
          projectId: sql`i.project_id`,
          issueKey: sql`'ISS-' || i.iss_seq`, // ISS-992:canonical
        })}
+       -- One issue, one stuck reason: a shipped issue never closed is told as that (ISS-1229 r14).
+       AND NOT ${outrankedSql(sql`i.id`, ORPHAN_KEY_SUFFIX)}
   `)) as unknown as OrphanRow[];
 }
 
@@ -234,5 +241,5 @@ export async function detectOrphanedRunAssertions(
     const ref = formatIssueRef(row.issuePrefix, row.issSeq);
     if (await nameOnce({ now, row, ref })) reported += 1;
   }
-  return { detected: rows.length, reported, resolved };
+  return { detected: rows.length, reported, resolved: resolved + (await retireOutrankedNotices()) };
 }

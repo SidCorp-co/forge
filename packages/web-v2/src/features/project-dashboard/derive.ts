@@ -1,9 +1,10 @@
 
 import { TONE_META, type SemanticTone } from "@/design/status";
+import { failedJobWords } from "@/features/attention/failed-job-words";
 import type { AttentionView } from "@/features/attention/types";
 import { statusLabel } from "@/features/issues/derive";
 import type { IssueStatus } from "@/features/issues/types";
-import { jobKindLabel } from "@/features/overview/job-kinds";
+import { jobKindsLabel } from "@/features/overview/job-kinds";
 import type { PipelineRunListItem, StepDurationRow } from "@/features/runs/types";
 import type { ProjectHealthRow } from "@/features/projects/types";
 import {
@@ -115,7 +116,7 @@ export function spendByStep(rows: StepDurationRow[] | undefined): SpendByStepDat
   const pct = (cost: number) => (total > 0 ? (cost / total) * 100 : 0);
   const segments: SpendSegment[] = ranked.slice(0, SPEND_INK.length).map(([step, cost], i) => ({
     key: step,
-    label: jobKindLabel(step),
+    label: jobKindsLabel(step),
     color: SPEND_INK[i] as string,
     cost,
     pct: pct(cost),
@@ -209,11 +210,13 @@ function mapAttention(
 ): DashboardAttentionItem[] {
   return items
     .filter((it) => it.projectSlug === slug)
-    .map((it, i) => ({
+    .map((it, i) => ({ it, i, said: actionKind === "retry" ? failedJobWords(it) : it.title }))
+    // A failed job is said in words, under its issue's title where it ran for one (ISS-1229 r14).
+    .map(({ it, i, said }) => ({
       key: `${actionKind}-${it.link}-${i}`,
       actionKind,
       actionLabel,
-      ...(it.issueTitle ? { title: it.issueTitle, detail: it.title } : { title: it.title }),
+      ...(it.issueTitle ? { title: it.issueTitle, detail: said } : { title: said }),
       issueRef: it.issueRef,
       link: it.link,
       since: it.since,
@@ -320,14 +323,14 @@ const ATTENTION_PARTS: ReadonlyArray<{ kind: AttentionActionKind; one: string; m
 
 /**
  * How much of what a person has to act on the list leaves out. Core caps each source and counts it
- * whole beside it. The two sources the people come from overlap, so core splits the attention count
- * into the part at a status the health row's parked list holds whole and the part outside it; the
- * parked total plus that part counts no issue twice. The figure says "at least", since an issue can
- * be on the page that no response counted.
+ * whole beside it: the project's failed jobs, reviews and parks the reader owes, plus the parked
+ * issues no bucket lists (`parkedOnly`), so the parts add up to the whole with no issue counted
+ * twice, and the sessions waiting on the person are listed whole. The figure is that whole, never
+ * "at least" (ISS-1229 r14).
  */
 export interface AttentionCut {
   shown: number;
-  atLeast: number;
+  whole: number;
   /** The parked and question items are the part cut, so the Issues list holds the rest. */
   peopleCut: boolean;
 }
@@ -344,46 +347,37 @@ export function attentionRefusal(view: AttentionView | undefined, slug: string):
     return "Needs you cannot say how much it leaves out: the attention response has no `projectTotals`. The server is not the release this page was built for.";
   }
   const totals = view.projectTotals[slug];
-  if (totals !== undefined && typeof totals.awaitingOutsideBlockers !== "number") {
-    return "Needs you cannot say how much it leaves out: the attention response's `projectTotals` have no `awaitingOutsideBlockers`. The server is not the release this page was built for.";
+  if (totals !== undefined && typeof totals.parkedOnly !== "number") {
+    return "Needs you cannot say how much it leaves out: the attention response's `projectTotals` have no `parkedOnly`. The server is not the release this page was built for.";
   }
   return null;
+}
+
+export function attentionWhole(
+  items: readonly DashboardAttentionItem[],
+  view: AttentionView | undefined,
+  slug: string,
+): number {
+  const refusal = attentionRefusal(view, slug);
+  if (refusal !== null) throw new Error(refusal);
+  const totals = view?.projectTotals[slug];
+  const sessions = items.filter((i) => i.actionKind === "session").length;
+  if (!totals) return items.length;
+  return totals.failedJobs + totals.needsReview + totals.awaitingInput + totals.parkedOnly + sessions;
 }
 
 export function attentionCut(
   items: readonly DashboardAttentionItem[],
   view: AttentionView | undefined,
   slug: string,
-  blockersTotal: number | undefined,
-  /** Issues the health row counts in the Blocked on a person state: each is owed a person's answer, so
-   *  the list cannot hold fewer than that, whichever source listed them. */
-  blockedOnPerson = 0,
 ): AttentionCut | null {
   if (!view) return null;
-  const refusal = attentionRefusal(view, slug);
-  if (refusal !== null) throw new Error(refusal);
-  const totals = view.projectTotals[slug] ?? {
-    needsReview: 0,
-    awaitingInput: 0,
-    awaitingOutsideBlockers: 0,
-    failedJobs: 0,
-  };
-  const listed = (kinds: readonly AttentionActionKind[]) =>
-    items.filter((i) => kinds.includes(i.actionKind)).length;
-  const listedPeople = listed(["input", "parked"]);
-  const people = Math.max(
-    listedPeople,
-    totals.awaitingInput,
-    (blockersTotal ?? 0) + totals.awaitingOutsideBlockers,
-    blockedOnPerson,
-  );
-  const atLeast =
-    Math.max(totals.failedJobs, listed(["retry"])) +
-    Math.max(totals.needsReview, listed(["diff"])) +
-    people +
-    listed(["session"]);
-  if (atLeast <= items.length) return null;
-  return { shown: items.length, atLeast, peopleCut: people > listedPeople };
+  const whole = attentionWhole(items, view, slug);
+  if (whole <= items.length) return null;
+  const totals = view.projectTotals[slug];
+  const listedPeople = items.filter((i) => i.actionKind === "input" || i.actionKind === "parked").length;
+  const people = (totals?.awaitingInput ?? 0) + (totals?.parkedOnly ?? 0);
+  return { shown: items.length, whole, peopleCut: people > listedPeople };
 }
 
 /**
@@ -401,7 +395,7 @@ export function attentionCaption(
     return n === 0 ? [] : [`${n} ${n === 1 ? one : many}`];
   });
   const said = parts.length === 0 ? "nothing listed to act on" : `to act on: ${parts.join(" · ")}`;
-  if (cut) return `${said} — ${cut.shown} of at least ${cut.atLeast}`;
+  if (cut) return `${said} — ${cut.shown} of ${cut.whole} listed`;
   return parts.length === 0 ? "nothing to act on" : said;
 }
 

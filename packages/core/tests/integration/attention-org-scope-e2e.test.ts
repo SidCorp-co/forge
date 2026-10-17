@@ -4,6 +4,10 @@
  * organisation (ISS-964) and the web then kept only the active organisation's rows (ISS-477), so 20
  * rows of another organisation filled the cap and the filter left none. The route now scopes every
  * bucket and every total to the organisation it is asked for, before the cap.
+ *
+ * ISS-1229 r14, judge-35: with 32 parks owed in one project, Attention and its badge said 20, Needs
+ * you 25 and the headline "at least 32". Each bucket now carries its whole count, `total` sums them,
+ * and `expand` lists a bucket whole, so every surface says one number and can reach every item.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -77,6 +81,17 @@ async function waiting(projectId: string, ageHours: number): Promise<void> {
   `);
 }
 
+/** Many parks at once, assigned to the member, oldest first: one statement, not one per row. */
+async function waitingMany(projectId: string, n: number): Promise<void> {
+  await harness.db.execute(sql`
+    INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, assignee_id, created_at, updated_at)
+    SELECT gen_random_uuid(), ${projectId}, ${seq} + g, 'waits ' || (${seq} + g), 'needs_info',
+           ${member}, ${member}, now() - (g || ' minutes')::interval, now() - (g || ' minutes')::interval
+      FROM generate_series(1, ${n}) g
+  `);
+  seq += n;
+}
+
 async function attention(query = '') {
   const res = await app.request(`/api/me/attention${query}`, {
     headers: { authorization: `Bearer ${token}` },
@@ -114,5 +129,43 @@ describe('the Attention read of one organisation', () => {
 
     expect(status).toBe(400);
     expect(JSON.stringify(body)).toContain('orgId');
+  });
+
+  it('says 32 for 32 parks owed in one project, in the total, the bucket and the project', async () => {
+    await waitingMany(busy.id, 32);
+
+    const { body } = await attention(`?orgId=${busy.orgId}`);
+
+    expect((body.awaitingInput as unknown[]).length).toBe(20);
+    expect((body.bucketTotals as Record<string, number>).awaitingInput).toBe(32);
+    expect(body.total).toBe(32);
+    expect((body.projectTotals as Record<string, { awaitingInput: number }>)[busy.slug]).toEqual({
+      needsReview: 0,
+      awaitingInput: 32,
+      failedJobs: 0,
+      parkedOnly: 0,
+    });
+  });
+
+  it('lists every park when Awaiting input is asked for whole, the 501st among them', async () => {
+    await waitingMany(busy.id, 501);
+
+    const capped = await attention(`?orgId=${busy.orgId}`);
+    const whole = await attention(`?orgId=${busy.orgId}&expand=awaitingInput`);
+
+    expect((capped.body.awaitingInput as unknown[]).length).toBe(20);
+    const listed = whole.body.awaitingInput as Array<{ title: string }>;
+    expect(listed).toHaveLength(501);
+    expect(listed.map((i) => i.title)).toContain('waits 501');
+    expect((whole.body.bucketTotals as Record<string, number>).awaitingInput).toBe(501);
+    // The other buckets keep their caps; only the one named is read whole.
+    expect((whole.body.needsReview as unknown[]).length).toBe(0);
+  });
+
+  it('refuses a bucket name it does not have, naming the ones it does', async () => {
+    const { status, body } = await attention('?expand=everything');
+
+    expect(status).toBe(400);
+    expect(JSON.stringify(body)).toContain('awaitingInput');
   });
 });

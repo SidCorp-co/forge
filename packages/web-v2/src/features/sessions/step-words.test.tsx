@@ -96,7 +96,7 @@ afterEach(cleanup);
 
 describe("a session's step kind, wherever it is named", () => {
   it("reads a step session's title in words, keeping the issue it names", () => {
-    expect(sessionTitle(rows[1])).toBe("Releases");
+    expect(sessionTitle(rows[1])).toBe("Release");
     expect(sessionTitle(rows[2])).toBe("Issue work: Fix the export");
     expect(sessionTitle(rows[4])).toBe("Unrecognised work (review_followup_rework_after_codex_consult)");
   });
@@ -108,14 +108,14 @@ describe("a session's step kind, wherever it is named", () => {
   });
 
   it("names the step a session records in words", () => {
-    expect(sessionStep({ step: "release_batch" })).toBe("Releases");
-    expect(sessionStep({ stage: "verify_skill" })).toBe("Skill checks");
+    expect(sessionStep({ step: "release_batch" })).toBe("Release");
+    expect(sessionStep({ stage: "verify_skill" })).toBe("Skill check");
   });
 
   it("names no step kind by its stored name on the sessions list", () => {
     const { container } = render(<SessionsScreen scope={{ projectId: "p1" }} />);
     expect(container.textContent).not.toMatch(RAW);
-    expect(container.textContent).toContain("Releases");
+    expect(container.textContent).toContain("Release");
     expect(container.textContent).toContain("Issue work: Fix the export");
     expect(container.textContent).toContain("Unrecognised work (review_followup_rework_after_codex_consult)");
   });

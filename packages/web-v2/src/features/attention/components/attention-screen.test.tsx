@@ -11,12 +11,22 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 expect.extend(matchers);
 
 type Read = "pending" | "failed" | "read";
-const state: { read: Read; devicesRead: Read; offline: unknown[]; awaiting: unknown[]; failed: unknown[] } = {
+const state: {
+  read: Read;
+  devicesRead: Read;
+  offline: unknown[];
+  awaiting: unknown[];
+  awaitingTotal?: number;
+  expanding?: boolean;
+  failed: unknown[];
+  expand: unknown[];
+} = {
   read: "read",
   devicesRead: "read",
   offline: [],
   awaiting: [],
   failed: [],
+  expand: [],
 };
 const refetch = vi.fn();
 
@@ -26,7 +36,9 @@ vi.mock("@/features/projects/hooks", () => ({
   useOrgScopedProjects: () => ({ projects: [], projectSlugs: new Set<string>() }),
 }));
 vi.mock("../hooks", () => ({
-  useAttention: () => ({
+  useAttention: (opts: { expand?: unknown[] } = {}) => {
+    state.expand = [...(opts.expand ?? [])];
+    return {
     view: {
       needsReview: [],
       awaitingInput: state.awaiting,
@@ -35,15 +47,26 @@ vi.mock("../hooks", () => ({
       pendingSkillUpdates: [],
       unseenDrafts: [],
       unseenDraftsTotal: 0,
+      bucketTotals: {
+        needsReview: 0,
+        awaitingInput: state.awaitingTotal ?? state.awaiting.length,
+        mentions: 0,
+        failedJobs: state.failed.length,
+        pendingSkillUpdates: 0,
+        unseenDrafts: 0,
+      },
       projectTotals: {},
+      total: (state.awaitingTotal ?? state.awaiting.length) + state.failed.length,
       offlineRunners: state.offline,
     },
     read: state.read,
     devicesRead: state.devicesRead,
+    expanding: state.expanding ?? false,
     error: new Error("attention down"),
     devicesError: new Error("devices down"),
     refetch,
-  }),
+    };
+  },
 }));
 
 const { AttentionScreen } = await import("./attention-screen");
@@ -54,7 +77,10 @@ afterEach(() => {
   state.devicesRead = "read";
   state.offline = [];
   state.awaiting = [];
+  state.awaitingTotal = undefined;
+  state.expanding = undefined;
   state.failed = [];
+  state.expand = [];
   refetch.mockClear();
 });
 
@@ -134,6 +160,8 @@ describe("an Attention group", () => {
       {
         kind: "failed_job",
         title: "drive failed: exit 1",
+        jobType: "drive",
+        failure: "session_lost",
         link: "/projects/shop/issues/d50",
         since: new Date(0).toISOString(),
         issueRef: "SHOP-50",
@@ -146,8 +174,50 @@ describe("an Attention group", () => {
     render(<AttentionScreen />);
     const row = screen.getByRole("button", { name: /Refund webhook retries/u });
     const named = screen.getByText("Refund webhook retries");
-    const said = screen.getByText("drive failed: exit 1");
+    const said = screen.getByText("Issue work failed: Session lost");
     expect(row).toContainElement(said);
     expect(named.compareDocumentPosition(said) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  // ISS-1229 r14, judge-35: 32 parks were headed 20, with nothing saying 12 more waited.
+  it("heads a capped group with every item it holds, says how many it shows, and lists them all on asking", () => {
+    state.awaiting = Array.from({ length: 20 }, (_, i) => ({
+      kind: "awaiting_input",
+      title: `Park ${i + 1}`,
+      link: `/projects/shop/issues/d${i + 1}`,
+      since: new Date(0).toISOString(),
+      projectSlug: "shop",
+    }));
+    state.awaitingTotal = 32;
+    render(<AttentionScreen />);
+    expect(screen.getByRole("heading", { name: /^Awaiting input/u })).toHaveTextContent("Awaiting input32");
+    expect(screen.getByText(/Showing 20 of 32, highest priority first\./u)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show all 32" }));
+    expect(state.expand).toEqual(["awaitingInput"]);
+  });
+
+  // The review of r14: while the whole group is read, the button went and nothing said it was coming.
+  it("says the whole group is on its way while it is read, then lists it whole", () => {
+    const park = (i: number) => ({
+      kind: "awaiting_input",
+      title: `Park ${i + 1}`,
+      link: `/projects/shop/issues/d${i + 1}`,
+      since: new Date(0).toISOString(),
+      projectSlug: "shop",
+    });
+    state.awaiting = Array.from({ length: 20 }, (_, i) => park(i));
+    state.awaitingTotal = 32;
+    const { rerender } = render(<AttentionScreen />);
+    state.expanding = true;
+    fireEvent.click(screen.getByRole("button", { name: "Show all 32" }));
+    expect(screen.getByRole("button", { name: "Listing all 32…" })).toBeDisabled();
+    expect(screen.getByText("Park 20")).toBeInTheDocument();
+
+    state.expanding = false;
+    state.awaiting = Array.from({ length: 32 }, (_, i) => park(i));
+    rerender(<AttentionScreen />);
+    expect(screen.getByText("Park 32")).toBeInTheDocument();
+    expect(screen.queryByText(/Showing \d+ of 32/u)).toBeNull();
+    expect(screen.queryByRole("button", { name: /all 32/u })).toBeNull();
   });
 });

@@ -1,30 +1,42 @@
+import type { StuckIssueKind } from '@forge/contracts/notifications';
+import { stuckGroupTitle } from '@forge/contracts/stuck-words';
+
 /**
  * ISS-1168 — what each sweep detector is, said once. A record carries what is specific to its
  * issue and the list route returns the explanation beside the delivery, named by the group key
- * the sweep wrote, so deliveries written before this existed are explained too.
+ * the sweep wrote, so deliveries written before this existed are explained too. A group's title is
+ * its stuck kind's sentence from `@forge/contracts/stuck-words`, which the project page reads too
+ * (ISS-1229 r14).
  */
 
 export const SWEEP_DETECTORS = {
   'owed-close': {
-    groupTitle: 'Issues whose code shipped and whose close was never written',
+    kind: 'owed_close',
+    groupTitle: stuckGroupTitle('owed_close'),
     explanation:
       'The step that owed the close did not write it. Read the branch, then close the issue — or, if it never landed, clear the mark with `unmark` and move the issue to Dropped.',
   },
   stranded: {
-    groupTitle: 'Issues waiting for you for over six hours',
+    kind: 'waiting',
+    groupTitle: stuckGroupTitle('waiting'),
     explanation:
       'Each one waits for a decision or for something only a person can supply. Open it: its last comment says what is asked.',
   },
   'idle-issues': {
-    groupTitle: 'Issues in a live status with no live work behind them',
+    kind: 'idle',
+    groupTitle: stuckGroupTitle('idle'),
     explanation: 'Nothing was moved. Each issue says what it waits for and who owes the next move.',
   },
   'orphan-assertion': {
-    groupTitle: 'Issues asserting work in progress with no run behind them',
+    kind: 'orphan',
+    groupTitle: stuckGroupTitle('orphan'),
     explanation:
       'Nothing has been moved: whether the issue or the run record is the wrong half is not decidable from here.',
   },
-} as const;
+} as const satisfies Record<
+  string,
+  { kind: StuckIssueKind; groupTitle: string; explanation: string }
+>;
 
 export type SweepDetector = keyof typeof SWEEP_DETECTORS;
 

@@ -80,7 +80,8 @@ export default function ProjectOverviewPage() {
 
   // Card data — every hook reuses an existing source. Project-scoped hooks gate
   // on `projectId` so they no-op until the slug resolves.
-  const attentionQ = useAttention();
+  // The project's own organisation, whichever one the rail has open: its counts are this project's.
+  const attentionQ = useAttention({ orgId: project?.orgId ?? null });
   const runsQ = useProjectRuns(projectId);
   const sessionsQ = useSessionsAndHolds(projectId);
   const durationsQ = useStepDurations({ days: METRICS_WINDOW_DAYS, projectId }, !!projectId);
@@ -172,7 +173,7 @@ export default function ProjectOverviewPage() {
   const attentionRefused = readFailure ?? (attentionRead ? attentionRefusal(attentionQ.view, project.slug) : null);
   const attentionLeftOut =
     attentionRead && !attentionRefused
-      ? attentionCut(attention, attentionQ.view, project.slug, health?.blockersTotal, health?.work.blocked_on_person)
+      ? attentionCut(attention, attentionQ.view, project.slug)
       : null;
   const attentionState: ReadState = attentionPending
     ? { read: "pending" }
@@ -292,7 +293,7 @@ export default function ProjectOverviewPage() {
             busyRunners={runners.busyCount}
             onlineRunners={runners.onlineCount}
             totalRunners={runners.total}
-            needsYou={attention.length}
+            needsYou={attentionLeftOut ? attentionLeftOut.whole : attention.length}
             needsYouCaption={attentionCaption(attention, attentionLeftOut)}
             oldestWait={oldestSeconds === null ? null : formatElapsed(oldestSeconds)}
             needsYouRefusal={attentionRefused}

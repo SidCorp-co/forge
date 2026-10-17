@@ -100,6 +100,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'jobs/routes.ts': 'by issue id',
   'jobs/turn-verdict-routes.ts': 'the issue of the job',
   'labels/module-rollup.ts': 'per-module counts, no issue identity',
+  'me/attention-totals.ts':
+    'counts over the attention buckets; reads only statuses an archived issue never holds, and failed jobs compose the predicate through failedJobIssueWhere',
   'me/pulse-flow.ts': 'weekly counts, no issue identity',
   'me/pulse-live.ts':
     'work merged and not yet on live, keyed by base-branch commits; hiding it would hide code not deployed',
