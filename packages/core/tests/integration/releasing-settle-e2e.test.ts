@@ -169,7 +169,7 @@ describe('a row at Releasing that nothing carries (criteria 13, 14, 15, 16, 17)'
       expect(said).not.toContain(run);
       expect(said).toContain(`does not carry this issue's landing commit \`${UNSHIPPED}\``);
       expect(said).toContain(
-        'It is back at Awaiting release. Release now on this page, or at the release gate on the issues list, starts a release that carries it.',
+        'It is back at Awaiting release. Release now on this page, or at the release gate on the issues list, starts a release.',
       );
       expect(await recordFor(id)).toBeNull();
     },
