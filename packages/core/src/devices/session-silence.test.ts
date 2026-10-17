@@ -142,6 +142,14 @@ describe('silenceLimitMs', () => {
     });
     expect(silenceLimitMs(queued)).toBe(90_000);
   });
+});
+
+describe('silenceLimitMs on a one-shot run', () => {
+  const saved = process.env.PIPELINE_HEARTBEAT_TIMEOUT_MS;
+  afterEach(() => {
+    if (saved === undefined) delete process.env.PIPELINE_HEARTBEAT_TIMEOUT_MS;
+    else process.env.PIPELINE_HEARTBEAT_TIMEOUT_MS = saved;
+  });
 
   it('ends a session on a jobless one-shot run at the heartbeat timeout unless its runner answers', () => {
     expect(silenceLimitMs(subject({ kind: 'run_session', oneShot: alone() }))).toBe(3 * MIN);
