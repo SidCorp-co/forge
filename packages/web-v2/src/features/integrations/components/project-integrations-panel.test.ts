@@ -21,11 +21,20 @@ describe("liveCard", () => {
     expect(liveCard(opened, now)).toEqual(now[1]);
   });
 
-  it("keeps the stage it was opened at when the provider's one card names another", () => {
-    const opened = card("coolify:live", "not_configured");
-    const shown = liveCard(opened, [card("coolify:preview", "connected")]);
+  it("reads a stage from the card that serves it, keeping the stage it was opened at", () => {
+    const shown = liveCard(card("coolify:live", "not_configured"), [
+      card("coolify:preview+live", "connected"),
+    ]);
     expect(shown?.key).toBe("coolify:live");
     expect(shown?.status).toBe("connected");
+  });
+
+  // Consult F1: deleting Preview from its open drawer left only Live, whose state the drawer took.
+  it("reads a stage no card serves as not set up, never as another stage's state", () => {
+    const shown = liveCard(card("coolify:preview", "connected"), [card("coolify:live", "connected")]);
+    expect(shown?.key).toBe("coolify:preview");
+    expect(shown?.status).toBe("not_configured");
+    expect(shown?.configured).toBe(false);
   });
 
   it("takes the exact card where the provider has several", () => {
