@@ -1,6 +1,6 @@
 "use client";
 
-import { BLOCKED_TONE, Icon, lastReported, SILENCE_TONE, Spinner, WORKING_WORD } from "@/design";
+import { BLOCKED_TONE, Icon, lastReported, SILENCE_TONE, Spinner, STOPPED_WORD, WORKING_WORD } from "@/design";
 import { TONE_META } from "@/design/status";
 import { formatElapsed } from "@/lib/utils/format";
 import { WAITING_FOR_INPUT_WORD } from "@/features/sessions/session-word";
@@ -8,12 +8,13 @@ import { blockedText, quietLastReportedText } from "@/features/sessions/status-s
 import { type AgentSessionDisplayStatus, isLiveDisplay } from "@/features/sessions/types";
 import type { ConversationItem, RenderBlock } from "../types";
 
-export type TurnStage = "working" | "responding" | "quiet" | "blocked" | "failed";
+export type TurnStage = "working" | "responding" | "quiet" | "blocked" | "failed" | "stopped";
 
 const LABEL: Record<Exclude<TurnStage, "quiet" | "blocked">, string> = {
   working: "Working…",
   responding: "Responding…",
   failed: "Failed",
+  stopped: STOPPED_WORD,
 };
 
 /**
@@ -77,9 +78,12 @@ export function sessionComposerState(
 export function sessionTurnStage({
   live,
   display,
+  failureReason,
   fromMessages,
   tail,
 }: {
+  /** Why core ended the session: a person's stop reads Stopped, never Failed. */
+  failureReason?: string | null;
   /** The screen's own liveness, so which statuses are live is stated in one place and not two. */
   live: boolean;
   display: AgentSessionDisplayStatus;
@@ -90,6 +94,7 @@ export function sessionTurnStage({
 }): TurnStage | null {
   if (live && display === "stalled") return "quiet";
   if (live && display === "blocked") return "blocked";
+  if (display === "failed" && failureReason === "user_cancelled") return "stopped";
   return turnStageOf({
     live,
     failed: display === "failed",
@@ -154,6 +159,8 @@ export function TurnStage({
       <span className="flex h-[14px] w-[14px] flex-none items-center justify-center">
         {stage === "failed" ? (
           <Icon name="alert" size={12} className="text-danger" />
+        ) : stage === "stopped" ? (
+          <Icon name="stop" size={12} />
         ) : waitingForInput ? (
           <Icon name="pause" size={12} />
         ) : (

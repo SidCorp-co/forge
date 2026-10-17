@@ -1,4 +1,4 @@
-import { BLOCKED_TONE, STATUS_META, type StatusKey, TONE_META } from "@/design/status";
+import { BLOCKED_TONE, STATUS_META, STOPPED_WORD, type StatusKey, TONE_META } from "@/design/status";
 import { Icon, type IconName } from "@/design/icons/icon";
 
 export type StatusDomain = "issue" | "session";
@@ -23,6 +23,7 @@ const SESSION_LABELS: Partial<Record<StatusKey, string>> = {
   paused: "Idle",
   passed: "Verified",
   waiting: "Waiting for me",
+  archived: STOPPED_WORD,
 };
 
 /** In the session domain `blocked` is a running session its box reports blocked: it waits on

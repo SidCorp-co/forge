@@ -3,7 +3,7 @@
 
 export { Icon, type IconName, type IconProps } from "./icons/icon";
 export {
-  STATUS_META, HEALTH_META, AVATAR_HUE, SILENCE_WORD, SILENCE_TONE, WORKING_WORD, BLOCKED_WORD, BLOCKED_TONE, lastReported,
+  STATUS_META, HEALTH_META, AVATAR_HUE, SILENCE_WORD, SILENCE_TONE, WORKING_WORD, BLOCKED_WORD, STOPPED_WORD, BLOCKED_TONE, lastReported,
   type StatusKey, type HealthKey, type AvatarHue, type ColorMeta,
 } from "./status";
 

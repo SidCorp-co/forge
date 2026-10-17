@@ -3,7 +3,16 @@
 // line, what it last reported; a run with no process keeps the run's own words.
 
 import { describe, expect, it } from "vitest";
-import { closeMarks, disagreementText, offlineText, pulseText, runLeaseDisagreementText, stateLabelAt } from "./run-state";
+import {
+  closeMarks,
+  disagreementText,
+  endReasonText,
+  offlineText,
+  pulseText,
+  runLeaseDisagreementText,
+  silenceText,
+  stateLabelAt,
+} from "./run-state";
 
 const NOW = Date.parse("2026-10-16T10:00:00.000Z");
 const HEARD = new Date(NOW - 10_000).toISOString();
@@ -44,10 +53,43 @@ describe("stateLabelAt", () => {
     expect(stateLabelAt(row({ work: "done" }), NOW).label).toBe("Closed");
   });
 
-  it("keeps the box's holding words for a blocked run core has ended but still hears of", () => {
-    expect(stateLabelAt(row({ work: "blocked", sessionStatus: "failed" }), NOW).label).toBe(
-      "Blocked, holding the box",
+  // ISS-1228 round 13: a run core had ended read in the present tense while its box still reported it.
+  it("says what the box last reported of a run whose session core has ended, never that it is doing it", () => {
+    expect(stateLabelAt(row({ work: "blocked", sessionStatus: "failed" }), NOW)).toMatchObject({
+      label: "Last reported blocked",
+      tone: "neutral",
+    });
+    expect(stateLabelAt(row({ sessionStatus: "failed" }), NOW).label).toBe("Last reported working");
+  });
+});
+
+// ISS-1228 round 13: judge-34 saw an ended run read "Quiet. No report for 19m." beside its box's
+// report of two seconds before, and a core-ended session as a bare label.
+describe("an ended run's lines", () => {
+  const ended = { incarnation: "live", lastActivityAt: new Date(NOW - 19 * 60_000).toISOString(), silenceLimitMs: 10 * 60_000 };
+
+  it("says nothing of silence on a run whose session core has ended", () => {
+    expect(silenceText({ ...ended, sessionStatus: "failed" }, NOW)).toBeNull();
+    expect(silenceText({ ...ended, sessionStatus: "running" }, NOW)).toMatch(/^Quiet\./);
+  });
+
+  it("names the silence a check-in, the clock it reads, never a report", () => {
+    expect(silenceText({ ...ended, sessionStatus: "running" }, NOW)).toBe(
+      "Quiet. Core is ending it as failed. No check-in for 19m.",
     );
+  });
+
+  it("says why the session ended as sentences, a person's stop in its own words", () => {
+    expect(endReasonText({ sessionStatus: "failed", sessionFailureReason: "session_stopped_checking_in" })).toBe(
+      "The session ended. Stopped checking in.",
+    );
+    expect(endReasonText({ sessionStatus: "failed", sessionFailureReason: "heartbeat_timeout" })).toBe(
+      "The session ended. No heartbeat.",
+    );
+    expect(endReasonText({ sessionStatus: "failed", sessionFailureReason: "user_cancelled" })).toBe(
+      "A person stopped the session.",
+    );
+    expect(endReasonText({ sessionStatus: "running", sessionFailureReason: "heartbeat_timeout" })).toBeNull();
   });
 });
 

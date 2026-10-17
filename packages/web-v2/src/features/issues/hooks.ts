@@ -344,13 +344,17 @@ export function useDeclareLandingShape(issueId: string) {
   });
 }
 
-/** What a press of Run did, in short sentences: it offers the issue and queues nothing (ISS-1228). */
+/** What a press of Run did, in short sentences: it offers the issue and queues nothing, and a box
+ *  hearing the offer is not a box taking it (ISS-1228). */
 export function runAnswerText(a: RunAnswer): string {
-  const heard =
-    a.boxesReached === 0
-      ? "No box has picked it up yet. A master reads it on its next pass."
-      : `${a.boxesReached} ${a.boxesReached === 1 ? "box has" : "boxes have"} picked it up.`;
-  return `${a.released ? "Released past the entry gate" : "Offered to this project's masters"}. ${heard}`;
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  const outcome =
+    a.taken > 0
+      ? `${plural(a.taken, "run has", "runs have")} taken it.`
+      : a.boxesHeard === 0
+        ? "No box has picked it up yet. A master reads it on its next pass."
+        : `${plural(a.boxesHeard, "box", "boxes")} heard it. Nothing has taken it yet. A master takes it on its next pass.`;
+  return `${a.released ? "Released past the entry gate" : "Offered to this project's masters"}. ${outcome}`;
 }
 
 export function useRunPipelineStep() {
@@ -360,8 +364,8 @@ export function useRunPipelineStep() {
     mutationFn: (id: string) => issuesApi.runPipelineStep(id),
     onSuccess: (answer) => {
       qc.invalidateQueries({ queryKey: ["issues"] });
-      // An offer no box heard started nothing, so it does not wear the success check.
-      toast({ title: runAnswerText(answer), tone: answer.boxesReached > 0 ? "success" : "default" });
+      // Only a run holding the issue means something started; an offer heard and not taken is neutral.
+      toast({ title: runAnswerText(answer), tone: answer.taken > 0 ? "success" : "default" });
     },
     onError: (err) => {
       toast({ title: "Run refused", description: formatApiError(err), tone: "error" });

@@ -5,7 +5,7 @@
 // with no spinner. Driven through `SessionScreen`, so a page that stopped wiring the hold goes red.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionRow } from "@/features/sessions/types";
 import { WORKING_WORD } from "@/design";
@@ -16,8 +16,9 @@ import { LAST_TURN_SHOWS_WHERE } from "./context-rail";
 expect.extend(matchers);
 
 const NOW = Date.parse("2026-10-16T08:00:00.000Z");
-const { send, idle, page, box } = vi.hoisted(() => ({
+const { send, stopSession, idle, page, box } = vi.hoisted(() => ({
   send: vi.fn(),
+  stopSession: vi.fn(),
   idle: () => ({ mutate: () => {}, mutateAsync: async () => {}, isPending: false }),
   page: { session: undefined as unknown },
   box: { status: "online" as "online" | "offline" },
@@ -83,7 +84,7 @@ vi.mock("../hooks", () => ({
   useRegenerateTurn: idle,
   useEditTurn: idle,
   useForkSession: idle,
-  useCancelSession: idle,
+  useCancelSession: () => ({ ...idle(), mutate: stopSession }),
   useRerunSession: idle,
 }));
 
@@ -114,7 +115,7 @@ describe("a blocked session's own page (ISS-1228 criteria 40, 41)", () => {
   it("says Blocked in the box's words, and claims no work or spinner anywhere on the page", () => {
     render(<SessionScreen sessionId="s1" projectSlug="qa" />);
     expect(screen.getByTestId("turn-stage")).toHaveTextContent(
-      "Blocked. A person — approve the database restore in Coolify.",
+      "Blocked. Waiting on a person. Approve the database restore in Coolify.",
     );
     expect(screen.queryByText(/Working/)).not.toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
@@ -134,9 +135,23 @@ describe("a session page's header at phone width", () => {
 
   it("puts its actions on a row of their own below sm", () => {
     render(<SessionScreen sessionId="s1" projectSlug="qa" />);
-    const actions = screen.getByRole("button", { name: "Stop" }).parentElement;
+    const actions = screen.getByRole("button", { name: "Stop session" }).parentElement;
     expect(actions?.className.split(/\s+/)).toContain("basis-full");
     expect(actions?.parentElement?.className.split(/\s+/)).toContain("flex-wrap");
+  });
+});
+
+// ISS-1228 round 13: judge-34's press of Stop session ended a running agent with nothing asked.
+describe("stopping a session from its page", () => {
+  it("asks first, naming the session and its box, and stops it only on the answer", () => {
+    stopSession.mockClear();
+    render(<SessionScreen sessionId="s1" projectSlug="qa" />);
+    fireEvent.click(screen.getByRole("button", { name: "Stop session" }));
+    expect(stopSession).not.toHaveBeenCalled();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent("run: ISS-3 on bravo stops now.");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Stop session" }));
+    expect(stopSession).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -196,6 +211,33 @@ describe("a session that stopped checking in, on its own page", () => {
       expect(screen.getByRole("button", { name: "Rerun" })).toBeVisible();
       expect(card).toHaveTextContent("Rerun");
       expect(card).not.toHaveTextContent(/Retry|open the session|conversation/);
+    } finally {
+      page.session = session;
+    }
+  });
+
+  // ISS-1228 round 13: a person's stop read Failed on its page and "Blocked: Cancelled by a user" on
+  // its rail, while the sessions list said Swept and the toast Session cancelled.
+  it("calls a session a person stopped Stopped, on its chip, its turn line and its rail", () => {
+    page.session = { ...ended, failureReason: "user_cancelled" };
+    try {
+      render(<SessionScreen sessionId="s1" projectSlug="qa" />);
+      expect(screen.getByTestId("turn-stage")).toHaveTextContent(/^Stopped/);
+      expect(screen.getAllByText("Stopped").length).toBeGreaterThan(0);
+      expect(screen.getByText("Why it ended")).toBeVisible();
+      expect(screen.getByText("A person stopped the session.")).toBeVisible();
+      expect(document.body.textContent).not.toMatch(/Failed|Cancelled|Blocked:/);
+    } finally {
+      page.session = session;
+    }
+  });
+
+  it("says why core ended a session as sentences under Why it ended, never under Blocked", () => {
+    page.session = ended;
+    try {
+      render(<SessionScreen sessionId="s1" projectSlug="qa" />);
+      expect(screen.getByText("Why it ended")).toBeVisible();
+      expect(screen.getByText("The session ended. Stopped checking in.")).toBeVisible();
     } finally {
       page.session = session;
     }

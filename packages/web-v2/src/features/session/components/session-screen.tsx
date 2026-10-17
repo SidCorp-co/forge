@@ -13,17 +13,19 @@ import {
   SlideOver,
   WORKING_WORD,
 } from "@/design";
-import { waitingOnOf } from "@/features/pipeline/derive";
 import { SessionChip } from "@/features/sessions/components/session-chip";
+import { StopSessionConfirm } from "@/features/sessions/components/stop-session-confirm";
+import { waitingOnText } from "@/features/sessions/status-sentences";
 import { useSessionDuration } from "@/features/sessions/session-duration";
 import { sessionWord, WAITING_FOR_INPUT_WORD } from "@/features/sessions/session-word";
 import { useProjects } from "@/features/projects/hooks";
+import { useDevices } from "@/features/runners/hooks";
 import { isJobDriven, sessionTitle } from "@/features/sessions/types";
 import {
   deriveSessionDisplayStatus,
   sessionSilence,
+  sessionChipStatus,
   sessionStep,
-  statusToChip,
 } from "@/features/sessions/types";
 import { useNow } from "@/design/hooks/use-now";
 import { buildShareLink, useRecents } from "@/features/shell";
@@ -176,7 +178,9 @@ export function SessionScreen({
   // blocked one says, in the box's words, who can end the wait (ISS-1228).
   const boxBlocked = session?.report?.work === "blocked";
   const word = session ? sessionWord(session, now) : null;
-  const waitingOn = boxBlocked ? waitingOnOf({ report: session?.report ?? null }).text : undefined;
+  const waitingOn = boxBlocked ? waitingOnText(session?.report?.blockerKind, session?.report?.waitingOn) : undefined;
+  const [stopAsked, setStopAsked] = useState(false);
+  const deviceName = useDevices().data?.find((d) => d.id === session?.deviceId)?.name ?? null;
 
   const lastTurnId = items.length ? items[items.length - 1].turnId : undefined;
 
@@ -186,6 +190,7 @@ export function SessionScreen({
   const stage = sessionTurnStage({
     live,
     display,
+    failureReason: session?.failureReason ?? null,
     fromMessages,
     ...(items.length ? { tail: items[items.length - 1] } : {}),
   });
@@ -293,7 +298,7 @@ export function SessionScreen({
             </div>
             <div className="mt-1 flex items-center gap-2">
               <SessionChip
-                status={statusToChip(display)}
+                status={sessionChipStatus(display, session.failureReason)}
                 stage={sessionStep(session.metadata) ?? undefined}
                 size="sm"
                 session={session}
@@ -308,6 +313,12 @@ export function SessionScreen({
           </div>
           {/* A row of their own at phone width, so they never sit over the title. */}
           <div className="flex basis-full flex-wrap items-center gap-1.5 sm:flex-none sm:basis-auto">
+            <StopSessionConfirm
+              target={stopAsked ? { name: sessionTitle(session) ?? "This session", box: deviceName } : null}
+              loading={cancel.isPending}
+              onClose={() => setStopAsked(false)}
+              onConfirm={() => cancel.mutate(undefined, { onSuccess: () => setStopAsked(false) })}
+            />
             {live ? (
               <Button
                 variant="danger"
@@ -315,9 +326,9 @@ export function SessionScreen({
                 icon="stop"
                 className="min-h-11"
                 loading={cancel.isPending}
-                onClick={() => cancel.mutate()}
+                onClick={() => setStopAsked(true)}
               >
-                Stop
+                Stop session
               </Button>
             ) : (
               <Button

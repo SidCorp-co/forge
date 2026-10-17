@@ -189,7 +189,7 @@ describe("a running session gone silent", () => {
         <RunRow row={run} now={NOW} slug="pair" />
       </ul>,
     );
-    const agentsRuns = readingOf(spans(runs).find((el) => /No report for/.test(el.textContent ?? "") && el.children.length === 0));
+    const agentsRuns = readingOf(spans(runs).find((el) => /No check-in for/.test(el.textContent ?? "") && el.children.length === 0));
     cleanup();
 
     expect(reference?.word).toBeTruthy();
@@ -361,7 +361,7 @@ describe("a running session its box reports blocked (ISS-1228 criteria 34, 40, 4
 
     const stage = sessionTurnStage({ live: true, display: deriveSessionDisplayStatus(blockedRow, NOW) });
     const { container: page } = render(
-      stage ? <TurnStage stage={stage} waitingOn="A person — approve the database restore in Coolify" /> : <span />,
+      stage ? <TurnStage stage={stage} waitingOn="Waiting on a person. Approve the database restore in Coolify." /> : <span />,
     );
     const pageLine = page.querySelector("[data-testid=turn-stage]")?.textContent?.split(". ")[0];
     const spinning = page.querySelector("[role=status]") !== null;

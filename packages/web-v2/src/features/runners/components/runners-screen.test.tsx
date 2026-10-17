@@ -7,7 +7,8 @@
 // not answered.
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
+import * as matchers from "@testing-library/jest-dom/matchers";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DeviceRow, OrgDeviceRow } from "../types";
@@ -20,6 +21,8 @@ vi.mock("@/providers/auth-provider", () => ({ useAuth: () => ({ user: { id: "u-1
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));
 let activeOrgId: string | null = "org-1";
 vi.mock("@/features/orgs/active-org", () => ({ useActiveOrg: () => ({ activeOrgId }) }));
+
+expect.extend(matchers);
 
 const { RunnersScreen } = await import("./runners-screen");
 const { ORG_DEVICES_REFRESH_MS } = await import("../hooks");
@@ -291,5 +294,45 @@ describe("the page's sections", () => {
 				expect(box.className).not.toMatch(/(^|\s)(rounded-lg|shadow-sm|bg-surface)(\s|$)/);
 			}
 		}
+	});
+});
+
+// ISS-1228 round 13: judge-34 at 390 found Manage, Turn off and Revoke past the right edge until the
+// device table was scrolled sideways. At phone width each device is a row of its own instead.
+describe("the device list at phone width", () => {
+	const phoneWidth = (matches: boolean) =>
+		vi.stubGlobal(
+			"matchMedia",
+			(query: string) =>
+				({
+					matches: matches && query.includes("min-width: 40rem"),
+					media: query,
+					addEventListener: () => undefined,
+					removeEventListener: () => undefined,
+				}) as unknown as MediaQueryList,
+		);
+
+	afterEach(() => vi.unstubAllGlobals());
+
+	it("stacks each device with its actions in view, and draws no table to scroll", async () => {
+		phoneWidth(true);
+		listDevices.mockResolvedValue([device()]);
+		await show();
+		const list = await screen.findByRole("list", { name: "Devices" });
+		expect(screen.queryByRole("table")).toBeNull();
+		const row = within(list).getByRole("listitem");
+		expect(row).toHaveTextContent("my-laptop");
+		expect(row).toHaveTextContent("Last seen never");
+		for (const name of ["Manage", "Turn off", "Revoke"]) {
+			expect(within(row).getByRole("button", { name })).toBeTruthy();
+		}
+	});
+
+	it("keeps the table from sm up", async () => {
+		phoneWidth(false);
+		listDevices.mockResolvedValue([device()]);
+		await show();
+		expect(await screen.findByRole("table")).toBeTruthy();
+		expect(screen.queryByRole("list", { name: "Devices" })).toBeNull();
 	});
 });

@@ -5,7 +5,7 @@
 // surface uses, stops the session from here and links to it; where box and core agree it says nothing.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Holder, SessionsAndHolds } from "@/features/pipeline/types";
 import { LeaseDisagreementNotice } from "./lease-disagreement-notice";
@@ -22,7 +22,7 @@ vi.mock("next/link", () => ({
 }));
 let reading: SessionsAndHolds | undefined;
 vi.mock("@/features/pipeline/hooks", () => ({ useSessionsAndHolds: () => ({ data: reading }) }));
-const stop = vi.fn();
+const stop = vi.fn((_id: string, opts?: { onSuccess?: () => void }) => opts?.onSuccess?.());
 vi.mock("@/features/sessions/hooks", () => ({
   useCancelSession: () => ({ mutate: stop, isPending: false, variables: undefined }),
 }));
@@ -52,9 +52,33 @@ describe("the issue page's word on a lease its box returned (ISS-1228 round 12)"
     expect(screen.getByRole("status")).toHaveTextContent(
       "Held by run: r6-lease-disagree on j31-a. The box says it returned ISS-3. Core still holds it. Stop the session to free it.",
     );
-    fireEvent.click(screen.getByRole("button", { name: "Stop session" }));
-    expect(stop).toHaveBeenCalledWith("s6");
     expect(screen.getByRole("link", { name: "Open session" })).toHaveAttribute("href", "/projects/qa/agents/s6");
+  });
+
+  // ISS-1228 round 13: judge-34's press ended a running agent with no question asked, and the notice
+  // with its button stayed about five seconds after the stop while a toast said it was done.
+  it("asks before it stops, naming the session and its box, and leaves at once once stopped", () => {
+    stop.mockClear();
+    reading = read([holder(true)]);
+    notice();
+    fireEvent.click(screen.getByRole("button", { name: "Stop session" }));
+    expect(stop).not.toHaveBeenCalled();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent("run: r6-lease-disagree on j31-a stops now.");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Stop session" }));
+    expect(stop).toHaveBeenCalledWith("s6", expect.anything());
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("keeps the session running where the person changes their mind", () => {
+    stop.mockClear();
+    reading = read([holder(true)]);
+    notice();
+    fireEvent.click(screen.getByRole("button", { name: "Stop session" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Keep it running" }));
+    expect(stop).not.toHaveBeenCalled();
+    expect(screen.getByRole("status")).toBeInTheDocument();
   });
 
   it("says nothing where the box and core agree, where a person holds it, or before the read", () => {

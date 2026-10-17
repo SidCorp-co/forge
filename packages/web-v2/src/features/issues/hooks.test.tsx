@@ -142,9 +142,10 @@ describe("useBatchRelease — Release now refused", () => {
 });
 
 // ISS-1228 round 12: an offer no box heard wore the green success check, though nothing started.
+// Round 13: two boxes that heard it were said to have "picked it up" under the check, though neither took it.
 describe("useRunPipelineStep — the toast's tone says whether anything started", () => {
-  async function pressRun(boxesReached: number) {
-    runPipelineStep.mockResolvedValue({ issueId: "iss-1", status: "open", released: false, masters: 1, boxesReached });
+  async function pressRun(boxesHeard: number, taken = 0) {
+    runPipelineStep.mockResolvedValue({ issueId: "iss-1", status: "open", released: false, masters: 1, boxesHeard, taken });
     const { result } = renderHook(() => useRunPipelineStep(), { wrapper });
     act(() => result.current.mutate("iss-1"));
     await waitFor(() => expect(toast).toHaveBeenCalledTimes(1));
@@ -157,9 +158,18 @@ describe("useRunPipelineStep — the toast's tone says whether anything started"
     expect(said.tone).toBe("default");
   });
 
-  it("is a success only where a box took it", async () => {
-    const said = await pressRun(1);
-    expect(said.title).toBe("Offered to this project's masters. 1 box has picked it up.");
+  it("is neutral where two boxes heard the offer and nothing took it", async () => {
+    const said = await pressRun(2);
+    expect(said.title).toBe(
+      "Offered to this project's masters. 2 boxes heard it. Nothing has taken it yet. A master takes it on its next pass.",
+    );
+    expect(said.title).not.toMatch(/picked it up/);
+    expect(said.tone).toBe("default");
+  });
+
+  it("is a success only where a run took it", async () => {
+    const said = await pressRun(1, 1);
+    expect(said.title).toBe("Offered to this project's masters. 1 run has taken it.");
     expect(said.tone).toBe("success");
   });
 });

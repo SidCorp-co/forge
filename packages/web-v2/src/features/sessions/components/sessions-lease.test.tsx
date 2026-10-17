@@ -5,7 +5,7 @@
 // list names what core holds, as core sends it, and says the disagreement in the runs tab's words.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionRow } from "../types";
 import { SessionsScreen } from "./sessions-screen";
@@ -31,11 +31,14 @@ vi.mock("@/features/pipeline/hooks", () => ({
   useSessionsAndHolds: () => ({ data: { sessions: [], holds: [], readAt: "" }, isError: false, error: null }),
 }));
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));
-const { mutation } = vi.hoisted(() => ({ mutation: () => ({ mutate: () => {}, isPending: false }) }));
+const { mutation, stopSession } = vi.hoisted(() => ({
+  mutation: () => ({ mutate: () => {}, isPending: false }),
+  stopSession: vi.fn(),
+}));
 vi.mock("../hooks", () => ({
   useQueueStats: () => ({ data: { devices: [] } }),
   useSessions: () => ({ data: { items: rows, totalCount: rows.length }, isLoading: false, isError: false }),
-  useCancelSession: mutation,
+  useCancelSession: () => ({ mutate: stopSession, isPending: false }),
   useRetrySession: mutation,
   useRerunSession: mutation,
   useAbortSession: mutation,
@@ -88,5 +91,30 @@ describe("the sessions list and a lease the box returned (ISS-1228 round 12)", (
     rows = [run("r7", [{ id: "i3", displayId: "ISS-3", title: "Three", boxReturned: false }])];
     const { container } = render(<SessionsScreen scope={{ projectId: "p1" }} />);
     expect(container.textContent).not.toMatch(/The box says it returned/);
+  });
+});
+
+// ISS-1228 round 13: one person's stop read "Swept · Cancelled" here, "Failed" on its page and
+// "Blocked: Cancelled by a user" on its rail; and the list's Cancel ended a running agent unasked.
+describe("a stop on the sessions list (ISS-1228 round 13)", () => {
+  it("calls a session a person stopped Stopped, and says so in a sentence", () => {
+    rows = [{ ...run("r8", []), status: "failed", failureReason: "user_cancelled" } as SessionRow];
+    const { container } = render(<SessionsScreen scope={{ projectId: "p1" }} />);
+    expect(screen.getAllByText("Stopped").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("A person stopped the session.").length).toBeGreaterThan(0);
+    expect(container.textContent).not.toMatch(/Cancelled|Swept|Failed/);
+  });
+
+  it("asks before it stops a running session, naming it", () => {
+    stopSession.mockClear();
+    rows = [run("r9", [])];
+    render(<SessionsScreen scope={{ projectId: "p1" }} />);
+    fireEvent.click(screen.getAllByRole("button", { name: "Session actions" })[0] as HTMLElement);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Stop session" }));
+    expect(stopSession).not.toHaveBeenCalled();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent("run: r9 stops now.");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Stop session" }));
+    expect(stopSession).toHaveBeenCalledWith("r9", expect.anything());
   });
 });

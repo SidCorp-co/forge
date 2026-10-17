@@ -122,8 +122,11 @@ export const runPipelineStepAnswerSchema = z.object({
   released: z.boolean(),
   /** Master sessions core holds live on the project. */
   masters: z.number().int().positive(),
-  /** Boxes the wake reached: a box room with a listener, not a count of masters. */
-  boxesReached: z.number().int().nonnegative(),
+  /** Boxes that heard the wake: a box room with a listener. Hearing is not taking. */
+  boxesHeard: z.number().int().nonnegative(),
+  /** Live sessions holding the issue as core answers. A master takes the offer on its own pass, after
+   *  this answer, so zero is the usual answer and says nothing has taken the issue yet. */
+  taken: z.number().int().nonnegative(),
 });
 
 export const patchIssuesBatch = describeOperation({
@@ -149,7 +152,7 @@ export const enrichIssue = describeOperation({
 export const runPipelineStep = describeOperation({
   summary: "Offer an issue at the entry status to the project's masters by hand",
   description:
-    'Mints no job: it releases the issue past a closed entry gate and wakes the boxes bound to the project, whose masters take it. Refused before anything is written where no master runs on the project.',
+    'Mints no job: it releases the issue past a closed entry gate and wakes the boxes bound to the project, whose masters take it on their own pass. The answer counts the boxes that heard the wake apart from the sessions already holding the issue. Refused before anything is written where no master runs on the project.',
   responses: {
     202: json(runPipelineStepAnswerSchema, 'The issue was offered to the masters'),
     403: fail('FORBIDDEN', 'the caller is not a project member with write access'),

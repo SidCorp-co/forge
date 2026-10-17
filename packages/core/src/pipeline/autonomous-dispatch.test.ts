@@ -85,13 +85,37 @@ describe('dispatchDriveManual', () => {
     wakeMastersForProject.mockResolvedValueOnce({ boxes: 2, delivered: 3, reached: 1 });
     await expect(
       dispatchDriveManual({ ...BASE, status: 'open', entryGated: true }),
-    ).resolves.toEqual({ released: true, masters: 2, boxesReached: 1 });
+    ).resolves.toEqual({ released: true, masters: 2, boxesHeard: 1, taken: 0 });
 
     expect(insertAndEnqueueJob).not.toHaveBeenCalled();
     expect(openIssueRun).not.toHaveBeenCalled();
     expect(wakeMastersForProject).toHaveBeenCalledTimes(1);
-    expect(dbExecute).toHaveBeenCalledTimes(2);
+    expect(dbExecute).toHaveBeenCalledTimes(3);
     expect(selectLimit).not.toHaveBeenCalled();
+  });
+
+  // ISS-1228 round 13: two boxes hearing the wake were read as two boxes having taken the issue.
+  it('answers boxes that heard the offer apart from sessions that took it', async () => {
+    dbExecute.mockResolvedValueOnce([{ n: 1 }]);
+    dbExecute.mockResolvedValueOnce([]);
+    dbExecute.mockResolvedValueOnce([]);
+    wakeMastersForProject.mockResolvedValueOnce({ boxes: 2, delivered: 2, reached: 2 });
+    await expect(
+      dispatchDriveManual({ ...BASE, status: 'open', entryGated: false }),
+    ).resolves.toEqual({ released: false, masters: 1, boxesHeard: 2, taken: 0 });
+  });
+
+  it('counts each live session holding the issue once, and no row core has let go', async () => {
+    dbExecute.mockResolvedValueOnce([{ n: 1 }]);
+    dbExecute.mockResolvedValueOnce([]);
+    dbExecute.mockResolvedValueOnce([
+      { session_id: 's-1', held: true },
+      { session_id: 's-1', held: true },
+      { session_id: 's-2', held: false },
+    ]);
+    await expect(
+      dispatchDriveManual({ ...BASE, status: 'open', entryGated: false }),
+    ).resolves.toMatchObject({ taken: 1 });
   });
 
   // ISS-1228 round 11: with no master the press was answered as though something would take it.

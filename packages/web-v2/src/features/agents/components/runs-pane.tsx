@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { EmptyState, ErrorState, Input, MonoTag, Skeleton } from "@/design";
+import { EmptyState, ErrorState, Input, MonoTag, Skeleton, STOPPED_WORD } from "@/design";
 import { useNow } from "@/design/hooks/use-now";
 import { useProjectRuns } from "@/features/runs/hooks";
 import type { PipelineRunListItem } from "@/features/runs/types";
@@ -26,7 +26,7 @@ export interface RunsPaneProps {
 const CLOSED_STATUS_WORD: Record<string, string> = {
   completed: "Completed",
   failed: "Failed",
-  cancelled: "Cancelled",
+  cancelled: STOPPED_WORD,
 };
 
 const RUN_KIND_WORD: Record<string, string> = {
@@ -59,7 +59,7 @@ function WorkedIssue({ slug, href, label, title }: { slug: string; href: string;
   return (
     <span className="flex min-w-0 max-w-full items-baseline gap-2">
       <IssueLink slug={slug} href={href} label={label} />
-      {title && <span className="fg-body-sm min-w-0 truncate text-muted">{title}</span>}
+      {title && <span className="fg-body-sm min-w-0 break-words text-muted">{title}</span>}
     </span>
   );
 }

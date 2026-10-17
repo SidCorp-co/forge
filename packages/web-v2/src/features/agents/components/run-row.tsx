@@ -5,8 +5,8 @@ import { usePathname } from "next/navigation";
 import { Icon, MonoTag, SILENCE_TONE } from "@/design";
 import { TONE_META } from "@/design/status";
 import { formatRelativeTime } from "@/lib/utils/format";
+import { waitingOnText } from "@/features/sessions/status-sentences";
 import {
-  blockerText,
   closeMarks,
   disagreement,
   disagreementText,
@@ -107,15 +107,13 @@ export interface RunRowProps {
   slug: string;
 }
 
-/** Who can end the wait and what the run waits on, in the box's own words; the questions tab is a
- *  link beside it rather than a paraphrase in its place. */
-function WaitingOn({ row, who }: { row: RunSessionRow; who: string }) {
+/** Who can end the wait and what the run waits on, in the box's own words and the session page's
+ *  sentences; the questions tab is a link beside it rather than a paraphrase in its place. */
+function WaitingOn({ row }: { row: RunSessionRow }) {
   const pathname = usePathname() || "";
   return (
     <span className="fg-caption flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 text-muted">
-      <span className="min-w-0 break-words">
-        {row.waitingOn ? `Waiting on ${who} — ${row.waitingOn}` : `Waiting on ${who}`}
-      </span>
+      <span className="min-w-0 break-words">{waitingOnText(row.blockerKind, row.waitingOn)}</span>
       {row.waitingOn && row.blockerKind === "human" && (
         <Link
           href={`${pathname}?tab=questions&q=${encodeURIComponent(row.waitingOn)}`}
@@ -137,7 +135,7 @@ function WaitingOn({ row, who }: { row: RunSessionRow; who: string }) {
  */
 export function RunRow({ row, now, slug }: RunRowProps) {
   const issues = row.issues ?? [];
-  const who = blockerText(row.blockerKind);
+  const waits = row.blockerKind != null;
   const core = coreReadingLines(row, now);
   return (
     <li className="flex flex-col gap-2 py-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3 sm:gap-y-1.5">
@@ -155,14 +153,14 @@ export function RunRow({ row, now, slug }: RunRowProps) {
               <span className="flex-none">
                 <MonoTag>{i.issueKey}</MonoTag>
               </span>
-              {i.title && <span className="fg-body-sm min-w-0 truncate text-muted">{i.title}</span>}
+              {i.title && <span className="fg-body-sm min-w-0 break-words text-muted">{i.title}</span>}
             </Link>
           ))
         )}
       </span>
-      {(who || core.lines.length > 0) && (
+      {(waits || core.lines.length > 0) && (
         <span className="flex min-w-0 flex-col gap-1 sm:order-last sm:basis-full sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-4">
-          {who && <WaitingOn row={row} who={who} />}
+          {waits && <WaitingOn row={row} />}
           <CoreReading lines={core.lines} silence={core.silence} />
         </span>
       )}

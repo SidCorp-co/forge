@@ -91,7 +91,7 @@ describe("the Agents runs tab with nothing running on a box", () => {
     expect(rows.map((r) => (r.querySelector("[data-run-status]") as HTMLElement).textContent)).toEqual([
       "Failed",
       "Completed",
-      "Cancelled",
+      "Stopped",
       "Completed",
     ]);
   });
@@ -271,7 +271,7 @@ describe("the runs a box reports (ISS-1228 round 8)", () => {
     ];
     pane();
     const row = within(screen.getByRole("list", { name: "Runs a box reports" })).getByRole("listitem");
-    expect(row).toHaveTextContent("Waiting on a person — approve the database restore in Coolify");
+    expect(row).toHaveTextContent("Waiting on a person. Approve the database restore in Coolify.");
     expect(row).not.toHaveTextContent(/read the decision/);
   });
 
@@ -384,5 +384,62 @@ describe("the band over the runs tab (ISS-1228 criterion 49)", () => {
     state.total = 1;
     pane();
     expect(screen.getByText("Every open run has a job or a live agent behind it.")).toBeInTheDocument();
+  });
+});
+
+// ISS-1228 round 13: judge-34 read an ended run as orange "Quiet. No report for 19m." on the row that
+// said its box reported two seconds before, core's end of it as a bare "Stopped checking in", and a
+// closed run's title cut to "Export the monthly report..." at 390.
+describe("an ended run and a long title on the runs tab (ISS-1228 round 13)", () => {
+  it("says no Quiet of a run whose session core ended, and why it ended as sentences", () => {
+    state.ledger = [
+      ledgerRow({
+        sessionStatus: "failed",
+        sessionFailureReason: "session_stopped_checking_in",
+        lastActivityAt: new Date(Date.now() - 19 * 60_000).toISOString(),
+        observedAt: new Date(Date.now() - 2_000).toISOString(),
+      }),
+    ];
+    pane();
+    const row = within(screen.getByRole("list", { name: "Runs a box reports" })).getByRole("listitem");
+    expect(row).not.toHaveTextContent(/Quiet|No report/);
+    expect(row).toHaveTextContent("The session ended. Stopped checking in.");
+    expect(row).toHaveTextContent("Last reported working");
+  });
+
+  it("calls a run a person stopped Stopped while its box still reports it working, with no Quiet line", () => {
+    state.ledger = [
+      ledgerRow({
+        sessionStatus: "failed",
+        sessionFailureReason: "user_cancelled",
+        lastActivityAt: new Date(Date.now() - 19 * 60_000).toISOString(),
+        observedAt: new Date(Date.now() - 2_000).toISOString(),
+      }),
+    ];
+    pane();
+    const row = within(screen.getByRole("list", { name: "Runs a box reports" })).getByRole("listitem");
+    expect(within(row).getByText("Stopped")).toBeInTheDocument();
+    expect(row).toHaveTextContent("A person stopped the session.");
+    expect(row).toHaveTextContent("The box says this is live. Core says the session ended.");
+    expect(row).not.toHaveTextContent(/Cancelled|Quiet|Working/);
+  });
+
+  it("wraps a long title on a reported run and a closed one rather than cutting it", () => {
+    state.ledger = [
+      ledgerRow({ issues: [{ issueKey: "ISS-3", leaseReturned: false, title: "Export the monthly report as CSV" }] }),
+    ];
+    pane();
+    const reported = screen.getByText("Export the monthly report as CSV");
+    expect(reported.className).not.toMatch(/\btruncate\b/);
+    expect(reported.className).toContain("break-words");
+    cleanup();
+    state.ledger = [];
+    state.runs = [run({ id: "c1", status: "cancelled", issueRef: "ISS-3", issueTitle: "Export the monthly report as CSV" })];
+    state.total = 1;
+    pane();
+    const closed = screen.getByText("Export the monthly report as CSV");
+    expect(closed.className).not.toMatch(/\btruncate\b/);
+    expect(closed.className).toContain("break-words");
+    expect(screen.getByText("Stopped")).toBeInTheDocument();
   });
 });
