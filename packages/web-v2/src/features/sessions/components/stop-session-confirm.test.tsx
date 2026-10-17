@@ -12,11 +12,18 @@ expect.extend(matchers);
 afterEach(cleanup);
 
 describe("the stop confirmation", () => {
-  it("names the session and its box, and what the stop ends", () => {
+  it("opens on the session as a capitalised sentence, names its box, and says what the stop ends", () => {
     expect(stopSessionMessage({ name: "run: r2", box: "j34-a" })).toBe(
-      "Core stops run: r2 on j34-a now and lets go of any issue it holds. Its box is told to end the agent's process. It reads Stopped from then on, and Rerun starts a fresh session.",
+      "Session r2 on j34-a stops now. Core lets go of any issue it holds, and its box is told to end the agent's process. It reads Stopped from then on, and Rerun starts a fresh session.",
     );
-    expect(stopSessionMessage({ name: "run: r2" })).toMatch(/^Core stops run: r2 now /);
+    expect(stopSessionMessage({ name: "run: r2" })).toMatch(/^Session r2 stops now\. /);
+  });
+
+  it("never says the raw title or Session twice, whatever name a surface has for it", () => {
+    expect(stopSessionMessage({ name: "Fix the export" })).toMatch(/^Session Fix the export stops now\. /);
+    expect(stopSessionMessage({ name: "This session", box: "bravo" })).toMatch(/^This session on bravo stops now\. /);
+    expect(stopSessionMessage({ name: "Session 77777777" })).toMatch(/^Session 77777777 stops now\. /);
+    expect(stopSessionMessage({ name: "run: r2" })).not.toMatch(/run:/);
   });
 
   it("is closed until a session is named, and stops nothing on Keep it running", () => {

@@ -81,7 +81,8 @@ async function master(): Promise<void> {
 async function runSessionHolding(seq: number, status: string): Promise<string> {
   const runId = randomUUID();
   await harness.db.execute(sql`
-    INSERT INTO pipeline_runs (id, project_id, kind, status) VALUES (${runId}, ${projectId}::uuid, 'system', 'running')
+    INSERT INTO pipeline_runs (id, project_id, kind, status, metadata)
+    VALUES (${runId}, ${projectId}::uuid, 'system', 'running', ${JSON.stringify({ runGroup: [`ISS-${seq}`] })}::jsonb)
   `);
   const id = randomUUID();
   await harness.db.execute(sql`
@@ -198,5 +199,20 @@ describe('Run says what it did, or refuses by name (ISS-1228 round 11)', () => {
     expect(status).toBe(202);
     expect(body).toMatchObject({ released: true, masters: 1 });
     expect(await released(issueId)).toBe(true);
+  });
+});
+
+describe("a stop reads the same on the issue's runs as on the session (ISS-1228 round 13)", () => {
+  it('closes the run a person stopped, so the issue page reads it cancelled rather than running', async () => {
+    const issueId = await openIssue();
+    const sessionId = await runSessionHolding(1, 'running');
+    const auth = { authorization: `Bearer ${jwt}` };
+
+    const stop = await fetch(`${server.baseUrl}/api/agent-sessions/${sessionId}/cancel`, { method: 'POST', headers: auth });
+    expect(stop.status).toBe(200);
+
+    const res = await fetch(`${server.baseUrl}/api/run-journal?projectId=${projectId}&issueId=${issueId}`, { headers: auth });
+    const { runs } = (await res.json()) as { runs: Array<{ status: string }> };
+    expect(runs.map((r) => r.status)).toEqual(['cancelled']);
   });
 });

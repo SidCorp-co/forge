@@ -69,9 +69,10 @@ function useSessionMutation<TArgs, TData>(
 }
 
 /** Every read a stop changes, re-read at once rather than on its next poll: the session itself, the
- *  lists naming it, the holds it kept and the runs it ran (ISS-1228). */
+ *  lists naming it, the holds it kept, the runs it ran and the issue pages showing them, whose run
+ *  core closed with it (ISS-1228). */
 export function refreshAfterStop(qc: QueryClient): void {
-  for (const queryKey of [["agent-sessions"], ["agent-session"], ["sessions-and-holds"], ["run-sessions"]]) {
+  for (const queryKey of [["agent-sessions"], ["agent-session"], ["sessions-and-holds"], ["run-sessions"], ["issue"]]) {
     void qc.invalidateQueries({ queryKey });
   }
 }
