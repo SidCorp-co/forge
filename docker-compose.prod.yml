@@ -124,7 +124,8 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: "8080"
-      # Proxies in front of core that append to X-Forwarded-For: Cloudflare, then Traefik.
+      # Proxies in front of core that append to X-Forwarded-For: Cloudflare, then a Traefik that
+      # trusts Cloudflare's addresses. packages/core/.env.example says what a shorter chain does.
       TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-2}
       DATABASE_URL: postgres://forge:${POSTGRES_PASSWORD}@postgres:5432/forge
       JWT_SECRET: ${JWT_SECRET}
