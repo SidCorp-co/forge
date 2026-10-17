@@ -551,8 +551,6 @@ export function sessionChipStatus(display: AgentSessionDisplayStatus, failureRea
   return outcome.bucket === "active" ? statusToChip(display) : outcome.statusKey;
 }
 
-/** An ended session's outcome in the one word its chip says, which its page's header, run stats and
- *  turn line all say (ISS-1228). */
 export function sessionEndWord(display: AgentSessionDisplayStatus, failureReason?: string | null): string {
   return sessionStatusLabel(sessionChipStatus(display, failureReason));
 }

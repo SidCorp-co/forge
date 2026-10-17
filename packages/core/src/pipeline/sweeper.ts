@@ -2,7 +2,6 @@ import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { type AlertSweepResult, runAlertSweep } from '../admin/alert-sweeper.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
-import { endsOnItsOwnClockSql } from '../devices/session-silence.js';
 import { broadcastSessionEvent } from '../jobs/agent-session-link.js';
 import { boxAnswersSql } from '../jobs/box-answers.js';
 import { killGraceMs } from '../jobs/kill-gate.js';
@@ -15,7 +14,12 @@ import {
 import { CHAT_IDLE_CLOSE_MS, oneShotDeviceGraceMs } from '../jobs/loop-monitor-thresholds.js';
 import { parkedOnAHuman } from '../jobs/park-deadline.js';
 import { recordPipelineSweeperTick } from '../jobs/pgboss-health.js';
-import { CLIENT_SESSION_KINDS, kindTuple, PIPELINE_SESSION_KINDS } from '../jobs/session-kinds.js';
+import {
+  CLIENT_SESSION_KINDS,
+  endsOnItsOwnClockSql,
+  kindTuple,
+  PIPELINE_SESSION_KINDS,
+} from '../jobs/session-kinds.js';
 import { LIVE_SESSION_STATUSES } from '../lifecycle/status-sets.js';
 import { applyKernelTransition, SWEEP_SESSION_COLUMNS } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';

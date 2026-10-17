@@ -2,8 +2,7 @@ import type { HealthKey } from "@/design/status";
 import type { RunnerLine } from "@/features/project-dashboard/derive";
 import { plural } from "@/features/project-dashboard/shape";
 
-/** A box's state in words: busy and free are said only of a box online, as the dashboard counts them,
- *  and a busy one says how many live sessions it holds (ISS-1228). */
+/** A box's state in words: busy and free are said only of a box online, as the dashboard counts them. */
 export function boxWord(line: RunnerLine, activityRead: boolean): string {
   const hosting = line.sessions > 0 ? ` · ${plural(line.sessions, "live session", "live sessions")}` : "";
   if (line.draining) return `Draining${hosting}`;

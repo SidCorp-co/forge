@@ -23,6 +23,7 @@ const run = (id: string, startMin: number, over: Partial<Run> = {}): Run => ({
   finishedAt: at(startMin + 30),
   ordinal: startMin + 1,
   group: null,
+  sessionId: null,
   ...over,
 });
 
@@ -118,6 +119,14 @@ describe('groupByRun', () => {
     expect(runs.map((r) => [r.runId, r.costUsd])).toEqual([
       ['r2', null],
       ['r1', 1.25],
+    ]);
+  });
+
+  it('answers the newest session each run started, null for a run none ran', () => {
+    const { runs } = groupByRun([run('r1', 0, { sessionId: 's1' }), run('r2', 30)], [], 'i1');
+    expect(runs.map((r) => [r.runId, r.sessionId])).toEqual([
+      ['r2', null],
+      ['r1', 's1'],
     ]);
   });
 

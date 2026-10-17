@@ -1,6 +1,6 @@
 import { unrecognised } from "@/features/overview/job-kinds";
 import { liveSessionWord } from "@/features/sessions/session-word";
-import { BOX_SENT_NO_REPORT, quietWhyText, waitingOnText } from "@/features/sessions/status-sentences";
+import { BOX_SENT_NO_REPORT, MASTER_HAS_NO_REPORT, quietWhyText, waitingOnText } from "@/features/sessions/status-sentences";
 import { STALLED_THRESHOLD_MS, sessionSilence, sessionTitle } from "@/features/sessions/types";
 import { formatElapsed } from "@/lib/utils/format";
 import type { HeldIssue, Holder, LiveSession, PersonOwes } from "./types";
@@ -43,9 +43,9 @@ export interface WaitingOn {
 
 /** Who can end the wait and what it waits on, in the sentences every surface says it in; a box that
  *  sent no report is said to, not read as unblocked. */
-export function waitingOnOf(session: Pick<LiveSession, "report">): WaitingOn {
+export function waitingOnOf(session: Pick<LiveSession, "kind" | "report">): WaitingOn {
   const report = session.report;
-  if (!report) return { text: BOX_SENT_NO_REPORT, blocked: false };
+  if (!report) return { text: session.kind === "master" ? MASTER_HAS_NO_REPORT : BOX_SENT_NO_REPORT, blocked: false };
   if (report.work !== "blocked") return { text: "Nothing", blocked: false };
   return { text: waitingOnText(report.blockerKind, report.waitingOn), blocked: true };
 }

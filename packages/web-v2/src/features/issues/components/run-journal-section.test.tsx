@@ -32,6 +32,7 @@ function run(over: Partial<RunView>): RunView {
     startedAt: at(169_000),
     finishedAt: at(60_000),
     costUsd: null,
+    sessionId: null,
     attempts: [],
     sessions: [],
     ...over,

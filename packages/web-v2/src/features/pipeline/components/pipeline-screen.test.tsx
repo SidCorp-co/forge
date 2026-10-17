@@ -131,10 +131,10 @@ describe("the Pipeline page with a reading", () => {
     expect(within(row).getByText("Quiet · 5m ago")).toBeInTheDocument();
   });
 
-  it("says a session the box never reported on is unreported, not that nothing blocks it", () => {
+  it("says a master has no wait report of its own, not that nothing blocks it", () => {
     screenFor();
     const row = screen.getAllByRole("listitem").find((r) => r.getAttribute("data-session-id") === "m1") as HTMLElement;
-    expect(within(row).getByText("The box has not reported.")).toBeInTheDocument();
+    expect(within(row).getByText("A box reports runs, not masters.")).toBeInTheDocument();
     expect(within(row).queryByText("Nothing")).not.toBeInTheDocument();
   });
 

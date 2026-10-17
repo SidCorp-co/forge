@@ -19,6 +19,8 @@ export const boxOfflineText = (when: string): string => `The box is offline. It 
 
 export const BOX_SENT_NO_REPORT = "The box has not reported.";
 
+export const MASTER_HAS_NO_REPORT = "A box reports runs, not masters.";
+
 export type SessionDisagreement = "box-live-core-terminal" | "box-exited-core-running";
 
 const CORE_SAYS: Record<SessionDisagreement, string> = {

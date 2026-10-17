@@ -338,6 +338,8 @@ export interface JournalRun {
   startedAt: string;
   finishedAt: string | null;
   costUsd: number | null;
+  /** The newest agent session the run started; null where none ran it. */
+  sessionId: string | null;
   attempts: JournalAttempt[];
 }
 

@@ -128,8 +128,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "agent-session.deleted": {
 			scheduleInvalidation(qc, ["agent-sessions"]);
 			scheduleInvalidation(qc, ["sessions-and-holds"]);
-			// A session's events name no issue, and its end closes the run an issue page lists, so every
-			// open issue page re-reads its runs (ISS-1228).
+			// A session's events name no issue, so every open issue page re-reads its runs (ISS-1228).
 			scheduleInvalidation(qc, [RUN_JOURNAL]);
 			// The rail and the projects console count live sessions off the health rollup.
 			scheduleInvalidation(qc, ["projects", "health"]);

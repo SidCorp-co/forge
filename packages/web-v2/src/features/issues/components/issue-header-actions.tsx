@@ -25,7 +25,6 @@ export function IssueHeaderActions({
   onCopyLink,
 }: {
   slug: string;
-  /** The page of the session holding the issue, else of its newest; `null` where none has run. */
   sessionHref: string | null;
   status: IssueStatus;
   releaseRunId: string | null | undefined;

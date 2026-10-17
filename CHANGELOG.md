@@ -3195,9 +3195,9 @@
 ### Fixed
 
 - **A stop reaches every open page.** An issue page left open in another tab reads its run Stopped without a reload, and stopping from a session's own page says "Session stopped" as everywhere else. (ISS-1228)
-- **Open session opens a session.** It goes to the session holding the issue, else its newest, and is not shown for an issue no session has run. (ISS-1228)
-- **A run session's countdown no longer jumps when its box goes silent.** Core ends a run session or a master ten minutes after it last checked in, whatever its box does, so the countdown holds, and an offline box reads "The box is offline." beside its live session. (ISS-1228)
-- **The Pipeline page words a blocked session's wait as every other page does**, such as "Waiting on a person. Approve the database restore in Coolify." (ISS-1228)
+- **Open session opens a session.** It goes to the session holding the issue, else its newest, a run session that ended included, and is not shown for an issue no session has run. (ISS-1228)
+- **A run session's countdown no longer jumps when its box goes silent.** Core ends it ten minutes after its last check-in, whatever the box does, and an offline box reads "The box is offline." beside it. (ISS-1228)
+- **The Pipeline page words a blocked session's wait as every other page does**, such as "Waiting on a person. Approve the database restore in Coolify.", and a master's says "A box reports runs, not masters." (ISS-1228)
 - **An ended session's page says its outcome in one word**, the same in its header, run stats and last line, and a remedy says "Retry to start it again." (ISS-1228)
 - **A box says how many live sessions it holds**, such as "Busy · 6 live sessions", and "Free" once none is live. (ISS-1228)
 - **A run on an issue says which time is which**: "Ended 1m ago · ran 1m 49s", or "Started 3m ago" while it runs. (ISS-1228)

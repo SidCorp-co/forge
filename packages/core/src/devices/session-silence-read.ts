@@ -3,8 +3,9 @@ import { db } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/session-vocabulary.js';
 import { boxAnswersSql } from '../jobs/box-answers.js';
 import { parkedOnAHuman, residencySeconds } from '../jobs/park-deadline.js';
+import { endsOnItsOwnClock } from '../jobs/session-kinds.js';
 import { LIVE_SESSION_STATUSES } from '../lifecycle/status-sets.js';
-import { endsOnItsOwnClock, type SilenceSubject, silenceDeadline } from './session-silence.js';
+import { type SilenceSubject, silenceDeadline } from './session-silence.js';
 
 const TERMINAL_SQL = sql.raw(terminalAgentSessionStatuses.map((s) => `'${s}'`).join(', '));
 const LIVE_SQL = sql.raw(LIVE_SESSION_STATUSES.map((s) => `'${s}'`).join(', '));

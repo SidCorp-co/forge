@@ -125,8 +125,7 @@ export function TurnStage({
   waitingOn?: string;
   /** The session's word (`sessionWord`), which a `working` line says in place of Working. */
   activity?: string;
-  /** An ended session's outcome as its chip says it (`sessionEndWord`), which a `failed` line says
-   *  in place of Failed so the page says one word; the alert mark only where it is a failure. */
+  /** An ended session's `sessionEndWord`, said in place of Failed. */
   ended?: { word: string; icon: IconName; failure: boolean };
 }) {
   if (stage === "quiet" || stage === "blocked") {

@@ -175,8 +175,7 @@ function QueuedRow({
   );
 }
 
-/** Where the panel leads: a live agent's own session page, or the Pipeline page for a step no session
- *  runs yet (ISS-1228: the runs list it used to open reads no `?issue=`). */
+/** A live agent's session page, or the Pipeline page for a step no session runs yet. */
 function PanelLink({ href, label }: { href: string; label: string }) {
   return (
     <Link

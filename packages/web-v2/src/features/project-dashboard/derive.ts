@@ -465,8 +465,6 @@ export function runnersSummary(
       const online = r.deviceStatus === "online" && !draining;
       const act = activeByRunner.get(r.runnerId);
       const hosted = (r.deviceId ? sessionsByDevice.get(r.deviceId) : undefined) ?? 0;
-      // Once the live sessions are read a box is busy exactly while it holds one, which is the count
-      // its word says; before that the job snapshot answers (ISS-1228).
       const busy = sessions ? hosted > 0 : act ? !!act.current : online && q.running > 0;
       return {
         id: r.runnerId,

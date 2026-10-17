@@ -26,8 +26,6 @@ const SESSION_LABELS: Partial<Record<StatusKey, string>> = {
   archived: STOPPED_WORD,
 };
 
-/** The word a session chip says for `status` where no live word replaces it: an ended session's one
- *  outcome word, which its page's turn line says too (ISS-1228). */
 export function sessionStatusLabel(status: StatusKey): string {
   return SESSION_LABELS[status] ?? (STATUS_META[status] ?? STATUS_META.queued).label;
 }

@@ -287,7 +287,6 @@ describe("a stopped session's turn line", () => {
   });
 });
 
-// ISS-1228 round 14 (judge-36): an ended session read Swept in its header and Failed in its turn line.
 describe("an ended session's turn line says the word its header says", () => {
   it("says the chip's word, with the alert mark only for a failure", () => {
     const { rerender } = render(
