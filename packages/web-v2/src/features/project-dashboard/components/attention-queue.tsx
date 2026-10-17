@@ -115,7 +115,7 @@ export function AttentionQueue({
             <>
               {" "}
               <Link href={`/projects/${slug}/issues?filter=blocked_on_person`} className="underline">
-                Every {WORK_STATE_LABELS.blocked_on_person.toLowerCase()} issue is in Issues
+                Every issue {WORK_STATE_LABELS.blocked_on_person.toLowerCase()} is in Issues
               </Link>
               .
             </>

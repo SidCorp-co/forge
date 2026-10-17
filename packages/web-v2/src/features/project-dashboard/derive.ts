@@ -4,7 +4,7 @@ import { failedJobWords } from "@/features/attention/failed-job-words";
 import type { AttentionView } from "@/features/attention/types";
 import { statusLabel } from "@/features/issues/derive";
 import type { IssueStatus } from "@/features/issues/types";
-import { jobKindLabel } from "@/features/overview/job-kinds";
+import { jobKindsLabel } from "@/features/overview/job-kinds";
 import type { PipelineRunListItem, StepDurationRow } from "@/features/runs/types";
 import type { ProjectHealthRow } from "@/features/projects/types";
 import {
@@ -116,7 +116,7 @@ export function spendByStep(rows: StepDurationRow[] | undefined): SpendByStepDat
   const pct = (cost: number) => (total > 0 ? (cost / total) * 100 : 0);
   const segments: SpendSegment[] = ranked.slice(0, SPEND_INK.length).map(([step, cost], i) => ({
     key: step,
-    label: jobKindLabel(step),
+    label: jobKindsLabel(step),
     color: SPEND_INK[i] as string,
     cost,
     pct: pct(cost),

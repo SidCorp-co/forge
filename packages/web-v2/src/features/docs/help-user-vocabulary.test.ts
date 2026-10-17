@@ -11,7 +11,7 @@ import { cleanup, render } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { QualitySection } from "@/features/overview/components/quality-section";
-import { JOB_KIND_LABEL } from "@/features/overview/job-kinds";
+import { JOB_KIND_LABEL, JOB_KINDS_LABEL } from "@/features/overview/job-kinds";
 import type { PulseQuality } from "@/features/overview/types";
 import { inlineCode } from "@/features/project-settings/components/inline-code";
 import { GAP_TEXT } from "@/features/project-settings/components/release-section";
@@ -230,7 +230,9 @@ describe("the screens judge-15 read, against the same rules", () => {
   });
 
   it("every kind of work the Overview counts is named in the screen's words", () => {
-    for (const label of Object.values(JOB_KIND_LABEL)) expect([label, offences(label)]).toEqual([label, []]);
+    for (const label of [...Object.values(JOB_KIND_LABEL), ...Object.values(JOB_KINDS_LABEL)]) {
+      expect([label, offences(label)]).toEqual([label, []]);
+    }
   });
 
   it("the Overview's quality section, drawn, prints no stage, stored code or stored type", () => {

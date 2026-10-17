@@ -430,9 +430,10 @@ export function IssuesListView({
           onChange={(e) => setRawQ(e.target.value)}
           className="w-full sm:w-64"
         />
-        <div className="overflow-x-auto">
+        <div className="w-full sm:w-auto sm:overflow-x-auto">
           <SegmentedControl
             stableCountWidth
+            wrapNarrow
             options={tabs}
             value={filter}
             onChange={(v) => setParams({ filter: v !== "all" ? v : "", page: "" })}

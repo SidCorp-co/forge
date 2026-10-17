@@ -26,6 +26,13 @@ describe("the Needs your attention list with nothing in it", () => {
     expect(screen.getByText(/Showing 0 of 3\./u)).toBeInTheDocument();
   });
 
+  // ISS-1229 r14, the master on the shots: the footer read "Every blocked on a person issue is in Issues".
+  it("says where the rest are in a sentence", () => {
+    render(<AttentionQueue items={[]} cut={{ shown: 0, whole: 3, peopleCut: true }} slug="pair" now={0} />);
+    const link = screen.getByRole("link", { name: "Every issue blocked on a person is in Issues" });
+    expect(link).toHaveAttribute("href", "/projects/pair/issues?filter=blocked_on_person");
+  });
+
   it("does not say all caught up where the response was refused", () => {
     render(<AttentionQueue items={[]} cut={null} refusal="Needs you cannot say how much it leaves out." slug="pair" now={0} />);
     expect(screen.queryByText("All caught up")).toBeNull();

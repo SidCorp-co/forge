@@ -186,7 +186,7 @@ describe("projectAttention (ISS-1156)", () => {
     const [onIssue] = projectAttention({ ...view([]), failedJobs: [failed("Nightly stock import")] }, "sable", []);
     expect(onIssue).toMatchObject({ title: "Nightly stock import", detail: "Issue work failed: Session lost" });
     const [onNone] = projectAttention({ ...view([]), failedJobs: [failed()] }, "sable", []);
-    expect(onNone?.title).toBe("Releases failed: Runner unreachable");
+    expect(onNone?.title).toBe("Release failed: Runner unreachable");
     expect(onNone?.detail).toBeUndefined();
   });
 

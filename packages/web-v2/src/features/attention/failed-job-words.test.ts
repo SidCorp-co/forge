@@ -8,8 +8,9 @@ describe("a failed job, in words", () => {
     const said = failedJobWords({ jobType: "drive", failure: "session_lost" });
     expect(said).toBe("Issue work failed: Session lost");
     expect(said).not.toMatch(/drive|session_lost/u);
+    // One job is one release (ISS-1229 r14, the master on the shots).
     expect(failedJobWords({ jobType: "release_batch", failure: "runner_unreachable" })).toBe(
-      "Releases failed: Runner unreachable",
+      "Release failed: Runner unreachable",
     );
   });
 
