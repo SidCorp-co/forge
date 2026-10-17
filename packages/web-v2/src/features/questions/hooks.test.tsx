@@ -49,7 +49,14 @@ vi.mock("../issues/api", async () => {
             claimedByRunId: null,
             closeRefusals: server.answered
               ? []
-              : [{ code: "OPEN_QUESTIONS", reason: "holds 1 open question", clears: "Answer it." }],
+              : [
+                  {
+                    code: "OPEN_QUESTIONS",
+                    reason: "holds 1 open question",
+                    clears: "Answer it.",
+                    said: "It holds 1 open question. Answer it.",
+                  },
+                ],
             closeFailure: null,
           },
         ],

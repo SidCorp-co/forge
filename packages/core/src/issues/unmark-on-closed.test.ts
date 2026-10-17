@@ -140,12 +140,21 @@ describe('unmark, at the door a caller reaches (ISS-1108)', () => {
     expect((err as InstanceType<typeof MergeMarkerError>).code).toBe('ISSUE_NOT_FOUND');
   });
 
-  it('refuses to explain away a zero-row clear on a row that is neither', async () => {
+  it('refuses to explain away a zero-row clear on a row that is none of the three', async () => {
     clearedRows = [];
     rowNow = { id: ISSUE_ID, status: 'in_progress', mergedAt: AT };
     const err = await unmark().catch((e: unknown) => e);
     expect(err).not.toBeInstanceOf(MergeMarkerError);
-    expect((err as Error).message).toContain('neither missing nor Closed');
+    expect((err as Error).message).toContain('neither missing, Closed (closed) nor unmarked');
+  });
+
+  // ISS-1421 r5: an unmark with no mark answered 200 and wrote "Merge mark removed.".
+  it('refuses a zero-row clear on a row holding no mark by name, and writes no comment', async () => {
+    clearedRows = [];
+    rowNow = { id: ISSUE_ID, status: 'in_progress', mergedAt: null };
+    const err = await unmark().catch((e: unknown) => e);
+    expect((err as InstanceType<typeof MergeMarkerError>).code).toBe('NOT_MARKED_MERGED');
+    expect(auditBodies).toHaveLength(0);
   });
 
   it('still clears the claim on an issue the guard admits', async () => {

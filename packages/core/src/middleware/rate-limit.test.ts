@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RateLimitRule } from '../config/rate-limits.js';
-import { __resetRateLimitStore, getClientIp, rateLimit } from './rate-limit.js';
+import { __resetRateLimitStore, rateLimit } from './rate-limit.js';
 
 type UserVars = { user?: { id: string } };
 
@@ -151,37 +151,32 @@ describe('rateLimit middleware', () => {
   });
 });
 
-describe('getClientIp', () => {
-  it('takes the left-most entry of x-forwarded-for', () => {
-    const fakeCtx = {
-      req: {
-        header: (name: string) => {
-          const map: Record<string, string> = {
-            'x-forwarded-for': '1.2.3.4, 10.0.0.1, 10.0.0.2',
-          };
-          return map[name.toLowerCase()];
-        },
-      },
-    } as unknown as Parameters<typeof getClientIp>[0];
-    expect(getClientIp(fakeCtx)).toBe('1.2.3.4');
+// ISS-1421 r5 — the limiter keyed on the left-most X-Forwarded-For entry, which the client writes:
+// judge-33 sent ten registers in six minutes on beta against a limit of three an hour, none refused.
+// Behind Cloudflare and Traefik (TRUSTED_PROXY_HOPS=2) the client is the entry two from the right.
+describe('a forged X-Forwarded-For entry', () => {
+  beforeEach(() => {
+    __resetRateLimitStore();
   });
 
-  it('falls back to x-real-ip when xff is absent', () => {
-    const fakeCtx = {
-      req: {
-        header: (name: string) => {
-          const map: Record<string, string> = { 'x-real-ip': '5.6.7.8' };
-          return map[name.toLowerCase()];
-        },
-      },
-    } as unknown as Parameters<typeof getClientIp>[0];
-    expect(getClientIp(fakeCtx)).toBe('5.6.7.8');
+  it('does not lift the limit: every attempt is counted against the address the proxies vouch for', async () => {
+    const app = makeApp({ windowMs: 3_600_000, max: 3, by: 'ip' }, 'register');
+    const statuses: number[] = [];
+    for (let n = 1; n <= 5; n++) {
+      const res = await app.request('/hit', {
+        headers: { 'x-forwarded-for': `198.51.100.${n}, 203.0.113.7, 172.70.1.1` },
+      });
+      statuses.push(res.status);
+    }
+    expect(statuses).toEqual([200, 200, 200, 429, 429]);
   });
 
-  it('returns undefined when no headers are present', () => {
-    const fakeCtx = {
-      req: { header: () => undefined },
-    } as unknown as Parameters<typeof getClientIp>[0];
-    expect(getClientIp(fakeCtx)).toBeUndefined();
+  it('keeps two real clients behind the same proxies apart', async () => {
+    const app = makeApp({ windowMs: 3_600_000, max: 1, by: 'ip' }, 'register');
+    const from = (client: string) =>
+      app.request('/hit', { headers: { 'x-forwarded-for': `${client}, 172.70.1.1` } });
+    expect((await from('203.0.113.7')).status).toBe(200);
+    expect((await from('203.0.113.8')).status).toBe(200);
+    expect((await from('203.0.113.7')).status).toBe(429);
   });
 });

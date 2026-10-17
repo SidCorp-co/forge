@@ -80,7 +80,7 @@ describe("ISS-1350 — every git mark's commit is one the repository holds (real
       const refused = await refusal(() => mark(issue, OWN, 'human'));
       expect(refused.code).toBe('COMMIT_UNVERIFIED');
       expect(refused.message).toContain(says);
-      expect(refused.message).toContain('not recorded naming it unchecked');
+      expect(refused.message).toContain('The mark was not recorded naming it unchecked.');
       expect(refused.message).toContain(
         'mark it naming no commit, which records a claim that names none',
       );

@@ -329,10 +329,10 @@ describe('runScheduledReleaseCut — a row the finish could not close (ISS-1337)
     });
     expect(outcome.status).toBe('success');
     expect(outcome.leftOff).toEqual([
-      'ISS-2: holds 1 open question. Answer it, or void it with the reason it died with the work.',
+      'ISS-2: It holds 1 open question. Answer it, or void it with the reason it died with the work.',
     ]);
     expect(outcome.output).toContain('left off 1 issue whose close');
-    expect(outcome.output).toContain('ISS-2: holds 1 open question');
+    expect(outcome.output).toContain('ISS-2: It holds 1 open question');
   });
 
   it('cuts nothing when every waiting row is unclosable, and says so rather than "nothing waiting"', async () => {

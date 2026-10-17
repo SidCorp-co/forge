@@ -17,6 +17,12 @@ import { logger } from '../logger.js';
 export const DECISION_KEY = 'awaitingDecision';
 export const AWAITING_DECISION = 'awaiting_decision';
 
+/** What the held-job recovery writes on a release job it fenced while that job waited on a decision
+ *  (ISS-1421 r5). The release is handed back and its questions stay open, so the end of its run
+ *  voids nothing (`decision-hold.ts:voidOnRunEnd`). */
+export const DECISION_HANDBACK_REASON =
+  'the release job waited on a decision a person owes, so the release was handed back and its question kept open';
+
 const refSchema = z.object({
   v: z.literal(1),
   sourceJobId: z.uuid(),

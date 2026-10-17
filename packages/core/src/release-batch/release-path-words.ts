@@ -5,13 +5,11 @@
 // these sentences read the same shortfalls the page reads (`close-shortfall.ts`) before naming it.
 // Every sentence here is short and whole: `release-path-words.test.ts` holds each to that.
 
-import { eq } from 'drizzle-orm';
-import { env } from '../config/env.js';
-import { db } from '../db/client.js';
-import { type IssueStatus, projects } from '../db/schema.js';
+import type { IssueStatus } from '../db/schema.js';
 import { statusForCaller } from '../issues/status-sets.js';
-import { type CloseShortfall, rosterCloseShortfalls } from './close-shortfall.js';
+import { type CloseShortfall, rosterCloseShortfalls, shortfallSentence } from './close-shortfall.js';
 import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
+import { projectPages } from './release-links.js';
 
 /** How this project releases, as the sentences below choose by. */
 export type ReleasePath = 'gated' | 'ships-nothing' | 'no-live-target' | 'unread';
@@ -69,20 +67,8 @@ export async function readReleaseDoors(
   path: ReleasePath,
 ): Promise<ReleaseDoors> {
   if (path !== 'no-live-target') return NO_DOORS;
-  try {
-    const [row] = await db
-      .select({ slug: projects.slug })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-    if (!row?.slug) return NO_DOORS;
-    const base = env.APP_BASE_URL.replace(/\/+$/, '');
-    return {
-      addLiveTarget: `${base}/projects/${encodeURIComponent(row.slug)}/settings?${ADD_LIVE_TARGET_QUERY}`,
-    };
-  } catch {
-    return NO_DOORS;
-  }
+  const pages = await projectPages(projectId);
+  return pages ? { addLiveTarget: pages.settings(ADD_LIVE_TARGET_QUERY) } : NO_DOORS;
 }
 
 function noLiveTarget(doors: ReleaseDoors): string[] {
@@ -109,15 +95,9 @@ function heldBack(holds: GateHolds): string[] | null {
   if (holds.holds.length === 0) return null;
   return [
     'A release cannot close this issue yet.',
-    ...holds.holds.flatMap((h) => [holdSentence(h.reason), h.clears]),
+    ...holds.holds.flatMap((h) => [shortfallSentence(h.reason), h.clears]),
     'Release now appears on its page once that is done.',
   ];
-}
-
-/** A shortfall's reason ("not marked merged", "holds 1 open question") as a sentence of its own. */
-function holdSentence(reason: string): string {
-  const verb = /^(holds|has) /.test(reason) ? 'It' : /^no /.test(reason) ? 'It has' : 'It is';
-  return `${verb} ${reason}.`;
 }
 
 /** The refusal's sentences on where a release starts, for a caller that may hold the API. */

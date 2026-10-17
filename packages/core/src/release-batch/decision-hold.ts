@@ -32,6 +32,7 @@ import { QuestionRefused, voidQuestion } from '../questions/write.js';
 import { readAbortStamp } from './abort-stamp.js';
 import {
   AWAITING_DECISION,
+  DECISION_HANDBACK_REASON,
   DECISION_KEY,
   type DecisionQuestionView,
   type DecisionRef,
@@ -268,6 +269,13 @@ export async function requeueOnAnswer(questionId: string): Promise<boolean> {
 export async function voidOnRunEnd(runId: string, toStatus: string): Promise<number> {
   const decision = await decisionOfRun(runId);
   if (!decision) return 0;
+  // A release handed back on its decision leaves the question to the issue it is asked on.
+  const [held] = await db
+    .select({ error: jobs.error })
+    .from(jobs)
+    .where(eq(jobs.id, decision.jobId))
+    .limit(1);
+  if (held?.error === DECISION_HANDBACK_REASON) return 0;
   const [run] = await db
     .select({ metadata: pipelineRuns.metadata })
     .from(pipelineRuns)

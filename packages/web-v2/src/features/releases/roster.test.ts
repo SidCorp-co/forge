@@ -123,7 +123,12 @@ describe("parseReleaseRoster", () => {
 
 // ISS-1337: the row says before the press what the release could not close it for.
 describe("parseReleaseRoster — what a release could not close a row for", () => {
-  const REFUSAL = { code: "OPEN_QUESTIONS", reason: "holds 1 open question", clears: "Answer it." };
+  const REFUSAL = {
+    code: "OPEN_QUESTIONS",
+    reason: "holds 1 open question",
+    clears: "Answer it.",
+    said: "It holds 1 open question. Answer it.",
+  };
 
   it("reads each refusal a row carries", () => {
     const parsed = parseReleaseRoster(body({ issues: [{ ...ENTRY, closeRefusals: [REFUSAL] }] }), ENDPOINT);
@@ -154,5 +159,10 @@ describe("parseReleaseRoster — what a release could not close a row for", () =
   it("refuses a refusal missing what clears it", () => {
     const issues = [{ ...ENTRY, closeRefusals: [{ code: "OPEN_QUESTIONS", reason: "x" }] }];
     expect(() => parseReleaseRoster(body({ issues }), ENDPOINT)).toThrow(/closeRefusals\[0\]\.clears/);
+  });
+
+  it("refuses a refusal missing its sentences rather than joining its parts itself", () => {
+    const issues = [{ ...ENTRY, closeRefusals: [{ code: "OPEN_QUESTIONS", reason: "x", clears: "y" }] }];
+    expect(() => parseReleaseRoster(body({ issues }), ENDPOINT)).toThrow(/closeRefusals\[0\]\.said/);
   });
 });

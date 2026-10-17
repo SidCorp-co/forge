@@ -1,6 +1,7 @@
 import type { Context, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import type { RateLimitRule } from '../config/rate-limits.js';
+import { clientIpOf } from './client-ip.js';
 import { refuses } from './declarations.js';
 
 type Bucket = { count: number; resetAt: number };
@@ -13,22 +14,6 @@ const store = new Map<string, Bucket>();
  */
 export function __resetRateLimitStore(): void {
   store.clear();
-}
-
-/**
- * Extract client IP. Trusts `x-forwarded-for` (left-most) then `x-real-ip`.
- * NOTE: assumes deployment behind a trusted proxy (Traefik/Coolify). Without
- * one, these headers are client-supplied and spoofable.
- */
-export function getClientIp(c: Context): string | undefined {
-  const xff = c.req.header('x-forwarded-for');
-  if (xff) {
-    const first = xff.split(',')[0]?.trim();
-    if (first) return first;
-  }
-  const real = c.req.header('x-real-ip');
-  if (real) return real.trim();
-  return undefined;
 }
 
 function getUserId(c: Context): string | undefined {
@@ -50,7 +35,7 @@ function deriveKey(
   ruleName: string,
   c: Context,
 ): { key: string; dim: string } | null {
-  const ip = getClientIp(c);
+  const ip = clientIpOf(c);
   const userId = getUserId(c);
 
   if (rule.by === 'token') {

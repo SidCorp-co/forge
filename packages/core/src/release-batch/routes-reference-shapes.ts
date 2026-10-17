@@ -55,6 +55,8 @@ const closeRefusalSchema = z.object({
   code: z.enum(['CLOSE_REQUIRES_SHIPPED', 'OPEN_QUESTIONS', 'ENTRY_CRITERIA_UNMET']),
   reason: z.string(),
   clears: z.string(),
+  /** The shortfall and what clears it, as whole sentences a page shows as they are. */
+  said: z.string(),
 });
 
 export const rosterSchema = z.object({

@@ -251,8 +251,7 @@ function RosterRow({
       </div>
       {refused ? (
         <p className="fg-caption text-muted pl-6">
-          A release could not close this:{" "}
-          {issue.closeRefusals.map((r) => `${r.reason}. ${r.clears}`).join(" ")}
+          {issue.closeRefusals.map((r) => r.said).join(" ")}
         </p>
       ) : null}
       {!claimed && !refused && issue.closeFailure ? (

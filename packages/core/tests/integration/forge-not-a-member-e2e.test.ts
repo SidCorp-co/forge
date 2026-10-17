@@ -86,7 +86,7 @@ async function refusedAsForge(res: Response): Promise<void> {
   expect(res.status).toBe(409);
   const body = (await res.json()) as { code: string; message: string };
   expect(body.code).toBe('FORGE_IS_NOT_A_MEMBER');
-  expect(body.message).toContain("is Forge's own account");
+  expect(body.message).toContain("Forge's own account (");
 }
 
 describe.each([
@@ -153,7 +153,7 @@ describe('no person holds an address Forge mints (criterion 35)', () => {
       expect(res.status).toBe(409);
       const body = (await res.json()) as { code: string; message: string };
       expect(body.code).toBe('AGENT_ADDRESS_RESERVED');
-      expect(body.message).toContain('belongs to an agent account Forge mints');
+      expect(body.message).toContain('That address belongs to an agent account Forge runs');
       expect(
         await count(
           sql`SELECT count(*)::int AS n FROM users WHERE lower(email) = ${email.toLowerCase()}`,

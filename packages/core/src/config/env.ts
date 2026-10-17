@@ -22,6 +22,9 @@ const EnvSchema = z.object({
   AUTH_COOKIE_DOMAIN: z.string().optional(),
   PORT: z.coerce.number().int().positive().default(8080),
   NODE_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
+  /** How many proxies in front of core append to X-Forwarded-For (`middleware/client-ip.ts`). Forge's
+   *  own deployments sit behind Cloudflare and then Coolify's Traefik, which is 2. */
+  TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(2),
   RATE_LIMIT_AUTH_LOCAL_MAX: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_AUTH_LOCAL_WINDOW_MS: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_AUTH_REGISTER_MAX: z.coerce.number().int().positive().optional(),

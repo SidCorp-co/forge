@@ -26,7 +26,8 @@ vi.mock('../release-batch/gate.js', async (importOriginal) => ({
 
 type Hold = { reason: string; clears: string };
 const shortfalls = vi.fn(async (_p: string, _ids: readonly string[]) => new Map<string, Hold[]>());
-vi.mock('../release-batch/close-shortfall.js', () => ({
+vi.mock('../release-batch/close-shortfall.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../release-batch/close-shortfall.js')>()),
   rosterCloseShortfalls: (p: string, ids: readonly string[]) => shortfalls(p, ids),
 }));
 
@@ -224,17 +225,31 @@ describe('entering releasing (ISS-1421)', () => {
 });
 
 describe('leaving releasing (ISS-1421)', () => {
-  it('refuses a move off it from a door that is not a release path, naming the claiming run', async () => {
-    claimRow.mockResolvedValue([{ run: 'run-9' }]);
+  it('refuses a move off it from a door that is not a release path, sending the reader to the run page', async () => {
+    claimRow.mockResolvedValue([{ run: 'run-9', slug: 'shop' }]);
     for (const to of ['closed', 'reopen', 'needs_info', 'on_hold', 'awaiting_release'] as const) {
       const refusal = await releasingDoorRefusal({ ...base, from: 'releasing', to });
       expect(refusal?.code, to).toBe('RELEASING_ENDS_BY_RELEASE');
-      expect(refusal?.detail).toContain('GET /api/projects/proj-7/release-batches/run-9/state');
-      expect(refusal?.detail).toContain('POST /api/projects/proj-7/release-batches/run-9/abort');
+      expect(refusal?.detail).toContain(
+        'The release carrying it shows where it stands at https://forge.example/projects/shop/releases/run-9.',
+      );
       expect(refusal?.detail).toContain('The issue stays at Releasing (releasing)');
       expect(refusal?.detail).toContain(
-        'Its abort, or the recovery of a batch run that stopped, never started or whose job nothing will send, returns it to the release gate.',
+        'Its abort, or the recovery of a release that stopped or could not go on, returns it to the release gate.',
       );
+    }
+  });
+
+  // ISS-1421 r5: the refusal named GET .../state and POST .../abort with the run's id, which a
+  // person reading it on the issue page cannot press.
+  it('names no API route, and keeps each sentence short and whole', async () => {
+    claimRow.mockResolvedValue([{ run: 'run-9', slug: 'shop' }]);
+    const refusal = await releasingDoorRefusal({ ...base, from: 'releasing', to: 'closed' });
+    expect(refusal?.detail).not.toMatch(/\/api\/|\bGET\b|\bPOST\b|release-batches/);
+    for (const sentence of (refusal?.detail ?? '').split(/(?<=\.)\s+(?=[A-Z])/)) {
+      expect(sentence).toMatch(/^[A-Z]/);
+      expect(sentence).toMatch(/\.$/);
+      expect(sentence.split(/\s+/).length).toBeLessThanOrEqual(25);
     }
   });
 

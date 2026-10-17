@@ -1,0 +1,34 @@
+import { describe, expect, it } from 'vitest';
+import { clientAddressFrom } from './client-ip.js';
+
+// Beta's shape: the client, then Cloudflare's edge (appended by Traefik), and Traefik itself as the
+// connection core is reached on.
+const TRAEFIK = '10.0.1.5';
+const EDGE = '172.70.1.1';
+const CLIENT = '203.0.113.7';
+
+describe('clientAddressFrom', () => {
+  it('takes the entry the trusted proxies appended, never what the client wrote to their left', () => {
+    expect(clientAddressFrom(`198.51.100.9, ${CLIENT}, ${EDGE}`, TRAEFIK, 2)).toBe(CLIENT);
+    expect(clientAddressFrom(`${CLIENT}, ${EDGE}`, TRAEFIK, 2)).toBe(CLIENT);
+  });
+
+  it('reads one entry from the right behind a single proxy', () => {
+    expect(clientAddressFrom(`198.51.100.9, ${CLIENT}`, TRAEFIK, 1)).toBe(CLIENT);
+  });
+
+  it('reads no header at all where no proxy is trusted', () => {
+    expect(clientAddressFrom(`198.51.100.9, ${CLIENT}`, TRAEFIK, 0)).toBe(TRAEFIK);
+    expect(clientAddressFrom(`198.51.100.9`, undefined, 0)).toBeUndefined();
+  });
+
+  it('answers the furthest address seen where the header is shorter than the hops', () => {
+    expect(clientAddressFrom(CLIENT, TRAEFIK, 2)).toBe(CLIENT);
+    expect(clientAddressFrom(undefined, TRAEFIK, 2)).toBe(TRAEFIK);
+    expect(clientAddressFrom(undefined, undefined, 2)).toBeUndefined();
+  });
+
+  it('ignores blank entries and spaces a proxy left', () => {
+    expect(clientAddressFrom(` , ${CLIENT} ,  ${EDGE} `, TRAEFIK, 2)).toBe(CLIENT);
+  });
+});

@@ -20,7 +20,7 @@ import { readProjectBranches } from '../projects/service.js';
 import { nextRunFor } from '../schedules/cron.js';
 import { releaseRunnerLabelOf, resolveReleaseChannels } from './channel.js';
 import { type CloseFailureRecord, lastCloseFailures } from './close-failures.js';
-import { type CloseShortfall, rosterCloseShortfalls } from './close-shortfall.js';
+import { type CloseShortfall, rosterCloseShortfalls, shortfallSaid } from './close-shortfall.js';
 import { RELEASE_GATE_STATUS, resolveReleaseGate } from './gate.js';
 import { releaseBranches } from './plan.js';
 import { currentReleaseVersion } from './version-store.js';
@@ -39,7 +39,7 @@ export interface ReleaseRosterEntry {
    * where the close stands. A row carrying one is refused by the create door, so a screen offers it
    * for no press.
    */
-  closeRefusals: Array<Pick<CloseShortfall, 'code' | 'reason' | 'clears'>>;
+  closeRefusals: Array<Pick<CloseShortfall, 'code' | 'reason' | 'clears'> & { said: string }>;
   /**
    * Where the last release to try closing this row failed short of a decision (a database fault):
    * its reason and that release's version. Release now meets the same failure until whoever
@@ -149,6 +149,7 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
         code,
         reason,
         clears,
+        said: shortfallSaid({ reason, clears }),
       })),
       closeFailure: closeFailureOf(failures.get(r.id)),
     })),

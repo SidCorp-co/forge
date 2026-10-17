@@ -8,6 +8,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, pipelineRuns } from '../db/schema.js';
 import { RELEASE_GATE_STATUS } from '../release-batch/gate.js';
+import { projectPages } from '../release-batch/release-links.js';
 import {
   type GateHolds,
   NO_DOORS,
@@ -81,13 +82,23 @@ export async function releasingExitRefusal(
   ask: Pick<ReleasingDoorAsk, 'issueId' | 'projectId' | 'to'>,
 ): Promise<TransitionError> {
   const runId = await claimingRun(ask.issueId);
+  // A page a person can open, never an API route with the run's id in it (ISS-1421 r5).
+  const pages = runId ? await projectPages(ask.projectId) : null;
   const where = runId
-    ? `Release batch ${runId} carries it: read where it stands with GET /api/projects/${ask.projectId}/release-batches/${runId}/state, or stop it with POST /api/projects/${ask.projectId}/release-batches/${runId}/abort, which returns it to the release gate.`
-    : 'No release batch claims it, so the releasing sweep returns it to the release gate within a minute.';
+    ? pages
+      ? [`The release carrying it shows where it stands at ${pages.releaseRun(runId)}.`]
+      : ['A release is carrying it now.']
+    : ['No release carries it, so the releasing sweep returns it to the release gate within a minute.'];
   return new TransitionError(
     'RELEASING_ENDS_BY_RELEASE',
-    `${statusForCaller(RELEASING)} is left only through the release carrying the issue. Its finish closes the issue. Its abort, or the recovery of a batch run that stopped, never started or whose job nothing will send, returns it to the release gate. The releasing sweep settles an issue whose release has ended. ${where} ` +
+    [
+      `${statusForCaller(RELEASING)} is left only through the release carrying the issue.`,
+      'Its finish closes the issue.',
+      'Its abort, or the recovery of a release that stopped or could not go on, returns it to the release gate.',
+      'The releasing sweep settles an issue whose release has ended.',
+      ...where,
       `The issue stays at ${statusForCaller(RELEASING)}, and ${statusForCaller(ask.to)} was not written.`,
+    ].join(' '),
     { from: RELEASING, to: ask.to, releaseBatchRunId: runId },
   );
 }

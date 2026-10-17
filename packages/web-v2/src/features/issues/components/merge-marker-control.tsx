@@ -37,8 +37,6 @@ interface MergeMarkerControlProps {
   issueId: string;
   /** `null` when no claim has been made — the control offers to make one. */
   mergedAt: string | null;
-  /** Default `target`, offered because the repo's branch convention is `ISS-<seq>`. */
-  suggestedTarget: string;
   /** Core's answer for this issue's lane; an older server that sends none reads as `git`. */
   landingShape?: LandingShape | undefined;
   /** Whose answer `landingShape` is: the issue's own declaration, or its project's shape. Absent
@@ -57,24 +55,25 @@ function landingLine(shape: LandingShape, source: "issue" | "project" | undefine
 export function MergeMarkerControl({
   issueId,
   mergedAt,
-  suggestedTarget,
   landingShape,
   landingSource,
 }: MergeMarkerControlProps) {
   const outsideGit = landingShape === "outside_git";
   const [open, setOpen] = useState(false);
-  const [target, setTarget] = useState(outsideGit ? "" : suggestedTarget);
+  // Starts empty: whatever it holds is sent as where the work landed, so a value filled in for the
+  // reader (once the issue's own key) became a mark saying the work merged into the issue.
+  const [target, setTarget] = useState("");
   const [note, setNote] = useState("");
   const [refusal, setRefusal] = useState<string | null>(null);
   const marker = useMergeMarker(issueId);
 
   useEffect(() => {
     if (open) {
-      setTarget(outsideGit ? "" : suggestedTarget);
+      setTarget("");
       setNote("");
       setRefusal(null);
     }
-  }, [open, suggestedTarget, outsideGit]);
+  }, [open]);
 
   if (mergedAt) {
     return (
@@ -118,7 +117,7 @@ export function MergeMarkerControl({
                 placeholder={
                   outsideGit
                     ? "e.g. https://shop.example.com/products/linen-tee, or the CMS entry it is"
-                    : "e.g. ISS-791, or the branch or PR it merged through"
+                    : "e.g. main, or the branch or PR it merged into"
                 }
                 onChange={(e) => {
                   setTarget(e.target.value);
