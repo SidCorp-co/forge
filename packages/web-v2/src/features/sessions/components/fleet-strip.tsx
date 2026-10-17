@@ -16,10 +16,10 @@
 import { useMemo } from "react";
 import { Banner, HealthDot, Icon, MonoTag, SILENCE_TONE, SILENCE_WORD, Tooltip } from "@/design";
 import { TONE_META } from "@/design/status";
-import type { RunnerLine } from "@/features/project-dashboard/derive";
 import { useRunnerFleet } from "@/features/project-dashboard/runner-fleet";
-import { plural, type ReadState } from "@/features/project-dashboard/shape";
+import type { ReadState } from "@/features/project-dashboard/shape";
 import { useProject } from "@/features/projects/hooks";
+import { boxHealth, boxWord } from "../box-state";
 import {
   deriveLiveness,
   isLiveDisplay,
@@ -49,15 +49,6 @@ interface FleetStripProps {
   rows: SessionRow[];
   displays: AgentSessionDisplayStatus[];
   now: number;
-}
-
-/** A box's state in words: busy and free are said only of a box online, as the dashboard counts them. */
-function boxWord(line: RunnerLine, activityRead: boolean): string {
-  const hosting = line.sessions > 0 ? ` · ${plural(line.sessions, "live session", "live sessions")}` : "";
-  if (line.draining) return `Draining${hosting}`;
-  if (!line.online) return `Offline${hosting}`;
-  if (!activityRead) return "activity not read";
-  return line.busy ? "Busy · 1/1" : "Free · 0/1";
 }
 
 function queueWord(queued: number, read: ReadState): string {
@@ -111,7 +102,7 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
             const busy = d.online && d.busy;
             const liveness = bound ? deriveLiveness(bound.row, now) : null;
             const stale = liveness?.state === "stale" || liveness?.state === "reaping";
-            const health = d.online ? (busy && stale ? "attention" : "healthy") : d.sessions > 0 ? "attention" : "idle";
+            const health = boxHealth(d, stale);
             const isPrimary = d.deviceId !== null && d.deviceId === defaultDeviceId;
             const queued = d.queued;
             const step = bound ? sessionStep(bound.row.metadata) : null;

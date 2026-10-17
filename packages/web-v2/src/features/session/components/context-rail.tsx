@@ -36,7 +36,9 @@ import { isJobDriven, sessionKind, sessionTitle } from "@/features/sessions/type
 import { type RunGateNote, runGateNote, runGateUnfetched } from "@/features/runs/derive";
 import { useRun } from "@/features/runs/hooks";
 import { useDevices } from "@/features/runners/hooks";
-import { deviceHealth, deviceVersionLabel } from "@/features/runners/types";
+import { deviceHealth, deviceStatusWord, deviceVersionLabel } from "@/features/runners/types";
+import { useRunnerFleet } from "@/features/project-dashboard/runner-fleet";
+import { boxHealth, boxWord } from "@/features/sessions/box-state";
 import { deriveAgentTasks, deriveFilesChanged, type ConversationItem } from "../types";
 
 /** Where a session that went silent left off, said only on a page that holds its turns. */
@@ -130,6 +132,9 @@ export function ContextRail({
   // Resolve the runner the session is bound to. The device may not be in the
   // viewer's owner-scoped list (different owner) → fall back to the short id.
   const devicesQ = useDevices();
+  // The box's state as the sessions strip and the Runs tab read it: the project's runner line for this device.
+  const fleet = useRunnerFleet(session.projectId, Date.now());
+  const line = fleet.summary.lines.find((l) => l.deviceId === session.deviceId);
   const device = session.deviceId
     ? devicesQ.data?.find((d) => d.id === session.deviceId)
     : undefined;
@@ -170,7 +175,11 @@ export function ContextRail({
                 <span className="flex-1 truncate fg-body-sm" title={device.name}>
                   {device.name}
                 </span>
-                <HealthDot health={deviceHealth(device.status)} />
+                {line ? (
+                  <HealthDot health={boxHealth(line, false)} label={boxWord(line, fleet.activity.read === "ok")} />
+                ) : (
+                  <HealthDot health={deviceHealth(device.status)} label={deviceStatusWord(device.status)} />
+                )}
               </div>
               <span className="fg-caption">
                 {PLATFORM_LABEL[device.platform] ?? device.platform}

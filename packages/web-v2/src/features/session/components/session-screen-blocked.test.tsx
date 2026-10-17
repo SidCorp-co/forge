@@ -16,11 +16,13 @@ import { LAST_TURN_SHOWS_WHERE } from "./context-rail";
 expect.extend(matchers);
 
 const NOW = Date.parse("2026-10-16T08:00:00.000Z");
-const { send, idle, page } = vi.hoisted(() => ({
+const { send, idle, page, box } = vi.hoisted(() => ({
   send: vi.fn(),
   idle: () => ({ mutate: () => {}, mutateAsync: async () => {}, isPending: false }),
   page: { session: undefined as unknown },
+  box: { status: "online" as "online" | "offline" },
 }));
+const read = (data: unknown) => ({ data, isError: false, error: null, isLoading: false });
 
 const session: SessionRow = {
   id: "s1",
@@ -61,11 +63,17 @@ vi.mock("@/features/projects/hooks", () => ({
   useProjects: () => ({ data: [{ id: "p1", slug: "qa", name: "QA", role: "owner" }] }),
 }));
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));
-vi.mock("@/features/pipeline/hooks", () => ({ useSessionsAndHolds: () => ({ data: undefined }) }));
+vi.mock("@/features/pipeline/hooks", () => ({ useSessionsAndHolds: () => read({ sessions: [] }) }));
 vi.mock("@/features/runs/hooks", () => ({ useRun: () => ({ data: undefined, isLoading: false }) }));
-vi.mock("@/features/runners/hooks", () => ({ useDevices: () => ({ data: [] }) }));
+vi.mock("@/features/runners/hooks", () => ({
+  useDevices: () => read([{ id: "d1", name: "bravo", platform: "linux", agentVersion: "0.99.0", status: box.status }]),
+  useProjectRunners: () =>
+    read([{ runnerId: "r1", deviceId: "d1", deviceName: "bravo", platform: "linux", deviceStatus: box.status, runnerStatus: "online", limitReason: null, rateLimitedUntil: null, labels: [] }]),
+  useActiveRunners: () => read({ runners: [] }),
+}));
 vi.mock("@/features/sessions/hooks", () => ({
   useSessionCost: () => ({ data: undefined, isLoading: false }),
+  useQueueStats: () => read({ devices: [] }),
   useSessions: () => ({ data: { items: [], totalCount: 0 }, isLoading: false }),
 }));
 vi.mock("../hooks", () => ({
@@ -200,6 +208,25 @@ describe("a session that stopped checking in, on its own page", () => {
       expect(screen.getByText(LAST_TURN_SHOWS_WHERE)).toBeVisible();
     } finally {
       page.session = session;
+    }
+  });
+});
+
+// ISS-1228 r11 repair: the session page's Runner pill said bravo was Idle while the sessions strip, on the
+// same box, said Offline. The pill reads the strip's own line now; an offline box is never Idle.
+describe("the session page's Runner pill", () => {
+  it.each([
+    ["offline", "Offline"],
+    ["online", "Free · 0/1"],
+  ] as const)("says what the sessions strip says of a box that is %s", (status, word) => {
+    box.status = status;
+    try {
+      render(<SessionScreen sessionId="s1" projectSlug="qa" />);
+      const runner = screen.getByText("bravo").closest("section") ?? document.body;
+      expect(runner).toHaveTextContent(word);
+      expect(runner).not.toHaveTextContent(/Idle|Healthy/);
+    } finally {
+      box.status = "online";
     }
   });
 });

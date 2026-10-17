@@ -12,6 +12,9 @@ const useRun = vi.fn();
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/features/runners/hooks", () => ({ useDevices: () => ({ data: [] }) }));
+vi.mock("@/features/project-dashboard/runner-fleet", () => ({
+	useRunnerFleet: () => ({ summary: { lines: [] }, activity: { read: "pending" } }),
+}));
 vi.mock("@/features/runs/hooks", () => ({ useRun }));
 vi.mock("@/features/sessions/hooks", () => ({
 	useSessionCost: () => ({ data: undefined }),
