@@ -178,17 +178,17 @@ export type StuckIssueRow = {
   issSeq: number;
   issuePrefix: string | null;
   title: string;
-  /** What the issue's longest-standing notice says of it. */
+  /** The most specific reason a standing notice gives for it (`pipeline/stuck-precedence.ts`). */
   kind: StuckIssueKind;
   /** How many issues of the project a notice stands for, beside the first `STUCK_ISSUES_LISTED`. */
   total: number;
-  /** The same issues counted by what each notice says; an issue two sweeps hold counts under both. */
+  /** The same issues counted once each, by that reason, so the kinds add up to `total` (ISS-1229 r14). */
   byKind: Partial<Record<StuckIssueKind, number>>;
 };
 
 export const STUCK_ISSUES_LISTED = 5;
 
-/** Issues with a stuck-issue notice standing, longest-standing first: what every stuck-issue sweep raises, once per issue. */
+/** Issues with a stuck-issue notice standing, longest-standing first, each once under its most specific reason. */
 const readStuckIssueRows = (projectIds: string[]) =>
   db.execute(sql`
     WITH stuck AS (
@@ -199,7 +199,14 @@ const readStuckIssueRows = (projectIds: string[]) =>
                WHEN n.resolution_key LIKE '%:owed-close' THEN 'owed_close'
                WHEN n.resolution_key LIKE '%:run-assertion-orphaned' THEN 'orphan'
                ELSE 'other'
-             END AS kind
+             END AS kind,
+             CASE
+               WHEN n.resolution_key LIKE '%:stranded' THEN 0
+               WHEN n.resolution_key LIKE '%:owed-close' THEN 1
+               WHEN n.resolution_key LIKE '%:run-assertion-orphaned' THEN 2
+               WHEN n.resolution_key LIKE '%:idle' THEN 3
+               ELSE 4
+             END AS rank
         FROM notifications n
         JOIN issues i ON i.id = n.issue_id
         JOIN projects p ON p.id = i.project_id
@@ -210,10 +217,10 @@ const readStuckIssueRows = (projectIds: string[]) =>
     ), first_notice AS (
       SELECT DISTINCT ON (project_id, id) project_id, id, iss_seq, issue_prefix, title, created_at, kind
         FROM stuck
-       ORDER BY project_id, id, created_at
+       ORDER BY project_id, id, rank, created_at
     ), by_kind AS (
       SELECT project_id, jsonb_object_agg(kind, n) AS "byKind"
-        FROM (SELECT project_id, kind, count(DISTINCT id)::int AS n FROM stuck GROUP BY project_id, kind) k
+        FROM (SELECT project_id, kind, count(*)::int AS n FROM first_notice GROUP BY project_id, kind) k
        GROUP BY project_id
     )
     SELECT "projectId", id, "issSeq", "issuePrefix", title, kind, total::int AS total, "byKind" FROM (

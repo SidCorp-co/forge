@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import { Button, Icon, MonoTag, type IconName } from "@/design";
 import { TONE_META, type SemanticTone } from "@/design/status";
 import type { StuckIssueKind } from "@forge/contracts/notifications";
+import { stuckRowWords } from "@forge/contracts/stuck-words";
 import { WORK_STATE_LABELS } from "@forge/contracts/work-state";
 import type { AttentionActionKind, AttentionCut, DashboardAttentionItem } from "../derive";
 import type { ProjectShape } from "../shape";
@@ -36,15 +37,6 @@ const ACTION_META: Record<AttentionActionKind, { tag: string; icon: IconName }> 
 };
 
 const TITLE = "Needs your attention";
-
-/** What a stuck issue's notice says of it, in the words its bell group is titled with. */
-const STUCK_KIND_WORDS: Record<StuckIssueKind, string> = {
-  waiting: "Waiting for you for over six hours",
-  idle: "In a live status with no live work behind it",
-  owed_close: "Shipped its code and was never closed",
-  orphan: "Asserts work in progress with no run behind it",
-  other: "Reported stuck",
-};
 
 export interface StuckIssues {
   total: number;
@@ -118,7 +110,7 @@ export function AttentionQueue({
       )}
       {cut && (
         <p className="fg-caption mt-2 text-subtle">
-          Showing {cut.shown} of at least {cut.atLeast}.
+          Showing {cut.shown} of {cut.whole}.
           {cut.peopleCut && (
             <>
               {" "}
@@ -156,7 +148,7 @@ export function AttentionQueue({
                 Stuck
               </span>
               <MonoTag>{r.issueId}</MonoTag>
-              <RowText title={r.title} detail={STUCK_KIND_WORDS[r.kind]} />
+              <RowText title={r.title} detail={stuckRowWords(r.kind)} />
               <Button
                 size="sm"
                 variant="secondary"
@@ -172,8 +164,9 @@ export function AttentionQueue({
       {stuckUnlisted > 0 && (
         <p className="fg-caption mt-2 text-subtle">
           {stuckRows.length > 0 ? `And ${stuckUnlisted} more stuck. ` : `${stuckUnlisted} stuck. `}
-          <Link href={`/projects/${slug}/issues`} className="underline">
-            Every one is in Issues
+          {/* The list it opens holds exactly the issues the headline counts as stuck (ISS-1229 r14). */}
+          <Link href={`/projects/${slug}/issues?stuck=1`} className="underline">
+            {stuck.total === 1 ? "It is in Issues" : `All ${stuck.total} stuck issues are in Issues`}
           </Link>
           .
         </p>

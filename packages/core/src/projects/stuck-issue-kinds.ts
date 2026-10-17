@@ -1,4 +1,6 @@
 import type { StuckIssueKind } from '@forge/contracts/notifications';
+import type { StuckKind } from '@forge/contracts/stuck-words';
+import { type SQL, sql } from 'drizzle-orm';
 
 export const STUCK_ISSUE_KINDS = [
   'waiting',
@@ -11,3 +13,23 @@ export const STUCK_ISSUE_KINDS = [
 // The contracts' kinds as values (core loads no `src` contracts subpath at runtime); compiles only while both agree.
 const everyKind: readonly (typeof STUCK_ISSUE_KINDS)[number][] = [] as StuckIssueKind[];
 void everyKind;
+// The words' kinds, restated where they are built, compile only while they are these kinds too.
+const wordedKinds: readonly StuckKind[] = [] as StuckIssueKind[];
+const kindsWorded: readonly StuckIssueKind[] = [] as StuckKind[];
+void wordedKinds;
+void kindsWorded;
+
+/**
+ * Whether a stuck-issue notice stands for this issue: the condition the project page's stuck count
+ * and the Issues list's `stuck` filter both read, so the list opened from that count holds exactly
+ * the issues it counted (ISS-1229 r14).
+ */
+export function stuckNoticeStandsSql(issueId: SQL): SQL {
+  return sql`EXISTS (
+    SELECT 1 FROM notifications sn
+     WHERE sn.issue_id = ${issueId}
+       AND sn.type = 'issue_stranded'
+       AND sn.state = 'firing'
+       AND sn.resolved_at IS NULL
+  )`;
+}

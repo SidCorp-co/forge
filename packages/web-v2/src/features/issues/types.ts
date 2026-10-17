@@ -222,6 +222,8 @@ export interface IssueSearchOpts {
    *  REPLACES the tab filter's status set, so a dashboard figure's destination
    *  is the bucket it was drawn from rather than the nearest tab (ISS-988). */
   status?: IssueStatus[];
+  /** Only the issues a stuck-issue notice stands for: where Needs you's stuck overflow lands (ISS-1229 r14). */
+  stuck?: boolean;
   sort?: IssueSort;
   page?: number;
   pageSize?: number;

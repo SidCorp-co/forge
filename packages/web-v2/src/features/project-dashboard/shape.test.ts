@@ -93,12 +93,16 @@ describe("the shape of a project", () => {
     expect(projectShape(input({ releaseRuns: 1, releaseIssues: 1 })).headline).toBe("1 run waits on a release decision.");
   });
 
-  it("says at least where the attention list is cut, and is not quiet where it lists none of what it counts", () => {
-    const r = projectShape(input({ items: [], cut: { shown: 0, atLeast: 3, peopleCut: true } }));
+  it("says the whole count where the attention list is cut, and is not quiet where it lists none of it", () => {
+    const r = projectShape(input({ items: [], cut: { shown: 0, whole: 3, peopleCut: true } }));
     expect(r.shape).toBe("working");
-    expect(r.headline).toBe("At least 3 items need a person.");
-    expect(projectShape(input({ items: [], cut: { shown: 0, atLeast: 1, peopleCut: true } })).headline).toBe(
-      "At least 1 item needs a person.",
+    expect(r.headline).toBe("3 items need a person.");
+    expect(projectShape(input({ items: [], cut: { shown: 0, whole: 1, peopleCut: true } })).headline).toBe(
+      "1 item needs a person.",
+    );
+    // judge-35's 32 parks: the headline says 32, never "at least 32" (ISS-1229 r14).
+    expect(projectShape(input({ items: [], cut: { shown: 25, whole: 32, peopleCut: true } })).headline).toBe(
+      "32 items need a person.",
     );
   });
 });
@@ -134,7 +138,7 @@ describe("a degraded project", () => {
     const oldest = item({ key: "b", link: "/b", since: ago(112 * DAY) });
     const whole = projectShape(input({ items: [young, oldest] }));
     expect(whole.band?.entry).toEqual({ label: "Action needed — oldest item waiting 112d", href: "/b" });
-    const cut = projectShape(input({ items: [young, oldest], cut: { shown: 2, atLeast: 9, peopleCut: true } }));
+    const cut = projectShape(input({ items: [young, oldest], cut: { shown: 2, whole: 9, peopleCut: true } }));
     expect(cut.band?.entry?.label).toBe("Action needed — oldest listed item waiting 112d");
   });
 
@@ -199,14 +203,14 @@ describe("a project with stuck issues (ISS-1229 r12)", () => {
       }),
     );
     expect(r.headline).toBe(
-      "3 issues have waited for you for over six hours. 2 issues are in a live status with no live work behind them. 1 issue shipped its code and was never closed.",
+      "3 issues have been waiting for you for over six hours. 2 issues are in a live status with no live work behind them. 1 issue shipped its code and was never closed.",
     );
   });
 
   it("says one of a kind in the singular", () => {
     const r = projectShape(input({ stuckIssues: 2, stuckIssuesByKind: { waiting: 1, orphan: 1 }, stuckIssueRefs: [ISS_9] }));
     expect(r.headline).toBe(
-      "1 issue has waited for you for over six hours. 1 issue asserts work in progress with no run behind it.",
+      "1 issue has been waiting for you for over six hours. 1 issue asserts work in progress with no run behind it.",
     );
   });
 

@@ -3,6 +3,7 @@
 // project unread, never quiet.
 
 import { STUCK_ISSUE_KINDS, type StuckIssueKind } from "@forge/contracts/notifications";
+import { stuckCountSentence } from "@forge/contracts/stuck-words";
 import { formatElapsed } from "@/features/overview/derive";
 import { formatApiError } from "@/lib/api/error";
 import type { IssueRow } from "@/features/issues/types";
@@ -160,20 +161,12 @@ function qualifiers(input: ShapeInput): Qualifier[] {
   return out;
 }
 
-/** One sentence per kind of stuck-issue notice, in the words the bell titles that kind's group with. */
-export const STUCK_KIND_SENTENCE: Record<StuckIssueKind, (n: number) => string> = {
-  waiting: (n) => `${plural(n, "issue has", "issues have")} waited for you for over six hours.`,
-  idle: (n) => `${plural(n, "issue is", "issues are")} in a live status with no live work behind ${n === 1 ? "it" : "them"}.`,
-  owed_close: (n) => `${plural(n, "issue", "issues")} shipped ${n === 1 ? "its" : "their"} code and ${n === 1 ? "was" : "were"} never closed.`,
-  orphan: (n) => `${plural(n, "issue asserts", "issues assert")} work in progress with no run behind ${n === 1 ? "it" : "them"}.`,
-  other: (n) => `${plural(n, "issue is", "issues are")} reported stuck.`,
-};
-
 function stuckSentences(byKind: ShapeInput["stuckIssuesByKind"], total: number): string[] {
   const said = STUCK_ISSUE_KINDS.filter((k) => (byKind[k] ?? 0) > 0);
   // A read that names no kind still says how many: the count is whole even where its split is not.
-  if (said.length === 0) return [STUCK_KIND_SENTENCE.other(total)];
-  return said.map((k) => STUCK_KIND_SENTENCE[k](byKind[k] ?? 0));
+  if (said.length === 0) return [stuckCountSentence("other", total)];
+  // In the words the bell titles each kind's group with: one source for both (ISS-1229 r14).
+  return said.map((k) => stuckCountSentence(k, byKind[k] ?? 0));
 }
 
 function stuckIssuesOf(input: ShapeInput): number {
@@ -253,9 +246,7 @@ export function projectShape(input: ShapeInput): ProjectReading {
   if (input.liveSessions > 0) parts.push(`${plural(input.liveSessions, "session is", "sessions are")} live`);
   if (input.items.length > 0 || input.cut) {
     parts.push(
-      input.cut
-        ? `at least ${plural(input.cut.atLeast, "item needs", "items need")} a person`
-        : `${plural(input.items.length, "item needs", "items need")} a person`,
+      plural(input.cut ? input.cut.whole : input.items.length, "item needs", "items need") + " a person",
     );
   }
   if (input.releaseRuns > 0) {

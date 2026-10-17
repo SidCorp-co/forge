@@ -280,7 +280,7 @@ describe("a working project", () => {
   it("opens on a sentence counting what is live and what needs a person, over a figures row with a comparison each", () => {
     runs = [run(), run({ id: "r2", issueRef: "ISS-2" })];
     sessions = [liveSession(), liveSession({ id: "s2" })];
-    attentionView = view({ pair: { needsReview: 0, awaitingInput: 1, awaitingOutsideBlockers: 0, failedJobs: 0 } }, {
+    attentionView = view({ pair: { needsReview: 0, awaitingInput: 1, parkedOnly: 0, failedJobs: 0 } }, {
       awaitingInput: [attentionItem(7, ago(2 * 3600))],
     });
     work = { ...BUSY_WORK, blocked_on_person: 1 };
@@ -320,7 +320,7 @@ describe("a working project", () => {
   });
 
   it("gives each waiting row its age chip and the action that clears it", () => {
-    attentionView = view({ pair: { needsReview: 0, awaitingInput: 2, awaitingOutsideBlockers: 0, failedJobs: 0 } }, {
+    attentionView = view({ pair: { needsReview: 0, awaitingInput: 2, parkedOnly: 0, failedJobs: 0 } }, {
       awaitingInput: [attentionItem(7, ago(2 * 3600)), attentionItem(8, ago(5 * DAY))],
     });
     mount();
@@ -330,7 +330,7 @@ describe("a working project", () => {
   });
 
   it("is degraded by a failed job the response counts though its capped list shows none", () => {
-    attentionView = view({ pair: { needsReview: 0, awaitingInput: 0, awaitingOutsideBlockers: 0, failedJobs: 1 } });
+    attentionView = view({ pair: { needsReview: 0, awaitingInput: 0, parkedOnly: 0, failedJobs: 1 } });
     const { container } = mount();
     expect(shape(container)).toBe("degraded");
     expect(screen.getByTestId("degraded-band")).toHaveTextContent("1 job failed.");
@@ -355,8 +355,8 @@ describe("a working project", () => {
 
 describe("a degraded project", () => {
   it("replaces the figures row with a band naming what is wrong and one link to the oldest item", () => {
-    attentionView = view({ pair: { needsReview: 0, awaitingInput: 0, awaitingOutsideBlockers: 0, failedJobs: 1 } }, {
-      failedJobs: [{ kind: "failed_job", title: "build failed", link: "/projects/pair/issues/d9", since: ago(3 * DAY), issueRef: "ISS-9", projectSlug: "pair" }],
+    attentionView = view({ pair: { needsReview: 0, awaitingInput: 0, parkedOnly: 0, failedJobs: 1 } }, {
+      failedJobs: [{ kind: "failed_job", title: "build failed", jobType: "drive", failure: null, link: "/projects/pair/issues/d9", since: ago(3 * DAY), issueRef: "ISS-9", projectSlug: "pair" }],
       awaitingInput: [attentionItem(7, ago(112 * DAY))],
     });
     const { container } = mount();
@@ -413,7 +413,7 @@ describe("a degraded project", () => {
 describe("a project with an issue a stuck-issue notice stands for (ISS-1229 r12)", () => {
   it("says how many are stuck rather than that nothing needs anyone, and offers them", () => {
     stuckIssues = 1;
-    stuckIssueRefs = [{ issueId: "ISS-4", documentId: "d-4" }];
+    stuckIssueRefs = [{ issueId: "ISS-4", documentId: "d-4", title: "Issue 4", kind: "idle" }];
     const { container } = mount();
     expect(shape(container)).toBe("degraded");
     expect(screen.queryByText(/Nothing needs anyone/)).toBeNull();
@@ -426,8 +426,8 @@ describe("a project with an issue a stuck-issue notice stands for (ISS-1229 r12)
   it("counts two in the plural", () => {
     stuckIssues = 2;
     stuckIssueRefs = [
-      { issueId: "ISS-3", documentId: "d-3" },
-      { issueId: "ISS-4", documentId: "d-4" },
+      { issueId: "ISS-3", documentId: "d-3", title: "Issue 3", kind: "idle" },
+      { issueId: "ISS-4", documentId: "d-4", title: "Issue 4", kind: "idle" },
     ];
     mount();
     const band = screen.getByTestId("degraded-band");
@@ -450,8 +450,8 @@ describe("a Needs you row on a project with parked and stuck issues", () => {
     const rows = within(screen.getByRole("region", { name: "Needs your attention" })).getAllByRole("listitem");
     const owed = [
       ["Production SMTP credentials", "Blocked on a person — Waiting"],
-      ["Nightly stock import", "In a live status with no live work behind it"],
-      ["Refund webhook retries", "In a live status with no live work behind it"],
+      ["Nightly stock import", "Is in a live status with no live work behind it"],
+      ["Refund webhook retries", "Is in a live status with no live work behind it"],
     ] as const;
     expect(rows).toHaveLength(owed.length);
     owed.forEach(([title, why], i) => {
@@ -552,9 +552,9 @@ describe("a section whose own read has not arrived", () => {
   });
 
   it.each(["pending", "failed"] as const)(
-    "keeps the cut and says nothing is listed only once the runs read is in: attention listing none of at least 2, runs %s",
+    "keeps the cut and says nothing is listed only once the runs read is in: attention listing none of 2, runs %s",
     (read) => {
-      attentionView = view({ pair: { needsReview: 0, awaitingInput: 2, awaitingOutsideBlockers: 0, failedJobs: 0 } });
+      attentionView = view({ pair: { needsReview: 0, awaitingInput: 2, parkedOnly: 0, failedJobs: 0 } });
       runs = undefined;
       if (read === "failed") runsError = new Error("Gateway Timeout");
       const { container } = mount();
@@ -562,7 +562,7 @@ describe("a section whose own read has not arrived", () => {
       const list = screen.getByRole("region", { name: "Needs your attention" });
       expect(list).not.toHaveTextContent("Nothing is listed to act on here");
       expect(list).not.toHaveTextContent("All caught up");
-      expect(list).toHaveTextContent(/Showing 0 of at least 2/u);
+      expect(list).toHaveTextContent(/Showing 0 of 2\./u);
     },
   );
 
@@ -766,20 +766,30 @@ describe("a page whose figures sit beside other counts of the same things", () =
     expect(screen.getByRole("button", { name: /1 open run has nothing working it/ })).toBeInTheDocument();
   });
 
-  it("does not count fewer people than Open work counts blocked on one: 2 listed, 5 blocked is 'at least 5'", () => {
+  // ISS-1229 r14, judge-35: 32 parks the reader owes read 20 on Attention, 25 on Needs you and "at
+  // least 32" in the headline. Every figure here says the whole, 32, and the list says how much it shows.
+  it("says 32 for judge-35's 32 parks, in the figure and the headline, and 25 of 32 under the list", () => {
     work = BUSY_WORK;
-    attentionView = view({ pair: { needsReview: 0, awaitingInput: 2, awaitingOutsideBlockers: 0, failedJobs: 0 } }, {
-      awaitingInput: [attentionItem(7, ago(2 * 3600)), attentionItem(8, ago(3 * 3600))],
+    blockers = Array.from({ length: 5 }, (_, i) => ({
+      issueId: `ISS-${40 + i}`,
+      documentId: `d${40 + i}`,
+      title: `Park ${40 + i}`,
+      status: "needs_info",
+    }));
+    attentionView = view({ pair: { needsReview: 0, awaitingInput: 32, parkedOnly: 0, failedJobs: 0 } }, {
+      awaitingInput: Array.from({ length: 20 }, (_, i) => attentionItem(i + 1, ago(3600), { status: "needs_info" })),
     });
     mount();
-    expect(headline()).toHaveTextContent("At least 5 items need a person.");
-    expect(screen.getByText("Showing 2 of at least 5.", { exact: false })).toBeInTheDocument();
-    expect(figure("Needs you").getByText(/2 of at least 5$/u)).toBeInTheDocument();
+    expect(headline()).toHaveTextContent("32 items need a person.");
+    expect(headline()).not.toHaveTextContent("at least");
+    expect(figure("Needs you").getByText("32")).toBeInTheDocument();
+    expect(figure("Needs you").getByText(/25 of 32 listed$/u)).toBeInTheDocument();
+    expect(screen.getByText("Showing 25 of 32.", { exact: false })).toBeInTheDocument();
   });
 
   // The class contract only: jsdom lays nothing out, so where the chip falls at 390px is the judge's read of the running page.
   it("gives each attention row's chip the first-line classes beside its kind and ref, and its title a full-width basis", () => {
-    attentionView = view({ pair: { needsReview: 0, awaitingInput: 2, awaitingOutsideBlockers: 0, failedJobs: 0 } }, {
+    attentionView = view({ pair: { needsReview: 0, awaitingInput: 2, parkedOnly: 0, failedJobs: 0 } }, {
       awaitingInput: [attentionItem(7, ago(2 * 3600)), attentionItem(8, ago(5 * DAY), { title: "A title long enough to need the whole line to itself on a phone" })],
     });
     mount();
@@ -795,18 +805,18 @@ describe("a page whose figures sit beside other counts of the same things", () =
 });
 
 describe("the project dashboard's Needs you", () => {
-  it("says 3 of at least 4 where the viewer's own waiting issue is owed and none of it is listed (j4's F1)", () => {
+  it("says 4 where the viewer's own waiting issue is owed and none of it is listed, beside 3 parks (j4's F1)", () => {
     blockers = PAIR_BLOCKERS;
     work = { ...BUSY_WORK, blocked_on_person: 4 };
     attentionView = view({
-      pair: { needsReview: 0, awaitingInput: 1, awaitingOutsideBlockers: 1, failedJobs: 0 },
+      pair: { needsReview: 0, awaitingInput: 1, parkedOnly: 3, failedJobs: 0 },
     });
     mount();
     const n = figure("Needs you");
-    expect(n.getByText("3")).toBeInTheDocument();
-    expect(n.getByText(/3 of at least 4$/u)).toBeInTheDocument();
-    expect(screen.getByText("Showing 3 of at least 4.", { exact: false })).toBeInTheDocument();
-    expect(headline()).toHaveTextContent("At least 4 items need a person.");
+    expect(n.getByText("4")).toBeInTheDocument();
+    expect(n.getByText(/3 of 4 listed$/u)).toBeInTheDocument();
+    expect(screen.getByText("Showing 3 of 4.", { exact: false })).toBeInTheDocument();
+    expect(headline()).toHaveTextContent("4 items need a person.");
   });
 
   it("refuses a response with no projectTotals where the figure is, and keeps the rest of the dashboard standing", () => {
@@ -862,7 +872,7 @@ describe("the project dashboard's Needs you", () => {
     });
 
     it("refuses when a later refetch failed though an earlier answer is still held", () => {
-      attentionView = view({ pair: { needsReview: 0, awaitingInput: 0, awaitingOutsideBlockers: 0, failedJobs: 0 } });
+      attentionView = view({ pair: { needsReview: 0, awaitingInput: 0, parkedOnly: 0, failedJobs: 0 } });
       attentionRead = "failed";
       attentionError = new Error("offline");
       const { container } = mount();

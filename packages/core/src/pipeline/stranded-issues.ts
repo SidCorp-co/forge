@@ -19,6 +19,11 @@ import {
   withOwed,
 } from './owed-sighting.js';
 import { isTerminalPlacement } from './status-assertions.js';
+import {
+  outrankedSql,
+  resolveOutrankedNotices,
+  type StuckNoticeSuffix,
+} from './stuck-precedence.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
 
 /**
@@ -51,7 +56,7 @@ export interface StrandedIssuesResult {
 }
 
 const STRANDED_KEY_SUFFIX = ':stranded';
-const OWED_CLOSE_KEY_SUFFIX = ':owed-close';
+const OWED_CLOSE_KEY_SUFFIX = ':owed-close' satisfies StuckNoticeSuffix;
 
 export function strandedResolutionKey(issueId: string): string {
   return `issue:${issueId}${STRANDED_KEY_SUFFIX}`;
@@ -164,6 +169,8 @@ function readOwedCloses(args: { scope: Scope; where: SQL[]; order: SQL[]; limit:
         notInArray(issues.status, TERMINAL),
         sql`not exists (select 1 from jobs j where j.issue_id = issues.id and j.status in ('queued','dispatched','running'))`,
         sql`not exists (select 1 from pipeline_runs r where r.issue_id = issues.id and r.status = 'running')`,
+        // One issue, one stuck reason: a park waiting for a person is told as that (ISS-1229 r14).
+        sql`not ${outrankedSql(sql`"issues"."id"`, OWED_CLOSE_KEY_SUFFIX)}`,
         ...(args.scope.projectId ? [eq(issues.projectId, args.scope.projectId)] : []),
         ...args.where,
       ),
@@ -282,6 +289,7 @@ export async function detectOwedCloses(
 ): Promise<StrandedIssuesResult> {
   try {
     await resolveArchivedProjectNotices(OWED_CLOSE_KEY_SUFFIX);
+    await resolveOutrankedNotices(OWED_CLOSE_KEY_SUFFIX);
     const cutoff = new Date(now.getTime() - STRANDED_GRACE_MS);
 
     const cursorKey = `owed-close:${scope.projectId ?? '*'}`;

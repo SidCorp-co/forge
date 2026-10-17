@@ -165,6 +165,10 @@ export function IssuesListView({
   const createdBy = sp.get("createdBy") ?? "";
   const label = sp.get("label") ?? "";
   const moduleId = sp.get("module") ?? "";
+  // `?stuck=1` is the list Needs you's stuck overflow opens; any other value is named, not guessed.
+  const rawStuck = sp.get("stuck");
+  const stuck = rawStuck === "1";
+  const unknownStuck = rawStuck !== null && rawStuck !== "1" ? rawStuck : null;
   const { statuses: statusParam, unknown: unknownStatuses } = useMemo(
     () => statusFilterFromParams(sp.getAll("status")),
     [sp],
@@ -255,6 +259,7 @@ export function IssuesListView({
     label: label || undefined,
     module: moduleId || undefined,
     status: statusParam,
+    stuck,
     sort,
     page,
     pageSize: ISSUES_PAGE_SIZE,
@@ -360,7 +365,7 @@ export function IssuesListView({
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset on any view change, not on `selected` itself.
   useEffect(() => {
     setSelected(new Set());
-  }, [q, filter, origin, priority, createdBy, label, moduleId, sort, page]);
+  }, [q, filter, origin, priority, createdBy, label, moduleId, stuck, sort, page]);
 
   const toggleRow = useCallback((id: string, next: boolean) => {
     setSelected((prev) => {
@@ -396,6 +401,7 @@ export function IssuesListView({
     !!createdBy ||
     !!label ||
     !!moduleId ||
+    stuck ||
     statusParam !== undefined;
   const projectHasIssues = tabs.some((o) => (o.count ?? 0) > 0);
 
@@ -649,6 +655,26 @@ export function IssuesListView({
         </p>
       )}
 
+      {(stuck || unknownStuck !== null) && (
+        <p role="status" className="fg-body-sm mb-4 text-muted" data-testid="stuck-filter-line">
+          {stuck ? (
+            "Only the issues reported stuck are shown: each has a stuck-issue notice standing. "
+          ) : (
+            <>
+              This link names <code className="font-mono">stuck={unknownStuck}</code>, and only{" "}
+              <code className="font-mono">stuck=1</code> is a filter, so every issue is shown.{" "}
+            </>
+          )}
+          <button
+            type="button"
+            className="text-accent-text hover:underline"
+            onClick={() => setParams({ stuck: "", page: "" })}
+          >
+            Show every issue
+          </button>
+        </p>
+      )}
+
       {statusParam !== undefined && (
         <p role="status" className="fg-body-sm mb-4 text-muted" data-testid="status-filter-line">
           A status filter is on: {statusParam.map((s) => STATUS_LABELS[s]).join(", ")}. The counts
@@ -744,6 +770,7 @@ export function IssuesListView({
                       createdBy: "",
                       label: "",
                       module: "",
+                      stuck: "",
                       page: "",
                     }),
                 }

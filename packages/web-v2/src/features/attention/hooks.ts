@@ -6,23 +6,40 @@ import { useActiveOrg } from "@/features/orgs/active-org";
 import { useDevices } from "@/features/runners/hooks";
 import { badgeFigure, queryRead } from "@/design/patterns/badge-read";
 import { attentionApi } from "./api";
-import type { AttentionItem, AttentionView } from "./types";
+import { ATTENTION_BUCKETS, type AttentionBucket, type AttentionItem, type AttentionView } from "./types";
+
+const NO_BUCKET_TOTALS = Object.fromEntries(ATTENTION_BUCKETS.map((b) => [b, 0])) as Record<
+  AttentionBucket,
+  number
+>;
 
 /**
  * Cross-project attention/inbox view: the `/me/attention` buckets merged with
- * offline runners derived client-side from `/me/devices`. `total` includes the
- * offline-runner count so the rail badge and the screen agree, and is undefined
- * until both have been read: a count of what one of them has not yet said is not a count.
+ * offline runners derived client-side from `/me/devices`. `total` is every item the buckets hold,
+ * listed or not, plus the offline runners, so the rail badge and the screen say one number for one
+ * set (ISS-1229 r14), and is undefined until both have been read: a count of what one of them has
+ * not yet said is not a count. `expand` names the buckets to list whole rather than capped, and
+ * `orgId` reads one organisation in place of the active one: a project's page reads its own.
  * `read`/`devicesRead` say which answered; state a figure, badge or empty list only from `read`.
  * The buckets are the active organisation's, cut before the caps and read once it is known.
  * `badge` is the count where both were read, never a held count after a failed refetch.
  */
-export function useAttention() {
-  const { activeOrgId, scopeRead, scopeError, retryScope } = useActiveOrg();
+export function useAttention(
+  opts: { expand?: readonly AttentionBucket[]; orgId?: string | null } = {},
+) {
+  const active = useActiveOrg();
+  const own = opts.orgId !== undefined;
+  const orgId = own ? opts.orgId : active.activeOrgId;
+  const scopeError = own ? null : active.scopeError;
+  const expanded = [...(opts.expand ?? [])].sort();
   const attentionQ = useQuery({
-    queryKey: ["attention", activeOrgId],
-    queryFn: () => attentionApi.list(activeOrgId),
-    enabled: scopeRead,
+    queryKey: ["attention", orgId, expanded],
+    queryFn: () => attentionApi.list(orgId, expanded),
+    enabled: own ? orgId !== null : active.scopeRead,
+    // Asking for a group whole keeps the page on screen while it is read; another organisation never
+    // shows this one's rows meanwhile.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1] === orgId ? previous : undefined,
   });
   // `['devices','me']` is already WS-invalidated on device.login/paired/revoked
   // and reconnect — reusing the runners hook keeps the offline bucket live.
@@ -57,20 +74,15 @@ export function useAttention() {
       pendingSkillUpdates,
       unseenDrafts,
       unseenDraftsTotal: base?.unseenDraftsTotal ?? 0,
+      bucketTotals: base?.bucketTotals ?? NO_BUCKET_TOTALS,
+      total: base?.total ?? 0,
       // Where nothing has been read, `read` says so; the empty map here is no statement. A response the server sent without totals is refused where it is read.
       projectTotals: base ? base.projectTotals : {},
       offlineRunners,
     };
   }, [attentionQ.data, offlineRunners]);
 
-  const held =
-    view.needsReview.length +
-    view.awaitingInput.length +
-    view.mentions.length +
-    view.failedJobs.length +
-    view.pendingSkillUpdates.length +
-    view.unseenDrafts.length +
-    view.offlineRunners.length;
+  const held = view.total + view.offlineRunners.length;
 
   const read = scopeError ? "failed" : queryRead(attentionQ);
   const devicesRead = queryRead(devicesQ);
@@ -85,7 +97,7 @@ export function useAttention() {
     error: scopeError ?? attentionQ.error,
     devicesError: devicesQ.error,
     refetch: () => {
-      if (scopeError) retryScope();
+      if (scopeError) active.retryScope();
       else attentionQ.refetch();
       devicesQ.refetch();
     },

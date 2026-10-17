@@ -87,7 +87,7 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
 
   // Actionable invite items prepended to the bell; passive invitation_received
   // rows are filtered out so each invite appears once (as the actionable item).
-  // The passive rows still count toward the bell badge via the open-count API.
+  // The badge counts the same: each pending invitation once, never its record (ISS-1229 r14).
   const pendingItems = useMemo(
     () =>
       (pendingQuery.data ?? []).map((inv) =>

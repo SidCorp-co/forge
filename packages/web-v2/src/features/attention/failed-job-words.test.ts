@@ -1,0 +1,34 @@
+import { describe, expect, it } from "vitest";
+import { failedJobWords, failureWords } from "./failed-job-words";
+
+// ISS-1229 r14, judge-35's reader note on 93: a failed job's row read "drive failed: session_lost"
+// where the overview says Issue work and Session lost.
+describe("a failed job, in words", () => {
+  it("names the work and the failure as the overview does, never the stored codes", () => {
+    const said = failedJobWords({ jobType: "drive", failure: "session_lost" });
+    expect(said).toBe("Issue work failed: Session lost");
+    expect(said).not.toMatch(/drive|session_lost/u);
+    expect(failedJobWords({ jobType: "release_batch", failure: "runner_unreachable" })).toBe(
+      "Releases failed: Runner unreachable",
+    );
+  });
+
+  it("says a job that names no failure failed, and nothing more", () => {
+    expect(failedJobWords({ jobType: "drive", failure: null })).toBe("Issue work failed");
+    expect(failedJobWords({ jobType: "drive", failure: "  " })).toBe("Issue work failed");
+  });
+
+  it("reads a code it has no words for as unrecognised, with the code beside it", () => {
+    expect(failureWords("quantum_flux")).toBe("Unrecognised failure (quantum_flux)");
+    expect(failedJobWords({ jobType: "triage", failure: null })).toBe("Unrecognised work (triage) failed");
+  });
+
+  it("keeps a failure the job wrote as a sentence, cut to a line", () => {
+    expect(failureWords("Agent completed with errors")).toBe("Agent completed with errors");
+    expect(failureWords(`Error: ${"x".repeat(200)}`)?.length).toBe(80);
+  });
+
+  it("refuses a failed job with no kind of work, by name", () => {
+    expect(() => failedJobWords({ failure: "session_lost" })).toThrow(/no `jobType`/u);
+  });
+});
