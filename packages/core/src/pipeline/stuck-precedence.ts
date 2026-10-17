@@ -8,7 +8,6 @@ import { db } from '../db/client.js';
 import { resolveNotifications } from '../notifications/auto-resolve.js';
 import { STUCK_NOTICES } from '../projects/stuck-issue-kinds.js';
 
-/** Each sweep's resolution-key suffix, most specific first. */
 export const STUCK_NOTICE_PRECEDENCE = STUCK_NOTICES.map((n) => n.suffix);
 export type StuckNoticeSuffix = (typeof STUCK_NOTICES)[number]['suffix'];
 
@@ -32,7 +31,6 @@ export function outrankedSql(issueId: SQL, suffix: StuckNoticeSuffix): SQL {
   )`;
 }
 
-/** End every notice of this sweep's that a more specific one now stands beside; how many ended. */
 export async function resolveOutrankedNotices(suffix: StuckNoticeSuffix): Promise<number> {
   const rows = (await db.execute(sql`
     SELECT DISTINCT n.resolution_key AS "key"
@@ -48,11 +46,7 @@ export async function resolveOutrankedNotices(suffix: StuckNoticeSuffix): Promis
   return resolved;
 }
 
-/**
- * End every stuck-issue notice a more specific one is now told beside, whichever sweep raised either:
- * each sweep calls it once it has told what it found, so the reason it just raised retires the
- * lesser one in the same pass (ISS-1229 r14).
- */
+/** Called by each sweep once it has told what it found: the reason it raised retires the lesser one. */
 export async function retireOutrankedNotices(): Promise<number> {
   let resolved = 0;
   for (const suffix of STUCK_NOTICE_PRECEDENCE.slice(1))
