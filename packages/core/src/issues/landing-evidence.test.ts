@@ -126,7 +126,7 @@ describe('which marks count as landed, per shape', () => {
   it('refuses a bare timestamp on the outside-git shape: it names nothing that landed', () => {
     const short = landingShortfall(ASSERTED, OUTSIDE) as string;
     expect(short).toContain('names no landing');
-    expect(short).not.toMatch(/merged pull request|merged_commit_sha|CLAIM Forge did not observe/);
+    expect(short).not.toMatch(/merged pull request|merged_commit_sha|Forge did not see this merge/);
     expect(short).toContain('accepts `landed` or `observed`');
   });
 

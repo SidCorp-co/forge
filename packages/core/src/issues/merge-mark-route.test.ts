@@ -166,16 +166,16 @@ describe('POST /api/issues/:id/merge', () => {
 
   it('tells a caller whose merge was not witnessed that what it wrote is a claim', async () => {
     const claimed = await mark({ target: 'main', commit: 'abc1234' });
-    expect(claimed.detail).toContain('CLAIM Forge did not observe');
+    expect(claimed.detail).toContain('Forge did not see this merge');
     expect(claimed.detail).toContain('abc1234');
-    expect(claimed.detail).toContain('NOT in `merged_commit_sha`');
+    expect(claimed.detail).toContain('so it is not the merge commit');
   });
 
   it('carries the sha it witnessed in the answer, so the word can be checked', async () => {
     asObserved();
     const witnessed = await mark();
     expect(witnessed.detail).toContain(OBSERVED_SHA);
-    expect(witnessed.detail).not.toContain('CLAIM Forge did not observe');
+    expect(witnessed.detail).not.toContain('Forge did not see this merge');
   });
 
   it('calls a stamp of the empty string a claim, not a merge it witnessed', async () => {
@@ -186,14 +186,14 @@ describe('POST /api/issues/:id/merge', () => {
   it('does not tell a caller its own commit was overruled when the column holds it', async () => {
     asObserved();
     const agreeing = await mark({ target: 'main', commit: OBSERVED_SHA.toUpperCase() });
-    expect(agreeing.detail).not.toContain('is not what the column holds');
+    expect(agreeing.detail).not.toContain('is not the merge commit Forge holds');
   });
 
   it('tells a caller that named a different commit that the column holds another', async () => {
     asObserved();
     const disagreeing = await mark({ target: 'main', commit: 'abc1234' });
     expect(disagreeing.detail).toContain('abc1234');
-    expect(disagreeing.detail).toContain('is not what the column holds');
+    expect(disagreeing.detail).toContain('named in this mark, is kept as a claim only');
   });
 });
 
@@ -217,14 +217,14 @@ describe('a second mark over a row that already holds a merge Forge witnessed', 
   it('does not tell a caller its commit was overruled by the very commit it named', async () => {
     alreadyObserved();
     const answer = await mark({ target: 'main', commit: OBSERVED_SHA });
-    expect(answer.detail).not.toContain('is not what the column holds');
+    expect(answer.detail).not.toContain('is not the merge commit Forge holds');
   });
 
   it('still tells a caller that named a different commit which one the column holds', async () => {
     alreadyObserved();
     const answer = await mark({ target: 'main', commit: 'abc1234' });
     expect(answer.detail).toContain('abc1234');
-    expect(answer.detail).toContain('is not what the column holds');
+    expect(answer.detail).toContain('named in this mark, is kept as a claim only');
   });
 });
 
@@ -237,7 +237,7 @@ describe('DELETE /api/issues/:id/merge', () => {
     expect(res.status).toBe(200);
     const cleared = (await res.json()) as Answer;
     expect(cleared.mark).toBe('unmarked');
-    expect(cleared.detail).toContain('no merged mark');
+    expect(cleared.detail).toContain('not marked merged');
   });
 });
 

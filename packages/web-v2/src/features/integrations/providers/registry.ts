@@ -2,6 +2,7 @@
 import type { AgentPathKind } from "@forge/contracts";
 import type { ComponentType } from "react";
 import type { IconName } from "@/design";
+import type { DeployStage } from "../types";
 import { agent } from "./agent";
 import { coolify } from "./coolify";
 import { epodsystem } from "./epodsystem";
@@ -11,7 +12,8 @@ import { postman } from "./postman";
 import { rocketchat } from "./rocketchat";
 import { sentry } from "./sentry";
 
-export type ProjectSection = ComponentType<{ projectId: string }>;
+/** A provider's setup on a project; `stage` is the deploy stage the drawer was opened at. */
+export type ProjectSection = ComponentType<{ projectId: string; stage?: DeployStage }>;
 export type ConnectionSection = ComponentType<{
   connection: { id: string; config: Record<string, unknown> };
   canManage: boolean;

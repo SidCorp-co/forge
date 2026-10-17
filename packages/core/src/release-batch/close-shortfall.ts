@@ -1,8 +1,10 @@
 // What the finish's close would refuse each roster issue for, read before the press by calling the
 // close's own predicates (ISS-1337): `docs/modules/release/release-batch.md`.
 
+import { markMergedSteps } from '@forge/contracts/mark-merged-words';
 import { db } from '../db/client.js';
 import { resolveDeclaredEntryCriteria } from '../issues/entry-criteria.js';
+import { entryRecordsInWords } from '../issues/entry-criteria-keys.js';
 import { refuseUnshippedClose } from '../issues/merged-at.js';
 import { checkTransitionEvidence } from '../issues/transition-evidence.js';
 import { openQuestionIdsOn, openQuestionsFault } from '../questions/issue-coupling.js';
@@ -35,10 +37,8 @@ function landingShortfallOf(refusal: {
   return {
     code: 'CLOSE_REQUIRES_SHIPPED',
     reason: outside ? 'no mark naming where its work landed' : 'not marked merged',
-    // Mark merged sits in the issue's properties, and asks where the work landed (ISS-1421 r3).
-    clears: outside
-      ? "Use Mark merged in the issue's properties, and give Where it landed its landing: the live URL, CMS entry or storefront resource."
-      : "Use Mark merged in the issue's properties, and fill in Where it landed.",
+    // The control's own words, so the sentence names the field as the page labels it.
+    clears: markMergedSteps(outside),
     detail: refusal.detail,
     details: { ...refusal.details, shape: outside ? 'outside_git' : 'git' },
   };
@@ -84,8 +84,9 @@ async function shortfallsOf(
       : [];
     found.push({
       code: 'ENTRY_CRITERIA_UNMET',
-      reason: `missing what this project requires to close: ${unmet.join(', ')}`,
-      clears: 'Write each missing record on the issue.',
+      // Named in words, never by stored key (ISS-1421 r4); the agent working the issue writes them.
+      reason: `missing ${entryRecordsInWords(unmet)}, which this project requires before a close`,
+      clears: "The agent working this issue writes them, through Forge's issue tools.",
       detail: violation.detail,
       details: violation.details,
     });

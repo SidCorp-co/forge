@@ -18,10 +18,13 @@ import { RELEASE_GATE_STATUS } from './gate.js';
 import { recordPerformedRelease } from './recorded.js';
 import {
   type GateHolds,
+  NO_DOORS,
   NO_HOLDS,
   nextAtGateFor,
+  type ReleaseDoors,
   type ReleasePath,
   readGateHolds,
+  readReleaseDoors,
   readReleasePath,
 } from './release-path-words.js';
 import {
@@ -102,8 +105,8 @@ type SettleFinding = ProductionFinding | { kind: 'outside-git' } | { kind: 'not-
 
 /** What the reader of a row returned to the gate does next, by how its project releases and by
  *  what its page will offer it there. */
-function backAtGate(path: ReleasePath, holds: GateHolds): string {
-  return [`It is back at ${GATE}.`, ...nextAtGateFor(path, holds)].join(' ');
+function backAtGate(path: ReleasePath, holds: GateHolds, doors: ReleaseDoors): string {
+  return [`It is back at ${GATE}.`, ...nextAtGateFor(path, holds, doors)].join(' ');
 }
 
 /** What the sweep found on production, and what follows for the issue, as its comment says it.
@@ -113,24 +116,45 @@ export function findingSentence(
   finding: SettleFinding,
   path: ReleasePath = 'gated',
   holds: GateHolds = NO_HOLDS,
+  doors: ReleaseDoors = NO_DOORS,
 ): string {
-  const next = backAtGate(path, holds);
+  const next = backAtGate(path, holds, doors);
   switch (finding.kind) {
     case 'carried':
-      return `Production's verified live deployment serves \`${finding.serving}\`, which carries this issue's landing commit \`${finding.landing}\`, so its code has shipped: a release record closes it now.`;
+      return `Production's verified live deployment serves \`${finding.serving}\`. That carries this issue's landing commit \`${finding.landing}\`, so its code has shipped. A release record closes it now.`;
     case 'not-carried':
-      return `Production's verified live deployment serves \`${finding.serving}\`, which does not carry this issue's landing commit \`${finding.landing}\`, so its code has not shipped. ${next}`;
+      return `Production's verified live deployment serves \`${finding.serving}\`. That does not carry this issue's landing commit \`${finding.landing}\`, so its code has not shipped. ${next}`;
     case 'unverified':
-      return `This project's live deployment declares no verify probe, so nothing can read what production serves, and the sweep never closes an issue on a deployment nobody read. ${next}`;
+      return `This project's live deployment declares no verify probe, so nothing reads what production serves. The sweep closes nothing on a deployment nobody read. A verify probe is set on the live deploy target, under Settings, Integrations. ${next}`;
     case 'no-landing':
       return `This issue carries no landing commit, so nothing can say whether production has its code. ${next}`;
     case 'outside-git':
-      return `This issue's work lands outside git, so no commit production serves can say whether it has shipped, and the sweep never closes an issue on a reading it cannot make. ${next}`;
+      return `This issue's work lands outside git, so no commit production serves can show it shipped. The sweep closes nothing on a reading it cannot make. ${next}`;
     case 'not-read':
       return next;
     case 'unread':
-      return `What production serves could not be read: ${finding.why}. ${next}`;
+      return `What production serves could not be read, so the sweep did not close it. ${next}\n\n${quoted(finding.why)}`;
   }
+}
+
+/** A reason another system gave, kept whole on a quoted line rather than spliced into a sentence. */
+function quoted(why: string): string {
+  return `> ${why.replace(/\s+/g, ' ').trim()}`;
+}
+
+/** The whole comment the sweep leaves on a row it takes off Releasing. */
+export function settleComment(
+  cause: string,
+  finding: SettleFinding,
+  path: ReleasePath,
+  holds: GateHolds,
+  doors: ReleaseDoors = NO_DOORS,
+): string {
+  return [
+    `**Releasing, with nothing releasing it.** ${cause}.`,
+    "Releasing means a release batch is carrying an issue to production right now. None was, so Forge's releasing sweep has settled it.",
+    findingSentence(finding, path, holds, doors),
+  ].join('\n\n');
 }
 
 /** Raised inside the move's transaction when the row is no longer the one this pass read. */
@@ -230,16 +254,22 @@ export async function landingStill(tx: Tx, issueId: string, judged: string): Pro
   }
 }
 
+/** What the sweep says when the release record that would close a row is refused. */
+export function recordRefusedComment(why: string, holds: GateHolds): string {
+  const said = [
+    'The release record that would close this issue was refused.',
+    `It stays at ${GATE}.`,
+    ...nextAtGateFor('gated', holds),
+  ].join(' ');
+  return `${said}\n\n${quoted(why)}`;
+}
+
 async function sayRecordRefused(row: StrandedRow, why: string): Promise<void> {
   const holds = await readGateHolds(row.project_id, row.id);
   await postSystemComment({
     issueId: row.id,
     authorId: await forgeAuthorId(db),
-    body: [
-      `The release record that would close this issue was refused: ${why}.`,
-      `It stays at ${GATE}.`,
-      ...nextAtGateFor('gated', holds),
-    ].join(' '),
+    body: recordRefusedComment(why, holds),
   });
 }
 
@@ -278,11 +308,8 @@ async function settleOne(
     path === 'gated' && finding.kind !== 'carried'
       ? await readGateHolds(row.project_id, row.id)
       : NO_HOLDS;
-  const body = [
-    `**Releasing, with nothing releasing it.** ${cause}.`,
-    `Releasing means a release batch is carrying an issue to production right now, and none was, so Forge's releasing sweep has settled it.`,
-    findingSentence(finding, path, holds),
-  ].join('\n\n');
+  const doors = await readReleaseDoors(row.project_id, path);
+  const body = settleComment(cause, finding, path, holds, doors);
   await returnToGate(row, body, `releasing sweep: ${cause}`);
   if (finding.kind !== 'carried') return 'returned';
   return (await closeByRecord(row, finding, cause)) ? 'closed' : 'returned';

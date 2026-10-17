@@ -220,9 +220,9 @@ describe('ISS-959 B — the merged mark records its commit', () => {
     expect(row.merged_at).not.toBeNull();
     const said = (await commentsOn(id)).join('\n');
     expect(said).toContain(SHA);
-    expect(said).toContain("recorded here as this call's claim");
+    expect(said).toContain('was named, and is kept as a claim');
     // ISS-1126 — and the trail now names which kind of record this is, not only what it holds.
-    expect(said).toContain('CLAIM Forge did not observe');
+    expect(said).toContain('Forge did not see this merge');
   });
 
   it('adopts the commit and the time of a merge Forge observed', async () => {
@@ -255,8 +255,8 @@ describe('ISS-959 B — the merged mark records its commit', () => {
     // caller's commit appears as the full sha the repository resolved its abbreviation to.
     expect(said).toContain(FEEDFACE);
     expect(said).toContain(SHA);
-    expect(said).toContain('is not what the column holds');
-    expect(said).toContain('merge Forge observed');
+    expect(said).toContain('named in this mark, is kept as a claim only');
+    expect(said).toContain('Forge saw this merge land at commit');
     expect((await storedMark(id)).merged_commit_sha).toBe(SHA);
   });
 
@@ -385,7 +385,7 @@ describe('ISS-959 B — what the mark still refuses, and how a mark is corrected
       200,
     );
     // ISS-1350 — the trail names the commit the repository resolved, never the abbreviation sent.
-    expect((await commentsOn(short.id)).join('\n')).toContain(`commit=${ABC}`);
+    expect((await commentsOn(short.id)).join('\n')).toContain(`at commit ${ABC}.`);
 
     const tooShort = await seed();
     expect(
@@ -399,7 +399,9 @@ describe('ISS-959 B — what the mark still refuses, and how a mark is corrected
     const rows = await harness.db.execute<{ body: string }>(
       sql`SELECT body FROM comments WHERE issue_id = ${id}`,
     );
-    expect((rows[0] as { body: string }).body).toContain(`commit=${SHA}`);
+    expect((rows[0] as { body: string }).body).toContain(
+      `Marked merged into base, at commit ${SHA}.`,
+    );
   });
 
   it('re-marking after an unmark re-adopts whatever Forge now observes', async () => {

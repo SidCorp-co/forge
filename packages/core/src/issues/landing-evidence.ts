@@ -7,6 +7,7 @@
  * moves (ISS-1327): docs/modules/issues/merge-mark.md.
  */
 
+import { MARK_MERGED_ACTION, WHERE_IT_LANDED_FIELD } from '@forge/contracts/mark-merged-words';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { type Db, db } from '../db/client.js';
@@ -166,8 +167,8 @@ export function landingRoute(lane: Lane, held: MergeMarkKind = 'unmarked', then 
     clear +
     `${whereItLands(lane, true)}, so claim it with \`forge_issues\` ` +
     '`mark_merged` carrying `data.landing` — the live URL, CMS entry or storefront resource the ' +
-    'work now is (`landing` on `POST /api/issues/:id/merge`, or "Where it landed" on the issue\'s ' +
-    `Mark merged rail) — then ${then}. A mark naming no landing is not evidence here, and a ` +
+    `work now is (\`landing\` on \`POST /api/issues/:id/merge\`, or "${WHERE_IT_LANDED_FIELD}" on the issue's ` +
+    `${MARK_MERGED_ACTION} rail) — then ${then}. A mark naming no landing is not evidence here, and a ` +
     'commit is not asked for.'
   );
 }
@@ -181,13 +182,13 @@ export function landingShortfall(row: MergeMarkColumns, lane: Lane): string | nu
   // Outside git a mark lacks a landing, never a commit: no commit is that shape's normal record.
   const held =
     lane.shape === 'outside_git' && kind === 'asserted'
-      ? "this issue's mark names no landing: `merged_landing` is empty"
+      ? "This issue's mark names no landing."
       : describeMergeMark({ kind, commitSha: row.mergedCommitSha, landing: row.mergedLanding });
   const where = lane.shape === 'git' ? 'in git' : 'outside git';
   const whose = lane.declared
-    ? `an issue declared to land ${where}`
-    : `a project whose work lands ${where}`;
-  return `${held}, and ${whose} accepts ${wanted}`;
+    ? `An issue declared to land ${where}`
+    : `A project whose work lands ${where}`;
+  return `${held} ${whose} accepts ${wanted}.`;
 }
 
 /** The mark writer's refusal for this lane, or `null` where the mark may be written. */

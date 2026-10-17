@@ -120,8 +120,8 @@ stands at `releasing` under a running run or none of it does and the run is canc
 (`RELEASE_ROSTER_REFUSED`, or `CLAIM_CONFLICT` for a lost race); then it enqueues one `release_batch`
 job. Creating a batch is the only door that writes `releasing`: every other door asking for it is
 refused `RELEASING_STARTS_FROM_RELEASE`, and a move off it from anything but the batch's finish,
-its abort, the recovery of a run that stopped or never started
-(`packages/core/src/release-batch/releasing-recovery.ts:recoverStrandedReleasing`), or the releasing
+its abort, the recovery of a run that stopped, never started or whose job is held with nothing to
+send it (`packages/core/src/release-batch/releasing-recovery.ts:recoverStrandedReleasing`), or the releasing
 sweep, is refused `RELEASING_ENDS_BY_RELEASE`
 (`packages/core/src/issues/releasing-door.ts`, ISS-1421).
 `packages/core/src/release-batch/job-start.ts:readReleaseStart` reads that job, and `GET

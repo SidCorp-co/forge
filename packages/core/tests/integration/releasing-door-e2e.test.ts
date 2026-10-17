@@ -10,6 +10,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { markMergedSteps } from '@forge/contracts/mark-merged-words';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -191,9 +192,7 @@ describe('a move to Releasing from any door but a release batch (criteria 5, 6, 
     expect(body.message).toContain(
       'A release cannot close this issue yet. It is not marked merged.',
     );
-    expect(body.message).toContain(
-      "Use Mark merged in the issue's properties, and fill in Where it landed.",
-    );
+    expect(body.message).toContain(markMergedSteps(false));
     expect(body.message).toContain('Release now appears on its page once that is done.');
     expect(body.message).not.toContain('Start one with Release now');
     expect(body.message).not.toContain('release-batches');
@@ -313,9 +312,16 @@ describe('the refusal names only the doors this project has (criteria 25, 26)', 
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('RELEASING_STARTS_FROM_RELEASE');
     expect(body.message).toContain(
-      "No release can start until one is added on the project's integrations screen.",
+      "No release can start until one is added in the project's Settings, on the Integrations tab. There, share a connection as Deploy target, with Live ticked.",
     );
     expect(body.message).not.toMatch(/Release now|release gate/);
+    // ISS-1421 r4: the address that opens the place is carried, under this project's own slug.
+    const [project] = (await harness.db.execute(
+      sql`SELECT slug FROM projects WHERE id = ${projectId}`,
+    )) as unknown as Array<{ slug: string }>;
+    expect(body.message).toContain(
+      `/projects/${project?.slug}/settings?tab=integrations&add=live-deploy-target.`,
+    );
   });
 });
 
@@ -338,7 +344,7 @@ describe('a move off Releasing from any door but a release path (criterion 11)',
       expect(answer.code).toBe('RELEASING_ENDS_BY_RELEASE');
       expect(answer.message).toContain(`/release-batches/${run}/abort`);
       expect(answer.message).toContain(
-        'Its abort, or the recovery of a batch run that stopped or never started, returns it to the release gate.',
+        'Its abort, or the recovery of a batch run that stopped, never started or whose job nothing will send, returns it to the release gate.',
       );
       expect(await row(id)).toEqual({ status: 'releasing', claim: run });
     }
