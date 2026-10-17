@@ -43,8 +43,9 @@ let shortSaid = false;
  * setting fits it: no address is logged, only how many entries arrived against how many are trusted.
  */
 export function reportChainShape(forwardedFor: string | undefined, hops: number): void {
+  // No header is a request no proxy forwarded (a health probe); an empty one is a proxy's.
+  if (forwardedFor === undefined) return;
   const entries = entriesIn(forwardedFor);
-  if (entries === 0) return;
   if (!shapeSaid) {
     shapeSaid = true;
     logger.info(

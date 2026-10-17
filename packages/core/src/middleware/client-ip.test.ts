@@ -67,6 +67,15 @@ describe('reportChainShape', () => {
     expect(warn.mock.calls[0]?.[1]).toMatch(/fewer than TRUSTED_PROXY_HOPS=2/);
   });
 
+  // Consult F1: a proxy that sent the header empty was as silent as one that sent none.
+  it.each(['', ' , '])('warns once for a header %j a proxy sent with no entry in it', (header) => {
+    reportChainShape(header, 2);
+    reportChainShape(header, 2);
+    expect(info.mock.calls[0]?.[0]).toEqual({ entries: 0, hops: 2 });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[1]).toMatch(/carried 0 X-Forwarded-For entries, fewer than/);
+  });
+
   it('says nothing for a request no proxy forwarded', () => {
     reportChainShape(undefined, 2);
     expect(info).not.toHaveBeenCalled();
