@@ -349,3 +349,24 @@ describe('what a crossed bound makes of the run', () => {
     expect(read([]).bounds.map((b) => b.name)).toEqual(['total', 'stall', 'regression']);
   });
 });
+
+describe('the bounds of a run that has ended', () => {
+  const takenAt = at(BOUND_DEFAULTS.stall * 3);
+
+  it('holds nothing, though a bound was crossed before it ended', () => {
+    const reading = readBounds([], { now: NOW, takenAt, ended: { at: null } });
+    expect(reading).toMatchObject({ holding: false, crossedNames: ['stall'] });
+  });
+
+  it('measures up to the moment it ended, never up to now', () => {
+    const ended = new Date(takenAt.getTime() + 60_000);
+    const stall = readBounds([], { now: NOW, takenAt, ended: { at: ended } }).bounds.find(
+      (b) => b.name === 'stall',
+    );
+    expect(stall).toMatchObject({ crossed: false, measuredMs: 60_000 });
+  });
+
+  it('still holds, while it is open, once the same bound is crossed', () => {
+    expect(readBounds([], { now: NOW, takenAt }).holding).toBe(true);
+  });
+});

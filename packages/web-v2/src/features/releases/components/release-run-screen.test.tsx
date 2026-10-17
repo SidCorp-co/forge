@@ -369,6 +369,16 @@ describe("the run screen, read by the person who pressed (ISS-1323 r2)", () => {
 		expect(roster).not.toHaveTextContent("ISS-5");
 	});
 
+	// ISS-1421 r6: the roster said "channel coolify" where the gate panel says Coolify.
+	it("names the channel the way the gate panel does", () => {
+		state({});
+
+		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+
+		expect(screen.getByTestId("roster")).toHaveTextContent("Deploys through Coolify");
+		expect(screen.getByTestId("roster")).not.toHaveTextContent(/channel coolify/i);
+	});
+
 	it("lays its sections out flat, with no card surface", () => {
 		state({});
 

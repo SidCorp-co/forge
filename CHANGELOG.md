@@ -3223,6 +3223,7 @@
 - **Release refusals name statuses in words**, such as Releasing, never followed by a stored value. (ISS-1421)
 - **The releasing sweep links the release that ended.** (ISS-1421)
 - **A release page no longer says a release never started when a box took it.** (ISS-1421)
+- **A release that has ended no longer reads Holding.** Its bounds measure up to when it ended, and its roster names the provider it deploys through, such as Coolify. (ISS-1421)
 - **A release agent stopped on a question Forge cannot read is stopped, not held on it.** Its issues return to Awaiting release saying why, and no unanswerable question is left. (ISS-1421)
 - **The Mark merged panel says the mark records where the work landed**, never that it shipped. (ISS-1421)
 - **Integrations read one way everywhere.** Rows, drawers and badges say Turned off, Last check failed or Not checked yet; the gate panel says "Deploys through Coolify"; Share updates the MCP panel at once; no two shared connections read alike. (ISS-1421)

@@ -78,7 +78,7 @@ export function CoolifySection({ projectId, stage: openedAt }: { projectId: stri
     <SettingsSection>
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center justify-between gap-2">
-          <CardTitle>Coolify deploy</CardTitle>
+          <CardTitle>Coolify</CardTitle>
           <Badge tone={badgeFor(existing).tone}>
             {badgeFor(existing).label}
           </Badge>

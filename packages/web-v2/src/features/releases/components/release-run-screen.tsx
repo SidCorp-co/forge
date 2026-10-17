@@ -18,6 +18,7 @@ import {
   SectionTitle,
   Skeleton,
 } from "@/design";
+import { providerLabel } from "@/features/integrations/providers/registry";
 import { STATUS_LABELS } from "@/features/issues/derive";
 import { inlineCode } from "@/features/project-settings/components/inline-code";
 import { formatApiError } from "@/lib/api/error";
@@ -245,7 +246,7 @@ function Roster({ state }: { state: ReleaseRunState }) {
 			<div className="flex flex-wrap items-center gap-2 text-xs text-muted">
 				{roster.baseBranch ? <MonoTag>{roster.baseBranch}</MonoTag> : null}
 				{roster.channels.length > 0 ? (
-					<span>channel {roster.channels.join(", ")}</span>
+					<span>Deploys through {roster.channels.map(providerLabel).join(" and ")}</span>
 				) : null}
 				{roster.releaseRunnerLabel ? (
 					<span>prefers {roster.releaseRunnerLabel}</span>

@@ -241,6 +241,38 @@ describe('the state of a release batch says whether a box has started it', () =>
     expect(JSON.stringify(start)).not.toMatch(/never started|before any box took it/);
   });
 
+  // A taken job starts the stall clock, and an ended run must stop it: anhome's cancelled run read
+  // "Holding: this run is past its stall bound … until a person looks" an hour after it ended.
+  it('reads an ended run as holding nothing, its stall measured up to its end', async () => {
+    const { runId, jobId } = await opened();
+    const device = await deviceOf();
+    await harness.db.execute(sql`
+      UPDATE jobs SET status = 'failed', dispatched_at = now() - interval '40 minutes',
+        device_id = ${device.id}, finished_at = now() - interval '39 minutes'
+      WHERE id = ${jobId}
+    `);
+    await harness.db.execute(sql`
+      UPDATE pipeline_runs SET status = 'cancelled', finished_at = now() - interval '39 minutes'
+      WHERE id = ${runId}
+    `);
+
+    const res = await fetch(
+      `${server.baseUrl}/api/projects/${projectId}/release-batches/${runId}/state`,
+      { headers: { authorization: `Bearer ${jwt}` } },
+    );
+    const body = (await res.json()) as {
+      bounds: {
+        holding: boolean;
+        bounds: { name: string; crossed: boolean; measuredMs: number }[];
+      };
+    };
+
+    expect(body.bounds.holding).toBe(false);
+    const stall = body.bounds.bounds.find((b) => b.name === 'stall');
+    expect(stall?.crossed).toBe(false);
+    expect(stall?.measuredMs).toBeLessThan(5 * 60_000);
+  });
+
   it('reads `none` for a release run that holds no release job', async () => {
     const { runId, jobId } = await opened();
     await harness.db.execute(sql`DELETE FROM jobs WHERE id = ${jobId}`);
