@@ -34,7 +34,6 @@ import { providerCanDeploy } from "@forge/contracts/deploy-capability";
 import type {
   AgentAccess,
   BindingRole,
-  ConnectionSummary,
   DeployStage,
 } from "@/features/integrations/types";
 

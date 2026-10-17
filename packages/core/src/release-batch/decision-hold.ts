@@ -114,14 +114,18 @@ export interface UnreadableAskRefusal {
  * written, since nobody could answer one that says only that it could not be read (anhome
  * b210f881): the release is stopped instead, each issue it carried is put back at the release gate
  * with a comment saying why and what to do next, and the refusal is returned for the job's end.
- * `null` where the run is not an open release, which leaves nothing to stop.
+ * `null` where no open release run holds the job.
  */
 export async function refuseUnreadableReleaseAsk(
   job: JobRow,
   asked: Extract<PaneAsk, { kind: 'unread' }>,
 ): Promise<UnreadableAskRefusal | null> {
   const [run] = await db
-    .select({ kind: pipelineRuns.kind, status: pipelineRuns.status, metadata: pipelineRuns.metadata })
+    .select({
+      kind: pipelineRuns.kind,
+      status: pipelineRuns.status,
+      metadata: pipelineRuns.metadata,
+    })
     .from(pipelineRuns)
     .where(eq(pipelineRuns.id, job.pipelineRunId))
     .limit(1);

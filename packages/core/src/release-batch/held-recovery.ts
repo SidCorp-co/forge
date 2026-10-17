@@ -10,14 +10,13 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, jobs } from '../db/schema.js';
+import { statusLabel } from '../issues/status-sets.js';
 import { syncAgentSessionLifecycle } from '../jobs/agent-session-link.js';
 import { AUTO_RELEASE_REASONS, HOLD_PAYLOAD_KEY } from '../jobs/hold.js';
-import { statusLabel } from '../issues/status-sets.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { projectAutoProdDeploy } from '../pipeline/auto-prod-deploy.js';
 import { emitPipelineWedge } from '../pipeline/wedge.js';
-import { RELEASE_GATE_STATUS } from './gate.js';
 import {
   AWAITING_DECISION,
   DECISION_HANDBACK_REASON,
@@ -25,6 +24,7 @@ import {
   type DecisionRef,
   readDecisionRef,
 } from './decision-state.js';
+import { RELEASE_GATE_STATUS } from './gate.js';
 import { heldBecause, RELEASE_JOB_TYPE, RELEASE_UNSTARTED_DEADLINE_MS } from './job-start.js';
 import { type ProjectPages, projectPages, releaseRunSentence } from './release-links.js';
 import { recoverStrandedReleasing } from './releasing-recovery.js';
@@ -236,8 +236,7 @@ async function emitWedge(
       : 'Clear what held the release job',
   );
   // The roster's comments and this notice give one next step for a decision (criterion 67).
-  const next =
-    decision && !promoted ? decisionNextStep(auto, at) : handed.next;
+  const next = decision && !promoted ? decisionNextStep(auto, at) : handed.next;
   const { went } = handed;
   await emitPipelineWedge({
     projectId: row.project_id,

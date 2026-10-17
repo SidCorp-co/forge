@@ -242,18 +242,30 @@ describe('every answer the mark writer refuses with', () => {
   const SHOUT_KEPT = new Set(['URL', 'CMS', 'PATCH', 'API']);
   const TYPO = 'https://mowmentbrand.com/prodcts/tee';
   const refusals: Array<[string, string | undefined]> = [
-    ['LANDING_NOT_THIS_SHAPE', landingMarkRefusal({ lane: GIT, landing: 'https://x', observed: false })?.detail],
+    [
+      'LANDING_NOT_THIS_SHAPE',
+      landingMarkRefusal({ lane: GIT, landing: 'https://x', observed: false })?.detail,
+    ],
     [
       'LANDING_NOT_THIS_SHAPE, declared',
-      landingMarkRefusal({ lane: { shape: 'git', declared: true }, landing: 'https://x', observed: false })
-        ?.detail,
+      landingMarkRefusal({
+        lane: { shape: 'git', declared: true },
+        landing: 'https://x',
+        observed: false,
+      })?.detail,
     ],
-    ['LANDING_REQUIRED', landingMarkRefusal({ lane: OUTSIDE, landing: null, observed: false })?.detail],
+    [
+      'LANDING_REQUIRED',
+      landingMarkRefusal({ lane: OUTSIDE, landing: null, observed: false })?.detail,
+    ],
     [
       'LANDING_REQUIRED, declared',
       landingMarkRefusal({ lane: DECLARED_OUTSIDE, landing: null, observed: false })?.detail,
     ],
-    ['MARK_ALREADY_STANDS', standingMarkRefusal({ sent: TYPO, wrote: false, held: LANDED })?.detail],
+    [
+      'MARK_ALREADY_STANDS',
+      standingMarkRefusal({ sent: TYPO, wrote: false, held: LANDED })?.detail,
+    ],
     [
       'MARK_ALREADY_STANDS, no landing held',
       standingMarkRefusal({ sent: TYPO, wrote: false, held: ASSERTED })?.detail,

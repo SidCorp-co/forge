@@ -285,7 +285,8 @@ describe('leaving releasing (ISS-1421)', () => {
 // (awaiting_release)" in these refusals. Their way out is a release, never a status a caller sends,
 // so they name statuses in words alone; the code and the details carry the values.
 describe('the release path names statuses in words (criterion 91)', () => {
-  const STORED = /\((?:releasing|awaiting_release|open|in_progress|developed|testing|closed|reopen|dropped|on_hold|needs_info|approved|confirmed|waiting|draft)\)/;
+  const STORED =
+    /\((?:releasing|awaiting_release|open|in_progress|developed|testing|closed|reopen|dropped|on_hold|needs_info|approved|confirmed|waiting|draft)\)/;
 
   it('in every refusal entering or leaving Releasing', async () => {
     const said: string[] = [];

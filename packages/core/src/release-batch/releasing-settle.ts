@@ -16,6 +16,7 @@ import { statusLabel } from '../issues/status-sets.js';
 import { logger } from '../logger.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import { recordPerformedRelease } from './recorded.js';
+import { projectPages } from './release-links.js';
 import {
   type GateHolds,
   NO_DOORS,
@@ -32,7 +33,6 @@ import {
   type ProductionReading,
   readProductionFinding,
 } from './releasing-settle-reading.js';
-import { projectPages } from './release-links.js';
 import { releaseRunStopped } from './run-ended-words.js';
 
 /** At most this many rows a tick, oldest first; the rest are read on later ticks. */

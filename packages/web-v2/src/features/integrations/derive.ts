@@ -117,8 +117,7 @@ export function deriveConnectionStatus(connection: {
   return "error";
 }
 
-/** The words every integration surface names a state by — the Integrations rows, a drawer's header
- *  and each provider's own badge — so one binding never reads two ways (ISS-1421 r6, criterion 96). */
+/** The words every row, drawer header and provider badge names a state by (ISS-1421 r6). */
 export const STATE_WORDS = {
   off: "Turned off",
   failed: "Last check failed",

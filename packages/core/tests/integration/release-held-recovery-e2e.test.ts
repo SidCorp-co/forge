@@ -274,14 +274,21 @@ describe("a decision hand-back's comment ends on one next step (criterion 67)", 
   async function handBack(): Promise<string> {
     const a = await fx.insertIssue();
     const { jobId } = await fx.claim([a]);
-    await hold(jobId, { reason: 'awaiting_decision', autoRelease: false, minutesAgo: 1, decision: 'owed' });
+    await hold(jobId, {
+      reason: 'awaiting_decision',
+      autoRelease: false,
+      minutesAgo: 1,
+      decision: 'owed',
+    });
     expect(await m.recover(new Date())).toEqual({ recovered: 1 });
     return (await bodies(a)).join('\n');
   }
 
   it('says to answer, then start the next release, where a person releases', async () => {
     const said = await handBack();
-    expect(said).toContain('Answer the question, then start the next release from Awaiting release.');
+    expect(said).toContain(
+      'Answer the question, then start the next release from Awaiting release.',
+    );
     expect(said).not.toContain('released again once it is answered');
     expect(said).not.toMatch(/a person decides/i);
     expect(said).not.toContain('answering the question is enough');

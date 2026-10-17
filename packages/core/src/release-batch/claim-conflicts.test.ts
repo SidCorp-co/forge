@@ -88,9 +88,7 @@ describe('claimConflictSentence', () => {
 
   it('splits one ended batch into the releasing sweep for `releasing` and the claim sweep for the gate', () => {
     const s = claimConflictSentence(P, GATE, [held('ISS-8'), staleAt('ISS-9')]);
-    expect(s).toContain(
-      'ISS-8 is at Releasing, still claimed by release batch run-ended',
-    );
+    expect(s).toContain('ISS-8 is at Releasing, still claimed by release batch run-ended');
     expect(s).toContain(
       'otherwise returning it to the release gate, so send it again after it has run.',
     );
@@ -122,9 +120,7 @@ describe('claimConflictSentence', () => {
       at('ISS-5', 'closed'),
       at('ISS-6', 'testing'),
     ]);
-    expect(s).toContain(
-      'ISS-4, ISS-6 are at Testing, not Awaiting release',
-    );
+    expect(s).toContain('ISS-4, ISS-6 are at Testing, not Awaiting release');
     expect(s).toContain('ISS-5 is at Closed: already shipped');
   });
 
@@ -141,9 +137,7 @@ describe('claimConflictSentence', () => {
 
   it('tells an issue at dropped it was set down as not work, and not to wait for the gate', () => {
     const one = claimConflictSentence(P, GATE, [at('ISS-8', 'dropped')]);
-    expect(one).toContain(
-      'ISS-8 is at Dropped: set down as not work, so no release carries it.',
-    );
+    expect(one).toContain('ISS-8 is at Dropped: set down as not work, so no release carries it.');
     expect(one).not.toContain('release gate');
     const two = claimConflictSentence(P, GATE, [at('ISS-8', 'dropped'), at('ISS-9', 'dropped')]);
     expect(two).toContain(
