@@ -129,18 +129,18 @@ function McpServerRow({
 
   return (
     <li className="flex flex-col gap-1.5 border-t border-line py-3">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <Icon name="command" size={15} className="text-muted" />
         <span className="text-13 font-semibold text-fg">{rowTitle(entry)}</span>
         {entry.role !== null && (
-          <span className="fg-body-sm rounded-pill bg-sunken px-2 py-0.5 text-subtle">
+          <span className="fg-body-sm whitespace-nowrap rounded-pill bg-sunken px-2 py-0.5 text-subtle">
             {scopeLabel(entry.role, entry.stages)}
           </span>
         )}
-        <span className="fg-body-sm rounded-pill bg-sunken px-2 py-0.5 text-subtle">
+        <span className="fg-body-sm whitespace-nowrap rounded-pill bg-sunken px-2 py-0.5 text-subtle">
           {SOURCE_LABEL[entry.source]}
         </span>
-        <span className="ml-auto">
+        <span className="ml-auto whitespace-nowrap">
           <ReasonPill reason={entry.reason} />
         </span>
       </div>
