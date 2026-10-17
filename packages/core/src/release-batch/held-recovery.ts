@@ -25,6 +25,8 @@ export interface ReleaseHeldRecoveryResult {
 
 interface HeldRow extends Record<string, unknown> {
   job_id: string;
+  /** `cancelled` where this pass fenced it and the hand-back did not finish. */
+  status: 'held' | 'cancelled';
   run_id: string;
   project_id: string;
   hold_reason: string | null;
@@ -41,19 +43,28 @@ export function heldHandbackSentence(reason: string | null): string {
   return `The release run carrying this issue could never move: its job was held because ${heldBecause(reason)}, and nothing would send it again`;
 }
 
-/** Every held release job under an open batch run, with what its hold says of itself. */
+/**
+ * Every held release job under an open batch run, with what its hold says of itself, and every one
+ * this pass already fenced whose run is still open, so a hand-back cut short is finished.
+ *
+ * A decision still owed keeps the job out; one answered (`answeredAt`, carried into the payload of
+ * every later hold of that lineage) does not, and a reference in a shape not read here keeps it out.
+ */
 async function heldReleaseJobs(): Promise<HeldRow[]> {
   return (await db.execute<HeldRow>(sql`
-    SELECT j.id AS job_id, j.pipeline_run_id AS run_id, j.project_id,
+    SELECT j.id AS job_id, j.status, j.pipeline_run_id AS run_id, j.project_id,
            j.payload -> ${HOLD_PAYLOAD_KEY} ->> 'reason' AS hold_reason,
            COALESCE((j.payload -> ${HOLD_PAYLOAD_KEY} ->> 'autoRelease')::boolean, false) AS auto_release,
            COALESCE(j.payload -> ${HOLD_PAYLOAD_KEY} ->> 'heldAt', j.queued_at::text) AS held_at
     FROM jobs j
     JOIN pipeline_runs r ON r.id = j.pipeline_run_id
     WHERE j.type = ${RELEASE_JOB_TYPE}
-      AND j.status = 'held'
+      AND (j.status = 'held' OR (j.status = 'cancelled' AND j.error = ${HELD_HANDBACK_REASON}))
       AND COALESCE(j.failure_reason, '') <> ${AWAITING_DECISION}
-      AND NOT (COALESCE(j.payload, '{}'::jsonb) ? ${DECISION_KEY})
+      AND (
+        NOT (COALESCE(j.payload, '{}'::jsonb) ? ${DECISION_KEY})
+        OR jsonb_typeof(j.payload -> ${DECISION_KEY} -> 'answeredAt') = 'string'
+      )
       AND r.status = 'running'
       AND (r.metadata ->> 'source') = 'release-batch'
       AND r.metadata -> 'finish' IS NULL
@@ -71,6 +82,23 @@ export function nothingWillSend(
   if (!resumes) return true;
   const heldAt = Date.parse(row.held_at);
   return Number.isFinite(heldAt) && now.getTime() - heldAt > RELEASE_UNSTARTED_DEADLINE_MS;
+}
+
+/** Fence the held job, or pick up the fence an earlier pass made and did not finish behind. */
+async function fenceOrResume(row: HeldRow): Promise<typeof jobs.$inferSelect | null> {
+  if (row.status === 'held') return fenceHeldJob(row.job_id);
+  const [resumed] = await db
+    .select()
+    .from(jobs)
+    .where(
+      and(
+        eq(jobs.id, row.job_id),
+        eq(jobs.status, 'cancelled'),
+        eq(jobs.error, HELD_HANDBACK_REASON),
+      ),
+    )
+    .limit(1);
+  return resumed ?? null;
 }
 
 async function fenceHeldJob(jobId: string): Promise<typeof jobs.$inferSelect | null> {
@@ -92,9 +120,9 @@ export async function recoverHeldReleaseBatches(
 ): Promise<ReleaseHeldRecoveryResult> {
   let recovered = 0;
   for (const row of await heldReleaseJobs()) {
-    if (!nothingWillSend(row, now)) continue;
+    if (row.status === 'held' && !nothingWillSend(row, now)) continue;
     try {
-      const fenced = await fenceHeldJob(row.job_id);
+      const fenced = await fenceOrResume(row);
       if (!fenced) continue;
       await recoverStrandedReleasing(row.run_id, {
         reason: heldHandbackSentence(row.hold_reason),

@@ -41,6 +41,11 @@ beforeEach(async () => {
 /** A failed job, held for `reason` the way the failure path holds it. */
 async function heldFor(reason: string, prompt: string): Promise<string> {
   const { jobId } = await plantJob(harness, box, { payload: { promptString: prompt } });
+  return rehold(jobId, reason);
+}
+
+/** Fail `jobId` and hold its successor for `reason`, as the failure path does. */
+async function rehold(jobId: string, reason: string): Promise<string> {
   await harness.db.execute(sql`
     UPDATE jobs SET status = 'failed', finished_at = now(), error = 'infra: connection reset'
     WHERE id = ${jobId}
@@ -49,7 +54,7 @@ async function heldFor(reason: string, prompt: string): Promise<string> {
   const { jobs } = await import('../../src/db/schema.js');
   const { eq } = await import('drizzle-orm');
   const [row] = await db.select().from(jobs).where(eq(jobs.id, jobId));
-  if (!row) throw new Error('planted job vanished');
+  if (!row) throw new Error('job vanished');
   const heldId = await m.holdJobForReason(row, reason);
   if (!heldId) throw new Error(`no hold for ${reason}`);
   return heldId;
@@ -84,15 +89,16 @@ describe('held jobs are sent again once their hold clears (criterion 56, 61)', (
   });
 
   it('leaves held a lineage that has spent its one automatic release', async () => {
-    const held = await heldFor('verify_unavailable', 'resume the held work');
-    await harness.db.execute(sql`
-      UPDATE jobs SET payload = jsonb_set(payload, '{__hold,autoRelease}', 'false'::jsonb)
-      WHERE id = ${held}
-    `);
-    await due(held);
+    const first = await heldFor('verify_unavailable', 'resume the held work');
+    await due(first);
+    expect(await m.everywhere()).toEqual({ released: 1, failed: 0 });
+
+    // The released job fails again and is held again, the way the failure path does it.
+    const again = await rehold(first, 'verify_unavailable');
+    await due(again);
 
     expect(await m.everywhere()).toEqual({ released: 0, failed: 0 });
-    expect(await statusOf(held)).toBe('held');
+    expect(await statusOf(again)).toBe('held');
   });
 
   it('leaves held a hold whose reason does not clear by itself', async () => {

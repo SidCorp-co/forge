@@ -78,13 +78,22 @@ beforeEach(async () => {
 /** The release job, held the way `holdJobForReason` or the decision hold leaves it. */
 async function hold(
   jobId: string,
-  how: { reason: string; autoRelease: boolean; minutesAgo: number; decision?: boolean },
+  how: {
+    reason: string;
+    autoRelease: boolean;
+    minutesAgo: number;
+    decision?: 'owed' | 'answered';
+  },
 ): Promise<void> {
   const heldAt = new Date(Date.now() - how.minutesAgo * 60_000).toISOString();
   const state = JSON.stringify({ reason: how.reason, heldAt, autoRelease: how.autoRelease });
-  const decision = how.decision
-    ? sql`|| jsonb_build_object('awaitingDecision', '{}'::jsonb)`
-    : sql``;
+  const ref = { v: 1, questionIds: [], since: heldAt };
+  const decision =
+    how.decision === 'owed'
+      ? sql`|| jsonb_build_object('awaitingDecision', ${JSON.stringify(ref)}::jsonb)`
+      : how.decision === 'answered'
+        ? sql`|| jsonb_build_object('awaitingDecision', ${JSON.stringify({ ...ref, answeredAt: heldAt })}::jsonb)`
+        : sql``;
   await harness.db.execute(sql`
     UPDATE jobs SET status = 'held', failure_reason = ${how.reason},
       queued_at = ${heldAt}::timestamptz,
@@ -156,6 +165,38 @@ describe('a release batch whose job is held with nothing to send it (criterion 5
     expect((await bodies(a)).join('\n')).toContain('every box that could run it was rate-limited');
   });
 
+  it('hands back one whose decision was answered and whose resumed job was then held for good', async () => {
+    const a = await fx.insertIssue();
+    const { jobId } = await fx.claim([a]);
+    await hold(jobId, {
+      reason: 'retry_rounds_exhausted',
+      autoRelease: false,
+      minutesAgo: 1,
+      decision: 'answered',
+    });
+
+    expect(await m.recover(new Date())).toEqual({ recovered: 1 });
+    expect(await fx.stored(a)).toMatchObject({ status: 'awaiting_release', claim: null });
+  });
+
+  it('finishes a hand-back a pass cut short after fencing the job', async () => {
+    const a = await fx.insertIssue();
+    const { runId, jobId } = await fx.claim([a]);
+    await hold(jobId, { reason: 'retry_rounds_exhausted', autoRelease: false, minutesAgo: 1 });
+    const { HELD_HANDBACK_REASON } = await import('../../src/release-batch/held-recovery.js');
+    // The fence committed; the process stopped before the roster went back.
+    await harness.db.execute(sql`
+      UPDATE jobs SET status = 'cancelled', finished_at = now(), error = ${HELD_HANDBACK_REASON}
+      WHERE id = ${jobId}
+    `);
+    expect(await fx.stored(a)).toMatchObject({ status: 'releasing', claim: runId });
+
+    expect(await m.recover(new Date())).toEqual({ recovered: 1 });
+    expect(await fx.stored(a)).toMatchObject({ status: 'awaiting_release', claim: null });
+    expect(await fx.runStatus(runId)).not.toBe('running');
+    expect(await m.recover(new Date())).toEqual({ recovered: 0 });
+  });
+
   it('is settled by nothing else afterwards: one pass, one comment', async () => {
     const a = await fx.insertIssue();
     const { jobId } = await fx.claim([a]);
@@ -176,7 +217,7 @@ describe('a held release the recovery leaves as it found it (criterion 59)', () 
       reason: 'awaiting_decision',
       autoRelease: false,
       minutesAgo: 10 * deadlineMinutes(),
-      decision: true,
+      decision: 'owed',
     });
 
     expect(await m.recover(new Date())).toEqual({ recovered: 0 });
