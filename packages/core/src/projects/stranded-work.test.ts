@@ -96,6 +96,6 @@ describe('kindStrandsWork', () => {
       was: { shape: 'outside_git', declared: false },
       marked,
     });
-    expect(fromOutside.message).toContain('Set `landingShape` to `outside_git`');
+    expect(fromOutside.message).toContain('`landingShape: outside_git`');
   });
 });

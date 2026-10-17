@@ -16,8 +16,8 @@ import { comments, issues } from '../db/schema.js';
 import type { IssueCriteriaReport } from '../issues/criteria-verdicts.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
 import { logger } from '../logger.js';
-import { shortfallSaid } from '../release-batch/close-shortfall.js';
 import { type ServingReading, servingClause } from '../release-batch/serving-reading.js';
+import { shortfallSaid } from '../release-batch/shortfall-words.js';
 import type { RuntimeReading } from '../release-batch/weighing.js';
 
 /** The session_context key this module owns. */

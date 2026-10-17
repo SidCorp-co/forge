@@ -183,7 +183,8 @@ function gitDetail(door: EvidenceDoor): string {
       'This mark names no commit, and no branch is recorded for this issue. Nothing was marked. ' +
         'Record the branch in `sessionContext.branch` or `sessionContext.worklog.branch`, then ' +
         'mark it again. Where the work landed on the base branch itself, mark it again with ' +
-        "`data.commit`. Forge checks that commit against the project's repository.",
+        "`mark_merged` carrying `data.commit`. Forge checks that commit against the project's " +
+        'repository.',
       [UNREADABLE_REPOSITORY, DECLARE_OUTSIDE_GIT, NOT_A_BRANCH],
     );
   }

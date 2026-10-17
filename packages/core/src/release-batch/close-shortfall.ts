@@ -8,6 +8,9 @@ import { entryRecordsInWords } from '../issues/entry-criteria-keys.js';
 import { refuseUnshippedClose } from '../issues/merged-at.js';
 import { checkTransitionEvidence } from '../issues/transition-evidence.js';
 import { openQuestionIdsOn, openQuestionsFault } from '../questions/issue-coupling.js';
+import { shortfallSaid } from './shortfall-words.js';
+
+export { shortfallSaid, shortfallSentence } from './shortfall-words.js';
 
 export type CloseShortfallCode =
   | 'CLOSE_REQUIRES_SHIPPED'
@@ -125,16 +128,6 @@ export const ENTRY_RECORDS_CLEAR =
 
 export const ENTRY_RECORDS_CLEAR_HERE =
   "An agent writes them through Forge's issue tools. To start one, press Open session at the top of this page.";
-
-/** A shortfall's reason ("not marked merged", "holds 1 open question") as a sentence of its own. */
-export function shortfallSentence(reason: string): string {
-  const verb = /^(holds|has) /.test(reason) ? 'It' : /^no /.test(reason) ? 'It has' : 'It is';
-  return `${verb} ${reason}.`;
-}
-
-export function shortfallSaid(s: Pick<CloseShortfall, 'reason' | 'clears'>): string {
-  return `${shortfallSentence(s.reason)} ${s.clears}`;
-}
 
 /** One line per shortfall, the way a hold or an outcome names it: "ISS-4: It holds 1 open question. Answer it…". */
 export function shortfallLine(

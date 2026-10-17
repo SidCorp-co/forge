@@ -141,6 +141,7 @@ const READS: Record<string, 'person' | 'caller'> = {
   'release-batch/carried-sentences.ts': 'person',
   'release-batch/reader-sentences.ts': 'person',
   'release-batch/claim-conflicts.ts': 'person',
+  'release-batch/decision-hold.ts': 'person',
   'release-batch/held-recovery.ts': 'person',
   'release-batch/releasing-recovery.ts': 'person',
   'release-batch/releasing-settle.ts': 'person',

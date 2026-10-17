@@ -39,6 +39,10 @@ const MAIN_HEAD = '9a1b2c3d4e5f60718293a4b5c6d7e8f901234567';
 /** A landing commit SERVING does not carry. */
 const UNSHIPPED = '9f8e7d6c5b4a39281706f5e4d3c2b1a098f7e6d5';
 
+/** A comment with the release run's page taken out: that link is the one place it names a run. */
+const withoutRunPages = (body: string): string =>
+  body.replace(/https?:\/\/\S+\/releases\/[0-9a-f-]{36}\.?/g, '');
+
 let harness: TestDatabase;
 let repo: GitHubDouble;
 let projectId: string;
@@ -166,7 +170,9 @@ describe('a row at Releasing that nothing carries (criteria 13, 14, 15, 16, 17)'
       const [said] = await bodies(id);
       expect(said).toContain(`${releaseRunStopped(runStatus)}, so nothing was releasing it`);
       expect(said).not.toContain(`ended ${runStatus}`);
-      expect(said).not.toContain(run);
+      // ISS-1421 r6, criterion 92: the run is named by its page, and nowhere else.
+      expect(said).toContain(`/releases/${run}.`);
+      expect(withoutRunPages(said ?? '')).not.toContain(run);
       expect(said).toContain(`does not carry this issue's landing commit \`${UNSHIPPED}\``);
       expect(said).toContain(
         'It is back at Awaiting release. Release now on this page, or at the release gate on the issues list, starts a release.',
@@ -346,7 +352,7 @@ describe('what the sweep writes on an issue, and as whom (ISS-1421 round 2)', ()
           kind: 'agent',
           display_name: 'Forge',
         });
-        expect(row.body).not.toMatch(
+        expect(withoutRunPages(row.body)).not.toMatch(
           /\/api\/|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/,
         );
       }
@@ -470,7 +476,7 @@ describe('a promoted roster an abort left at Releasing (criterion 22)', () => {
     );
     for (const body of [...said, ...(await bodies(carried))]) {
       expect(body).not.toMatch(/for a person to settle|settling it is an operator's act/);
-      expect(body).not.toMatch(
+      expect(withoutRunPages(body)).not.toMatch(
         /\/api\/|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/,
       );
     }
