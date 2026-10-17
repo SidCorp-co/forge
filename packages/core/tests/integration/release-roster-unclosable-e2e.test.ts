@@ -163,6 +163,8 @@ describe('a release names, before the press, the rows its finish could not close
         code: 'OPEN_QUESTIONS',
         reason: 'holds 1 open question',
         clears: expect.stringContaining('Answer it'),
+        // The issue's own page shows the card right above its banner (ISS-1421 r5 repair 1).
+        saidHere: 'It holds 1 open question. Answer it in the Decision waiting card above.',
       }),
     ]);
     expect(refusalsOf(rows.unplanned)).toEqual([

@@ -34,12 +34,16 @@ export function AwaitingReleaseBanner({
 	}
 
 	// A release would hand this issue straight back, so it offers none and says what is missing and
-	// what clears it (ISS-1337), each shortfall in core's own whole sentences (ISS-1421 r5).
+	// what clears it (ISS-1337): one line per shortfall, each naming its door on this page (ISS-1421).
 	if (entry.closeRefusals.length > 0) {
 		return (
 			<Banner tone="attention">
-				<span className="font-medium">Not ready to release.</span>{" "}
-				{entry.closeRefusals.map((r) => r.said).join(" ")}
+				<p className="font-medium">Not ready to release.</p>
+				<ul className="mt-1 flex flex-col gap-1" aria-label="What is missing">
+					{entry.closeRefusals.map((r) => (
+						<li key={r.code}>{r.saidHere}</li>
+					))}
+				</ul>
 			</Banner>
 		);
 	}

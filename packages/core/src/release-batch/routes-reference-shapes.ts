@@ -57,6 +57,8 @@ const closeRefusalSchema = z.object({
   clears: z.string(),
   /** The shortfall and what clears it, as whole sentences a page shows as they are. */
   said: z.string(),
+  /** The same, for the issue's own page: its door is a control on that page. */
+  saidHere: z.string(),
 });
 
 export const rosterSchema = z.object({

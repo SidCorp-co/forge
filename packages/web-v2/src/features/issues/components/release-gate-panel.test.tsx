@@ -232,6 +232,7 @@ describe("ReleaseGatePanel — a row a release could not close", () => {
         reason: "no mark naming where its work landed",
         clears: "Mark it merged with its landing.",
         said: "It has no mark naming where its work landed. Mark it merged with its landing.",
+        saidHere: "It has no mark naming where its work landed. Mark it merged with its landing.",
       },
     ],
     closeFailure: null,

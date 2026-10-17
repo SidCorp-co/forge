@@ -84,6 +84,9 @@ describe('rosterCloseShortfalls', () => {
     expect(found?.clears).toBe(
       'Answer them in their "Decision waiting" cards on the issue\'s page.',
     );
+    // On the issue's own page the cards sit right above the banner (ISS-1421 r5 repair 1).
+    expect(found?.clearsHere).toBe('Answer them in the Decision waiting cards above.');
+    expect(found?.clearsHere).not.toMatch(/issue's page/);
     expect(found?.detail).toContain('this issue holds 2 open questions (q-1, q-2)');
     expect(found?.details).toEqual({ to: 'closed', openQuestionIds: ['q-1', 'q-2'] });
   });
@@ -99,6 +102,8 @@ describe('rosterCloseShortfalls', () => {
     expect(found).toMatchObject({
       code: 'ENTRY_CRITERIA_UNMET',
       reason: 'missing a plan and a release note, which this project requires before a close',
+      clearsHere:
+        "An agent writes them through Forge's issue tools. To start one, press Open session at the top of this page.",
     });
     expect(evidence).toHaveBeenCalledWith(
       expect.objectContaining({

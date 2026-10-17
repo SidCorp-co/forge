@@ -55,6 +55,7 @@ vi.mock("../issues/api", async () => {
                     reason: "holds 1 open question",
                     clears: "Answer it.",
                     said: "It holds 1 open question. Answer it.",
+                    saidHere: "It holds 1 open question. Answer it.",
                   },
                 ],
             closeFailure: null,

@@ -21,6 +21,8 @@ export interface CloseShortfall {
   reason: string;
   /** The act that clears it. */
   clears: string;
+  /** The same act said on the issue's own page, whose controls are right there. */
+  clearsHere: string;
   /** The close's own sentence, unchanged. */
   detail: string;
   details: Record<string, unknown>;
@@ -39,6 +41,7 @@ function landingShortfallOf(refusal: {
     reason: outside ? 'no mark naming where its work landed' : 'not marked merged',
     // The control's own words, so the sentence names the field as the page labels it.
     clears: markMergedSteps(outside),
+    clearsHere: markMergedSteps(outside),
     detail: refusal.detail,
     details: { ...refusal.details, shape: outside ? 'outside_git' : 'git' },
   };
@@ -65,6 +68,11 @@ async function shortfallsOf(
         n === 1
           ? 'Answer it in its "Decision waiting" card on the issue\'s page.'
           : 'Answer them in their "Decision waiting" cards on the issue\'s page.',
+      // The banner sits right under the question cards.
+      clearsHere:
+        n === 1
+          ? 'Answer it in the Decision waiting card above.'
+          : 'Answer them in the Decision waiting cards above.',
       detail: fault.detail,
       details: fault.details,
     });
@@ -87,6 +95,7 @@ async function shortfallsOf(
       // The page has no editor for these records, so the door is the agent that writes them (r5).
       reason: `missing ${entryRecordsInWords(unmet)}, which this project requires before a close`,
       clears: ENTRY_RECORDS_CLEAR,
+      clearsHere: ENTRY_RECORDS_CLEAR_HERE,
       detail: violation.detail,
       details: violation.details,
     });
@@ -114,6 +123,9 @@ export async function rosterCloseShortfalls(
 
 export const ENTRY_RECORDS_CLEAR =
   "An agent writes them through Forge's issue tools. To start one, press Open session at the top of the issue's page.";
+
+export const ENTRY_RECORDS_CLEAR_HERE =
+  "An agent writes them through Forge's issue tools. To start one, press Open session at the top of this page.";
 
 /** A shortfall's reason ("not marked merged", "holds 1 open question") as a sentence of its own. */
 export function shortfallSentence(reason: string): string {

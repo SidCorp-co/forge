@@ -128,6 +128,7 @@ describe("parseReleaseRoster — what a release could not close a row for", () =
     reason: "holds 1 open question",
     clears: "Answer it.",
     said: "It holds 1 open question. Answer it.",
+    saidHere: "It holds 1 open question. Answer it.",
   };
 
   it("reads each refusal a row carries", () => {
@@ -164,5 +165,11 @@ describe("parseReleaseRoster — what a release could not close a row for", () =
   it("refuses a refusal missing its sentences rather than joining its parts itself", () => {
     const issues = [{ ...ENTRY, closeRefusals: [{ code: "OPEN_QUESTIONS", reason: "x", clears: "y" }] }];
     expect(() => parseReleaseRoster(body({ issues }), ENDPOINT)).toThrow(/closeRefusals\[0\]\.said/);
+  });
+
+  it("refuses a refusal missing the sentences the issue's own page shows", () => {
+    const closeRefusals = [{ code: "OPEN_QUESTIONS", reason: "x", clears: "y", said: "It x. y" }];
+    const issues = [{ ...ENTRY, closeRefusals }];
+    expect(() => parseReleaseRoster(body({ issues }), ENDPOINT)).toThrow(/closeRefusals\[0\]\.saidHere/);
   });
 });
