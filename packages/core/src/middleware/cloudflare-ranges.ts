@@ -1,3 +1,5 @@
+import { BlockList, isIP } from 'node:net';
+
 // Cloudflare's edge addresses, as https://www.cloudflare.com/ips-v4 and /ips-v6 published them on
 // 2026-10-17. A request whose peer is one of these came through Cloudflare, so its CF-Connecting-IP
 // names the client (`middleware/client-ip.ts`). CLOUDFLARE_IP_RANGES replaces the list where
@@ -39,3 +41,18 @@ export const PRIVATE_PROXY_RANGES: readonly string[] = [
   'fc00::/7',
   'fe80::/10',
 ];
+
+/** A CIDR list as a matcher; an entry that is not exactly `address/bits` is refused by name. */
+export function rangeList(cidrs: readonly string[]): BlockList {
+  const list = new BlockList();
+  for (const cidr of cidrs) {
+    const m = /^([^/\s]+)\/(\d{1,3})$/.exec(cidr.trim());
+    const family = m ? isIP(m[1] as string) : 0;
+    const prefix = Number(m?.[2]);
+    if (!m || !family || prefix > (family === 4 ? 32 : 128)) {
+      throw new Error(`client-ip: "${cidr}" is not an address range; write it as address/bits`);
+    }
+    list.addSubnet(m[1] as string, prefix, family === 4 ? 'ipv4' : 'ipv6');
+  }
+  return list;
+}

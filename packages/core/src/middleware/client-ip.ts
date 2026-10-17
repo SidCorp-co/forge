@@ -4,12 +4,12 @@
 // is a Cloudflare edge, the request came through Cloudflare and CF-Connecting-IP names the client.
 // Nothing a client writes counts unless a proxy it cannot be vouched for it.
 
-import { BlockList, isIP } from 'node:net';
+import { type BlockList, isIP } from 'node:net';
 import { getConnInfo } from '@hono/node-server/conninfo';
 import type { Context } from 'hono';
 import { env } from '../config/env.js';
 import { logger } from '../logger.js';
-import { CLOUDFLARE_RANGES, PRIVATE_PROXY_RANGES } from './cloudflare-ranges.js';
+import { CLOUDFLARE_RANGES, PRIVATE_PROXY_RANGES, rangeList } from './cloudflare-ranges.js';
 
 /** Which rule named the client: Cloudflare's header, the address a proxy vouches for, or the socket. */
 export type AddressRule = 'cloudflare' | 'proxy' | 'connection';
@@ -17,21 +17,6 @@ export type AddressRule = 'cloudflare' | 'proxy' | 'connection';
 export interface ClientAddress {
   address: string;
   rule: AddressRule;
-}
-
-/** A CIDR list as a matcher; an entry that is not `address/bits` is refused by name. */
-export function rangeList(cidrs: readonly string[]): BlockList {
-  const list = new BlockList();
-  for (const cidr of cidrs) {
-    const [base, bits] = cidr.trim().split('/');
-    const family = isIP(base ?? '');
-    const prefix = Number(bits);
-    if (!family || !Number.isInteger(prefix) || prefix < 0 || prefix > (family === 4 ? 32 : 128)) {
-      throw new Error(`client-ip: "${cidr}" is not an address range; write it as address/bits`);
-    }
-    list.addSubnet(base as string, prefix, family === 4 ? 'ipv4' : 'ipv6');
-  }
-  return list;
 }
 
 /** A plain address, with an IPv4 address the socket reports in IPv6 form unwrapped; else null. */

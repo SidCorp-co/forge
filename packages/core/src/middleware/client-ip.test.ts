@@ -4,10 +4,10 @@ const info = vi.fn();
 const warn = vi.fn();
 vi.mock('../logger.js', () => ({ logger: { info, warn } }));
 
-const { clientAddressFrom, rangeList, reportRule, resetRuleReport } = await import(
-  './client-ip.js'
+const { clientAddressFrom, reportRule, resetRuleReport } = await import('./client-ip.js');
+const { CLOUDFLARE_RANGES, PRIVATE_PROXY_RANGES, rangeList } = await import(
+  './cloudflare-ranges.js'
 );
-const { CLOUDFLARE_RANGES, PRIVATE_PROXY_RANGES } = await import('./cloudflare-ranges.js');
 
 // Beta as it stands: Cloudflare, then Coolify's Traefik, which does not trust Cloudflare and so sends
 // one X-Forwarded-For entry, the edge's own address. Core is reached from Traefik's container.
@@ -95,6 +95,10 @@ describe('the Cloudflare ranges core ships', () => {
   it('refuses an entry that is not address/bits, by name', () => {
     expect(() => rangeList(['104.16.0.0'])).toThrow(/"104\.16\.0\.0" is not an address range/);
     expect(() => rangeList(['104.16.0.0/40'])).toThrow(/is not an address range/);
+    // Consult F2: an empty prefix read as /0, which would have matched every address.
+    for (const bad of ['104.16.0.0/', '104.16.0.0/13/extra', '104.16.0.0/ 13']) {
+      expect(() => rangeList([bad])).toThrow(/is not an address range/);
+    }
   });
 });
 

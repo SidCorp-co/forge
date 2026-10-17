@@ -55,12 +55,14 @@ async function six(headers: (n: number) => Record<string, string>): Promise<numb
   return statuses;
 }
 
+/** Five wrong passwords are refused as wrong; the sixth is refused by the limit. */
+const FIVE_THEN_LIMITED = [401, 401, 401, 401, 401, 429];
+
 describe('the sign-in limit, behind Cloudflare and a Traefik that does not trust it', () => {
   it('gives each person Cloudflare names a bucket of their own', async () => {
     const first = await six(() => ({ 'x-forwarded-for': EDGE, 'cf-connecting-ip': '203.0.113.7' }));
-    expect(first.at(-1)).toBe(429);
-    const other = await attempt({ 'x-forwarded-for': EDGE, 'cf-connecting-ip': '203.0.113.8' });
-    expect(other).not.toBe(429);
+    expect(first).toEqual(FIVE_THEN_LIMITED);
+    expect(await attempt({ 'x-forwarded-for': EDGE, 'cf-connecting-ip': '203.0.113.8' })).toBe(401);
   });
 
   it('ignores a CF-Connecting-IP forged on a request that did not come from Cloudflare', async () => {
@@ -68,7 +70,7 @@ describe('the sign-in limit, behind Cloudflare and a Traefik that does not trust
       'x-forwarded-for': '198.51.100.20',
       'cf-connecting-ip': `203.0.113.${n}`,
     }));
-    expect(statuses.at(-1)).toBe(429);
+    expect(statuses).toEqual(FIVE_THEN_LIMITED);
   });
 
   it('ignores a forged left-most X-Forwarded-For entry', async () => {
@@ -76,6 +78,6 @@ describe('the sign-in limit, behind Cloudflare and a Traefik that does not trust
       'x-forwarded-for': `198.51.100.${n}, ${EDGE}`,
       'cf-connecting-ip': '203.0.113.9',
     }));
-    expect(statuses.at(-1)).toBe(429);
+    expect(statuses).toEqual(FIVE_THEN_LIMITED);
   });
 });

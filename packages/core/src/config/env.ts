@@ -1,6 +1,7 @@
 import { z } from 'zod';
+import { rangeList } from '../middleware/cloudflare-ranges.js';
 
-const EnvSchema = z.object({
+export const EnvSchema = z.object({
   DATABASE_URL: z.url(),
   JWT_SECRET: z.string().min(32),
   DEVICE_TOKEN_PEPPER: z.string().min(32),
@@ -23,8 +24,9 @@ const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(8080),
   NODE_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
   /** Cloudflare's edge ranges, comma-separated, replacing the list in `middleware/cloudflare-ranges.ts`
-   *  where Cloudflare has published a newer one. An empty value is refused: it would leave no edge
-   *  recognised, and every person behind Cloudflare would share an edge's address. */
+   *  where Cloudflare has published a newer one; empty means unset. A value naming no range, or one
+   *  that is not `address/bits`, is refused at start: no edge recognised would put every person
+   *  behind Cloudflare on one edge's address. */
   CLOUDFLARE_IP_RANGES: z
     .string()
     .optional()
@@ -36,8 +38,20 @@ const EnvSchema = z.object({
             .map((s) => s.trim())
             .filter(Boolean),
     )
-    .refine((v) => v === undefined || v.length > 0, {
-      message: 'CLOUDFLARE_IP_RANGES is empty; leave it unset to use the shipped list',
+    .superRefine((v, ctx) => {
+      if (v === undefined) return;
+      if (v.length === 0) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'CLOUDFLARE_IP_RANGES names no range; unset it to use the shipped list',
+        });
+        return;
+      }
+      try {
+        rangeList(v);
+      } catch (err) {
+        ctx.addIssue({ code: 'custom', message: (err as Error).message });
+      }
     }),
   RATE_LIMIT_AUTH_LOCAL_MAX: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_AUTH_LOCAL_WINDOW_MS: z.coerce.number().int().positive().optional(),
