@@ -132,7 +132,7 @@ interface Reading {
 function readingOf(el: Element | null | undefined, inkFrom?: Element | null): Reading | undefined {
   if (!el) return undefined;
   return {
-    word: (el.textContent ?? "").split(" · ")[0].trim(),
+    word: (el.textContent ?? "").split(/ · |\. /)[0].replace(/\.$/, "").trim(),
     ink: ((inkFrom ?? el) as HTMLElement).style.color,
   };
 }
@@ -189,7 +189,7 @@ describe("a running session gone silent", () => {
         <RunRow row={run} now={NOW} slug="pair" />
       </ul>,
     );
-    const agentsRuns = readingOf(spans(runs).find((el) => /no report for/.test(el.textContent ?? "") && el.children.length === 0));
+    const agentsRuns = readingOf(spans(runs).find((el) => /No report for/.test(el.textContent ?? "") && el.children.length === 0));
     cleanup();
 
     expect(reference?.word).toBeTruthy();
@@ -237,7 +237,7 @@ describe("a running session gone silent", () => {
       runChip: quietDoing,
       spinning: false,
     });
-    expect(pageLine?.textContent).toBe("Quiet · last reported working 1m ago");
+    expect(pageLine?.textContent).toBe("Quiet. Last reported working 1m ago.");
   });
 });
 
@@ -363,7 +363,7 @@ describe("a running session its box reports blocked (ISS-1228 criteria 34, 40, 4
     const { container: page } = render(
       stage ? <TurnStage stage={stage} waitingOn="A person — approve the database restore in Coolify" /> : <span />,
     );
-    const pageLine = page.querySelector("[data-testid=turn-stage]")?.textContent?.split(" · ")[0];
+    const pageLine = page.querySelector("[data-testid=turn-stage]")?.textContent?.split(". ")[0];
     const spinning = page.querySelector("[role=status]") !== null;
     cleanup();
 
@@ -395,7 +395,7 @@ describe("a running session its box reports blocked (ISS-1228 criteria 34, 40, 4
     const { container: page } = render(
       stage ? <TurnStage stage={stage} silentForMs={NOW - Date.parse(SILENT_SINCE)} reported="Blocked" /> : <span />,
     );
-    expect(page.querySelector("[data-testid=turn-stage]")?.textContent).toBe("Quiet · last reported blocked 1m ago");
+    expect(page.querySelector("[data-testid=turn-stage]")?.textContent).toBe("Quiet. Last reported blocked 1m ago.");
   });
 });
 
@@ -444,7 +444,7 @@ describe("a quiet session read against core's own silence limit (ISS-1228 round 
     const cell = container.querySelector("tbody")?.textContent ?? "";
     listed = row;
     cleanup();
-    expect(cell).toContain("core ends it as failed in 6m 00s");
+    expect(cell).toContain("Core ends it as failed in 6m 00s.");
     expect(cell).not.toMatch(/recover/i);
   });
 
@@ -461,8 +461,8 @@ describe("a quiet session read against core's own silence limit (ISS-1228 round 
       </ul>,
     ).container.textContent;
     cleanup();
-    expect(before).not.toContain("core is ending it as failed");
-    expect(after).toContain("core is ending it as failed");
+    expect(before).not.toContain("Core is ending it as failed.");
+    expect(after).toContain("Core is ending it as failed.");
     expect(after).not.toMatch(/recover/i);
   });
 });

@@ -123,7 +123,7 @@ describe("a Held row a session holds (ISS-1228 criterion 35)", () => {
 
   it("says what its quiet session last reported and how long ago, never that a session is working it", () => {
     render(<HoldsList holds={[bySession]} sessions={[quiet]} slug="pair" now={NOW} />);
-    expect(screen.getByText("Last reported working · 3m ago")).toBeInTheDocument();
+    expect(screen.getByText("Last reported working. Last check-in 3m ago.")).toBeInTheDocument();
     expect(screen.queryByText(/is working it/)).not.toBeInTheDocument();
   });
 
@@ -137,7 +137,7 @@ describe("a Held row a session holds (ISS-1228 criterion 35)", () => {
     render(<HoldsList holds={[returned]} sessions={[quiet]} slug="pair" now={NOW} />);
     expect(
       screen.getByText(
-        "Last reported working · 3m ago. The box says it returned ISS-1. Core still holds it. Stop the session to free it.",
+        "Last reported working. Last check-in 3m ago. The box says it returned ISS-1. Core still holds it. Stop the session to free it.",
       ),
     ).toBeInTheDocument();
   });

@@ -153,13 +153,13 @@ describe("useRunPipelineStep — the toast's tone says whether anything started"
 
   it("is neutral where no box heard the offer", async () => {
     const said = await pressRun(0);
-    expect(said.title).toContain("no box heard it");
+    expect(said.title).toBe("Offered to this project's masters. No box has picked it up yet. A master reads it on its next pass.");
     expect(said.tone).toBe("default");
   });
 
   it("is a success only where a box took it", async () => {
     const said = await pressRun(1);
-    expect(said.title).toContain("1 box heard it");
+    expect(said.title).toBe("Offered to this project's masters. 1 box has picked it up.");
     expect(said.tone).toBe("success");
   });
 });

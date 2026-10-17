@@ -6,7 +6,7 @@ import { sessionKindLabel, sessionName } from "@/features/pipeline/derive";
 import { useSessionsAndHolds } from "@/features/pipeline/hooks";
 import type { Holder } from "@/features/pipeline/types";
 import { useCancelSession } from "@/features/sessions/hooks";
-import { leaseDisagreementText } from "@/features/sessions/lease-words";
+import { leaseDisagreementText } from "@/features/sessions/status-sentences";
 
 type SessionHolder = Extract<Holder, { by: "session" }>;
 

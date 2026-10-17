@@ -114,7 +114,7 @@ describe("a blocked session's own page (ISS-1228 criteria 40, 41)", () => {
   it("says Blocked in the box's words, and claims no work or spinner anywhere on the page", () => {
     render(<SessionScreen sessionId="s1" projectSlug="qa" />);
     expect(screen.getByTestId("turn-stage")).toHaveTextContent(
-      "Blocked · A person — approve the database restore in Coolify",
+      "Blocked. A person — approve the database restore in Coolify.",
     );
     expect(screen.queryByText(/Working/)).not.toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();

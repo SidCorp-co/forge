@@ -8,6 +8,7 @@ import {
 } from "@forge/contracts/failure-causes";
 import { TERMINAL_AGENT_SESSION_STATUSES } from "@forge/contracts/status-sets";
 import type { StatusKey } from "@/design/status";
+import { ENDING_AS_FAILED, endsAsFailedInText } from "./status-sentences";
 
 export type AgentSessionStatus =
   | "idle"
@@ -379,13 +380,12 @@ function countdown(ms: number): string {
   return `${s}s`;
 }
 
-export const ENDING_AS_FAILED = "core is ending it as failed";
 
 /** A quiet session's end in words: core fails it, it never "recovers" (ISS-1228). */
 export function quietEndText(liveness: LivenessResult): string | null {
   if (liveness.state === "reaping") return ENDING_AS_FAILED;
   if (liveness.state === "stale" && liveness.reapInMs != null) {
-    return `core ends it as failed in ${countdown(liveness.reapInMs)}`;
+    return endsAsFailedInText(countdown(liveness.reapInMs));
   }
   return null;
 }

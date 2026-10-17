@@ -1,5 +1,6 @@
 import { storedNameInWords } from "@/features/overview/job-kinds";
 import { liveSessionWord } from "@/features/sessions/session-word";
+import { quietWhyText } from "@/features/sessions/status-sentences";
 import { STALLED_THRESHOLD_MS, sessionSilence, sessionTitle } from "@/features/sessions/types";
 import { formatElapsed } from "@/lib/utils/format";
 import type { HeldIssue, Holder, LiveSession, PersonOwes } from "./types";
@@ -130,7 +131,7 @@ function sessionWhy(session: LiveSession | undefined, now: number): string {
   if (!session) return "What its session is doing was not read";
   const doing = liveSessionWord(session, now).label;
   const checkIn = checkInOf(session, now);
-  return checkIn.quiet ? `${doing} · ${checkIn.text}` : doing;
+  return checkIn.quiet ? quietWhyText(doing, checkIn.text) : doing;
 }
 
 /** One holder of an issue, as three short lines: who holds it, why, and since when. `sessions` is the

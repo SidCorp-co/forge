@@ -341,8 +341,8 @@ describe("what a box and core each say of a run (ISS-1228 round 11)", () => {
       }),
     ];
     pane();
-    expect(row()).toHaveTextContent("the box said this was live 52m ago and is offline now · core says the session ended");
-    expect(row()).not.toHaveTextContent("the box says this is live");
+    expect(row()).toHaveTextContent("The box said this was live 52m ago and is offline now. Core says the session ended.");
+    expect(row()).not.toHaveTextContent("The box says this is live");
     expect(row()).toHaveTextContent("Stopped checking in");
   });
 

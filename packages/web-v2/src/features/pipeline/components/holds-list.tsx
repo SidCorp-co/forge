@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useLayoutEffect, useRef, useState } from "react";
 import { MonoTag } from "@/design";
-import { leaseDisagreementText } from "@/features/sessions/lease-words";
+import { leaseDisagreementText } from "@/features/sessions/status-sentences";
 import { holderLine, orderHolds } from "../derive";
 import type { HeldIssue, Holder, LiveSession } from "../types";
 

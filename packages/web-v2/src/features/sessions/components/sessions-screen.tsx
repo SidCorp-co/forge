@@ -38,7 +38,7 @@ import {
 import { TONE_META } from "@/design/status";
 import { SessionChip } from "./session-chip";
 import { useSessionDuration } from "../session-duration";
-import { leaseDisagreementText } from "../lease-words";
+import { leaseDisagreementText } from "../status-sentences";
 import { isWaitingForInput, sessionWord } from "../session-word";
 import { useOrgScopedProjects, useProject, useProjects } from "@/features/projects/hooks";
 import { useDevices } from "@/features/runners/hooks";

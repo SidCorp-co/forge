@@ -10,7 +10,7 @@ import {
   sessionName,
   waitingOnOf,
 } from "../derive";
-import { leaseDisagreementText } from "@/features/sessions/lease-words";
+import { leaseDisagreementText } from "@/features/sessions/status-sentences";
 import { liveSessionWord } from "@/features/sessions/session-word";
 import type { LiveSession } from "../types";
 

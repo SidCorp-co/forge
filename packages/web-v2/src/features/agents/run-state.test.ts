@@ -54,7 +54,7 @@ describe("stateLabelAt", () => {
 describe("pulseText", () => {
   it("says core is ending a run as failed once its silence passes core's limit, never that it recovers", () => {
     const text = pulseText({ state: "past-threshold", sinceMs: 11 * 60_000 });
-    expect(text).toContain("core is ending it as failed");
+    expect(text).toContain("Core is ending it as failed.");
     expect(text).not.toMatch(/recover/i);
   });
 });
@@ -76,13 +76,13 @@ describe("an offline box and a lease core still holds", () => {
   it("quotes an offline box with when it last reported", () => {
     const observedAt = new Date(Date.now() - 52 * 60_000).toISOString();
     expect(disagreementText("box-live-core-terminal", { observedAt, deviceStatus: "offline" })).toBe(
-      "the box said this was live 52m ago and is offline now · core says the session ended",
+      "The box said this was live 52m ago and is offline now. Core says the session ended.",
     );
     expect(disagreementText("box-live-core-terminal", { observedAt, deviceStatus: "online" })).toBe(
-      "the box says this is live · core says the session ended",
+      "The box says this is live. Core says the session ended.",
     );
     const live = { incarnation: "live", observedAt, sessionId: "s1", sessionStatus: "running" };
-    expect(offlineText({ ...live, deviceStatus: "offline" })).toBe("the box is offline · it last reported 52m ago");
+    expect(offlineText({ ...live, deviceStatus: "offline" })).toBe("The box is offline. It last reported 52m ago.");
     expect(offlineText({ ...live, deviceStatus: "online" })).toBeNull();
     expect(offlineText({ ...live, sessionStatus: "failed", deviceStatus: "offline" })).toBeNull();
   });

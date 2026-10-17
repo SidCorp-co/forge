@@ -140,7 +140,7 @@ describe("holderLine — who holds an issue, why, and since when", () => {
       since: "2026-10-15T01:00:00.000Z",
     };
     const quiet = session({ lastHeartbeatAt: "2026-10-15T01:58:00.000Z" });
-    expect(holderLine(h, NOW, [quiet]).why).toBe("Last reported working · 2m ago");
+    expect(holderLine(h, NOW, [quiet]).why).toBe("Last reported working. Last check-in 2m ago.");
     const waiting = session({ runtimeState: "awaiting_input" });
     expect(holderLine(h, NOW, [waiting]).why).toBe("Waiting for input");
   });
