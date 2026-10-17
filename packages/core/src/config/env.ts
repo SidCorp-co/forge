@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { rangeList } from '../middleware/cloudflare-ranges.js';
+import { rangeList } from './cloudflare-ranges.js';
 
 export const EnvSchema = z.object({
   DATABASE_URL: z.url(),
@@ -23,7 +23,7 @@ export const EnvSchema = z.object({
   AUTH_COOKIE_DOMAIN: z.string().optional(),
   PORT: z.coerce.number().int().positive().default(8080),
   NODE_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
-  /** Cloudflare's edge ranges, comma-separated, replacing the list in `middleware/cloudflare-ranges.ts`
+  /** Cloudflare's edge ranges, comma-separated, replacing the list in `config/cloudflare-ranges.ts`
    *  where Cloudflare has published a newer one; empty means unset. A value naming no range, or one
    *  that is not `address/bits`, is refused at start: no edge recognised would put every person
    *  behind Cloudflare on one edge's address. */

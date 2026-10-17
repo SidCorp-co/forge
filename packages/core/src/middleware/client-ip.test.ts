@@ -6,7 +6,7 @@ vi.mock('../logger.js', () => ({ logger: { info, warn } }));
 
 const { clientAddressFrom, reportRule, resetRuleReport } = await import('./client-ip.js');
 const { CLOUDFLARE_RANGES, PRIVATE_PROXY_RANGES, rangeList } = await import(
-  './cloudflare-ranges.js'
+  '../config/cloudflare-ranges.js'
 );
 
 // Beta as it stands: Cloudflare, then Coolify's Traefik, which does not trust Cloudflare and so sends

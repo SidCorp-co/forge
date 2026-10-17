@@ -7,9 +7,9 @@
 import { type BlockList, isIP } from 'node:net';
 import { getConnInfo } from '@hono/node-server/conninfo';
 import type { Context } from 'hono';
+import { CLOUDFLARE_RANGES, PRIVATE_PROXY_RANGES, rangeList } from '../config/cloudflare-ranges.js';
 import { env } from '../config/env.js';
 import { logger } from '../logger.js';
-import { CLOUDFLARE_RANGES, PRIVATE_PROXY_RANGES, rangeList } from './cloudflare-ranges.js';
 
 /** Which rule named the client: Cloudflare's header, the address a proxy vouches for, or the socket. */
 export type AddressRule = 'cloudflare' | 'proxy' | 'connection';

@@ -2,7 +2,7 @@ import { BlockList, isIP } from 'node:net';
 
 // Cloudflare's edge addresses, as https://www.cloudflare.com/ips-v4 and /ips-v6 published them on
 // 2026-10-17. A request whose peer is one of these came through Cloudflare, so its CF-Connecting-IP
-// names the client (`middleware/client-ip.ts`). CLOUDFLARE_IP_RANGES replaces the list where
+// names the client (`packages/core/src/middleware/client-ip.ts`). CLOUDFLARE_IP_RANGES replaces the list where
 // Cloudflare has published a newer one before this file is updated.
 
 export const CLOUDFLARE_RANGES: readonly string[] = [
