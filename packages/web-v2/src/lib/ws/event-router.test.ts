@@ -115,6 +115,7 @@ describe("a reconnect still repairs every prefix it repaired before", () => {
 
     for (const key of [
       ["issues"],
+      ["run-journal"],
       ["jobs"],
       ["projects"],
       ["agent-sessions"],
@@ -134,7 +135,7 @@ describe("a reconnect still repairs every prefix it repaired before", () => {
     ]) {
       expect(c.has(key)).toBe(true);
     }
-    expect(c.keys).toHaveLength(17);
+    expect(c.keys).toHaveLength(18);
   });
 });
 
@@ -314,5 +315,42 @@ describe("the rail's live-session figure follows a session starting or ending (I
     ["agent-session.deleted", { sessionId: "s1" }],
   ])("%s refreshes the health rollup it reads", (event, data) => {
     expect(send(event, data).has(["projects", "health"])).toBe(true);
+  });
+});
+
+describe("an open issue page's runs follow a stop made anywhere (ISS-1228 round 14)", () => {
+  // Judge-36: an issue page left open while its session was stopped from the sessions list in
+  // another tab read "Run 1 · Running" for 90 seconds; a session's events name no issue.
+  it.each([
+    ["agent-session.status", { sessionId: "s1", status: "failed", failureReason: "user_cancelled" }],
+    ["agent-session.updated", { sessionId: "s1" }],
+    ["pipeline_run.status_changed", { runId: "r1", status: "cancelled" }],
+  ])("%s re-reads the run journal of every open issue page", async (event, data) => {
+    const { QueryClient } = await import("@tanstack/react-query");
+    const { runJournalKey } = await import("@/features/issues/detail-hooks");
+    const qc = new QueryClient();
+    qc.setQueryData(runJournalKey("i3"), { runs: [] });
+    routeEvent({ event, data, timestamp: "2026-10-18T12:00:00.000Z" }, qc);
+    flushInvalidations();
+    expect(qc.getQueryState(runJournalKey("i3"))?.isInvalidated).toBe(true);
+  });
+
+  it("an issue's own event re-reads that issue's runs and no other's", async () => {
+    const { QueryClient } = await import("@tanstack/react-query");
+    const { runJournalKey } = await import("@/features/issues/detail-hooks");
+    const qc = new QueryClient();
+    qc.setQueryData(runJournalKey("i3"), { runs: [] });
+    qc.setQueryData(runJournalKey("i4"), { runs: [] });
+    routeEvent({ event: "issue.statusChanged", data: { issueId: "i3" }, timestamp: "2026-10-18T12:00:00.000Z" }, qc);
+    flushInvalidations();
+    expect(qc.getQueryState(runJournalKey("i3"))?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(runJournalKey("i4"))?.isInvalidated).toBe(false);
+  });
+
+  it("a reconnect repairs it", async () => {
+    const c = capture();
+    const { replayOnReconnect } = await import("./event-router");
+    replayOnReconnect(c.qc);
+    expect(c.has(["run-journal"])).toBe(true);
   });
 });

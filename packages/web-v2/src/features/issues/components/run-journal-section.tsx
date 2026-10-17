@@ -112,9 +112,11 @@ function runSpan(run: RunView): string | null {
 function RunBlock({ run, open, onToggle }: { run: RunView; open: boolean; onToggle: () => void }) {
   const status = RUN_STATUS[run.status];
   const span = runSpan(run);
+  // Each time says which it is: a finished run when it ended and how long it ran, one still going
+  // when it started (ISS-1228).
   const facts = [
-    formatRelativeTime(run.startedAt),
-    span,
+    run.finishedAt ? `Ended ${formatRelativeTime(run.finishedAt)}` : `Started ${formatRelativeTime(run.startedAt)}`,
+    span ? `ran ${span}` : null,
     run.costUsd != null ? formatUsd(run.costUsd) : null,
   ].filter(Boolean);
   const phases = run.attempts.length;

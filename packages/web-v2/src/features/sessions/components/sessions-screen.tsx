@@ -2,14 +2,13 @@
 
 // web-v2 shared Sessions index — used at BOTH the workspace tier
 // (`/sessions`, cross-project, no `scope.projectId`) and the project tier
-// (under the Agents shell, scoped + Sweep zombies). ISS-291. Rows link to the
+// (under the Agents shell, scoped + End silent sessions). ISS-291. Rows link to the
 // session detail (`/projects/:slug/agents/:id`) and back to their issue
 // (ISS-331); the project slug is resolved per row from the projects list.
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Badge,
-  Button,
   EmptyState,
   ErrorState,
   HealthDot,
@@ -47,6 +46,7 @@ import { IssueRefBadge } from "@/features/issues/components/issue-ref-badge";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
+import { EndSilentSessions } from "./end-silent-sessions";
 import { FleetStrip } from "./fleet-strip";
 import { SessionReplyPanel } from "./session-reply-panel";
 import {
@@ -55,7 +55,6 @@ import {
   useRerunSession,
   useRetrySession,
   useSessions,
-  useSweepZombies,
 } from "../hooks";
 import {
   deriveLiveness,
@@ -215,7 +214,6 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
   const retry = useRetrySession();
   const rerun = useRerunSession();
   const abort = useAbortSession();
-  const sweep = useSweepZombies();
 
   const rows = useMemo(() => {
     const all = sessionsQ.data?.items ?? [];
@@ -339,7 +337,7 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
 
       {/* Compact header (ISS-391): title + the four headline metrics collapsed
           into a single inline summary strip (was a 4-card grid that ate a tall
-          band of mostly 0/— on quiet projects), with Sweep on the same row. */}
+          band of mostly 0/— on quiet projects), with End silent sessions on the same row. */}
       <header className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5">
           <PageTitle className="fg-h2">Sessions</PageTitle>
@@ -357,23 +355,8 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
             />
           </div>
         </div>
-        {projectId ? (
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="trash"
-            loading={sweep.isPending}
-            onClick={() => sweep.mutate(projectId)}
-          >
-            Sweep zombies
-          </Button>
-        ) : (
-          <Tooltip label="Available on a project's sessions page (owner/admin).">
-            <Button variant="secondary" size="sm" icon="trash" disabled>
-              Sweep zombies
-            </Button>
-          </Tooltip>
-        )}
+        <EndSilentSessions projectId={projectId ?? null} />
+
       </header>
 
       {/* Fleet-runner rollup (ISS-378) — per-device chips + the no-runner
@@ -392,8 +375,8 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
 
       {sessionsQ.isLoading && (
         <div className="border-y border-line">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <SessionRowSkeleton key={i} />
+          {SKELETON_ROWS.map((key) => (
+            <SessionRowSkeleton key={key} />
           ))}
         </div>
       )}
@@ -506,7 +489,10 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
 interface MutationLike {
   mutate: (id: string) => void;
 }
-interface RowActions {
+/** The placeholder rows drawn while the list is read, each with a key of its own. */
+const SKELETON_ROWS = ["s1", "s2", "s3", "s4", "s5", "s6"] as const;
+
+export interface RowActions {
   cancel: MutationLike;
   retry: MutationLike;
   rerun: MutationLike;
@@ -528,8 +514,9 @@ function StatPill({ label, value, ink }: { label: string; value: string; ink?: s
   );
 }
 
-/** Build the contextual row-action menu, choosing items by display status. */
-function buildMenuItems(row: SessionRow, display: AgentSessionDisplayStatus, a: RowActions): MenuItem[] {
+/** Build the contextual row-action menu, choosing items by display status. Ending the current turn
+ *  leaves the session open, so it is named for that and kept apart from Stop session (ISS-1228). */
+export function buildMenuItems(row: SessionRow, display: AgentSessionDisplayStatus, a: RowActions): MenuItem[] {
   const items: MenuItem[] = [];
   const isLive = isLiveDisplay(display);
   const isQueued = row.status === "queued" || row.status === "idle";
@@ -539,11 +526,17 @@ function buildMenuItems(row: SessionRow, display: AgentSessionDisplayStatus, a: 
     display === "failed" ||
     display === "cancelled_stale";
 
-  if (isLive || isQueued) {
-    items.push({ label: "Stop session", icon: "stop", danger: true, onSelect: () => a.cancel.mutate(row.id) });
-  }
   if (isLive || display === "idle") {
-    items.push({ label: "Abort", icon: "stop", onSelect: () => a.abort.mutate(row.id) });
+    items.push({ label: "End this turn", icon: "pause", onSelect: () => a.abort.mutate(row.id) });
+  }
+  if (isLive || isQueued) {
+    items.push({
+      label: "Stop session",
+      icon: "stop",
+      danger: true,
+      separatorBefore: items.length > 0,
+      onSelect: () => a.cancel.mutate(row.id),
+    });
   }
   if ((display === "failed" || display === "cancelled_stale") && isRetryable(row)) {
     items.push({ label: "Retry", icon: "rerun", onSelect: () => a.retry.mutate(row.id) });

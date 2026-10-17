@@ -27,6 +27,7 @@ import {
 } from "@/design";
 import { useResumeRun } from "@/features/runs/hooks";
 import { useProjects } from "@/features/projects/hooks";
+import { useSessionsAndHolds } from "@/features/pipeline/hooks";
 import { DecisionPanel, focusDecisionPanel } from "@/features/questions/components/decision-panel";
 import { buildShareLink, useRecents } from "@/features/shell";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
@@ -42,6 +43,7 @@ import {
   deriveRunView,
   isLiveRun,
   issueQueryKey,
+  issueSessionId,
   liveStepWords,
   parseChecklist,
   runStatusChip,
@@ -117,6 +119,7 @@ export function IssueDetailScreen({
   const costQ = useIssueCost(canonicalId, true, projectId);
   const membersQ = useProjectMembers(projectId);
   const journalQ = useRunJournal(projectId, canonicalId);
+  const holdsQ = useSessionsAndHolds(projectId);
 
   const patch = usePatchIssue();
   const {
@@ -207,6 +210,10 @@ export function IssueDetailScreen({
   const liveStep = liveStepWords(issue.pipelineHealth?.activeSession);
   // A group run names its members by the canonical key, never the project prefix (ISS-992).
   const runs = deriveRunView(journalQ.data, issue.agentSessions, `ISS-${issue.issSeq}`);
+  const holding = (holdsQ.data?.holds?.find((h) => h.issueId === issue.id)?.holders ?? []).flatMap((h) =>
+    h.by === "session" ? [h.sessionId] : [],
+  );
+  const sessionId = issueSessionId(holding, runs);
   const liveSession = pickActiveSession(issue.agentSessions);
   const queuedStep = deriveQueuedStep(issue.pipelineHealth, !!liveSession);
   const agentState: LiveAgentState | null = liveSession
@@ -293,7 +300,7 @@ export function IssueDetailScreen({
           />
           <IssueHeaderActions
             slug={slug}
-            issueId={issue.id}
+            sessionHref={sessionId ? `/projects/${slug}/agents/${sessionId}` : null}
             status={issue.status}
             releaseRunId={issue.releaseBatchRunId}
             canWrite={canWrite}
@@ -345,7 +352,6 @@ export function IssueDetailScreen({
               state={agentState}
               step={liveStep ?? "—"}
               slug={slug}
-              issueId={id}
             />
           )}
 

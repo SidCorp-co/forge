@@ -151,6 +151,26 @@ describe("the Agents runs tab with nothing running on a box", () => {
     expect(within(screen.getByRole("list", { name: "Closed runs" })).getAllByRole("listitem")).toHaveLength(1);
   });
 
+  // ISS-1228 round 14 (judge-36): the tab counted an open run with work behind it and listed none.
+  it("lists every open run it counts as having work behind it, and only those", () => {
+    state.runs = [
+      run({ id: "o", issueRef: "ISS-4", issueTitle: "fourth", status: "running", finishedAt: null, liveJobs: 1 }),
+      run({ id: "idle", issueRef: "ISS-5", status: "running", finishedAt: null }),
+      run({ id: "c", issueRef: "ISS-9" }),
+    ];
+    state.total = 3;
+    pane();
+    expect(screen.getByText("No box reports a run here, though 1 open run has work behind it.")).toBeInTheDocument();
+    const open = within(screen.getByRole("list", { name: "Open runs" })).getAllByRole("listitem");
+    expect(open).toHaveLength(1);
+    expect(open[0]).toHaveTextContent("ISS-4");
+    expect(open[0]).toHaveTextContent("fourth");
+    expect(within(open[0] as HTMLElement).getByRole("link", { name: "ISS-4" })).toHaveAttribute(
+      "href",
+      "/projects/qa/issues/i1",
+    );
+  });
+
   it("claims no run is working only off a whole reading of the project's runs", () => {
     state.runs = [run({ id: "a" }), run({ id: "b", issueRef: "ISS-2" })];
     state.total = 250;
@@ -273,6 +293,24 @@ describe("the runs a box reports (ISS-1228 round 8)", () => {
     const row = within(screen.getByRole("list", { name: "Runs a box reports" })).getByRole("listitem");
     expect(row).toHaveTextContent("Waiting on a person. Approve the database restore in Coolify.");
     expect(row).not.toHaveTextContent(/read the decision/);
+  });
+
+  // ISS-1228 round 14 (judge-36): a stopped run still said it waited on a person, with Open questions.
+  it("shows no wait and no Open questions on a run core ended, a person's stop included", () => {
+    state.ledger = [
+      ledgerRow({
+        work: "blocked",
+        blockerKind: "human",
+        waitingOn: "approve the database restore in Coolify",
+        sessionStatus: "failed",
+        sessionFailureReason: "user_cancelled",
+      }),
+    ];
+    pane();
+    const row = within(screen.getByRole("list", { name: "Runs a box reports" })).getByRole("listitem");
+    expect(row).toHaveTextContent("Stopped");
+    expect(row).not.toHaveTextContent(/Waiting on/);
+    expect(within(row).queryByRole("link", { name: "Open questions" })).toBeNull();
   });
 
   it("links every issue key on a run a box still reports, an exited one included", () => {

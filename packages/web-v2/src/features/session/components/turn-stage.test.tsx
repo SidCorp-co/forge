@@ -286,3 +286,20 @@ describe("a stopped session's turn line", () => {
     expect(sessionTurnStage({ live: false, display: "failed", failureReason: "heartbeat_timeout" })).toBe("failed");
   });
 });
+
+describe("an ended session's turn line says the word its header says", () => {
+  it("says the chip's word, with the alert mark only for a failure", () => {
+    const { rerender } = render(
+      <TurnStage stage="failed" ended={{ word: "Swept", icon: "archive", failure: false }} />,
+    );
+    const line = screen.getByTestId("turn-stage");
+    expect(line).toHaveTextContent("Swept");
+    expect(line).not.toHaveTextContent("Failed");
+    expect(line.querySelector(".text-danger")).toBeNull();
+
+    rerender(<TurnStage stage="failed" ended={{ word: "Failed", icon: "alert", failure: true }} />);
+    expect(screen.getByTestId("turn-stage")).toHaveTextContent("Failed");
+    expect(screen.getByTestId("turn-stage").querySelector(".text-danger")).not.toBeNull();
+  });
+});
+

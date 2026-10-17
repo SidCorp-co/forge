@@ -1,4 +1,5 @@
 import { apiClient, apiClientList } from "@/lib/api/client";
+import type { SilentReap } from "./status-sentences";
 import type { QueueStats, SessionCost, SessionRow } from "./types";
 
 export const SESSIONS_PAGE_SIZE = 50;
@@ -31,7 +32,7 @@ export const sessionsApi = {
 
   /** `POST /api/agent-sessions/sweep-zombies?projectId=` — owner/admin only. */
   sweepZombies: (projectId: string) =>
-    apiClient<{ queueTimedOut: number; heartbeatTimedOut: number }>(
+    apiClient<SilentReap>(
       `/agent-sessions/sweep-zombies?projectId=${encodeURIComponent(projectId)}`,
       { method: "POST" },
     ),

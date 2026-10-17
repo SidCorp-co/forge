@@ -8,7 +8,7 @@ export {
 } from "./status";
 
 export { Button, type ButtonProps } from "./primitives/button";
-export { StatusChip, type StatusChipProps } from "./primitives/status-chip";
+export { sessionStatusLabel, StatusChip, type StatusChipProps } from "./primitives/status-chip";
 export { MonoTag, type MonoTagProps } from "./primitives/mono-tag";
 export { Avatar, type AvatarProps } from "./primitives/avatar";
 export { ProjectMark, type ProjectMarkProps } from "./primitives/project-mark";

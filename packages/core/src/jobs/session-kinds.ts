@@ -2,7 +2,7 @@
  * Which species of session a query is asking about. `agent_sessions.kind` is
  * the column; these are the sets, and the SQL below is built from them.
  */
-import { sql } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import {
   type AgentSessionKind,
   agentSessionKinds,
@@ -16,6 +16,17 @@ import {
 export const MASTER_SESSION_KIND: AgentSessionKind = MASTER_SESSION_METADATA_TYPE;
 
 export const RUN_SESSION_KIND: AgentSessionKind = RUN_SESSION_METADATA_TYPE;
+
+/** Ended by its own kind's reaper ten minutes after its last beat, never by the one-shot sweep. */
+export function endsOnItsOwnClock(kind: string, status: string): boolean {
+  return kind === MASTER_SESSION_KIND || (kind === RUN_SESSION_KIND && status === 'running');
+}
+
+export function endsOnItsOwnClockSql(s: string): SQL {
+  const kind = sql.raw(`${s}.kind`);
+  const status = sql.raw(`${s}.status`);
+  return sql`(${kind} = ${MASTER_SESSION_KIND} OR (${kind} = ${RUN_SESSION_KIND} AND ${status} = 'running'))`;
+}
 
 export const PIPELINE_SESSION_KINDS = [
   'pipeline',

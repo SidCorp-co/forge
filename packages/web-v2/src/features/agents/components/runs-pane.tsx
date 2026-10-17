@@ -36,6 +36,8 @@ const RUN_KIND_WORD: Record<string, string> = {
   system: "System run",
 };
 
+const OPEN_STATUS_WORD: Record<string, string> = { running: "Running", paused: "Paused" };
+
 /** The project's runs that have closed, newest first: what the tab offers where no box reports a run. */
 function closedRuns(runs: readonly PipelineRunListItem[] | undefined): PipelineRunListItem[] {
   return (runs ?? [])
@@ -65,11 +67,11 @@ function WorkedIssue({ slug, href, label, title }: { slug: string; href: string;
 }
 
 /**
- * What a closed run worked: its one issue, or each issue a box opened it over (an issue page takes a
+ * What a run worked: its one issue, or each issue a box opened it over (an issue page takes a
  * display key as its id, ISS-1160), each with its title as a job run shows its one issue's, and only
  * where it names neither, the kind of run it was.
  */
-function ClosedRunWork({ run, slug }: { run: PipelineRunListItem; slug: string }) {
+function RunWork({ run, slug }: { run: PipelineRunListItem; slug: string }) {
   if (run.issueId && run.issueRef) {
     return <WorkedIssue slug={slug} href={run.issueId} label={run.issueRef} title={run.issueTitle} />;
   }
@@ -99,7 +101,9 @@ function ClosedRunWork({ run, slug }: { run: PipelineRunListItem; slug: string }
 function NothingRunning({ projectId, slug }: { projectId: string; slug: string }) {
   const runsQ = useProjectRuns(projectId);
   const closed = useMemo(() => closedRuns(runsQ.data?.items), [runsQ.data]);
-  const worked = workedRuns(runsQ.data?.items).length;
+  // One set for the sentence's count and the rows beneath it, so no run is counted and not shown.
+  const open = useMemo(() => workedRuns(runsQ.data?.items), [runsQ.data]);
+  const worked = open.length;
   const readWhole = !runsQ.isError && runsQ.data !== undefined && runsQ.data.totalCount <= runsQ.data.items.length;
   const read = runsQ.data?.items.length ?? 0;
   const total = runsQ.data?.totalCount ?? read;
@@ -134,6 +138,24 @@ function NothingRunning({ projectId, slug }: { projectId: string; slug: string }
             ? "No run is working on this project right now."
             : "No box reports a run on this project right now."}
       </p>
+      {open.length > 0 && (
+        <>
+          <h3 className="fg-caption mt-2">Open runs · {open.length}</h3>
+          <ul aria-label="Open runs" className="flex flex-col divide-y divide-line border-y border-line">
+            {open.map((r) => (
+              <li key={r.id} className="flex items-baseline gap-3 py-2">
+                <span className="min-w-0 flex-1">
+                  <RunWork run={r} slug={slug} />
+                </span>
+                <span className="flex flex-none items-baseline gap-3 whitespace-nowrap">
+                  <span className="fg-body-sm text-fg">{OPEN_STATUS_WORD[r.status] ?? r.status}</span>
+                  <span className="fg-caption tabular-nums">Started {formatRelativeTime(r.startedAt)}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       {closed.length > 0 && (
         <>
           <h3 className="fg-caption mt-2">
@@ -146,7 +168,7 @@ function NothingRunning({ projectId, slug }: { projectId: string; slug: string }
               // within itself; its outcome and age hold one line of their own at the right.
               <li key={r.id} className="flex items-baseline gap-3 py-2">
                 <span className="min-w-0 flex-1">
-                  <ClosedRunWork run={r} slug={slug} />
+                  <RunWork run={r} slug={slug} />
                 </span>
                 <span data-run-outcome className="flex flex-none items-baseline gap-3 whitespace-nowrap">
                   <span data-run-status className="fg-body-sm text-fg">

@@ -8,6 +8,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { runJournalKey } from "@/features/issues/detail-hooks";
 import { refreshAfterStop, useSessions } from "./hooks";
 import type { SessionRow } from "./types";
 
@@ -78,7 +79,7 @@ describe("the sessions list", () => {
 describe("a stop", () => {
   it("re-reads the issue page's runs at once, so the run a stop closed reads Stopped beside the toast", () => {
     const qc = new QueryClient();
-    const journal = ["issue", "i3", "run-journal"];
+    const journal = runJournalKey("i3");
     qc.setQueryData(journal, { runs: [] });
     qc.setQueryData(["agent-sessions", "p1"], { items: [] });
 

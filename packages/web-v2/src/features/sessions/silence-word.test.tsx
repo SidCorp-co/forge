@@ -41,7 +41,12 @@ vi.mock("@/features/runners/hooks", () => ({
   useActiveRunners: () => ({ data: { runners: [], busy: 0 }, isError: false, error: null }),
 }));
 vi.mock("@/features/pipeline/hooks", () => ({
-  useSessionsAndHolds: () => ({ data: { sessions: [], holds: [], readAt: "" }, isError: false, error: null }),
+  // The silent session is live on box-a, so the strip counts it there as the dashboard does.
+  useSessionsAndHolds: () => ({
+    data: { sessions: [{ id: "s-silent", deviceId: "d1" }], holds: [], readAt: "" },
+    isError: false,
+    error: null,
+  }),
 }));
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));
 const { mutation } = vi.hoisted(() => ({ mutation: () => ({ mutate: () => {}, isPending: false }) }));

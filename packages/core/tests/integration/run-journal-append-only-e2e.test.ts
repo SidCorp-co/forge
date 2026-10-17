@@ -407,6 +407,11 @@ describe('the issue page reads one record of what a run did', () => {
       VALUES (${w.projectId}, ${group}, ${w.issueId}, 'drive', 1, 'agent', now()),
              (${w.projectId}, ${group}, ${other}, 'drive', 2, 'agent', now()),
              (${w.projectId}, ${group}, NULL, 'recall', 1, 'agent', now())`);
+    const [ended, newest] = [randomUUID(), randomUUID()];
+    await harness.db.execute(sql`
+      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, kind, status, failure_reason, started_at, metadata)
+      VALUES (${ended}, ${w.projectId}, ${group}, 'run_session', 'failed', 'user_cancelled', now() - interval '5 minutes', '{}'::jsonb),
+             (${newest}, ${w.projectId}, ${group}, 'run_session', 'failed', 'user_cancelled', now(), '{}'::jsonb)`);
 
     const res = await call(
       w,
@@ -420,13 +425,14 @@ describe('the issue page reads one record of what a run did', () => {
         runId: string;
         ordinal: number;
         group: string[] | null;
+        sessionId: string | null;
         attempts: Array<{ phase: string; attempt: number }>;
       }>;
     };
-    expect(runs.map((r) => [r.runId, r.ordinal, r.group])).toEqual([
-      [group, 3, [key, 'ISS-999999']],
-      [w.runId, 2, null],
-      [byStatuses, 1, [key]],
+    expect(runs.map((r) => [r.runId, r.ordinal, r.group, r.sessionId])).toEqual([
+      [group, 3, [key, 'ISS-999999'], newest],
+      [w.runId, 2, null, null],
+      [byStatuses, 1, [key], null],
     ]);
     expect(runs[0]?.attempts.map((a) => `${a.phase}#${a.attempt}`)).toEqual(['drive#1']);
   });

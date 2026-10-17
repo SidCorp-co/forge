@@ -12,6 +12,7 @@ import {
   runLeaseDisagreementText,
   silenceText,
   stateLabelAt,
+  waitsNow,
 } from "./run-state";
 
 const NOW = Date.parse("2026-10-16T10:00:00.000Z");
@@ -157,3 +158,29 @@ describe("an offline box and a lease core still holds", () => {
     expect(runLeaseDisagreementText({ issues: [issues[1]] })).toBeNull();
   });
 });
+
+// ISS-1228 round 14 (judge-36): a run a person stopped still said "Waiting on a person." with an
+// Open questions link until its box dropped it.
+describe("waitsNow", () => {
+  it("says a blocked run waits only while core holds its session", () => {
+    expect(waitsNow({ blockerKind: "human", sessionStatus: "running" })).toBe(true);
+    expect(waitsNow({ blockerKind: "human", sessionStatus: "failed" })).toBe(false);
+    expect(waitsNow({ blockerKind: "human", sessionStatus: "completed" })).toBe(false);
+    expect(waitsNow({ blockerKind: null, sessionStatus: "running" })).toBe(false);
+  });
+});
+
+// ISS-1228 round 14 (judge-36): "The box is offline." beside a live session could not be reached.
+describe("offlineText beside a live session", () => {
+  it("says the box is offline and when it last reported while core still holds the session", () => {
+    const text = offlineText({
+      incarnation: "live",
+      observedAt: new Date(Date.now() - 3 * 60_000).toISOString(),
+      sessionId: "s1",
+      sessionStatus: "running",
+      deviceStatus: "offline",
+    });
+    expect(text).toBe("The box is offline. It last reported 3m ago.");
+  });
+});
+

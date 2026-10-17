@@ -138,7 +138,7 @@ describe("the dashboard and the box strip read one runner summary (ISS-1228 crit
   it("calls an online box hosting a live session busy on both", () => {
     world.runners = [runner("d1", "online")];
     world.live = [{ id: "s-d1", deviceId: "d1" }];
-    expect(readBoth([liveRow("d1")])).toEqual({ caption: "1 of 1 runners busy", boxes: ["Busy · 1/1"] });
+    expect(readBoth([liveRow("d1")])).toEqual({ caption: "1 of 1 runners busy", boxes: ["Busy · 1 live session"] });
   });
 
   it("calls an offline box offline on both, though a session on it is still live, and busy on neither", () => {
@@ -155,7 +155,7 @@ describe("the dashboard and the box strip read one runner summary (ISS-1228 crit
     world.live = [];
     expect(readBoth([])).toEqual({
       caption: "0 of 1 runners busy · 1 offline",
-      boxes: ["Free · 0/1", "Offline"],
+      boxes: ["Free", "Offline"],
     });
   });
 });

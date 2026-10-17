@@ -23,10 +23,13 @@ import { useDevices } from "@/features/runners/hooks";
 import { isJobDriven, sessionTitle } from "@/features/sessions/types";
 import {
   deriveSessionDisplayStatus,
+  isRealFailure,
   sessionSilence,
   sessionChipStatus,
+  sessionEndWord,
   sessionStep,
 } from "@/features/sessions/types";
+import { SESSION_ICONS } from "@/design/primitives/status-chip";
 import { useNow } from "@/design/hooks/use-now";
 import { buildShareLink, useRecents } from "@/features/shell";
 import { formatApiError } from "@/lib/api/error";
@@ -194,6 +197,14 @@ export function SessionScreen({
     fromMessages,
     ...(items.length ? { tail: items[items.length - 1] } : {}),
   });
+  // An ended session's turn line says the word its header chip and run stats say (ISS-1228).
+  const ended = session
+    ? {
+        word: sessionEndWord(display, session.failureReason),
+        icon: SESSION_ICONS[sessionChipStatus(display, session.failureReason)],
+        failure: isRealFailure(display, session.failureReason),
+      }
+    : undefined;
 
   // Auto-scroll the thread to the newest message (ISS-728) — this pane and the
   // mobile SlideOver reply panel both render this screen (embedded mode), so
@@ -429,6 +440,7 @@ export function SessionScreen({
                     reported={word?.activity ?? WORKING_WORD}
                     {...(word ? { activity: word.activity } : {})}
                     {...(waitingOn ? { waitingOn } : {})}
+                    {...(ended ? { ended } : {})}
                   />
                 </div>
               )}

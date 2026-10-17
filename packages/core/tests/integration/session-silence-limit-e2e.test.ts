@@ -120,8 +120,9 @@ describe("a session read carries core's own silence limit (ISS-1228 round 9)", (
   });
 
   // ISS-1228 round 11 (judge-27): a box that kept answering moved the end three minutes past its
-  // latest answer on every read, so the countdown stood at "2m 59s" for six minutes.
-  it('holds the end still while the box keeps answering, and moves it only when the box goes quiet', async () => {
+  // latest answer on every read, so the countdown stood at "2m 59s" for six minutes. Round 14
+  // (judge-36): the box going quiet then dropped it from 8m 44s to 1m 20s.
+  it('holds the end still while the box keeps answering and once it goes quiet', async () => {
     await runnerAnswers();
     const run = await session('run_session');
     const endAt = async () => {
@@ -134,14 +135,12 @@ describe("a session read carries core's own silence limit (ISS-1228 round 9)", (
     );
     expect(await endAt()).toBe(first);
 
-    // The box last heard two minutes ago and silent since: the sweep may take the session a minute
-    // from now, which no longer moves.
+    // The box last heard two minutes ago and silent since: a run session is still its own reaper's,
+    // ten minutes from its own beat.
     await harness.db.execute(
       sql`UPDATE runners SET last_seen_at = now() - interval '2 minutes' WHERE device_id = ${deviceId}::uuid`,
     );
-    const quiet = await endAt();
-    expect(quiet).toBeLessThan(first);
-    expect(await endAt()).toBe(quiet);
+    expect(await endAt()).toBe(first);
   });
 
   it('answers it on the one-session read the session page reads', async () => {
@@ -269,17 +268,46 @@ describe('the limit against each reaper that ends a session for silence (ISS-122
     expect(await statusOf(id)).toBe('failed');
   });
 
-  it('reports three minutes for a run session on a jobless run whose runner is not heard, which the one-shot sweep ends', async () => {
-    const { id } = await session('run_session');
+  // ISS-1228 round 14: the one-shot sweep leaves a run session and a master to their own reapers, so
+  // a box that stops answering does not move their end.
+  for (const kind of ['run_session', 'master'] as const) {
+    it(`reports ten minutes from its own beat for a ${kind} whose box is not heard, which the sweep leaves and its own reaper ends`, async () => {
+      const { id, runId } = await session(kind);
+      await bindTestRunner(harness.db, { projectId, deviceId });
+      await harness.db.execute(
+        sql`UPDATE runners SET last_seen_at = now() - interval '5 minutes' WHERE device_id = ${deviceId}::uuid`,
+      );
 
-    expect((await get(`/agent-sessions/${id}`)).silenceLimitMs).toBe(THREE_MIN);
-    const { reapOrphanedOneShotRuns } = await import('../../src/pipeline/sweeper.js');
-    await reapOrphanedOneShotRuns(new Date());
-    expect(await statusOf(id)).toBe('failed');
-  });
+      expect((await get(`/agent-sessions/${id}`)).silenceLimitMs).toBe(TEN_MIN);
+      const { reapOrphanedOneShotRuns } = await import('../../src/pipeline/sweeper.js');
+      await reapOrphanedOneShotRuns(new Date());
+      expect(await statusOf(id)).toBe('running');
+
+      // Past its own ten minutes its own reaper ends it; a run session's lease is read off its live
+      // session, so ending it and closing its run is what gives its issues back.
+      await harness.db.execute(
+        sql`UPDATE agent_sessions SET last_heartbeat_at = now() - interval '10 minutes 30 seconds' WHERE id = ${id}`,
+      );
+      if (kind === 'run_session') {
+        const { reapDeadRunSessions } = await import('../../src/devices/run-session-reaper.js');
+        await reapDeadRunSessions();
+        const [run] = await harness.db.execute(
+          sql`SELECT status FROM pipeline_runs WHERE id = ${runId}`,
+        );
+        expect(run?.status).toBe('failed');
+      } else {
+        const { reapSilentMasters } = await import('../../src/devices/master-reaper.js');
+        await reapSilentMasters();
+      }
+      expect(await statusOf(id)).toBe('failed');
+    });
+  }
 
   it('waits for a young run to reach the heartbeat timeout before reporting the one-shot sweep, as the sweep does', async () => {
-    const { id, runId } = await session('run_session');
+    const { id, runId } = await session('chat');
+    await harness.db.execute(
+      sql`UPDATE agent_sessions SET claude_session_id = 'claude-young' WHERE id = ${id}`,
+    );
     await harness.db.execute(
       sql`UPDATE pipeline_runs SET started_at = now() - interval '1 minute' WHERE id = ${runId}`,
     );
@@ -401,6 +429,7 @@ describe('the one-shot sweep, as the limit reads it (ISS-1228 round 9)', () => {
     await reapOrphanedOneShotRuns(new Date());
     expect(await statusOf(quiet.id)).toBe('running');
 
+    // With no runner at all, each is still its own reaper's: ten minutes from its own beat.
     await harness.db.execute(sql`DELETE FROM runners WHERE device_id = ${deviceId}::uuid`);
     const body = await get(`/agent-sessions?projectId=${projectId}`);
     const listed = new Map(
@@ -409,11 +438,11 @@ describe('the one-shot sweep, as the limit reads it (ISS-1228 round 9)', () => {
         i.silenceLimitMs,
       ]),
     );
-    expect(listed.get(quiet.id)).toBe(THREE_MIN);
+    expect(listed.get(quiet.id)).toBe(TEN_MIN);
     expect(listed.get(asked.id)).toBe(TEN_MIN);
 
     await reapOrphanedOneShotRuns(new Date());
-    expect(await statusOf(quiet.id)).toBe('failed');
+    expect(await statusOf(quiet.id)).toBe('running');
     expect(await statusOf(asked.id)).toBe('running');
   });
 

@@ -459,7 +459,7 @@ export function runnersSummary(
       const online = r.deviceStatus === "online" && !draining;
       const act = activeByRunner.get(r.runnerId);
       const hosted = (r.deviceId ? sessionsByDevice.get(r.deviceId) : undefined) ?? 0;
-      const busy = hosted > 0 || (act ? !!act.current : online && q.running > 0);
+      const busy = sessions ? hosted > 0 : act ? !!act.current : online && q.running > 0;
       return {
         id: r.runnerId,
         deviceId: r.deviceId ?? null,
