@@ -92,7 +92,9 @@ describe('ISS-1409 — no reader: the agent mark is an unverified claim (real Po
     const res = await mark(issue, OWN);
     expect(res.mark).toBe('asserted');
     expect(res.markDetail).toContain('the project names no base branch to look for it on');
-    expect(res.markDetail).toContain('mark it again once the project names its base branch');
+    expect(res.markDetail).toContain(
+      'Mark it again once this holds:\n> the project names its base branch',
+    );
     expect(await claimOf(issue.id)).toBe(OWN);
     expect(await row(issue.id)).toMatchObject({ merged_commit_sha: null });
     await advance(issue.id, 'in_progress', 'developed');
@@ -184,7 +186,7 @@ describe("ISS-1409 — a reader that was read keeps its refusals, and a person's
       expect(res.mark).toBe('asserted');
       expect(res.markDetail).toMatch(/(did not|could not) check it/);
       expect(res.markDetail).toContain(says);
-      expect(res.markDetail).toContain('mark it again once the tracker can read');
+      expect(res.markDetail).toContain('Mark it again once this holds:\n> the tracker can read');
       expect((await comments(issue.id)).at(-1)).toContain(says);
       expect(await claimOf(issue.id)).toBe(OWN);
       expect(await row(issue.id)).toMatchObject({ merged_commit_sha: null });

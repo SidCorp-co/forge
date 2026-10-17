@@ -117,7 +117,7 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
       expect(res.markDetail).toMatch(/(did not|could not) check it/);
       expect(res.markDetail).toContain(says);
       expect(res.markDetail).toContain(
-        `mark it again once the tracker can read the project's repository${route}`,
+        `Mark it again once this holds:\n> the tracker can read the project's repository${route}`,
       );
       expect(await row(issue.id)).toMatchObject({ merged_commit_sha: null });
       const refused = await refusal(() => mark(issue, OWN, 'human'));
@@ -247,7 +247,9 @@ describe('ISS-1318 r3 — each refusal names a route its reader can take (real P
     const res = await mark(issue, OWN);
     expect(res.mark).toBe('asserted');
     expect(res.markDetail).toContain('the project names no base branch to look for it on');
-    expect(res.markDetail).toContain('mark it again once the project names its base branch');
+    expect(res.markDetail).toContain(
+      'Mark it again once this holds:\n> the project names its base branch',
+    );
     expect(repo.reads).toEqual([]);
   });
 

@@ -71,6 +71,10 @@ export function mergeMarkFields(row: MergeMarkColumns): {
   };
 }
 
+function quoted(words: string): string {
+  return `> ${words.replace(/\s+/g, ' ').trim()}`;
+}
+
 /** The sentence saying which kind this is, written once: the audit comment and the caller's
  *  answer are both built from it. `claimedCommit` is the caller's word, not the column. */
 export function describeMergeMark(args: {
@@ -113,16 +117,14 @@ export function describeMergeMark(args: {
   }
   if (args.unverified) {
     const { commit, noReader, why, clears, notKept } = args.unverified;
-    const unchecked = noReader
-      ? "Forge has no way to read this project's repository, so it did not check it."
-      : `Forge could not check it: ${why}.`;
-    const toCheck = noReader
-      ? `To have it checked, ${why}, then mark it again.`
-      : `To have it checked, mark it again ${clears}.`;
     const repeat = notKept
       ? ` Commit ${notKept} was not recorded: the first claim, ${commit}, stands. To change it, Unmark, then Mark merged again.`
       : '';
-    return `Commit ${commit} was named, and is kept as a claim. ${unchecked} ${toCheck}${repeat}`;
+    // The reason and the step are worded where the reading failed, so each stands quoted as its own.
+    const steps = noReader
+      ? `Forge has no way to read this project's repository, so it did not check it. To have it checked, do this, then mark it again:\n${quoted(why)}`
+      : `Forge could not check it. The reason:\n${quoted(why)}\nMark it again once this holds:\n${quoted(clears.replace(/^once\s+/, ''))}`;
+    return `Commit ${commit} was named, and is kept as a claim.${repeat} ${steps}`;
   }
   if (!args.claimedCommit) {
     return 'No commit was named. Forge did not see this merge, so the mark is a claim.';

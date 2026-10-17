@@ -5,6 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { readableThrough } from '../projects/repository-access.js';
 import { describeMergeMark, mergeMarkFields, mergeMarkKindOf } from './merge-record.js';
 
 const AT = new Date('2026-09-20T14:59:37.646Z');
@@ -81,7 +82,7 @@ describe('the sentence a caller is given', () => {
       "Forge has no way to read this project's repository, so it did not check it.",
     );
     expect(unverified).toContain(
-      'To have it checked, attach a deploy key under Git access, then mark it again.',
+      'To have it checked, do this, then mark it again:\n> attach a deploy key under Git access',
     );
     expect(unverified.match(/abc1234/g)).toHaveLength(1);
   });
@@ -97,10 +98,10 @@ describe('the sentence a caller is given', () => {
       },
     });
     expect(failed).toContain(
-      'Forge could not check it: the git host refused the deploy key attached to this project.',
+      'Forge could not check it. The reason:\n> the git host refused the deploy key attached to this project',
     );
     expect(failed).toContain(
-      "To have it checked, mark it again once the tracker can read the project's repository with the deploy key.",
+      "Mark it again once this holds:\n> the tracker can read the project's repository with the deploy key",
     );
     expect(failed).not.toContain('no way to read');
   });
@@ -149,13 +150,35 @@ describe('the mark sentence names no stored field (ISS-1421 r4)', () => {
     expect(sentence).not.toMatch(STORED);
   });
 
-  // Repair 1 — a person reads these in the thread: plain short sentences, nothing shouted.
-  it.each(said.map((sentence, i) => [i, sentence] as const))(
+  // Repair 1 — a person reads these in the thread: plain short sentences, nothing shouted. A
+  // reason or a step another part of Forge words stands quoted on its own `> ` line, as its own.
+  const real = [readableThrough('binding'), readableThrough('deploy_key')].flatMap((clears) =>
+    [true, false].map((noReader) =>
+      describeMergeMark({
+        kind: 'asserted',
+        unverified: {
+          commit: 'abc1234',
+          why: noReader
+            ? "set the project's repository under Settings, then attach a deploy key under Git access"
+            : 'git@gitlab.com:sid/desk.git cannot be read: Permission denied (publickey)',
+          clears,
+          noReader,
+          notKept: 'def5678',
+        },
+      }),
+    ),
+  );
+
+  it.each([...said, ...real].map((sentence, i) => [i, sentence] as const))(
     'sentence %i is short plain sentences',
     (_, sentence) => {
-      expect(sentence).toMatch(/^[A-Z].*\.$/s);
-      expect(sentence).not.toMatch(/\b[A-Z]{3,}\b/);
-      for (const one of sentence.split(/(?<=[.:])\s+(?=[A-Z])/)) {
+      const own = sentence
+        .split('\n')
+        .filter((line) => !line.startsWith('> '))
+        .join(' ');
+      expect(own).toMatch(/^[A-Z].*[.:]$/s);
+      expect(own).not.toMatch(/\b[A-Z]{3,}\b/);
+      for (const one of own.split(/(?<=[.:])\s+(?=[A-Z])/)) {
         expect(one.split(/\s+/).length, one).toBeLessThanOrEqual(20);
       }
     },

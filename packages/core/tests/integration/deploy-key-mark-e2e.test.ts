@@ -193,7 +193,7 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
       expect(res.markDetail).toContain(answer.said);
       for (const s of says) expect(res.markDetail).toContain(s);
       expect(res.markDetail).toContain(
-        `mark it again once the tracker can read the project's repository with the deploy key attached under ${GIT_ACCESS}`,
+        `Mark it again once this holds:\n> the tracker can read the project's repository with the deploy key attached under ${GIT_ACCESS}`,
       );
       expect(res.markDetail).not.toMatch(/remote:\s*(\.|\))/);
       expect(res.markDetail).not.toContain('172.65.251.78');
@@ -219,7 +219,7 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
     expect(res.mark).toBe('asserted');
     expect(res.markDetail).toContain(`${GITLAB_URL} has no branch staging`);
     expect(res.markDetail).toContain(
-      `mark it again once ${GITLAB_URL} has a branch staging, or the project's base branch and release chain name only branches it has`,
+      `Mark it again once this holds:\n> ${GITLAB_URL} has a branch staging, or the project's base branch and release chain name only branches it has`,
     );
     expect(res.markDetail).not.toContain('with the deploy key attached');
     expect(await row(issue.id)).toMatchObject({ merged_commit_sha: null });
