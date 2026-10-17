@@ -27,9 +27,7 @@ export interface RunAnswer {
   status: string;
   released: boolean;
   masters: number;
-  /** Boxes that heard the offer. Hearing is not taking. */
   boxesHeard: number;
-  /** Live sessions holding the issue as core answered: only these mean something took it. */
   taken: number;
 }
 export const ISSUES_PAGE_SIZE = 25;

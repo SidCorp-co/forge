@@ -34,8 +34,7 @@ export const ENDING_AS_FAILED = "Core is ending it as failed.";
 
 export const endsAsFailedInText = (countdown: string): string => `Core ends it as failed in ${countdown}.`;
 
-/** A quiet session is one core has heard no check-in from: the box's own report, which a run's row
- *  dates beside it, is another clock, so this never says "report". */
+/** Silence is a missing check-in, never a missing report: the box's report is the row's other clock. */
 export const quietForText = (since: string, ending: boolean): string =>
   `${SILENCE_WORD}.${ending ? ` ${ENDING_AS_FAILED}` : ""} No check-in for ${since}.`;
 

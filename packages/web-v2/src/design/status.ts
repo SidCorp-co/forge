@@ -44,7 +44,6 @@ export const WORKING_WORD = "Working";
 
 export const BLOCKED_WORD = "Blocked";
 
-/** A session a person or a rule stopped on purpose: the one outcome word for every stop. */
 export const STOPPED_WORD = "Stopped";
 export const BLOCKED_TONE: SemanticTone = "attention";
 

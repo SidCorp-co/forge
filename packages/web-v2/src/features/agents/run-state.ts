@@ -258,8 +258,6 @@ export function offlineText(
   return boxOfflineText(formatRelativeTime(row.observedAt));
 }
 
-/** Why this run's session ended, in the sentences every surface says it in, or `null` where core
- *  holds no reason. */
 export function endReasonText(
   row: Pick<RunSessionRow, "sessionFailureReason" | "sessionStatus">,
 ): string | null {

@@ -11,9 +11,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   bindTestRunner,
   createTestDevice,
-  openDeviceSocket,
   createTestProject,
   createTestUser,
+  openDeviceSocket,
   setupTestDatabase,
   startTestServer,
   type TestDatabase,
