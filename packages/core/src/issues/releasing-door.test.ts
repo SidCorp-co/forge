@@ -69,7 +69,9 @@ describe('entering releasing (ISS-1421)', () => {
       to: 'releasing',
     });
     expect(refusal?.code).toBe('RELEASING_STARTS_FROM_RELEASE');
-    expect(refusal?.detail).toContain('A release cannot close this issue yet: not marked merged.');
+    expect(refusal?.detail).toContain(
+      'A release cannot close this issue yet. It is not marked merged.',
+    );
     expect(refusal?.detail).toContain(
       "Use Mark merged in the issue's properties, and fill in Where it landed.",
     );
@@ -93,9 +95,9 @@ describe('entering releasing (ISS-1421)', () => {
       to: 'releasing',
     });
     expect(refusal?.detail).toContain(
-      'A release cannot close this issue yet: not marked merged; holds 1 open question.',
+      'A release cannot close this issue yet. It is not marked merged.',
     );
-    expect(refusal?.detail).toContain('Answer it on the page.');
+    expect(refusal?.detail).toContain('It holds 1 open question. Answer it on the page.');
   });
 
   it('names no Release now where what holds the issue cannot be read', async () => {

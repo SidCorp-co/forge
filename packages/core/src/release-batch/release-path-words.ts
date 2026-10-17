@@ -69,10 +69,16 @@ function heldBack(holds: GateHolds): string[] | null {
   }
   if (holds.holds.length === 0) return null;
   return [
-    `A release cannot close this issue yet: ${holds.holds.map((h) => h.reason).join('; ')}.`,
-    ...holds.holds.map((h) => h.clears),
+    'A release cannot close this issue yet.',
+    ...holds.holds.flatMap((h) => [holdSentence(h.reason), h.clears]),
     'Release now appears on its page once that is done.',
   ];
+}
+
+/** A shortfall's reason ("not marked merged", "holds 1 open question") as a sentence of its own. */
+function holdSentence(reason: string): string {
+  const verb = /^(holds|has) /.test(reason) ? 'It' : /^no /.test(reason) ? 'It has' : 'It is';
+  return `${verb} ${reason}.`;
 }
 
 /** The refusal's sentences on where a release starts, for a caller that may hold the API. */

@@ -27,6 +27,25 @@ const HOLDS: GateHolds[] = [
       },
     ],
   },
+  {
+    kind: 'read',
+    holds: [
+      {
+        reason: 'no mark naming where its work landed',
+        clears:
+          "Use Mark merged in the issue's properties, and give Where it landed its landing: the live URL, CMS entry or storefront resource.",
+      },
+      {
+        reason: 'holds 2 open questions',
+        clears: 'Answer them in their "Decision waiting" cards on the issue\'s page.',
+      },
+      {
+        reason:
+          'missing what this project requires to close: plan, acceptance_criteria, release_note',
+        clears: 'Write each missing record on the issue.',
+      },
+    ],
+  },
   { kind: 'unread' },
 ];
 
@@ -70,11 +89,11 @@ describe('release-path sentences (ISS-1421 round 3)', () => {
   });
 
   it('name Release now to a gated issue at the gate only where nothing holds it', () => {
-    const [none, held, unread] = HOLDS as [GateHolds, GateHolds, GateHolds];
+    const [none, held, combined, unread] = HOLDS as [GateHolds, GateHolds, GateHolds, GateHolds];
     expect(releaseStartsFor('gated', 'proj-7', 'awaiting_release', none).join(' ')).toContain(
       'Start one with Release now',
     );
-    for (const holds of [held, unread]) {
+    for (const holds of [held, combined, unread]) {
       expect(
         releaseStartsFor('gated', 'proj-7', 'awaiting_release', holds).join(' '),
       ).not.toContain('Start one with Release now');

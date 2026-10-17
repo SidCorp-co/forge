@@ -188,7 +188,9 @@ describe('a move to Releasing from any door but a release batch (criteria 5, 6, 
     expect(res.status).toBe(409);
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('RELEASING_STARTS_FROM_RELEASE');
-    expect(body.message).toContain('A release cannot close this issue yet: not marked merged.');
+    expect(body.message).toContain(
+      'A release cannot close this issue yet. It is not marked merged.',
+    );
     expect(body.message).toContain(
       "Use Mark merged in the issue's properties, and fill in Where it landed.",
     );

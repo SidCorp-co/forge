@@ -142,7 +142,7 @@ describe("the sweep's next step names only a door the project has (criteria 27-3
     expect(await fx.stored(id)).toMatchObject({ status: 'awaiting_release', claim: null });
     const [said] = await bodies(id);
     expect(said).toContain('It is back at Awaiting release.');
-    expect(said).toContain('A release cannot close this issue yet: not marked merged.');
+    expect(said).toContain('A release cannot close this issue yet. It is not marked merged.');
     expect(said).toContain(
       "Use Mark merged in the issue's properties, and fill in Where it landed.",
     );
