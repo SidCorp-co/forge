@@ -9,10 +9,10 @@ export interface StopTarget {
   box?: string | null;
 }
 
-/** What a stop ends, said before it ends it: the agent's process goes, and nothing brings it back. */
+/** What a stop does, said before it does it: core ends the session at once and asks its box to end the process. */
 export function stopSessionMessage(target: StopTarget): string {
   const where = target.box ? ` on ${target.box}` : "";
-  return `${target.name}${where} stops now. Its agent's process ends and any issue it holds is let go. It reads Stopped from then on, and Rerun starts a fresh session.`;
+  return `Core stops ${target.name}${where} now and lets go of any issue it holds. Its box is told to end the agent's process. It reads Stopped from then on, and Rerun starts a fresh session.`;
 }
 
 /**

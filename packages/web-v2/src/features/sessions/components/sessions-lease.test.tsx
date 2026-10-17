@@ -113,7 +113,7 @@ describe("a stop on the sessions list (ISS-1228 round 13)", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Stop session" }));
     expect(stopSession).not.toHaveBeenCalled();
     const dialog = screen.getByRole("dialog");
-    expect(dialog).toHaveTextContent("run: r9 stops now.");
+    expect(dialog).toHaveTextContent("Core stops run: r9 now");
     fireEvent.click(within(dialog).getByRole("button", { name: "Stop session" }));
     expect(stopSession).toHaveBeenCalledWith("r9", expect.anything());
   });

@@ -64,7 +64,7 @@ describe("the issue page's word on a lease its box returned (ISS-1228 round 12)"
     fireEvent.click(screen.getByRole("button", { name: "Stop session" }));
     expect(stop).not.toHaveBeenCalled();
     const dialog = screen.getByRole("dialog");
-    expect(dialog).toHaveTextContent("run: r6-lease-disagree on j31-a stops now.");
+    expect(dialog).toHaveTextContent("Core stops run: r6-lease-disagree on j31-a now");
     fireEvent.click(within(dialog).getByRole("button", { name: "Stop session" }));
     expect(stop).toHaveBeenCalledWith("s6", expect.anything());
     expect(screen.queryByRole("status")).toBeNull();

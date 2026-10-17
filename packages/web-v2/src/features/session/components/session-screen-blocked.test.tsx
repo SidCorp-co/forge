@@ -149,7 +149,7 @@ describe("stopping a session from its page", () => {
     fireEvent.click(screen.getByRole("button", { name: "Stop session" }));
     expect(stopSession).not.toHaveBeenCalled();
     const dialog = screen.getByRole("dialog");
-    expect(dialog).toHaveTextContent("run: ISS-3 on bravo stops now.");
+    expect(dialog).toHaveTextContent("Core stops run: ISS-3 on bravo now");
     fireEvent.click(within(dialog).getByRole("button", { name: "Stop session" }));
     expect(stopSession).toHaveBeenCalledTimes(1);
   });

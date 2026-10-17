@@ -14,9 +14,9 @@ afterEach(cleanup);
 describe("the stop confirmation", () => {
   it("names the session and its box, and what the stop ends", () => {
     expect(stopSessionMessage({ name: "run: r2", box: "j34-a" })).toBe(
-      "run: r2 on j34-a stops now. Its agent's process ends and any issue it holds is let go. It reads Stopped from then on, and Rerun starts a fresh session.",
+      "Core stops run: r2 on j34-a now and lets go of any issue it holds. Its box is told to end the agent's process. It reads Stopped from then on, and Rerun starts a fresh session.",
     );
-    expect(stopSessionMessage({ name: "run: r2" })).toMatch(/^run: r2 stops now\./);
+    expect(stopSessionMessage({ name: "run: r2" })).toMatch(/^Core stops run: r2 now /);
   });
 
   it("is closed until a session is named, and stops nothing on Keep it running", () => {
