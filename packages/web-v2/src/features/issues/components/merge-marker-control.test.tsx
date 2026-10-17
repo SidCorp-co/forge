@@ -190,7 +190,7 @@ describe("MergeMarkerControl on a project that lands in git keeps its form", () 
     fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
     const panel = screen.getByRole("dialog");
     expect(panel.textContent).not.toContain("`");
-    if (landingShape === "git") expect(panel).toHaveTextContent(/which lets the issue close/);
+    if (landingShape === "git") expect(panel).toHaveTextContent(/which a close needs/);
   });
 
   it("takes a target past 200 characters whole, as it did before", () => {
@@ -251,8 +251,18 @@ describe("the Mark merged panel's introduction", () => {
       expect(sentence).toMatch(/\.$/);
       expect(sentence.split(/\s+/).length).toBeLessThanOrEqual(25);
     }
-    expect(text).toMatch(/lets the issue close/);
+    expect(text).toMatch(/which a close needs/);
     expect(text).toMatch(/Unmark takes it back, unless the issue is closed\./);
     expect(text).not.toMatch(/date field|nothing here can hold|—/);
+  });
+
+  // ISS-1421 r6, criterion 95: the banner beside the panel says "not shipped yet", so the panel
+  // must not say the mark says the work shipped.
+  it.each([
+    ["git", BLURB],
+    ["outside_git", LANDING_BLURB],
+  ] as const)("on an issue landing %s says the mark records where the work landed, never that it shipped", (_shape, text) => {
+    expect(text).toMatch(/Marking merged records/);
+    expect(text).not.toMatch(/shipped/);
   });
 });

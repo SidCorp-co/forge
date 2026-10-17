@@ -1,4 +1,4 @@
-// ISS-791 — the shipped-work claim, on the surface humans actually use.
+// ISS-791 — the merge mark, on the surface humans actually use.
 //
 // `POST /api/issues/:id/merge` existed only for the CLI and MCP, so a person who finished an issue
 // by hand could only close it — and a close auto-stamps `merged_at` inside its own transaction,
@@ -13,19 +13,24 @@ import { SlideOver } from "@/design/patterns/slide-over";
 import { formatApiError } from "@/lib/api/error";
 import { useMergeMarker } from "../hooks";
 import type { LandingShape } from "../types";
-import { MARK_MERGED_ACTION, WHERE_IT_LANDED_FIELD, WORK_LANDS_ROW } from "@forge/contracts/mark-merged-words";
+import {
+  MARK_MERGED_ACTION,
+  UNMARK_ACTION,
+  WHERE_IT_LANDED_FIELD,
+  WORK_LANDS_ROW,
+} from "@forge/contracts/mark-merged-words";
 
 /** Core's cap on a landing (`MERGED_LANDING_MAX`). Said and enforced here, never silently cut. */
 const LANDING_MAX = 2000;
 
-/** Two short sentences: what the mark does, and how it is undone (ISS-1421, criterion 85). */
-export const BLURB =
-  "Marking merged says this work shipped, which lets the issue close. Unmark takes it back, unless the issue is closed.";
+/** What the mark does, then how it is undone (ISS-1421, criterion 85). A mark records where the work
+ *  landed and never that it shipped: the banner beside it says "not shipped yet" (criterion 95). */
+export const BLURB = `Marking merged records where this work landed, which a close needs. ${UNMARK_ACTION} takes it back, unless the issue is closed.`;
 
 /** Outside git the mark names where the work now is, since there is no branch to name (ISS-1327). */
 export const LANDING_BLURB =
   "Say where the work now is: the live URL, the CMS entry or the storefront resource. " +
-  "Marking merged lets the issue close. Unmark takes it back, unless the issue is closed.";
+  `Marking merged records it, which a close needs. ${UNMARK_ACTION} takes it back, unless the issue is closed.`;
 
 interface MergeMarkerControlProps {
   issueId: string;
@@ -77,7 +82,7 @@ export function MergeMarkerControl({
         disabled={marker.isPending}
         onClick={() => marker.unmark()}
       >
-        Unmark
+        {UNMARK_ACTION}
       </Button>
     );
   }

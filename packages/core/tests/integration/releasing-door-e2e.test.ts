@@ -174,7 +174,7 @@ describe('a move to Releasing from any door but a release batch (criteria 5, 6, 
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('RELEASING_STARTS_FROM_RELEASE');
     expect(body.message).toContain(
-      'Releasing (releasing) means a release batch is carrying this issue to production right now',
+      'Releasing means a release batch is carrying this issue to production right now',
     );
     expect(body.message).toContain("Release now on this issue's page or at the release gate");
     expect(body.message).toContain(`POST /api/projects/${projectId}/release-batches`);
@@ -208,7 +208,7 @@ describe('a move to Releasing from any door but a release batch (criteria 5, 6, 
       const body = (await res.json()) as { code: string; message: string };
       expect(body.code).toBe('RELEASING_STARTS_FROM_RELEASE');
       expect(body.message).toContain(
-        'A release carries only issues at Awaiting release (awaiting_release), so it must reach that first.',
+        'A release carries only issues at Awaiting release, so it must reach that first.',
       );
       expect(body.message).not.toContain('Release now');
       expect(await row(id)).toEqual({ status: from, claim: null });
@@ -229,7 +229,7 @@ describe('a move to Releasing from any door but a release batch (criteria 5, 6, 
         code: 'RELEASING_STARTS_FROM_RELEASE',
       });
       expect(result?.message).toContain(
-        'Releasing (releasing) means a release batch is carrying this issue to production right now',
+        'Releasing means a release batch is carrying this issue to production right now',
       );
       expect(result?.message).toContain("Release now on this issue's page");
       expect(await row(id)).toEqual({ status: 'awaiting_release', claim: null });

@@ -150,15 +150,22 @@ const UNKNOWN_LANE =
   projectKinds.map((k) => `\`${k}\``).join(', ') +
   ', so whether its work lands in git is unknown and the commit route is not offered.';
 
+/** The mark door's refusal: its own short sentences, then each rule another part words, quoted on
+ *  a line of its own rather than spliced into one of them (ISS-1421 r6, criterion 63). */
+function markDetail(said: string, rules: readonly string[]): string {
+  return [said, ...rules.map((rule) => `> ${rule.replace(/\s+/g, ' ').trim()}`)].join('\n\n');
+}
+
 /** Outside git the landing a mark names is the route, for anyone. A branch is that lane's second
  *  route and its base-branch paragraph is a git lane's, so the sentence ends on the lane. */
 function outsideGitDetail(lane: Lane, door: EvidenceDoor): string {
   const lands = `${whereItLands(lane, true)}, so a commit is not read here.`;
   if (door === 'mark') {
-    return (
-      'this mark names no landing, and no branch is recorded for this issue, so ' +
-      'nothing was marked — mark it again with `mark_merged` carrying `data.landing`, ' +
-      `${WHERE_IT_NOW_IS}. ${lands}`
+    return markDetail(
+      'This mark names no landing, and no branch is recorded for this issue. Nothing was marked. ' +
+        'Mark it again with `mark_merged` carrying `data.landing`. That names where the work now ' +
+        'is: the live URL, the deployment, the CMS entry or storefront resource.',
+      [lands],
     );
   }
   return (
@@ -172,12 +179,12 @@ function outsideGitDetail(lane: Lane, door: EvidenceDoor): string {
  *  so a sentence offering it to anyone else sends them into the same refusal again. */
 function gitDetail(door: EvidenceDoor): string {
   if (door === 'mark') {
-    return (
-      'this mark names no commit, and no branch is recorded for this issue, so ' +
-      `nothing was marked — ${RECORD_THE_BRANCH}, then mark it again; or, where the work landed ` +
-      'on the base branch itself, mark it again with `mark_merged` carrying `data.commit`, the ' +
-      "commit it landed at, which Forge checks against the project's repository. " +
-      `${UNREADABLE_REPOSITORY} ${DECLARE_OUTSIDE_GIT} ${NOT_A_BRANCH}`
+    return markDetail(
+      'This mark names no commit, and no branch is recorded for this issue. Nothing was marked. ' +
+        'Record the branch in `sessionContext.branch` or `sessionContext.worklog.branch`, then ' +
+        'mark it again. Where the work landed on the base branch itself, mark it again with ' +
+        "`data.commit`. Forge checks that commit against the project's repository.",
+      [UNREADABLE_REPOSITORY, DECLARE_OUTSIDE_GIT, NOT_A_BRANCH],
     );
   }
   if (door === 'advance') {
@@ -206,8 +213,15 @@ function gitDetail(door: EvidenceDoor): string {
 export function noWorkEvidenceDetail(lane: Lane | null, door: EvidenceDoor = 'advance'): string {
   if (lane?.shape === 'outside_git') return outsideGitDetail(lane, door);
   if (lane?.shape === 'git') return gitDetail(door);
+  if (door === 'mark') {
+    return markDetail(
+      'No branch is recorded for this issue, so nothing was marked. Record the branch in ' +
+        '`sessionContext.branch` or `sessionContext.worklog.branch`, then mark it again.',
+      [UNKNOWN_LANE, NOT_A_BRANCH],
+    );
+  }
   return (
-    `no branch is recorded for this issue${door === 'mark' ? ', so nothing was marked' : ''} ` +
+    `no branch is recorded for this issue ` +
     `— ${RECORD_THE_BRANCH}, ${THEN[door]}. ${UNKNOWN_LANE}` +
     `${door === 'criterion' ? ` ${DECLARED}` : ''} ${NOT_A_BRANCH}`
   );

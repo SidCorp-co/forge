@@ -17,10 +17,10 @@ vi.mock("./api", () => ({
     update: vi.fn(async () => ({ id: "b1" })),
     remove: vi.fn(async () => undefined),
   },
-  integrationConnectionsApi: {},
+  integrationConnectionsApi: { bindExisting: vi.fn(async () => ({ id: "b2" })) },
 }));
 
-const { useCreateProviderIntegration } = await import("./hooks");
+const { useBindExistingConnection, useCreateProviderIntegration } = await import("./hooks");
 
 afterEach(cleanup);
 
@@ -41,5 +41,21 @@ describe("a provider saved from the project Integrations tab", () => {
     await act(() => result.current.mutateAsync({ provider: "coolify" } as never));
 
     expect(qc.getQueryState(["integration-connections"])?.isInvalidated).toBe(true);
+  });
+});
+
+// ISS-1421 r6, criterion 99 — after Share the Agent MCP servers panel still offered "Set up Postman"
+// until a reload: the share refreshed the list and the status, never what the panel reads.
+describe("a connection shared from the project Integrations tab", () => {
+  it("marks the Agent MCP servers panel's read stale, so it stops offering the set-up", async () => {
+    const { qc, wrapper } = harness();
+    qc.setQueryData(["integrations", "mcp-preview", "p1"], { servers: [] });
+    const { result } = renderHook(() => useBindExistingConnection(), { wrapper });
+
+    await act(() =>
+      result.current.mutateAsync({ id: "c1", body: { projectId: "p1" } } as never),
+    );
+
+    expect(qc.getQueryState(["integrations", "mcp-preview", "p1"])?.isInvalidated).toBe(true);
   });
 });

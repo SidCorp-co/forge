@@ -124,7 +124,7 @@ describe('unmark, at the door a caller reaches (ISS-1108)', () => {
 
     expect(err).toBeInstanceOf(MergeMarkerError);
     expect((err as InstanceType<typeof MergeMarkerError>).code).toBe('UNMARK_REQUIRES_NOT_CLOSED');
-    expect((err as Error).message).toContain('Move it off Closed first');
+    expect((err as Error).message).toContain('Move it to Reopened (reopen) first, then use Unmark.');
   });
 
   it('leaves no audit comment when it refuses', async () => {

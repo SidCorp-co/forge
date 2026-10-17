@@ -44,6 +44,7 @@ import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { rocketchat } from "./index";
 import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
+import { STATE_WORDS } from "../../derive";
 
 interface BadgeView {
   label: string;
@@ -52,12 +53,12 @@ interface BadgeView {
 
 function badgeFor(existing: IntegrationSummary | undefined): BadgeView {
   if (!existing) return { label: "Not configured", tone: "amber" };
-  if (!existing.active) return { label: "Disabled", tone: "neutral" };
+  if (!existing.active) return { label: STATE_WORDS.off, tone: "neutral" };
   if (existing.lastHealthStatus === "ok") return { label: "Connected", tone: "green" };
   if (existing.lastHealthStatus === "needs_reauth")
     return { label: "Bot credential rejected", tone: "red" };
-  if (existing.lastHealthStatus === "error") return { label: "Error", tone: "red" };
-  return { label: "Untested", tone: "neutral" };
+  if (existing.lastHealthStatus === "error") return { label: STATE_WORDS.failed, tone: "red" };
+  return { label: STATE_WORDS.unchecked, tone: "neutral" };
 }
 
 export function RocketchatSection({ projectId }: { projectId: string }) {

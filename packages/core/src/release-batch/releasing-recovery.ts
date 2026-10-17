@@ -252,6 +252,9 @@ export interface RecoverStrandedReleasingOptions {
   actor?: TransitionActor | undefined;
   /** Post a comment naming the reason. Off for a sweep nobody asked for. */
   comment?: boolean;
+  /** The one next step an unpromoted hand-back's comment ends on, in place of the general one, by
+   *  where the issue now stands (ISS-1421 r6: one comment, one next step). */
+  nextStep?: ((at: IssueStatus) => string) | undefined;
   /** Why the finish could not close each issue, by id; such an issue's comment names it. */
   refusals?: ReadonlyMap<string, CloseRefusal> | undefined;
   /** The version the finish shipped, named in a refused issue's comment. */
@@ -330,7 +333,10 @@ export async function recoverStrandedReleasing(
             authorId: author,
             body: promoted
               ? `${options.reason}. ${settledNote(destination)}`
-              : `${options.reason}. The issue is at ${statusLabel(destination)} — a person decides whether it goes back to work or into another batch.`,
+              : `${options.reason}. The issue is at ${statusLabel(destination)}. ${
+                  options.nextStep?.(destination) ??
+                  'A person decides whether it goes back to work or into another release.'
+                }`,
           });
         }
       } catch (err) {

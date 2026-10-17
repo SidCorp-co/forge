@@ -71,17 +71,15 @@ export function IssueHeaderActions({
         openPipeline={openPipeline}
         openRelease={(runId) => router.push(`/projects/${slug}/releases/${runId}`)}
       />
-      {/* Its label from `sm` up and its icon alone below, so at 390 the primary, this and the
-          actions menu keep one row beside the help button (ISS-1421 round 2). */}
+      {/* Its words at every width: the release banner sends a reader to "Open session at the top
+          of this page", so at 390 it cannot be an icon alone (ISS-1421 round 6, criterion 86). */}
       <Button
         variant="secondary"
         size="sm"
         icon="agent"
-        aria-label="Open session"
-        title="Open session"
         onClick={() => router.push(`/projects/${slug}/agents?issue=${issueId}`)}
       >
-        <span className="hidden sm:inline">Open session</span>
+        Open session
       </Button>
       <Menu
         align="right"

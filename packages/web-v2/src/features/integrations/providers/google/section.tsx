@@ -27,6 +27,7 @@ import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { google } from "./index";
 import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
+import { STATE_WORDS } from "../../derive";
 
 interface BadgeView {
   label: string;
@@ -38,7 +39,7 @@ interface BadgeView {
 // the credential", because re-entering it reproduces the state exactly.
 function badgeFor(existing: IntegrationSummary | undefined): BadgeView {
   if (!existing) return { label: "Not configured", tone: "amber" };
-  if (!existing.active) return { label: "Disabled", tone: "neutral" };
+  if (!existing.active) return { label: STATE_WORDS.off, tone: "neutral" };
   if (existing.lastHealthStatus === "ok") return { label: "Connected", tone: "green" };
   if (existing.lastHealthStatus === "needs_reauth")
     return { label: "Key rejected by Google", tone: "red" };
@@ -46,8 +47,8 @@ function badgeFor(existing: IntegrationSummary | undefined): BadgeView {
     return { label: "Sheet not shared with the account", tone: "amber" };
   if (existing.lastHealthStatus === "degraded")
     return { label: "No default sheet to read", tone: "amber" };
-  if (existing.lastHealthStatus === "error") return { label: "Error", tone: "red" };
-  return { label: "Untested", tone: "neutral" };
+  if (existing.lastHealthStatus === "error") return { label: STATE_WORDS.failed, tone: "red" };
+  return { label: STATE_WORDS.unchecked, tone: "neutral" };
 }
 
 /** The sentence that decides whether an operator's sheet is reachable. It is

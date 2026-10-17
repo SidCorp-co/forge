@@ -98,7 +98,9 @@ const KEPT_LINES: Array<[string, RegExp, string]> = [
 ];
 
 /** Who reads the sentences a file builds through `statusLabel` or `statusForCaller`. A file new to
- *  either helper is refused until it is placed here. */
+ *  either helper is refused until it is placed here. The release path's refusals are a person's: their
+ *  way out is a release and never a status a caller sends back, so the label stands alone there
+ *  (ISS-1421 r6, the master's ruling; the code and `details` still carry the values). */
 const READS: Record<string, 'person' | 'caller'> = {
   'integrations/github/check-run-body.ts': 'person',
   'integrations/sentry/intake-issue.ts': 'caller',
@@ -114,7 +116,7 @@ const READS: Record<string, 'person' | 'caller'> = {
   'issues/release-gate-hold.ts': 'person',
   'issues/release-record-required.ts': 'caller',
   'issues/release-tag-close.ts': 'caller',
-  'issues/releasing-door.ts': 'caller',
+  'issues/releasing-door.ts': 'person',
   'issues/transition-evidence.ts': 'caller',
   'issues/transition-reason.ts': 'caller',
   'issues/work-state.ts': 'caller',
@@ -134,14 +136,15 @@ const READS: Record<string, 'person' | 'caller'> = {
   'projects/stranded-work.ts': 'caller',
   'questions/issue-coupling.ts': 'caller',
   'questions/write.ts': 'caller',
-  'release-batch/abort-stamp.ts': 'caller',
+  'release-batch/abort-stamp.ts': 'person',
   'release-batch/blocker-sentences.ts': 'person',
   'release-batch/carried-sentences.ts': 'person',
   'release-batch/reader-sentences.ts': 'person',
-  'release-batch/claim-conflicts.ts': 'caller',
+  'release-batch/claim-conflicts.ts': 'person',
+  'release-batch/held-recovery.ts': 'person',
   'release-batch/releasing-recovery.ts': 'person',
   'release-batch/releasing-settle.ts': 'person',
-  'release-batch/release-path-words.ts': 'caller',
+  'release-batch/release-path-words.ts': 'person',
 };
 
 const HELPER = /\bstatus(?:Label|ForCaller)\b/;

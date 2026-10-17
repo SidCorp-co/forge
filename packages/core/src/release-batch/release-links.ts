@@ -37,3 +37,11 @@ export async function projectPages(projectId: string): Promise<ProjectPages | nu
     return null;
   }
 }
+
+/** The sentence that ends a comment about a release that was stopped: the page it can be read on,
+ *  where the project has one. No full stop, so a caller can end it as its own sentence does. */
+export function releaseRunSentence(runId: string, pages: ProjectPages | null): string {
+  return pages
+    ? `The release it was in is at ${pages.releaseRun(runId)}`
+    : 'The release it was in has been stopped';
+}

@@ -60,11 +60,9 @@ export function refuseUnmarkOnClosed(status: IssueStatus): ShippedRuleRefusal | 
   if (status !== 'closed') return null;
   return {
     detail:
-      'this issue is Closed (closed), and Closed means the work shipped, so the claim cannot be ' +
-      'withdrawn while it stands there: clearing `merged_at` would leave a closed issue with ' +
-      'nothing on it saying anything shipped. Move it off Closed first — Reopened (reopen) is the only ' +
-      'exit it has — and then `unmark`, or take Dropped (dropped) from Reopened where the work ' +
-      'never landed at all.',
+      'This issue is Closed (closed), and Closed means the work shipped, so its mark cannot be ' +
+      'taken back. Move it to Reopened (reopen) first, then use Unmark. Where the work never ' +
+      'landed, take Dropped (dropped) from Reopened instead.',
     details: { status: 'closed', moveTo: 'reopen', useInstead: 'dropped' },
   };
 }

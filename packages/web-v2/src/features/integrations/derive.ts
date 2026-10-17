@@ -117,6 +117,14 @@ export function deriveConnectionStatus(connection: {
   return "error";
 }
 
+/** The words every integration surface names a state by — the Integrations rows, a drawer's header
+ *  and each provider's own badge — so one binding never reads two ways (ISS-1421 r6, criterion 96). */
+export const STATE_WORDS = {
+  off: "Turned off",
+  failed: "Last check failed",
+  unchecked: "Not checked yet",
+} as const;
+
 /** Icon + text + tinted-pill metadata for each directory state. Never
  *  color-only — every state pairs an icon and a label (a11y AC). */
 export const DIRECTORY_STATUS_META: Record<
@@ -125,7 +133,7 @@ export const DIRECTORY_STATUS_META: Record<
 > = {
   connected: { icon: "check", label: "Connected", fg: "var(--green-600)", bg: "var(--green-50)" },
   degraded: { icon: "alert", label: "Degraded", fg: "var(--amberw-600)", bg: "var(--amberw-50)" },
-  error: { icon: "alert", label: "Error", fg: "var(--red-600)", bg: "var(--red-50)" },
+  error: { icon: "alert", label: STATE_WORDS.failed, fg: "var(--red-600)", bg: "var(--red-50)" },
   not_connected: {
     icon: "dot",
     label: "Not connected",
@@ -151,7 +159,7 @@ export const DIRECTORY_STATUS_META: Record<
   // label says the truth (there IS a configured integration here).
   disabled: {
     icon: "dot",
-    label: "Disabled",
+    label: STATE_WORDS.off,
     fg: "var(--fg-subtle)",
     bg: "var(--bg-sunken)",
   },
@@ -159,7 +167,7 @@ export const DIRECTORY_STATUS_META: Record<
   // not a live problem, just an unproven one.
   unverified: {
     icon: "dot",
-    label: "Not verified",
+    label: STATE_WORDS.unchecked,
     fg: "var(--fg-muted)",
     bg: "var(--bg-sunken)",
   },

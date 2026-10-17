@@ -14,6 +14,7 @@ import {
   Skeleton,
 } from "@/design";
 import { WORK_STATE_LABELS } from "@forge/contracts/work-state";
+import { providerLabel } from "@/features/integrations/providers/registry";
 import { failedCloseLead } from "@/features/releases/roster";
 import { formatApiError } from "@/lib/api/error";
 import { formatCountdown, formatRelativeTime } from "@/lib/utils/format";
@@ -140,13 +141,11 @@ export function ReleaseGatePanel({ projectId, slug }: { projectId: string; slug:
 
       <CardContent>
         <div className="fg-caption text-muted flex flex-wrap items-center gap-x-3 gap-y-1">
+          {/* The provider by its product name, as the Integrations tab names it (ISS-1421 r6). */}
           <span>
-            Deploys via{" "}
-            {data.channels.length > 0 ? (
-              data.channels.map((channel) => <MonoTag key={channel}>{channel}</MonoTag>)
-            ) : (
-              <MonoTag>nothing — a person deploys</MonoTag>
-            )}
+            {data.channels.length > 0
+              ? `Deploys through ${data.channels.map(providerLabel).join(" and ")}.`
+              : "Nothing deploys it: a person does."}
           </span>
           {data.releaseRunnerLabel ? (
             <span>
@@ -167,7 +166,7 @@ export function ReleaseGatePanel({ projectId, slug }: { projectId: string; slug:
           <span className="fg-caption text-muted">
             {chosen.length > 0 ? `${chosen.length} selected` : `${ready.length} ready`}
             {claimed > 0 ? ` · ${claimed} in a release` : ""}
-            {unclosable > 0 ? ` · ${unclosable} a release can't close` : ""}
+            {unclosable > 0 ? ` · ${unclosable} not ready to release` : ""}
             {failing > 0 ? ` · ${failing} the last release failed to close` : ""}
           </span>
         </div>
@@ -233,7 +232,7 @@ function RosterRow({
         </span>
         <span className="fg-caption text-muted shrink-0 whitespace-nowrap">
           {refused ? (
-            <span className="text-amber">can&apos;t close</span>
+            <span className="text-amber">Not ready to release</span>
           ) : runId !== null ? (
             <Link
               href={`/projects/${slug}/releases/${runId}`}

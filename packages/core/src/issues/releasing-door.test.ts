@@ -58,12 +58,12 @@ describe('entering releasing (ISS-1421)', () => {
     });
     expect(refusal?.code).toBe('RELEASING_STARTS_FROM_RELEASE');
     expect(refusal?.detail).toContain(
-      'Releasing (releasing) means a release batch is carrying this issue to production right now',
+      'Releasing means a release batch is carrying this issue to production right now',
     );
     expect(refusal?.detail).toContain("Release now on this issue's page");
     expect(refusal?.detail).toContain('at the release gate');
     expect(refusal?.detail).toContain('POST /api/projects/proj-7/release-batches');
-    expect(refusal?.detail).toContain('The issue stays at Awaiting release (awaiting_release).');
+    expect(refusal?.detail).toContain('The issue stays at Awaiting release.');
     expect(shortfalls).toHaveBeenCalledWith('proj-7', ['iss-1']);
   });
 
@@ -127,7 +127,7 @@ describe('entering releasing (ISS-1421)', () => {
       const refusal = await releasingDoorRefusal({ ...base, from, to: 'releasing' });
       expect(refusal?.code, from).toBe('RELEASING_STARTS_FROM_RELEASE');
       expect(refusal?.detail, from).toContain(
-        'A release carries only issues at Awaiting release (awaiting_release), so it must reach that first.',
+        'A release carries only issues at Awaiting release, so it must reach that first.',
       );
       expect(refusal?.detail, from).not.toContain('Release now');
       expect(refusal?.detail, from).not.toContain('release-batches');
@@ -220,7 +220,7 @@ describe('entering releasing (ISS-1421)', () => {
         to: 'awaiting_release',
         releaseRun: 'run-1',
       }),
-    ).rejects.toThrow(/releaseRun names the run a move ENTERS Releasing \(releasing\)/);
+    ).rejects.toThrow(/releaseRun names the run a move enters Releasing/);
   });
 });
 
@@ -233,7 +233,7 @@ describe('leaving releasing (ISS-1421)', () => {
       expect(refusal?.detail).toContain(
         'The release carrying it shows where it stands at https://forge.example/projects/shop/releases/run-9.',
       );
-      expect(refusal?.detail).toContain('The issue stays at Releasing (releasing)');
+      expect(refusal?.detail).toContain('The issue stays at Releasing');
       expect(refusal?.detail).toContain(
         'Its abort, or the recovery of a release that stopped or could not go on, returns it to the release gate.',
       );
@@ -278,5 +278,27 @@ describe('leaving releasing (ISS-1421)', () => {
       await releasingDoorRefusal({ ...base, from: 'testing', to: 'awaiting_release' }),
     ).toBeNull();
     expect(claimRow).not.toHaveBeenCalled();
+  });
+});
+
+// ISS-1421 r6, criterion 91 — judge-37 read "Releasing (releasing)" and "Awaiting release
+// (awaiting_release)" in these refusals. Their way out is a release, never a status a caller sends,
+// so they name statuses in words alone; the code and the details carry the values.
+describe('the release path names statuses in words (criterion 91)', () => {
+  const STORED = /\((?:releasing|awaiting_release|open|in_progress|developed|testing|closed|reopen|dropped|on_hold|needs_info|approved|confirmed|waiting|draft)\)/;
+
+  it('in every refusal entering or leaving Releasing', async () => {
+    const said: string[] = [];
+    for (const from of ['awaiting_release', 'open', 'testing'] as const) {
+      said.push((await releasingDoorRefusal({ ...base, from, to: 'releasing' }))?.detail ?? '');
+    }
+    claimRow.mockResolvedValue([{ run: 'run-9', slug: 'shop' }]);
+    for (const to of ['closed', 'reopen', 'awaiting_release'] as const) {
+      said.push((await releasingDoorRefusal({ ...base, from: 'releasing', to }))?.detail ?? '');
+    }
+    for (const detail of said) {
+      expect(detail).not.toBe('');
+      expect(detail).not.toMatch(STORED);
+    }
   });
 });

@@ -181,8 +181,9 @@ describe('GET rollback-images, when Coolify refuses the read', () => {
     const res = await images();
     expect(res.status).toBe(424);
     const body = (await res.json()) as { message: string };
+    // ISS-1421 r6, criterion 98: it ends as a sentence does.
     expect(body.message).toBe(
-      'Coolify answered HTTP 500 to GET /api/v1/applications/app-uuid/rollback-images',
+      'Coolify answered HTTP 500 to GET /api/v1/applications/app-uuid/rollback-images.',
     );
   });
 
@@ -219,6 +220,7 @@ describe('GET rollback-images, when Coolify refuses the read', () => {
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('COOLIFY_UNREACHABLE');
     expect(body.message).toContain('Could not reach Coolify');
+    expect(body.message).toMatch(/\.$/);
     expect(body.message).toContain('GET /api/v1/applications/app-uuid/rollback-images');
     expect(body.message).not.toContain('<uuid>');
   });
@@ -350,7 +352,7 @@ describe('the application list reads, when Coolify cannot be reached', () => {
     });
     expect(res.status).toBe(424);
     expect(((await res.json()) as { message: string }).message).toBe(
-      'Coolify answered HTTP 500 to GET /api/v1/applications',
+      'Coolify answered HTTP 500 to GET /api/v1/applications.',
     );
   });
 });

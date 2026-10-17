@@ -203,7 +203,7 @@ describe.each(Object.entries(doors))('%s', (_door, write) => {
 
       expect(out.refused).toContain('PROJECT_KIND_STRANDS_WORK');
       expect(out.refused).toContain(landed);
-      expect(out.refused).toContain('`landingShape: outside_git`');
+      expect(out.refused).toContain('Set `landingShape` to `outside_git`');
     });
 
     it('takes a kind write that changes nothing', async () => {

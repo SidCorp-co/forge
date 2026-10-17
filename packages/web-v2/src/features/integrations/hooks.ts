@@ -414,6 +414,10 @@ export function useBindExistingConnection() {
       qc.invalidateQueries({
         queryKey: ["integrations", "status", vars.body.projectId],
       });
+      // The Agent MCP servers panel reads what a share now gives agents (ISS-1421 r6, criterion 99).
+      qc.invalidateQueries({
+        queryKey: ["integrations", "mcp-preview", vars.body.projectId],
+      });
       toast({ title: "Connection shared", tone: "success" });
     },
     onError: (err) =>

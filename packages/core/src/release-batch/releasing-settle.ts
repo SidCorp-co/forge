@@ -32,6 +32,7 @@ import {
   type ProductionReading,
   readProductionFinding,
 } from './releasing-settle-reading.js';
+import { projectPages } from './release-links.js';
 import { releaseRunStopped } from './run-ended-words.js';
 
 /** At most this many rows a tick, oldest first; the rest are read on later ticks. */
@@ -149,9 +150,12 @@ export function settleComment(
   path: ReleasePath,
   holds: GateHolds,
   doors: ReleaseDoors = NO_DOORS,
+  runPage: string | null = null,
 ): string {
+  // The run that ended is named by its page, as the hand-back and the exit refusal do (ISS-1421 r6).
+  const where = runPage ? ` The release it was in is at ${runPage}.` : '';
   return [
-    `**Releasing, with nothing releasing it.** ${cause}.`,
+    `**Releasing, with nothing releasing it.** ${cause}.${where}`,
     "Releasing means a release batch is carrying an issue to production right now. None was, so Forge's releasing sweep has settled it.",
     findingSentence(finding, path, holds, doors),
   ].join('\n\n');
@@ -309,7 +313,11 @@ async function settleOne(
       ? await readGateHolds(row.project_id, row.id)
       : NO_HOLDS;
   const doors = await readReleaseDoors(row.project_id, path);
-  const body = settleComment(cause, finding, path, holds, doors);
+  const runPage =
+    row.release_batch_run_id && row.run_exists
+      ? ((await projectPages(row.project_id))?.releaseRun(row.release_batch_run_id) ?? null)
+      : null;
+  const body = settleComment(cause, finding, path, holds, doors, runPage);
   await returnToGate(row, body, `releasing sweep: ${cause}`);
   if (finding.kind !== 'carried') return 'returned';
   return (await closeByRecord(row, finding, cause)) ? 'closed' : 'returned';

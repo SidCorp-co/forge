@@ -67,7 +67,7 @@ describe("a git issue's close refusal names a route this lane takes", () => {
     const id = await issueAt(w, 'awaiting_release');
     const refusal = await refusalOf(() => close(w, id));
     expect(refusal.code).toBe('CLOSE_REQUIRES_SHIPPED');
-    expect(refusal.message).toContain('`landingShape: outside_git`');
+    expect(refusal.message).toContain('Set `landingShape` to `outside_git`');
     expect(refusal.message).toContain('`data.commit`');
     expect(refusal.message).not.toContain('naming where it landed');
   });
@@ -113,7 +113,7 @@ describe("an outside-git lane's NO_WORK_EVIDENCE says what that lane and that do
     });
     expect(viaTool.isError).toBe(true);
     expect(viaTool.text).toContain('NO_WORK_EVIDENCE');
-    expect(viaTool.text).toContain('nothing was marked');
+    expect(viaTool.text).toMatch(/Nothing was marked\./);
     expect(viaTool.text).toContain('`data.landing`');
     expect(viaTool.text).not.toContain('before advancing');
     expect(viaTool.text).not.toContain(RELEASE_CHAIN_PARAGRAPH);

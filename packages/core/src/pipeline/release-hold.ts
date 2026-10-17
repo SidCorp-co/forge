@@ -16,6 +16,7 @@ import { comments, issues } from '../db/schema.js';
 import type { IssueCriteriaReport } from '../issues/criteria-verdicts.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
 import { logger } from '../logger.js';
+import { shortfallSaid } from '../release-batch/close-shortfall.js';
 import { type ServingReading, servingClause } from '../release-batch/serving-reading.js';
 import type { RuntimeReading } from '../release-batch/weighing.js';
 
@@ -217,9 +218,13 @@ export function runtimeUnroutedHold(missing: string, route: string): ReleaseHold
 
 /** What the finish's close would refuse this row for, which the sweep reads before it cuts (ISS-1337). */
 export function closeRefusedHold(
-  shortfalls: ReadonlyArray<{ code: string; reason: string; clears: string }>,
+  shortfalls: ReadonlyArray<{ code: string; reason: string; clears: string; clearsHere?: string }>,
 ): ReleaseHold {
-  const said = shortfalls.map((s) => `${s.reason} (\`${s.code}\`). ${s.clears}`).join(' ');
+  // The banner's own sentence for each shortfall, never its code (ISS-1421 r6, criterion 90): the
+  // comment sits on the issue's page below the controls the banner names.
+  const said = shortfalls
+    .map((s) => shortfallSaid({ reason: s.reason, clears: s.clearsHere ?? s.clears }))
+    .join(' ');
   return {
     code: 'RELEASE_ISSUES_UNCLOSABLE',
     reason:

@@ -42,8 +42,10 @@ describe('a landing sent over a mark that stands is refused by name, never dropp
     expect(res.status).toBe(422);
     const body = await res.json();
     expect(body.code).toBe('MARK_ALREADY_STANDS');
-    expect(body.message).toContain(`names ${TYPO} as where the work landed`);
-    expect(body.message).toContain('`unmark`');
+    expect(body.message).toContain(`already says it landed at ${TYPO}`);
+    expect(body.message).toMatch(/^This issue's mark/);
+    expect(body.message).toContain('use Unmark, then Mark merged');
+    expect(body.message).not.toContain('`unmark`');
     expect(body.details).toMatchObject({ heldLanding: TYPO, sentLanding: LANDING });
     expect(await snapshot(id)).toEqual(before);
   });

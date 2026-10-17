@@ -484,20 +484,46 @@ describe('a question the question screen refuses', () => {
 });
 
 describe('a plain failure from a runner that reads nothing, and a job that is no release', () => {
-  it('holds the release the same way, with a question saying the box could not read the pane', async () => {
+  // ISS-1421 r6, criterion 94 — anhome's question b210f881 said only that the box could not read
+  // what the agent asked, so nobody could answer it and the release waited on it. Refused by name.
+  it('refuses the unreadable ask by name: no question, the release stopped, each issue told why', async () => {
     const release = await runningRelease();
 
     const res = await post(`/api/jobs/${release.jobId}/fail`, deviceToken, {
       error: BLOCKED_REASON,
     });
     expect(res.status).toBe(200);
-    expect((await res.json()).retry.scheduled).toBe(false);
+    const body = await res.json();
+    expect(body.retry.scheduled).toBe(false);
+    expect(body.heldJobId).toBeNull();
 
-    const asked = await questionsOn(release.ids[0] as string);
-    expect(asked).toHaveLength(1);
-    expect(promptOf(asked[0])).toContain('could not read');
-    expect((await jobsOf(release.runId)).map((j) => j.status).sort()).toEqual(['failed', 'held']);
-    expect(await fx.runStatus(release.runId)).toBe('running');
+    for (const id of release.ids) expect(await questionsOn(id)).toEqual([]);
+    expect(await questionsOn(null)).toEqual([]);
+    expect((await jobsOf(release.runId)).map((j) => j.status)).toEqual(['failed']);
+    const [job] = (await harness.db.execute(sql`
+      SELECT error FROM jobs WHERE id = ${release.jobId}
+    `)) as unknown as Array<{ error: string }>;
+    expect(job?.error).toMatch(/^RELEASE_ASK_UNREADABLE: The release agent stopped on a question Forge could not read/);
+    expect(await fx.runStatus(release.runId)).not.toBe('running');
+    for (const id of release.ids) {
+      expect(await fx.stored(id)).toMatchObject({ status: 'awaiting_release', claim: null });
+      const [said] = (await harness.db.execute(sql`
+        SELECT string_agg(body, E'\n') AS body FROM comments WHERE issue_id = ${id}
+      `)) as unknown as Array<{ body: string }>;
+      expect(said?.body).toContain('stopped on a question Forge could not read');
+      expect(said?.body).toContain('No question was written, since nobody could answer it');
+      expect(said?.body).toContain('Start the next release from Awaiting release.');
+    }
+  });
+
+  it('the same refusal through the blocked door, from a runner that names why it could not read', async () => {
+    const release = await runningRelease();
+
+    const res = await blocked(release.jobId, { kind: 'unread', why: 'the transcript was cut' });
+    expect(res.status).toBe(200);
+    expect((await res.json()).heldJobId).toBeNull();
+    for (const id of release.ids) expect(await questionsOn(id)).toEqual([]);
+    expect(await fx.stored(release.ids[0] as string)).toMatchObject({ status: 'awaiting_release' });
   });
 
   it('carries the question of a smoke job at project level and does not retry it', async () => {
