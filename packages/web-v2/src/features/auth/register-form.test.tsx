@@ -15,6 +15,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn() }) }));
 vi.mock("@/providers/auth-provider", () => ({ useAuth: () => ({ register }) }));
 
 const { RegisterForm } = await import("./register-form");
+const { AGENT_ADDRESS_MESSAGE } = await import("./agent-address");
 
 const duplicate = () => new ApiError(409, "Email already registered", "CONFLICT");
 
@@ -77,5 +78,28 @@ describe("the register form's banner", () => {
     await waitFor(() => expect(screen.getByText("Network unavailable")).toBeInTheDocument());
     fill("Email", "third@example.test");
     expect(screen.getByText("Network unavailable")).toBeInTheDocument();
+  });
+});
+
+// ISS-1421 round 3 — the register page refuses an agent address in the sign-in page's words, not the
+// API's own lower-case sentence.
+describe("the register form's refusal of an agent address", () => {
+  const apiWords =
+    "an address on agents.forge.invalid belongs to an agent account Forge mints, and no person signs up or signs in with one. Use an address you receive mail at.";
+
+  it("shows the sentence the sign-in page shows, and goes with the address", async () => {
+    register.mockRejectedValueOnce(new ApiError(409, apiWords, "AGENT_ADDRESS_RESERVED"));
+    render(<RegisterForm />);
+    fill("Email", "someagent@agents.forge.invalid");
+    fill("Password", "a-long-enough-password");
+    fill("Confirm password", "a-long-enough-password");
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    await waitFor(() => expect(screen.getByText(AGENT_ADDRESS_MESSAGE)).toBeInTheDocument());
+    expect(screen.queryByText(apiWords)).not.toBeInTheDocument();
+    expect(AGENT_ADDRESS_MESSAGE).toMatch(/^[A-Z]/);
+
+    fill("Email", "a.person@example.test");
+    expect(screen.queryByText(AGENT_ADDRESS_MESSAGE)).not.toBeInTheDocument();
   });
 });

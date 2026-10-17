@@ -19,7 +19,18 @@ vi.mock('../release-batch/gate.js', async (importOriginal) => ({
   resolveReleaseDeclaration: () => declaration(),
 }));
 
+type Hold = { reason: string; clears: string };
+const shortfalls = vi.fn(async (_p: string, _ids: readonly string[]) => new Map<string, Hold[]>());
+vi.mock('../release-batch/close-shortfall.js', () => ({
+  rosterCloseShortfalls: (p: string, ids: readonly string[]) => shortfalls(p, ids),
+}));
+
 const { releasingDoorRefusal } = await import('./releasing-door.js');
+
+const NOT_MERGED: Hold = {
+  reason: 'not marked merged',
+  clears: "Use Mark merged in the issue's properties, and fill in Where it landed.",
+};
 
 const base = { issueId: 'iss-1', projectId: 'proj-7' } as const;
 
@@ -28,6 +39,8 @@ beforeEach(() => {
   claimRow.mockResolvedValue([{ run: null }]);
   declaration.mockReset();
   declaration.mockResolvedValue({ kind: 'gated' });
+  shortfalls.mockReset();
+  shortfalls.mockResolvedValue(new Map());
 });
 
 describe('entering releasing (ISS-1421)', () => {
@@ -45,6 +58,64 @@ describe('entering releasing (ISS-1421)', () => {
     expect(refusal?.detail).toContain('at the release gate');
     expect(refusal?.detail).toContain('POST /api/projects/proj-7/release-batches');
     expect(refusal?.detail).toContain('The issue stays at Awaiting release (awaiting_release).');
+    expect(shortfalls).toHaveBeenCalledWith('proj-7', ['iss-1']);
+  });
+
+  it('tells an issue a release would hand back what holds it, not to press Release now (ISS-1421 r3)', async () => {
+    shortfalls.mockResolvedValue(new Map([['iss-1', [NOT_MERGED]]]));
+    const refusal = await releasingDoorRefusal({
+      ...base,
+      from: 'awaiting_release',
+      to: 'releasing',
+    });
+    expect(refusal?.code).toBe('RELEASING_STARTS_FROM_RELEASE');
+    expect(refusal?.detail).toContain(
+      'A release cannot close this issue yet. It is not marked merged.',
+    );
+    expect(refusal?.detail).toContain(
+      "Use Mark merged in the issue's properties, and fill in Where it landed.",
+    );
+    expect(refusal?.detail).toContain('Release now appears on its page once that is done.');
+    expect(refusal?.detail).not.toContain('Start one with Release now');
+    expect(refusal?.detail).not.toContain('release-batches');
+  });
+
+  it('names every hold, an open question beside a missing merge', async () => {
+    shortfalls.mockResolvedValue(
+      new Map([
+        [
+          'iss-1',
+          [NOT_MERGED, { reason: 'holds 1 open question', clears: 'Answer it on the page.' }],
+        ],
+      ]),
+    );
+    const refusal = await releasingDoorRefusal({
+      ...base,
+      from: 'awaiting_release',
+      to: 'releasing',
+    });
+    expect(refusal?.detail).toContain(
+      'A release cannot close this issue yet. It is not marked merged.',
+    );
+    expect(refusal?.detail).toContain('It holds 1 open question. Answer it on the page.');
+  });
+
+  it('names no Release now where what holds the issue cannot be read', async () => {
+    shortfalls.mockRejectedValue(new Error('db down'));
+    const refusal = await releasingDoorRefusal({
+      ...base,
+      from: 'awaiting_release',
+      to: 'releasing',
+    });
+    expect(refusal?.detail).toContain(
+      'Whether a release would close this issue could not be read.',
+    );
+    expect(refusal?.detail).not.toContain('Start one with Release now');
+  });
+
+  it('does not read what holds an issue that is not at the gate', async () => {
+    await releasingDoorRefusal({ ...base, from: 'testing', to: 'releasing' });
+    expect(shortfalls).not.toHaveBeenCalled();
   });
 
   it('tells an issue not yet at the gate it must reach Awaiting release first, not to press Release now', async () => {
@@ -52,7 +123,7 @@ describe('entering releasing (ISS-1421)', () => {
       const refusal = await releasingDoorRefusal({ ...base, from, to: 'releasing' });
       expect(refusal?.code, from).toBe('RELEASING_STARTS_FROM_RELEASE');
       expect(refusal?.detail, from).toContain(
-        'so it must reach Awaiting release (awaiting_release) before a release can carry it',
+        'A release carries only issues at Awaiting release (awaiting_release), so it must reach that first.',
       );
       expect(refusal?.detail, from).not.toContain('Release now');
       expect(refusal?.detail, from).not.toContain('release-batches');
@@ -68,7 +139,9 @@ describe('entering releasing (ISS-1421)', () => {
     });
     expect(refusal?.code).toBe('RELEASING_STARTS_FROM_RELEASE');
     expect(refusal?.detail).toContain('This project ships nothing');
-    expect(refusal?.detail).toContain('Shape & release setting chooses a shape that releases');
+    expect(refusal?.detail).toContain(
+      "To release them, choose a shape that releases under Shape & release in the project's settings.",
+    );
     expect(refusal?.detail).not.toContain('Release now');
     expect(refusal?.detail).not.toContain('release gate');
     expect(refusal?.detail).not.toContain('release-batches');
@@ -82,7 +155,7 @@ describe('entering releasing (ISS-1421)', () => {
       to: 'releasing',
     });
     expect(refusal?.detail).toContain(
-      'no release can start until one is added on its integrations screen',
+      "No release can start until one is added on the project's integrations screen.",
     );
     expect(refusal?.detail).not.toContain('Release now');
     expect(refusal?.detail).not.toContain('release gate');
@@ -96,7 +169,9 @@ describe('entering releasing (ISS-1421)', () => {
       to: 'releasing',
     });
     expect(refusal?.code).toBe('RELEASING_STARTS_FROM_RELEASE');
-    expect(refusal?.detail).toContain('could not be read, so no door is named here');
+    expect(refusal?.detail).toContain(
+      "This project's release settings could not be read, so this names no way to start a release.",
+    );
     expect(refusal?.detail).not.toContain('Release now');
   });
 
@@ -148,6 +223,9 @@ describe('leaving releasing (ISS-1421)', () => {
       expect(refusal?.detail).toContain('GET /api/projects/proj-7/release-batches/run-9/state');
       expect(refusal?.detail).toContain('POST /api/projects/proj-7/release-batches/run-9/abort');
       expect(refusal?.detail).toContain('The issue stays at Releasing (releasing)');
+      expect(refusal?.detail).toContain(
+        'Its abort, or the recovery of a batch run that stopped or never started, returns it to the release gate.',
+      );
     }
   });
 

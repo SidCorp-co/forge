@@ -16,7 +16,14 @@ import { statusLabel } from '../issues/status-sets.js';
 import { logger } from '../logger.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import { recordPerformedRelease } from './recorded.js';
-import { nextAtGateFor, type ReleasePath, readReleasePath } from './release-path-words.js';
+import {
+  type GateHolds,
+  NO_HOLDS,
+  nextAtGateFor,
+  type ReleasePath,
+  readGateHolds,
+  readReleasePath,
+} from './release-path-words.js';
 import {
   type ProductionFinding,
   type ProductionReading,
@@ -93,16 +100,21 @@ const GATE = statusLabel(RELEASE_GATE_STATUS);
 /** A production reading, or why the sweep did not take one for this row. */
 type SettleFinding = ProductionFinding | { kind: 'outside-git' } | { kind: 'not-read' };
 
-/** What the reader of a row returned to the gate does next, by how its project releases. */
-function backAtGate(path: ReleasePath): string {
-  return `It is back at ${GATE}. ${nextAtGateFor(path)}`;
+/** What the reader of a row returned to the gate does next, by how its project releases and by
+ *  what its page will offer it there. */
+function backAtGate(path: ReleasePath, holds: GateHolds): string {
+  return [`It is back at ${GATE}.`, ...nextAtGateFor(path, holds)].join(' ');
 }
 
 /** What the sweep found on production, and what follows for the issue, as its comment says it.
  *  Only a gated project is read: one that ships nothing, or has no live target, has no production
  *  this issue could reach, and its comment says how that project releases instead. */
-export function findingSentence(finding: SettleFinding, path: ReleasePath = 'gated'): string {
-  const next = backAtGate(path);
+export function findingSentence(
+  finding: SettleFinding,
+  path: ReleasePath = 'gated',
+  holds: GateHolds = NO_HOLDS,
+): string {
+  const next = backAtGate(path, holds);
   switch (finding.kind) {
     case 'carried':
       return `Production's verified live deployment serves \`${finding.serving}\`, which carries this issue's landing commit \`${finding.landing}\`, so its code has shipped: a release record closes it now.`;
@@ -111,7 +123,7 @@ export function findingSentence(finding: SettleFinding, path: ReleasePath = 'gat
     case 'unverified':
       return `This project's live deployment declares no verify probe, so nothing can read what production serves, and the sweep never closes an issue on a deployment nobody read. ${next}`;
     case 'no-landing':
-      return `This issue carries no landing commit, so nothing can say whether production has its code. Mark it merged naming the commit it landed at. ${next}`;
+      return `This issue carries no landing commit, so nothing can say whether production has its code. ${next}`;
     case 'outside-git':
       return `This issue's work lands outside git, so no commit production serves can say whether it has shipped, and the sweep never closes an issue on a reading it cannot make. ${next}`;
     case 'not-read':
@@ -219,12 +231,15 @@ export async function landingStill(tx: Tx, issueId: string, judged: string): Pro
 }
 
 async function sayRecordRefused(row: StrandedRow, why: string): Promise<void> {
+  const holds = await readGateHolds(row.project_id, row.id);
   await postSystemComment({
     issueId: row.id,
     authorId: await forgeAuthorId(db),
-    body:
-      `The release record that would close this issue was refused: ${why}. ` +
-      `It stays at ${GATE}. ${nextAtGateFor('gated')}`,
+    body: [
+      `The release record that would close this issue was refused: ${why}.`,
+      `It stays at ${GATE}.`,
+      ...nextAtGateFor('gated', holds),
+    ].join(' '),
   });
 }
 
@@ -258,10 +273,15 @@ async function settleOne(
   const cause = strandedCause(row);
   const path = await pathOf(row.project_id);
   const finding = await findingFor(row, path, read);
+  // A row production carries is closed below, so only a row left at the gate is told what holds it.
+  const holds =
+    path === 'gated' && finding.kind !== 'carried'
+      ? await readGateHolds(row.project_id, row.id)
+      : NO_HOLDS;
   const body = [
     `**Releasing, with nothing releasing it.** ${cause}.`,
     `Releasing means a release batch is carrying an issue to production right now, and none was, so Forge's releasing sweep has settled it.`,
-    findingSentence(finding, path),
+    findingSentence(finding, path, holds),
   ].join('\n\n');
   await returnToGate(row, body, `releasing sweep: ${cause}`);
   if (finding.kind !== 'carried') return 'returned';

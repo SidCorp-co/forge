@@ -1,6 +1,6 @@
 import { and, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { isForgeAddress } from '../auth/agent-account.js';
+import { agentIsNotAPerson, isAgentAddress, isForgeAddress } from '../auth/agent-account.js';
 import { FORGE_AUTHOR_ID } from '../comments/forge-author.js';
 import { db } from '../db/client.js';
 import { organizationMembers, organizations, users } from '../db/schema.js';
@@ -32,6 +32,27 @@ export function refuseForgeAsMember(target: { email?: string; userId?: string })
   }
   if (target.userId !== undefined && isNeverAMember(target.userId)) {
     throw forgeIsNotAMember(`account ${target.userId}`);
+  }
+}
+
+/** Refuse an invitation or a membership naming anything but a person: Forge by its own code first,
+ *  then any address on the agent domain, in any letter case, and any agent account by id. */
+export async function refuseNonPersonAsMember(target: {
+  email?: string;
+  userId?: string;
+}): Promise<void> {
+  refuseForgeAsMember(target);
+  if (target.email !== undefined && isAgentAddress(target.email)) {
+    throw agentIsNotAPerson({ email: target.email });
+  }
+  if (target.userId === undefined) return;
+  const [row] = await db
+    .select({ kind: users.kind, email: users.email })
+    .from(users)
+    .where(eq(users.id, target.userId))
+    .limit(1);
+  if (row && (row.kind === 'agent' || isAgentAddress(row.email))) {
+    throw agentIsNotAPerson({ userId: target.userId });
   }
 }
 

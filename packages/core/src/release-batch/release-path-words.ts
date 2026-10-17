@@ -1,11 +1,13 @@
-// Where a release starts, said only by the doors a reader of this project actually has (ISS-1421
-// round 2). A project releases through a gate, ships nothing, or declares a release with no live
-// target to land on (`gate.ts:resolveReleaseDeclaration`), and a sentence naming Release now on a
-// project with no gate, or to an issue not waiting at it, sends its reader to a button that is not
-// there.
+// Where a release starts, said only by the doors a reader of this project actually has (ISS-1421).
+// A project releases through a gate, ships nothing, or declares a release with no live target to
+// land on (`gate.ts:resolveReleaseDeclaration`). On a gated project the issue's page offers Release
+// now only to an issue a release would not hand straight back (`awaiting-release-banner.tsx`), so
+// these sentences read the same shortfalls the page reads (`close-shortfall.ts`) before naming it.
+// Every sentence here is short and whole: `release-path-words.test.ts` holds each to that.
 
 import type { IssueStatus } from '../db/schema.js';
 import { statusForCaller } from '../issues/status-sets.js';
+import { type CloseShortfall, rosterCloseShortfalls } from './close-shortfall.js';
 import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
 
 /** How this project releases, as the sentences below choose by. */
@@ -22,48 +24,107 @@ export async function readReleasePath(projectId: string): Promise<ReleasePath> {
   }
 }
 
-const SHIPS_NOTHING =
-  'This project ships nothing, so no release ever carries its issues: one can only once the ' +
-  "project's Shape & release setting chooses a shape that releases.";
+export type GateHolds =
+  | { kind: 'read'; holds: ReadonlyArray<Pick<CloseShortfall, 'reason' | 'clears'>> }
+  | { kind: 'unread' };
 
-const NO_LIVE_TARGET =
-  'This project declares a release but has no live deploy target, so no release can start until ' +
-  'one is added on its integrations screen.';
+export const NO_HOLDS: GateHolds = { kind: 'read', holds: [] };
 
-/** The refusal's sentence on where a release starts, for a caller that may hold the API. */
-export function releaseStartsFor(path: ReleasePath, projectId: string, from: IssueStatus): string {
+export async function readGateHolds(projectId: string, issueId: string): Promise<GateHolds> {
+  try {
+    const found = await rosterCloseShortfalls(projectId, [issueId]);
+    return { kind: 'read', holds: found.get(issueId) ?? [] };
+  } catch {
+    return { kind: 'unread' };
+  }
+}
+
+const SHIPS_NOTHING_REFUSAL = [
+  'This project ships nothing, so no release carries its issues.',
+  "To release them, choose a shape that releases under Shape & release in the project's settings.",
+];
+
+const SHIPS_NOTHING_AT_GATE = [
+  'This project ships nothing, so no release will carry it.',
+  "To release it, choose a shape that releases under Shape & release in the project's settings.",
+  'If work remains, reopen it instead.',
+];
+
+const NO_LIVE_TARGET = [
+  'This project declares a release but has no live deploy target.',
+  "No release can start until one is added on the project's integrations screen.",
+];
+
+const UNREAD_DECLARATION = [
+  "This project's release settings could not be read, so this names no way to start a release.",
+];
+
+/** What holds the issue back and what clears it, or `null` where nothing does. */
+function heldBack(holds: GateHolds): string[] | null {
+  if (holds.kind === 'unread') {
+    return [
+      'Whether a release would close this issue could not be read.',
+      'Its page offers Release now only when nothing holds it back.',
+    ];
+  }
+  if (holds.holds.length === 0) return null;
+  return [
+    'A release cannot close this issue yet.',
+    ...holds.holds.flatMap((h) => [holdSentence(h.reason), h.clears]),
+    'Release now appears on its page once that is done.',
+  ];
+}
+
+/** A shortfall's reason ("not marked merged", "holds 1 open question") as a sentence of its own. */
+function holdSentence(reason: string): string {
+  const verb = /^(holds|has) /.test(reason) ? 'It' : /^no /.test(reason) ? 'It has' : 'It is';
+  return `${verb} ${reason}.`;
+}
+
+/** The refusal's sentences on where a release starts, for a caller that may hold the API. */
+export function releaseStartsFor(
+  path: ReleasePath,
+  projectId: string,
+  from: IssueStatus,
+  holds: GateHolds = NO_HOLDS,
+): string[] {
   switch (path) {
     case 'gated':
-      return from === RELEASE_GATE_STATUS
-        ? "Start one with Release now on this issue's page or at the release gate, or with " +
-            `POST /api/projects/${projectId}/release-batches naming this issue in \`issueIds\`.`
-        : `This issue is at ${statusForCaller(from)}, so it must reach ` +
-            `${statusForCaller(RELEASE_GATE_STATUS)} before a release can carry it.`;
+      if (from !== RELEASE_GATE_STATUS) {
+        return [
+          `This issue is at ${statusForCaller(from)}.`,
+          `A release carries only issues at ${statusForCaller(RELEASE_GATE_STATUS)}, so it must reach that first.`,
+        ];
+      }
+      return (
+        heldBack(holds) ?? [
+          "Start one with Release now on this issue's page or at the release gate.",
+          `An API caller can also POST /api/projects/${projectId}/release-batches with this issue in \`issueIds\`.`,
+        ]
+      );
     case 'ships-nothing':
-      return SHIPS_NOTHING;
+      return SHIPS_NOTHING_REFUSAL;
     case 'no-live-target':
       return NO_LIVE_TARGET;
     case 'unread':
-      return "This project's release declaration could not be read, so no door is named here.";
+      return UNREAD_DECLARATION;
   }
 }
 
 /** What a person reading an issue returned to the gate can do next, with no route in it. */
-export function nextAtGateFor(path: ReleasePath): string {
+export function nextAtGateFor(path: ReleasePath, holds: GateHolds = NO_HOLDS): string[] {
   switch (path) {
     case 'gated':
       return (
-        'Release now on this page, or at the release gate on the issues list, starts a release ' +
-        'that carries it.'
+        heldBack(holds) ?? [
+          'Release now on this page, or at the release gate on the issues list, starts a release.',
+        ]
       );
     case 'ships-nothing':
-      return (
-        'This project ships nothing, so no release will carry it: choose a shape that releases ' +
-        "under Shape & release in the project's settings to release it, or reopen it if work remains."
-      );
+      return SHIPS_NOTHING_AT_GATE;
     case 'no-live-target':
       return NO_LIVE_TARGET;
     case 'unread':
-      return "This project's release declaration could not be read, so no next step is named here.";
+      return UNREAD_DECLARATION;
   }
 }

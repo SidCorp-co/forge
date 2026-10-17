@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Banner } from '@/design';
+import { AGENT_ADDRESS_MESSAGE } from '@/features/auth/agent-address';
 import { AuthShell } from '@/features/auth/components/auth-shell';
 import { SocialLogin } from '@/features/auth/components/social-login';
 import { LoginForm } from '@/features/auth/login-form';
@@ -22,8 +23,7 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   email_unverified:
     'Your provider did not return a verified email. Verify it on the provider side, then retry.',
   provider_error: 'Could not complete sign-in. Try again or use email + password below.',
-  agent_address:
-    'That address belongs to an agent account Forge runs, and no person signs in with it. Sign in with an address you receive mail at.',
+  agent_address: AGENT_ADDRESS_MESSAGE,
 };
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
