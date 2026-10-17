@@ -50,18 +50,38 @@ describe("the picker's labels", () => {
     ).toEqual(["sentry.one.example · Sentry", "sentry.two.example · Sentry"]);
   });
 
-  it("never lists two in the same words: the day each was added, then a number in adding order", () => {
+  // r6 repair: two unnamed Epodsystem connections added the same day read "… added 16 Oct 2026" and
+  // "… (2)", and a number does not say which is which.
+  it("names an Epodsystem connection by its store, as Sentry and Coolify by their host", () => {
+    expect(
+      labelsOf([
+        conn({ id: "a", provider: "epodsystem", config: { storeSlug: "acme-store" } }),
+        conn({ id: "b", provider: "epodsystem" }),
+      ]),
+    ).toEqual(["acme-store · Epodsystem", "Epodsystem"]);
+  });
+
+  it("tells apart two with nothing else by when each was added: the day, then the time on it", () => {
     const labels = labelsOf([
       conn({ id: "a", provider: "sentry", createdAt: "2026-10-02T09:00:00.000Z" }),
       conn({ id: "b", provider: "sentry", createdAt: "2026-10-01T09:00:00.000Z" }),
-      conn({ id: "c", provider: "sentry", createdAt: "2026-10-02T10:00:00.000Z" }),
+      conn({ id: "c", provider: "sentry", createdAt: "2026-10-02T10:05:00.000Z" }),
     ]);
     expect(labels).toEqual([
-      "Sentry · added 2 Oct 2026",
+      "Sentry · added 2 Oct 2026, 09:00 UTC",
       "Sentry · added 1 Oct 2026",
-      "Sentry · added 2 Oct 2026 (2)",
+      "Sentry · added 2 Oct 2026, 10:05 UTC",
     ]);
-    expect(new Set(labels).size).toBe(3);
+    expect(labels.join(" ")).not.toMatch(/\(\d\)/);
+  });
+
+  it("numbers only two added in the same minute, which nothing else tells apart", () => {
+    expect(
+      labelsOf([
+        conn({ id: "a", provider: "sentry", createdAt: "2026-10-02T09:00:10.000Z" }),
+        conn({ id: "b", provider: "sentry", createdAt: "2026-10-02T09:00:40.000Z" }),
+      ]),
+    ).toEqual(["Sentry · added 2 Oct 2026, 09:00 UTC", "Sentry · added 2 Oct 2026, 09:00 UTC (2)"]);
   });
 });
 

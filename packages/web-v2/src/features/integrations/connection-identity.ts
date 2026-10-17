@@ -31,10 +31,32 @@ const ADDED_DAY = new Intl.DateTimeFormat("en-GB", {
   timeZone: "UTC",
 });
 
+const ADDED_TIME = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: "UTC",
+});
+
+/** Each row's label, made longer by `more` only for the rows that still read like another one. */
+function apart(
+  rows: ReadonlyArray<{ id: string; createdAt: string }>,
+  labels: Map<string, string>,
+  more: (row: { createdAt: string }) => string | null,
+): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const row of rows) {
+    const label = labels.get(row.id) as string;
+    const alike = rows.filter((o) => labels.get(o.id) === label).length > 1;
+    const extra = alike ? more(row) : null;
+    out.set(row.id, extra ? `${label}${extra}` : label);
+  }
+  return out;
+}
+
 /**
- * How a picker lists each connection: its name, else what it points at, then its provider. Two
- * still alike are told apart by the day each was added, and any alike after that by a number in
- * the order they were added, so no two rows read the same (ISS-1421 r6, criterion 100).
+ * How a picker lists each connection: its name, else what it points at, then its provider. Only
+ * where that is all there is are two alike told apart by when each was added: the day, then the
+ * time on it. A number is left for two added in the same minute (ISS-1421 r6, criterion 100).
  */
 export function connectionPickerLabels(
   connections: ReadonlyArray<{
@@ -54,17 +76,20 @@ export function connectionPickerLabels(
   const byOrder = [...connections].sort(
     (a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id),
   );
-  const dated = new Map<string, string>();
-  for (const c of byOrder) {
-    const label = base.get(c.id) as string;
-    const alike = byOrder.filter((o) => base.get(o.id) === label).length > 1;
-    const day = Number.isNaN(Date.parse(c.createdAt)) ? null : ADDED_DAY.format(new Date(c.createdAt));
-    dated.set(c.id, alike && day ? `${label} · added ${day}` : label);
-  }
+  const at = (c: { createdAt: string }) =>
+    Number.isNaN(Date.parse(c.createdAt)) ? null : new Date(c.createdAt);
+  const dated = apart(byOrder, base, (c) => {
+    const when = at(c);
+    return when ? ` · added ${ADDED_DAY.format(when)}` : null;
+  });
+  const timed = apart(byOrder, dated, (c) => {
+    const when = at(c);
+    return when ? `, ${ADDED_TIME.format(when)} UTC` : null;
+  });
   const out = new Map<string, string>();
   const seen = new Map<string, number>();
   for (const c of byOrder) {
-    const label = dated.get(c.id) as string;
+    const label = timed.get(c.id) as string;
     const n = (seen.get(label) ?? 0) + 1;
     seen.set(label, n);
     out.set(c.id, n === 1 ? label : `${label} (${n})`);

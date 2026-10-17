@@ -20,6 +20,8 @@ import {
 } from "@/design";
 import { providerLabel } from "@/features/integrations/providers/registry";
 import { STATUS_LABELS } from "@/features/issues/derive";
+import { RUN_STATUS_WORD } from "@/features/runs/run-status-words";
+import type { PipelineRunStatus } from "@/features/runs/types";
 import { inlineCode } from "@/features/project-settings/components/inline-code";
 import { formatApiError } from "@/lib/api/error";
 import { formatCountdown, formatRelativeTime } from "@/lib/utils/format";
@@ -316,10 +318,13 @@ export function ReleaseRunScreen({ projectId, runId }: ReleaseRunScreenProps) {
 		<div className="flex flex-col gap-4 p-6">
 			<header className="flex flex-wrap items-center gap-2">
 				<PageTitle className="fg-h2">Release run</PageTitle>
-				<MonoTag>{data.runId}</MonoTag>
+				{/* The run's status in words, as the runs list says it; its id short, the whole of it on hover. */}
 				<Badge tone={data.runStatus === "running" ? "cobalt" : "neutral"}>
-					{data.runStatus}
+					{RUN_STATUS_WORD[data.runStatus as PipelineRunStatus] ?? data.runStatus}
 				</Badge>
+				<span className="fg-caption text-muted" title={data.runId}>
+					Run <MonoTag>{data.runId.slice(0, 8)}</MonoTag>
+				</span>
 			</header>
 
 			<StartLine start={data.start} />

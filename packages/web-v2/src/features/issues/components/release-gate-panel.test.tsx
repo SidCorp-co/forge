@@ -352,3 +352,18 @@ describe("ReleaseGatePanel — nothing is waiting", () => {
     expect(screen.getByRole("button", { name: /release now/i })).toBeInTheDocument();
   });
 });
+
+// ISS-1421 r6 repair: the panel was a rounded, bordered card above a flush table (owner rule: flat).
+describe("ReleaseGatePanel — laid out flat", () => {
+  it.each([
+    ["the roster", () => state({ issues: ISSUES })],
+    ["its loading state", () => state(null, { isLoading: true })],
+    ["its error state", () => state(null, { isError: true, error: new Error("gateway timed out") })],
+  ])("draws %s with hairlines, and no card surface", (_name, arrange) => {
+    arrange();
+    const { container } = renderPanel();
+    expect(container.querySelector(".shadow-sm")).toBeNull();
+    expect(container.querySelector(".rounded-lg.border")).toBeNull();
+    expect(container.querySelector("section.border-y")).not.toBeNull();
+  });
+});

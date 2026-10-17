@@ -3,14 +3,11 @@
 import {
   Badge,
   Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
   Checkbox,
   EmptyPanelLine,
   ErrorState,
   MonoTag,
+  SectionTitle,
   Skeleton,
 } from "@/design";
 import { WORK_STATE_LABELS } from "@forge/contracts/work-state";
@@ -23,6 +20,10 @@ import { useState } from "react";
 import { useReleaseRoster } from "../hooks";
 import type { ReleaseRosterEntry } from "../api";
 import { BatchReleaseDialog, type BatchReleaseIssue } from "./batch-release-dialog";
+
+/** Flush with the list under it: hairlines above and below, no card surface (the owner's flat rule). */
+const PANEL = "flex flex-col gap-3 border-y border-line py-4";
+const PANEL_HEAD = "flex flex-wrap items-start justify-between gap-x-4 gap-y-2";
 
 /** Rows shown before the list collapses behind a "show all" toggle. */
 const VISIBLE_LIMIT = 5;
@@ -59,18 +60,16 @@ export function ReleaseGatePanel({ projectId, slug }: { projectId: string; slug:
   if (isLoading) return <ReleaseGateSkeleton />;
   if (isError) {
     return (
-      <Card>
-        <CardContent>
-          <ErrorState
+      <section className={PANEL}>
+        <ErrorState
             mascot={false}
             title="Couldn't load the release gate"
             message={formatApiError(error)}
             onRetry={() => {
               void refetch();
             }}
-          />
-        </CardContent>
-      </Card>
+        />
+      </section>
     );
   }
   if (!data?.gateStatus) return null;
@@ -110,11 +109,11 @@ export function ReleaseGatePanel({ projectId, slug }: { projectId: string; slug:
     setSelected(allSelected ? new Set() : new Set(ready.map((i) => i.id)));
 
   return (
-    <Card>
-      <CardHeader className="flex-wrap gap-y-2">
+    <section className={PANEL} data-testid="release-gate-panel">
+      <div className={PANEL_HEAD}>
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex items-center gap-2">
-            <CardTitle>{WORK_STATE_LABELS.awaiting_release}</CardTitle>
+            <SectionTitle className="fg-h3">{WORK_STATE_LABELS.awaiting_release}</SectionTitle>
             <Badge tone="cobalt">{issues.length}</Badge>
           </div>
           <p className="fg-caption text-muted">
@@ -137,9 +136,9 @@ export function ReleaseGatePanel({ projectId, slug }: { projectId: string; slug:
         >
           Release {chosen.length > 0 ? `${chosen.length} ` : ""}now
         </Button>
-      </CardHeader>
+      </div>
 
-      <CardContent>
+      <div>
         <div className="fg-caption text-muted flex flex-wrap items-center gap-x-3 gap-y-1">
           {/* The provider by its product name, as the Integrations tab names it (ISS-1421 r6). */}
           <span>
@@ -188,7 +187,7 @@ export function ReleaseGatePanel({ projectId, slug }: { projectId: string; slug:
             {expanded ? "Show fewer" : `Show all ${issues.length}`}
           </Button>
         ) : null}
-      </CardContent>
+      </div>
 
       <BatchReleaseDialog
         projectId={projectId}
@@ -199,7 +198,7 @@ export function ReleaseGatePanel({ projectId, slug }: { projectId: string; slug:
         onClose={() => setConfirmOpen(false)}
         onSuccess={() => setSelected(new Set())}
       />
-    </Card>
+    </section>
   );
 }
 
@@ -264,21 +263,21 @@ function RosterRow({
 
 function ReleaseGateSkeleton() {
   return (
-    <Card aria-busy="true">
-      <CardHeader>
+    <section className={PANEL} aria-busy="true">
+      <div className={PANEL_HEAD}>
         <div className="flex flex-col gap-2">
           <Skeleton variant="text" className="w-40" />
           <Skeleton variant="text" className="w-56" />
         </div>
         <Skeleton className="h-8 w-28" />
-      </CardHeader>
-      <CardContent>
+      </div>
+      <div>
         <div className="mt-1 flex flex-col gap-2.5">
           <Skeleton variant="text" className="w-2/3" />
           <Skeleton variant="text" className="w-1/2" />
           <Skeleton variant="text" className="w-3/5" />
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }

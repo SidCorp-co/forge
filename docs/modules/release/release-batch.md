@@ -82,7 +82,10 @@ Both are 409 blockers at the create door and at the release-record door alike, e
 issue, its reason and what clears it; a refused create claims nothing and opens no run. Readiness
 reads the same enumerator, so it lists them before anyone presses. The roster answer carries each
 issue's `closeRefusals` (`code`, `reason`, `clears`), and the release gate panel and the issue's
-awaiting-release banner offer no release for such an issue and print why. The unattended sweep
+awaiting-release banner offer no release for such an issue and print why. For a missing record,
+`clears` names Open session only where the issue page's header shows it — a live session holding
+the issue, or a run of it with a session (`packages/core/src/pipeline/runs-of-issue.ts:issueHasSession`)
+— and Reopen in the actions menu everywhere else. The unattended sweep
 leaves such an issue off its cut and writes a `RELEASE_ISSUES_UNCLOSABLE` release hold on it; a
 scheduled cut leaves it off and names it in its outcome. A refusal that arises after the press, a
 question asked mid-run, is still met at the finish below.
