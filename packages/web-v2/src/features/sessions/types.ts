@@ -7,8 +7,8 @@ import {
   resolveFailureCause,
 } from "@forge/contracts/failure-causes";
 import { TERMINAL_AGENT_SESSION_STATUSES } from "@forge/contracts/status-sets";
-import type { StatusKey } from "@/design/status";
-import { ENDING_AS_FAILED, endsAsFailedInText } from "./status-sentences";
+import { type StatusKey, STOPPED_WORD } from "@/design/status";
+import { ENDING_AS_FAILED, endsAsFailedInText, sessionEndedText } from "./status-sentences";
 
 export type AgentSessionStatus =
   | "idle"
@@ -254,7 +254,7 @@ export const FAILURE_REASON_LABEL: Record<SessionFailureReason, string> = {
   no_worker_online: "No runner online",
   no_client_ack: "No acknowledgement",
   skill_not_synced: "Skill not ready yet",
-  user_cancelled: "Cancelled",
+  user_cancelled: STOPPED_WORD,
   job_failed: "Unclassified",
   migration_zombie_cleanup: "Swept (migration)",
   issue_busy: "Issue busy",
@@ -264,54 +264,54 @@ export const FAILURE_REASON_LABEL: Record<SessionFailureReason, string> = {
 /** Suggested next action for a failed/stalled session — the one-line remedy on
  *  the detail blocker-card (ISS-378 AC#6). */
 export const FAILURE_REASON_ACTION: Record<SessionFailureReason, string> = {
-  provider_spend_cap: "The account hit its spend cap — raise it, or wait for the window to reset.",
-  provider_usage_limit: "The account hit its usage window — it retries once the window resets.",
+  provider_spend_cap: "The account hit its spend cap. Raise it, or wait for the window to reset.",
+  provider_usage_limit: "The account hit its usage window. It retries once the window resets.",
   provider_subscription_disabled:
-    "Claude Code access is off for this organization — an admin has to turn it back on.",
-  provider_auth_expired: "The runner's sign-in expired — re-authenticate it, then Retry.",
-  provider_overloaded: "The model provider was busy — Retry.",
-  provider_refused_request: "The provider refused the request — check the model and prompt settings.",
-  agent_startup_failed: "The agent never got going on this runner — check its MCP config, then Retry.",
-  agent_skill_missing: "The skill hasn't reached this runner — sync it, then Retry.",
-  agent_exited_without_result: "The agent exited before reporting — Retry to re-dispatch.",
-  agent_killed: "Something killed the agent process — check the runner logs.",
-  workspace_preflight_failed: "The runner's checkout is unusable — fix the repo path or remote.",
-  workspace_disk_full: "The runner is out of disk — free space, then Retry.",
+    "Claude Code access is off for this organization. An admin has to turn it back on.",
+  provider_auth_expired: "The runner's sign-in expired. Re-authenticate it, then Retry.",
+  provider_overloaded: "The model provider was busy. Retry.",
+  provider_refused_request: "The provider refused the request. Check the model and prompt settings.",
+  agent_startup_failed: "The agent never got going on this runner. Check its MCP config, then Retry.",
+  agent_skill_missing: "The skill hasn't reached this runner. Sync it, then Retry.",
+  agent_exited_without_result: "The agent exited before reporting. Retry to re-dispatch.",
+  agent_killed: "Something killed the agent process. Check the runner logs.",
+  workspace_preflight_failed: "The runner's checkout is unusable. Fix the repo path or remote.",
+  workspace_disk_full: "The runner is out of disk. Free space, then Retry.",
   repo_root_contention:
-    "Another job on that runner held the repo for ten minutes — Retry once it is free.",
+    "Another job on that runner held the repo for ten minutes. Retry once it is free.",
   box_session_saturated:
-    "That runner had no session slot free — the job moves to another box on its own.",
-  runner_unreachable: "The runner never picked it up — check it's online, then Retry.",
-  duplex_channel_failed: "The session channel dropped — a fresh session is the next step.",
-  session_lost: "The session died without reporting — Retry to re-dispatch.",
-  ws_publish_failed: "The reply couldn't be delivered — start a new chat to retry.",
-  "ws-publish-failed": "The reply couldn't be delivered — start a new chat to retry.",
-  forge_budget_exhausted: "This project spent its monthly budget — raise it or wait for the cycle.",
-  runner_unsupported_type: "This runner can't run this step — assign a runner that can.",
-  resume_failed: "Resuming the previous session failed — Rerun to start fresh.",
-  residency_expired: "The session outlived its window — Rerun to start fresh.",
-  park_unanswered: "Nobody answered the agent's question before its deadline — the work stopped and its branch was kept.",
-  audit_ran_blind: "The scheduled run called no tools, so it produced no evidence — Rerun.",
-  unclassified: "The cause wasn't recorded — open the run timeline to see why.",
-  queue_timeout: "No runner picked it up — check the fleet strip for an online runner.",
-  heartbeat_timeout: "The session stopped sending heartbeats — Retry to re-dispatch.",
+    "That runner had no session slot free. The job moves to another box on its own.",
+  runner_unreachable: "The runner never picked it up. Check it's online, then Retry.",
+  duplex_channel_failed: "The session channel dropped. A fresh session is the next step.",
+  session_lost: "The session died without reporting. Retry to re-dispatch.",
+  ws_publish_failed: "The reply couldn't be delivered. Start a new chat to retry.",
+  "ws-publish-failed": "The reply couldn't be delivered. Start a new chat to retry.",
+  forge_budget_exhausted: "This project spent its monthly budget. Raise it or wait for the cycle.",
+  runner_unsupported_type: "This runner can't run this step. Assign a runner that can.",
+  resume_failed: "Resuming the previous session failed. Rerun to start fresh.",
+  residency_expired: "The session outlived its window. Rerun to start fresh.",
+  park_unanswered: "Nobody answered the agent's question before its deadline. The work stopped and its branch was kept.",
+  audit_ran_blind: "The scheduled run called no tools, so it produced no evidence. Rerun.",
+  unclassified: "The cause wasn't recorded. Open the run timeline to see why.",
+  queue_timeout: "No runner picked it up. Check the fleet strip for an online runner.",
+  heartbeat_timeout: "The session stopped sending heartbeats. Retry to re-dispatch.",
   session_stopped_checking_in:
-    "The session stopped checking in while its runner kept answering — Retry to start it again.",
+    "The session stopped checking in while its runner kept answering. Retry to start it again.",
   turn_never_reported:
-    "A runner picked this up but nothing ever reported the agent starting a turn — check whether its prompt was actually submitted, then Rerun.",
+    "A runner picked this up but nothing ever reported the agent starting a turn. Check whether its prompt was actually submitted, then Rerun.",
   no_worker_online: "Bring a runner online or check device pairing, then Retry.",
-  no_client_ack: "The runner never acknowledged the dispatch — Retry to re-send.",
-  user_cancelled: "Cancelled by a user — Rerun to start a fresh session.",
-  job_failed: "The cause wasn't recorded — open the run timeline to see why.",
-  issue_busy: "Another session holds this issue — it will retry once that frees.",
-  runner_full: "The runner is at capacity — it will dispatch when a slot frees.",
-  skill_not_synced: "The skill hadn't finished syncing to the runner yet — start a new chat to retry.",
-  orphan_under_terminal_run: "The run ended while this was still open — nothing to do.",
-  pipeline_cancelled: "The pipeline run was cancelled — nothing to do.",
-  pipeline_completed: "The run finished while this was still open — nothing to do.",
-  pipeline_failed: "The run failed and this was cleaned up with it — see the run timeline.",
-  migration_zombie_cleanup: "Swept by a migration — nothing to do.",
-  manual_ops_stale_chat_schedule: "An operator cleared this stale session — nothing to do.",
+  no_client_ack: "The runner never acknowledged the dispatch. Retry to re-send.",
+  user_cancelled: "Rerun to start a fresh session.",
+  job_failed: "The cause wasn't recorded. Open the run timeline to see why.",
+  issue_busy: "Another session holds this issue. It will retry once that frees.",
+  runner_full: "The runner is at capacity. It will dispatch when a slot frees.",
+  skill_not_synced: "The skill hadn't finished syncing to the runner yet. Start a new chat to retry.",
+  orphan_under_terminal_run: "The run ended while this was still open. Nothing to do.",
+  pipeline_cancelled: "The pipeline run was cancelled. Nothing to do.",
+  pipeline_completed: "The run finished while this was still open. Nothing to do.",
+  pipeline_failed: "The run failed and this was cleaned up with it. See the run timeline.",
+  migration_zombie_cleanup: "Swept by a migration. Nothing to do.",
+  manual_ops_stale_chat_schedule: "An operator cleared this stale session. Nothing to do.",
 };
 
 /**
@@ -328,6 +328,11 @@ export function failureReasonLabel(reason: string | null | undefined): string | 
     FAILURE_REASON_LABEL[reason as SessionFailureReason] ??
     FAILURE_REASON_LABEL[resolveFailureCause(reason)]
   );
+}
+
+/** Why a session ended, as the sentences every surface says it in; `null` where core holds no reason. */
+export function sessionEndText(reason: string | null | undefined): string | null {
+  return reason ? sessionEndedText(reason, failureReasonLabel(reason)) : null;
 }
 
 /** The remedy in the words of the page it is read on: `button` names that page's own button where it is not Retry. */
@@ -486,8 +491,17 @@ export function classifySessionOutcome(
     return {
       bucket: "cleanup",
       statusKey: "archived",
-      label: "Cancelled",
-      tooltip: "Stopped on purpose — not a failure.",
+      label: STOPPED_WORD,
+      tooltip: "Stopped on purpose. Not a failure.",
+    };
+  }
+
+  if (display === "failed" && failureReason === "user_cancelled") {
+    return {
+      bucket: "swept",
+      statusKey: "archived",
+      label: STOPPED_WORD,
+      tooltip: "A person stopped this session. Not a failure.",
     };
   }
 
@@ -510,14 +524,14 @@ export function classifySessionOutcome(
         label: failureReasonLabel(reason) ?? "Cancelled",
         tooltip:
           failureReasonAction(reason) ??
-          "Cancelled by a lifecycle or capacity rule — not a failure.",
+          "Ended by a lifecycle or capacity rule. Not a failure.",
       };
     }
     return {
       bucket: "failed",
       statusKey: "failed",
       label: failureReasonLabel(reason) ?? "Failed",
-      tooltip: failureReasonAction(reason) ?? "The agent step failed — see the run timeline.",
+      tooltip: failureReasonAction(reason) ?? "The agent step failed. See the run timeline.",
     };
   }
 
@@ -527,6 +541,13 @@ export function classifySessionOutcome(
     label: display,
     tooltip: "",
   };
+}
+
+/** The chip a session shows: its outcome's once it has ended, so a person's stop reads Stopped and
+ *  never Failed, and its live state's before that. */
+export function sessionChipStatus(display: AgentSessionDisplayStatus, failureReason?: string | null): StatusKey {
+  const outcome = classifySessionOutcome(display, failureReason);
+  return outcome.bucket === "active" ? statusToChip(display) : outcome.statusKey;
 }
 
 /** Whether a terminal session is a genuine failure (the only bucket that should

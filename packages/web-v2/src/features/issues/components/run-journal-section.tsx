@@ -6,7 +6,7 @@
 
 import { jobKindLabel } from "@/features/overview/job-kinds";
 import { useState } from "react";
-import { EmptyPanelLine, Icon } from "@/design";
+import { EmptyPanelLine, Icon, STOPPED_WORD } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { formatDurationMs, formatDurationSec, formatRelativeTime, formatUsd } from "@/lib/utils/format";
 import {
@@ -26,7 +26,7 @@ const RUN_STATUS: Record<RunView["status"], { label: string; dot: string }> = {
   paused: { label: "Paused", dot: "var(--amber-500)" },
   completed: { label: "Completed", dot: "var(--green-500)" },
   failed: { label: "Failed", dot: "var(--red-500)" },
-  cancelled: { label: "Cancelled", dot: "var(--border-strong)" },
+  cancelled: { label: STOPPED_WORD, dot: "var(--border-strong)" },
 };
 
 const ATTEMPT_STATE: Record<AttemptState, { label: string; dot: string }> = {

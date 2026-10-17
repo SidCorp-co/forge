@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { type HeldIssueRow, heldIssueRowsSql } from '../agent-sessions/held-issues.js';
 import { db } from '../db/client.js';
 import { type IssueStatus, terminalAgentSessionStatuses } from '../db/schema.js';
 import { statusForCaller } from '../issues/status-sets.js';
@@ -57,11 +58,16 @@ export class NoMasterRunningError extends Error {
   }
 }
 
-/** A box the wake did not reach reads the issue on its master's next pass; the room keeps nothing. */
+/**
+ * What a press did. A box hearing the wake is not a box taking the issue: a master takes it on its own
+ * pass, after the answer, so `taken` is what core can see of that at answer time and is usually zero.
+ * A box the wake did not reach reads the issue on its master's next pass; the room keeps nothing.
+ */
 export interface DriveRelease {
   released: boolean;
   masters: number;
-  boxesReached: number;
+  boxesHeard: number;
+  taken: number;
 }
 
 const TERMINAL_SESSIONS = sql.join(
@@ -77,6 +83,16 @@ async function liveMasters(projectId: string): Promise<number> {
        AND status NOT IN (${TERMINAL_SESSIONS})
   `)) as unknown as Array<{ n: number }>;
   return Number(row?.n ?? 0);
+}
+
+/** Live sessions holding the issue, by the one read every screen names a session's issues from. */
+async function sessionsHolding(projectId: string, issueId: string): Promise<number> {
+  const rows = (await db.execute(
+    heldIssueRowsSql(
+      sql`s.project_id = ${projectId} AND s.status NOT IN (${TERMINAL_SESSIONS}) AND issues.id = ${issueId}`,
+    ),
+  )) as unknown as HeldIssueRow[];
+  return new Set(rows.filter((r) => r.held).map((r) => r.session_id)).size;
 }
 
 /**
@@ -110,9 +126,10 @@ export async function dispatchDriveManual(args: {
     issueId: args.issueId,
     status: args.status,
   });
+  const taken = await sessionsHolding(args.projectId, args.issueId);
   logger.info(
-    { projectId: args.projectId, issueId: args.issueId, masters, boxesReached: wake.reached },
+    { projectId: args.projectId, issueId: args.issueId, masters, boxesHeard: wake.reached, taken },
     'autonomous-dispatch: released by hand — offered to this project masters',
   );
-  return { released: args.entryGated, masters, boxesReached: wake.reached };
+  return { released: args.entryGated, masters, boxesHeard: wake.reached, taken };
 }

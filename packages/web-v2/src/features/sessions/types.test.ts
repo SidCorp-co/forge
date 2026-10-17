@@ -6,6 +6,7 @@ import {
 import { describe, expect, it } from "vitest";
 import {
   FAILURE_REASON_LABEL,
+  FAILURE_REASON_ACTION,
   failureReasonAction,
   failureReasonLabel,
   STALLED_THRESHOLD_MS,
@@ -17,6 +18,8 @@ import {
   sessionKind,
   sessionStep,
   statusToChip,
+  sessionChipStatus,
+  sessionEndText,
   classifySessionOutcome,
   isRealFailure,
   type SessionRow,
@@ -202,13 +205,39 @@ describe("classifySessionOutcome (ISS-322 four-bucket classifier)", () => {
       "queue_timeout",
       "heartbeat_timeout",
       "no_worker_online",
-      "user_cancelled",
       "issue_busy",
       "runner_full",
     ]) {
       const o = classifySessionOutcome("failed", reason);
       expect(o.bucket, reason).toBe("swept");
       expect(o.statusKey, reason).toBe("swept");
+    }
+  });
+
+  // ISS-1228 round 13: one stop read six ways ("Failed", "Swept · Cancelled", "Blocked: Cancelled by a
+  // user", …). A person's stop and a session stopped on purpose both read Stopped, counted as before.
+  it("calls a person's stop and a stopped session Stopped, never Failed or Swept", () => {
+    for (const [display, reason] of [
+      ["failed", "user_cancelled"],
+      ["cancelled", null],
+    ] as const) {
+      const o = classifySessionOutcome(display, reason);
+      expect(o.label, display).toBe("Stopped");
+      expect(o.statusKey, display).toBe("archived");
+      expect(sessionChipStatus(display, reason), display).toBe("archived");
+    }
+    expect(classifySessionOutcome("failed", "user_cancelled").bucket).toBe("swept");
+    expect(failureReasonLabel("user_cancelled")).toBe("Stopped");
+    expect(sessionEndText("user_cancelled")).toBe("A person stopped the session.");
+    expect(sessionChipStatus("failed", "heartbeat_timeout")).toBe("swept");
+    expect(sessionChipStatus("running", null)).toBe("running");
+  });
+
+  it("says every remedy as sentences, with no dash joining two of them", () => {
+    for (const [reason, action] of Object.entries(FAILURE_REASON_ACTION)) {
+      expect(action, reason).toMatch(/^[A-Z]/);
+      expect(action, reason).toMatch(/\.$/);
+      expect(action, reason).not.toContain(" — ");
     }
   });
 

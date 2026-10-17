@@ -8,7 +8,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useSessions } from "./hooks";
+import { refreshAfterStop, useSessions } from "./hooks";
 import type { SessionRow } from "./types";
 
 const list = vi.fn<() => Promise<{ items: SessionRow[]; totalCount: number }>>();
@@ -72,5 +72,19 @@ describe("the sessions list", () => {
     await waitFor(() => expect(list).toHaveBeenCalledTimes(1));
     await wait(45_000);
     expect(list).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("a stop", () => {
+  it("re-reads the issue page's runs at once, so the run a stop closed reads Stopped beside the toast", () => {
+    const qc = new QueryClient();
+    const journal = ["issue", "i3", "run-journal"];
+    qc.setQueryData(journal, { runs: [] });
+    qc.setQueryData(["agent-sessions", "p1"], { items: [] });
+
+    refreshAfterStop(qc);
+
+    expect(qc.getQueryState(journal)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(["agent-sessions", "p1"])?.isInvalidated).toBe(true);
   });
 });

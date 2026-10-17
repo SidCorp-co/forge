@@ -7,6 +7,8 @@ import { BLOCKED_WORD, SILENCE_WORD } from "@/design/status";
 
 const stop = (text: string): string => (/[.!?]$/.test(text) ? text : `${text}.`);
 
+const capitalised = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
+
 export function leaseDisagreementText(keys: readonly string[]): string | null {
   if (keys.length === 0) return null;
   const pronoun = keys.length === 1 ? "it" : "them";
@@ -32,15 +34,39 @@ export const ENDING_AS_FAILED = "Core is ending it as failed.";
 
 export const endsAsFailedInText = (countdown: string): string => `Core ends it as failed in ${countdown}.`;
 
+/** Silence is a missing check-in, never a missing report: the box's report is the row's other clock. */
 export const quietForText = (since: string, ending: boolean): string =>
-  `${SILENCE_WORD}.${ending ? ` ${ENDING_AS_FAILED}` : ""} No report for ${since}.`;
+  `${SILENCE_WORD}.${ending ? ` ${ENDING_AS_FAILED}` : ""} No check-in for ${since}.`;
 
 export const coreNoteText = (label: string): string => stop(`Core's note on this session: ${label}`);
 
 export const quietLastReportedText = (lastReported: string, ago: string | null): string =>
   `${SILENCE_WORD}. ${lastReported}${ago ? ` ${ago}` : ""}.`;
 
-export const blockedText = (waitingOn: string | null | undefined): string =>
-  waitingOn ? `${BLOCKED_WORD}. ${stop(waitingOn)}` : BLOCKED_WORD;
+const WAIT_HOLDER: Record<string, string> = {
+  machine: "a machine",
+  master_or_peer: "another agent",
+  human: "a person",
+};
+
+/** Who can end a blocked session's wait, and what it waits on in the box's own words made a sentence. */
+export function waitingOnText(kind: string | null | undefined, waitingOn: string | null | undefined): string {
+  const head =
+    kind === "nobody"
+      ? "Waiting on nobody. This run is a failure with a name."
+      : `Waiting on ${kind ? (WAIT_HOLDER[kind] ?? kind) : "someone the box did not name"}.`;
+  const words = waitingOn?.trim();
+  return words ? `${head} ${stop(capitalised(words))}` : head;
+}
+
+/** A blocked session's line where nothing beside it says Blocked: the word, then its wait. */
+export const blockedText = (waiting: string | null | undefined): string =>
+  waiting ? `${BLOCKED_WORD}. ${waiting}` : `${BLOCKED_WORD}.`;
+
+export const PERSON_STOPPED = "A person stopped the session.";
+
+/** Why a session ended, where core recorded a reason: `label` is that reason in words. */
+export const sessionEndedText = (reason: string, label: string | null): string =>
+  reason === "user_cancelled" ? PERSON_STOPPED : `The session ended. ${stop(capitalised(label ?? reason))}`;
 
 export const quietWhyText = (doing: string, ago: string): string => `${doing}. Last check-in ${ago}.`;

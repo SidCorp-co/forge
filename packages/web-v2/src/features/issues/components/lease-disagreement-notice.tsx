@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { Button } from "@/design";
 import { sessionKindLabel, sessionName } from "@/features/pipeline/derive";
 import { useSessionsAndHolds } from "@/features/pipeline/hooks";
 import type { Holder } from "@/features/pipeline/types";
+import { StopSessionConfirm, type StopTarget } from "@/features/sessions/components/stop-session-confirm";
 import { useCancelSession } from "@/features/sessions/hooks";
 import { leaseDisagreementText } from "@/features/sessions/status-sentences";
 
@@ -13,7 +15,9 @@ type SessionHolder = Extract<Holder, { by: "session" }>;
 /**
  * A session core still holds this issue for, though the session's run reports it returned (ISS-1228
  * round 12). Core refuses another run on the issue while the hold stands, so the page says so in the
- * sentences every surface uses, and stops the session from here. Nothing renders where they agree.
+ * sentences every surface uses, and stops the session from here once the person has confirmed which
+ * session ends. A stopped session's line leaves at once rather than on the next read. Nothing renders
+ * where they agree.
  */
 export function LeaseDisagreementNotice({
   projectId,
@@ -26,14 +30,34 @@ export function LeaseDisagreementNotice({
 }) {
   const reading = useSessionsAndHolds(projectId).data;
   const stop = useCancelSession();
+  const [asked, setAsked] = useState<(StopTarget & { sessionId: string }) | null>(null);
+  const [stopped, setStopped] = useState<ReadonlySet<string>>(new Set());
   const hold = reading?.holds.find((h) => h.issueId === issueId);
   const holders = (hold?.holders ?? []).filter(
-    (h): h is SessionHolder => h.by === "session" && h.boxReturned === true,
+    (h): h is SessionHolder => h.by === "session" && h.boxReturned === true && !stopped.has(h.sessionId),
   );
-  if (!hold || holders.length === 0) return null;
+  const confirm = (
+    <StopSessionConfirm
+      target={asked}
+      loading={stop.isPending}
+      onClose={() => setAsked(null)}
+      onConfirm={() => {
+        if (!asked) return;
+        const { sessionId } = asked;
+        stop.mutate(sessionId, {
+          onSuccess: () => {
+            setStopped((was) => new Set([...was, sessionId]));
+            setAsked(null);
+          },
+        });
+      }}
+    />
+  );
+  if (!hold || holders.length === 0) return confirm;
   const sentence = leaseDisagreementText([hold.displayId]);
   return (
     <div role="status" className="flex flex-col gap-1.5 border-y border-line py-3">
+      {confirm}
       {holders.map((h) => {
         const live = reading?.sessions.find((s) => s.id === h.sessionId);
         const name = live ? sessionName(live) : h.sessionTitle?.trim() || sessionKindLabel(h.sessionKind);
@@ -46,7 +70,7 @@ export function LeaseDisagreementNotice({
               size="sm"
               variant="danger"
               loading={stop.isPending && stop.variables === h.sessionId}
-              onClick={() => stop.mutate(h.sessionId)}
+              onClick={() => setAsked({ sessionId: h.sessionId, name, box: h.deviceName })}
             >
               Stop session
             </Button>

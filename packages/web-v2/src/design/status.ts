@@ -43,6 +43,8 @@ export const SILENCE_TONE: SemanticTone = "attention";
 export const WORKING_WORD = "Working";
 
 export const BLOCKED_WORD = "Blocked";
+
+export const STOPPED_WORD = "Stopped";
 export const BLOCKED_TONE: SemanticTone = "attention";
 
 /** A silent session says what it last reported, never that it is doing it. */

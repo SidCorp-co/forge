@@ -1,4 +1,4 @@
-import { lastReported, type SemanticTone, WORKING_WORD } from "@/design/status";
+import { BLOCKED_WORD, lastReported, type SemanticTone, STOPPED_WORD, WORKING_WORD } from "@/design/status";
 import {
   boxOfflineText,
   coreNoteText,
@@ -11,6 +11,7 @@ import {
 import { liveSessionWord } from "@/features/sessions/session-word";
 import {
   failureReasonLabel,
+  sessionEndText,
   sessionSilence,
   TERMINAL_SESSION_STATUSES,
 } from "@/features/sessions/types";
@@ -117,17 +118,6 @@ export const runLeaseDisagreementText = (row: Pick<RunSessionRow, "issues">): st
 export const boxOffline = (row: Pick<RunSessionRow, "deviceStatus">): boolean =>
   row.deviceStatus != null && row.deviceStatus !== "online";
 
-const BLOCKER_TEXT: Record<string, string> = {
-  machine: "a machine",
-  master_or_peer: "another agent",
-  human: "a person",
-  nobody: "nobody — this run is a failure with a name",
-};
-
-/** Who can end this wait, in words rather than in the wire value. */
-export const blockerText = (kind: string | null): string | null =>
-  kind == null ? null : (BLOCKER_TEXT[kind] ?? kind);
-
 
 
 /** What core's heartbeat says about a run, independently of what the box claims. */
@@ -169,6 +159,11 @@ export function pulseText(p: Pulse): string | null {
 
 const QUIET_DETAIL =
   "The box last reported this, and core has heard nothing from the run's session since.";
+const ENDED_DETAIL = "Core ended this run's session, so this is what the box last reported, not what is happening.";
+
+/** Core has ended the run's session, whatever the box still says of its process. */
+const coreEnded = (row: Pick<RunSessionRow, "sessionStatus">): boolean =>
+  row.sessionStatus != null && TERMINAL_SESSION_STATUSES.has(row.sessionStatus);
 const OFFLINE_DETAIL = "The box is offline: this is what it last reported, not what it is doing.";
 
 /**
@@ -182,13 +177,22 @@ export function stateLabelAt(
     RunSessionRow,
     "incarnation" | "work" | "lastActivityAt" | "silenceLimitMs" | "sessionStatus" | "sessionRuntimeState"
   > &
-    Partial<Pick<RunSessionRow, "deviceStatus">>,
+    Partial<Pick<RunSessionRow, "deviceStatus" | "sessionFailureReason">>,
   nowMs: number,
 ): StateLabel {
   const state = runState(row);
   const meta = LABELS[state];
+  // A person's stop keeps the one word every surface says it with, whatever the box says of its
+  // process; the disagreement line beside the chip says what the box reports.
+  if (state !== "closed" && coreEnded(row) && row.sessionFailureReason === "user_cancelled") {
+    return { label: STOPPED_WORD, detail: ENDED_DETAIL, tone: "neutral" };
+  }
   if (state !== "live-runnable" && state !== "live-blocked") return meta;
-  const coreLive = row.sessionStatus != null && !TERMINAL_SESSION_STATUSES.has(row.sessionStatus);
+  // An ended session is neither quiet nor doing anything: core no longer takes its check-ins.
+  if (coreEnded(row)) {
+    return { label: lastReported(row.work === "blocked" ? BLOCKED_WORD : WORKING_WORD), detail: ENDED_DETAIL, tone: "neutral" };
+  }
+  const coreLive = row.sessionStatus != null;
   const word = liveSessionWord(
     {
       status: coreLive ? (row.sessionStatus as string) : "running",
@@ -212,13 +216,16 @@ const boxClaimsAProcess = (incarnation: string): boolean =>
   incarnation === "live" || incarnation === "starting";
 
 /**
- * The silence line, on the rows where silence means something.
+ * The silence line, on the rows where silence means something: a process the box claims, under a
+ * session core has not ended. Core takes no check-in from an ended session, so its silence is no news.
  */
 export function silenceText(
-  row: Pick<RunSessionRow, "incarnation" | "lastActivityAt" | "silenceLimitMs">,
+  row: Pick<RunSessionRow, "incarnation" | "lastActivityAt" | "silenceLimitMs"> &
+    Partial<Pick<RunSessionRow, "sessionStatus">>,
   nowMs: number,
 ): string | null {
-  return boxClaimsAProcess(row.incarnation) ? pulseText(pulse(row, nowMs)) : null;
+  if (!boxClaimsAProcess(row.incarnation) || coreEnded({ sessionStatus: row.sessionStatus ?? null })) return null;
+  return pulseText(pulse(row, nowMs));
 }
 
 /** The two readings of one run disagreeing, which is the signal rather than an error. */
@@ -253,12 +260,10 @@ export function offlineText(
   return boxOfflineText(formatRelativeTime(row.observedAt));
 }
 
-/** Why core failed this run's session, in words, or `null` where core holds no reason. */
 export function endReasonText(
   row: Pick<RunSessionRow, "sessionFailureReason" | "sessionStatus">,
 ): string | null {
-  if (!row.sessionStatus || !TERMINAL_SESSION_STATUSES.has(row.sessionStatus)) return null;
-  return row.sessionFailureReason ? failureReasonLabel(row.sessionFailureReason) : null;
+  return coreEnded(row) ? sessionEndText(row.sessionFailureReason) : null;
 }
 
 /** The reason core holds on a session it has NOT ended, worded as the note it is. */

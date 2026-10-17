@@ -27,7 +27,8 @@ export interface RunAnswer {
   status: string;
   released: boolean;
   masters: number;
-  boxesReached: number;
+  boxesHeard: number;
+  taken: number;
 }
 export const ISSUES_PAGE_SIZE = 25;
 

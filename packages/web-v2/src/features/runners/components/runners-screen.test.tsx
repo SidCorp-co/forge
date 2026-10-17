@@ -7,7 +7,8 @@
 // not answered.
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
+import * as matchers from "@testing-library/jest-dom/matchers";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DeviceRow, OrgDeviceRow } from "../types";
@@ -20,6 +21,8 @@ vi.mock("@/providers/auth-provider", () => ({ useAuth: () => ({ user: { id: "u-1
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));
 let activeOrgId: string | null = "org-1";
 vi.mock("@/features/orgs/active-org", () => ({ useActiveOrg: () => ({ activeOrgId }) }));
+
+expect.extend(matchers);
 
 const { RunnersScreen } = await import("./runners-screen");
 const { ORG_DEVICES_REFRESH_MS } = await import("../hooks");
@@ -291,5 +294,52 @@ describe("the page's sections", () => {
 				expect(box.className).not.toMatch(/(^|\s)(rounded-lg|shadow-sm|bg-surface)(\s|$)/);
 			}
 		}
+	});
+});
+
+// ISS-1228 round 13: judge-34 at 390 found Manage, Turn off and Revoke past the right edge until the
+// device table was scrolled sideways. At phone width each device is a row of its own instead.
+describe("the device list at phone width", () => {
+	// Evaluates the query as a browser at that width would, so a query that lost its negation reads
+	// the wrong side of the breakpoint here too.
+	const atWidth = (px: number) =>
+		vi.stubGlobal(
+			"matchMedia",
+			(query: string) =>
+				({
+					matches: /^not all and \(min-width: 40rem\)$/.test(query)
+						? px < 640
+						: /^\(min-width: 40rem\)$/.test(query)
+							? px >= 640
+							: false,
+					media: query,
+					addEventListener: () => undefined,
+					removeEventListener: () => undefined,
+				}) as unknown as MediaQueryList,
+		);
+
+	afterEach(() => vi.unstubAllGlobals());
+
+	it("stacks each device with its actions in view, and draws no table to scroll", async () => {
+		atWidth(390);
+		listDevices.mockResolvedValue([device()]);
+		await show();
+		const list = await screen.findByRole("list", { name: "Devices" });
+		expect(screen.queryByRole("table")).toBeNull();
+		const row = within(list).getByRole("listitem");
+		expect(row).toHaveTextContent("my-laptop");
+		expect(row).toHaveTextContent("Last seen never");
+		expect(row).toHaveTextContent("Git push none");
+		for (const name of ["Manage", "Turn off", "Revoke"]) {
+			expect(within(row).getByRole("button", { name })).toBeTruthy();
+		}
+	});
+
+	it("keeps the table from sm up", async () => {
+		atWidth(1280);
+		listDevices.mockResolvedValue([device()]);
+		await show();
+		expect(await screen.findByRole("table")).toBeTruthy();
+		expect(screen.queryByRole("list", { name: "Devices" })).toBeNull();
 	});
 });

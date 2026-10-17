@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";
 import { type ListSessionsOpts, sessionsApi } from "./api";
@@ -41,7 +41,12 @@ export function useSessionCost(sessionId: string | undefined) {
 /** Shared mutation factory: invalidate the list on success, toast on error. */
 function useSessionMutation<TArgs, TData>(
   fn: (args: TArgs) => Promise<TData>,
-  opts: { successMessage?: (data: TData) => string; alsoInvalidateQueueStats?: boolean } = {},
+  opts: {
+    successMessage?: (data: TData) => string;
+    alsoInvalidateQueueStats?: boolean;
+    /** What else the act changed, re-read at once. */
+    refresh?: (qc: QueryClient) => void;
+  } = {},
 ) {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -49,6 +54,7 @@ function useSessionMutation<TArgs, TData>(
     mutationFn: fn,
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["agent-sessions"] });
+      opts.refresh?.(qc);
       if (opts.alsoInvalidateQueueStats) {
         qc.invalidateQueries({ queryKey: ["agent-sessions", "queue-stats"] });
       }
@@ -62,9 +68,19 @@ function useSessionMutation<TArgs, TData>(
   });
 }
 
+/** Every read a stop changes, re-read at once rather than on its next poll: the session itself, the
+ *  lists naming it, the holds it kept, the runs it ran and the issue pages showing them, whose run
+ *  core closed with it (ISS-1228). */
+export function refreshAfterStop(qc: QueryClient): void {
+  for (const queryKey of [["agent-sessions"], ["agent-session"], ["sessions-and-holds"], ["run-sessions"], ["issue"]]) {
+    void qc.invalidateQueries({ queryKey });
+  }
+}
+
 export function useCancelSession() {
   return useSessionMutation((id: string) => sessionsApi.cancel(id), {
-    successMessage: () => "Session cancelled",
+    successMessage: () => "Session stopped",
+    refresh: refreshAfterStop,
   });
 }
 

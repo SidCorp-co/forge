@@ -25,12 +25,14 @@ import { useSessionDuration } from "@/features/sessions/session-duration";
 import {
   deriveSessionDisplayStatus,
   isLiveDisplay,
+  sessionChipStatus,
+  sessionEndText,
   sessionStep,
-  statusToChip,
   failureReasonAction,
   failureReasonLabel,
   type SessionRow,
 } from "@/features/sessions/types";
+import { coreNoteText } from "@/features/sessions/status-sentences";
 import { useSessionCost, useSessions } from "@/features/sessions/hooks";
 import { isJobDriven, sessionKind, sessionTitle } from "@/features/sessions/types";
 import { type RunGateNote, runGateNote, runGateUnfetched } from "@/features/runs/derive";
@@ -225,14 +227,14 @@ export function ContextRail({
 
       {isPipeline && (
         <Section title="Pipeline">
-          <SessionChip status={statusToChip(display)} stage={stage} size="sm" session={session} />
+          <SessionChip status={sessionChipStatus(display, session.failureReason)} stage={stage} size="sm" session={session} />
         </Section>
       )}
 
       <Section title="Run stats">
         <div className="flex flex-col gap-2.5">
           {!isPipeline && (
-            <SessionChip status={statusToChip(display)} stage={stage} size="sm" session={session} />
+            <SessionChip status={sessionChipStatus(display, session.failureReason)} stage={stage} size="sm" session={session} />
           )}
           <Stat icon="activity" title="Turns">{usage.turns ?? "—"} turns</Stat>
           <Stat icon="clock" title="Duration">{duration}</Stat>
@@ -283,10 +285,12 @@ export function ContextRail({
       )}
 
       {showBlocker && (
-        <Section title="Blocked">
-          <Banner tone={failureReason === "user_cancelled" ? "attention" : "danger"}>
+        <Section title={display === "stalled" ? "Core's note" : "Why it ended"}>
+          <Banner tone={failureReason === "user_cancelled" ? "info" : "danger"}>
             <span className="font-semibold">
-              {failureReasonLabel(failureReason) ?? failureReason}
+              {display === "stalled"
+                ? coreNoteText(failureReasonLabel(failureReason) ?? failureReason)
+                : sessionEndText(failureReason)}
             </span>
             {failureReasonAction(failureReason) && (
               <span className="mt-0.5 block">{failureReasonAction(failureReason, "Rerun")}</span>
@@ -370,7 +374,7 @@ function SiblingRow({ row, onOpen }: { row: SessionRow; onOpen?: () => void }) {
       <span className="flex-1 truncate fg-body-sm" title={label}>
         {label}
       </span>
-      <SessionChip status={statusToChip(display)} stage={stage} size="sm" session={row} />
+      <SessionChip status={sessionChipStatus(display, row.failureReason)} stage={stage} size="sm" session={row} />
     </>
   );
 

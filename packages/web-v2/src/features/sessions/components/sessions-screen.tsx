@@ -38,7 +38,8 @@ import {
 import { TONE_META } from "@/design/status";
 import { SessionChip } from "./session-chip";
 import { useSessionDuration } from "../session-duration";
-import { leaseDisagreementText } from "../status-sentences";
+import { coreNoteText, leaseDisagreementText } from "../status-sentences";
+import { StopSessionConfirm } from "./stop-session-confirm";
 import { isWaitingForInput, sessionWord } from "../session-word";
 import { useOrgScopedProjects, useProject, useProjects } from "@/features/projects/hooks";
 import { useDevices } from "@/features/runners/hooks";
@@ -65,7 +66,8 @@ import {
   isAwaitingReply,
   isRetryable,
   sessionKind,
-  statusToChip,
+  sessionChipStatus,
+  sessionEndText,
   classifySessionOutcome,
   isRealFailure,
   failureReasonLabel,
@@ -312,10 +314,26 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
     label: `${KIND_LABEL[k]} ${kindCounts[k]}`,
   }));
 
-  const actions = { cancel, retry, rerun, abort };
+  // A stop is asked about before it is made: the menu names the act, the confirmation which session.
+  const [stopAsked, setStopAsked] = useState<SessionRow | null>(null);
+  const askStop = { mutate: (id: string) => setStopAsked(rows.find((r) => r.id === id) ?? null) };
+  const actions = { cancel: askStop, retry, rerun, abort };
 
   return (
     <PageContainer className="min-h-dvh">
+      <StopSessionConfirm
+        target={
+          stopAsked
+            ? {
+                name: sessionTitle(stopAsked) ?? `Session ${stopAsked.id.slice(0, 8)}`,
+                box: stopAsked.deviceId ? deviceNameById.get(stopAsked.deviceId) : null,
+              }
+            : null
+        }
+        loading={cancel.isPending}
+        onClose={() => setStopAsked(null)}
+        onConfirm={() => stopAsked && cancel.mutate(stopAsked.id, { onSuccess: () => setStopAsked(null) })}
+      />
       {/* Workspace tier: subscribe to every active-org project room for live updates. */}
       {!projectId && orgProjects.map((p) => <RoomSub key={p.id} projectId={p.id} />)}
 
@@ -522,7 +540,7 @@ function buildMenuItems(row: SessionRow, display: AgentSessionDisplayStatus, a: 
     display === "cancelled_stale";
 
   if (isLive || isQueued) {
-    items.push({ label: "Cancel", icon: "x", danger: true, onSelect: () => a.cancel.mutate(row.id) });
+    items.push({ label: "Stop session", icon: "stop", danger: true, onSelect: () => a.cancel.mutate(row.id) });
   }
   if (isLive || display === "idle") {
     items.push({ label: "Abort", icon: "stop", onSelect: () => a.abort.mutate(row.id) });
@@ -683,15 +701,15 @@ function StatusCell({
   // (ChatScreen/SessionScreen keep that mapping unchanged; this is list-only).
   const awaitingReply = isAwaitingReply(row);
   const outcome = classifySessionOutcome(display, row.failureReason);
-  const chipStatus = awaitingReply
-    ? "waiting"
-    : outcome.bucket === "active"
-      ? statusToChip(display)
-      : outcome.statusKey;
+  const chipStatus = awaitingReply ? "waiting" : sessionChipStatus(display, row.failureReason);
   const reason = failureReasonLabel(row.failureReason) ?? row.failureReason ?? null;
-  const showReason =
-    !!reason && (display === "failed" || display === "stalled" || display === "cancelled_stale");
-  const subLine = showReason ? reason : display === "cancelled" ? outcome.label : null;
+  // Why it ended, or core's note on one it has not, in the sentences the session page and runs tab say.
+  const subLine =
+    display === "failed" || display === "cancelled_stale"
+      ? sessionEndText(row.failureReason)
+      : display === "stalled" && reason
+        ? coreNoteText(reason)
+        : null;
   // Red reason text only for a genuine failure; swept/cleanup reads subtle.
   const reasonColor = outcome.bucket === "failed" ? "var(--amberw-600)" : "var(--fg-subtle)";
   return (

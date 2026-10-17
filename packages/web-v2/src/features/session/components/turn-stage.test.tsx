@@ -229,9 +229,9 @@ describe("what a blocked session's page draws (ISS-1228 criteria 40, 41)", () =>
   });
 
   it("says Blocked in the box's own words and spins nothing", () => {
-    render(<TurnStage stage="blocked" waitingOn="A person — approve the database restore in Coolify" />);
+    render(<TurnStage stage="blocked" waitingOn="Waiting on a person. Approve the database restore in Coolify." />);
     const line = screen.getByTestId("turn-stage");
-    expect(line).toHaveTextContent("Blocked. A person — approve the database restore in Coolify.");
+    expect(line).toHaveTextContent("Blocked. Waiting on a person. Approve the database restore in Coolify.");
     expect(line).not.toHaveTextContent(/Working/);
     expect(screen.queryByRole("status")).toBeNull();
   });
@@ -275,5 +275,14 @@ describe("what the page of a session doing something specific draws (ISS-1228 ro
   it("says Working where the session's word is Working", () => {
     render(<TurnStage stage="working" activity="Working" />);
     expect(screen.getByTestId("turn-stage")).toHaveTextContent("Working…");
+  });
+});
+
+// ISS-1228 round 13: a person's stop, stored as failed, read Failed on the session page's turn line.
+describe("a stopped session's turn line", () => {
+  it("draws nothing for a person's stop, as for a cancelled session, and Failed for a failure", () => {
+    expect(sessionTurnStage({ live: false, display: "failed", failureReason: "user_cancelled" })).toBeNull();
+    expect(sessionTurnStage({ live: false, display: "cancelled" })).toBeNull();
+    expect(sessionTurnStage({ live: false, display: "failed", failureReason: "heartbeat_timeout" })).toBe("failed");
   });
 });

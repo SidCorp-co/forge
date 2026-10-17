@@ -77,9 +77,12 @@ export function sessionComposerState(
 export function sessionTurnStage({
   live,
   display,
+  failureReason,
   fromMessages,
   tail,
 }: {
+  /** Why core ended the session: a person's stop draws no line, as a cancelled session does. */
+  failureReason?: string | null;
   /** The screen's own liveness, so which statuses are live is stated in one place and not two. */
   live: boolean;
   display: AgentSessionDisplayStatus;
@@ -90,6 +93,7 @@ export function sessionTurnStage({
 }): TurnStage | null {
   if (live && display === "stalled") return "quiet";
   if (live && display === "blocked") return "blocked";
+  if (display === "failed" && failureReason === "user_cancelled") return null;
   return turnStageOf({
     live,
     failed: display === "failed",

@@ -11,6 +11,8 @@ import {
   quietLastReportedText,
   quietWhyText,
   sessionDisagreementText,
+  sessionEndedText,
+  waitingOnText,
 } from "./status-sentences";
 
 describe("the lease disagreement, in one sentence (ISS-1228 round 12)", () => {
@@ -49,7 +51,15 @@ describe("every status sentence, capitalised and stopped", () => {
     coreNoteText("Its box went offline"),
     quietLastReportedText("Last reported working", "1m ago"),
     quietLastReportedText("Last reported working", null),
-    blockedText("A person — approve the restore"),
+    blockedText(waitingOnText("human", "approve the restore")),
+    blockedText(null),
+    waitingOnText("human", "approve the database restore in Coolify"),
+    waitingOnText("machine", null),
+    waitingOnText("nobody", null),
+    waitingOnText(null, "the deploy window"),
+    sessionEndedText("heartbeat_timeout", "No heartbeat"),
+    sessionEndedText("user_cancelled", "Stopped"),
+    sessionEndedText("session_stopped_checking_in", null),
     quietWhyText("Last reported working", "2m ago"),
   ];
 
@@ -63,8 +73,25 @@ describe("every status sentence, capitalised and stopped", () => {
 
   it("says the offline box, a quiet run, core's note and a bare block as sentences", () => {
     expect(boxOfflineText("3m ago")).toBe("The box is offline. It last reported 3m ago.");
-    expect(quietForText("11m", true)).toBe("Quiet. Core is ending it as failed. No report for 11m.");
+    expect(quietForText("11m", true)).toBe("Quiet. Core is ending it as failed. No check-in for 11m.");
     expect(coreNoteText("Its box went offline.")).toBe("Core's note on this session: Its box went offline.");
-    expect(blockedText(null)).toBe("Blocked");
+    expect(blockedText(null)).toBe("Blocked.");
+  });
+
+  // ISS-1228 round 13: the runs tab said "Waiting on a person — approve …" with no stop, while the
+  // session page said "Blocked. A person — approve …."; core ending a session printed a bare label.
+  it("says a blocked wait in the same sentences wherever it is shown", () => {
+    expect(waitingOnText("human", "approve the database restore in Coolify")).toBe(
+      "Waiting on a person. Approve the database restore in Coolify.",
+    );
+    expect(blockedText(waitingOnText("human", "approve the database restore in Coolify"))).toBe(
+      "Blocked. Waiting on a person. Approve the database restore in Coolify.",
+    );
+    expect(waitingOnText("nobody", null)).toBe("Waiting on nobody. This run is a failure with a name.");
+  });
+
+  it("says why a session ended as sentences, and a person's stop in one way", () => {
+    expect(sessionEndedText("heartbeat_timeout", "No heartbeat")).toBe("The session ended. No heartbeat.");
+    expect(sessionEndedText("user_cancelled", "Stopped")).toBe("A person stopped the session.");
   });
 });

@@ -195,7 +195,8 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
       status: 'open',
       released: false,
       masters: 2,
-      boxesReached: 1,
+      boxesHeard: 1,
+      taken: 0,
     });
     expect(wakeMastersForProject).toHaveBeenCalledTimes(1);
   });
