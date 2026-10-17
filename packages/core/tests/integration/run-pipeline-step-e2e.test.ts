@@ -208,10 +208,16 @@ describe("a stop reads the same on the issue's runs as on the session (ISS-1228 
     const sessionId = await runSessionHolding(1, 'running');
     const auth = { authorization: `Bearer ${jwt}` };
 
-    const stop = await fetch(`${server.baseUrl}/api/agent-sessions/${sessionId}/cancel`, { method: 'POST', headers: auth });
+    const stop = await fetch(`${server.baseUrl}/api/agent-sessions/${sessionId}/cancel`, {
+      method: 'POST',
+      headers: auth,
+    });
     expect(stop.status).toBe(200);
 
-    const res = await fetch(`${server.baseUrl}/api/run-journal?projectId=${projectId}&issueId=${issueId}`, { headers: auth });
+    const res = await fetch(
+      `${server.baseUrl}/api/run-journal?projectId=${projectId}&issueId=${issueId}`,
+      { headers: auth },
+    );
     const { runs } = (await res.json()) as { runs: Array<{ status: string }> };
     expect(runs.map((r) => r.status)).toEqual(['cancelled']);
   });
