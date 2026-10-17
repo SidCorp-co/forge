@@ -97,9 +97,9 @@ function dueAtSql(): SQL {
   const arms = WATCHED_STATUSES.map((status) => {
     const rule = STRAND_RULES[status];
     const ms = rule.watch ? rule.graceMs : 0;
-    return sql`WHEN ${status} THEN i.idle_since + (${ms} * interval '1 millisecond')`;
+    return sql`WHEN ${status} THEN ${ms} * interval '1 millisecond'`;
   });
-  return sql`(CASE i.status ${sql.join(arms, sql` `)} ELSE i.idle_since END)`;
+  return sql`(i.idle_since + CASE i.status ${sql.join(arms, sql` `)} ELSE interval '0' END)`;
 }
 
 /** When nothing has worked the row since, never its last write: a title edit is not work (ISS-1229). */
@@ -112,8 +112,8 @@ const IDLE_SINCE = lastWorkedAtSql({
 });
 
 /** One read of the candidates: a watched status, a live project, nothing running, then `where`.
- *  The inner read names its row `w` and the outer `i`, so `where` and `order` read `i.idle_since`
- *  once computed rather than recomputing it per clause. */
+ *  `OFFSET 0` keeps the inner read whole, so `i.idle_since` is computed once a row: inlined into
+ *  every clause, a 1,000-row board planned past the JIT threshold and spent 24s compiling it. */
 async function selectCandidates(args: {
   scope: { projectId?: string };
   where: SQL;
@@ -153,6 +153,7 @@ async function selectCandidates(args: {
            AND p.archived_at IS NULL
            AND ${live}
            ${scoped}
+        OFFSET 0
       ) i
      WHERE ${args.where}
      ORDER BY ${args.order}
