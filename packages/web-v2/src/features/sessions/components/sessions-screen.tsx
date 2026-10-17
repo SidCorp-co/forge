@@ -2,7 +2,7 @@
 
 // web-v2 shared Sessions index — used at BOTH the workspace tier
 // (`/sessions`, cross-project, no `scope.projectId`) and the project tier
-// (under the Agents shell, scoped + Sweep zombies). ISS-291. Rows link to the
+// (under the Agents shell, scoped + End silent sessions). ISS-291. Rows link to the
 // session detail (`/projects/:slug/agents/:id`) and back to their issue
 // (ISS-331); the project slug is resolved per row from the projects list.
 import { useMemo, useState } from "react";
@@ -47,6 +47,7 @@ import { IssueRefBadge } from "@/features/issues/components/issue-ref-badge";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
+import { EndSilentSessions } from "./end-silent-sessions";
 import { FleetStrip } from "./fleet-strip";
 import { SessionReplyPanel } from "./session-reply-panel";
 import {
@@ -55,7 +56,6 @@ import {
   useRerunSession,
   useRetrySession,
   useSessions,
-  useSweepZombies,
 } from "../hooks";
 import {
   deriveLiveness,
@@ -215,7 +215,6 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
   const retry = useRetrySession();
   const rerun = useRerunSession();
   const abort = useAbortSession();
-  const sweep = useSweepZombies();
 
   const rows = useMemo(() => {
     const all = sessionsQ.data?.items ?? [];
@@ -339,7 +338,7 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
 
       {/* Compact header (ISS-391): title + the four headline metrics collapsed
           into a single inline summary strip (was a 4-card grid that ate a tall
-          band of mostly 0/— on quiet projects), with Sweep on the same row. */}
+          band of mostly 0/— on quiet projects), with End silent sessions on the same row. */}
       <header className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5">
           <PageTitle className="fg-h2">Sessions</PageTitle>
@@ -357,23 +356,8 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
             />
           </div>
         </div>
-        {projectId ? (
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="trash"
-            loading={sweep.isPending}
-            onClick={() => sweep.mutate(projectId)}
-          >
-            Sweep zombies
-          </Button>
-        ) : (
-          <Tooltip label="Available on a project's sessions page (owner/admin).">
-            <Button variant="secondary" size="sm" icon="trash" disabled>
-              Sweep zombies
-            </Button>
-          </Tooltip>
-        )}
+        <EndSilentSessions projectId={projectId ?? null} />
+
       </header>
 
       {/* Fleet-runner rollup (ISS-378) — per-device chips + the no-runner

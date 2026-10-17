@@ -21,6 +21,11 @@ export const BOX_SENT_NO_REPORT = "The box has not reported.";
 
 export const MASTER_HAS_NO_REPORT = "A box reports runs, not masters.";
 
+export function endedSilentText(r: { queueTimedOut: number; heartbeatTimedOut: number }): string {
+  const n = r.queueTimedOut + r.heartbeatTimedOut;
+  return n === 0 ? "No session was silent." : `Ended ${n} silent session${n === 1 ? "" : "s"}.`;
+}
+
 export type SessionDisagreement = "box-live-core-terminal" | "box-exited-core-running";
 
 const CORE_SAYS: Record<SessionDisagreement, string> = {

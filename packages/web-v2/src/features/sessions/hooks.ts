@@ -4,6 +4,7 @@ import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tansta
 import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";
 import { type ListSessionsOpts, sessionsApi } from "./api";
+import { endedSilentText } from "./status-sentences";
 import { isInteractiveSession, LIVE_READ_POLL_MS } from "./types";
 
 /** Sessions list. Keyed `['agent-sessions','list',opts]` — WS-invalidated, and re-read on the live
@@ -118,9 +119,6 @@ export function useAbortSession() {
 export function useSweepZombies() {
   return useSessionMutation((projectId: string) => sessionsApi.sweepZombies(projectId), {
     alsoInvalidateQueueStats: true,
-    successMessage: (d) =>
-      `Swept ${d.queueTimedOut + d.heartbeatTimedOut} zombie${
-        d.queueTimedOut + d.heartbeatTimedOut === 1 ? "" : "s"
-      }`,
+    successMessage: endedSilentText,
   });
 }

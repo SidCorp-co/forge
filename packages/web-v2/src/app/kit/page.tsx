@@ -264,8 +264,8 @@ function ToastButtons() {
       <Button size="sm" variant="primary" icon="plus" onClick={() => toast({ title: "Issue created", description: "FRG-242 · routed to triage", tone: "success" })}>
         Create issue
       </Button>
-      <Button size="sm" variant="secondary" icon="trash" onClick={() => toast({ title: "Swept 1 zombie", description: "S-1037 cancelled", tone: "info" })}>
-        Sweep zombies
+      <Button size="sm" variant="secondary" icon="trash" onClick={() => toast({ title: "Ended 1 silent session.", tone: "info" })}>
+        End silent sessions
       </Button>
       <Button size="sm" variant="danger" icon="alert" onClick={() => toast({ title: "Runner lost connection", description: "ci-runner-01 — retrying", tone: "error" })}>
         Trigger error
