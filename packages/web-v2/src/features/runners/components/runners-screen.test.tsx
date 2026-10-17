@@ -300,12 +300,18 @@ describe("the page's sections", () => {
 // ISS-1228 round 13: judge-34 at 390 found Manage, Turn off and Revoke past the right edge until the
 // device table was scrolled sideways. At phone width each device is a row of its own instead.
 describe("the device list at phone width", () => {
-	const phoneWidth = (matches: boolean) =>
+	// Evaluates the query as a browser at that width would, so a query that lost its negation reads
+	// the wrong side of the breakpoint here too.
+	const atWidth = (px: number) =>
 		vi.stubGlobal(
 			"matchMedia",
 			(query: string) =>
 				({
-					matches: matches && query.includes("min-width: 40rem"),
+					matches: /^not all and \(min-width: 40rem\)$/.test(query)
+						? px < 640
+						: /^\(min-width: 40rem\)$/.test(query)
+							? px >= 640
+							: false,
 					media: query,
 					addEventListener: () => undefined,
 					removeEventListener: () => undefined,
@@ -315,7 +321,7 @@ describe("the device list at phone width", () => {
 	afterEach(() => vi.unstubAllGlobals());
 
 	it("stacks each device with its actions in view, and draws no table to scroll", async () => {
-		phoneWidth(true);
+		atWidth(390);
 		listDevices.mockResolvedValue([device()]);
 		await show();
 		const list = await screen.findByRole("list", { name: "Devices" });
@@ -323,13 +329,14 @@ describe("the device list at phone width", () => {
 		const row = within(list).getByRole("listitem");
 		expect(row).toHaveTextContent("my-laptop");
 		expect(row).toHaveTextContent("Last seen never");
+		expect(row).toHaveTextContent("Git push none");
 		for (const name of ["Manage", "Turn off", "Revoke"]) {
 			expect(within(row).getByRole("button", { name })).toBeTruthy();
 		}
 	});
 
 	it("keeps the table from sm up", async () => {
-		phoneWidth(false);
+		atWidth(1280);
 		listDevices.mockResolvedValue([device()]);
 		await show();
 		expect(await screen.findByRole("table")).toBeTruthy();

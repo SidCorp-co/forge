@@ -182,12 +182,14 @@ export function stateLabelAt(
 ): StateLabel {
   const state = runState(row);
   const meta = LABELS[state];
+  // A person's stop keeps the one word every surface says it with, whatever the box says of its
+  // process; the disagreement line beside the chip says what the box reports.
+  if (state !== "closed" && coreEnded(row) && row.sessionFailureReason === "user_cancelled") {
+    return { label: STOPPED_WORD, detail: ENDED_DETAIL, tone: "neutral" };
+  }
   if (state !== "live-runnable" && state !== "live-blocked") return meta;
-  // An ended session is neither quiet nor doing anything: core no longer takes its check-ins. A
-  // person's stop keeps the one word every surface says it with; the disagreement line beside the
-  // chip still says what the box reports.
+  // An ended session is neither quiet nor doing anything: core no longer takes its check-ins.
   if (coreEnded(row)) {
-    if (row.sessionFailureReason === "user_cancelled") return { label: STOPPED_WORD, detail: ENDED_DETAIL, tone: "neutral" };
     return { label: lastReported(row.work === "blocked" ? BLOCKED_WORD : WORKING_WORD), detail: ENDED_DETAIL, tone: "neutral" };
   }
   const coreLive = row.sessionStatus != null;

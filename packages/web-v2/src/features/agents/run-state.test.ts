@@ -61,6 +61,19 @@ describe("stateLabelAt", () => {
     });
     expect(stateLabelAt(row({ sessionStatus: "failed" }), NOW).label).toBe("Last reported working");
   });
+
+  it("calls a run a person stopped Stopped whatever its box says of its process, until the run closes", () => {
+    const stopped = { sessionStatus: "failed", sessionFailureReason: "user_cancelled" };
+    for (const [incarnation, work] of [
+      ["live", "runnable"],
+      ["live", "blocked"],
+      ["exited", "blocked"],
+      ["exited", "runnable"],
+    ]) {
+      expect(stateLabelAt(row({ ...stopped, incarnation, work }), NOW).label, `${incarnation} ${work}`).toBe("Stopped");
+    }
+    expect(stateLabelAt(row({ ...stopped, work: "done" }), NOW).label).toBe("Closed");
+  });
 });
 
 // ISS-1228 round 13: judge-34 saw an ended run read "Quiet. No report for 19m." beside its box's

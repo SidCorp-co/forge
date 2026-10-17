@@ -247,16 +247,18 @@ function DeviceStatus({ device }: { device: DeviceRow | OrgDeviceRow }) {
   );
 }
 
-function GitPush({ device }: { device: DeviceRow | OrgDeviceRow }) {
+/** `named` where no column heading says what the value is of. */
+function GitPush({ device, named = false }: { device: DeviceRow | OrgDeviceRow; named?: boolean }) {
+  const prefix = named ? "Git push " : "";
   return device.gitCredentialRef ? (
     <span className="inline-flex items-center gap-1.5 text-13 text-fg">
       <Icon name="check" size={14} className="text-[color:var(--green-600)]" />
-      provisioned
+      {prefix}provisioned
     </span>
   ) : (
     <span className="inline-flex items-center gap-1.5 text-13 text-subtle">
       <Icon name="dot" size={14} />
-      none
+      {prefix}none
     </span>
   );
 }
@@ -426,7 +428,7 @@ export function RunnersScreen() {
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
                       <DeviceStatus device={d} />
                       <MonoTag>{d.platform}</MonoTag>
-                      <GitPush device={d} />
+                      <GitPush device={d} named />
                       <span className="fg-body-sm text-muted">
                         Last seen {formatRelativeTime(d.lastSeenAt, { emptyLabel: "never" })}
                       </span>
