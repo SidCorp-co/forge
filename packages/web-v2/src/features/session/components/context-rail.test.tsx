@@ -16,6 +16,9 @@ let siblingRows: SessionRow[] = [];
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/features/runners/hooks", () => ({ useDevices }));
+vi.mock("@/features/project-dashboard/runner-fleet", () => ({
+	useRunnerFleet: () => ({ summary: { lines: [] }, activity: { read: "pending" } }),
+}));
 vi.mock("@/features/runs/hooks", () => ({ useRun: () => ({ data: undefined }) }));
 vi.mock("@/features/sessions/hooks", () => ({
 	useSessionCost: () => ({ data: undefined }),

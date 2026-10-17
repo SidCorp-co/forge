@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/session-vocabulary.js';
+import { boxAnswersSql } from '../jobs/box-answers.js';
 import { parkedOnAHuman, residencySeconds } from '../jobs/park-deadline.js';
 import { LIVE_SESSION_STATUSES } from '../lifecycle/status-sets.js';
 import { type SilenceSubject, silenceDeadline } from './session-silence.js';
@@ -31,6 +32,7 @@ interface SilenceRow {
   residency_s: number | string;
   sweep_beat_at: Ms;
   runner_seen_at: Ms;
+  runner_answers: boolean;
   run_started_at: Ms;
 }
 
@@ -86,6 +88,7 @@ async function readClosure(ids: readonly string[]): Promise<SilenceRow[]> {
            ${residencySeconds(sql`s.project_id`)} AS residency_s,
            ${epoch('COALESCE(s.last_heartbeat_at, s.started_at, s.updated_at, s.created_at)')} AS sweep_beat_at,
            (SELECT ${epoch('MAX(rn.last_seen_at)')} FROM runners rn WHERE rn.device_id = s.device_id) AS runner_seen_at,
+           ${boxAnswersSql(sql`s.device_id`)} AS runner_answers,
            ${epoch('r.started_at')} AS run_started_at
       FROM agent_sessions s
       LEFT JOIN pipeline_runs r
@@ -171,6 +174,7 @@ export async function loadSilenceDeadlines(
                   return {
                     beatAt: Number(t.sweep_beat_at),
                     runnerSeenAt: ms(t.runner_seen_at),
+                    runnerAnswers: t.runner_answers,
                     parked: t.parked,
                     endsBy: earliest(own(t.id, false), above ? final(above.id) : null),
                   };

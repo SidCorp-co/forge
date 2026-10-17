@@ -6,7 +6,7 @@ import { useCallback, useMemo, useRef } from "react";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
-import { type CreateIssueInput, type PatchIssueInput, type CarriedDecisionBody, type CreateReleaseBatchResult, type LabelAttach, type MarkMergedBody, issuesApi, modulesApi, releaseBatchApi } from "./api";
+import { type CreateIssueInput, type PatchIssueInput, type CarriedDecisionBody, type CreateReleaseBatchResult, type LabelAttach, type MarkMergedBody, type RunAnswer, issuesApi, modulesApi, releaseBatchApi } from "./api";
 import { registryApi } from "./registry-api";
 import type {
   IssueLabel,
@@ -340,9 +340,28 @@ export function useDeclareLandingShape(issueId: string) {
   });
 }
 
+/** What a press of Run did, in words: it offers the issue and queues nothing (ISS-1228 round 11). */
+export function runAnswerText(a: RunAnswer): string {
+  const heard =
+    a.boxesReached === 0
+      ? "no box heard it now; a master reads it on its next pass"
+      : `${a.boxesReached} ${a.boxesReached === 1 ? "box" : "boxes"} heard it`;
+  return a.released ? `Released past the entry gate — ${heard}` : `Offered to this project's masters — ${heard}`;
+}
+
 export function useRunPipelineStep() {
-  return useIssueMutation((args: { id: string }) =>
-    issuesApi.runPipelineStep(args.id), { successMessage: "Pipeline step queued" });
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: (id: string) => issuesApi.runPipelineStep(id),
+    onSuccess: (answer) => {
+      qc.invalidateQueries({ queryKey: ["issues"] });
+      toast({ title: runAnswerText(answer), tone: "success" });
+    },
+    onError: (err) => {
+      toast({ title: "Run refused", description: formatApiError(err), tone: "error" });
+    },
+  });
 }
 
 

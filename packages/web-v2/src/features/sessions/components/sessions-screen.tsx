@@ -31,12 +31,13 @@ import {
   Tooltip,
   TR,
   type MenuItem,
+  formatElapsed,
   type SegmentOption,
-  useElapsed,
   WORKING_WORD,
 } from "@/design";
 import { TONE_META } from "@/design/status";
 import { SessionChip } from "./session-chip";
+import { useSessionDuration } from "../session-duration";
 import { isWaitingForInput, sessionWord } from "../session-word";
 import { useOrgScopedProjects, useProject, useProjects } from "@/features/projects/hooks";
 import { useDevices } from "@/features/runners/hooks";
@@ -82,16 +83,6 @@ interface SessionsScreenProps {
    *  `issueId` (when set) filters the list to one issue's sessions — used by
    *  the issue-detail "Open sessions" deep-link (`?issue=<uuid>`). */
   scope?: { projectId?: string; issueId?: string };
-}
-
-/** Mirror of `useElapsed`'s formatter for static (terminal) durations. */
-function formatDuration(ms: number): string {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  const m = Math.floor(s / 60);
-  const h = Math.floor(m / 60);
-  if (h > 0) return `${h}h ${String(m % 60).padStart(2, "0")}m`;
-  if (m > 0) return `${m}m ${String(s % 60).padStart(2, "0")}s`;
-  return `${s}s`;
 }
 
 /** Short absolute timestamp for the Started column, or "—" when absent/invalid.
@@ -343,7 +334,7 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
             />
             <StatPill
               label="Median wait"
-              value={stats.queued > 0 ? formatDuration(stats.medianWaitMs) : "—"}
+              value={stats.queued > 0 ? formatElapsed(stats.medianWaitMs) : "—"}
             />
           </div>
         </div>
@@ -725,12 +716,7 @@ function StatusCell({
 }
 
 function useRowDuration(row: SessionRow, display: AgentSessionDisplayStatus): string {
-  const live = isLiveDisplay(display);
-  const startMs = row.startedAt ? new Date(row.startedAt).getTime() : undefined;
-  const elapsed = useElapsed(startMs, live);
-  if (!startMs) return "—";
-  if (live) return elapsed;
-  return formatDuration(new Date(row.updatedAt).getTime() - startMs);
+  return useSessionDuration(row, isLiveDisplay(display));
 }
 
 function SessionTableRow({

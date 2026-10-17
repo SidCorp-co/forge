@@ -1,4 +1,4 @@
-import { SILENCE_WORD, type SemanticTone, WORKING_WORD } from "@/design/status";
+import { lastReported, SILENCE_WORD, type SemanticTone, WORKING_WORD } from "@/design/status";
 import { liveSessionWord } from "@/features/sessions/session-word";
 import {
   ENDING_AS_FAILED,
@@ -6,7 +6,7 @@ import {
   sessionSilence,
   TERMINAL_SESSION_STATUSES,
 } from "@/features/sessions/types";
-import { formatElapsed } from "@/lib/utils/format";
+import { formatElapsed, formatRelativeTime } from "@/lib/utils/format";
 import type { RunSessionRow } from "./types";
 
 /** `incarnation × work`, which is what the ledger actually stores. */
@@ -77,9 +77,14 @@ const LABELS: Record<RunState, StateLabel> = {
 export interface CloseMarks {
   sessionTerminal: boolean;
   worktreeGone: boolean;
-  /** `null` when the run carries no issues, so "all returned" is not claimed of nothing. */
+  /** `null` when the run carries no issues, so "all returned" is not claimed of nothing. A lease
+   *  counts as returned only where the box says so and core no longer holds it. */
   leasesReturned: { returned: number; total: number } | null;
 }
+
+/** The issues the box calls returned whose lease core still holds: core refuses another run on them. */
+export const leasesCoreStillHolds = (row: Pick<RunSessionRow, "issues">): string[] =>
+  (row.issues ?? []).filter((i) => i.leaseReturned && i.coreHolds === true).map((i) => i.issueKey);
 
 export function closeMarks(row: Pick<RunSessionRow, "sessionTerminalAt" | "worktreeGoneAt" | "issues">): CloseMarks {
   const issues = row.issues ?? [];
@@ -88,9 +93,25 @@ export function closeMarks(row: Pick<RunSessionRow, "sessionTerminalAt" | "workt
     worktreeGone: row.worktreeGoneAt != null,
     leasesReturned: issues.length === 0
       ? null
-      : { returned: issues.filter((i) => i.leaseReturned).length, total: issues.length },
+      : {
+          returned: issues.filter((i) => i.leaseReturned && i.coreHolds !== true).length,
+          total: issues.length,
+        },
   };
 }
+
+/** The box and core disagreeing about a lease, which is the one a second run is refused on. */
+export function leaseDisagreementText(row: Pick<RunSessionRow, "issues">): string | null {
+  const held = leasesCoreStillHolds(row);
+  if (held.length === 0) return null;
+  return held.length === 1
+    ? `the box says it returned ${held[0]} · core still holds it`
+    : `the box says it returned ${held.join(", ")} · core still holds them`;
+}
+
+/** Core reads the box as offline, so nothing it last said is true now. */
+export const boxOffline = (row: Pick<RunSessionRow, "deviceStatus">): boolean =>
+  row.deviceStatus != null && row.deviceStatus !== "online";
 
 const BLOCKER_TEXT: Record<string, string> = {
   machine: "a machine",
@@ -146,6 +167,7 @@ export function pulseText(p: Pulse): string | null {
 
 const QUIET_DETAIL =
   "The box last reported this, and core has heard nothing from the run's session since.";
+const OFFLINE_DETAIL = "The box is offline: this is what it last reported, not what it is doing.";
 
 /**
  * The chip a run's row shows at `nowMs`. Where the box claims a process, the row says what its
@@ -157,7 +179,8 @@ export function stateLabelAt(
   row: Pick<
     RunSessionRow,
     "incarnation" | "work" | "lastActivityAt" | "silenceLimitMs" | "sessionStatus" | "sessionRuntimeState"
-  >,
+  > &
+    Partial<Pick<RunSessionRow, "deviceStatus">>,
   nowMs: number,
 ): StateLabel {
   const state = runState(row);
@@ -176,6 +199,9 @@ export function stateLabelAt(
     nowMs,
   );
   if (word.quiet) return { label: word.label, detail: QUIET_DETAIL, tone: word.tone };
+  if (boxOffline(row)) {
+    return { label: lastReported(word.activity), detail: OFFLINE_DETAIL, tone: "neutral" };
+  }
   return coreLive ? { label: word.label, detail: meta.detail, tone: word.tone } : meta;
 }
 
@@ -214,7 +240,29 @@ const DISAGREEMENT_TEXT: Record<Disagreement, string> = {
   "box-exited-core-running": "the box says the process is gone · core still has the session running",
 };
 
-export const disagreementText = (d: Disagreement): string => DISAGREEMENT_TEXT[d];
+/** What an offline box last said is quoted with when it said it, never in the present tense. */
+const OFFLINE_DISAGREEMENT_TEXT: Record<Disagreement, (when: string) => string> = {
+  "box-live-core-terminal": (when) =>
+    `the box said this was live ${when} and is offline now · core says the session ended`,
+  "box-exited-core-running": (when) =>
+    `the box said the process was gone ${when} and is offline now · core still has the session running`,
+};
+
+export function disagreementText(
+  d: Disagreement,
+  row: Pick<RunSessionRow, "observedAt"> & Partial<Pick<RunSessionRow, "deviceStatus">>,
+): string {
+  return boxOffline(row) ? OFFLINE_DISAGREEMENT_TEXT[d](formatRelativeTime(row.observedAt)) : DISAGREEMENT_TEXT[d];
+}
+
+/** An offline box claiming a process, where nothing else on the row already says the box is offline. */
+export function offlineText(
+  row: Pick<RunSessionRow, "incarnation" | "observedAt" | "sessionId" | "sessionStatus"> &
+    Partial<Pick<RunSessionRow, "deviceStatus">>,
+): string | null {
+  if (!boxOffline(row) || !boxClaimsAProcess(row.incarnation) || disagreement(row)) return null;
+  return `the box is offline · it last reported ${formatRelativeTime(row.observedAt)}`;
+}
 
 /** Why core failed this run's session, in words, or `null` where core holds no reason. */
 export function endReasonText(

@@ -11,15 +11,18 @@ import type { SessionRow } from "@/features/sessions/types";
 import { WORKING_WORD } from "@/design";
 import { SessionScreen } from "./session-screen";
 import { BLOCKED_HOLD } from "./turn-stage";
+import { LAST_TURN_SHOWS_WHERE } from "./context-rail";
 
 expect.extend(matchers);
 
 const NOW = Date.parse("2026-10-16T08:00:00.000Z");
-const { send, idle, page } = vi.hoisted(() => ({
+const { send, idle, page, box } = vi.hoisted(() => ({
   send: vi.fn(),
   idle: () => ({ mutate: () => {}, mutateAsync: async () => {}, isPending: false }),
   page: { session: undefined as unknown },
+  box: { status: "online" as "online" | "offline" },
 }));
+const read = (data: unknown) => ({ data, isError: false, error: null, isLoading: false });
 
 const session: SessionRow = {
   id: "s1",
@@ -60,11 +63,17 @@ vi.mock("@/features/projects/hooks", () => ({
   useProjects: () => ({ data: [{ id: "p1", slug: "qa", name: "QA", role: "owner" }] }),
 }));
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));
-vi.mock("@/features/pipeline/hooks", () => ({ useSessionsAndHolds: () => ({ data: undefined }) }));
+vi.mock("@/features/pipeline/hooks", () => ({ useSessionsAndHolds: () => read({ sessions: [] }) }));
 vi.mock("@/features/runs/hooks", () => ({ useRun: () => ({ data: undefined, isLoading: false }) }));
-vi.mock("@/features/runners/hooks", () => ({ useDevices: () => ({ data: [] }) }));
+vi.mock("@/features/runners/hooks", () => ({
+  useDevices: () => read([{ id: "d1", name: "bravo", platform: "linux", agentVersion: "0.99.0", status: box.status }]),
+  useProjectRunners: () =>
+    read([{ runnerId: "r1", deviceId: "d1", deviceName: "bravo", platform: "linux", deviceStatus: box.status, runnerStatus: "online", limitReason: null, rateLimitedUntil: null, labels: [] }]),
+  useActiveRunners: () => read({ runners: [] }),
+}));
 vi.mock("@/features/sessions/hooks", () => ({
   useSessionCost: () => ({ data: undefined, isLoading: false }),
+  useQueueStats: () => read({ devices: [] }),
   useSessions: () => ({ data: { items: [], totalCount: 0 }, isLoading: false }),
 }));
 vi.mock("../hooks", () => ({
@@ -148,6 +157,76 @@ describe("a session's own page says what it is doing (ISS-1228 round 10)", () =>
       expect(screen.queryByText(new RegExp(WORKING_WORD))).not.toBeInTheDocument();
     } finally {
       page.session = session;
+    }
+  });
+});
+
+// ISS-1228 r11 repair: an ended session's turn line ran its clock to the moment the page loaded while
+// Run stats read started to ended, and its blocked card sent the reader to the session they were on
+// and to a Retry the page does not have (criterion 70).
+describe("a session that stopped checking in, on its own page", () => {
+  const ended: SessionRow = {
+    ...session,
+    status: "failed",
+    failureReason: "session_stopped_checking_in",
+    report: null,
+    startedAt: new Date(NOW - 41 * 60_000).toISOString(),
+    updatedAt: new Date(NOW - 32_000).toISOString(),
+  };
+
+  it("shows one duration, started to ended, that does not move as time passes", () => {
+    page.session = ended;
+    try {
+      const { rerender } = render(<SessionScreen sessionId="s1" projectSlug="qa" />);
+      expect(screen.getByTestId("turn-stage")).toHaveTextContent(/Failed\s*· 40m 28s/);
+      expect(screen.getByTitle("Duration")).toHaveTextContent("40m 28s");
+      vi.setSystemTime(NOW + 3 * 60_000);
+      rerender(<SessionScreen sessionId="s1" projectSlug="qa" />);
+      expect(screen.getByTestId("turn-stage")).toHaveTextContent(/Failed\s*· 40m 28s/);
+    } finally {
+      page.session = session;
+    }
+  });
+
+  it("names the button the page has, and points at no conversation it does not hold", () => {
+    page.session = ended;
+    try {
+      render(<SessionScreen sessionId="s1" projectSlug="qa" />);
+      const card = screen.getByText(/runner kept answering/).closest("[role]") ?? document.body;
+      expect(screen.getByRole("button", { name: "Rerun" })).toBeVisible();
+      expect(card).toHaveTextContent("Rerun");
+      expect(card).not.toHaveTextContent(/Retry|open the session|conversation/);
+    } finally {
+      page.session = session;
+    }
+  });
+
+  it("sends the reader to the conversation's last turn where the page holds one", () => {
+    page.session = { ...ended, messages: [{ role: "assistant", content: "Restoring the staging database" }] };
+    try {
+      render(<SessionScreen sessionId="s1" projectSlug="qa" />);
+      expect(screen.getByText(LAST_TURN_SHOWS_WHERE)).toBeVisible();
+    } finally {
+      page.session = session;
+    }
+  });
+});
+
+// ISS-1228 r11 repair: the session page's Runner pill said bravo was Idle while the sessions strip, on the
+// same box, said Offline. The pill reads the strip's own line now; an offline box is never Idle.
+describe("the session page's Runner pill", () => {
+  it.each([
+    ["offline", "Offline"],
+    ["online", "Free · 0/1"],
+  ] as const)("says what the sessions strip says of a box that is %s", (status, word) => {
+    box.status = status;
+    try {
+      render(<SessionScreen sessionId="s1" projectSlug="qa" />);
+      const runner = screen.getByText("bravo").closest("section") ?? document.body;
+      expect(runner).toHaveTextContent(word);
+      expect(runner).not.toHaveTextContent(/Idle|Healthy/);
+    } finally {
+      box.status = "online";
     }
   });
 });

@@ -1,6 +1,7 @@
 import { and, eq, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
+import { boxAnswersSql } from '../jobs/box-answers.js';
 import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
@@ -9,7 +10,8 @@ import { SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';
 const TERMINAL = sql.raw(terminalAgentSessionStatuses.map((s) => `'${s}'`).join(', '));
 
 /**
- * Close the master sessions whose box has stopped answering, and say how many.
+ * Close the master sessions that have stopped checking in, and say how many. The reason names
+ * the box only where the box has stopped answering too.
  *
  * Flipping the row terminal invokes the descent in `applyKernelTransition`,
  * which returns the children's issue leases.
@@ -23,7 +25,7 @@ const TERMINAL = sql.raw(terminalAgentSessionStatuses.map((s) => `'${s}'`).join(
 export async function reapSilentMasters(): Promise<number> {
   const staleSeconds = SESSION_SILENCE_TIMEOUT_S;
   const silent = (await db.execute(sql`
-    SELECT s.id, s.device_id, s.project_id
+    SELECT s.id, s.device_id, s.project_id, ${boxAnswersSql(sql`s.device_id`)} AS box_answers
     FROM agent_sessions s
     WHERE s.kind = ${MASTER_SESSION_KIND}
       AND s.status NOT IN (${TERMINAL})
@@ -44,11 +46,18 @@ export async function reapSilentMasters(): Promise<number> {
     const flipped = await applyKernelTransition(db, {
       entity: 'session',
       to: 'failed',
-      set: {
-        failureReason: 'runner_unreachable',
-        failureDetail: 'master-reaper: heartbeat stopped',
-        updatedAt: new Date(),
-      },
+      set:
+        row.box_answers === true
+          ? {
+              failureReason: 'session_stopped_checking_in',
+              failureDetail: 'master-reaper: the master stopped checking in while its box answered',
+              updatedAt: new Date(),
+            }
+          : {
+              failureReason: 'runner_unreachable',
+              failureDetail: 'master-reaper: heartbeat stopped',
+              updatedAt: new Date(),
+            },
       where: and(
         eq(agentSessions.id, sessionId),
         notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),

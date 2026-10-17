@@ -116,7 +116,14 @@ export const costSummarySchema = z.object({
 
 export const runPipelineStepAnswerSchema = z.object({
   issueId: z.string(),
-  status: z.literal('awaiting_release'),
+  /** The issue's own status, which a press does not move. */
+  status: z.enum(issueStatuses),
+  /** This press released the issue past a closed entry gate. */
+  released: z.boolean(),
+  /** Master sessions core holds live on the project. */
+  masters: z.number().int().positive(),
+  /** Boxes the wake reached: a box room with a listener, not a count of masters. */
+  boxesReached: z.number().int().nonnegative(),
 });
 
 export const patchIssuesBatch = describeOperation({
@@ -140,13 +147,15 @@ export const enrichIssue = describeOperation({
 });
 
 export const runPipelineStep = describeOperation({
-  summary: "Start the pipeline step for the issue's status by hand",
+  summary: "Offer an issue at the entry status to the project's masters by hand",
+  description:
+    'Mints no job: it releases the issue past a closed entry gate and wakes the boxes bound to the project, whose masters take it. Refused before anything is written where no master runs on the project.',
   responses: {
-    202: json(runPipelineStepAnswerSchema, 'The step was queued'),
+    202: json(runPipelineStepAnswerSchema, 'The issue was offered to the masters'),
     403: fail('FORBIDDEN', 'the caller is not a project member with write access'),
     404: fail('NOT_FOUND', 'the issue does not exist'),
     409: fail({
-      JOB_ALREADY_ACTIVE: 'a job of this step is already running for the issue',
+      NO_MASTER_RUNNING: 'no master runs on the project, so nothing would take the issue',
       NOT_AT_ENTRY_STATUS:
         "an autonomous project's driver is only handed an issue at its entry status",
     }),

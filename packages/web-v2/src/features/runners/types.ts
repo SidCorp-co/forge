@@ -405,6 +405,11 @@ export function provisionHealth(status: ProvisionStatus | null): HealthKey {
 	}
 }
 
+/** A device's status in the word every surface shows: an offline box reads Offline, never Idle. */
+export function deviceStatusWord(status: DeviceRow["status"]): string {
+	return status === "online" ? "Online" : status === "revoked" ? "Revoked" : "Offline";
+}
+
 /** Map a device's online/offline/revoked status to a kit health key. */
 export function deviceHealth(status: DeviceRow["status"]): HealthKey {
 	switch (status) {

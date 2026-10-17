@@ -22,6 +22,9 @@ export interface OneShotSibling {
   beatAt: number;
   /** When its box's runner was last heard, `null` where the box has none. */
   runnerSeenAt: number | null;
+  /** Its box answers now (`box-answers.ts`), so its next answers are expected and `runnerSeenAt`
+   *  is a reading that will move, not a fact the deadline may be built on. */
+  runnerAnswers: boolean;
   parked: boolean;
   /** When a reaper other than the one-shot sweep ends it, `null` where none does. */
   endsBy: number | null;
@@ -81,21 +84,30 @@ function noClientHop(s: SilenceSubject, hb: number, ackFastMs: number): number |
   return Math.min(...ends);
 }
 
+/**
+ * When the one-shot sweep can first take a sibling. A box that answers keeps doing so, so the sweep
+ * waits out the runner grace from the sibling's beat: counting three minutes from the box's latest
+ * answer instead would move the end later with every answer, a countdown that never reaches zero.
+ * A box that has stopped answering holds the sibling to its last answer, which no longer moves.
+ */
+function sweepTakes(t: OneShotSibling, hb: number, grace: number): number {
+  if (t.parked) return Number.POSITIVE_INFINITY;
+  if (t.runnerSeenAt === null) return t.beatAt + hb;
+  const boxHolds = t.runnerAnswers
+    ? t.beatAt + grace
+    : Math.min(t.beatAt + grace, t.runnerSeenAt + hb);
+  return Math.max(t.beatAt + hb, boxHolds);
+}
+
 function oneShotSweep(s: SilenceSubject, hb: number): number | null {
   const run = s.oneShot;
   if (!run || !LIVE.has(s.status)) return null;
   const grace = oneShotDeviceGraceMs(hb);
   const end = Math.max(
     run.runStartedAt + hb,
-    ...run.sessions.map((t) => {
-      const fresh = t.parked
-        ? Number.POSITIVE_INFINITY
-        : Math.max(
-            t.beatAt + hb,
-            t.runnerSeenAt === null ? 0 : Math.min(t.beatAt + grace, t.runnerSeenAt + hb),
-          );
-      return Math.min(fresh, t.endsBy ?? Number.POSITIVE_INFINITY);
-    }),
+    ...run.sessions.map((t) =>
+      Math.min(sweepTakes(t, hb, grace), t.endsBy ?? Number.POSITIVE_INFINITY),
+    ),
   );
   return Number.isFinite(end) ? end : null;
 }

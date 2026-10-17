@@ -3,9 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const publish = vi.fn<(room: string, envelope: { event: string; data: unknown }) => number>();
 const selectDistinct = vi.fn();
 
+const heardByBox = vi.fn<(room: string) => boolean>(() => false);
+
 vi.mock('./server.js', () => ({
   roomManager: {
     publish: (room: string, envelope: { event: string; data: unknown }) => publish(room, envelope),
+    heardByBox: (room: string) => heardByBox(room),
   },
 }));
 vi.mock('../db/client.js', () => ({ db: { selectDistinct: () => selectDistinct() } }));
@@ -100,7 +103,7 @@ describe('master.wake — who it reaches', () => {
         },
       },
     ]);
-    expect(result).toEqual({ boxes: 2, delivered: 2 });
+    expect(result).toEqual({ boxes: 2, delivered: 2, reached: 0 });
   });
 
   it('carries the three keys it carried before, plus exactly one new key, charter (ISS-1313 criterion 15)', async () => {
@@ -137,7 +140,7 @@ describe('master.wake — who it reaches', () => {
     expect(
       await wakeMastersForProject({ projectId: 'p1', issueId: 'i1', status: 'open' }),
       'zero BOXES is the operator-visible state — nothing on the fleet is bound to do this project work — where zero delivered is only a socket that will be back',
-    ).toEqual({ boxes: 0, delivered: 0 });
+    ).toEqual({ boxes: 0, delivered: 0, reached: 0 });
     expect(publish).not.toHaveBeenCalled();
   });
 
@@ -146,14 +149,14 @@ describe('master.wake — who it reaches', () => {
     publish.mockReturnValue(0);
     await expect(
       wakeMastersForProject({ projectId: 'p1', issueId: 'i1', status: 'awaiting_release' }),
-    ).resolves.toEqual({ boxes: 2, delivered: 0 });
+    ).resolves.toEqual({ boxes: 2, delivered: 0, reached: 0 });
   });
 
   it('swallows a database failure rather than failing the transition that triggered it', async () => {
     servedByThrowing(new Error('connection terminated'));
     await expect(
       wakeMastersForProject({ projectId: 'p1', issueId: 'i1', status: 'open' }),
-    ).resolves.toEqual({ boxes: 0, delivered: 0 });
+    ).resolves.toEqual({ boxes: 0, delivered: 0, reached: 0 });
   });
 });
 
@@ -204,7 +207,7 @@ describe('an answer as a wake trigger', () => {
 
     const result = await wakeMastersForAnswer({ projectId: 'p1', questionId: 'q1' });
 
-    expect(result).toEqual({ boxes: 2, delivered: 2 });
+    expect(result).toEqual({ boxes: 2, delivered: 2, reached: 0 });
     expect(publish).toHaveBeenCalledTimes(2);
     expect(
       publishedEvent(0),
@@ -222,6 +225,22 @@ describe('an answer as a wake trigger', () => {
     expect(await wakeMastersForAnswer({ projectId: 'p1', questionId: 'q1' })).toEqual({
       boxes: 0,
       delivered: 0,
+      reached: 0,
     });
+  });
+});
+
+// ISS-1228 round 11 — Run says how many boxes heard it: a socket count read two connections in one
+// device room as two boxes, and the owner's own browser in that room as a box that heard.
+describe('the boxes a wake reached', () => {
+  it('counts a device room once, and only where the box itself listens', async () => {
+    servedBy(['d1', 'd2', 'd3']);
+    publish.mockReturnValueOnce(2).mockReturnValueOnce(1).mockReturnValueOnce(0);
+    heardByBox.mockImplementation((room) => room === 'device:d1');
+
+    const result = await wakeMastersForProject({ projectId: 'p1', issueId: 'i1', status: 'open' });
+
+    expect(result).toEqual({ boxes: 3, delivered: 3, reached: 1 });
+    heardByBox.mockImplementation(() => false);
   });
 });

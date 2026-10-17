@@ -19,9 +19,9 @@ import {
   Icon,
   MonoTag,
   Stat,
-  useElapsed,
 } from "@/design";
 import { SessionChip } from "@/features/sessions/components/session-chip";
+import { useSessionDuration } from "@/features/sessions/session-duration";
 import {
   deriveSessionDisplayStatus,
   isLiveDisplay,
@@ -36,23 +36,20 @@ import { isJobDriven, sessionKind, sessionTitle } from "@/features/sessions/type
 import { type RunGateNote, runGateNote, runGateUnfetched } from "@/features/runs/derive";
 import { useRun } from "@/features/runs/hooks";
 import { useDevices } from "@/features/runners/hooks";
-import { deviceHealth, deviceVersionLabel } from "@/features/runners/types";
+import { deviceHealth, deviceStatusWord, deviceVersionLabel } from "@/features/runners/types";
+import { useRunnerFleet } from "@/features/project-dashboard/runner-fleet";
+import { boxHealth, boxWord } from "@/features/sessions/box-state";
 import { deriveAgentTasks, deriveFilesChanged, type ConversationItem } from "../types";
+
+/** Where a session that went silent left off, said only on a page that holds its turns. */
+export const LAST_TURN_SHOWS_WHERE = "Its last turn, in the conversation, shows where it stopped.";
+const WENT_SILENT = new Set(["session_stopped_checking_in", "heartbeat_timeout"]);
 
 const PLATFORM_LABEL: Record<string, string> = {
   macos: "macOS",
   linux: "Linux",
   windows: "Windows",
 };
-
-function formatDuration(ms: number): string {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  const m = Math.floor(s / 60);
-  const h = Math.floor(m / 60);
-  if (h > 0) return `${h}h ${String(m % 60).padStart(2, "0")}m`;
-  if (m > 0) return `${m}m ${String(s % 60).padStart(2, "0")}s`;
-  return `${s}s`;
-}
 
 function fmtNum(n: number | undefined): string {
   if (n == null) return "—";
@@ -113,13 +110,7 @@ export function ContextRail({
   const display = deriveSessionDisplayStatus(session);
   const stage = sessionStep(session.metadata) ?? undefined;
   const live = isLiveDisplay(display);
-  const startMs = session.startedAt ? new Date(session.startedAt).getTime() : undefined;
-  const elapsed = useElapsed(startMs, live);
-  const duration = !startMs
-    ? "—"
-    : live
-      ? elapsed
-      : formatDuration(new Date(session.updatedAt).getTime() - startMs);
+  const duration = useSessionDuration(session, live);
 
   const usage = session.usage ?? {};
   const files = deriveFilesChanged(items);
@@ -141,6 +132,9 @@ export function ContextRail({
   // Resolve the runner the session is bound to. The device may not be in the
   // viewer's owner-scoped list (different owner) → fall back to the short id.
   const devicesQ = useDevices();
+  // The box's state as the sessions strip and the Runs tab read it: the project's runner line for this device.
+  const fleet = useRunnerFleet(session.projectId, Date.now());
+  const line = fleet.summary.lines.find((l) => l.deviceId === session.deviceId);
   const device = session.deviceId
     ? devicesQ.data?.find((d) => d.id === session.deviceId)
     : undefined;
@@ -181,7 +175,11 @@ export function ContextRail({
                 <span className="flex-1 truncate fg-body-sm" title={device.name}>
                   {device.name}
                 </span>
-                <HealthDot health={deviceHealth(device.status)} />
+                {line ? (
+                  <HealthDot health={boxHealth(line, false)} label={boxWord(line, fleet.activity.read === "ok")} />
+                ) : (
+                  <HealthDot health={deviceHealth(device.status)} label={deviceStatusWord(device.status)} />
+                )}
               </div>
               <span className="fg-caption">
                 {PLATFORM_LABEL[device.platform] ?? device.platform}
@@ -291,7 +289,10 @@ export function ContextRail({
               {failureReasonLabel(failureReason) ?? failureReason}
             </span>
             {failureReasonAction(failureReason) && (
-              <span className="mt-0.5 block">{failureReasonAction(failureReason)}</span>
+              <span className="mt-0.5 block">{failureReasonAction(failureReason, "Rerun")}</span>
+            )}
+            {WENT_SILENT.has(failureReason) && items.length > 0 && (
+              <span className="mt-0.5 block">{LAST_TURN_SHOWS_WHERE}</span>
             )}
           </Banner>
         </Section>

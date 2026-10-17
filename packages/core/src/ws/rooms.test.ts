@@ -212,3 +212,18 @@ describe('RoomManager', () => {
     });
   });
 });
+
+// ISS-1228 round 11: a socket count is not a box count.
+describe('RoomManager.heardByBox', () => {
+  it('says a box heard a room only where a device principal listens on it, open', () => {
+    const rm = new RoomManager();
+    const owner = { ...makeSub(), principal: { type: 'user' } };
+    rm.subscribe(owner, deviceRoom('d1'));
+    expect(rm.heardByBox(deviceRoom('d1'))).toBe(false);
+    rm.subscribe({ ...makeSub(CLOSED), principal: { type: 'device' } }, deviceRoom('d1'));
+    expect(rm.heardByBox(deviceRoom('d1'))).toBe(false);
+    rm.subscribe({ ...makeSub(), principal: { type: 'device' } }, deviceRoom('d1'));
+    expect(rm.heardByBox(deviceRoom('d1'))).toBe(true);
+    expect(rm.heardByBox(deviceRoom('d2'))).toBe(false);
+  });
+});

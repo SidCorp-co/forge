@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const selectLimit = vi.fn();
-const dbExecute = vi.fn(async () => []);
+const dbExecute = vi.fn(async (): Promise<unknown[]> => []);
 const insertAndEnqueueJob = vi.fn(async (_args: Record<string, unknown>) => ({ jobId: 'job-1' }));
 const openIssueRun = vi.fn(async () => ({ id: 'run-1', startedAt: new Date() }));
-const wakeMastersForProject = vi.fn(async () => 1);
+const wakeMastersForProject = vi.fn(async () => ({ boxes: 1, delivered: 1, reached: 1 }));
 
 vi.mock('../db/client.js', () => ({
   db: {
@@ -80,22 +80,34 @@ describe('dispatchAutonomous', () => {
 });
 
 describe('dispatchDriveManual', () => {
-  it('releases the issue and wakes the boxes, minting nothing', async () => {
-    await expect(dispatchDriveManual({ ...BASE, status: 'open' })).resolves.toEqual({
-      released: true,
-    });
+  it('releases the issue and wakes the boxes, minting nothing, and says what it did', async () => {
+    dbExecute.mockResolvedValueOnce([{ n: 2 }]);
+    wakeMastersForProject.mockResolvedValueOnce({ boxes: 2, delivered: 3, reached: 1 });
+    await expect(
+      dispatchDriveManual({ ...BASE, status: 'open', entryGated: true }),
+    ).resolves.toEqual({ released: true, masters: 2, boxesReached: 1 });
 
     expect(insertAndEnqueueJob).not.toHaveBeenCalled();
     expect(openIssueRun).not.toHaveBeenCalled();
     expect(wakeMastersForProject).toHaveBeenCalledTimes(1);
-    expect(dbExecute).toHaveBeenCalledTimes(1);
+    expect(dbExecute).toHaveBeenCalledTimes(2);
     expect(selectLimit).not.toHaveBeenCalled();
   });
 
+  // ISS-1228 round 11: with no master the press was answered as though something would take it.
+  it('refuses where no master runs on the project, before writing anything', async () => {
+    dbExecute.mockResolvedValueOnce([{ n: 0 }]);
+    await expect(
+      dispatchDriveManual({ ...BASE, status: 'open', entryGated: false }),
+    ).rejects.toThrow('No master is running on this project');
+    expect(dbExecute).toHaveBeenCalledTimes(1);
+    expect(wakeMastersForProject).not.toHaveBeenCalled();
+  });
+
   it('says where the driver actually starts instead of silently doing nothing', async () => {
-    await expect(dispatchDriveManual({ ...BASE, status: 'developed' })).rejects.toThrow(
-      'AUTONOMOUS_NOT_AT_ENTRY',
-    );
+    await expect(
+      dispatchDriveManual({ ...BASE, status: 'developed', entryGated: false }),
+    ).rejects.toThrow('AUTONOMOUS_NOT_AT_ENTRY');
     expect(insertAndEnqueueJob).not.toHaveBeenCalled();
   });
 });

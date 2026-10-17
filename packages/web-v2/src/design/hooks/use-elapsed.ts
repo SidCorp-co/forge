@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-function fmt(ms: number): string {
+export function formatElapsed(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
   const m = Math.floor(s / 60);
   const h = Math.floor(m / 60);
@@ -26,5 +26,5 @@ export function useElapsed(startMs?: number, running = true): string {
   }, [startMs, running]);
 
   if (!startMs) return "—";
-  return fmt(now - startMs);
+  return formatElapsed(now - startMs);
 }

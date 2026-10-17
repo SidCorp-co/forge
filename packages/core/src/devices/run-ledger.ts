@@ -9,7 +9,7 @@
 
 import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { agentSessions, devices, runners } from '../db/schema.js';
+import { agentSessions, devices, runners, terminalAgentSessionStatuses } from '../db/schema.js';
 import { deviceRunLedger } from '../db/schema-run-ledger.js';
 import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
 import { logger } from '../logger.js';
@@ -38,6 +38,11 @@ export interface RunLedgerEntry {
   worktreeGoneAtEpochS: number | null;
   issues: RunLedgerIssue[];
 }
+
+const TERMINAL_SESSIONS = sql.join(
+  terminalAgentSessionStatuses.map((s) => sql`${s}`),
+  sql`, `,
+);
 
 const fromEpochSeconds = (s: number | null | undefined): Date | null =>
   s == null ? null : new Date(s * 1000);
@@ -157,13 +162,24 @@ export async function applyRunLedgerSnapshot(args: {
   logger.debug({ deviceId: args.deviceId, runs: entries.length }, 'run-ledger: snapshot applied');
 }
 
+/** An issue as the runs tab reads it: the box's word on its lease, and core's own. */
+export interface ProjectRunSessionIssue extends RunLedgerIssue {
+  /** Core still holds this issue's lease for the run's own session, whatever the box says. */
+  coreHolds: boolean;
+}
+
 export interface ProjectRunSessionRow
-  extends Omit<RunLedgerEntry, 'sessionTerminalAtEpochS' | 'worktreeGoneAtEpochS'> {
+  extends Omit<RunLedgerEntry, 'sessionTerminalAtEpochS' | 'worktreeGoneAtEpochS' | 'issues'> {
+  issues: ProjectRunSessionIssue[];
   /** ISO, because this half is read by a browser rather than written by a box. */
   sessionTerminalAt: string | null;
   worktreeGoneAt: string | null;
   deviceId: string;
   deviceName: string | null;
+  /** Core's reading of the box (`devices.status`), so a screen never quotes an offline box as
+   *  saying anything now; `null` where the device row is gone. */
+  deviceStatus: string | null;
+  deviceLastSeenAt: string | null;
   observedAt: string;
   /** When core first saw this run's current work, blocker and wait. */
   workSince: string;
@@ -203,6 +219,16 @@ export async function readProjectRunSessions(projectId: string): Promise<Project
       observedAt: deviceRunLedger.observedAt,
       workSince: deviceRunLedger.workSince,
       deviceName: devices.name,
+      deviceStatus: devices.status,
+      deviceLastSeenAt: devices.lastSeenAt,
+      coreHeldKeys: sql<string[]>`COALESCE((
+        SELECT array_agg(l.issue_key)
+          FROM issue_leases l
+          JOIN agent_sessions ls ON ls.id = l.session_id
+         WHERE l.session_id = ${deviceRunLedger.sessionId}
+           AND l.project_id = ${deviceRunLedger.projectId}
+           AND ls.status NOT IN (${TERMINAL_SESSIONS})
+      ), '{}')`,
       sessionStatus: sql<
         string | null
       >`(SELECT s.status FROM agent_sessions s WHERE s.id = ${deviceRunLedger.sessionId})`,
@@ -226,12 +252,16 @@ export async function readProjectRunSessions(projectId: string): Promise<Project
   const deadlines = await loadSilenceDeadlines(
     rows.flatMap((r) => (r.sessionId ? [r.sessionId] : [])),
   );
-  return rows.map((r) => ({
+  return rows.map(({ coreHeldKeys, ...r }) => ({
     ...r,
     silenceLimitMs: r.sessionId
       ? silenceLimitFrom(deadlines.get(r.sessionId) ?? null, r.lastActivityAt)
       : null,
-    issues: (r.issues ?? []) as RunLedgerIssue[],
+    issues: ((r.issues ?? []) as RunLedgerIssue[]).map((i) => ({
+      ...i,
+      coreHolds: (coreHeldKeys ?? []).includes(i.issueKey),
+    })),
+    deviceLastSeenAt: r.deviceLastSeenAt ? new Date(r.deviceLastSeenAt).toISOString() : null,
     observedAt: new Date(r.observedAt).toISOString(),
     workSince: new Date(r.workSince).toISOString(),
     lastActivityAt: r.lastActivityAt ? new Date(r.lastActivityAt).toISOString() : null,

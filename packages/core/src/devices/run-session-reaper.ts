@@ -1,6 +1,6 @@
 /**
- * Giving back the issues a run session was carrying when its box stopped
- * answering.
+ * Giving back the issues a run session was carrying when it stopped checking
+ * in, whether or not its box still answers.
  *
  * The local ledger on the box is the fast path and cannot be the only one:
  * a runner that lost power releases nothing at all. So this is the arm that
@@ -10,6 +10,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
+import { boxAnswersSql } from '../jobs/box-answers.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { closeRunIfOneShot } from '../pipeline/runs.js';
@@ -28,13 +29,14 @@ export interface ReapedRunSession {
 }
 
 /**
- * Release run sessions whose box has gone silent, naming the issues freed.
+ * Release run sessions that have stopped checking in, naming the issues freed.
  */
 export async function reapDeadRunSessions(): Promise<ReapedRunSession[]> {
   const staleSeconds = SESSION_SILENCE_TIMEOUT_S;
   const rows = (await db.execute(sql`
     SELECT s.id, s.pipeline_run_id,
-           COALESCE(r.metadata -> ${RUN_ISSUES_METADATA_KEY}, '[]'::jsonb) AS issue_keys
+           COALESCE(r.metadata -> ${RUN_ISSUES_METADATA_KEY}, '[]'::jsonb) AS issue_keys,
+           ${boxAnswersSql(sql`s.device_id`)} AS box_answers
     FROM agent_sessions s
     JOIN pipeline_runs r ON r.id = s.pipeline_run_id
     WHERE s.kind = ${RUN_SESSION_KIND}
@@ -48,12 +50,16 @@ export async function reapDeadRunSessions(): Promise<ReapedRunSession[]> {
     const sessionId = String(row.id);
     const runId = String(row.pipeline_run_id);
     const issueKeys = (row.issue_keys ?? []) as string[];
+    // A box still answering was reachable: the session is what stopped (ISS-1228 round 11).
+    const boxAnswers = row.box_answers === true;
     const flipped = await applyKernelTransition(db, {
       entity: 'session',
       to: 'failed',
       set: {
-        failureReason: 'runner_unreachable',
-        failureDetail: 'run-session-reaper: heartbeat stopped',
+        failureReason: boxAnswers ? 'session_stopped_checking_in' : 'runner_unreachable',
+        failureDetail: boxAnswers
+          ? 'run-session-reaper: the session stopped checking in while its box answered'
+          : 'run-session-reaper: heartbeat stopped',
         updatedAt: new Date(),
       },
       where: and(eq(agentSessions.id, sessionId), eq(agentSessions.status, 'running')),
@@ -64,7 +70,9 @@ export async function reapDeadRunSessions(): Promise<ReapedRunSession[]> {
     });
     if (flipped.length === 0) continue;
     const returned = await returnIssuesForRun(runId, {
-      reason: 'the box running this issue stopped answering',
+      reason: boxAnswers
+        ? 'the session running this issue stopped checking in'
+        : 'the box running this issue stopped answering',
     });
     await closeRunIfOneShot(runId, 'failed');
     logger.warn(

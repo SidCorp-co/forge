@@ -11,11 +11,11 @@ import {
   PageTitle,
   ProjectLoader,
   SlideOver,
-  useElapsed,
   WORKING_WORD,
 } from "@/design";
 import { waitingOnOf } from "@/features/pipeline/derive";
 import { SessionChip } from "@/features/sessions/components/session-chip";
+import { useSessionDuration } from "@/features/sessions/session-duration";
 import { sessionWord, WAITING_FOR_INPUT_WORD } from "@/features/sessions/session-word";
 import { useProjects } from "@/features/projects/hooks";
 import { isJobDriven, sessionTitle } from "@/features/sessions/types";
@@ -169,10 +169,7 @@ export function SessionScreen({
 
   const display = session ? deriveSessionDisplayStatus(session) : "queued";
   const { live, answering } = sessionActivity(display);
-  const startMs = session?.startedAt
-    ? new Date(session.startedAt).getTime()
-    : undefined;
-  const elapsed = useElapsed(startMs, live);
+  const elapsed = useSessionDuration(session, live);
   const now = useNow(1000, display === "stalled");
   const silentForMs = session ? (sessionSilence(session, now).sinceHeartbeatMs ?? undefined) : undefined;
   // What the box said last: a quiet session says it last reported blocked where its box did, and a

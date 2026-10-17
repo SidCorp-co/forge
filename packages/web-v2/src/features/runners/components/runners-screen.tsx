@@ -35,6 +35,7 @@ import { RevokeDeviceControl } from "./revoke-device-control";
 import {
   deviceBuildChip,
   deviceHealth,
+  deviceStatusWord,
   deviceVersionLabel,
   type DeviceRow,
   type OrgDeviceRow,
@@ -346,7 +347,7 @@ export function RunnersScreen() {
                             Off
                           </span>
                         ) : (
-                          <HealthDot health={deviceHealth(d.status)} />
+                          <HealthDot health={deviceHealth(d.status)} label={deviceStatusWord(d.status)} />
                         )}
                       </TD>
                       <TD>

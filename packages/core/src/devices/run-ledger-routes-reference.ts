@@ -15,11 +15,15 @@ export const runSessionRowSchema = z.object({
   work: z.string(),
   blockerKind: z.string().nullable(),
   waitingOn: z.string().nullable(),
-  issues: z.array(z.object({ issueKey: z.string(), leaseReturned: z.boolean() })),
+  issues: z.array(
+    z.object({ issueKey: z.string(), leaseReturned: z.boolean(), coreHolds: z.boolean() }),
+  ),
   sessionTerminalAt: z.string().nullable(),
   worktreeGoneAt: z.string().nullable(),
   deviceId: z.string(),
   deviceName: z.string().nullable(),
+  deviceStatus: z.string().nullable(),
+  deviceLastSeenAt: z.string().nullable(),
   observedAt: z.string(),
   workSince: z.string(),
   sessionStatus: z.string().nullable(),
@@ -38,7 +42,7 @@ export const runSessionsSchema = z.object({
 export const listProjectRunSessions = describeOperation({
   summary: 'List the agent runs the fleet has reported for a project, newest report first',
   description:
-    "`sessionStatus` is core's own reading of the session, never the box's claim. `workSince` is when core first saw the run's current work, blocker and wait.",
+    "`sessionStatus` is core's own reading of the session, never the box's claim. `workSince` is when core first saw the run's current work, blocker and wait. `deviceStatus` and `deviceLastSeenAt` are core's reading of the box, and each issue's `coreHolds` whether core still holds its lease for the run's session, whatever `leaseReturned` says.",
   responses: {
     200: json(runSessionsSchema),
     403: fail('FORBIDDEN', 'the caller is not a member of the project'),

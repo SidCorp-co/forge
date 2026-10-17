@@ -1,7 +1,8 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import type { IssueStatus } from '../db/schema.js';
+import { type IssueStatus, terminalAgentSessionStatuses } from '../db/schema.js';
 import { statusForCaller } from '../issues/status-sets.js';
+import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
 import { logger } from '../logger.js';
 import { wakeMastersForProject } from '../ws/master-wake.js';
 import type { Actor } from './activity.js';
@@ -45,22 +46,58 @@ export async function dispatchAutonomous(args: DispatchAutonomousArgs): Promise<
   return true;
 }
 
+/** Refused: no master runs on the project, so a press would be taken by nothing (ISS-1228). */
+export class NoMasterRunningError extends Error {
+  readonly code = 'NO_MASTER_RUNNING';
+  constructor() {
+    super(
+      'No master is running on this project, so nothing would take this issue. A master runs on a box bound to this project: start one there, then press Run again.',
+    );
+    this.name = 'NoMasterRunningError';
+  }
+}
+
+/** A box the wake did not reach reads the issue on its master's next pass; the room keeps nothing. */
+export interface DriveRelease {
+  released: boolean;
+  masters: number;
+  boxesReached: number;
+}
+
+const TERMINAL_SESSIONS = sql.join(
+  terminalAgentSessionStatuses.map((s) => sql`${s}`),
+  sql`, `,
+);
+
+async function liveMasters(projectId: string): Promise<number> {
+  const [row] = (await db.execute(sql`
+    SELECT count(*)::int AS n FROM agent_sessions
+     WHERE project_id = ${projectId}
+       AND kind = ${MASTER_SESSION_KIND}
+       AND status NOT IN (${TERMINAL_SESSIONS})
+  `)) as unknown as Array<{ n: number }>;
+  return Number(row?.n ?? 0);
+}
+
 /**
- * The human pressing "Run" on an issue an autonomous project has gated. Throws
- * `ActiveJobConflictError` when a drive job is already live, so the route 409s
- * exactly as the staged manual path does.
+ * The human pressing "Run" on an issue at the entry status: it releases the issue past a closed entry
+ * gate and wakes the project's boxes. Core mints no job, so where no master runs it is refused before
+ * anything is written, rather than answered as though something will take the issue.
  */
 export async function dispatchDriveManual(args: {
   projectId: string;
   issueId: string;
   status: IssueStatus;
   actor: Actor;
-}): Promise<{ released: true }> {
+  entryGated: boolean;
+}): Promise<DriveRelease> {
   if (!autonomousStepFor(args.status)) {
     throw new Error(
       `AUTONOMOUS_NOT_AT_ENTRY: the driver is handed an issue at ${statusForCaller(AUTONOMOUS_ENTRY_STATUS)}, this one is at ${statusForCaller(args.status)}`,
     );
   }
+  const masters = await liveMasters(args.projectId);
+  if (masters === 0) throw new NoMasterRunningError();
   await db.execute(sql`
     UPDATE issues
     SET session_context = jsonb_set(
@@ -68,14 +105,14 @@ export async function dispatchDriveManual(args: {
         updated_at = now()
     WHERE id = ${args.issueId}
   `);
-  await wakeMastersForProject({
+  const wake = await wakeMastersForProject({
     projectId: args.projectId,
     issueId: args.issueId,
     status: args.status,
   });
   logger.info(
-    { projectId: args.projectId, issueId: args.issueId },
+    { projectId: args.projectId, issueId: args.issueId, masters, boxesReached: wake.reached },
     'autonomous-dispatch: released by hand — offered to this project masters',
   );
-  return { released: true };
+  return { released: args.entryGated, masters, boxesReached: wake.reached };
 }

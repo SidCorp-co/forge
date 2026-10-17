@@ -3,7 +3,7 @@
 // line, what it last reported; a run with no process keeps the run's own words.
 
 import { describe, expect, it } from "vitest";
-import { pulseText, stateLabelAt } from "./run-state";
+import { closeMarks, disagreementText, leaseDisagreementText, offlineText, pulseText, stateLabelAt } from "./run-state";
 
 const NOW = Date.parse("2026-10-16T10:00:00.000Z");
 const HEARD = new Date(NOW - 10_000).toISOString();
@@ -56,5 +56,47 @@ describe("pulseText", () => {
     const text = pulseText({ state: "past-threshold", sinceMs: 11 * 60_000 });
     expect(text).toContain("core is ending it as failed");
     expect(text).not.toMatch(/recover/i);
+  });
+});
+
+// ISS-1228 round 11 — a box core reads as offline is quoted in the past, and a lease core still
+// holds is not counted returned whatever the box says.
+describe("an offline box and a lease core still holds", () => {
+  it("says what an offline box last reported, never that the run is working or blocked now", () => {
+    expect(stateLabelAt(row({ deviceStatus: "offline" }), NOW)).toMatchObject({
+      label: "Last reported working",
+      tone: "neutral",
+    });
+    expect(stateLabelAt(row({ work: "blocked", sessionStatus: "failed", deviceStatus: "offline" }), NOW).label).toBe(
+      "Last reported blocked",
+    );
+    expect(stateLabelAt(row({ deviceStatus: "online" }), NOW).label).toBe("Working");
+  });
+
+  it("quotes an offline box with when it last reported", () => {
+    const observedAt = new Date(Date.now() - 52 * 60_000).toISOString();
+    expect(disagreementText("box-live-core-terminal", { observedAt, deviceStatus: "offline" })).toBe(
+      "the box said this was live 52m ago and is offline now · core says the session ended",
+    );
+    expect(disagreementText("box-live-core-terminal", { observedAt, deviceStatus: "online" })).toBe(
+      "the box says this is live · core says the session ended",
+    );
+    const live = { incarnation: "live", observedAt, sessionId: "s1", sessionStatus: "running" };
+    expect(offlineText({ ...live, deviceStatus: "offline" })).toBe("the box is offline · it last reported 52m ago");
+    expect(offlineText({ ...live, deviceStatus: "online" })).toBeNull();
+    expect(offlineText({ ...live, sessionStatus: "failed", deviceStatus: "offline" })).toBeNull();
+  });
+
+  it("counts a lease returned only where core no longer holds it, and names the ones it does", () => {
+    const issues = [
+      { issueKey: "ISS-4", leaseReturned: true, coreHolds: true },
+      { issueKey: "ISS-5", leaseReturned: true, coreHolds: false },
+    ];
+    expect(closeMarks({ sessionTerminalAt: null, worktreeGoneAt: null, issues }).leasesReturned).toEqual({
+      returned: 1,
+      total: 2,
+    });
+    expect(leaseDisagreementText({ issues })).toBe("the box says it returned ISS-4 · core still holds it");
+    expect(leaseDisagreementText({ issues: [issues[1]] })).toBeNull();
   });
 });

@@ -77,6 +77,7 @@ vi.mock("../hooks", () => ({
   useIssueDeps: () => ok(undefined),
   usePatchIssue: () => ({ mutate: vi.fn(), isPending: false }),
   useProjectMembers: () => ok([]),
+  useRunPipelineStep: () => ({ mutate: vi.fn(), isPending: false }),
   useSaveDescription: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
@@ -269,7 +270,7 @@ describe("the issue header's run", () => {
     renderScreen();
     expect(within(headerChips()).getByText("Queued")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Run pipeline" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Run/ })).toBeNull();
   });
 
   // ISS-1228 r9: the chip carried the step and a caption beside it named it again, and at phone width the chip cut it.
@@ -283,12 +284,12 @@ describe("the issue header's run", () => {
     expect(said).not.toMatch(/forge-code|\bdrive\b/);
   });
 
-  it("shows no run chip and offers Run pipeline when nothing is queued and no session exists", () => {
+  it("shows no run chip and offers Run when nothing is queued and no session exists", () => {
     pipelineHealth = { stage: "open" };
     renderScreen();
     expect(within(headerChips()).queryByText("Queued")).toBeNull();
     expect(within(headerChips()).queryByText("Running")).toBeNull();
-    expect(screen.getByRole("button", { name: "Run pipeline" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Run" })).toBeInTheDocument();
   });
 });
 
@@ -300,7 +301,7 @@ describe("the issue header at Releasing (ISS-1421)", () => {
     status = "releasing";
     issueOver = { releaseBatchRunId: "run-9" };
     renderScreen();
-    expect(screen.queryByRole("button", { name: "Run pipeline" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Run/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "Pause" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Reopen" })).toBeNull();
     expect(screen.getByRole("button", { name: "View release" })).toBeInTheDocument();
@@ -325,7 +326,7 @@ describe("the issue header at Awaiting release (ISS-1421)", () => {
     status = "awaiting_release";
     renderScreen();
     expect(screen.queryByRole("button", { name: "Reopen" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Run pipeline" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Run/ })).toBeNull();
     fireEvent.click(screen.getByLabelText("Issue actions"));
     fireEvent.click(menuItem("Reopen") as Element);
     expect(requestTransition).toHaveBeenCalledWith(ISSUE.id, "reopen", expect.anything());

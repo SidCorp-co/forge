@@ -260,6 +260,46 @@ describe("the runs a box reports (ISS-1228 round 8)", () => {
   });
 });
 
+describe("what a box and core each say of a run (ISS-1228 round 11)", () => {
+  const row = () => within(screen.getByRole("list", { name: "Runs a box reports" })).getByRole("listitem");
+
+  it("quotes an offline box in the past, never as saying the run is live now", () => {
+    state.ledger = [
+      ledgerRow({
+        deviceStatus: "offline",
+        observedAt: new Date(Date.now() - 52 * 60_000).toISOString(),
+        sessionStatus: "failed",
+        sessionFailureReason: "session_stopped_checking_in",
+      }),
+    ];
+    pane();
+    expect(row()).toHaveTextContent("the box said this was live 52m ago and is offline now · core says the session ended");
+    expect(row()).not.toHaveTextContent("the box says this is live");
+    expect(row()).toHaveTextContent("Stopped checking in");
+  });
+
+  it("does not tick a lease core still holds, and names it", () => {
+    state.ledger = [
+      ledgerRow({
+        issues: [
+          { issueKey: "ISS-4", leaseReturned: true, coreHolds: true },
+          { issueKey: "ISS-5", leaseReturned: true, coreHolds: false },
+        ],
+      }),
+    ];
+    pane();
+    expect(row()).toHaveTextContent("leases 1/2");
+    expect(row()).toHaveTextContent("the box says it returned ISS-4 · core still holds it");
+  });
+
+  it("names the box on the row at every width, never hidden below sm", () => {
+    state.ledger = [ledgerRow({ deviceName: "build-box-eu-west-long-hostname-07" })];
+    pane();
+    const box = within(row()).getByText("build-box-eu-west-long-hostname-07");
+    expect(box.className).not.toMatch(/(^|\s)hidden(\s|$)/);
+  });
+});
+
 describe("the band over the runs tab (ISS-1228 criterion 49)", () => {
   it("says nothing about open runs when no run is open", () => {
     state.runs = [run({ id: "c", status: "completed" })];
