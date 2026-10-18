@@ -3202,6 +3202,7 @@
 - **A session whose box stopped answering after it started says so**, instead of "The runner never picked it up". (ISS-1228)
 - **"Why it ended" is red only for a failure.** A swept, cleaned-up or stopped session's panel takes the neutral tone of its chip. (ISS-1228)
 - **Open session is a link**, so it opens in a new tab. (ISS-1228)
+- **A session whose box is offline reads Quiet, never Working.** The sessions list, its count, its runner dot, the session page, the Pipeline page and the dashboard all read it as last reported, however recently it was heard. (ISS-1228)
 - **A stop reaches every open page.** An issue page left open in another tab reads its run Stopped without a reload, and stopping from a session's own page says "Session stopped" as everywhere else. (ISS-1228)
 - **Open session opens a session.** It goes to the session holding the issue, else its newest, a run session that ended included, and is not shown for an issue no session has run. (ISS-1228)
 - **A run session's countdown no longer jumps when its box goes silent.** Core ends it ten minutes after its last check-in, whatever the box does, and an offline box reads "The box is offline." beside it. (ISS-1228)

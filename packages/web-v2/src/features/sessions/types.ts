@@ -128,6 +128,7 @@ export interface SessionRow {
   report?: SessionBoxReport | null;
   /** How long core lets this session go unheard before ending it; `null` where nothing does. */
   silenceLimitMs?: number | null;
+  boxOnline?: boolean | null;
   /** Every issue the session holds — its leases and its job's issue — as the list names them. */
   issues?: Array<{ id: string; displayId: string; title: string; boxReturned?: boolean }>;
   runtimeState?: string | null;
@@ -365,6 +366,8 @@ export interface SilenceInput {
   updatedAt?: string | null;
   /** The silence after which core ends this session, as core states it on the row. */
   silenceLimitMs?: number | null;
+  /** Whether core holds the session's box online; `null` where it names no box, absent from an older core. */
+  boxOnline?: boolean | null;
 }
 
 /**
@@ -376,14 +379,21 @@ export interface SilenceInput {
 export function sessionSilence(session: SilenceInput, nowMs: number = Date.now()): LivenessResult {
   if (session.status !== "running") return { state: "na", sinceHeartbeatMs: null, reapInMs: null };
   const lastSignal = session.lastHeartbeatAt ?? session.startedAt ?? session.updatedAt ?? null;
-  if (!lastSignal) return { state: "alive", sinceHeartbeatMs: null, reapInMs: null };
+  const unread: LivenessResult = {
+    state: session.boxOnline === false ? "stale" : "alive",
+    sinceHeartbeatMs: null,
+    reapInMs: null,
+  };
+  if (!lastSignal) return unread;
   const lastMs = new Date(lastSignal).getTime();
-  if (Number.isNaN(lastMs)) return { state: "alive", sinceHeartbeatMs: null, reapInMs: null };
+  if (Number.isNaN(lastMs)) return unread;
 
   const since = nowMs - lastMs;
   const limit = session.silenceLimitMs ?? null;
   if (limit !== null && since > limit) return { state: "reaping", sinceHeartbeatMs: since, reapInMs: 0 };
-  if (since <= STALLED_THRESHOLD_MS) return { state: "alive", sinceHeartbeatMs: since, reapInMs: null };
+  // An offline box carries no turn, so its session is quiet however recently it was heard.
+  const heard = session.boxOnline !== false && since <= STALLED_THRESHOLD_MS;
+  if (heard) return { state: "alive", sinceHeartbeatMs: since, reapInMs: null };
   if (limit === null) return { state: "stale", sinceHeartbeatMs: since, reapInMs: null };
   return { state: "stale", sinceHeartbeatMs: since, reapInMs: limit - since };
 }
@@ -408,18 +418,26 @@ export function quietEndText(liveness: LivenessResult): string | null {
 export function deriveLiveness(
   session: Pick<
     SessionRow,
-    "status" | "lastHeartbeatAt" | "startedAt" | "updatedAt" | "metadata" | "silenceLimitMs"
+    "status" | "lastHeartbeatAt" | "startedAt" | "updatedAt" | "metadata" | "silenceLimitMs" | "boxOnline"
   >,
   nowMs: number = Date.now(),
 ): LivenessResult {
-  if (isInteractiveSession(session)) return { state: "na", sinceHeartbeatMs: null, reapInMs: null };
+  const gradable = !isInteractiveSession(session) || session.boxOnline === false;
+  if (!gradable) return { state: "na", sinceHeartbeatMs: null, reapInMs: null };
   return sessionSilence(session, nowMs);
 }
 
 export function deriveSessionDisplayStatus(
   session: Pick<
     SessionRow,
-    "status" | "lastHeartbeatAt" | "startedAt" | "updatedAt" | "metadata" | "report" | "silenceLimitMs"
+    | "status"
+    | "lastHeartbeatAt"
+    | "startedAt"
+    | "updatedAt"
+    | "metadata"
+    | "report"
+    | "silenceLimitMs"
+    | "boxOnline"
   >,
   nowMs: number = Date.now(),
 ): AgentSessionDisplayStatus {

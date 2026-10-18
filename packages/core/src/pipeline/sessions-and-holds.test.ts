@@ -85,6 +85,16 @@ describe('projectSessionsAndHolds — running chats', () => {
 });
 
 describe('projectSessionsAndHolds — sessions', () => {
+  it.each([
+    ['online', 'online', true],
+    ['offline', 'offline', false],
+    ['revoked', 'revoked', false],
+    ['one core no longer holds', null, null],
+  ] as const)("states whether a session's box is online, for a box %s", (_n, status, online) => {
+    const out = project({ sessions: [session({ device_status: status })] });
+    expect(out.sessions[0]?.boxOnline).toBe(online);
+  });
+
   it('gives each live session the issues it holds and the box report it last sent', () => {
     const out = project({
       sessions: [session()],

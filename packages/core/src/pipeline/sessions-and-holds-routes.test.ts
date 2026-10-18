@@ -69,6 +69,7 @@ const reading = {
         since: '2026-10-15T01:40:00.000Z',
       },
       silenceLimitMs: 600_000,
+      boxOnline: true,
       jobType: null,
       skillName: null,
     },

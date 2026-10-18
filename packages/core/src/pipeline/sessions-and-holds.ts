@@ -8,6 +8,7 @@
 
 import type { IssuePark } from '@forge/contracts';
 import { sql } from 'drizzle-orm';
+import { boxOnlineOf } from '../agent-sessions/box-online.js';
 import {
   type LedgerRow,
   loadLedgerRows,
@@ -59,6 +60,8 @@ export interface LiveSession {
   report: SessionReport | null;
   /** How long core lets this session go unheard before it ends it; `null` where no silence does. */
   silenceLimitMs: number | null;
+  /** Whether core holds its box online; `null` where it names no box core still holds. */
+  boxOnline: boolean | null;
 }
 
 export type Holder =
@@ -116,6 +119,7 @@ export interface SessionRow {
   runtime_state: string | null;
   device_id: string | null;
   device_name: string | null;
+  device_status?: string | null;
   parent_session_id: string | null;
   started_at: Date | string | null;
   last_heartbeat_at: Date | string | null;
@@ -251,6 +255,7 @@ export function projectSessionsAndHolds(input: {
         s.last_heartbeat_at,
         s.started_at,
       ),
+      boxOnline: boxOnlineOf(s.device_status),
     }),
   );
 
@@ -296,7 +301,7 @@ export async function readSessionsAndHolds(
   const sessions = (await db.execute(sql`
     SELECT s.id, s.kind, s.title, s.metadata ->> 'jobType' AS job_type,
            s.metadata ->> 'skillName' AS skill_name,
-           s.status, s.runtime_state, s.device_id, d.name AS device_name,
+           s.status, s.runtime_state, s.device_id, d.name AS device_name, d.status AS device_status,
            s.parent_session_id, s.started_at, s.last_heartbeat_at, s.created_at
       FROM agent_sessions s
       LEFT JOIN devices d ON d.id = s.device_id
