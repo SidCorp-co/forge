@@ -163,6 +163,20 @@ notificationRoutes.get(
     const userId = c.get('userId');
 
     const ofProject = projectId ? sql`AND cn.project_id = ${projectId}` : sql``;
+    // A row is one project's only where every record still open in it is that project's: a group
+    // spanning two belongs to neither, so it is counted once, in the whole count (ISS-1229 r16).
+    const onlyThisProject = projectId
+      ? sql`AND NOT EXISTS (
+          SELECT 1 FROM notification_delivery_members ob
+          JOIN notifications cn ON cn.id = ob.notification_id
+          WHERE ob.delivery_id = ${notificationDeliveries.id}
+            AND cn.project_id IS DISTINCT FROM ${projectId}
+            AND cn.type <> 'invitation_received'
+            AND cn.resolved_at IS NULL
+            AND ${stillTrueOf(carried)}
+            AND ${toldTo(userId, carried)}
+        )`
+      : sql``;
     const [[row], invitations] = await Promise.all([
       db
         .select({ n: sql<number>`count(*)::int` })
@@ -180,7 +194,7 @@ notificationRoutes.get(
                 AND ${stillTrueOf(carried)}
                 AND ${toldTo(userId, carried)}
                 ${ofProject}
-            )`,
+            ) ${onlyThisProject}`,
           ),
         ),
       readPendingInvitations(userId),

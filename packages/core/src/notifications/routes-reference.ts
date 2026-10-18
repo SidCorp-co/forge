@@ -101,7 +101,7 @@ export const deliveryMembersSchema = z.array(deliveryMemberSchema);
 export const openCount = describeOperation({
   summary: 'Count the things still true for the caller',
   description:
-    'Counts the bell rows still open, not the records inside them: a grouped delivery of fifteen firing conditions reads one. Signals never count.',
+    'Counts the bell rows still open, not the records inside them: a grouped delivery of fifteen firing conditions reads one. Signals never count. With `projectId`, a row counts only where every record still open in it is that project’s, so a group spanning two projects is counted once, in the count without `projectId`, and never once per project.',
   responses: { 200: json(openCountSchema) },
 });
 
