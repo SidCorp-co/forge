@@ -7,8 +7,9 @@
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  bindTestRunner,
   createTestDevice,
   createTestProject,
   createTestUser,
@@ -110,5 +111,27 @@ describe('every session read says whether its box is online', () => {
   it('says null for a session that names no box', async () => {
     const id = await liveSession(false);
     expect(await readEverywhere(id)).toEqual({ list: null, detail: null, pipeline: null });
+  });
+});
+
+describe('a box the stale sweep marks offline', () => {
+  it('is told to the room of every project it serves, so their screens refresh its sessions', async () => {
+    await bindTestRunner(harness.db, { projectId, deviceId });
+    await harness.db.execute(sql`
+      UPDATE devices SET status = 'online', last_seen_at = now() - interval '1 hour' WHERE id = ${deviceId}::uuid
+    `);
+    const { roomManager } = await import('../../src/ws/server.js');
+    const { projectRoom } = await import('../../src/ws/rooms.js');
+    const { runDeviceStaleSweep } = await import('../../src/devices/stale-detector.js');
+    const publish = vi.spyOn(roomManager, 'publish');
+    try {
+      await runDeviceStaleSweep();
+      expect(publish).toHaveBeenCalledWith(projectRoom(projectId), {
+        event: 'device.status',
+        data: { deviceId, projectId, status: 'offline' },
+      });
+    } finally {
+      publish.mockRestore();
+    }
   });
 });

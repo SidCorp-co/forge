@@ -249,6 +249,16 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			}
 			return;
 		}
+		// Every session read states its box's state, so the strip and the rows refresh together (ISS-1228).
+		case "device.status": {
+			if (!data?.projectId) return;
+			scheduleInvalidation(qc, ["projects", data.projectId, "runners"]);
+			scheduleInvalidation(qc, ["projects", data.projectId, "active-runners"]);
+			scheduleInvalidation(qc, ["agent-sessions"]);
+			scheduleInvalidation(qc, [SESSIONS_AND_HOLDS]);
+			scheduleInvalidation(qc, [RUN_SESSIONS]);
+			return;
+		}
 		case "runner.status":
 		case "runner.updated": {
 			if (data?.runnerId) {

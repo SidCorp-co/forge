@@ -3,8 +3,7 @@ import { db } from '../db/client.js';
 import { BOX_SILENT_AFTER_MS } from '../jobs/box-answers.js';
 import { logger } from '../logger.js';
 import { boss } from '../queue/boss.js';
-import { deviceRoom } from '../ws/rooms.js';
-import { roomManager } from '../ws/server.js';
+import { publishBoxState } from './box-state-publish.js';
 
 export const DEVICE_STALE_DETECTOR_QUEUE = 'device-status-detector';
 const DEVICE_STALE_THRESHOLD = `interval '${BOX_SILENT_AFTER_MS / 1000} seconds'`;
@@ -29,12 +28,7 @@ export async function runDeviceStaleSweep(): Promise<{
     `),
   );
 
-  for (const row of rows) {
-    roomManager.publish(deviceRoom(row.id), {
-      event: 'device.status',
-      data: { deviceId: row.id, status: 'offline', reason: 'stale' },
-    });
-  }
+  for (const row of rows) await publishBoxState(row.id, 'offline', 'stale');
 
   return { markedOffline: rows.length, durationMs: Date.now() - t0 };
 }

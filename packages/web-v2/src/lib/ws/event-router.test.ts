@@ -82,6 +82,27 @@ describe("a device event reaches the organisation's list as well as the caller's
 	});
 });
 
+// ISS-1228 round 15 repair: the box strip and the session rows each read a box's state on their own poll,
+// so a box gone offline read Offline in one and Working in the other until both polled again.
+describe("a box going offline or coming back reaches every surface that states its state", () => {
+  it.each(["offline", "online"])("a box reported %s refreshes its project's runners and every session read", (status) => {
+    const c = send("device.status", { deviceId: "d1", projectId: "p1", status });
+    for (const key of [
+      ["projects", "p1", "runners"],
+      ["projects", "p1", "active-runners"],
+      ["agent-sessions"],
+      ["sessions-and-holds"],
+      ["run-sessions"],
+    ]) {
+      expect(c.has(key), JSON.stringify(key)).toBe(true);
+    }
+  });
+
+  it("refreshes nothing for a box state that names no project", () => {
+    expect(send("device.status", { deviceId: "d1", status: "offline" }).keys).toEqual([]);
+  });
+});
+
 describe("routeEvent", () => {
   it("ignores an event it does not know rather than throwing", () => {
     expect(() => send("nothing.likeThis")).not.toThrow();
