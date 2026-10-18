@@ -29,6 +29,7 @@ import {
   readIssueLandingShape,
 } from '../../issues/landing-evidence.js';
 import { type IssueListRow, listIssueRows } from '../../issues/list-service.js';
+import { markTargetBranch } from '../../issues/mark-target.js';
 import {
   applyMergeMarker,
   MergeMarkerError,
@@ -752,7 +753,9 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           } = await applyMergeMarker({
             issue,
             op: marking ? 'mark' : 'unmark',
-            ...(input.data?.target ? { target: input.data.target } : {}),
+            ...(input.data?.target
+              ? { target: await markTargetBranch(issue, input.data.target) }
+              : {}),
             ...(input.data?.note ? { note: input.data.note } : {}),
             ...(input.data?.commit ? { commit: input.data.commit } : {}),
             ...(input.data?.landing ? { landing: input.data.landing } : {}),

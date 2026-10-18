@@ -347,7 +347,7 @@ const COVERS_LINE = /^When this was written it held \d+ issues? of this project.
 function coversLine(covers: readonly string[]): string[] {
   if (covers.length === 0) return [];
   const n = `${covers.length} issue${covers.length === 1 ? '' : 's'}`;
-  const which = covers.map((id) => `\`${id}\``).join(', ');
+  const which = covers.join(', ');
   return ['', `When this was written it held ${n} of this project, oldest merge first: ${which}.`];
 }
 
@@ -358,20 +358,15 @@ export function releaseHoldComment(
 ): string {
   const who = hold.owes === 'human' ? 'a person' : 'an agent run';
   const where = shared
-    ? 'The same reason is on every issue of this project it holds, under `releaseHold`, and is ' +
-      'written as a comment on the oldest of them alone; it is removed from each once it no ' +
-      'longer holds.'
-    : 'The same reason is on the issue itself, under `releaseHold`, and is removed once it no ' +
-      'longer holds.';
+    ? ' The same reason holds every issue of this project it names, and is written on the oldest alone.'
+    : '';
   return [
     '**The automatic release is holding this issue at Awaiting release.**',
     '',
     hold.reason,
     '',
-    `It is waiting for ${hold.waitingFor}, which ${who} owes. ${where}`,
+    `It is waiting for ${hold.waitingFor}, which ${who} owes.${where}`,
     ...(shared ? coversLine(covers) : []),
-    '',
-    `\`release-hold: ${hold.code}\``,
   ].join('\n');
 }
 
@@ -416,14 +411,26 @@ export async function commentOnce(
   });
 }
 
-/** Only a hold stored before `said` existed is looked up in the thread; any other says itself. */
+/** Only a hold stored before `said` existed is looked up in the thread; any other says itself. A
+ *  comment of the words before round 8 carried the hold's code on a line of its own, and is read
+ *  as this hold's where it carries that code and this reason. */
 async function saidBefore(issueId: string, hold: ReleaseHold, body: string): Promise<boolean> {
   const wanted = new Set([saidInComment(body), saidInComment(releaseHoldComment(hold))]);
+  const reason = comparable(hold.reason);
   const posted = await db
     .select({ body: comments.body })
     .from(comments)
-    .where(and(eq(comments.issueId, issueId), like(comments.body, `%release-hold: ${hold.code}%`)));
-  return posted.some((c) => wanted.has(saidInComment(c.body)));
+    .where(
+      and(
+        eq(comments.issueId, issueId),
+        like(comments.body, '**The automatic release is holding this issue%'),
+      ),
+    );
+  return posted.some(
+    (c) =>
+      wanted.has(saidInComment(c.body)) ||
+      (c.body.includes(`release-hold: ${hold.code}`) && comparable(c.body).includes(reason)),
+  );
 }
 
 /** `ISS-nn` for each row a shared hold is written onto, in the order given; a failed read names

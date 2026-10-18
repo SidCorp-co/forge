@@ -108,6 +108,23 @@ describe("the merge mark on the issue rail", () => {
     expect(screen.getByTitle(SHA, { exact: false })).toBeInTheDocument();
   });
 
+  // ISS-1421 r8, criterion 132: judge-40 saw only the date and "observed" after a move, the commit
+  // kept on a hover nobody reaches at 390.
+  it("shows an observed commit by seven characters, the whole commit on hover", () => {
+    render(rail("observed", SHA));
+    const commit = screen.getByTestId("merged-commit");
+    expect(commit).toHaveTextContent(SHA.slice(0, 7));
+    expect(commit).not.toHaveTextContent(SHA.slice(0, 8));
+    expect(commit.getAttribute("title")).toBe(`Forge observed this merge at commit ${SHA}.`);
+  });
+
+  it("says a claim's commit was not checked without saying no reader exists", () => {
+    render(rail("asserted", null, null, "git", SHA));
+    const title = screen.getByTestId("merged-claim").getAttribute("title") ?? "";
+    expect(title).toContain("could not check it against the repository");
+    expect(title).not.toContain("no way to read");
+  });
+
   it("says why the claim is a claim, rather than only labelling it", () => {
     render(rail("asserted", null));
     expect(screen.getByTitle(/holds no merged pull request/)).toBeInTheDocument();

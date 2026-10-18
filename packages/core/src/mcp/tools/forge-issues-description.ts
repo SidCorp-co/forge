@@ -108,9 +108,12 @@ export function forgeIssuesDescription(refClause: string): string {
     'Anywhere else your commit never reaches the column: it ' +
     'reaches the audit trail as YOUR CLAIM, and on a git issue only once the repository ' +
     'resolves it, recorded by the full sha it resolves to - refused COMMIT_NOT_IN_REPOSITORY ' +
-    'where the repository holds no such commit, and COMMIT_UNVERIFIED where it cannot be read, ' +
-    'in which case mark naming no commit. A person marking with data.commit is held to this: ' +
-    'COMMIT_UNVERIFIED stands for a person. The answer, and every row this tool returns, ' +
+    'where the repository holds no such commit, and COMMIT_UNVERIFIED where it cannot be read on ' +
+    'an issue not yet marked, in which case mark naming no commit; on an issue already marked the ' +
+    'call changes nothing and its detail says where the mark stays. A person marking with ' +
+    'data.commit is held to this, and the commit stays in the audit comment, never a column. ' +
+    'data.target base, prod or feature is written in the comment as the branch it means. ' +
+    'The answer, and every row this tool returns, ' +
     'carries mark/mergeMark (observed | landed | asserted | unmarked) plus detail - observed means ' +
     'Forge witnessed the merge itself, asserted means it witnessed none and took your word ' +
     "for it. Marking unblocks nothing: a blocks edge is released by the blocker's STATUS " +

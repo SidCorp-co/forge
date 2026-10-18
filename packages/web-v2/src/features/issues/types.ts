@@ -111,6 +111,8 @@ export interface IssueRow {
   liveReach?: LiveReach | null;
   /** The branch core's work-evidence gate counts for this issue; null where it counts none. */
   recordedBranch?: string | null;
+  /** The newest merged pull request's merge commit Forge holds for this issue; null where none. */
+  newestMergedPull?: string | null;
   createdAt: string;
   updatedAt: string;
   /** ISS-1257 — the oldest open question blocked on a person; null or absent when none is. */

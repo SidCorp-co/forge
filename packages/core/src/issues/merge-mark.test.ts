@@ -61,9 +61,11 @@ describe('the sentence a caller is given', () => {
     expect(asserted).toContain('Forge did not see this merge');
   });
 
-  it('tells a caller that named a commit that its commit is kept as a claim, not as the merge commit', () => {
-    expect(asserted).toContain('Commit abc1234 was named, and is kept as a claim.');
-    expect(asserted).toContain('so it is not the merge commit');
+  // ISS-1421 r8: the row keeps no commit a person names, so the answer never says it is kept.
+  it('tells a caller that named a commit that it is noted in the comment only, the mark naming none', () => {
+    expect(asserted).toContain('Commit abc1234 is noted in the comment only.');
+    expect(asserted).toContain('so the mark is a claim that names no commit');
+    expect(asserted).not.toContain('kept');
   });
 
   it('gives the observed mark a different sentence from the asserted one', () => {
@@ -84,7 +86,8 @@ describe('the sentence a caller is given', () => {
       },
     });
     expect(unverified).toBe(
-      "Commit abc1234 was named, and is kept as a claim: Forge has no way to read this project's repository, so it did not check it. Attach a deploy key under Git access, then mark it again.",
+      "Commit abc1234 was named and is kept as a claim. Forge has no way to read this project's repository, so it did not check it. Attach a deploy key, then mark it again.\n" +
+        '> Attach a deploy key under Git access.',
     );
     expect(unverified.match(/abc1234/g)).toHaveLength(1);
   });
@@ -99,9 +102,10 @@ describe('the sentence a caller is given', () => {
         noReader: false,
       },
     });
-    // ISS-1421 — the host's reason as one clause, the step as one short sentence.
+    // ISS-1421 — three short sentences of ours, the host's reason quoted on its own line.
     expect(failed).toBe(
-      'Commit abc1234 was named, and is kept as a claim: Forge could not check it, because the git host refused the deploy key attached to this project. Mark it again once Forge can read the repository.',
+      'Commit abc1234 was named and is kept as a claim. Forge could not check it against the repository. Mark it again once Forge can read the repository.\n' +
+        '> The git host refused the deploy key attached to this project.',
     );
     expect(failed).not.toContain('no way to read');
   });
@@ -115,7 +119,7 @@ describe('the sentence a caller is given', () => {
       notKept: 'def5678',
     });
     expect(repeat).toBe(
-      'Commit def5678 was not recorded: the first claim, abc1234, stands. To record def5678 instead, use Unmark, then Mark merged again.',
+      'Commit def5678 was not recorded, because the first claim, abc1234, stands. To record def5678 instead, use Unmark, then Mark merged again.',
     );
   });
 

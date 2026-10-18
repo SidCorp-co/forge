@@ -314,8 +314,16 @@ export function useCommitLandingWorld() {
         status: string;
         merged_at: unknown;
         merged_commit_sha: string | null;
-      }>(sql`SELECT status, merged_at, merged_commit_sha FROM issues WHERE id = ${id}`);
-      return r as { status: string; merged_at: unknown; merged_commit_sha: string | null };
+        merged_claimed_commit: string | null;
+      }>(
+        sql`SELECT status, merged_at, merged_commit_sha, merged_claimed_commit FROM issues WHERE id = ${id}`,
+      );
+      return r as {
+        status: string;
+        merged_at: unknown;
+        merged_commit_sha: string | null;
+        merged_claimed_commit: string | null;
+      };
     },
 
     async comments(id: string): Promise<string[]> {

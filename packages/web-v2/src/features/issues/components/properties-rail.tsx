@@ -103,22 +103,33 @@ function MergeMarkBadge({
     );
   }
   if (mark === "observed") {
+    // ISS-1421 r8 — the commit is the evidence, shown as text the way a claim's is: a hover alone
+    // is never reached at 390 or on touch.
     return (
-      <span title={`Forge observed this merge at ${commitSha ?? "a commit it recorded"}`}>
+      <>
         <Badge tone="green">observed</Badge>
-      </span>
+        {commitSha && (
+          <span
+            className="fg-body-sm min-w-0 break-all font-mono text-muted"
+            data-testid="merged-commit"
+            title={`Forge observed this merge at commit ${commitSha}.`}
+          >
+            {commitSha.slice(0, 7)}
+          </span>
+        )}
+      </>
     );
   }
   if (mark === "asserted" && claimedCommit) {
-    // ISS-1409 — a commit an agent named where Forge had no way to read the repository: shown as
-    // text, with what is owed it, because it is a claim and not a merge.
+    // ISS-1409 — a commit an agent named that Forge could not check: shown as text, with what is
+    // owed it, because it is a claim and not a merge.
     return (
       <>
         <Badge tone="amber">claimed</Badge>
         <span
           className="fg-body-sm min-w-0 break-all font-mono text-muted"
           data-testid="merged-claim"
-          title={`Commit ${claimedCommit}. Forge has no way to read this project's repository, so it did not check that this commit exists or landed. Once the repository can be read, marking the issue merged again checks it.`}
+          title={`Commit ${claimedCommit}. Forge could not check it against the repository, so it is a claim. An agent marking the issue merged again checks it once Forge can read the repository.`}
         >
           {claimedCommit.slice(0, 7)} — not verified
         </span>
@@ -353,6 +364,8 @@ export function PropertiesRail({
                 mergedAt={issue.mergedAt}
                 landingShape={issue.landingShape}
                 landingSource={landingSource}
+                mergedCommitSha={issue.mergedCommitSha}
+                newestMergedPull={issue.newestMergedPull}
               />
             )}
           </div>
@@ -395,6 +408,8 @@ export function PropertiesRail({
                 mergedAt={null}
                 landingShape={issue.landingShape}
                 landingSource={landingSource}
+                mergedCommitSha={issue.mergedCommitSha}
+                newestMergedPull={issue.newestMergedPull}
               />
             )}
           </div>

@@ -244,7 +244,14 @@ describe('a mark is never written on a lane the issue no longer holds', () => {
       }),
     );
     expect(refusal.code).toBe('LANDING_SHAPE_MOVED');
-    expect(refusal.message).toContain('moved from null to outside_git');
+    expect(refusal.message).toBe(
+      "Nothing was marked, because this issue's landing shape changed while the mark was judged. Mark it again.",
+    );
+    // The shape names stay in the technical view, never in the words (ISS-1421 r8).
+    expect((refusal as { details?: unknown }).details).toEqual({
+      judged: null,
+      holds: 'outside_git',
+    });
     expect((await stored(id)).merged_at).toBeNull();
   });
 });

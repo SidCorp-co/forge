@@ -17,6 +17,7 @@ import {
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
+import { STATE_WORDS } from "../derive";
 import { useIntegrationsList, useMcpPreview, useTestIntegration } from "../hooks";
 import { providerLabel } from "../providers/registry";
 import type { IntegrationSummary, IntegrationTestResult, McpServerPreviewEntry } from "../types";
@@ -35,7 +36,7 @@ const REASON_META: Record<
     bg: "var(--bg-sunken)",
     icon: "dot",
   },
-  disabled: { label: "Disabled", fg: "var(--fg-subtle)", bg: "var(--bg-sunken)", icon: "dot" },
+  disabled: { label: STATE_WORDS.off, fg: "var(--fg-subtle)", bg: "var(--bg-sunken)", icon: "dot" },
   no_credential: {
     label: "No credential",
     fg: "var(--amberw-600)",
@@ -54,7 +55,8 @@ const REASON_META: Record<
     fg: "var(--amberw-600)",
     bg: "var(--amberw-50)",
     icon: "alert",
-    hint: `It is connected, but no agent on this project may use it yet. Switch on "${GRANT_LABEL}" below to allow it.`,
+    // Its connection's state is the row's pill and the Integrations row's; this says only the grant.
+    hint: `No agent on this project may use it yet. Switch on "${GRANT_LABEL}" below to allow it.`,
   },
   not_resolved: {
     label: "Not delivered",
@@ -166,7 +168,12 @@ function McpServerRow({
       {entry.configured && (
         <div className="flex items-center justify-between gap-2">
           <span className="fg-body-sm text-subtle">
-            {healthLine(entry.lastHealthStatus, checked)}
+            {/* Turned off wins: the last check's finding is not a second state beside it. */}
+            {entry.reason === "disabled"
+              ? checked
+                ? `Checked ${checked}.`
+                : healthLine(null)
+              : healthLine(entry.lastHealthStatus, checked)}
           </span>
           {entry.bindingId && (
             <Button variant="ghost" size="sm" onClick={verify} loading={test.isPending}>

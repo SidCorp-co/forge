@@ -32,6 +32,14 @@ const entry = (over: Partial<McpServerPreviewEntry>): McpServerPreviewEntry => (
 
 const servers: McpServerPreviewEntry[] = [
   entry({ provider: "postman", serverName: "postman" }),
+  entry({
+    provider: "coolify",
+    serverName: "coolify",
+    reason: "disabled",
+    configured: true,
+    lastHealthStatus: "needs_reauth",
+    lastHealthAt: new Date(Date.now() - 120_000).toISOString(),
+  }),
   entry({ provider: "epodsystem", serverName: "epodsystem" }),
   entry({ provider: "sentry", serverName: "sentry" }),
   entry({ source: "project", provider: null, serverName: "docs-search", reason: "ok" }),
@@ -75,4 +83,16 @@ describe("McpServersPanel", () => {
       }
     },
   );
+
+  // ISS-1421 r8, criterion 130: judge-40 read "It is connected" beside a row whose integration
+  // needed sign-in, and "Disabled" where every other surface says Turned off.
+  it("never says a row's integration is connected, and names a turned-off row Turned off", () => {
+    for (const hint of REASON_HINTS) expect(hint).not.toMatch(/\bconnected\b/i);
+    render(<McpServersPanel projectId="p1" />);
+    expect(screen.getByText("Turned off")).toBeInTheDocument();
+    expect(screen.queryByText("Disabled")).toBeNull();
+    // One reading per row: a turned-off row says when it was checked, never what that check found.
+    expect(screen.queryByText(/signing in/i)).toBeNull();
+    expect(screen.getByText(/^Checked .+\.$/)).toBeInTheDocument();
+  });
 });

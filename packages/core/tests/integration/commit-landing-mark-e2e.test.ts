@@ -68,21 +68,17 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
     [
       'COMMIT_NOT_IN_REPOSITORY',
       FABRICATED,
-      [`GitHub finds no commit ${FABRICATED.slice(0, 7)} in SidCorp-co/specimen`],
+      [`The repository SidCorp-co/specimen holds no commit ${FABRICATED.slice(0, 7)}.`],
     ],
     [
       'COMMIT_NOT_THIS_ISSUE',
       FOREIGN,
-      [
-        FOREIGN.slice(0, 7),
-        '"fix(core): something else (ISS-1316)"',
-        `does not declare ISS-${SEQ}`,
-      ],
+      [FOREIGN.slice(0, 7), '\n> fix(core): something else (ISS-1316)', `does not name ISS-${SEQ}`],
     ],
     [
       'COMMIT_NOT_THIS_ISSUE',
       UNDECLARED,
-      [UNDECLARED.slice(0, 7), `"chore: tidy, see ISS-${SEQ}"`],
+      [UNDECLARED.slice(0, 7), `\n> chore: tidy, see ISS-${SEQ}`],
     ],
     ['COMMIT_NOT_LANDED', OFF_BASE, [OFF_BASE.slice(0, 7), 'main does not contain it']],
   ] as const)(
@@ -106,7 +102,7 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
   // (ISS-1409's ruling of 2026-10-08); a person's mark naming a commit is still refused.
   it.each([
     ['read', 'HTTP 502'],
-    ['mint', 'minting an installation token: HTTP 404'],
+    ['mint', 'Minting an installation token: HTTP 404.'],
   ] as const)(
     'records an unverified claim naming the cause and its fix when the repository cannot be read (%s) (criteria 7, 8)',
     async (down, says) => {
@@ -115,14 +111,35 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
       const res = await mark(issue, OWN);
       expect(res.action).toBe('merged');
       expect(res.mark).toBe('asserted');
-      expect(res.markDetail).toBe(
-        `Commit ${OWN.slice(0, 7)} was named, and is kept as a claim: Forge could not check it, because ${down === 'read' ? `GET /repos/${repo.fullName}/commits/${OWN.slice(0, 7)} on ${repo.fullName} returned HTTP 502` : says}. Mark it again once Forge can read the repository.`,
+      // ISS-1421 r8: three short sentences of ours, the host's reason quoted on its own line.
+      expect(res.markDetail).toMatch(
+        new RegExp(
+          `^Commit ${OWN.slice(0, 7)} was named and is kept as a claim\\. Forge could not check it against the repository\\. Mark it again once Forge can read the repository\\.\\n> `,
+        ),
       );
       expect(res.markDetail).toContain(says);
       expect(await row(issue.id)).toMatchObject({ merged_commit_sha: null });
-      const refused = await refusal(() => mark(issue, OWN, 'human'));
+
+      // Criterion 123: on the issue now marked, a person's commit Forge cannot read is answered with
+      // where the mark stays, and a comment says so; nothing is refused and nothing is written.
+      const said = await comments(issue.id);
+      const repeat = await mark({ ...issue, mergedAt: new Date() }, OWN, 'human');
+      expect(repeat.action).toBe('already_merged');
+      expect(repeat.markDetail.split('\n')[0]).toBe(
+        `The mark stays a claim naming commit ${OWN.slice(0, 7)}. Forge could not check commit ${OWN.slice(0, 7)} against the repository. Mark it again once it can.`,
+      );
+      expect(repeat.markDetail).toContain(says);
+      expect(repeat.markDetail).not.toContain('naming no commit');
+      expect(await comments(issue.id)).toHaveLength(said.length + 1);
+      expect((await comments(issue.id)).at(-1)).toContain('The mark stays a claim naming commit');
+      expect(await row(issue.id)).toMatchObject({ merged_commit_sha: null });
+
+      // Criterion 124: only an issue not yet marked is refused, and only there is no commit offered.
+      const fresh = await seed({ seq: SEQ + 1 });
+      const refused = await refusal(() => mark(fresh, OWN, 'human'));
       expect(refused.code).toBe('COMMIT_UNVERIFIED');
       expect(refused.message).toContain(says);
+      expect(refused.message).toContain('Or mark it naming no commit, which records a claim.');
     },
   );
 
@@ -139,7 +156,7 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
     const res = await mark(issue, FOREIGN);
     expect(res.mark).toBe('asserted');
     expect(res.markDetail).toContain(
-      `Commit ${FOREIGN.slice(0, 7)} was named, and is kept as a claim:`,
+      `Commit ${FOREIGN.slice(0, 7)} is in ${repo.fullName}, and is noted in the comment only.`,
     );
     expect((await row(issue.id)).merged_commit_sha).toBeNull();
     expect(repo.reads).toEqual([`/repos/${repo.fullName}/commits/${FOREIGN}`]);
@@ -189,12 +206,12 @@ describe('ISS-1318 — the live branch and an abbreviated sha, named for what th
       const issue = await seed();
       const refused = await refusal(() => mark(issue, short));
       expect(refused.code).toBe('COMMIT_NOT_IN_REPOSITORY');
+      // The commit as it was typed, whole: a shorter prefix of it could name a commit after all.
       expect(refused.message).toContain(
-        `GitHub resolves no single commit from ${short} in SidCorp-co/specimen`,
+        `The repository SidCorp-co/specimen resolves no single commit from ${short}.`,
       );
-      expect(refused.message).toContain('or more than one does');
-      expect(refused.message).toContain('the full 40-character sha');
-      expect(refused.message).not.toContain('finds no commit');
+      expect(refused.message).toContain('Mark it with the full sha the work landed at.');
+      expect(refused.message).not.toContain('holds no commit');
       expect(await row(issue.id)).toMatchObject({ merged_at: null, merged_commit_sha: null });
     },
   );
@@ -246,7 +263,7 @@ describe('ISS-1318 r3 — each refusal names a route its reader can take (real P
     const issue = await seed({ sessionContext: {} });
     const res = await mark(issue, OWN);
     expect(res.mark).toBe('asserted');
-    expect(res.markDetail).toContain('the project names no base branch to look for it on');
+    expect(res.markDetail).toContain('The project names no base branch to look for it on');
     expect(res.markDetail).toContain('Mark it again once the project names its base branch.');
     expect(repo.reads).toEqual([]);
   });

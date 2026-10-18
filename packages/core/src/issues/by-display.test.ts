@@ -20,6 +20,12 @@ vi.mock('../pipeline/work-evidence.js', async (importOriginal) => ({
     lane: null,
   }),
 }));
+// The newest merged pull request's commit (ISS-1421 r8) is read against Postgres in
+// `tests/integration/landing-moves-forward-e2e.test.ts`; here Forge holds none.
+vi.mock('./merge-record.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./merge-record.js')>()),
+  observedMergeForIssue: async () => null,
+}));
 vi.mock('../config/env.js', () => ({
   env: { JWT_SECRET: TEST_SECRET, NODE_ENV: 'test' },
 }));

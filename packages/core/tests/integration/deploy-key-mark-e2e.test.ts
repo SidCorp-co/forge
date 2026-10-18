@@ -43,6 +43,7 @@ beforeAll(() => {
   host.branch('production', at.root);
   at.own = host.commit('main', `fix(core): mark by commit (ISS-${SEQ})`);
   at.foreign = host.commit('main', 'fix(core): something else (ISS-1316)');
+  at.spaced = host.commit('main', 'fix(core):  keeps  its spacing (ISS-1316)');
   at.undeclared = host.commit('main', `chore: tidy, see ISS-${SEQ}`);
   host.branch(`ISS-${SEQ}-wip`, at.undeclared);
   at.offBase = host.commit(`ISS-${SEQ}-wip`, `ISS-${SEQ}: work in progress`);
@@ -96,9 +97,15 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
     [
       'COMMIT_NOT_THIS_ISSUE',
       () => at.foreign as string,
-      ['"fix(core): something else (ISS-1316)"', `does not declare ISS-${SEQ}`],
+      ['\n> fix(core): something else (ISS-1316)', `does not name ISS-${SEQ}`, /\(ISS-1316\)$/],
     ],
-    ['COMMIT_NOT_THIS_ISSUE', () => at.undeclared as string, [`"chore: tidy, see ISS-${SEQ}"`]],
+    ['COMMIT_NOT_THIS_ISSUE', () => at.undeclared as string, [`\n> chore: tidy, see ISS-${SEQ}`]],
+    // ISS-1421 r8: a subject is quoted as the commit holds it, its spacing kept.
+    [
+      'COMMIT_NOT_THIS_ISSUE',
+      () => at.spaced as string,
+      [/\n> fix\(core\): {2}keeps {2}its spacing \(ISS-1316\)$/],
+    ],
     ['COMMIT_NOT_LANDED', () => at.offBase as string, ['main does not contain it']],
     // ISS-1398 r4: git resolves a packed commit's 40 digits plus any tail, so these were accepted.
     ...[`a`, 'abcdef0123456789abcdef0', 'abcdef0123456789abcdef01'].map(
@@ -123,7 +130,10 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
       const refused = await refusal(() => mark(issue, commit()));
 
       expect(refused.code).toBe(code);
-      for (const s of says) expect(refused.message).toContain(s);
+      for (const s of says) {
+        if (typeof s === 'string') expect(refused.message).toContain(s);
+        else expect(refused.message).toMatch(s);
+      }
       expect(await row(issue.id)).toMatchObject({ merged_at: null, merged_commit_sha: null });
       expect(await comments(issue.id)).toEqual(before);
     },
@@ -135,7 +145,7 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
     const res = await mark(branched, (at.foreign as string).slice(0, 10));
     expect(res.mark).toBe('asserted');
     expect(res.markDetail).toContain(
-      `Commit ${(at.foreign as string).slice(0, 7)} was named, and is kept as a claim:`,
+      `Commit ${(at.foreign as string).slice(0, 7)} is in ${GITLAB_URL}, and is noted in the comment only.`,
     );
     expect(res.namedCommit).toBe(at.foreign);
 
@@ -197,8 +207,9 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
       expect(res.markDetail).toContain(answer.said);
       // ISS-1421 — the host's step opens a sentence of its own, so it is read whatever its case.
       for (const s of says) expect(res.markDetail.toLowerCase()).toContain(s.toLowerCase());
+      // ISS-1421 r8: our step ends our sentences, and the host's reason stands quoted beneath.
       expect(res.markDetail).toMatch(
-        /, then mark it again\.$|Mark it again once Forge can read the repository\.$/,
+        /(, then mark it again|Mark it again once Forge can read the repository)\.\n> /,
       );
       expect(res.markDetail).not.toMatch(/remote:\s*(\.|\))/);
       expect(res.markDetail).not.toContain('172.65.251.78');
@@ -240,8 +251,9 @@ describe('ISS-1409 — a project whose deploy key cannot be used to read it, or 
     expect(res.mark).toBe('asserted');
     expect(res.markDetail).toMatch(/(did not|could not) check it/);
     expect(res.markDetail).toContain("Forge has no way to read this project's repository");
+    expect(res.markDetail).toContain('Attach a deploy key, then mark it again.');
     expect(res.markDetail).toContain(
-      `Attach a deploy key with write access to ${GITLAB_URL} under the project's Settings → Runners → Git access`,
+      `attach a deploy key with write access to ${GITLAB_URL} under the project's Settings → Runners → Git access`,
     );
     expect(res.markDetail).not.toMatch(
       /bind (a|the) repository|Integrations|through a GitHub binding/,

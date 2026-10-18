@@ -45,13 +45,15 @@ describe("the notice after Mark merged", () => {
   });
 
   it("still says nothing changed where the mark moved nothing, with the answer's reason", async () => {
-    // ISS-1421 — core's answer: three short sentences, commits in seven characters.
-    const unread =
-      "The mark stays at commit 1a1a1a1, and commit 2b2b2b2 was not compared with it. Forge could not read the repository: SidCorp-co/forge could not compare 1a1a1a1 with 2b2b2b2. Mark it again once it can.";
-    answer = { id: ISSUE, action: "already_merged", mark: "observed", detail: unread, movedFrom: null };
+    // ISS-1421 — core's answer: our sentences, then the reader's reason quoted on a "> " line.
+    const ours =
+      "The mark stays at commit 1a1a1a1. Forge could not check commit 2b2b2b2 against the repository. Mark it again once it can.";
+    const why = "SidCorp-co/forge could not compare 1a1a1a1 with 2b2b2b2.";
+    answer = { id: ISSUE, action: "already_merged", mark: "observed", detail: `${ours}\n> ${why}`, movedFrom: null };
     const said = await markOnce();
     expect(said.title).toBe("Already marked merged — nothing changed");
-    expect(said.description).toBe(unread);
+    // The reason stands on a line of its own, never after a literal "> " run on inline (round 8).
+    expect(said.description).toBe(`${ours}\n${why}`);
   });
 
   it("drops the repeat's opening sentence, which the title already says", async () => {

@@ -120,7 +120,7 @@ async function holdOf(issueId: string): Promise<Record<string, unknown> | null> 
 async function holdComments(issueId: string): Promise<string[]> {
   const rows = (await harness.db.execute(sql`
     SELECT body FROM comments
-     WHERE issue_id = ${issueId} AND body LIKE '%release-hold: %'
+     WHERE issue_id = ${issueId} AND body LIKE '**The automatic release is holding this issue%'
      ORDER BY created_at ASC, id ASC
   `)) as unknown as Array<{ body: string }>;
   return rows.map((r) => r.body);
@@ -318,7 +318,8 @@ describe('every exit before the cut is written on the row', () => {
     const said = releaseBlockerSentence('RELEASE_TARGET_UNDECLARED', { releaseChain });
     for (const id of [oldest, middle, newest]) expect((await holdOf(id))?.reason).toBe(said);
     expect(said).not.toContain(projectId);
-    const names = (await fx.displayIds([oldest, middle, newest])).map((n) => `\`${n}\``);
+    // ISS-1421 r8, criterion 90: the covered issues in words, never as code spans.
+    const names = await fx.displayIds([oldest, middle, newest]);
     const posted = await holdComments(oldest);
     expect(posted).toHaveLength(1);
     expect(posted[0]).toContain(
@@ -447,7 +448,7 @@ describe('the hold and its comment commit together', () => {
     });
 
     const authors = await harness.db.execute<{ author_id: string }>(sql`
-      SELECT author_id FROM comments WHERE issue_id = ${id} AND body LIKE '%release-hold: %'
+      SELECT author_id FROM comments WHERE issue_id = ${id} AND body LIKE '**The automatic release is holding this issue%'
     `);
     expect(authors.map((r) => r.author_id)).toEqual([FORGE_AUTHOR_ID]);
   }, 30_000);

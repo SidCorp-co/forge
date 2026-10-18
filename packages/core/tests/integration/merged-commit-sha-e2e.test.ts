@@ -222,8 +222,10 @@ describe('ISS-959 B — the merged mark records its commit', () => {
     expect(row.merged_commit_sha).toBeNull();
     expect(row.merged_at).not.toBeNull();
     const said = (await commentsOn(id)).join('\n');
-    expect(said).toContain(`Commit ${SHA.slice(0, 7)} was named`);
-    expect(said).toContain('was named, and is kept as a claim');
+    // ISS-1421 r8 — the row keeps no commit a person names, so the trail says where it lives.
+    expect(said).toContain(`Commit ${SHA.slice(0, 7)} is in `);
+    expect(said).toContain('and is noted in the comment only');
+    expect(said).not.toContain('kept');
     // ISS-1126 — and the trail now names which kind of record this is, not only what it holds.
     expect(said).toContain('Forge did not see this merge');
   });
@@ -261,7 +263,7 @@ describe('ISS-959 B — the merged mark records its commit', () => {
     // as the seven characters a person reads, of the sha the repository resolved.
     expect(said).toContain(`Commit ${FEEDFACE.slice(0, 7)}, named in this mark`);
     expect(said).toContain(`land at commit ${SHA.slice(0, 7)},`);
-    expect(said).toContain('named in this mark, is kept as a claim only');
+    expect(said).toContain('named in this mark, was not recorded');
     expect(said).toContain('Forge saw this merge land at commit');
     expect((await storedMark(id)).merged_commit_sha).toBe(SHA);
   });
@@ -390,9 +392,7 @@ describe('ISS-959 B — what the mark still refuses, and how a mark is corrected
     const answered = await mark(short.id, short.token, { target: 'base', commit: 'abc1234' });
     expect(answered.status).toBe(200);
     expect((await answered.json()).namedCommit).toBe(ABC);
-    expect((await commentsOn(short.id)).join('\n')).toContain(
-      `Commit ${ABC.slice(0, 7)} was named`,
-    );
+    expect((await commentsOn(short.id)).join('\n')).toContain(`Commit ${ABC.slice(0, 7)} is in `);
 
     const tooShort = await seed();
     expect(
@@ -407,7 +407,7 @@ describe('ISS-959 B — what the mark still refuses, and how a mark is corrected
       sql`SELECT body FROM comments WHERE issue_id = ${id}`,
     );
     const body = (rows[0] as { body: string }).body;
-    expect(body.startsWith(`Marked merged into base.\nCommit ${SHA.slice(0, 7)} was named`)).toBe(
+    expect(body.startsWith(`Marked merged into base.\nCommit ${SHA.slice(0, 7)} is in `)).toBe(
       true,
     );
     expect(body.split(SHA.slice(0, 7))).toHaveLength(2);
@@ -438,7 +438,9 @@ describe('ISS-1350 — a mark naming a commit the repository does not resolve is
       await mark(id, token, { target: 'base', commit: ABSENT }),
       'COMMIT_NOT_IN_REPOSITORY',
     );
-    expect(said).toContain(`GitHub finds no commit ${ABSENT.slice(0, 7)} in ${repo.fullName}`);
+    expect(said).toContain(
+      `The repository ${repo.fullName} holds no commit ${ABSENT.slice(0, 7)}.`,
+    );
     expect(await storedMark(id)).toEqual({ merged_at: null, merged_commit_sha: null });
     expect(await commentsOn(id)).toEqual([]);
   });
@@ -470,7 +472,9 @@ describe('ISS-1350 — a mark naming a commit the repository does not resolve is
       await mark(id, token, { target: 'base', commit: 'dead123' }),
       'COMMIT_NOT_IN_REPOSITORY',
     );
-    expect(said).toContain(`GitHub resolves no single commit from dead123 in ${repo.fullName}`);
+    expect(said).toContain(
+      `The repository ${repo.fullName} resolves no single commit from dead123.`,
+    );
     expect((await storedMark(id)).merged_at).toBeNull();
   });
 

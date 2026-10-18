@@ -58,6 +58,14 @@ let projectionRows: unknown[] = [];
 let stampedRows: unknown[] = [{ mergedAt: AT, mergedCommitSha: null }];
 /** Every column set the mark's UPDATE carried, which is what the description claims about. */
 const setPayloads: Record<string, unknown>[] = [];
+const commentBodies: string[] = [];
+
+// The branch a target token means is read against Postgres in
+// `tests/integration/landing-moves-forward-e2e.test.ts`; here it is named outright (ISS-1421 r8).
+vi.mock('../../issues/mark-target.js', () => ({
+  markTargetBranch: async (_issue: unknown, token: string) =>
+    ({ base: 'main', prod: 'production', feature: 'ISS-7-the-branch' })[token],
+}));
 
 vi.mock('../../db/client.js', () => ({
   db: {
@@ -81,9 +89,10 @@ vi.mock('../../db/client.js', () => ({
       },
     }),
     insert: () => ({
-      values: (row: { body: string }) => ({
-        returning: async () => [{ id: 'comment-1', body: row.body, parentId: null }],
-      }),
+      values: (row: { body: string }) => {
+        commentBodies.push(row.body);
+        return { returning: async () => [{ id: 'comment-1', body: row.body, parentId: null }] };
+      },
     }),
   },
 }));
@@ -261,7 +270,16 @@ describe('forge_issues action=mark_merged, the answer to the call that writes on
       data: { issueId: ISSUE_ID, target: 'base', commit: 'abc1234' },
     });
     expect(claimed.detail).toContain('Forge did not see this merge');
-    expect(claimed.detail).toContain('so it is not the merge commit');
+    expect(claimed.detail).toContain('so the mark is a claim that names no commit');
+    expect(claimed.detail).not.toContain('kept');
+  });
+
+  // ISS-1421 r8, criterion 126: judge-40 read "Marked merged into base." in the thread.
+  it('names the branch a target token means in the comment, never the token', async () => {
+    commentBodies.length = 0;
+    await call({ action: 'mark_merged', data: { issueId: ISSUE_ID, target: 'base' } });
+    expect(commentBodies.join('\n')).toContain('Marked merged into main');
+    expect(commentBodies.join('\n')).not.toContain('into base');
   });
 
   it('answers unmark with unmarked rather than the kind it cleared', async () => {
