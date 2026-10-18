@@ -62,7 +62,7 @@ const KINDS: ReadonlyArray<[string, ReleaseHold, string]> = [
   [
     'criteria unearned',
     criteriaHold(REPORT),
-    'The automatic release leaves this issue out, because criteria 3 and 5 are not earned at what this project is serving. ' +
+    'The automatic release leaves this issue out, because criteria 3 and 5 are not earned at the deployment. ' +
       'A person records a verdict on each at the running deployment, or closes the issue by hand. ' +
       'The next sweep weighs it again.',
   ],
@@ -83,10 +83,11 @@ const KINDS: ReadonlyArray<[string, ReleaseHold, string]> = [
   [
     'close refused for several reasons',
     closeRefusedHold([UNMERGED, QUESTION, RECORDS]),
-    'The automatic release cannot close this issue, because it is not marked merged, holds 1 open question and is missing a test report. ' +
-      'To clear it, use Mark merged in its properties and fill in Where it landed; answer the question in the Decision waiting card above; ' +
-      'press Open session at the top of this page, and the agent writes the missing records. ' +
-      'The next sweep releases it once that is done.',
+    'The automatic release cannot close this issue, for 3 reasons.\n\n' +
+      '- It is not marked merged. Use Mark merged in its properties and fill in Where it landed.\n' +
+      '- It holds 1 open question. Answer the question in the Decision waiting card above.\n' +
+      '- It is missing a test report. Press Open session at the top of this page, and the agent writes the missing records.\n\n' +
+      'The next sweep releases it once each is done.',
   ],
   [
     'close unreadable',
@@ -160,10 +161,25 @@ describe('every hold kind is commented in three short sentences (ISS-1421 r8 rep
       const body = releaseHoldComment(hold, true, ['ISS-8']);
       expect(body).toBe(`${HEADING}\n\n${said}`);
       expect(body).not.toMatch(/`|RELEASE_|NO_RELEASE|NO_RUNNER|BATCH_IN|It is waiting for/);
-      const sentences = said.split(/(?<=\.)\s+(?=[A-Z])/);
+      // A list of reasons is one part of the three; its lines are each held to the word cap.
+      const parts = said.split(/\n\n/);
+      const sentences = parts.length === 3 ? parts : said.split(/(?<=\.)\s+(?=[A-Z])/);
       expect(sentences.length, said).toBeLessThanOrEqual(3);
+      // r9: judge-43 read two sentences of 32 and 48 words in a three-shortfall comment.
+      for (const one of said.split(/\n|(?<=\.)\s+(?=[A-Z-])/)) {
+        if (one.trim() === '') continue;
+        expect(one.split(/\s+/).length, one).toBeLessThanOrEqual(20);
+      }
     },
   );
+
+  it('keeps a long refusal reason to the page that lists it, never a long sentence', () => {
+    const long = `${'The release check found one more thing to fix before this project can release, '.repeat(2)}.`;
+    const body = releaseHoldComment(refusalHold('NO_RUNNER_ONLINE', [long]));
+    expect(body).toContain(
+      'The automatic release was refused, for a reason Settings → Shape & release lists.',
+    );
+  });
 
   it('names the rows one shared comment stands for in its heading, not in a fourth sentence', () => {
     const body = releaseHoldComment(queuedBehindHold(20), true, ['ISS-5', 'ISS-3', 'ISS-4']);

@@ -124,10 +124,10 @@ export function withReason(sentences: string, why: string | null | undefined): s
   return said ? `${sentences}\n${quoted(shortenCommits(said))}` : sentences;
 }
 
-/** A repository's address as a comment shows it: code, so `git@host:org/repo` is never a mail link. */
+/** A repository's address as code, so `git@host:org/repo` or `user@host` is never a mail link. */
 export function addressesAsCode(text: string): string {
   return text.replace(
-    /(`[^`\n]*`)|((?:[\w.-]+@[\w.-]+:|(?:ssh|git|https?):\/\/)[^\s`'"<>()]*[^\s`'"<>().,;:])/g,
+    /(`[^`\n]*`)|((?:ssh|git|https?):\/\/[^\s`'"<>()]*[^\s`'"<>().,;:]|[\w.-]+@[\w-]+(?:\.[\w-]+)*(?::[^\s`'"<>()]*[^\s`'"<>().,;:])?)/g,
     (whole, code: string | undefined, address: string | undefined) =>
       code ? whole : `\`${address}\``,
   );
@@ -387,11 +387,11 @@ export function threadBody(args: {
       : [`${alreadyMarkedSentence(args.stamp.mergedAt)}.`, note, addressesAsCode(args.after)];
     return parts.filter(Boolean).join('\n\n');
   }
-  const said = args.note ? ` — ${args.note}` : '.';
-  if (args.op !== 'mark') return `Merge mark removed${said}`;
+  if (args.op !== 'mark') return ['Merge mark removed.', note].filter(Boolean).join('\n\n');
   const labelled = args.stamp.commitSha ?? args.claimedCommit ?? args.stamp.claimedCommit;
   const named = labelled ? shortCommit(labelled) : null;
   const at = named && !args.markDetail.includes(named) ? `, at commit ${named}` : '';
   const into = args.target ? ` into ${args.target}` : '';
-  return `Marked merged${into}${at}${said}\n${addressesAsCode(args.markDetail)}`;
+  const said = `Marked merged${into}${at}.\n${addressesAsCode(args.markDetail)}`;
+  return note ? `${said}\n\n${note}` : said;
 }

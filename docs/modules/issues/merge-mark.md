@@ -240,8 +240,15 @@ the quoted reason to its first clause on a line of its own, the mark's comment h
 (`packages/web-v2/src/features/issues/hooks.ts:answerInBrief`), and a refusal shown beside the form,
 which writes no comment, puts it whole on a line of its own
 (`packages/web-v2/src/features/issues/hooks.ts:answerShown`). A first mark's comment names its commit once: the label carries it only where the sentence
-after it does not, and a repository's address shows there as code, never a mail link
-(`addressesAsCode`). An MCP `target` of `base`, `prod` or `feature` is written as the branch it
+after it does not, and a repository's address shows there as code, never a mail link, a bare
+`user@host` in a quoted host reason included (`addressesAsCode`). A note, on a first mark, an unmark
+or a repeat, is quoted on a line of its own (`threadBody`). Each mark refusal names the field its
+own door's caller sends: `landing`, `commit` or `target` on REST, `data.landing`, `data.commit` or
+`data.target` on MCP (`packages/core/src/issues/landing-evidence.ts:markField`), and the page's
+own field on the issue page (`packages/web-v2/src/lib/api/error.ts:formatApiError`). The REST
+door's refusal of its own input, a blank target read as a missing one, is one sentence naming what
+the mark needs (`packages/core/src/issues/merge-input-refusal.ts:markInputRefusal`), with zod's
+account kept in `details`. An MCP `target` of `base`, `prod` or `feature` is written as the branch it
 means (`packages/core/src/issues/mark-target.ts:markTargetBranch`). No answer repeats "Forge saw
 this merge land" before the point; `packages/core/src/issues/mark-words.test.ts` holds every
 sentence builder to this.

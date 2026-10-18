@@ -134,14 +134,21 @@ describe('target is owed where the project moves branches, and only there', () =
     const id = await seedIssue(w);
     const res = await rest('POST', `/api/issues/${id}/merge`, w.token, {});
     expect(res.status).toBe(400);
-    // ISS-1421 r8, criterion 131: capitalised, stopped, naming what to fill in.
-    expect(JSON.stringify(await res.json())).toContain(
-      'A target is required. Name the branch the work merged into as the target.',
+    // ISS-1421 r9, criterion 131: one capitalised, stopped sentence naming the field to fill in.
+    expect(((await res.json()) as { message: string }).message).toBe(
+      'Name the branch the work merged into as `target`.',
+    );
+    const blank = await rest('POST', `/api/issues/${id}/merge`, w.token, { target: '  ' });
+    expect(blank.status).toBe(400);
+    expect(((await blank.json()) as { message: string }).message).toBe(
+      'Name the branch the work merged into as `target`.',
     );
 
     const viaTool = await tool(w.pat, { action: 'mark_merged', data: { issueId: id } });
     expect(viaTool.isError).toBe(true);
-    expect(viaTool.text).toContain('data.target is required for mark_merged');
+    expect(viaTool.text).toContain(
+      'Name where the work merged as `data.target`: base, prod or feature.',
+    );
     expect((await stored(id)).merged_at).toBeNull();
   });
 

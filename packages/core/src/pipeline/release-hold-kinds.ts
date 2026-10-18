@@ -13,6 +13,9 @@ import type { RuntimeReading } from '../release-batch/weighing.js';
 import type { HoldWords, ReleaseHold } from './release-hold.js';
 
 const NEXT_WEIGHS = 'The next sweep weighs it again.';
+/** The most words one sentence of a hold comment runs to (ISS-1421 r9). */
+export const HOLD_SENTENCE_WORDS = 20;
+const wordsIn = (sentence: string): number => sentence.trim().split(/\s+/).length;
 const UNREAD_ACT = 'Nobody needs to act unless this repeats, and then a person reports it.';
 
 function criteriaNamed(numbers: readonly number[]): string {
@@ -112,12 +115,12 @@ export function criteriaHold(report: IssueCriteriaReport): ReleaseHold {
   const words: HoldWords =
     clears.length === 0
       ? [
-          `The automatic release leaves this issue out, because ${held} not earned at what this project is serving.`,
+          `The automatic release leaves this issue out, because ${held} not earned at the deployment.`,
           'A person records a verdict on each at the running deployment, or closes the issue by hand.',
           NEXT_WEIGHS,
         ]
       : [
-          `The automatic release leaves this issue out, because ${held} not earned and the repository cannot be read.`,
+          `The automatic release leaves this issue out, because ${held} unearned and its repository is unreadable.`,
           'A person makes the repository readable to Forge again, then records a verdict on each or closes the issue.',
           NEXT_WEIGHS,
         ];
@@ -166,10 +169,8 @@ function shortfallStep(s: Shortfall): string {
       : 'answer the questions in the Decision waiting cards above';
   }
   if (s.code === 'CLOSE_REQUIRES_SHIPPED') {
-    const fill = /^no mark/.test(s.reason)
-      ? `name the live URL, CMS entry or storefront resource in ${WHERE_IT_LANDED_FIELD}`
-      : `fill in ${WHERE_IT_LANDED_FIELD}`;
-    return `use ${MARK_MERGED_ACTION} in its properties and ${fill}`;
+    // The panel Mark merged opens says what Where it landed takes; the step stays one short clause.
+    return `use ${MARK_MERGED_ACTION} in its properties and fill in ${WHERE_IT_LANDED_FIELD}`;
   }
   const act = s.clearsHere ?? s.clears;
   if (s.code === 'ENTRY_CRITERIA_UNMET') {
@@ -182,12 +183,35 @@ function shortfallStep(s: Shortfall): string {
     .replace(/\. /g, ', then ');
 }
 
+/** A shortfall's reason in the banner's words, without the clause saying who requires it. */
+function shortfallWhy(s: Shortfall): string {
+  return shortfallSentence(s.reason).replace(/, which .*$/, '.');
+}
+
+const capitalised = (clause: string): string =>
+  `${clause.charAt(0).toUpperCase()}${clause.slice(1)}`;
+
 /** What the finish's close would refuse this row for, which the sweep reads before it cuts (ISS-1337). */
 export function closeRefusedHold(shortfalls: readonly Shortfall[]): ReleaseHold {
-  // Every reason in one sentence, every act in one list (ISS-1421 r8, criterion 90), never a code.
   const said = shortfalls.map((s) => shortfallSentence(s.reason).replace(/^It/, 'it').slice(0, -1));
-  const why = said.map((w) => w.replace(/^it /, '').replace(/, which .*$/, ''));
   const acts = shortfalls.map((s) => s.clearsHere ?? s.clears).join(' ');
+  // One reason is one sentence and its act another; several are a line each, reason then act, so
+  // no sentence runs past `HOLD_SENTENCE_WORDS` however many there are (ISS-1421 r9).
+  const [only] = shortfalls;
+  const words: HoldWords =
+    shortfalls.length === 1 && only
+      ? [
+          `The automatic release cannot close this issue, because ${shortfallWhy(only).replace(/^It/, 'it')}`,
+          `To clear it, ${shortfallStep(only)}.`,
+          'The next sweep releases it once that is done.',
+        ]
+      : [
+          `The automatic release cannot close this issue, for ${shortfalls.length} reasons.`,
+          shortfalls
+            .map((s) => `- ${shortfallWhy(s)} ${capitalised(shortfallStep(s))}.`)
+            .join('\n'),
+          'The next sweep releases it once each is done.',
+        ];
   return {
     code: 'RELEASE_ISSUES_UNCLOSABLE',
     reason:
@@ -195,11 +219,7 @@ export function closeRefusedHold(shortfalls: readonly Shortfall[]): ReleaseHold 
       `be refused. ${acts} The next sweep releases it once that is done.`,
     owes: shortfalls.some((s) => s.code === 'OPEN_QUESTIONS') ? 'human' : 'agent',
     waitingFor: 'what its close is refused for to be cleared',
-    words: [
-      `The automatic release cannot close this issue, because it ${listed(why)}.`,
-      `To clear it, ${shortfalls.map(shortfallStep).join('; ')}.`,
-      'The next sweep releases it once that is done.',
-    ],
+    words,
   };
 }
 
@@ -332,13 +352,17 @@ function firstClause(reasons: readonly string[]): string {
 
 export function refusalHold(code: string, reasons: readonly string[]): ReleaseHold {
   const selfClearing = SELF_CLEARING[code];
+  const because = `The automatic release was refused, because ${firstClause(reasons)}.`;
   return {
     code,
     reason: withoutAges(`The automatic release was refused: ${reasons.join(' ')}`),
     owes: selfClearing ? 'agent' : 'human',
     waitingFor: selfClearing ?? 'the refusal named here to be cleared',
     words: [
-      `The automatic release was refused, because ${firstClause(reasons)}.`,
+      // A reason too long for one sentence is left to the page that lists it, never cut mid-clause.
+      wordsIn(because) <= HOLD_SENTENCE_WORDS
+        ? because
+        : 'The automatic release was refused, for a reason Settings → Shape & release lists.',
       selfClearing
         ? 'Nobody needs to act.'
         : 'A person clears what Settings → Shape & release lists under "Can this project release?".',

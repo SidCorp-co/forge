@@ -64,6 +64,10 @@ function mergeMarkSentence(err: ApiError): string | null {
         : 'Use ';
     return `Nothing on this issue says where the work landed, so it cannot close. ${unmarkFirst}${MARK_MERGED_ACTION} in the issue’s properties and fill in “${WHERE_IT_LANDED_FIELD}” — the live URL, CMS entry or storefront resource — then close. Use Dropped if it never landed.`;
   }
+  // ISS-1421 r9: core names the REST field; a person here fills in the panel's own field.
+  if (err.code === 'LANDING_REQUIRED') {
+    return `Nothing was marked, because no merged pull request shows where this work landed. Fill in “${WHERE_IT_LANDED_FIELD}” with the live URL, CMS entry or storefront resource.`;
+  }
   if (err.code === 'MARK_ALREADY_STANDS') {
     const held = detailStr(err.details, 'heldLanding');
     const stands = held ? `This issue’s mark already says it landed at ${held}` : 'This issue already carries a mark that names no landing';

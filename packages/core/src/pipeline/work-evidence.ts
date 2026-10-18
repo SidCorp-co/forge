@@ -6,6 +6,9 @@ import {
   DECLARE_OUTSIDE_GIT,
   type Lane,
   laneOrNull,
+  type MarkDoor,
+  markField,
+  sendLanding,
   whereItLands,
 } from '../issues/landing-evidence.js';
 import { logger } from '../logger.js';
@@ -150,6 +153,9 @@ const UNKNOWN_LANE =
   projectKinds.map((k) => `\`${k}\``).join(', ') +
   ', so whether its work lands in git is unknown and the commit route is not offered.';
 
+/** What a mark door's refusal opens on; the reason that follows completes the sentence. */
+const NOTHING_MARKED = 'Nothing was marked, because';
+
 /** The mark door's refusal: its own short sentences, then each rule another part words, quoted on
  *  a line of its own rather than spliced into one of them (ISS-1421 r6, criterion 63). */
 function markDetail(said: string, rules: readonly string[]): string {
@@ -158,15 +164,10 @@ function markDetail(said: string, rules: readonly string[]): string {
 
 /** Outside git the landing a mark names is the route, for anyone. A branch is that lane's second
  *  route and its base-branch paragraph is a git lane's, so the sentence ends on the lane. */
-function outsideGitDetail(lane: Lane, door: EvidenceDoor): string {
+function outsideGitDetail(lane: Lane, door: EvidenceDoor, via: MarkDoor): string {
   const lands = `${whereItLands(lane, true)}, so a commit is not read here.`;
   if (door === 'mark') {
-    return markDetail(
-      'This mark names no landing, and no branch is recorded for this issue. Nothing was marked. ' +
-        'Mark it again with `mark_merged` carrying `data.landing`. That names where the work now ' +
-        'is: the live URL, the deployment, the CMS entry or storefront resource.',
-      [lands],
-    );
+    return `${NOTHING_MARKED} this mark names no landing and no branch is recorded for this issue. ${sendLanding(via)}`;
   }
   return (
     'no landing or branch is recorded for this issue — mark it merged with ' +
@@ -177,14 +178,12 @@ function outsideGitDetail(lane: Lane, door: EvidenceDoor): string {
 
 /** On a git lane the commit route is read for an agent alone (`merge-marker.ts:applyMergeMarker`),
  *  so a sentence offering it to anyone else sends them into the same refusal again. */
-function gitDetail(door: EvidenceDoor): string {
+function gitDetail(door: EvidenceDoor, via: MarkDoor): string {
   if (door === 'mark') {
     return markDetail(
-      'This mark names no commit, and no branch is recorded for this issue. Nothing was marked. ' +
-        'Record the branch in `sessionContext.branch` or `sessionContext.worklog.branch`, then ' +
-        'mark it again. Where the work landed on the base branch itself, mark it again with ' +
-        "`mark_merged` carrying `data.commit`. Forge checks that commit against the project's " +
-        'repository.',
+      `${NOTHING_MARKED} this mark names no commit and no branch is recorded for this issue. ` +
+        'Record the branch in `sessionContext.branch`, or name the commit it landed at on the ' +
+        `base branch in ${markField(via, 'commit')}. Forge checks that commit against the project's repository.`,
       [UNREADABLE_REPOSITORY, DECLARE_OUTSIDE_GIT, NOT_A_BRANCH],
     );
   }
@@ -211,12 +210,16 @@ function gitDetail(door: EvidenceDoor): string {
 
 /** The `NO_WORK_EVIDENCE` refusal, naming only the routes that clear it on this issue's lane at
  *  this door. */
-export function noWorkEvidenceDetail(lane: Lane | null, door: EvidenceDoor = 'advance'): string {
-  if (lane?.shape === 'outside_git') return outsideGitDetail(lane, door);
-  if (lane?.shape === 'git') return gitDetail(door);
+export function noWorkEvidenceDetail(
+  lane: Lane | null,
+  door: EvidenceDoor = 'advance',
+  via: MarkDoor = 'rest',
+): string {
+  if (lane?.shape === 'outside_git') return outsideGitDetail(lane, door, via);
+  if (lane?.shape === 'git') return gitDetail(door, via);
   if (door === 'mark') {
     return markDetail(
-      'No branch is recorded for this issue, so nothing was marked. Record the branch in ' +
+      `${NOTHING_MARKED} no branch is recorded for this issue. Record the branch in ` +
         '`sessionContext.branch` or `sessionContext.worklog.branch`, then mark it again.',
       [UNKNOWN_LANE, NOT_A_BRANCH],
     );
@@ -243,19 +246,21 @@ export async function missingWorkEvidenceStrict(
   issueId: string,
   executor: EvidenceExecutor = db,
   door: EvidenceDoor = 'advance',
+  via: MarkDoor = 'rest',
 ): Promise<string | null> {
   if (await hasChildIssues(issueId, executor)) return null;
   const evidence = await collectWorkEvidence(issueId, executor);
-  return hasCodeEvidence(evidence) ? null : noWorkEvidenceDetail(evidence.lane, door);
+  return hasCodeEvidence(evidence) ? null : noWorkEvidenceDetail(evidence.lane, door, via);
 }
 
 export async function findMissingWorkEvidence(
   issueId: string,
   executor: EvidenceExecutor = db,
   door: EvidenceDoor = 'advance',
+  via: MarkDoor = 'rest',
 ): Promise<string | null> {
   try {
-    return await missingWorkEvidenceStrict(issueId, executor, door);
+    return await missingWorkEvidenceStrict(issueId, executor, door, via);
   } catch (err) {
     logger.warn({ err, issueId }, 'work-evidence: check failed, allowing (fail open)');
     return null;

@@ -147,7 +147,9 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
     const issue = await seed({ sessionContext: { branch: 'main' } });
     const refused = await refusal(() => mark(issue, undefined));
     expect(refused.code).toBe('NO_WORK_EVIDENCE');
-    expect(refused.message).toContain('`mark_merged` carrying `data.commit`');
+    // ISS-1421 r9: this door is REST's, so the step names REST's own field.
+    expect(refused.message).toContain('on the base branch in `commit`.');
+    expect(refused.message).not.toContain('data.commit');
     expect(repo.reads).toEqual([]);
   });
 
@@ -189,9 +191,9 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
     const issue = await seed({ kind: 'website' });
     const refused = await refusal(() => mark(issue, OWN));
     expect(refused.code).toBe('NO_WORK_EVIDENCE');
-    expect(refused.message).toContain("This project's work lands outside git");
-    expect(refused.message).toContain('`mark_merged` carrying `data.landing`');
-    expect(refused.message).not.toContain('data.commit');
+    expect(refused.message).toContain('this mark names no landing and no branch is recorded');
+    expect(refused.message).toContain('Send `landing` naming the live URL');
+    expect(refused.message).not.toContain('commit`');
     expect(repo.reads).toEqual([]);
   });
 });

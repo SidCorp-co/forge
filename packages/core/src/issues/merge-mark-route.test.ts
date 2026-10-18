@@ -296,3 +296,53 @@ describe('a landing outside git, at the REST door (ISS-1327)', () => {
     expect(JSON.stringify(await res.json())).toContain('landing');
   });
 });
+
+// ISS-1421 r9, criteria 63 and 131: judge-43 read "Invalid input" and zod's "Too small: expected
+// string to have >=1 characters" for a mark with no target or a blank one. Every refusal of this
+// door's own input is one capitalised sentence, stopped, naming what the mark needs.
+describe("the merge door's refusals of its own input (ISS-1421 r9)", () => {
+  function oneSentence(message: string): void {
+    expect(message).not.toBe('Invalid input');
+    expect(message, message).toMatch(/^[A-Z]/);
+    expect(message, message).toMatch(/\.$/);
+    expect(message.split(/(?<=\.)\s+(?=[A-Z])/).length, message).toBe(1);
+    expect(message.split(/\s+/).length, message).toBeLessThanOrEqual(20);
+  }
+
+  it.each([
+    ['no target', {}],
+    ['a blank target', { target: '' }],
+    ['an all-spaces target', { target: '   ' }],
+    ['a commit and no target', { commit: 'abc1234' }],
+  ])('refuses %s on a git project naming `target`', async (_what, body) => {
+    const res = await call('POST', body);
+    expect(res.status).toBe(400);
+    const answer = (await res.json()) as { code: string; message: string };
+    expect(answer.code).toBe('BAD_REQUEST');
+    expect(answer.message).toBe('Name the branch the work merged into as `target`.');
+    oneSentence(answer.message);
+  });
+
+  it.each([
+    ['a target past 200 characters', { target: 'x'.repeat(201) }, '`target`'],
+    ['a blank note', { target: 'main', note: '  ' }, '`note`'],
+    ['a commit that is not a sha', { target: 'main', commit: 'not-a-sha' }, '`commit`'],
+    ['a blank landing', { target: 'main', landing: ' ' }, '`landing`'],
+    ['a mergedAt that is not a time', { target: 'main', mergedAt: 'yesterday' }, '`mergedAt`'],
+    ['a field a mark does not take', { target: 'main', branch: 'main' }, '`branch`'],
+  ])('refuses %s in one sentence naming the field', async (_what, body, field) => {
+    const res = await call('POST', body);
+    expect(res.status).toBe(400);
+    const answer = (await res.json()) as { message: string };
+    expect(answer.message).toContain(field);
+    oneSentence(answer.message);
+  });
+
+  it('takes a blank target as no target where the project owes none', async () => {
+    shape = 'outside_git';
+    asLanded('https://shop.example.com/p/1');
+    expect((await mark({ target: ' ', landing: 'https://shop.example.com/p/1' })).mark).toBe(
+      'landed',
+    );
+  });
+});

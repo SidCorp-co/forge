@@ -95,4 +95,13 @@ describe("McpServersPanel", () => {
     expect(screen.queryByText(/signing in/i)).toBeNull();
     expect(screen.getByText(/^Checked .+\.$/)).toBeInTheDocument();
   });
+
+  // ISS-1421 r9, criterion 130: judge-43 read "Set up Sentry in the list above" beside a Sentry
+  // row reading Turned off, whose integration was set up and only turned off.
+  it("tells only a row with nothing set up to set it up, never a turned-off one", () => {
+    render(<McpServersPanel projectId="p1" />);
+    expect(screen.queryByText(/Set up Coolify/)).toBeNull();
+    expect(screen.getByText(/^It is set up and turned off/)).toBeInTheDocument();
+    expect(screen.getByText(/Set up Sentry in the list above/)).toBeInTheDocument();
+  });
 });

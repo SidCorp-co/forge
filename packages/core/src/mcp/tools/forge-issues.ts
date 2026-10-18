@@ -762,6 +762,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             ...(input.data?.mergedAt
               ? { mergedAt: parseDate(input.data.mergedAt, 'mergedAt') }
               : {}),
+            door: 'mcp',
             actor: {
               agency: actorAgency(principalActor(principal)),
               commentAuthorId: principal.userId,
@@ -778,10 +779,8 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           };
         } catch (err) {
           if (err instanceof MergeMarkerError) {
-            // Owed on a git-shape project only (`landing-evidence.ts`), in this door's own words.
-            if (err.code === 'TARGET_REQUIRED') {
-              throw new Error('BAD_REQUEST: data.target is required for mark_merged');
-            }
+            // Owed on a git-shape project only (`landing-evidence.ts`), naming this door's field.
+            if (err.code === 'TARGET_REQUIRED') throw new Error(`BAD_REQUEST: ${err.message}`);
             throw new Error(`${err.code}: ${err.message}`);
           }
           throw err;

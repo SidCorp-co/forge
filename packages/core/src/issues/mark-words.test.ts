@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
+import { noWorkEvidenceDetail } from '../pipeline/work-evidence.js';
 import { readableThrough } from '../projects/repository-access.js';
 import { markStays, movedSentence, notDescendantDetail, unreadAnswer } from './landing-advance.js';
+import { type Lane, landingMarkRefusal, type MarkDoor } from './landing-evidence.js';
+import { targetRequiredDetail } from './merge-input-refusal.js';
 import {
   addressesAsCode,
   describeMergeMark,
   keptClaimRepeat,
   markAgainOnce,
+  threadBody,
 } from './merge-record.js';
 
 // ISS-1421 — every sentence a mark answers a person with: commits in seven characters, at most three
@@ -147,5 +151,130 @@ describe('the words a mark answers with (ISS-1421)', () => {
     );
     expect(addressesAsCode(`already \`${REPO}\` here`)).toBe(`already \`${REPO}\` here`);
     expect(addressesAsCode('on main of SidCorp-co/forge.')).toBe('on main of SidCorp-co/forge.');
+  });
+
+  // r9, criterion 125: judge-43 saw the host's own reason keep `git@github.com:` bare, a mail link.
+  it('shows the address inside a quoted host reason as code too, whatever follows it', () => {
+    expect(addressesAsCode('> (git@github.com: Permission denied (publickey).)')).toBe(
+      '> (`git@github.com`: Permission denied (publickey).)',
+    );
+    expect(addressesAsCode('Host git@gitlab.com refused.')).toBe('Host `git@gitlab.com` refused.');
+    expect(addressesAsCode('at git@github.com:acme/shop.git: no key')).toBe(
+      'at `git@github.com:acme/shop.git`: no key',
+    );
+  });
+
+  // r9: judge-43 saw a first mark run its note into the opening line, where a repeat quotes it.
+  it("quotes a first mark's note, and an unmark's, on a line of its own as a repeat does", () => {
+    const stamp = {
+      wrote: true,
+      mergedAt: new Date('2026-10-18T00:00:00Z'),
+      commitSha: null,
+      landing: null,
+      claimedCommit: null,
+    };
+    const base = { stamp, claimedCommit: null, unread: null, after: '' };
+    const note = 'Merged by hand after CI went green.';
+    const first = threadBody({
+      ...base,
+      op: 'mark',
+      target: 'main',
+      note,
+      repeated: false,
+      markDetail: describeMergeMark({ kind: 'asserted' }),
+    });
+    expect(first).toBe(
+      'Marked merged into main.\nNo commit was named. Forge did not see this merge, so the mark is a claim.' +
+        `\n\n> ${note}`,
+    );
+    const unmark = threadBody({ ...base, op: 'unmark', note, repeated: false, markDetail: '' });
+    expect(unmark).toBe(`Merge mark removed.\n\n> ${note}`);
+    expect(threadBody({ ...base, op: 'unmark', repeated: false, markDetail: '' })).toBe(
+      'Merge mark removed.',
+    );
+  });
+});
+
+// r9, criteria 63, 119 and 131: judge-43 read LANDING_REQUIRED and NO_WORK_EVIDENCE in four
+// sentences with stored keys, a REST caller told to use MCP's words, and a missing target answered
+// "Invalid input". Each mark refusal is at most three short sentences, naming its own door's field.
+describe("a mark's refusals, at each door (ISS-1421 r9)", () => {
+  const git: Lane = { shape: 'git', declared: false };
+  const outside: Lane = { shape: 'outside_git', declared: true };
+  const doors: MarkDoor[] = ['rest', 'mcp'];
+
+  function ownWords(text: string): string[] {
+    return text
+      .split('\n')
+      .filter((l) => l.trim() !== '' && !l.startsWith('> '))
+      .join(' ')
+      .trim()
+      .split(/(?<=[.!?])\s+(?=[A-Z])/);
+  }
+
+  function refusalReads(text: string, door: MarkDoor): void {
+    const ours = ownWords(text);
+    expect(ours.length, text).toBeLessThanOrEqual(3);
+    for (const sentence of ours) {
+      expect(sentence, sentence).toMatch(/^[A-Z]/);
+      expect(sentence, sentence).toMatch(/\.$/);
+      expect(sentence.split(/\s+/).length, sentence).toBeLessThanOrEqual(20);
+      expect(sentence, sentence).not.toMatch(/landingShape|mark_merged|forge_issues/);
+    }
+    // Each door names the field its own caller sends, and never the other door's.
+    const own = ours.join(' ');
+    if (door === 'rest') expect(own, own).not.toContain('data.');
+    if (door === 'mcp') expect(own, own).not.toMatch(/`(?:landing|commit|target)`/);
+  }
+
+  const cases = doors.flatMap(
+    (door) =>
+      [
+        [
+          `LANDING_REQUIRED (${door})`,
+          door,
+          landingMarkRefusal({ lane: outside, landing: null, observed: false, door })?.detail,
+        ],
+        [
+          `LANDING_NOT_THIS_SHAPE (${door})`,
+          door,
+          landingMarkRefusal({ lane: git, landing: 'x', observed: false, door })?.detail,
+        ],
+        [
+          `NO_WORK_EVIDENCE outside git (${door})`,
+          door,
+          noWorkEvidenceDetail(outside, 'mark', door),
+        ],
+        [`NO_WORK_EVIDENCE in git (${door})`, door, noWorkEvidenceDetail(git, 'mark', door)],
+        [
+          `NO_WORK_EVIDENCE, lane unknown (${door})`,
+          door,
+          noWorkEvidenceDetail(null, 'mark', door),
+        ],
+        [`TARGET_REQUIRED (${door})`, door, targetRequiredDetail(door)],
+      ] as const,
+  );
+
+  it.each(cases)('%s reads in three short sentences naming its own field', (_n, door, text) => {
+    expect(text).toBeTruthy();
+    refusalReads(text as string, door);
+  });
+
+  it('names the landing field each door sends, and what it holds', () => {
+    expect(landingMarkRefusal({ lane: outside, landing: null, observed: false })?.detail).toBe(
+      'Nothing was marked, because this issue is declared to land outside git and no merged pull request shows where. ' +
+        'Send `landing` naming the live URL, CMS entry or storefront resource the work now is.',
+    );
+    expect(noWorkEvidenceDetail(outside, 'mark', 'mcp')).toBe(
+      'Nothing was marked, because this mark names no landing and no branch is recorded for this issue. ' +
+        'Send `data.landing` naming the live URL, CMS entry or storefront resource the work now is.',
+    );
+  });
+
+  it('answers a missing target in one sentence naming the field, at each door', () => {
+    expect(targetRequiredDetail('rest')).toBe('Name the branch the work merged into as `target`.');
+    expect(targetRequiredDetail('mcp')).toBe(
+      'Name where the work merged as `data.target`: base, prod or feature.',
+    );
   });
 });

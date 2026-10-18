@@ -310,7 +310,7 @@ describe('an issue declared outside git, on a git project', () => {
     expect(res.status).toBe(422);
     const body = JSON.stringify(await res.json());
     expect(body).toContain('LANDING_REQUIRED');
-    expect(body).toContain('declared on the issue');
+    expect(body).toContain('this issue is declared to land outside git');
     expect(body).not.toContain('kind `website`');
     expect((await stored(id)).merged_at).toBeNull();
   });
@@ -358,7 +358,7 @@ describe('an issue declared in git, on a project whose work lands outside it', (
     expect(res.status).toBe(422);
     const body = JSON.stringify(await res.json());
     expect(body).toContain('LANDING_NOT_THIS_SHAPE');
-    expect(body).toContain('declared on the issue');
+    expect(body).toContain('this issue is declared to land in git');
   });
 });
 
