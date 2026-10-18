@@ -33,8 +33,23 @@ const THIRD = '3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c';
 /** On main, declaring the issue, and on neither side of FIRST's line. */
 const SIDE = '4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d';
 
+/** A commit as a person reads it: its first seven characters (the master's r7 ruling). */
+const s = (sha: string) => sha.slice(0, 7);
 const moved = (from: string, to: string) =>
-  `The landing moved from commit ${from} to commit ${to}, which carries it.`;
+  `The landing moved from commit ${s(from)} to commit ${s(to)}, which carries it.`;
+const CHANGE = 'To change the mark, use Unmark, then Mark merged again.';
+
+/** What a person reads: no whole sha, no "Forge saw this merge land" preamble, at most three
+ *  sentences outside a quote. */
+function readsShort(text: string) {
+  expect(text).not.toMatch(/[0-9a-f]{40}/);
+  expect(text).not.toContain('Forge saw this merge land');
+  const own = text
+    .split('\n')
+    .filter((line) => !line.startsWith('> '))
+    .join(' ');
+  expect(own.trim().split(/(?<=\.)\s+/).length).toBeLessThanOrEqual(3);
+}
 
 beforeEach(() => {
   const own = (round: string) =>
@@ -63,10 +78,11 @@ describe('a later commit of the same issue moves the mark (criteria 102, 105, 10
 
     expect(res.action).toBe('merged');
     expect(res.movedFrom).toBe(FIRST);
-    expect(res.markDetail).toContain(moved(FIRST, SECOND));
-    expect(res.markDetail).not.toContain('changed nothing');
+    expect(res.markDetail).toBe(moved(FIRST, SECOND));
     expect((await row(issue.id)).merged_commit_sha).toBe(SECOND);
-    expect((await comments(issue.id)).at(-1)).toContain(moved(FIRST, SECOND));
+    const said = (await comments(issue.id)).at(-1) as string;
+    expect(said).toBe(`Marked merged into main.\n${moved(FIRST, SECOND)}`);
+    readsShort(said);
     expect(res.issue.mergedCommitSha).toBe(SECOND);
   });
 
@@ -132,16 +148,25 @@ describe('a mark naming no commit reads the most recently merged pull request (c
 
 describe('a commit the mark already carries changes nothing (criteria 69, 107)', () => {
   it.each([
-    ['the same commit', FIRST, null],
-    ['an abbreviation of it', FIRST.slice(0, 9), null],
-    ['a commit it already carries', OLDER, `Commit ${OLDER} is already in commit ${FIRST}`],
-  ])('answers already merged for %s', async (_, commit, aside) => {
+    ['the same commit', FIRST, `The mark stays at commit ${s(FIRST)}.`],
+    ['an abbreviation of it', FIRST.slice(0, 9), `The mark stays at commit ${s(FIRST)}.`],
+    [
+      'a commit it already carries',
+      OLDER,
+      `Commit ${s(OLDER)} is already in commit ${s(FIRST)}, where the mark stays.`,
+    ],
+  ])('answers already merged for %s', async (_, commit, stays) => {
     const issue = await markedAtFirst();
     const res = await mark(issue, commit);
     expect(res.action).toBe('already_merged');
     expect(res.movedFrom).toBeNull();
-    expect(res.markDetail).toMatch(/^Already marked merged on .*, so this call changed nothing\./);
-    if (aside) expect(res.markDetail).toContain(aside);
+    expect(res.markDetail).toMatch(
+      new RegExp(
+        `^Already marked merged on \\d+ \\w+ \\d{4}, so this call changed nothing\\. ${stays.replace(/\./g, '\\.')} ${CHANGE.replace(/\./g, '\\.')}$`,
+      ),
+    );
+    readsShort(res.markDetail);
+    readsShort((await comments(issue.id)).at(-1) as string);
     expect((await row(issue.id)).merged_commit_sha).toBe(FIRST);
   });
 });
@@ -154,8 +179,10 @@ describe('a commit on another line is a different landing (criteria 106, 112)', 
     const refused = await refusal(() => mark(issue, SIDE));
 
     expect(refused.code).toBe('LANDING_NOT_DESCENDANT');
-    expect(refused.message).toContain(`Commit ${SIDE} does not descend from commit ${FIRST}`);
-    expect(refused.message).toContain('use Unmark, then Mark merged again');
+    expect(refused.message).toBe(
+      `Commit ${s(SIDE)} does not descend from commit ${s(FIRST)}, where the mark stays. It is a different landing, so nothing changed. To mark it there, use Unmark, then Mark merged again.`,
+    );
+    readsShort(refused.message);
     expect((await row(issue.id)).merged_commit_sha).toBe(FIRST);
     expect(await comments(issue.id)).toEqual(before);
   });
@@ -169,14 +196,13 @@ describe('where the repository cannot say whether it descends (criteria 108, 113
     const res = await mark(issue, SECOND);
 
     expect(res.action).toBe('already_merged');
-    expect(res.markDetail).toContain(
-      `Commit ${SECOND} was not compared with commit ${FIRST}, so the landing stays at ${FIRST}. Mark it again once Forge can read the repository. The reason:\n> `,
+    // What happened, why in one clause, what to do: and nothing sends the reader to Unmark.
+    expect(res.markDetail).toBe(
+      `The mark stays at commit ${s(FIRST)}, and commit ${s(SECOND)} was not compared with it. Forge could not read the repository: SidCorp-co/specimen could not compare ${s(FIRST)} with ${s(SECOND)}: GET /repos/SidCorp-co/specimen/compare/${s(FIRST)}...${s(SECOND)}?per_page=1 on SidCorp-co/specimen returned HTTP 502. Mark it again once it can.`,
     );
-    // The reason stands quoted on the last line, and nothing sends the reader to Unmark.
-    expect(res.markDetail.split('\n').at(-1)).toMatch(/^> /);
-    expect(res.markDetail).not.toContain('use Unmark');
+    readsShort(res.markDetail);
     expect((await row(issue.id)).merged_commit_sha).toBe(FIRST);
-    expect((await comments(issue.id)).at(-1)).toContain('The reason:');
+    expect((await comments(issue.id)).at(-1)).toBe(res.markDetail);
   });
 });
 
@@ -212,9 +238,9 @@ describe('a merge Forge observed moves the mark the same way (criteria 104, 105,
     expect((await stamp(issue.id, SIDE)).wrote).toBe(false);
     await stamp(issue.id, SIDE);
     expect((await row(issue.id)).merged_commit_sha).toBe(FIRST);
-    const said = (await comments(issue.id)).filter((c) => c.includes(SIDE));
+    const said = (await comments(issue.id)).filter((c) => c.includes(s(SIDE)));
     expect(said).toEqual([
-      `A pull request of this issue merged at commit ${SIDE}. It does not descend from commit ${FIRST}, so the landing stays at ${FIRST}.`,
+      `A pull request of this issue merged at commit ${s(SIDE)}, which does not descend from commit ${s(FIRST)}. The mark stays at ${s(FIRST)}.`,
     ]);
   });
 

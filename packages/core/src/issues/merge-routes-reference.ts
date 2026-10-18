@@ -9,6 +9,8 @@ export const mergeMarkAnswerSchema = z.object({
   detail: z.string(),
   /** The commit the landing moved forward from, where this mark moved it; null on every other answer. */
   movedFrom: z.string().nullable(),
+  /** The whole commit this mark named where the row's columns do not keep it; the detail shows seven. */
+  namedCommit: z.string().nullable(),
 });
 
 export const mergePullRequestAnswerSchema = z.object({

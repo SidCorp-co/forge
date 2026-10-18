@@ -175,7 +175,9 @@ describe('ISS-940 re-marking an already-merged issue (real Postgres)', () => {
     expect(/\blanding wrote ([^;\n]+)/u.exec(rows[1]?.body ?? '')?.[1]).toBe(
       'packages/core/src/a.ts',
     );
-    expect(rest.join('\n')).toMatch(/^To change the mark, use Unmark, then Mark merged again\./);
+    expect(rest.join('\n')).toMatch(
+      /^The mark stays a claim that names no commit\. To change the mark, use Unmark, then Mark merged again\.$/,
+    );
   });
 
   it('lets unmark then mark actually move it', async () => {

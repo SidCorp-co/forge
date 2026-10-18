@@ -214,12 +214,15 @@ describe('ISS-959 B — the merged mark records its commit', () => {
     const { id, token } = await seed();
     const res = await mark(id, token, { target: 'base', commit: SHA });
     expect(res.status).toBe(200);
-    expect((await res.json()).action).toBe('merged');
+    const answer = await res.json();
+    expect(answer.action).toBe('merged');
+    // ISS-1421 — the trail shows seven characters; the answer carries the whole commit it named.
+    expect(answer.namedCommit).toBe(SHA);
     const row = await storedMark(id);
     expect(row.merged_commit_sha).toBeNull();
     expect(row.merged_at).not.toBeNull();
     const said = (await commentsOn(id)).join('\n');
-    expect(said).toContain(SHA);
+    expect(said).toContain(`Commit ${SHA.slice(0, 7)} was named`);
     expect(said).toContain('was named, and is kept as a claim');
     // ISS-1126 — and the trail now names which kind of record this is, not only what it holds.
     expect(said).toContain('Forge did not see this merge');
@@ -248,13 +251,16 @@ describe('ISS-959 B — the merged mark records its commit', () => {
   it('says so when the caller named a different commit from the one Forge observed', async () => {
     const { id, token } = await seed();
     await seedObservedMerge(id, { commit: SHA, at: '2026-09-17T12:17:12.321Z' });
-    await mark(id, token, { target: 'base', commit: 'feedface1234567' });
+    const overruled = await (
+      await mark(id, token, { target: 'base', commit: 'feedface1234567' })
+    ).json();
+    expect(overruled.namedCommit).toBe(FEEDFACE);
     const said = (await commentsOn(id)).join('\n');
     // ISS-1126 reworded this sentence so it names the KIND of mark; the property it holds is
-    // unchanged — both commits appear, and the trail says which one the column took. ISS-1350: the
-    // caller's commit appears as the full sha the repository resolved its abbreviation to.
-    expect(said).toContain(FEEDFACE);
-    expect(said).toContain(SHA);
+    // unchanged — both commits appear, and the trail says which one the column took. ISS-1421: each
+    // as the seven characters a person reads, of the sha the repository resolved.
+    expect(said).toContain(`Commit ${FEEDFACE.slice(0, 7)}, named in this mark`);
+    expect(said).toContain(`land at commit ${SHA.slice(0, 7)},`);
     expect(said).toContain('named in this mark, is kept as a claim only');
     expect(said).toContain('Forge saw this merge land at commit');
     expect((await storedMark(id)).merged_commit_sha).toBe(SHA);
@@ -381,11 +387,12 @@ describe('ISS-959 B — what the mark still refuses, and how a mark is corrected
 
   it('accepts a short sha at the lower bound and refuses one below it', async () => {
     const short = await seed();
-    expect((await mark(short.id, short.token, { target: 'base', commit: 'abc1234' })).status).toBe(
-      200,
+    const answered = await mark(short.id, short.token, { target: 'base', commit: 'abc1234' });
+    expect(answered.status).toBe(200);
+    expect((await answered.json()).namedCommit).toBe(ABC);
+    expect((await commentsOn(short.id)).join('\n')).toContain(
+      `Commit ${ABC.slice(0, 7)} was named`,
     );
-    // ISS-1350 — the trail names the commit the repository resolved, never the abbreviation sent.
-    expect((await commentsOn(short.id)).join('\n')).toContain(`at commit ${ABC}.`);
 
     const tooShort = await seed();
     expect(
@@ -393,15 +400,17 @@ describe('ISS-959 B — what the mark still refuses, and how a mark is corrected
     ).toBe(400);
   });
 
-  it('names the commit in the audit comment the mark writes', async () => {
+  it('names the commit once in the audit comment the mark writes (ISS-1421)', async () => {
     const { id, token } = await seed();
     await mark(id, token, { target: 'base', commit: SHA });
     const rows = await harness.db.execute<{ body: string }>(
       sql`SELECT body FROM comments WHERE issue_id = ${id}`,
     );
-    expect((rows[0] as { body: string }).body).toContain(
-      `Marked merged into base, at commit ${SHA}.`,
+    const body = (rows[0] as { body: string }).body;
+    expect(body).toMatch(
+      new RegExp(`^Marked merged into base\\.\\nCommit ${SHA.slice(0, 7)} was named`),
     );
+    expect(body.match(new RegExp(SHA.slice(0, 7), 'g'))).toHaveLength(1);
   });
 
   it('re-marking after an unmark re-adopts whatever Forge now observes', async () => {
@@ -429,7 +438,7 @@ describe('ISS-1350 — a mark naming a commit the repository does not resolve is
       await mark(id, token, { target: 'base', commit: ABSENT }),
       'COMMIT_NOT_IN_REPOSITORY',
     );
-    expect(said).toContain(`GitHub finds no commit ${ABSENT} in ${repo.fullName}`);
+    expect(said).toContain(`GitHub finds no commit ${ABSENT.slice(0, 7)} in ${repo.fullName}`);
     expect(await storedMark(id)).toEqual({ merged_at: null, merged_commit_sha: null });
     expect(await commentsOn(id)).toEqual([]);
   });

@@ -3205,6 +3205,7 @@
 - **End this turn is not Stop session.** The sessions menu names it, sets Stop session apart, and says "Turn ended. The session stays open." (ISS-1228)
 - **A box on the sessions page reads one way, and silent sessions are ended by name.** "Spare" no longer sits beside a box's state, and "Sweep zombies" is "End silent sessions", asked first. (ISS-1228)
 - **A later merge of the same issue moves where it landed.** Marking a later commit that carries the marked one, or a later pull request merging, moves the mark; a commit on another line is refused. (ISS-1421)
+- **A mark answers in three short sentences, naming commits by seven characters.** What happened, why in one clause, what to do; the whole commit stays in the answer's fields and on hover. (ISS-1421)
 - **An issue is at Releasing only while a release carries it.** Release now starts it; status menus do not. A stranded issue closes if production serves its code, else returns to Awaiting release, where Reopen sits in the menu. (ISS-1421)
 - **What Forge writes on its own names Forge, not the project's creator.** Release holds, budget and rescue notices, the weekly reading, Sentry and GitHub intake and knowledge promotions; Forge is never a member, mentioned or notified. (ISS-1421)
 - **A refused move to Releasing, and the sweep's note, name only a door you have.** Release now only where the project has a release gate and the issue waits there; otherwise what must happen first. (ISS-1421)

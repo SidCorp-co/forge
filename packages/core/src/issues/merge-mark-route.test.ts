@@ -179,10 +179,11 @@ describe('POST /api/issues/:id/merge', () => {
     expect(claimed.detail).toContain('so it is not the merge commit');
   });
 
-  it('carries the sha it witnessed in the answer, so the word can be checked', async () => {
+  it('names the sha it witnessed in seven characters, so a person can read it (ISS-1421)', async () => {
     asObserved();
     const witnessed = await mark();
-    expect(witnessed.detail).toContain(OBSERVED_SHA);
+    expect(witnessed.detail).toContain(`commit ${OBSERVED_SHA.slice(0, 7)},`);
+    expect(witnessed.detail).not.toContain(OBSERVED_SHA);
     expect(witnessed.detail).not.toContain('Forge did not see this merge');
   });
 

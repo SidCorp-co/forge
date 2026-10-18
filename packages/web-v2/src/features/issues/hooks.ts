@@ -305,11 +305,11 @@ export function useMergeMarker(issueId: string) {
     onSuccess: (answer) => {
       refresh();
       if (answer.action === "already_merged") {
-        // The answer says why nothing moved, a later commit's unread comparison included.
+        // The answer says why nothing moved; its opening sentence is the title's, so it is dropped.
         toast({
           title: "Already marked merged — nothing changed",
           description: answer.detail
-            ? answer.detail.replace(/^Already marked merged[^.]*\.\s*/, "").replace(/\n> /g, " ")
+            ? answer.detail.replace(/^Already marked merged[^.]*\.\s*/, "")
             : "The mark that stands was kept. To change it, press Unmark, then Mark merged again.",
           tone: "info",
         });

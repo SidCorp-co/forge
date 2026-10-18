@@ -203,10 +203,10 @@ request is not read.
   while the column still holds A; a write that loses that race reads the row again and compares
   again, at most three times, and only a write that took is reported as a move.
 - **The same commit, or one A already carries:** nothing changes, answered as any repeat, with
-  "Commit B is already in commit A, where the landing stands." where they differ.
+  "Commit B is already in commit A, where the mark stays." where they differ.
 - **Neither:** a different landing. The mark door refuses it `LANDING_NOT_DESCENDANT`, naming both
   commits and Unmark then Mark merged as the way to move it there, and writes nothing.
-- **The repository cannot say:** the mark stays, answered as a repeat, quoting why. Like an agent's
+- **The repository cannot say:** the mark stays, answered as a repeat naming why. Like an agent's
   unverified claim (ISS-1409), a read Forge could not take is not evidence the work is false.
 
 A merge Forge observes itself takes the same reading: GitHub's `pull_request` event
@@ -220,6 +220,19 @@ What does not move: an unverified claim (`merged_claimed_commit`), since no read
 a line, and a `landed` mark outside git, which has no commit. No stored row was rewritten: a mark
 left at an earlier round moves on that issue's next mark or next observed merge.
 
+## How a mark answers a person (ISS-1421)
+
+Every human sentence a mark gives — the answer's `detail`, the toast, the audit comment, a refusal's
+message — names a commit by its first seven characters (`packages/core/src/issues/merge-record.ts:shortCommit`; a
+`MergeMarkerError` shortens any whole sha in its message). The whole sha stays where a caller reads
+it as data: the row (`mergedCommitSha`, `mergedClaimedCommit`), the answer's `movedFrom` and
+`namedCommit` (the commit this mark named where no column keeps it), a refusal's `details`, and the
+rail's hover. An answer is at most three short sentences: what happened, why, what to do. Another
+part of Forge's reason is cut to its first clause (`firstClause`); a fix it names after ` — ` is kept
+whole as the step (`checkStep`). A first mark's comment names its commit once: the label carries it
+only where the sentence after it does not. No answer repeats "Forge saw this merge land" before the
+point; `packages/core/src/issues/mark-words.test.ts` holds every sentence builder to this.
+
 ## Every `git` mark's commit is one the repository holds
 
 A claim is still checked (ISS-1350). On a `git` project every commit a mark records — a person's,
@@ -228,7 +241,7 @@ resolved by the project's repository (`packages/core/src/issues/commit-landing.t
 read `readCommitLanding` takes). The repository holding no such commit refuses the mark
 `COMMIT_NOT_IN_REPOSITORY`; a repository that cannot be read refuses it `COMMIT_UNVERIFIED`, naming
 why, and a mark naming no commit is the route that still records. A resolved commit is recorded by
-the full sha the repository gives, never as the caller typed it. It stays a claim: Forge read that
+the full sha the repository gives (the answer's `namedCommit`), never as the caller typed it. It stays a claim: Forge read that
 the repository holds it, not that it is this issue's landing, so `merged_commit_sha` is not stamped
 from it and the answer says which of the two Forge read. The one commit not read is the merged pull
 request's own merge sha, which Forge already holds.

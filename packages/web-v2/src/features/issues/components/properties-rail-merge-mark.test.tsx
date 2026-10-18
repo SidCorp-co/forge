@@ -78,7 +78,10 @@ describe("the merge mark on the issue rail", () => {
   it("says an unverified claim is claimed, shows its commit and says it is not verified (ISS-1409)", () => {
     render(rail("asserted", null, null, "git", SHA));
     expect(screen.getByText("claimed")).toBeInTheDocument();
-    expect(screen.getByTestId("merged-claim")).toHaveTextContent(`${SHA.slice(0, 10)} — not verified`);
+    // ISS-1421 — seven characters to read, the whole commit on hover.
+    expect(screen.getByTestId("merged-claim")).toHaveTextContent(`${SHA.slice(0, 7)} — not verified`);
+    expect(screen.getByTestId("merged-claim")).not.toHaveTextContent(SHA.slice(0, 8));
+    expect(screen.getByTestId("merged-claim").getAttribute("title")).toMatch(new RegExp(`^Commit ${SHA}\\. `));
     expect(screen.queryByText("observed")).toBeNull();
   });
 

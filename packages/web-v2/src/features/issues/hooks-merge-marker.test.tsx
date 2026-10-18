@@ -9,8 +9,7 @@ import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 const ISSUE = "5fb7e758-e403-4568-bebb-b568260ff175";
-const MOVED =
-  "The landing moved from commit 1a1a1a1 to commit 2b2b2b2, which carries it. Forge saw this merge land at commit 2b2b2b2.";
+const MOVED = "The landing moved from commit 1a1a1a1 to commit 2b2b2b2, which carries it.";
 
 const toast = vi.fn();
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast }) }));
@@ -46,14 +45,21 @@ describe("the notice after Mark merged", () => {
   });
 
   it("still says nothing changed where the mark moved nothing, with the answer's reason", async () => {
+    // ISS-1421 — core's answer: three short sentences, commits in seven characters.
     const unread =
-      "Already marked merged on 16 Oct 2026, so this call changed nothing. Commit 2b2b2b2 was not compared with commit 1a1a1a1, so the landing stays at 1a1a1a1. The reason:\n> SidCorp-co/forge could not compare";
+      "The mark stays at commit 1a1a1a1, and commit 2b2b2b2 was not compared with it. Forge could not read the repository: SidCorp-co/forge could not compare 1a1a1a1 with 2b2b2b2. Mark it again once it can.";
     answer = { id: ISSUE, action: "already_merged", mark: "observed", detail: unread, movedFrom: null };
     const said = await markOnce();
     expect(said.title).toBe("Already marked merged — nothing changed");
-    // The title already says nothing changed; the description is the reason, its quote inline.
-    expect(said.description).toBe(
-      "Commit 2b2b2b2 was not compared with commit 1a1a1a1, so the landing stays at 1a1a1a1. The reason: SidCorp-co/forge could not compare",
+    expect(said.description).toBe(unread);
+  });
+
+  it("drops the repeat's opening sentence, which the title already says", async () => {
+    const detail =
+      "Already marked merged on 16 Oct 2026, so this call changed nothing. The mark stays at commit 1a1a1a1. To change the mark, use Unmark, then Mark merged again.";
+    answer = { id: ISSUE, action: "already_merged", mark: "observed", detail, movedFrom: null };
+    expect((await markOnce()).description).toBe(
+      "The mark stays at commit 1a1a1a1. To change the mark, use Unmark, then Mark merged again.",
     );
   });
 

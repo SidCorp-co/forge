@@ -19,7 +19,13 @@ import {
   readCommitLanding,
 } from './commit-landing.js';
 import type { LandingShape } from './landing-evidence.js';
-import { quoted, readMergeColumns, recordIssueMerge } from './merge-record.js';
+import {
+  firstClause,
+  type MergeMarkKind,
+  readMergeColumns,
+  recordIssueMerge,
+  shortCommit as s,
+} from './merge-record.js';
 
 /** How a candidate commit stands against the commit a mark holds. */
 export type LandingStanding =
@@ -122,22 +128,21 @@ export async function moveLandingForward(
   };
 }
 
+// Each answer below is at most three short sentences: what happened, why, what to do.
 export function movedSentence(from: string, to: string): string {
-  return `The landing moved from commit ${from} to commit ${to}, which carries it.`;
+  return `The landing moved from commit ${s(from)} to commit ${s(to)}, which carries it.`;
 }
 
-export function containedSentence(held: string, candidate: string): string {
-  return `Commit ${candidate} is already in commit ${held}, where the landing stands.`;
+export function unreadAnswer(held: string, candidate: string, why: string): string {
+  return (
+    `The mark stays at commit ${s(held)}, and commit ${s(candidate)} was not compared with it. ` +
+    `Forge could not read the repository: ${firstClause(why)}. Mark it again once it can.`
+  );
 }
 
-export function unreadSentence(held: string, candidate: string, why: string): string {
-  return `Commit ${candidate} was not compared with commit ${held}, so the landing stays at ${held}. Mark it again once Forge can read the repository. The reason:\n${quoted(why)}`;
-}
-
-/** The refusal a mark meets where its commit is a different landing from the one the row holds. */
 export function notDescendantDetail(held: string, candidate: string): string {
   return (
-    `Commit ${candidate} does not descend from commit ${held}, where this issue's landing stands. ` +
+    `Commit ${s(candidate)} does not descend from commit ${s(held)}, where the mark stays. ` +
     'It is a different landing, so nothing changed. ' +
     'To mark it there, use Unmark, then Mark merged again.'
   );
@@ -145,14 +150,12 @@ export function notDescendantDetail(held: string, candidate: string): string {
 
 /** What the observed path says on the issue where a merge it saw did not move the mark. */
 function stayedComment(outcome: LandingAdvance, candidate: string): string | null {
-  const seen = `A pull request of this issue merged at commit ${candidate}.`;
+  const seen = `A pull request of this issue merged at commit ${s(candidate)}`;
   if (outcome.kind === 'other') {
-    return `${seen} It does not descend from commit ${outcome.held}, so the landing stays at ${outcome.held}.`;
+    return `${seen}, which does not descend from commit ${s(outcome.held)}. The mark stays at ${s(outcome.held)}.`;
   }
-  if (outcome.kind === 'unread') {
-    return `${seen} ${unreadSentence(outcome.held, candidate, outcome.why)}`;
-  }
-  return null;
+  if (outcome.kind !== 'unread') return null;
+  return `${seen}, and was not compared with commit ${s(outcome.held)}. Forge could not read the repository: ${firstClause(outcome.why)}. The mark stays at ${s(outcome.held)}.`;
 }
 
 async function alreadySaid(tx: Tx, issueId: string, body: string): Promise<boolean> {
@@ -282,9 +285,18 @@ export async function laterLanding(
   return outcome.kind === 'empty' ? null : { ...outcome, candidate: candidate.sha };
 }
 
-/** The sentence a mark that moved nothing adds, where it compared a later commit. */
-export function laterAside(later: LaterLanding | null): string | null {
-  if (later?.kind === 'contained') return containedSentence(later.held, later.candidate);
-  if (later?.kind === 'unread') return unreadSentence(later.held, later.candidate, later.why);
-  return null;
+/** Where a mark that moved nothing stays, in the sentence a repeat says it with. */
+export function markStays(
+  later: LaterLanding | null,
+  kind: MergeMarkKind,
+  row: { commitSha: string | null; landing: string | null; claimedCommit: string | null },
+): string {
+  if (later?.kind === 'contained') {
+    return `Commit ${s(later.candidate)} is already in commit ${s(later.held)}, where the mark stays.`;
+  }
+  if (kind === 'observed' && row.commitSha) return `The mark stays at commit ${s(row.commitSha)}.`;
+  if (kind === 'landed' && row.landing) return `The mark stays at ${row.landing}.`;
+  return row.claimedCommit
+    ? `The mark stays a claim naming commit ${s(row.claimedCommit)}.`
+    : 'The mark stays a claim that names no commit.';
 }
