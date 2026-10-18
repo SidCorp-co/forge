@@ -46,6 +46,19 @@ const { readHealthAggregates, healthReadLoad, HEALTH_READ_CONCURRENCY } = await 
 /** One request's reads: the ten rollups, the live-session count and the stuck-issue count. */
 const READS = 12;
 const PROJECT_IDS = ['22222222-2222-4222-8222-222222222222'];
+const READER = '33333333-3333-4333-8333-333333333333';
+/** The captured SQL as text; a column it embeds refers back to its table, so a repeat is skipped. */
+function sqlText(captured: unknown): string {
+  const seen = new WeakSet<object>();
+  return JSON.stringify(captured, (_key, value: unknown) => {
+    if (value && typeof value === 'object') {
+      if (seen.has(value)) return undefined;
+      seen.add(value);
+    }
+    return value;
+  });
+}
+
 const tick = () => new Promise<void>((r) => setTimeout(r, 0));
 
 beforeEach(() => {
@@ -56,7 +69,7 @@ beforeEach(() => {
 
 describe('readHealthAggregates', () => {
   it('has more than one read outstanding at once, rather than awaiting them in sequence', async () => {
-    const done = readHealthAggregates(PROJECT_IDS);
+    const done = readHealthAggregates(PROJECT_IDS, READER);
     await tick();
 
     expect(healthReadLoad.inFlight).toBe(HEALTH_READ_CONCURRENCY);
@@ -74,8 +87,8 @@ describe('readHealthAggregates', () => {
   });
 
   it('bounds two overlapping requests together, not one at a time', async () => {
-    const first = readHealthAggregates(PROJECT_IDS);
-    const second = readHealthAggregates(PROJECT_IDS);
+    const first = readHealthAggregates(PROJECT_IDS, READER);
+    const second = readHealthAggregates(PROJECT_IDS, READER);
     await tick();
 
     expect(healthReadLoad.inFlight).toBe(HEALTH_READ_CONCURRENCY);
@@ -93,7 +106,7 @@ describe('readHealthAggregates', () => {
   });
 
   it('computes the cycle figure in one pass, with no correlated subquery per row', async () => {
-    const done = readHealthAggregates(PROJECT_IDS);
+    const done = readHealthAggregates(PROJECT_IDS, READER);
     await tick();
     while (gates.length > 0) {
       gates.shift()?.();
@@ -101,7 +114,7 @@ describe('readHealthAggregates', () => {
     }
     await done;
 
-    const serialized = JSON.stringify(executedSql);
+    const serialized = sqlText(executedSql);
     expect(serialized).toContain('DISTINCT ON (al.issue_id)');
     expect(serialized).toContain('LEFT JOIN work_start');
     expect(serialized).not.toContain('al2');
@@ -109,7 +122,7 @@ describe('readHealthAggregates', () => {
   });
 
   it('counts live sessions by the condition the pipeline surface lists them by', async () => {
-    const done = readHealthAggregates(PROJECT_IDS);
+    const done = readHealthAggregates(PROJECT_IDS, READER);
     await tick();
     while (gates.length > 0) {
       gates.shift()?.();
@@ -117,7 +130,7 @@ describe('readHealthAggregates', () => {
     }
     await done;
 
-    const serialized = JSON.stringify(executedSql);
+    const serialized = sqlText(executedSql);
     expect(serialized).toContain('FROM agent_sessions s');
     expect(serialized).toContain("s.kind <> 'chat' AND s.status NOT IN (");
   });

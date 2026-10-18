@@ -26,7 +26,8 @@ import { useOrgScopedProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import { failedJobWords } from "../failed-job-words";
+import { stuckClause } from "@forge/contracts/stuck-words";
+import { failedJobClause, failedJobWords } from "../failed-job-words";
 import { useAttention } from "../hooks";
 import type { AttentionBucket, AttentionItem, AttentionKind } from "../types";
 import { PageTitle, SectionTitle } from "@/design/primitives/heading";
@@ -82,6 +83,8 @@ function KindTag({ kind }: { kind: AttentionKind }) {
 
 function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (link: string) => void }) {
   const said = item.kind === "failed_job" ? failedJobWords(item) : item.title;
+  const lower = item.failedJob ? failedJobClause(item.failedJob) : item.stuckKind ? stuckClause(item.stuckKind) : null;
+  const under = item.issueTitle ? (lower ? `${said.replace(/[.]?$/, ".")} ${lower}` : said) : lower;
   return (
     <button
       type="button"
@@ -95,7 +98,7 @@ function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (link: st
       <span className="fg-body-sm order-last min-w-0 basis-full text-fg sm:order-none sm:flex-1 sm:basis-auto sm:truncate">
         {item.issueTitle ?? said}
         {/* A failed job is named by its issue; what failed is read under it, in words (ISS-1229 r14). */}
-        {item.issueTitle && <span className="fg-caption block text-subtle sm:truncate">{said}</span>}
+        {under && <span className="fg-caption block text-subtle sm:truncate">{under}</span>}
       </span>
       {item.issueRef && <MonoTag>{item.issueRef}</MonoTag>}
       {item.projectName && (

@@ -104,7 +104,9 @@ describe('the idle sweep times its grace from when nothing has worked the issue'
 
     expect(told(control)).toBe(true);
     expect(told(edited)).toBe(true);
-    expect(emitted.find((e) => e.issueId === edited)?.body).toMatch(/has read Open for 16 minutes/);
+    expect(emitted.find((e) => e.issueId === edited)?.body).toMatch(
+      /^It has read Open for 16 minutes:/,
+    );
   });
 
   it('waits out an Open issue fourteen minutes after it entered, however long ago it was last edited', async () => {

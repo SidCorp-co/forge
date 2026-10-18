@@ -30,6 +30,8 @@ import {
 import { loadProjectAccess } from '../lib/authz.js';
 import { listResponse } from '../lib/pagination.js';
 import { queryBadRequest } from '../lib/query-strict.js';
+import { isNot } from '../me/attention-buckets.js';
+import { heldAsFailedJobWhere } from '../me/attention-failed-jobs.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { stuckNoticeStandsSql } from '../projects/stuck-issue-kinds.js';
 import { usageSessionMatch } from '../usage-records/rollup.js';
@@ -316,7 +318,9 @@ searchRoutes.get(
       both(eq(issues.category, q.category));
     }
     if (q.stuck === true) {
+      // The issues the headline counts as stuck: one the reader's failed jobs list is counted there.
       both(stuckNoticeStandsSql(sql`${issues.id}`));
+      both(isNot(heldAsFailedJobWhere(userId)));
     }
     if (q.label && q.label.length > 0) {
       const labelIds = q.label;

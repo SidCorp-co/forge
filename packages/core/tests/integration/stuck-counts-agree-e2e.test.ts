@@ -51,7 +51,7 @@ describe('one board read through the headline, the bell and Attention', () => {
 
     // The headline's count, by kind.
     const { readHealthAggregates } = await import('../../src/projects/health-aggregates.js');
-    const { stuckIssueRows } = await readHealthAggregates([fx.project.id]);
+    const { stuckIssueRows } = await readHealthAggregates([fx.project.id], fx.owner);
     expect(stuckIssueRows[0]?.total).toBe(5);
     expect(stuckIssueRows[0]?.byKind).toEqual({ waiting: 3, idle: 2 });
 
@@ -100,11 +100,18 @@ describe('one board read through the headline, the bell and Attention', () => {
     await announce(() => reconcileIdleIssues(new Date()));
 
     const { readHealthAggregates } = await import('../../src/projects/health-aggregates.js');
-    const { blockerRowsAll, stuckIssueRows } = await readHealthAggregates([fx.project.id]);
+    const { blockerRowsAll, stuckIssueRows } = await readHealthAggregates(
+      [fx.project.id],
+      fx.owner,
+    );
     expect(blockerRowsAll.map((b) => [b.id, b.title])).toEqual([[parked, 'issue 1']]);
-    expect(stuckIssueRows.map((r) => [r.id, r.title])).toEqual([[idle, 'issue 2']]);
+    // The owner's failed job tells issue 2, so the owner's headline does not count it as stuck too;
+    // a reader with no failed job on it counts it there, by its title (ISS-1229 r15).
+    expect(stuckIssueRows).toEqual([]);
+    const { stuckIssueRows: another } = await readHealthAggregates([fx.project.id], randomUUID());
+    expect(another.map((r) => [r.id, r.title])).toEqual([[idle, 'issue 2']]);
 
-    const { selectFailedJobs } = await import('../../src/me/attention-buckets.js');
+    const { selectFailedJobs } = await import('../../src/me/attention-failed-jobs.js');
     const [failed] = await selectFailedJobs(fx.owner);
     expect(failed).toMatchObject({ issueDocId: idle, issueTitle: 'issue 2' });
   });

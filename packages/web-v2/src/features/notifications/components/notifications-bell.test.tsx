@@ -71,6 +71,7 @@ const row = (over: Partial<NotificationRow> = {}): NotificationRow => ({
   agentSessionId: null,
   createdAt: "2026-10-01T10:00:00.000Z",
   toldAt: "2026-10-01T10:00:00.000Z",
+  stuckKind: "owed_close",
   ...over,
 });
 

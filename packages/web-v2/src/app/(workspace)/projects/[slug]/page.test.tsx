@@ -280,7 +280,7 @@ describe("a working project", () => {
   it("opens on a sentence counting what is live and what needs a person, over a figures row with a comparison each", () => {
     runs = [run(), run({ id: "r2", issueRef: "ISS-2" })];
     sessions = [liveSession(), liveSession({ id: "s2" })];
-    attentionView = view({ pair: { needsReview: 0, awaitingInput: 1, parkedOnly: 0, failedJobs: 0 } }, {
+    attentionView = view({ pair: { needsReview: 0, awaitingInput: 1, parkedOnly: 0, failedJobs: 0, awaitingAsked: 0, parkedAsked: 0, stuckOnly: 0 } }, {
       awaitingInput: [attentionItem(7, ago(2 * 3600))],
     });
     work = { ...BUSY_WORK, blocked_on_person: 1 };
@@ -320,7 +320,7 @@ describe("a working project", () => {
   });
 
   it("gives each waiting row its age chip and the action that clears it", () => {
-    attentionView = view({ pair: { needsReview: 0, awaitingInput: 2, parkedOnly: 0, failedJobs: 0 } }, {
+    attentionView = view({ pair: { needsReview: 0, awaitingInput: 2, parkedOnly: 0, failedJobs: 0, awaitingAsked: 0, parkedAsked: 0, stuckOnly: 0 } }, {
       awaitingInput: [attentionItem(7, ago(2 * 3600)), attentionItem(8, ago(5 * DAY))],
     });
     mount();
@@ -330,7 +330,7 @@ describe("a working project", () => {
   });
 
   it("is degraded by a failed job the response counts though its capped list shows none", () => {
-    attentionView = view({ pair: { needsReview: 0, awaitingInput: 0, parkedOnly: 0, failedJobs: 1 } });
+    attentionView = view({ pair: { needsReview: 0, awaitingInput: 0, parkedOnly: 0, failedJobs: 1, awaitingAsked: 0, parkedAsked: 0, stuckOnly: 0 } });
     const { container } = mount();
     expect(shape(container)).toBe("degraded");
     expect(screen.getByTestId("degraded-band")).toHaveTextContent("1 job failed.");
@@ -355,7 +355,7 @@ describe("a working project", () => {
 
 describe("a degraded project", () => {
   it("replaces the figures row with a band naming what is wrong and one link to the oldest item", () => {
-    attentionView = view({ pair: { needsReview: 0, awaitingInput: 0, parkedOnly: 0, failedJobs: 1 } }, {
+    attentionView = view({ pair: { needsReview: 0, awaitingInput: 0, parkedOnly: 0, failedJobs: 1, awaitingAsked: 0, parkedAsked: 0, stuckOnly: 0 } }, {
       failedJobs: [{ kind: "failed_job", title: "build failed", jobType: "drive", failure: null, link: "/projects/pair/issues/d9", since: ago(3 * DAY), issueRef: "ISS-9", projectSlug: "pair" }],
       awaitingInput: [attentionItem(7, ago(112 * DAY))],
     });
@@ -463,6 +463,33 @@ describe("a Needs you row on a project with parked and stuck issues", () => {
   });
 });
 
+// ISS-1229 r15, judge-38 on 81 and 87: 14 stuck, two of them the reader's own Waiting parks. Needs you
+// listed those two as plain parks, said 9 more where 7 were missing, and headed 2 over seven rows.
+describe("Needs you on judge-38's board of 14 stuck issues", () => {
+  // The master's r15 ruling: a park the reader owes heads its row, naming its notice under it.
+  it("names the stuck parks' notice under the parks they are and counts the whole set, 14, in the heading and the overflow", () => {
+    stuckIssues = 14;
+    stuckIssueRefs = [10, 9, 8, 4, 2].map((n) => ({ issueId: `ISS-${n}`, documentId: `d${n}`, title: `Stuck ${n}`, kind: "idle" }));
+    attentionView = view(
+      { pair: { needsReview: 0, awaitingInput: 2, parkedOnly: 0, failedJobs: 0, awaitingAsked: 0, parkedAsked: 0, stuckOnly: 12 } },
+      {
+        awaitingInput: [11, 12].map((n) =>
+          attentionItem(n, ago(7 * 3600), { status: "waiting", questionId: null, stuckKind: "waiting" }),
+        ),
+      },
+    );
+    mount();
+    const list = screen.getByRole("region", { name: "Needs your attention" });
+    expect(list).toHaveTextContent(/^Needs your attention14/u);
+    expect(within(list).getAllByText(/\. It has been waiting for you for over six hours\.$/u)).toHaveLength(2);
+    expect(list).toHaveTextContent("And 7 more stuck. All 14 stuck issues are in Issues.");
+    expect(list).not.toHaveTextContent(/9 more|stuck · 14/u);
+    expect(list).toHaveTextContent("Showing 7 of 14.");
+    // Degraded: the band stands where the figures row was, and counts the same 14.
+    expect(headline()).toHaveTextContent("14 issues are reported stuck.");
+  });
+});
+
 describe("a project whose reads have not all arrived", () => {
   it("is unread while the runs read is out, and does not say nothing needs anyone", () => {
     runs = undefined;
@@ -554,7 +581,7 @@ describe("a section whose own read has not arrived", () => {
   it.each(["pending", "failed"] as const)(
     "keeps the cut and says nothing is listed only once the runs read is in: attention listing none of 2, runs %s",
     (read) => {
-      attentionView = view({ pair: { needsReview: 0, awaitingInput: 2, parkedOnly: 0, failedJobs: 0 } });
+      attentionView = view({ pair: { needsReview: 0, awaitingInput: 2, parkedOnly: 0, failedJobs: 0, awaitingAsked: 0, parkedAsked: 0, stuckOnly: 0 } });
       runs = undefined;
       if (read === "failed") runsError = new Error("Gateway Timeout");
       const { container } = mount();
@@ -776,20 +803,23 @@ describe("a page whose figures sit beside other counts of the same things", () =
       title: `Park ${40 + i}`,
       status: "needs_info",
     }));
-    attentionView = view({ pair: { needsReview: 0, awaitingInput: 32, parkedOnly: 0, failedJobs: 0 } }, {
+    attentionView = view({ pair: { needsReview: 0, awaitingInput: 32, parkedOnly: 0, failedJobs: 0, awaitingAsked: 0, parkedAsked: 0, stuckOnly: 0 } }, {
       awaitingInput: Array.from({ length: 20 }, (_, i) => attentionItem(i + 1, ago(3600), { status: "needs_info" })),
     });
     mount();
     expect(headline()).toHaveTextContent("32 items need a person.");
     expect(headline()).not.toHaveTextContent("at least");
     expect(figure("Needs you").getByText("32")).toBeInTheDocument();
-    expect(figure("Needs you").getByText(/25 of 32 listed$/u)).toBeInTheDocument();
+    expect(figure("Needs you").getByText(/to act on: 32 issues parked with no question$/u)).toBeInTheDocument();
+    // The caption counts the kind whole and never says how many rows are listed (ISS-1229 r15, judge-38).
+    expect(figure("Needs you").queryByText(/listed/u)).toBeNull();
+    expect(screen.getByRole("region", { name: "Needs your attention" })).toHaveTextContent(/^Needs your attention32/u);
     expect(screen.getByText("Showing 25 of 32.", { exact: false })).toBeInTheDocument();
   });
 
   // The class contract only: jsdom lays nothing out, so where the chip falls at 390px is the judge's read of the running page.
   it("gives each attention row's chip the first-line classes beside its kind and ref, and its title a full-width basis", () => {
-    attentionView = view({ pair: { needsReview: 0, awaitingInput: 2, parkedOnly: 0, failedJobs: 0 } }, {
+    attentionView = view({ pair: { needsReview: 0, awaitingInput: 2, parkedOnly: 0, failedJobs: 0, awaitingAsked: 0, parkedAsked: 0, stuckOnly: 0 } }, {
       awaitingInput: [attentionItem(7, ago(2 * 3600)), attentionItem(8, ago(5 * DAY), { title: "A title long enough to need the whole line to itself on a phone" })],
     });
     mount();
@@ -809,12 +839,12 @@ describe("the project dashboard's Needs you", () => {
     blockers = PAIR_BLOCKERS;
     work = { ...BUSY_WORK, blocked_on_person: 4 };
     attentionView = view({
-      pair: { needsReview: 0, awaitingInput: 1, parkedOnly: 3, failedJobs: 0 },
+      pair: { needsReview: 0, awaitingInput: 1, parkedOnly: 3, failedJobs: 0, awaitingAsked: 0, parkedAsked: 0, stuckOnly: 0 },
     });
     mount();
     const n = figure("Needs you");
     expect(n.getByText("4")).toBeInTheDocument();
-    expect(n.getByText(/3 of 4 listed$/u)).toBeInTheDocument();
+    expect(n.getByText(/to act on: 4 issues parked with no question$/u)).toBeInTheDocument();
     expect(screen.getByText("Showing 3 of 4.", { exact: false })).toBeInTheDocument();
     expect(headline()).toHaveTextContent("4 items need a person.");
   });
@@ -872,7 +902,7 @@ describe("the project dashboard's Needs you", () => {
     });
 
     it("refuses when a later refetch failed though an earlier answer is still held", () => {
-      attentionView = view({ pair: { needsReview: 0, awaitingInput: 0, parkedOnly: 0, failedJobs: 0 } });
+      attentionView = view({ pair: { needsReview: 0, awaitingInput: 0, parkedOnly: 0, failedJobs: 0, awaitingAsked: 0, parkedAsked: 0, stuckOnly: 0 } });
       attentionRead = "failed";
       attentionError = new Error("offline");
       const { container } = mount();

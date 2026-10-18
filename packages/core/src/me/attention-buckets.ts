@@ -11,13 +11,11 @@ import {
   type SQL,
   sql,
 } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/client.js';
 import {
   commentMentions,
   comments,
   issues,
-  jobs,
   notificationDeliveries,
   notificationDeliveryMembers,
   notifications,
@@ -29,7 +27,7 @@ import {
 import { issueArchiveSide } from '../issues/archive.js';
 import { creatorIsAgentCondition } from '../issues/creator.js';
 import { statusEnteredAtSql } from '../issues/status-entered-at.js';
-import { AWAITING_INPUT_STATUSES, ISSUE_RESOLVED_STATUSES } from '../issues/status-sets.js';
+import { AWAITING_INPUT_STATUSES } from '../issues/status-sets.js';
 import { statusesInWorkState } from '../issues/work-state.js';
 import { visibleProjectsWhere } from '../lib/authz.js';
 import { holdsOpenHumanQuestion } from '../questions/issue-coupling.js';
@@ -64,7 +62,7 @@ export const AWAITING_INPUT_CAP = BUCKET_CAPS.awaitingInput;
 /** A bucket's cap, or `null` where the caller asked for it whole (ISS-1229 r14). */
 export type BucketLimit = number | null;
 
-function capped<T extends { limit: (n: number) => unknown }>(query: T, limit: BucketLimit) {
+export function capped<T extends { limit: (n: number) => unknown }>(query: T, limit: BucketLimit) {
   return limit === null ? query : query.limit(limit);
 }
 
@@ -73,12 +71,16 @@ export interface AttentionScope {
   orgId?: string | undefined;
 }
 
-/** Applied before each cap, so a cap filled by one organisation cannot empty another (ISS-1229 r13). */
-export function inScope(scope: AttentionScope): SQL | undefined {
-  return scope.orgId ? eq(projects.orgId, scope.orgId) : undefined;
+/**
+ * Applied before each cap, so a cap filled by one organisation cannot empty another (ISS-1229 r13).
+ * An archived project's page answers not found, so nothing of it is counted or listed (ISS-1229 r15).
+ */
+export function inScope(scope: AttentionScope): SQL {
+  return and(
+    isNull(projects.archivedAt),
+    scope.orgId ? eq(projects.orgId, scope.orgId) : undefined,
+  ) as SQL;
 }
-
-const retryJobs = alias(jobs, 'retry_jobs');
 
 export interface AttentionIssueRow {
   id: string;
@@ -403,58 +405,6 @@ export function selectMentions(
     mentionsOf(mentionFields, userId, scope).orderBy(desc(commentMentions.createdAt)),
     limit,
   ) as unknown as Promise<AttentionMentionRow[]>;
-}
-
-/** A failed job of the caller's that nothing retried, from the last week: the part read off `jobs`. */
-export function failedJobOwnWhere(userId: string): SQL {
-  return and(
-    eq(jobs.createdBy, userId),
-    eq(jobs.status, 'failed'),
-    sql`${jobs.createdAt} >= now() - interval '7 days'`,
-    notExists(db.select({ one: sql`1` }).from(retryJobs).where(eq(retryJobs.retryOf, jobs.id))),
-  ) as SQL;
-}
-
-/** An issue the job ran for that is still open and not archived; a job on no issue is listed too. */
-export function failedJobIssueWhere(): SQL {
-  return and(
-    notInArray(issues.status, [...ISSUE_RESOLVED_STATUSES]),
-    ...issueArchiveSide(false),
-  ) as SQL;
-}
-
-export function failedJobsWhere(userId: string): SQL {
-  return and(failedJobOwnWhere(userId), or(isNull(issues.id), failedJobIssueWhere())) as SQL;
-}
-
-export function selectFailedJobs(
-  userId: string,
-  scope: AttentionScope = {},
-  limit: BucketLimit = BUCKET_CAPS.failedJobs,
-): Promise<AttentionFailedJobRow[]> {
-  return capped(
-    db
-      .select({
-        type: jobs.type,
-        finishedAt: jobs.finishedAt,
-        createdAt: jobs.createdAt,
-        error: jobs.error,
-        failureReason: jobs.failureReason,
-        issueDocId: issues.id,
-        issueTitle: issues.title,
-        issSeq: issues.issSeq,
-        issuePrefix: projects.issuePrefix,
-        projectSlug: projects.slug,
-        projectName: projects.name,
-      })
-      .from(jobs)
-      .innerJoin(projects, eq(projects.id, jobs.projectId))
-      .leftJoin(issues, eq(issues.id, jobs.issueId))
-      .where(and(failedJobsWhere(userId), inScope(scope)))
-      .orderBy(desc(sql`coalesce(${jobs.finishedAt}, ${jobs.createdAt})`))
-      .$dynamic(),
-    limit,
-  ) as unknown as Promise<AttentionFailedJobRow[]>;
 }
 
 export function pendingSkillUpdateWhere(userId: string, scope: AttentionScope): SQL {

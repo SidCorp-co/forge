@@ -24,9 +24,11 @@ describe("a failed job, in words", () => {
     expect(failedJobWords({ jobType: "triage", failure: null })).toBe("Unrecognised work (triage) failed");
   });
 
-  it("keeps a failure the job wrote as a sentence, cut to a line", () => {
-    expect(failureWords("Agent completed with errors")).toBe("Agent completed with errors");
-    expect(failureWords(`Error: ${"x".repeat(200)}`)?.length).toBe(80);
+  // ISS-1229 r15: judge-38 read the classifier's own sentence where "Session lost" was owed.
+  it("says nothing of a failure the job wrote as a sentence: a diagnostic is not words for a person", () => {
+    expect(failureWords("agent session terminated without job completion (silent runner/agent death)")).toBeNull();
+    expect(failureWords("Agent completed with errors")).toBeNull();
+    expect(failedJobWords({ jobType: "drive", failure: "Agent completed with errors" })).toBe("Issue work failed");
   });
 
   it("refuses a failed job with no kind of work, by name", () => {

@@ -26,9 +26,12 @@ import { StepTimes } from "@/features/project-dashboard/components/step-times";
 import { Throughput, THROUGHPUT_WINDOW_DAYS } from "@/features/project-dashboard/components/throughput";
 import {
   attentionCaption,
+  attentionParts,
   attentionReadFailure,
   attentionRefusal,
   attentionCut,
+  type StuckIssues,
+  stuckRowsOf,
   sessionsWaitingOnYou,
   idleRuns,
   joblessRuns,
@@ -171,10 +174,21 @@ export default function ProjectOverviewPage() {
   // A response that cannot say how much the list leaves out is refused where the figure and the list
   // are, so the rest of the dashboard stands rather than the whole page failing.
   const attentionRefused = readFailure ?? (attentionRead ? attentionRefusal(attentionQ.view, project.slug) : null);
-  const attentionLeftOut =
-    attentionRead && !attentionRefused
-      ? attentionCut(attention, attentionQ.view, project.slug)
-      : null;
+  // Needs you holds the stuck issues the headline counts too, so every figure it says counts them.
+  const stuckIssues: StuckIssues | undefined = health
+    ? { total: health.stuckIssues, refs: health.stuckIssueRefs }
+    : undefined;
+  const stuckRowCount = stuckRowsOf(attention, stuckIssues).length;
+  const attentionCounted = attentionRead && !attentionRefused;
+  const needsYouParts = attentionCounted
+    ? attentionParts(attention, attentionQ.view, project.slug, stuckRowCount)
+    : null;
+  const needsYouWhole = needsYouParts
+    ? Object.values(needsYouParts).reduce((n, part) => n + part, 0)
+    : attention.length + stuckRowCount;
+  const attentionLeftOut = attentionCounted
+    ? attentionCut(attention, attentionQ.view, project.slug, stuckRowCount)
+    : null;
   const attentionState: ReadState = attentionPending
     ? { read: "pending" }
     : attentionRefused
@@ -293,8 +307,8 @@ export default function ProjectOverviewPage() {
             busyRunners={runners.busyCount}
             onlineRunners={runners.onlineCount}
             totalRunners={runners.total}
-            needsYou={attentionLeftOut ? attentionLeftOut.whole : attention.length}
-            needsYouCaption={attentionCaption(attention, attentionLeftOut)}
+            needsYou={needsYouWhole}
+            needsYouCaption={needsYouParts ? attentionCaption(needsYouParts) : ""}
             oldestWait={oldestSeconds === null ? null : formatElapsed(oldestSeconds)}
             needsYouRefusal={attentionRefused}
             needsYouPending={attentionPending}
@@ -332,7 +346,8 @@ export default function ProjectOverviewPage() {
                     : undefined
                 }
                 shape={reading.shape}
-                stuck={health ? { total: health.stuckIssues, refs: health.stuckIssueRefs } : undefined}
+                stuck={stuckIssues}
+                whole={needsYouWhole}
                 slug={project.slug}
                 now={now}
               />

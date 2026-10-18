@@ -96,7 +96,7 @@ describe("the Needs your attention list with nothing in it", () => {
     expect(screen.getAllByRole("button", { name: "Open issue" })).toHaveLength(2);
   });
 
-  it("counts its own items in the heading and the stuck issues beside them on their own line", () => {
+  it("counts every row it heads in the heading, the stuck rows among them", () => {
     render(
       <AttentionQueue
         items={[
@@ -124,8 +124,136 @@ describe("the Needs your attention list with nothing in it", () => {
       />,
     );
     const list = screen.getByRole("region", { name: "Needs your attention" });
-    expect(list).toHaveTextContent(/^Needs your attention1/u);
-    expect(list).toHaveTextContent("Also reported stuck · 2");
+    expect(list).toHaveTextContent(/^Needs your attention3/u);
+    expect(list).toHaveTextContent("Also reported stuck");
+    expect(list).not.toHaveTextContent(/Also reported stuck ·/u);
+  });
+
+  // ISS-1229 r15, judge-38 on 81: two Waiting parks became stuck and were listed as plain parks, the
+  // overflow said 9 more where 7 were missing, and "Also reported stuck · 14" read as 14 beyond them.
+  it("tells a stuck park by its notice, says truly how many stuck issues it leaves out, and heads the whole", () => {
+    const park = (n: number) => ({
+      key: `parked-${n}`,
+      actionKind: "parked" as const,
+      actionLabel: "Open issue",
+      title: `Park ${n}`,
+      detail: "Blocked on a person — Waiting",
+      issueRef: `ISS-${n}`,
+      link: `/projects/pair/issues/d${n}`,
+      stuckKind: "waiting" as const,
+    });
+    render(
+      <AttentionQueue
+        items={[park(11), park(12)]}
+        cut={{ shown: 7, whole: 14, peopleCut: false }}
+        whole={14}
+        shape="degraded"
+        slug="pair"
+        now={0}
+        stuck={{
+          total: 14,
+          refs: [10, 9, 8, 4, 2].map((n) => ({
+            issueId: `ISS-${n}`,
+            documentId: `d${n}`,
+            title: `Stuck ${n}`,
+            kind: "idle" as const,
+          })),
+        }}
+      />,
+    );
+    const list = screen.getByRole("region", { name: "Needs your attention" });
+    expect(list).toHaveTextContent(/^Needs your attention14/u);
+    expect(screen.getAllByText("Has been waiting for you for over six hours")).toHaveLength(2);
+    expect(list).not.toHaveTextContent("Blocked on a person — Waiting");
+    expect(screen.getAllByText("Stuck")).toHaveLength(7);
+    expect(list).toHaveTextContent("And 7 more stuck. All 14 stuck issues are in Issues.");
+    expect(list).not.toHaveTextContent(/9 more|· 14/u);
+    expect(list).toHaveTextContent("Showing 7 of 14.");
+  });
+
+  // ISS-1229 r15, the master's ruling: an answer owed outranks a failed job, which outranks a stuck
+  // reason; a row takes the highest and names the next one down under it, and a failed job's issue is
+  // counted as that, never among the stuck issues too.
+  it("heads each row by its highest reason and names the next one under it", () => {
+    const base = { since: new Date(0).toISOString() };
+    render(
+      <AttentionQueue
+        items={[
+          {
+            ...base,
+            key: "retry",
+            actionKind: "retry",
+            actionLabel: "Approve & retry",
+            title: "Export the March invoices",
+            detail: "Issue work failed: Session lost",
+            issueRef: "ISS-15",
+            link: "/projects/pair/issues/d15",
+            stuckKind: "idle",
+          },
+          {
+            ...base,
+            key: "input",
+            actionKind: "input",
+            actionLabel: "Provide info",
+            title: "Which carrier?",
+            issueRef: "ISS-21",
+            link: "/projects/pair/issues/d21",
+            owed: true,
+            failedJob: { jobType: "drive", failure: "session_lost" },
+            stuckKind: "waiting",
+          },
+          {
+            ...base,
+            key: "own-park",
+            actionKind: "parked",
+            actionLabel: "Open issue",
+            title: "Pick the carrier",
+            detail: "Blocked on a person — Waiting",
+            issueRef: "ISS-22",
+            link: "/projects/pair/issues/d22",
+            owed: true,
+            stuckKind: "waiting",
+          },
+          {
+            ...base,
+            key: "their-park",
+            actionKind: "parked",
+            actionLabel: "Open issue",
+            title: "Close the ledger",
+            detail: "Blocked on a person — Waiting",
+            issueRef: "ISS-23",
+            link: "/projects/pair/issues/d23",
+            stuckKind: "owed_close",
+          },
+        ]}
+        cut={null}
+        shape="degraded"
+        slug="pair"
+        now={0}
+        stuck={{
+          total: 5,
+          refs: [21, 22, 23, 24].map((n) => ({
+            issueId: `ISS-${n}`,
+            documentId: `d${n}`,
+            title: `Stuck ${n}`,
+            kind: "waiting" as const,
+          })),
+        }}
+      />,
+    );
+    const list = screen.getByRole("region", { name: "Needs your attention" });
+    expect(screen.getByText("Issue work failed: Session lost. It is in a live status with no live work behind it.")).toBeInTheDocument();
+    expect(screen.getByText("A job on it failed: Session lost.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Blocked on a person — Waiting. It has been waiting for you for over six hours."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Shipped its code and was never closed")).toBeInTheDocument();
+    // Another person's park and the one stuck row left unlisted wear the Stuck tag; the owed rows do not.
+    expect(screen.getAllByText("Stuck")).toHaveLength(2);
+    expect(screen.getAllByText("Failed")).toHaveLength(1);
+    expect(screen.getAllByText("Awaiting")).toHaveLength(1);
+    // Five stuck: four on the page, ISS-15 not among them, so one is left out.
+    expect(list).toHaveTextContent("And 1 more stuck.");
   });
 
   it("names a stuck issue once where it is already listed to act on", () => {

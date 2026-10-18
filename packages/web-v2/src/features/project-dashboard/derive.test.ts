@@ -9,7 +9,11 @@ import {
   type AttentionActionKind,
   attentionCaption,
   attentionCut,
+  attentionParts,
   attentionRefusal,
+  attentionWhole,
+  stuckLeftOut,
+  stuckRowsOf,
   conicGradient,
   type DashboardAttentionItem,
   projectAttention,
@@ -20,6 +24,10 @@ import {
 import type { LiveSession } from "@/features/pipeline/types";
 import type { AttentionItem, AttentionView } from "@/features/attention/types";
 import type { PipelineRunListItem } from "@/features/runs/types";
+
+/** The caption for a list core holds no totals for: its parts are the rows listed. */
+const captionOf = (items: readonly DashboardAttentionItem[]) =>
+  attentionCaption(attentionParts(items, undefined, "sable"));
 
 const WORK = {
   open: 56,
@@ -92,20 +100,20 @@ describe("attentionCaption (ISS-1156)", () => {
 
   it("says what the Needs you figure counts, by kind, so it is not read as Blocked on a person", () => {
     const items = [item("retry", 0), item("retry", 1), item("diff", 2), ...[3, 4, 5].map((i) => item("input", i)), item("parked", 6)];
-    expect(attentionCaption(items)).toBe(
+    expect(captionOf(items)).toBe(
       "to act on: 2 failed jobs · 1 to review · 3 issues with an open question · 1 issue parked with no question",
     );
   });
 
   it("adds up to the figure: the parts of the caption are the items counted", () => {
     const items = [item("retry", 0), item("input", 1), item("input", 2)];
-    const parts = attentionCaption(items).replace("to act on: ", "").split(" · ");
+    const parts = captionOf(items).replace("to act on: ", "").split(" · ");
     expect(parts.reduce((n, p) => n + Number.parseInt(p, 10), 0)).toBe(items.length);
   });
 
   it("leaves out a kind with nothing in it, and says so when nothing needs a person", () => {
-    expect(attentionCaption([item("diff", 0)])).toBe("to act on: 1 to review");
-    expect(attentionCaption([])).toBe("nothing to act on");
+    expect(captionOf([item("diff", 0)])).toBe("to act on: 1 to review");
+    expect(captionOf([])).toBe("nothing to act on");
   });
 });
 
@@ -142,9 +150,22 @@ describe("projectAttention (ISS-1156)", () => {
     );
     expect(items.filter((i) => i.actionKind === "input")).toHaveLength(2);
     expect(items.filter((i) => i.actionKind === "parked")).toHaveLength(1);
-    expect(attentionCaption(items)).toBe(
+    expect(captionOf(items)).toBe(
       "to act on: 2 issues with an open question · 1 issue parked with no question",
     );
+  });
+
+  // ISS-1229 r15, the master's ruling: an answer the reader owes heads its row, naming its failed job.
+  it("marks the rows the reader owes an answer, carries their failed job, and leaves other people's parks unmarked", () => {
+    const asked = { ...awaiting(1, "q1", "needs_info"), failedJob: { jobType: "drive", failure: "session_lost" } };
+    const items = projectAttention(view([asked, awaiting(2, null, "waiting")]), "sable", [
+      { issueId: "ISS-3", documentId: "doc-3", title: "Issue 3", status: "waiting", stuckKind: "waiting" },
+    ]);
+    expect(items.map((i) => [i.issueRef, i.owed ?? false, i.failedJob?.failure ?? null])).toEqual([
+      ["ISS-1", true, "session_lost"],
+      ["ISS-2", true, null],
+      ["ISS-3", false, null],
+    ]);
   });
 
   it("lists an issue once even where it is both holding a question and in the project's blockers", () => {
@@ -245,7 +266,7 @@ describe("attentionRefusal (ISS-1156)", () => {
   });
 
   it("says nothing of a response that carries both, a project with no entry, or one not loaded yet", () => {
-    const ok = { needsReview: 0, awaitingInput: 1, parkedOnly: 1, failedJobs: 0 };
+    const ok = { needsReview: 0, awaitingInput: 1, awaitingAsked: 0, parkedOnly: 1, failedJobs: 0, parkedAsked: 0, stuckOnly: 0 };
     expect(attentionRefusal(view({ sable: ok }), "sable")).toBeNull();
     expect(attentionRefusal(view({}), "sable")).toBeNull();
     expect(attentionRefusal(undefined, "sable")).toBeNull();
@@ -264,8 +285,11 @@ describe("attentionCut (ISS-1156, whole since ISS-1229 r14)", () => {
   const viewWith = (totals: {
     needsReview?: number;
     awaitingInput?: number;
+    awaitingAsked?: number;
     parkedOnly?: number;
     failedJobs?: number;
+    stuckOnly?: number;
+    parkedAsked?: number;
   }): AttentionView => ({
     needsReview: [],
     awaitingInput: [],
@@ -276,7 +300,16 @@ describe("attentionCut (ISS-1156, whole since ISS-1229 r14)", () => {
     unseenDraftsTotal: 0,
     bucketTotals: { needsReview: 0, awaitingInput: 0, mentions: 0, failedJobs: 0, pendingSkillUpdates: 0, unseenDrafts: 0 },
     projectTotals: {
-      sable: { needsReview: 0, awaitingInput: 0, parkedOnly: 0, failedJobs: 0, ...totals },
+      sable: {
+        needsReview: 0,
+        awaitingInput: 0,
+        awaitingAsked: 0,
+        parkedOnly: 0,
+        failedJobs: 0,
+        parkedAsked: 0,
+        stuckOnly: 0,
+        ...totals,
+      },
     },
     total: 0,
     offlineRunners: [],
@@ -292,7 +325,26 @@ describe("attentionCut (ISS-1156, whole since ISS-1229 r14)", () => {
     const items = many("parked", 25);
     const cut = attentionCut(items, viewWith({ awaitingInput: 32 }), "sable");
     expect(cut).toEqual({ shown: 25, whole: 32, peopleCut: true });
-    expect(attentionCaption(items, cut)).toBe("to act on: 25 issues parked with no question — 25 of 32 listed");
+  });
+
+  // ISS-1229 r15: judge-38 read "to act on: 25 issues parked with no question — 25 of 32 listed" over
+  // 32 parks, all of them with no question.
+  it("counts every kind in the caption whole, listed or not, and never says how many are listed", () => {
+    const items = many("parked", 25);
+    const view = viewWith({ awaitingInput: 32 });
+    const caption = attentionCaption(attentionParts(items, view, "sable"));
+    expect(caption).toBe("to act on: 32 issues parked with no question");
+    expect(caption).not.toMatch(/listed|of 32/u);
+    expect(attentionWhole(items, view, "sable")).toBe(32);
+  });
+
+  it("splits the reader's parks by whether a question is open, from core's counts and not the rows", () => {
+    const items = [...many("input", 2), ...many("parked", 3)];
+    const view = viewWith({ awaitingInput: 30, awaitingAsked: 12, parkedOnly: 4 });
+    expect(attentionCaption(attentionParts(items, view, "sable"))).toBe(
+      "to act on: 12 issues with an open question · 22 issues parked with no question",
+    );
+    expect(attentionWhole(items, view, "sable")).toBe(34);
   });
 
   it("adds the parks someone else owes once, beside the reader's own", () => {
@@ -334,9 +386,77 @@ describe("attentionCut (ISS-1156, whole since ISS-1229 r14)", () => {
     expect(attentionCut([], undefined, "sable")).toBeNull();
   });
 
-  it("names an empty list that is cut as nothing listed rather than nothing to act on", () => {
-    const cut = attentionCut([], viewWith({ awaitingInput: 3 }), "sable");
-    expect(attentionCaption([], cut)).toBe("nothing listed to act on — 0 of 3 listed");
+  it("names what an empty list leaves out by kind, rather than nothing to act on", () => {
+    const view = viewWith({ awaitingInput: 3 });
+    expect(attentionCut([], view, "sable")).toEqual({ shown: 0, whole: 3, peopleCut: true });
+    expect(attentionCaption(attentionParts([], view, "sable"))).toBe("to act on: 3 issues parked with no question");
+  });
+
+  it("refuses a response whose totals carry no stuckOnly, by name, since its whole could not be said", () => {
+    const old = {
+      ...viewWith({}),
+      projectTotals: {
+        sable: { needsReview: 0, awaitingInput: 2, awaitingAsked: 0, failedJobs: 0, parkedOnly: 0, parkedAsked: 0 },
+      },
+    } as unknown as AttentionView;
+    expect(() => attentionCut([], old, "sable")).toThrow(/no `stuckOnly`.*not the release/u);
+  });
+
+  // The consult on round 15: another person's park holding a question is not "parked with no question".
+  it("counts another person's park that holds a question among the open questions, the whole unchanged", () => {
+    const view = viewWith({ awaitingInput: 2, awaitingAsked: 1, parkedOnly: 3, parkedAsked: 1 });
+    expect(attentionCaption(attentionParts(many("parked", 5), view, "sable"))).toBe(
+      "to act on: 2 issues with an open question · 3 issues parked with no question",
+    );
+    expect(attentionWhole(many("parked", 5), view, "sable")).toBe(5);
+  });
+
+  it("counts the stuck issues no other kind holds in the whole, and the stuck rows among what it shows", () => {
+    const items = many("parked", 2);
+    const view = viewWith({ awaitingInput: 2, parkedAsked: 0, stuckOnly: 12 });
+    expect(attentionWhole(items, view, "sable", 5)).toBe(14);
+    expect(attentionCut(items, view, "sable", 5)).toEqual({ shown: 7, whole: 14, peopleCut: false });
+    expect(attentionCaption(attentionParts(items, view, "sable", 5))).toBe(
+      "to act on: 2 issues parked with no question · 12 other issues reported stuck",
+    );
+  });
+});
+
+describe("the stuck issues Needs you shows (ISS-1229 r15)", () => {
+  const parked = (n: number, stuckKind?: "waiting"): DashboardAttentionItem => ({
+    key: `parked-${n}`,
+    actionKind: "parked",
+    actionLabel: "Open issue",
+    title: `Issue ${n}`,
+    issueRef: `ISS-${n}`,
+    link: `/projects/sable/issues/doc-${n}`,
+    ...(stuckKind ? { stuckKind } : {}),
+  });
+  const ref = (n: number, kind: "idle" | "orphan" | "waiting" = "idle") => ({
+    issueId: `ISS-${n}`,
+    documentId: `doc-${n}`,
+    title: `Issue ${n}`,
+    kind,
+  });
+
+  // judge-38's board: 14 stuck, ISS-11 and ISS-12 listed as parks, five refs that are not, seven nowhere.
+  it("says 7 more where 7 of 14 are on the page, never 9", () => {
+    const items = [parked(11, "waiting"), parked(12, "waiting")];
+    const stuck = { total: 14, refs: [10, 9, 8, 4, 2].map((n) => ref(n)) };
+    expect(stuckRowsOf(items, stuck).map((r) => r.issueId)).toEqual(["ISS-10", "ISS-9", "ISS-8", "ISS-4", "ISS-2"]);
+    expect(stuckLeftOut(items, stuck)).toBe(7);
+  });
+
+  it("counts a stuck issue listed as an item once, whether or not the refs name it too", () => {
+    const items = [parked(11, "waiting")];
+    const stuck = { total: 3, refs: [ref(11, "waiting"), ref(2)] };
+    expect(stuckRowsOf(items, stuck).map((r) => r.issueId)).toEqual(["ISS-2"]);
+    expect(stuckLeftOut(items, stuck)).toBe(1);
+  });
+
+  it("leaves nothing out where every stuck issue is on the page", () => {
+    expect(stuckLeftOut([], { total: 2, refs: [ref(1), ref(2)] })).toBe(0);
+    expect(stuckLeftOut([], undefined)).toBe(0);
   });
 });
 
@@ -532,7 +652,7 @@ describe("sessions waiting on you", () => {
 
   it("counts it in the Needs you caption and in how much the list holds", () => {
     const items = sessionsWaitingOnYou([session({ report: blockedOn("human") })], "sable");
-    expect(attentionCaption(items)).toBe("to act on: 1 session waiting on you");
+    expect(captionOf(items)).toBe("to act on: 1 session waiting on you");
     const view: AttentionView = {
       needsReview: [],
       awaitingInput: [],
@@ -541,7 +661,9 @@ describe("sessions waiting on you", () => {
       pendingSkillUpdates: [],
       unseenDrafts: [],
       unseenDraftsTotal: 0,
-      projectTotals: { sable: { needsReview: 0, awaitingInput: 1, parkedOnly: 0, failedJobs: 0 } },
+      projectTotals: {
+        sable: { needsReview: 0, awaitingInput: 1, awaitingAsked: 0, parkedOnly: 0, failedJobs: 0, parkedAsked: 0, stuckOnly: 0 },
+      },
       offlineRunners: [],
     } as unknown as AttentionView;
     // One person is owed an answer the list did not reach: the session listed beside it does not
