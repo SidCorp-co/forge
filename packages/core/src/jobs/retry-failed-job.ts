@@ -6,12 +6,16 @@
  * failed row, so the failure leaves the reader's list because something retried it.
  */
 
-import { and, eq, inArray } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
 import { issues, jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
-import { ISSUE_RESOLVED_STATUSES, ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
+import {
+  ISSUE_RESOLVED_STATUSES,
+  ISSUE_TERMINAL_STATUSES,
+  statusLabel,
+} from '../issues/status-sets.js';
 import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -25,6 +29,7 @@ export type JobRetryRefusal =
   | 'NOT_FAILED'
   | 'ALREADY_RETRIED'
   | 'ISSUE_RESOLVED'
+  | 'ISSUE_ARCHIVED'
   | 'ALREADY_ACTIVE'
   | 'RUN_CLOSED';
 
@@ -67,7 +72,7 @@ function isUniqueViolation(err: unknown): boolean {
 
 /**
  * Queue a failed job again. Refused by name where the job is not failed, was already retried, ran
- * for an issue that is finished, has a live job of its kind on its issue, or ran in a run that is
+ * for an issue that is finished or archived, has a live job of its kind on its issue, or ran in a run that is
  * closed and has no issue to open one on.
  */
 export async function retryFailedJob(
@@ -79,30 +84,37 @@ export async function retryFailedJob(
   if (job.status !== 'failed') {
     throw new JobRetryError(
       'NOT_FAILED',
-      `job is ${job.status}, not failed; only a failed job is retried`,
+      'only a failed job is retried, and this one has not failed: a held job is resumed, a live one is left to finish',
     );
   }
   const [successor] = await db
-    .select({ id: jobs.id, status: jobs.status })
+    .select({ id: jobs.id })
     .from(jobs)
     .where(eq(jobs.retryOf, job.id))
     .limit(1);
   if (successor) {
     throw new JobRetryError(
       'ALREADY_RETRIED',
-      `job was already retried as ${successor.id}, which is ${successor.status}`,
+      `job was already retried as ${successor.id}; that job is the one to follow`,
     );
   }
   if (job.issueId) {
-    const [finished] = await db
-      .select({ status: issues.status })
+    // The one issue the job ran for, read by id, archived or not: an archived one is refused by name.
+    const [issue] = await db
+      .select({ status: issues.status, archivedAt: issues.archivedAt })
       .from(issues)
-      .where(and(eq(issues.id, job.issueId), inArray(issues.status, FINISHED)))
+      .where(eq(issues.id, job.issueId))
       .limit(1);
-    if (finished) {
+    if (issue && FINISHED.includes(issue.status)) {
       throw new JobRetryError(
         'ISSUE_RESOLVED',
-        `the issue this job ran for is ${finished.status}, so there is nothing to retry it for`,
+        `the issue this job ran for is at ${statusLabel(issue.status)}, so there is nothing to retry it for`,
+      );
+    }
+    if (issue?.archivedAt) {
+      throw new JobRetryError(
+        'ISSUE_ARCHIVED',
+        'the issue this job ran for is archived; unarchive it to retry the job',
       );
     }
   }

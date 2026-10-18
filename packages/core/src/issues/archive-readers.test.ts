@@ -97,6 +97,7 @@ const NOT_DISCOVERY: Record<string, string> = {
   'jobs/finalize-failure.ts': 'the issue of the job',
   'jobs/prepare-claimed-job.ts': 'the issue of the job',
   'jobs/queued-gates.ts': 'queued jobs only',
+  'jobs/retry-failed-job.ts': 'the issue of the job, by id; an archived one is refused by name',
   'jobs/routes.ts': 'by issue id',
   'jobs/turn-verdict-routes.ts': 'the issue of the job',
   'labels/module-rollup.ts': 'per-module counts, no issue identity',
@@ -114,7 +115,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'notifications/deliver.ts': 'by issue id',
   'notifications/notify-mentions.ts': 'by issue id',
   'notifications/notify-transitions.ts': 'by issue id',
-  'notifications/waiting-titles.ts': 'by notification id: the issue a waiting-park notice already names',
+  'notifications/waiting-titles.ts':
+    'by notification id: the issue a waiting-park notice already names',
   'notifications/routes.ts':
     'the issue a stuck-issue record names, through heldAsFailedJobWhere, which composes the predicate',
   'jobs/loop-monitor-axis.ts':

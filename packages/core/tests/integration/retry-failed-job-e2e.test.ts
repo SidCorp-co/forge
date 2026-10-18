@@ -181,6 +181,14 @@ describe('a person retries a failed job', () => {
     expect(JSON.stringify(await res.json())).toContain('ISSUE_RESOLVED');
   });
 
+  it('refuses a failure on an archived issue', async () => {
+    const failed = await seedJob('failed');
+    await harness.db.execute(sql`UPDATE issues SET archived_at = now() WHERE id = ${issueId}`);
+    const res = await retry(failed);
+    expect(res.status).toBe(409);
+    expect(JSON.stringify(await res.json())).toContain('ISSUE_ARCHIVED');
+  });
+
   it('opens a run for the issue where the failed job’s run has closed', async () => {
     const failed = await seedJob('failed');
     await harness.db.execute(

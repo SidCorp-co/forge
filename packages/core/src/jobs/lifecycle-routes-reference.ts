@@ -182,6 +182,7 @@ export const retryJob = describeOperation({
       NOT_FAILED: 'the job is not failed; a held job is resumed, a live one is left to finish',
       ALREADY_RETRIED: 'the job was already retried; its successor is the one to follow',
       ISSUE_RESOLVED: 'the issue the job ran for is finished',
+      ISSUE_ARCHIVED: 'the issue the job ran for is archived',
       ALREADY_ACTIVE: 'a job of the same kind is already queued or running on the issue',
       RUN_CLOSED: 'the job ran in a closed run and for no issue to open a run on',
     }),

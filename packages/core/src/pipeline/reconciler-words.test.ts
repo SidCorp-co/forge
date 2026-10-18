@@ -23,8 +23,27 @@ describe('what the reconciler says on an issue a person reads', () => {
     expect(body).not.toMatch(ENGINE_WORDS);
   });
 
+  it('names a lapsed claim and its time as a person reads them', () => {
+    const body = buildWedgeResetBody({
+      from: 'in_progress',
+      to: 'open',
+      grace: '30 minutes',
+      reading: {
+        verdict: 'expired',
+        holder: 'iss-run-1',
+        expiresAt: new Date('2026-10-18T07:30:00Z'),
+      } as Parameters<typeof buildWedgeResetBody>[0]['reading'],
+    });
+    expect(body).toContain('the claim iss-run-1 held on it ran out at 18 Oct 2026, 07:30 UTC');
+    expect(body).not.toMatch(/`|\d{4}-\d\d-\d\dT/);
+  });
+
   it('hands an issue to a person after its tries without naming a job type', () => {
-    const body = buildCapReachedCommentBody({ fromStatus: 'in_progress', cap: 3, driveSessions: 4 });
+    const body = buildCapReachedCommentBody({
+      fromStatus: 'in_progress',
+      cap: 3,
+      driveSessions: 4,
+    });
     expect(body).toContain('The agent working on this issue stopped at In progress 3 times');
     expect(body).toContain('4 agent sessions have worked on it so far.');
     expect(body).not.toMatch(ENGINE_WORDS);
