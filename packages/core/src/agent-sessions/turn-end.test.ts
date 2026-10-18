@@ -56,17 +56,36 @@ beforeEach(() => {
 // ISS-1228 round 15 (judge-39): End this turn on a run session set it idle, so it read "Not started"
 // while its agent ran on and its reaper never ended it; the box ends a chat's turn and nothing else.
 describe('endChatTurn', () => {
+  // Round 16 (judge-42): the refusal read "This is a run_session session, not a chat": the stored
+  // kind, and "session" twice. It names the kind in the words the sessions list tags it with.
   it.each([
-    ['a live run session', 'run_session', 'running'],
-    ['an ended run session', 'run_session', 'failed'],
-    ['a live master', 'master', 'running'],
-    ['a pipeline session', 'pipeline', 'running'],
+    [
+      'a live run session',
+      'run_session',
+      'running',
+      'This is a run, not a chat. Use Stop session.',
+    ],
+    [
+      'an ended run session',
+      'run_session',
+      'failed',
+      'This is a run, not a chat. Use Stop session.',
+    ],
+    ['a live master', 'master', 'running', 'This is a master, not a chat. Use Stop session.'],
+    [
+      'a pipeline session',
+      'pipeline',
+      'running',
+      'This is a pipeline step, not a chat. Use Stop session.',
+    ],
+    ['a PM session', 'pm', 'running', 'This is a PM session, not a chat. Use Stop session.'],
   ])(
-    'refuses %s with 409 TURN_NOT_ENDABLE, naming its kind, and writes nothing',
-    async (_n, kind, status) => {
+    'refuses %s with 409 TURN_NOT_ENDABLE, naming its kind in words, and writes nothing',
+    async (_n, kind, status, message) => {
       const r = await refusal(endChatTurn(row(kind, status), ACTOR));
       expect(r).toMatchObject({ status: 409, code: 'TURN_NOT_ENDABLE' });
-      expect(r.message).toContain(`This is a ${kind} session, not a chat`);
+      expect(r.message).toBe(message);
+      expect(r.message).not.toContain('_');
       expect(updateSet).not.toHaveBeenCalled();
     },
   );

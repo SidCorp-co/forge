@@ -31,6 +31,8 @@ export interface LiveSession {
   deviceId: string | null;
   deviceName: string | null;
   parentSessionId: string | null;
+  /** The run this session works, `null` for one on no run; absent on a read that predates it. */
+  pipelineRunId?: string | null;
   startedAt: string | null;
   lastHeartbeatAt: string | null;
   createdAt: string;

@@ -1,9 +1,11 @@
 import { BLOCKED_WORD, lastReported, type SemanticTone, STOPPED_WORD, WORKING_WORD } from "@/design/status";
 import {
+  blockedHoldingText,
   boxOfflineText,
   coreNoteText,
   leaseDisagreementText,
   offlineSessionDisagreementText,
+  parkedText,
   quietForText,
   RUN_DETAIL,
   type SessionDisagreement,
@@ -49,14 +51,28 @@ export function runState(row: {
   return "unknown";
 }
 
-const LABELS: Record<RunState, StateLabel> = {
-  "live-runnable": { label: WORKING_WORD, detail: RUN_DETAIL.working, tone: "active" },
-  "live-blocked": { label: "Blocked, holding the box", detail: RUN_DETAIL.blockedHolding, tone: "attention" },
-  "exited-blocked": { label: "Parked for a person", detail: RUN_DETAIL.parked, tone: "blocked" },
-  "exited-runnable": { label: "Answered, awaiting revival", detail: RUN_DETAIL.answered, tone: "failure" },
-  closed: { label: "Closed", detail: RUN_DETAIL.closed, tone: "archived" },
-  unknown: { label: "Unknown", detail: RUN_DETAIL.unknown, tone: "infra" },
-};
+/** A run's own words, by its state and, for a blocked one, by who holds its wait: the chip's hover
+ *  names the holder the row's wait line names, never a fixed one (ISS-1228). */
+function labelOf(state: RunState, blockerKind: string | null | undefined): StateLabel {
+  switch (state) {
+    case "live-runnable":
+      return { label: WORKING_WORD, detail: RUN_DETAIL.working, tone: "active" };
+    case "live-blocked":
+      return { label: "Blocked, holding the box", detail: blockedHoldingText(blockerKind), tone: "attention" };
+    case "exited-blocked":
+      return {
+        label: blockerKind === "human" ? "Parked for a person" : "Parked",
+        detail: parkedText(blockerKind),
+        tone: "blocked",
+      };
+    case "exited-runnable":
+      return { label: "Answered, awaiting revival", detail: RUN_DETAIL.answered, tone: "failure" };
+    case "closed":
+      return { label: "Closed", detail: RUN_DETAIL.closed, tone: "archived" };
+    default:
+      return { label: "Unknown", detail: RUN_DETAIL.unknown, tone: "infra" };
+  }
+}
 
 
 /** The three close-loop marks, as three. */
@@ -155,11 +171,11 @@ export function stateLabelAt(
     | "sessionRuntimeState"
     | "observedAt"
   > &
-    Partial<Pick<RunSessionRow, "deviceStatus" | "sessionFailureReason">>,
+    Partial<Pick<RunSessionRow, "deviceStatus" | "sessionFailureReason" | "blockerKind">>,
   nowMs: number,
 ): StateLabel {
   const state = runState(row);
-  const meta = LABELS[state];
+  const meta = labelOf(state, row.blockerKind);
   // A person's stop keeps the one word every surface says it with, whatever the box says of its
   // process; the disagreement line beside the chip says what the box reports.
   if (state !== "closed" && coreEnded(row) && row.sessionFailureReason === "user_cancelled") {

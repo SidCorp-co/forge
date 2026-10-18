@@ -215,6 +215,14 @@ export function isAwaitingReply(
   return isInteractiveSession(session) && session.status === "idle";
 }
 
+/** A session that waits on a box: queued, or a box session not yet started. A chat idle between
+ *  turns waits on its person's next message, never on a box, so it is not queued (ISS-1228). */
+export function isWaitingForABox(
+  session: Pick<SessionRow, "status" | "metadata"> & { kind?: AgentSessionKind | null },
+): boolean {
+  return session.status === "queued" || (session.status === "idle" && !isInteractiveSession(session));
+}
+
 /** Operator-facing label for each terminal failure reason — surfaced on the
  *  list row + the detail blocker-card so "failed" is actionable (ISS-378). */
 export const FAILURE_REASON_LABEL: Record<SessionFailureReason, string> = {
@@ -573,6 +581,30 @@ export function classifySessionOutcome(
 export function sessionChipStatus(display: AgentSessionDisplayStatus, failureReason?: string | null): StatusKey {
   const outcome = classifySessionOutcome(display, failureReason);
   return outcome.bucket === "active" ? statusToChip(display) : outcome.statusKey;
+}
+
+/** A session's chip on every screen: a chat awaiting its person's reply reads Waiting for me on its
+ *  list row, its page and its rail alike, never Idle on one and Waiting for me on another (ISS-1228). */
+export function sessionChipStatusOf(
+  session: Pick<SessionRow, "status" | "metadata" | "failureReason"> & { kind?: AgentSessionKind | null },
+  display: AgentSessionDisplayStatus,
+): StatusKey {
+  return isAwaitingReply(session) ? "waiting" : sessionChipStatus(display, session.failureReason);
+}
+
+/** The box dot a session's row draws: on every session core has not ended that names a box, of any
+ *  kind, healthy while the box answers and the session is heard from, attention where either is not. */
+export function boxDotOf(
+  session: Pick<
+    SessionRow,
+    "status" | "deviceId" | "lastHeartbeatAt" | "startedAt" | "updatedAt" | "metadata" | "silenceLimitMs" | "boxOnline"
+  >,
+  nowMs: number,
+): "healthy" | "attention" | null {
+  if (!session.deviceId || TERMINAL_SESSION_STATUSES.has(session.status)) return null;
+  if (session.boxOnline === false) return "attention";
+  const { state } = deriveLiveness(session, nowMs);
+  return state === "stale" || state === "reaping" ? "attention" : "healthy";
 }
 
 export function sessionEndWord(display: AgentSessionDisplayStatus, failureReason?: string | null): string {

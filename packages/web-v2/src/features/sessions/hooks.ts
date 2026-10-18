@@ -2,6 +2,7 @@
 
 import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
+import { moveSessionInLiveReads } from "@/features/pipeline/live-read";
 import { formatApiError } from "@/lib/api/error";
 import { type ListSessionsOpts, sessionsApi } from "./api";
 import { endedSilentText } from "./status-sentences";
@@ -46,7 +47,7 @@ function useSessionMutation<TArgs, TData>(
     successMessage?: (data: TData) => string;
     alsoInvalidateQueueStats?: boolean;
     /** What else the act changed, re-read at once. */
-    refresh?: (qc: QueryClient) => void;
+    refresh?: (qc: QueryClient, data: TData) => void;
   } = {},
 ) {
   const qc = useQueryClient();
@@ -55,7 +56,7 @@ function useSessionMutation<TArgs, TData>(
     mutationFn: fn,
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["agent-sessions"] });
-      opts.refresh?.(qc);
+      opts.refresh?.(qc, data);
       if (opts.alsoInvalidateQueueStats) {
         qc.invalidateQueries({ queryKey: ["agent-sessions", "queue-stats"] });
       }
@@ -72,7 +73,9 @@ function useSessionMutation<TArgs, TData>(
 /** Every read a stop changes, re-read at once rather than on its next poll: the session itself, the
  *  lists naming it, the holds it kept, the runs it ran and the issue pages showing them, whose run
  *  core closed with it (ISS-1228). */
-export function refreshAfterStop(qc: QueryClient): void {
+export function refreshAfterStop(qc: QueryClient, stopped?: { id: string; status: string }): void {
+  // A box's count of live sessions drops at once, before the re-read lands.
+  if (stopped) moveSessionInLiveReads(qc, stopped.id, stopped.status);
   for (const queryKey of [
     ["agent-sessions"],
     ["agent-session"],

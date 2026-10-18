@@ -25,7 +25,7 @@ import { useSessionDuration } from "@/features/sessions/session-duration";
 import {
   deriveSessionDisplayStatus,
   isLiveDisplay,
-  sessionChipStatus,
+  sessionChipStatusOf,
   sessionEndText,
   sessionStep,
   failureReasonAction,
@@ -34,7 +34,7 @@ import {
   type SessionRow,
   TERMINAL_SESSION_STATUSES,
 } from "@/features/sessions/types";
-import { coreNoteText } from "@/features/sessions/status-sentences";
+import { coreNoteText, TIMING_HOVER } from "@/features/sessions/status-sentences";
 import { useSessionCost, useSessions } from "@/features/sessions/hooks";
 import { isJobDriven, sessionKind, sessionTitle } from "@/features/sessions/types";
 import { type RunGateNote, runGateNote, runGateUnfetched } from "@/features/runs/derive";
@@ -159,7 +159,7 @@ export function ContextRail({
   const modelLabel =
     cost && cost.models.length > 0
       ? cost.models.length === 1
-        ? cost.models[0]!.model
+        ? (cost.models[0]?.model ?? null)
         : `${cost.models.length} models`
       : null;
 
@@ -232,14 +232,14 @@ export function ContextRail({
 
       {isPipeline && (
         <Section title="Pipeline">
-          <SessionChip status={sessionChipStatus(display, session.failureReason)} stage={stage} size="sm" session={session} />
+          <SessionChip status={sessionChipStatusOf(session, display)} stage={stage} size="sm" session={session} />
         </Section>
       )}
 
       <Section title="Run stats">
         <div className="flex flex-col gap-2.5">
           {!isPipeline && (
-            <SessionChip status={sessionChipStatus(display, session.failureReason)} stage={stage} size="sm" session={session} />
+            <SessionChip status={sessionChipStatusOf(session, display)} stage={stage} size="sm" session={session} />
           )}
           <Stat icon="activity" title="Turns">{usage.turns ?? "—"} turns</Stat>
           <Stat icon="clock" title="Duration">{duration}</Stat>
@@ -308,11 +308,11 @@ export function ContextRail({
 
       <Section title="Timing">
         <div className="flex flex-col gap-2.5">
-          <Stat icon="calendar" title="Dispatched to a runner">
+          <Stat icon="calendar" title={TIMING_HOVER.dispatched}>
             {fmtTime(session.dispatchedAt)} dispatched
           </Stat>
-          <Stat icon="play" title="Agent started">{fmtTime(session.startedAt)} started</Stat>
-          <Stat icon="check" title="Ended (last update on a terminal session)">
+          <Stat icon="play" title={TIMING_HOVER.started}>{fmtTime(session.startedAt)} started</Stat>
+          <Stat icon="check" title={TIMING_HOVER.ended}>
             {ended ? fmtTime(session.updatedAt) : "—"} ended
           </Stat>
         </div>
@@ -378,7 +378,7 @@ function SiblingRow({ row, onOpen }: { row: SessionRow; onOpen?: () => void }) {
       <span className="flex-1 truncate fg-body-sm" title={label}>
         {label}
       </span>
-      <SessionChip status={sessionChipStatus(display, row.failureReason)} stage={stage} size="sm" session={row} />
+      <SessionChip status={sessionChipStatusOf(row, display)} stage={stage} size="sm" session={row} />
     </>
   );
 

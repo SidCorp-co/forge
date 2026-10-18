@@ -85,6 +85,12 @@ describe('readSessionsAndHolds — sessions (ISS-1228)', () => {
     expect(openRuns?.n).toBe(3);
     expect(counts).toEqual([{ projectId: fx.projectId, n: out.sessions.length }]);
     expect(out.sessions).toHaveLength(1);
+    // Round 16: the dashboard counts the runs it lists from the runs these sessions name.
+    const [own] = (await fx.db.execute(sql`
+      SELECT pipeline_run_id::text AS run FROM agent_sessions WHERE id = ${out.sessions[0]?.id ?? ''}
+    `)) as unknown as Array<{ run: string | null }>;
+    expect(own?.run).toBeTruthy();
+    expect(out.sessions[0]?.pipelineRunId).toBe(own?.run);
   });
 
   it('gives a session the issue its lease names, and that issue a session hold', async () => {

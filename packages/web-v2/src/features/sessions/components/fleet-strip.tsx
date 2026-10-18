@@ -24,6 +24,7 @@ import { DISPATCH_STALLED, PRIMARY_BOX_HOVER, queuedBehindText, queuedWithNoBoxT
 import {
   deriveLiveness,
   isLiveDisplay,
+  isWaitingForABox,
   sessionStep,
   type AgentSessionDisplayStatus,
   type SessionRow,
@@ -76,7 +77,7 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
     return m;
   }, [rows, displays]);
 
-  const queuedCount = rows.filter((r) => r.status === "queued" || r.status === "idle").length;
+  const queuedCount = rows.filter(isWaitingForABox).length;
   const dispatchStalled =
     fleet.runners.read === "ok" && queuedCount > 0 && fleet.summary.onlineCount === 0;
 

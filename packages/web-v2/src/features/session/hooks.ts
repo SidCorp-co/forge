@@ -125,8 +125,8 @@ export function useCancelSession(id: string) {
   const { toast } = useToast();
   return useMutation({
     mutationFn: () => sessionApi.cancel(id),
-    onSuccess: () => {
-      refreshAfterStop(qc);
+    onSuccess: (stopped) => {
+      refreshAfterStop(qc, stopped);
       toast({ title: SESSION_STOPPED, tone: "success" });
     },
     onError,
