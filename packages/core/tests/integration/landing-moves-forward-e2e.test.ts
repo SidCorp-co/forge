@@ -226,9 +226,11 @@ describe('a merge Forge observed moves the mark the same way (criteria 104, 105,
         if ((await row(issue.id)).merged_commit_sha === sha) return;
         await new Promise((r) => setTimeout(r, 5));
       }
+      throw new Error(`${sha} never reached the row, so the write order was not the one named`);
     };
     repo.hold = { order, arrived: new Map(), settled };
     await Promise.all([stamp(issue.id, SECOND), stamp(issue.id, THIRD)]);
+    expect(repo.hold?.failed).toBeUndefined();
     expect((await row(issue.id)).merged_commit_sha).toBe(THIRD);
     expect((await comments(issue.id)).filter((c) => c.startsWith('The landing moved'))).toEqual(
       said,

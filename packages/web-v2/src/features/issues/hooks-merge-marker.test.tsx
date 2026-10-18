@@ -45,9 +45,13 @@ describe("the notice after Mark merged", () => {
     expect(said.title).not.toContain("nothing changed");
   });
 
-  it("still says nothing changed where the mark moved nothing", async () => {
-    answer = { id: ISSUE, action: "already_merged", mark: "observed", detail: "Already", movedFrom: null };
-    expect((await markOnce()).title).toBe("Already marked merged — nothing changed");
+  it("still says nothing changed where the mark moved nothing, with the answer's reason", async () => {
+    const unread =
+      "Already marked merged on 16 Oct 2026, so this call changed nothing. Commit 2b2b2b2 was not compared with commit 1a1a1a1, so the landing stays at 1a1a1a1. The reason:\n> SidCorp-co/forge could not compare";
+    answer = { id: ISSUE, action: "already_merged", mark: "observed", detail: unread, movedFrom: null };
+    const said = await markOnce();
+    expect(said.title).toBe("Already marked merged — nothing changed");
+    expect(said.description).toBe(unread);
   });
 
   it("says Marked merged on a first mark", async () => {

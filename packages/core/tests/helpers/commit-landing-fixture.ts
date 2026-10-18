@@ -50,12 +50,19 @@ interface Hold {
   order: string[];
   arrived: Map<string, () => void>;
   settled: (sha: string) => Promise<void>;
+  /** Why the order could not be kept; the rest are let go so the test ends and reads it. */
+  failed?: unknown;
 }
 
 async function releaseInOrder(hold: Hold) {
-  for (const sha of hold.order) {
-    hold.arrived.get(sha)?.();
-    await hold.settled(sha);
+  try {
+    for (const sha of hold.order) {
+      hold.arrived.get(sha)?.();
+      await hold.settled(sha);
+    }
+  } catch (err) {
+    hold.failed = err;
+    for (const go of hold.arrived.values()) go();
   }
 }
 
