@@ -3194,9 +3194,9 @@
 
 ### Fixed
 
-- **A blocked run says who it waits on the same way on its row and on hover.** A run waiting on a person no longer hovers that a machine or another agent holds it, and a run parked for something other than a person is no longer called "Parked for a person". (ISS-1228)
+- **A blocked run says who it waits on the same way on its row and on hover.** A run waiting on a person no longer hovers that a machine holds it, and "Parked for a person" means a person. (ISS-1228)
 - **A session page's times say what they are on hover**, in plain sentences, for a live session as for one that has ended. (ISS-1228)
-- **A chat waiting for your reply reads "Waiting for me" everywhere** — on its row, on its page and in its side panel — and is no longer counted as queued, given a wait time, or listed under the Queued filter. (ISS-1228)
+- **A chat waiting for your reply reads "Waiting for me" on its row, its page and its side panel**, and is no longer counted as queued or listed under the Queued filter. (ISS-1228)
 - **The dashboard counts a chat whose turn is running as a live session**, in its figure and its opening sentence, and says beneath the live sessions how many such chats there are. (ISS-1228)
 - **The dashboard's "runs open" counts only the runs it shows you**, those a listed session works and those nothing works, so the figure matches the list beneath it. (ISS-1228)
 - **Every live session row on the sessions page shows its box's dot**, chats included, and a box that has gone offline shows the same warning dot on every session it holds. (ISS-1228)

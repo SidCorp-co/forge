@@ -156,9 +156,7 @@ export interface SessionCost {
   models: { model: string; cost: number; requests: number }[];
 }
 
-/** Client-side filter tabs. `waiting` = an interactive chat idle after its last
- *  turn (genuinely awaiting the owner's reply — ISS-664). `attention` = failed +
- *  stalled + cancelled_stale (unchanged; job failures, not reply-waiting). */
+/** Client-side filter tabs; `matchesFilter` in sessions-screen.tsx says what each one lists. */
 export type SessionFilter = "all" | "waiting" | "running" | "queued" | "attention";
 
 export type AgentSessionKind = "master" | "run_session" | "pipeline" | "pm" | "chat";
@@ -215,8 +213,7 @@ export function isAwaitingReply(
   return isInteractiveSession(session) && session.status === "idle";
 }
 
-/** A session that waits on a box: queued, or a box session not yet started. A chat idle between
- *  turns waits on its person's next message, never on a box, so it is not queued (ISS-1228). */
+/** Queued, or a box session not yet started; a chat idle between turns waits on its person (ISS-1228). */
 export function isWaitingForABox(
   session: Pick<SessionRow, "status" | "metadata"> & { kind?: AgentSessionKind | null },
 ): boolean {
@@ -583,8 +580,7 @@ export function sessionChipStatus(display: AgentSessionDisplayStatus, failureRea
   return outcome.bucket === "active" ? statusToChip(display) : outcome.statusKey;
 }
 
-/** A session's chip on every screen: a chat awaiting its person's reply reads Waiting for me on its
- *  list row, its page and its rail alike, never Idle on one and Waiting for me on another (ISS-1228). */
+/** One chip on the list row, the page and the rail, never Idle on one of them (ISS-1228). */
 export function sessionChipStatusOf(
   session: Pick<SessionRow, "status" | "metadata" | "failureReason"> & { kind?: AgentSessionKind | null },
   display: AgentSessionDisplayStatus,

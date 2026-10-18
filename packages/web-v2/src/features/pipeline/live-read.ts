@@ -2,11 +2,8 @@ import type { QueryClient } from "@tanstack/react-query";
 import { TERMINAL_SESSION_STATUSES } from "@/features/sessions/types";
 import type { SessionsAndHolds } from "./types";
 
-/**
- * The live read as it stands once a session has moved to `status`: an ended session leaves the
- * sessions, and the holds only it kept, and a chat no longer running leaves the running chats. The
- * read itself is returned unchanged where nothing in it moved.
- */
+/** The live read once a session moved to `status`: an ended one leaves the sessions and the holds
+ *  only it kept, a chat no longer running leaves the running chats; unchanged where nothing moved. */
 export function withSessionMoved(
   read: SessionsAndHolds | undefined,
   sessionId: string,
@@ -30,8 +27,7 @@ export function withSessionMoved(
   return moved ? { ...read, sessions, holds, runningChats } : read;
 }
 
-/** Move a session in every open live read as its event arrives, before the re-read lands, so a
- *  box's count of live sessions drops the moment a stop is known (ISS-1228). */
+/** A box's live count drops as a stop's event arrives, before the re-read lands (ISS-1228). */
 export function moveSessionInLiveReads(qc: QueryClient, sessionId: string, status: string): void {
   qc.setQueriesData<SessionsAndHolds>({ queryKey: ["sessions-and-holds"] }, (prev) =>
     withSessionMoved(prev, sessionId, status),

@@ -66,7 +66,6 @@ const WAIT_HOLDER: Record<string, string> = {
   nobody: "nobody",
 };
 
-/** Who holds a blocked run's wait, as the row's wait line and its chip's hover both name it. */
 const waitHolder = (kind: string | null | undefined): string =>
   kind ? (WAIT_HOLDER[kind] ?? kind) : "someone the box did not name";
 
@@ -105,7 +104,6 @@ const isAre = (n: number): string => (n === 1 ? "is" : "are");
 export const queuedBehindText = (n: number): string =>
   n === 0 ? "No session is queued behind this box." : `${sessionsCount(n)} ${isAre(n)} queued behind this box.`;
 
-/** The chats whose turn is running, which the dashboard counts live without listing them. */
 export const runningChatsText = (n: number): string =>
   `${n} chat${n === 1 ? " has a turn" : "s have turns"} running.`;
 
@@ -125,11 +123,10 @@ export const RUN_DETAIL = {
   ended: "Core ended this run's session. This is what the box last reported, not what is happening.",
 } as const;
 
-/** A blocked run holding its process, on its chip's hover: the holder its row's wait line names. */
+/** A blocked run's chip hover, naming the holder its row's wait line names; `parkedText` likewise. */
 export const blockedHoldingText = (kind: string | null | undefined): string =>
   `It waits on ${waitHolder(kind)}, and keeps its process while it waits.`;
 
-/** A blocked run whose process is gone, on its chip's hover: the holder its row's wait line names. */
 export const parkedText = (kind: string | null | undefined): string =>
   `The process is gone. It waits on ${waitHolder(kind)}, and the worktree and the branch are kept until the wait ends.`;
 

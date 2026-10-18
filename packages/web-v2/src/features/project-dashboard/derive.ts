@@ -166,11 +166,7 @@ export function idleRuns(runs: PipelineRunListItem[] | undefined): PipelineRunLi
   return joblessRuns(runs).filter((r) => !worked(r));
 }
 
-/**
- * The open runs the dashboard's Live sessions section shows: those a session it lists works, and
- * those nothing works, which it counts beneath its rows. The Sessions live caption counts this set,
- * so its figure never names a run the section does not show (ISS-1228).
- */
+/** The open runs the Live sessions section shows, worked by a listed session or by nothing (ISS-1228). */
 export function runsShown(
   sessions: readonly Pick<LiveSession, "pipelineRunId">[],
   runs: PipelineRunListItem[] | undefined,
