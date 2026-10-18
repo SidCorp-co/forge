@@ -41,14 +41,21 @@ export const repo = {
   /** A merged pull request Forge projected for the issue, standing in for `repo_pull_requests`. */
   pullRequest: null as { commitSha: string; mergedAt: Date } | null,
   /** The first compare naming each head in `order` waits for all of them, then each goes on in that
-   *  order, 50ms apart: two racing readers both read the row before either writes. */
-  hold: null as { order: string[]; arrived: Map<string, () => void> } | null,
+   *  order, the next only once `settled` says the one before it wrote: two racing readers both read
+   *  the row before either writes, and they write in the order named. */
+  hold: null as Hold | null,
 };
 
-async function releaseInOrder(hold: { order: string[]; arrived: Map<string, () => void> }) {
+interface Hold {
+  order: string[];
+  arrived: Map<string, () => void>;
+  settled: (sha: string) => Promise<void>;
+}
+
+async function releaseInOrder(hold: Hold) {
   for (const sha of hold.order) {
     hold.arrived.get(sha)?.();
-    await new Promise((r) => setTimeout(r, 50));
+    await hold.settled(sha);
   }
 }
 

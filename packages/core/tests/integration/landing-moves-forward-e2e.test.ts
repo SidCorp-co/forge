@@ -220,7 +220,14 @@ describe('a merge Forge observed moves the mark the same way (criteria 104, 105,
     ['THIRD then SECOND', [THIRD, SECOND], [moved(FIRST, THIRD)]],
   ])('two later merges that both read FIRST end at THIRD, writing %s', async (_, order, said) => {
     const issue = await markedAtFirst();
-    repo.hold = { order, arrived: new Map() };
+    // The next is let go only once the row holds the one before it: the order is the test's.
+    const settled = async (sha: string) => {
+      for (let polls = 0; polls < 400; polls += 1) {
+        if ((await row(issue.id)).merged_commit_sha === sha) return;
+        await new Promise((r) => setTimeout(r, 5));
+      }
+    };
+    repo.hold = { order, arrived: new Map(), settled };
     await Promise.all([stamp(issue.id, SECOND), stamp(issue.id, THIRD)]);
     expect((await row(issue.id)).merged_commit_sha).toBe(THIRD);
     expect((await comments(issue.id)).filter((c) => c.startsWith('The landing moved'))).toEqual(
