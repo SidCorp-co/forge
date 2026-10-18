@@ -439,11 +439,10 @@ function graceSpent(idleSince: string, graceMs: number, now: Date): boolean {
   return now.getTime() - Date.parse(idleSince) >= graceMs;
 }
 
-/** A reason as a sentence of its own: opened by a capital, closed by one full stop (a release hold's reason already ends in its own). */
-function asSentence(reason: string): string {
-  const text = reason.trimEnd();
-  const opened = text.charAt(0).toUpperCase() + text.slice(1);
-  return /[.!?]$/.test(opened) ? opened : `${opened}.`;
+function firstSentence(reason: string): string {
+  const text = reason.trim();
+  const first = /^.*?[.!?](?=\s+[A-Z])/su.exec(text)?.[0] ?? text;
+  return /[.!?]$/.test(first) ? first : `${first}.`;
 }
 
 /**
@@ -466,15 +465,11 @@ export function idleNotice(args: {
   const title = unconfirmed
     ? `${ref} reads ${label} and no live work could be confirmed — ${projectName}`
     : `${ref} reads ${label} and nothing is working it — ${projectName}`;
-  const opening = unconfirmed
-    ? `${ref} has read ${label} for ${age} with no live job or run behind it, and a lease that establishes nothing either way.`
-    : `${ref} has read ${label} for ${age} with no live job, run or lease behind it.`;
-  return {
-    title,
-    body:
-      `${opening} ${asSentence(record.reason)} ` +
-      `It is waiting for ${record.waitingFor}, and ${record.owes === 'human' ? 'a person' : 'an agent'} owes the next move.`,
-  };
+  const truth = unconfirmed
+    ? `It has read ${label} for ${age}, no live work confirmed: ${firstSentence(record.reason)}`
+    : `It has read ${label} for ${age}: ${firstSentence(record.reason)}`;
+  const who = record.owes === 'human' ? 'a person' : 'an agent';
+  return { title, body: `${truth} It waits for ${record.waitingFor}; ${who} owes that move.` };
 }
 
 async function surface(args: {

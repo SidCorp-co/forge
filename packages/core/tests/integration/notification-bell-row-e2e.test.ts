@@ -7,6 +7,7 @@
 
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
+import { createTestProject, createTestUser } from '../helpers/factories.js';
 import { type InboxRow, registerInboxFixture } from '../helpers/inbox-fixture.js';
 
 const fx = registerInboxFixture();
@@ -160,5 +161,104 @@ describe('one bell row per notice, one clock, one count (ISS-1229 r13)', () => {
     const [row] = (await inbox()).items as [InboxRow];
     expect(row.body).toBe('stood 23 minutes');
     expect(emitted).toEqual(['stood 23 minutes']);
+  });
+});
+
+// ISS-1229 r15, from judge-38's reader notes and the master's brief: a stuck row was tagged STRANDED,
+// a word none of the group titles says, and a project's records still counted once it was archived.
+describe('a stuck row by its kind, and nothing of an archived project (ISS-1229 r15)', () => {
+  const openCount = async () => {
+    const res = await fx.app.request('/api/notifications/open-count', { headers: auth() });
+    expect(res.status).toBe(200);
+    return ((await res.json()) as { count: number }).count;
+  };
+
+  it('names the kind a stuck row tells, which its tag is drawn from', async () => {
+    await seedShipped(71, 'Repair invoice export');
+    await announce(() => fx.mods.detectOwedCloses());
+    const [row] = sweepRows(await inbox()) as Array<InboxRow & { stuckKind: string | null }>;
+    expect(row?.stuckKind).toBe('owed_close');
+  });
+
+  it('neither counts nor lists a row whose records are all about an archived project', async () => {
+    await seedShipped(72, 'Repair invoice export');
+    await announce(() => fx.mods.detectOwedCloses());
+    expect(await openCount()).toBe(1);
+    expect(sweepRows(await inbox())).toHaveLength(1);
+
+    await fx.db.execute(sql`UPDATE projects SET archived_at = now() WHERE id = ${fx.project.id}`);
+    // Nor an invitation to it, which the bell would otherwise offer and count.
+    await fx.db.execute(sql`
+      INSERT INTO project_invitations (token, project_id, email, role, inviter_id, expires_at)
+      SELECT 'archived-r15', ${fx.project.id}, email, 'member', ${fx.owner}, now() + interval '7 days'
+        FROM users WHERE id = ${fx.owner}
+    `);
+
+    expect(await openCount()).toBe(0);
+    expect(sweepRows(await inbox())).toHaveLength(0);
+    expect(sweepRows(await inbox('?unread=true'))).toHaveLength(0);
+  });
+
+  it("counts only a grouped row's records about live projects, and lists only those as its members", async () => {
+    const other = await createTestProject(fx.db, fx.owner, { name: 'Ledger' });
+    const longAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    await fx.db.execute(sql`
+      INSERT INTO issues (id, project_id, title, status, created_by_id, merged_at, iss_seq, updated_at)
+      VALUES (${crypto.randomUUID()}, ${other.id}, 'Close the ledger', 'waiting', ${fx.owner},
+              ${longAgo}, 1, ${longAgo})
+    `);
+    await seedShipped(73, 'Repair invoice export');
+    await announce(() => fx.mods.detectOwedCloses());
+    const [before] = sweepRows(await inbox());
+    expect(before?.members).toBe(2);
+
+    await fx.db.execute(sql`UPDATE projects SET archived_at = now() WHERE id = ${other.id}`);
+
+    const [row] = sweepRows(await inbox());
+    expect({ members: row?.members, open: row?.openMembers }).toEqual({ members: 1, open: 1 });
+    expect((await membersOf(row?.id ?? '')).map((m) => m.title)).toEqual([
+      expect.stringContaining('Invoicing'),
+    ]);
+  });
+});
+
+// ISS-1229 r15, the master's ruling: an issue the reader's failed jobs list was also a NO LIVE WORK bell
+// row. One issue is one row: its failed job tells it, so the bell neither counts nor lists its notice,
+// and tells it again once the failed job is retried.
+describe("a stuck issue the reader's failed job tells, in the bell", () => {
+  const openCount = async () => {
+    const res = await fx.app.request('/api/notifications/open-count', { headers: auth() });
+    expect(res.status).toBe(200);
+    return ((await res.json()) as { count: number }).count;
+  };
+
+  it('is neither counted nor listed while the failed job stands', async () => {
+    const issue = await seedShipped(91, 'Export the March invoices');
+    await announce(() => fx.mods.detectOwedCloses());
+    expect(await openCount()).toBe(1);
+
+    // Another person's issue, so the reader owes it no answer; the failed job is the reader's.
+    const other = await createTestUser(fx.db);
+    await fx.db.execute(sql`UPDATE issues SET assignee_id = ${other.id} WHERE id = ${issue}`);
+    const run = crypto.randomUUID();
+    const job = crypto.randomUUID();
+    await fx.db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, kind, status, started_at)
+      VALUES (${run}, ${fx.project.id}, 'system', 'failed', now())
+    `);
+    await fx.db.execute(sql`
+      INSERT INTO jobs (id, project_id, pipeline_run_id, issue_id, type, status, created_by, error)
+      VALUES (${job}, ${fx.project.id}, ${run}, ${issue}, 'drive', 'failed', ${fx.owner}, 'session_lost')
+    `);
+
+    expect(await openCount()).toBe(0);
+    expect(sweepRows(await inbox())).toHaveLength(0);
+
+    await fx.db.execute(sql`
+      INSERT INTO jobs (id, project_id, pipeline_run_id, issue_id, type, status, created_by, retry_of)
+      VALUES (${crypto.randomUUID()}, ${fx.project.id}, ${run}, ${issue}, 'drive', 'queued', ${fx.owner}, ${job})
+    `);
+    expect(await openCount()).toBe(1);
+    expect(sweepRows(await inbox())).toHaveLength(1);
   });
 });

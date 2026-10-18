@@ -74,7 +74,7 @@ describe('the stuck issues of a project, as the health read counts them', () => 
     await notice(pendingOnly, ':idle', 'pending', 40);
     await notice(resolvedOnly, ':idle', 'resolved', 50, true);
 
-    const { stuckIssueRows } = await readHealthAggregates([project.id]);
+    const { stuckIssueRows } = await readHealthAggregates([project.id], user.id);
 
     expect(stuckIssueRows.map((r) => ({ id: r.id, seq: r.issSeq, total: r.total }))).toEqual([
       { id: older, seq: 1, total: 2 },
@@ -104,7 +104,7 @@ describe('the stuck issues of a project, as the health read counts them', () => 
     await seed(many.id, 7);
     await seed(few.id, 3);
 
-    const { stuckIssueRows } = await readHealthAggregates([few.id, many.id]);
+    const { stuckIssueRows } = await readHealthAggregates([few.id, many.id], user.id);
 
     const listed = (projectId: string) =>
       stuckIssueRows.filter((r) => r.projectId === projectId).map((r) => [r.issSeq, r.total]);

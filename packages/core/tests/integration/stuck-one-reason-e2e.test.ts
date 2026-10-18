@@ -80,7 +80,7 @@ describe('one issue, one stuck reason', () => {
     await s.reconcileIdleIssues(new Date());
     expect(await standing(orphan)).toEqual(['run-assertion-orphaned']);
     const { readHealthAggregates } = await import('../../src/projects/health-aggregates.js');
-    const { stuckIssueRows } = await readHealthAggregates([fx.project.id]);
+    const { stuckIssueRows } = await readHealthAggregates([fx.project.id], fx.owner);
     expect(stuckIssueRows.map((r) => [r.kind, r.total, r.byKind])).toEqual([
       ['orphan', 1, { orphan: 1 }],
     ]);
@@ -111,7 +111,7 @@ describe('one issue, one stuck reason', () => {
     await announce(() => s.detectOrphanedRunAssertions(new Date()));
 
     const { readHealthAggregates } = await import('../../src/projects/health-aggregates.js');
-    const [row] = (await readHealthAggregates([fx.project.id])).stuckIssueRows;
+    const [row] = (await readHealthAggregates([fx.project.id], fx.owner)).stuckIssueRows;
     expect(row?.total).toBe(3);
     expect(row?.byKind).toEqual({ orphan: 2, idle: 1 });
   });

@@ -1,4 +1,4 @@
-import type { NotificationSeverity, NotificationType } from "@forge/contracts/notifications";
+import type { NotificationSeverity, NotificationType, StuckIssueKind } from "@forge/contracts/notifications";
 
 export type { NotificationSeverity, NotificationType };
 
@@ -30,6 +30,7 @@ export interface NotificationRow {
   createdAt: string;
   /** When the newest record it carries reached the reader: the row's clock, which its members share. */
   toldAt: string;
+  stuckKind: StuckIssueKind | null;
 }
 
 /** One record behind a delivery — `GET /api/notifications/:id/members`. */

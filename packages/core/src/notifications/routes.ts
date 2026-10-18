@@ -1,3 +1,4 @@
+import type { StuckIssueKind } from '@forge/contracts/notifications';
 import { and, countDistinct, desc, eq, inArray, isNull, type SQLWrapper, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -14,9 +15,11 @@ import {
   projects,
 } from '../db/schema.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
+import { heldAsFailedJobWhere } from '../me/attention-failed-jobs.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
 import { readPendingInvitations } from '../projects/pending-invitations.js';
+import { stuckKindSql } from '../projects/stuck-issue-kinds.js';
 import { recordAndDeliver } from './deliver.js';
 import { explanationOfGroupKey } from './explanations.js';
 import {
@@ -49,7 +52,7 @@ const listQuerySchema = z.object({
   openOnly: flag,
   /** Only deliveries of this type — applied before the page is cut, so a page is all matches. */
   type: z.enum(notificationTypes).optional(),
-  /** Only deliveries that are still unread, as {@link unreadDelivery} reads it. */
+  /** Only deliveries that are still unread, as {@link unreadDeliveryOf} reads it. */
   unread: flag,
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
@@ -71,6 +74,14 @@ const conflict = (message: string) =>
   new HTTPException(409, { message, cause: { code: 'CONDITION_STILL_TRUE' } });
 
 /**
+ * A record about an archived project asks nothing of anyone: its project's page answers not found,
+ * so the bell neither counts it nor lists a row made only of such records (ISS-1229 r15).
+ */
+const onLiveProject = (projectId: SQLWrapper) => sql`NOT EXISTS (
+  SELECT 1 FROM projects ap WHERE ap.id = ${projectId} AND ap.archived_at IS NOT NULL
+)`;
+
+/**
  * ISS-1063 — what "still true for me" means, in one place.
  *
  * A `condition` that is `firing` and a `task` that is `open` or `acknowledged`. A
@@ -78,11 +89,22 @@ const conflict = (message: string) =>
  * is what made the owner's bell read 5663 while 3914 of those rows were status changes.
  * A `pending` or `inhibited` condition is not here either — nobody was told about it.
  */
-const stillTrueOf = (n: { kind: SQLWrapper; state: SQLWrapper }) => sql`(
-  (${n.kind} = 'condition' AND ${n.state} = 'firing')
-  OR (${n.kind} = 'task' AND ${n.state} IN ('open', 'acknowledged'))
+const stillTrueOf = (n: { kind: SQLWrapper; state: SQLWrapper; projectId: SQLWrapper }) => sql`(
+  ((${n.kind} = 'condition' AND ${n.state} = 'firing')
+    OR (${n.kind} = 'task' AND ${n.state} IN ('open', 'acknowledged')))
+  AND ${onLiveProject(n.projectId)}
 )`;
 const stillTrue = stillTrueOf(notifications);
+
+/**
+ * One issue, one row (ISS-1229 r15, the master's ruling): a stuck-issue notice on an issue the reader's
+ * failed jobs list is told there, as that failed job, so the bell neither counts nor lists it.
+ */
+const toldTo = (userId: string, n: { type: SQLWrapper; issueId: SQLWrapper }) => sql`NOT (
+  ${n.type} = 'issue_stranded' AND EXISTS (
+    SELECT 1 FROM issues WHERE issues.id = ${n.issueId} AND ${heldAsFailedJobWhere(userId)}
+  )
+)`;
 
 /**
  * ISS-1168 — whether a delivery still asks to be read, as state and not as text.
@@ -93,15 +115,23 @@ const stillTrue = stillTrueOf(notifications);
  * end, so it asks until it is read. Deriving it keeps both facts true: resolving a condition writes
  * no read stamp for somebody who never looked, and the owner's inbox still stops demanding it.
  */
-const carried = { kind: sql`cn.kind`, state: sql`cn.state` };
-const unreadDelivery = sql`(
+const carried = {
+  kind: sql`cn.kind`,
+  state: sql`cn.state`,
+  projectId: sql`cn.project_id`,
+  type: sql`cn.type`,
+  issueId: sql`cn.issue_id`,
+};
+const unreadDeliveryOf = (userId: string) => sql`(
   ${notificationDeliveries.readAt} IS NULL
   AND NOT ${notificationDeliveries.resolvedNotice}
   AND EXISTS (
     SELECT 1 FROM notification_delivery_members cb
     JOIN notifications cn ON cn.id = cb.notification_id
     WHERE cb.delivery_id = ${notificationDeliveries.id}
-      AND (cn.kind = 'signal' OR (cn.resolved_at IS NULL AND ${stillTrueOf(carried)}))
+      AND ${toldTo(userId, carried)}
+      AND ((cn.kind = 'signal' AND ${onLiveProject(carried.projectId)})
+        OR (cn.resolved_at IS NULL AND ${stillTrueOf(carried)}))
   )
 )`;
 
@@ -147,6 +177,7 @@ notificationRoutes.get(
                 AND cn.type <> 'invitation_received'
                 AND cn.resolved_at IS NULL
                 AND ${stillTrueOf(carried)}
+                AND ${toldTo(userId, carried)}
                 ${ofProject}
             )`,
           ),
@@ -190,7 +221,12 @@ notificationRoutes.get(
 
     // The filters choose WHICH deliveries are listed; they never thin out what a listed delivery
     // carries, or a group seen through a project filter would read as the one record that survived.
-    const ofRecords = [sql`cn.kind IS NOT NULL`];
+    const ofRecords = [
+      sql`cn.kind IS NOT NULL`,
+      onLiveProject(carried.projectId),
+      toldTo(userId, carried),
+    ];
+    const unreadDelivery = unreadDeliveryOf(userId);
     if (projectId) ofRecords.push(sql`cn.project_id = ${projectId}`);
     if (type) ofRecords.push(sql`cn.type = ${type}`);
     if (openOnly) ofRecords.push(sql`(cn.resolved_at IS NULL AND ${stillTrueOf(carried)})`);
@@ -258,13 +294,23 @@ notificationRoutes.get(
           string | null
         >`CASE WHEN ${several} THEN NULL ELSE min(${notifications.agentSessionId}::text) END`,
         notificationId: sql<string>`min(${notifications.id}::text)`,
+        // The tag a stuck row wears is its kind's, which every record a sweep groups shares.
+        stuckKind: sql<StuckIssueKind | null>`CASE WHEN min(${notifications.type}) = 'issue_stranded' THEN ${stuckKindSql(sql`min(${notifications.resolutionKey})`)} END`,
       })
       .from(notificationDeliveries)
       .innerJoin(
         notificationDeliveryMembers,
         eq(notificationDeliveryMembers.deliveryId, notificationDeliveries.id),
       )
-      .innerJoin(notifications, eq(notifications.id, notificationDeliveryMembers.notificationId))
+      // A row's figures are its live records': a grouped row holding an archived project's says nothing of it.
+      .innerJoin(
+        notifications,
+        and(
+          eq(notifications.id, notificationDeliveryMembers.notificationId),
+          onLiveProject(notifications.projectId),
+          toldTo(userId, notifications),
+        ),
+      )
       .where(where)
       .groupBy(notificationDeliveries.id, notificationDeliveries.title)
       .orderBy(
@@ -385,7 +431,13 @@ notificationRoutes.get(
       .from(notificationDeliveryMembers)
       .innerJoin(notifications, eq(notifications.id, notificationDeliveryMembers.notificationId))
       .leftJoin(projects, eq(projects.id, notifications.projectId))
-      .where(eq(notificationDeliveryMembers.deliveryId, id))
+      .where(
+        and(
+          eq(notificationDeliveryMembers.deliveryId, id),
+          onLiveProject(notifications.projectId),
+          toldTo(userId, notifications),
+        ),
+      )
       .orderBy(
         desc(sql`(${notifications.resolvedAt} IS NULL AND ${stillTrue})`),
         desc(notificationDeliveryMembers.deliveredAt),

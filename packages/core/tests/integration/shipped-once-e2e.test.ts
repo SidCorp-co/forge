@@ -259,7 +259,7 @@ describe('ISS-1270 · a shipped issue counts once, on its first shipped day', ()
   describe('project health', () => {
     const aggregates = async () => {
       const { readHealthAggregates } = await import('../../src/projects/health-aggregates.js');
-      return readHealthAggregates([projectId]);
+      return readHealthAggregates([projectId], ownerId);
     };
 
     it('reports throughput as the issues whose first shipped transition is in the last seven days', async () => {

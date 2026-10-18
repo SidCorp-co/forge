@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { describeOperation, empty, fail, json } from '../api-reference/declare/describe.js';
 import { tableRow } from '../api-reference/declare/rows.js';
 import { notificationDeliveries, notificationTypes } from '../db/schema.js';
+import { STUCK_ISSUE_KINDS } from '../projects/stuck-issue-kinds.js';
 
 const NOT_FOUND = 'The notification is not one of the caller’s own';
 
@@ -58,6 +59,10 @@ export const deliveryListItemSchema = z.object({
   secondaryIssueId: z.string().nullable(),
   agentSessionId: z.string().nullable(),
   notificationId: z.string(),
+  stuckKind: z
+    .enum(STUCK_ISSUE_KINDS)
+    .nullable()
+    .describe('A stuck-issue row only: the reason its records are told by, which its tag names'),
 });
 
 export const deliveryListSchema = z.object({

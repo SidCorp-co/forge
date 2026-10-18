@@ -56,6 +56,8 @@ export async function readPendingInvitations(
         isNull(projectInvitations.acceptedAt),
         isNull(projectInvitations.dismissedAt),
         gt(projectInvitations.expiresAt, now),
+        // An archived project's page answers not found, so it is no invitation to offer (ISS-1229 r15).
+        isNull(projects.archivedAt),
       ),
     );
 

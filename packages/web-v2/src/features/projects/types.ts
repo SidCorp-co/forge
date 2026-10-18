@@ -50,7 +50,14 @@ export interface ProjectHealthRow {
   /** Issues in each work state, counted by core's one fold. */
   work: Record<WorkState, number>;
   /** The most recently updated parked issues, a capped list. */
-  blockers: Array<{ issueId: string; documentId: string; title: string; status: string }>;
+  blockers: Array<{
+    issueId: string;
+    documentId: string;
+    title: string;
+    status: string;
+    /** The reason a stuck-issue notice tells this parked issue by, where one stands. */
+    stuckKind?: StuckIssueKind;
+  }>;
   /** Every parked issue: the count behind the capped `blockers`. */
   blockersTotal: number;
   pendingEscalations: number;

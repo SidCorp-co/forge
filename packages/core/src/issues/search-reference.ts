@@ -256,7 +256,7 @@ export const issueSearchSchema = z.object({
 export const searchIssues = describeOperation({
   summary: "Search a project's issues by text or key, with filters, counts and optional extras",
   description:
-    'A term that reads as an issue key finds that issue and is never searched as text. `with...` flags add cost, failure, pipeline health, modules, dependencies, agent sessions or the status and work-state counts (`buckets`) to the answer. Archived issues are left out unless `includeArchived` is sent or a key names one. `stuck=true` keeps only the issues a stuck-issue notice stands for.',
+    'A term that reads as an issue key finds that issue and is never searched as text. `with...` flags add cost, failure, pipeline health, modules, dependencies, agent sessions or the status and work-state counts (`buckets`) to the answer. Archived issues are left out unless `includeArchived` is sent or a key names one. `stuck=true` keeps only the issues a stuck-issue notice stands for, leaving out any listed as a failed job of the caller instead.',
   responses: {
     200: json(issueSearchSchema),
     400: fail({

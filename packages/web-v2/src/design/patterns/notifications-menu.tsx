@@ -14,8 +14,8 @@ export interface NotificationAction {
 
 export interface NotificationItem {
   id: string;
-  /** Short type label shown in the leading tag (e.g. "STATUS", "MENTION"). */
-  label: string;
+  /** Short type label shown in the leading tag (e.g. "STATUS", "MENTION"); none where the row has no words for one. */
+  label?: string;
   text: string;
   sub?: string;
   time: string;
@@ -135,7 +135,7 @@ export function NotificationsMenu({
                 />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <MonoTag>{n.label}</MonoTag>
+                    {n.label && <MonoTag>{n.label}</MonoTag>}
                     <span className="fg-caption ml-auto">{n.time}</span>
                   </div>
                   <p className="fg-body-sm mt-1 text-fg">{n.text}</p>

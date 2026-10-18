@@ -114,6 +114,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'notifications/deliver.ts': 'by issue id',
   'notifications/notify-mentions.ts': 'by issue id',
   'notifications/notify-transitions.ts': 'by issue id',
+  'notifications/routes.ts':
+    'the issue a stuck-issue record names, through heldAsFailedJobWhere, which composes the predicate',
   'jobs/loop-monitor-axis.ts':
     'one count of the claims the job axis cannot reach; an archived issue a live claim holds is still outside that axis, so hiding it would understate the blind spot',
   'pipeline/analytics-routes.ts':
