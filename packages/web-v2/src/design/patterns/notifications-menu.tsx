@@ -24,7 +24,9 @@ export interface NotificationItem {
   /** Optional inline action buttons (e.g. Accept / Decline for invitations). */
   actions?: NotificationAction[];
   /** ISS-1063 — set when this row is one delivery carrying several records. */
-  group?: { total: number; open: number };
+  /** A delivery grouping several records: how many it lists, and whether those are the ones still
+   *  open (a resolved condition has left the group) or events, which cannot end. */
+  group?: { count: number; open: boolean };
 }
 
 /** A record behind an expanded grouped row. */
@@ -34,7 +36,6 @@ export interface NotificationGroupMember {
   /** The record's own sentence, under its title. */
   sub?: string;
   time: string;
-  open: boolean;
 }
 
 const HUE_DOT: Record<NotificationItem["hue"], string> = {
@@ -155,7 +156,7 @@ export function NotificationsMenu({
                         disabled={!onToggleGroup}
                         className="fg-caption inline-flex min-h-11 items-center text-link hover:underline disabled:cursor-default disabled:text-muted disabled:no-underline"
                       >
-                        {`${n.group.open} of ${n.group.total} still open`}
+                        {n.group.open ? `${n.group.count} still open` : `${n.group.count} in all`}
                         {expandedId === n.id ? " — hide" : " — show"}
                       </button>
                       {expandedId === n.id && (
@@ -173,11 +174,7 @@ export function NotificationsMenu({
                                   className="flex min-h-11 w-full items-center py-1 text-left hover:underline"
                                 >
                                   <span className="flex min-w-0 flex-col">
-                                    <span
-                                      className={`fg-caption ${m.open ? "text-fg" : "text-muted line-through"}`}
-                                    >
-                                      {m.text}
-                                    </span>
+                                    <span className="fg-caption text-fg">{m.text}</span>
                                     {m.sub && <span className="fg-caption text-muted">{m.sub}</span>}
                                   </span>
                                   <span className="fg-caption ml-2 flex-none whitespace-nowrap text-muted">{m.time}</span>

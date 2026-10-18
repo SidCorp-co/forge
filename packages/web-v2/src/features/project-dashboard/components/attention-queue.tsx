@@ -1,9 +1,9 @@
 "use client";
 
 // Needs-your-attention list (ISS-379, AC#2). Each row is one item a person acts on, with its age as a
-// chip and the action that clears it: failed → Approve & retry, review → Open diff, holding a
-// question → Provide info, parked → Open issue. Each action NAVIGATES to the existing destination —
-// no new mutations. Flat: rows divided by hairlines, no boxes. Empty is one line, said only where
+// chip and the action that clears it: failed → Retry job, review → Open diff, holding a
+// question → Provide info, parked → Open issue. A failed job's button retries the job (ISS-1229 r16);
+// every other action navigates to the existing destination. Flat: rows divided by hairlines, no boxes. Empty is one line, said only where
 // nothing is owed beyond it (ISS-1156).
 import { SESSION_ICONS } from "@/design/primitives/status-chip";
 import Link from "next/link";
@@ -64,9 +64,13 @@ function StuckTag() {
 /** Why an item is listed, then its next reason down: an answer owed, a failed job, a stuck reason (ISS-1229 r15). */
 function itemWords(it: DashboardAttentionItem): { stuck: boolean; detail?: string } {
   if (it.stuckKind && !it.owed && it.actionKind !== "retry") {
-    return { stuck: true, detail: stuckRowWords(it.stuckKind) };
+    return { stuck: true, detail: stuckRowWords(it.stuckKind, it.stuckOwedBy) };
   }
-  const under = it.failedJob ? failedJobClause(it.failedJob) : it.stuckKind ? stuckClause(it.stuckKind) : null;
+  const under = it.failedJob
+    ? failedJobClause(it.failedJob)
+    : it.stuckKind
+      ? stuckClause(it.stuckKind, it.stuckOwedBy)
+      : null;
   if (!under) return { stuck: false, detail: it.detail };
   return { stuck: false, detail: it.detail ? `${it.detail.replace(/[.]?$/, ".")} ${under}` : under };
 }
@@ -87,6 +91,8 @@ export function AttentionQueue({
   refusal = null,
   pending = false,
   onRetry,
+  onRetryJob,
+  retryingJobId = null,
   shape = "working",
   slug,
   now,
@@ -106,6 +112,10 @@ export function AttentionQueue({
   pending?: boolean;
   /** Asks for the read again; offered under a refusal where the read failed. */
   onRetry?: () => void;
+  /** Retries a failed job, by its id: what a failed row's button does. */
+  onRetryJob?: (jobId: string) => void;
+  /** The failed job whose retry is on its way, whose button waits for it. */
+  retryingJobId?: string | null;
   /**
    * What the page reads as. An empty list says all caught up only under quiet or working: degraded
    * means something this list does not hold is wrong, and unread means a read the list rests on beside
@@ -171,7 +181,7 @@ export function AttentionQueue({
             <li key={`stuck-${r.documentId}`} className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 py-2">
               <StuckTag />
               <MonoTag>{r.issueId}</MonoTag>
-              <RowText title={r.title} detail={stuckRowWords(r.kind)} />
+              <RowText title={r.title} detail={stuckRowWords(r.kind, r.owedBy)} />
               <Button
                 size="sm"
                 variant="secondary"
@@ -270,14 +280,27 @@ export function AttentionQueue({
               <span className="ml-auto flex-none sm:ml-0">
                 <AgeChip since={it.since} now={now} />
               </span>
-              <Button
-                size="sm"
-                variant="secondary"
-                className="order-4 sm:order-none"
-                onClick={() => router.push(it.link)}
-              >
-                {it.actionLabel}
-              </Button>
+              {it.actionKind === "retry" && it.jobId && onRetryJob ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="order-4 sm:order-none"
+                  disabled={retryingJobId === it.jobId}
+                  onClick={() => it.jobId && onRetryJob(it.jobId)}
+                >
+                  {retryingJobId === it.jobId ? "Retrying…" : it.actionLabel}
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="order-4 sm:order-none"
+                  onClick={() => router.push(it.link)}
+                >
+                  {/* A failed row that cannot retry from here says where it goes instead (ISS-1229 r16). */}
+                  {it.actionKind === "retry" ? "Open issue" : it.actionLabel}
+                </Button>
+              )}
             </li>
           );
         })}

@@ -3,7 +3,7 @@
 // ISS-1156 — an empty list is "All caught up" only where nothing is owed beyond it.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { StatusChip } from "@/design/primitives/status-chip";
 import { AttentionQueue } from "./attention-queue";
@@ -11,7 +11,8 @@ import { AttentionQueue } from "./attention-queue";
 expect.extend(matchers);
 afterEach(cleanup);
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+const push = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 
 describe("the Needs your attention list with nothing in it", () => {
   it("says all caught up where nothing is owed", () => {
@@ -171,6 +172,44 @@ describe("the Needs your attention list with nothing in it", () => {
     expect(list).toHaveTextContent("Showing 7 of 14.");
   });
 
+  // ISS-1229 r16, judge-41 on criterion 98: the Member's parks read to the Owner as waiting for the
+  // Owner. A park somebody else owes names them, whether listed as a park or as a stuck row.
+  it("names who another person's park waits for, never the reader", () => {
+    render(
+      <AttentionQueue
+        items={[
+          {
+            key: "parked-d2",
+            actionKind: "parked" as const,
+            actionLabel: "Open issue",
+            title: "Choose a carrier",
+            detail: "Blocked on a person — Waiting",
+            issueRef: "ISS-2",
+            link: "/projects/pair/issues/d2",
+            stuckKind: "waiting_on_others" as const,
+            stuckOwedBy: "Mai",
+          },
+        ]}
+        cut={{ shown: 2, whole: 2, peopleCut: false }}
+        whole={2}
+        shape="degraded"
+        slug="pair"
+        now={0}
+        stuck={{
+          total: 2,
+          refs: [
+            { issueId: "ISS-2", documentId: "d2", title: "Choose a carrier", kind: "waiting_on_others" as const, owedBy: "Mai" },
+            { issueId: "ISS-3", documentId: "d3", title: "Price list", kind: "waiting_on_others" as const, owedBy: "Bao" },
+          ],
+        }}
+      />,
+    );
+    const list = screen.getByRole("region", { name: "Needs your attention" });
+    expect(screen.getByText("Has been waiting for Mai for over six hours")).toBeInTheDocument();
+    expect(screen.getByText("Has been waiting for Bao for over six hours")).toBeInTheDocument();
+    expect(list).not.toHaveTextContent(/waiting for you/u);
+  });
+
   // ISS-1229 r15, the master's ruling: an answer owed outranks a failed job, which outranks a stuck
   // reason; a row takes the highest and names the next one down under it, and a failed job's issue is
   // counted as that, never among the stuck issues too.
@@ -183,7 +222,7 @@ describe("the Needs your attention list with nothing in it", () => {
             ...base,
             key: "retry",
             actionKind: "retry",
-            actionLabel: "Approve & retry",
+            actionLabel: "Retry job",
             title: "Export the March invoices",
             detail: "Issue work failed: Session lost",
             issueRef: "ISS-15",
@@ -339,5 +378,52 @@ describe("the Needs you chip of a session waiting on you", () => {
     const tag = screen.getByText("Waiting").parentElement;
     expect(drawing(tag)).toBe(waiting);
     expect(drawing(tag)).not.toBe(working);
+  });
+});
+
+// ISS-1229 r16, judge-41: "Approve & retry" opened the issue page and retried nothing. A failed job's
+// button retries the job; a failed row with no job to retry says where it goes instead.
+describe("a failed job's row", () => {
+  const failed = {
+    since: new Date(0).toISOString(),
+    key: "retry-1",
+    actionKind: "retry" as const,
+    actionLabel: "Retry job",
+    title: "Export the March invoices",
+    issueRef: "ISS-15",
+    link: "/projects/pair/issues/d15",
+  };
+
+  it("retries the job, and goes nowhere", () => {
+    push.mockClear();
+    const onRetryJob = vi.fn();
+    render(
+      <AttentionQueue items={[{ ...failed, jobId: "j-15" }]} cut={null} onRetryJob={onRetryJob} slug="pair" now={0} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Retry job" }));
+    expect(onRetryJob).toHaveBeenCalledWith("j-15");
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("waits while its retry is on the way", () => {
+    render(
+      <AttentionQueue
+        items={[{ ...failed, jobId: "j-15" }]}
+        cut={null}
+        onRetryJob={() => {}}
+        retryingJobId="j-15"
+        slug="pair"
+        now={0}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Retrying…" })).toBeDisabled();
+  });
+
+  it("says Open issue where it has no job to retry, and opens it", () => {
+    push.mockClear();
+    render(<AttentionQueue items={[failed]} cut={null} onRetryJob={() => {}} slug="pair" now={0} />);
+    expect(screen.queryByRole("button", { name: "Retry job" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Open issue" }));
+    expect(push).toHaveBeenCalledWith("/projects/pair/issues/d15");
   });
 });

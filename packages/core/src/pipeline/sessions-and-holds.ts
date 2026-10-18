@@ -53,6 +53,8 @@ export interface LiveSession {
   deviceId: string | null;
   deviceName: string | null;
   parentSessionId: string | null;
+  /** The run this session works, so a reader counts the runs it lists from the sessions it lists. */
+  pipelineRunId: string | null;
   startedAt: string | null;
   lastHeartbeatAt: string | null;
   createdAt: string;
@@ -121,6 +123,7 @@ export interface SessionRow {
   device_name: string | null;
   device_status?: string | null;
   parent_session_id: string | null;
+  pipeline_run_id?: string | null;
   started_at: Date | string | null;
   last_heartbeat_at: Date | string | null;
   created_at: Date | string;
@@ -245,6 +248,7 @@ export function projectSessionsAndHolds(input: {
       deviceId: s.device_id,
       deviceName: s.device_name,
       parentSessionId: s.parent_session_id,
+      pipelineRunId: s.pipeline_run_id ?? null,
       startedAt: iso(s.started_at),
       lastHeartbeatAt: iso(s.last_heartbeat_at),
       createdAt: iso(s.created_at) as string,
@@ -302,7 +306,7 @@ export async function readSessionsAndHolds(
     SELECT s.id, s.kind, s.title, s.metadata ->> 'jobType' AS job_type,
            s.metadata ->> 'skillName' AS skill_name,
            s.status, s.runtime_state, s.device_id, d.name AS device_name, d.status AS device_status,
-           s.parent_session_id, s.started_at, s.last_heartbeat_at, s.created_at
+           s.parent_session_id, s.pipeline_run_id, s.started_at, s.last_heartbeat_at, s.created_at
       FROM agent_sessions s
       LEFT JOIN devices d ON d.id = s.device_id
      WHERE s.project_id = ${projectId}::uuid

@@ -30,24 +30,38 @@ export async function wedgeLeaseUnderLock(
 }
 
 function seconds(ms: number | null): string {
-  return `${Math.round((ms ?? 0) / 1000)}s`;
+  const n = Math.round((ms ?? 0) / 1000);
+  return `${n} second${n === 1 ? '' : 's'}`;
 }
 
+const AT = new Intl.DateTimeFormat('en-GB', {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+  timeZone: 'UTC',
+});
+
+/** A moment as a person reads it, in UTC: never an ISO stamp (ISS-1229 r16). */
+function when(at: Date | null | undefined): string {
+  return at ? `${AT.format(at)} UTC` : 'a time that could not be read';
+}
+
+/** Why no claim kept the issue, in plain words: no backticked id, stored verdict or ISO stamp. */
 function leaseSentence(reading: LeaseReading): string {
-  const held = reading.holder === null ? 'the lease' : `the lease held by \`${reading.holder}\``;
+  const held =
+    reading.holder === null ? 'the claim on it' : `the claim ${reading.holder} held on it`;
   switch (reading.verdict) {
     case 'none':
-      return 'no run held a lease on it';
+      return 'no agent held a claim on it';
     case 'expired':
       return reading.stopped
         ? `${held} had been given back`
-        : `${held} lapsed at ${reading.expiresAt?.toISOString() ?? 'an unreadable time'}`;
+        : `${held} ran out at ${when(reading.expiresAt)}`;
     case 'abandoned':
-      return `${held} runs until ${reading.expiresAt?.toISOString() ?? 'an unreadable time'}, but its holder's heartbeat has been silent for ${seconds(reading.silentMs)}, past the ${seconds(reading.toleranceMs)} it tolerates`;
+      return `${held} runs until ${when(reading.expiresAt)}, but its holder's heartbeat has been silent for ${seconds(reading.silentMs)}, past the ${seconds(reading.toleranceMs)} it is allowed`;
     case 'malformed':
-      return `the lease could not be read (${reading.detail}), so it holds nothing`;
+      return 'the claim on it could not be read, so it holds nothing';
     default:
-      return `${held} read as \`${reading.verdict}\``;
+      return `${held} could not be judged, so it holds nothing`;
   }
 }
 
@@ -60,8 +74,8 @@ export function buildWedgeResetBody(args: {
   return [
     `**Moved by the reconciler: ${statusLabel(args.from)} -> ${statusLabel(args.to)}**`,
     '',
-    `The reconciler's autonomous wedge pass made this move, not a person. It found nothing working the issue: its latest job is a \`drive\` job that is no longer live, no job is queued or running, nothing wrote to the issue for ${args.grace}, and ${leaseSentence(args.reading)}.`,
+    `Forge's check for stalled issues made this move, not a person. It found nothing working the issue: the agent that last worked on it has stopped, no work is queued or running, nothing wrote to the issue for ${args.grace}, and ${leaseSentence(args.reading)}.`,
     '',
-    `The issue is back at ${statusLabel(args.to)}, where the next dispatch takes it up again.`,
+    `The issue is back at ${statusLabel(args.to)}, where the next agent to look for work takes it up again.`,
   ].join('\n');
 }

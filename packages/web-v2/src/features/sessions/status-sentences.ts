@@ -63,14 +63,18 @@ const WAIT_HOLDER: Record<string, string> = {
   machine: "a machine",
   master_or_peer: "another agent",
   human: "a person",
+  nobody: "nobody",
 };
+
+const waitHolder = (kind: string | null | undefined): string =>
+  kind ? (WAIT_HOLDER[kind] ?? kind) : "someone the box did not name";
 
 /** Who can end a blocked session's wait, and what it waits on in the box's own words made a sentence. */
 export function waitingOnText(kind: string | null | undefined, waitingOn: string | null | undefined): string {
   const head =
     kind === "nobody"
       ? "Waiting on nobody. This run is a failure with a name."
-      : `Waiting on ${kind ? (WAIT_HOLDER[kind] ?? kind) : "someone the box did not name"}.`;
+      : `Waiting on ${waitHolder(kind)}.`;
   const words = waitingOn?.trim();
   return words ? `${head} ${stop(capitalised(words))}` : head;
 }
@@ -100,6 +104,9 @@ const isAre = (n: number): string => (n === 1 ? "is" : "are");
 export const queuedBehindText = (n: number): string =>
   n === 0 ? "No session is queued behind this box." : `${sessionsCount(n)} ${isAre(n)} queued behind this box.`;
 
+export const runningChatsText = (n: number): string =>
+  `${n} chat${n === 1 ? " has a turn" : "s have turns"} running.`;
+
 export const DISPATCH_STALLED = "Dispatch stalled. No box is online.";
 
 /** Beside {@link DISPATCH_STALLED}: what waits, and what ends the wait. */
@@ -109,13 +116,25 @@ export const queuedWithNoBoxText = (n: number): string =>
 /** What a run on the runs tab means, by what its box reports of its process and its work. */
 export const RUN_DETAIL = {
   working: "An agent is running in this worktree.",
-  blockedHolding: "It waits on a machine or another agent, and keeps its process while it waits.",
-  parked: "The process is gone. The worktree and the branch are kept until someone answers.",
   answered: "The answer is on the record, and nothing has restarted this run yet.",
   closed: "The close loop finished.",
   unknown: "The box reported a combination this build does not name. Nothing may be reclaimed.",
   quiet: "The box last reported this. Core has heard nothing from the run's session since.",
   ended: "Core ended this run's session. This is what the box last reported, not what is happening.",
+} as const;
+
+/** A blocked run's chip hover, naming the holder its row's wait line names; `parkedText` likewise. */
+export const blockedHoldingText = (kind: string | null | undefined): string =>
+  `It waits on ${waitHolder(kind)}, and keeps its process while it waits.`;
+
+export const parkedText = (kind: string | null | undefined): string =>
+  `The process is gone. It waits on ${waitHolder(kind)}, and the worktree and the branch are kept until the wait ends.`;
+
+/** What each time on a session page's Timing row is, on hover; true of a live and an ended session alike. */
+export const TIMING_HOVER = {
+  dispatched: "When core offered this session to a box.",
+  started: "When the agent on the box started.",
+  ended: "When core ended this session. A session core still holds shows a dash.",
 } as const;
 
 export const RUN_APPEARS = "A run appears here as soon as a master opens one on a box serving this project.";

@@ -74,6 +74,7 @@ export interface StrandRecord {
   waitingFor: string;
   owes: string;
   reason: string;
+  said?: string;
   lease: string;
   evidence: { merged: boolean; everRan: boolean; poolHasRunner: boolean; leaseFanout: number };
 }
@@ -194,7 +195,7 @@ function judge(
     lease,
     releaseHold: readReleaseHold(row.release_hold),
   };
-  const { reason, owes } = strandReason({ status: row.status, rule, evidence });
+  const { reason, owes, said } = strandReason({ status: row.status, rule, evidence });
   const waitingFor =
     heldReleaseWait(row.status, evidence.releaseHold)?.waitingFor ?? rule.waitingFor;
   return {
@@ -207,6 +208,7 @@ function judge(
       waitingFor,
       owes,
       reason,
+      said,
       lease: lease.verdict,
       evidence: {
         merged: evidence.merged,
@@ -226,6 +228,7 @@ function unclassifiedRecord(row: CandidateRow, lease: LeaseReading, now: Date): 
     waitingFor: 'not decidable: this status is in no rule this build holds',
     owes: 'human',
     reason: `the status ${statusLabel(row.status)} is not one this build classifies, so no clock and no owner apply to it`,
+    said: 'nothing says who moves it on from this status',
     lease: lease.verdict,
     evidence: {
       merged: row.merged_at !== null,
@@ -439,12 +442,6 @@ function graceSpent(idleSince: string, graceMs: number, now: Date): boolean {
   return now.getTime() - Date.parse(idleSince) >= graceMs;
 }
 
-function firstSentence(reason: string): string {
-  const text = reason.trim();
-  const first = /^.*?[.!?](?=\s+[A-Z])/su.exec(text)?.[0] ?? text;
-  return /[.!?]$/.test(first) ? first : `${first}.`;
-}
-
 /**
  * What a project's admins read about one idle issue: the issue with its project, the status in the
  * screen's word, and how long it has stood there, never the stored time a raw query hands back.
@@ -455,7 +452,7 @@ function firstSentence(reason: string): string {
 export function idleNotice(args: {
   ref: string;
   projectName: string;
-  record: Pick<StrandRecord, 'status' | 'since' | 'reason' | 'waitingFor' | 'owes' | 'lease'>;
+  record: Pick<StrandRecord, 'status' | 'since' | 'said' | 'waitingFor' | 'owes' | 'lease'>;
   now: Date;
 }): { title: string; body: string } {
   const { ref, projectName, record, now } = args;
@@ -465,9 +462,10 @@ export function idleNotice(args: {
   const title = unconfirmed
     ? `${ref} reads ${label} and no live work could be confirmed — ${projectName}`
     : `${ref} reads ${label} and nothing is working it — ${projectName}`;
+  const why = record.said ?? 'nothing is working on it';
   const truth = unconfirmed
-    ? `It has read ${label} for ${age}, no live work confirmed: ${firstSentence(record.reason)}`
-    : `It has read ${label} for ${age}: ${firstSentence(record.reason)}`;
+    ? `It has read ${label} for ${age}, and no live work could be confirmed because ${why}.`
+    : `It has read ${label} for ${age}, and ${why}.`;
   const who = record.owes === 'human' ? 'a person' : 'an agent';
   return { title, body: `${truth} It waits for ${record.waitingFor}; ${who} owes that move.` };
 }

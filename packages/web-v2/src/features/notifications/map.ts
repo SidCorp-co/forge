@@ -85,6 +85,12 @@ function subOf(row: NotificationRow): string | undefined {
   return row.body ? `Since resolved. When it was raised: ${row.body}` : "Since resolved.";
 }
 
+function groupOf(row: NotificationRow, cleared: boolean): NotificationItem["group"] {
+  if (row.members <= 1 || cleared) return undefined;
+  if (row.kind === "signal") return { count: row.members, open: false };
+  return row.openMembers > 0 ? { count: row.openMembers, open: true } : undefined;
+}
+
 export function toNotificationItem(
   row: NotificationRow,
   actions?: NotificationAction[],
@@ -99,9 +105,9 @@ export function toNotificationItem(
     // The server says whether anything is left to read: a resolved row is history, read or not.
     unread: row.unread,
     hue: cleared ? "green" : hueFor(row),
-    // A delivery carrying one record is a plain row; one carrying several names the
-    // cause, says how many are still true, and expands to them.
-    group: row.members > 1 ? { total: row.members, open: row.openMembers } : undefined,
+    // A delivery carrying one record is a plain row; one carrying several names the cause, says how
+    // many are still true, and expands to those alone: a resolved record leaves the group (ISS-1229 r16).
+    group: groupOf(row, cleared),
     actions,
   };
 }

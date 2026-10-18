@@ -8,6 +8,7 @@ import { ErrorState, ProjectLoader } from "@/design";
 import { IssueDetailScreen } from "@/features/issues/components/issue-detail-screen";
 import { useProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
+import { ProjectMissing } from "@/features/projects/components/project-missing";
 
 export default function ProjectIssueDetailPage() {
   const params = useParams<{ slug: string; id: string }>();
@@ -35,7 +36,8 @@ export default function ProjectIssueDetailPage() {
   if (!project || !id) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
-        <ErrorState
+        <ProjectMissing
+          slug={slug}
           title="Issue not found"
           message="This project or issue doesn't exist or you don't have access to it."
         />

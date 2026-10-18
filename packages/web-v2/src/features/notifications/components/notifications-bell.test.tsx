@@ -112,16 +112,16 @@ describe("a grouped row in the bell", () => {
   it("opens to its members and reads nothing, however it is opened", () => {
     mount();
     fireEvent.click(screen.getByText("Issues whose code shipped and whose close was never written"));
-    expect(screen.getByRole("button", { name: "3 of 3 still open — hide" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "3 of 3 still open — hide" }));
-    fireEvent.click(screen.getByRole("button", { name: "3 of 3 still open — show" }));
+    expect(screen.getByRole("button", { name: "3 still open — hide" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "3 still open — hide" }));
+    fireEvent.click(screen.getByRole("button", { name: "3 still open — show" }));
     expect(state.marked).toEqual([]);
   });
 
   it("reads the delivery when a member is followed, and opens that member's issue", () => {
     state.members = [member(1)];
     mount();
-    fireEvent.click(screen.getByRole("button", { name: "3 of 3 still open — show" }));
+    fireEvent.click(screen.getByRole("button", { name: "3 still open — show" }));
     fireEvent.click(screen.getByRole("button", { name: /^ISS-1 shipped but never closed/ }));
     expect(state.marked).toEqual(["d1"]);
     expect(state.pushed).toEqual(["/projects/invoicing/issues/00000000-0000-4000-8000-000000000001"]);
@@ -132,7 +132,7 @@ describe("a grouped row in the bell", () => {
   it("shows each member's own sentence under its title", () => {
     state.members = [member(1, { body: 'ISS-1 "Repair export": it has been parked for 6 hours.' })];
     mount();
-    fireEvent.click(screen.getByRole("button", { name: "3 of 3 still open — show" }));
+    fireEvent.click(screen.getByRole("button", { name: "3 still open — show" }));
     expect(screen.getByText('ISS-1 "Repair export": it has been parked for 6 hours.')).toBeInTheDocument();
   });
 
@@ -144,7 +144,7 @@ describe("a grouped row in the bell", () => {
     state.rows = [row({ createdAt: told, toldAt: told })];
     state.members = [member(1, { createdAt: seenPending, deliveredAt: told })];
     mount();
-    fireEvent.click(screen.getByRole("button", { name: "3 of 3 still open — show" }));
+    fireEvent.click(screen.getByRole("button", { name: "3 still open — show" }));
     const memberButton = screen.getByRole("button", { name: /^ISS-1 shipped but never closed/ });
     expect(memberButton.textContent).toContain(formatRelativeTime(told));
     expect(memberButton.textContent).not.toContain(formatRelativeTime(seenPending));
@@ -157,7 +157,7 @@ describe("a grouped row in the bell", () => {
       member(1, { id: "m9", projectId: "p2", projectSlug: "payroll", projectName: "Payroll" }),
     ];
     mount();
-    fireEvent.click(screen.getByRole("button", { name: "3 of 3 still open — show" }));
+    fireEvent.click(screen.getByRole("button", { name: "3 still open — show" }));
     expect(screen.getByText("Invoicing · ISS-1 shipped but never closed")).toBeInTheDocument();
     expect(screen.getByText("Payroll · ISS-1 shipped but never closed")).toBeInTheDocument();
   });
@@ -165,10 +165,10 @@ describe("a grouped row in the bell", () => {
   it("keeps every control in the menu at least 44px tall", () => {
     state.members = [member(1)];
     mount();
-    fireEvent.click(screen.getByRole("button", { name: "3 of 3 still open — show" }));
+    fireEvent.click(screen.getByRole("button", { name: "3 still open — show" }));
     for (const el of [
       screen.getByRole("button", { name: "Mark all read" }),
-      screen.getByRole("button", { name: "3 of 3 still open — hide" }),
+      screen.getByRole("button", { name: "3 still open — hide" }),
       screen.getByRole("button", { name: /^ISS-1 shipped but never closed/ }),
     ]) {
       expect(el.className).toContain("min-h-11");

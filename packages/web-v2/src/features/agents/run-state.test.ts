@@ -48,7 +48,9 @@ describe("stateLabelAt", () => {
   });
 
   it("keeps the run's own words where the box claims no process", () => {
-    expect(stateLabelAt(row({ incarnation: "exited", work: "blocked" }), NOW).label).toBe("Parked for a person");
+    expect(stateLabelAt(row({ incarnation: "exited", work: "blocked", blockerKind: "human" }), NOW).label).toBe(
+      "Parked for a person",
+    );
     expect(stateLabelAt(row({ incarnation: "exited", work: "runnable" }), NOW).label).toBe(
       "Answered, awaiting revival",
     );
@@ -62,6 +64,30 @@ describe("stateLabelAt", () => {
       tone: "neutral",
     });
     expect(stateLabelAt(row({ sessionStatus: "failed" }), NOW).label).toBe("Last reported working");
+  });
+
+  // ISS-1228 round 16 (judge-42): a run blocked on a person read "Waiting on a person." on its row and,
+  // on its chip's hover, "It waits on a machine or another agent": the hover reads the row's blocker.
+  it("says on the chip's hover the same holder its row's wait names, for every blocker kind", () => {
+    const holders: Array<[string | null, string]> = [
+      ["human", "a person"],
+      ["machine", "a machine"],
+      ["master_or_peer", "another agent"],
+      ["nobody", "nobody"],
+      [null, "someone the box did not name"],
+    ];
+    for (const [blockerKind, holder] of holders) {
+      for (const over of [{}, { sessionStatus: null }]) {
+        const detail = stateLabelAt(row({ ...over, work: "blocked", blockerKind }), NOW).detail;
+        expect(detail, `${blockerKind} ${JSON.stringify(over)}`).toContain(`waits on ${holder}`);
+        for (const [, other] of holders.filter(([k]) => k !== blockerKind)) {
+          expect(detail, `${blockerKind} names ${other}`).not.toContain(`waits on ${other}`);
+        }
+      }
+      const parked = stateLabelAt(row({ incarnation: "exited", work: "blocked", blockerKind }), NOW);
+      expect(parked.detail, `parked ${blockerKind}`).toContain(holder);
+      expect(parked.label, `parked ${blockerKind}`).toBe(blockerKind === "human" ? "Parked for a person" : "Parked");
+    }
   });
 
   it("calls a run a person stopped Stopped whatever its box says of its process, until the run closes", () => {

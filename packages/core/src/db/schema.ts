@@ -964,6 +964,8 @@ export const issues = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
     mergedAt: timestamp('merged_at', { withTimezone: true }),
+    /** When Forge recorded the mark, which `merged_at` (when the code merged) can be hours older than. */
+    mergeMarkedAt: timestamp('merge_marked_at', { withTimezone: true }),
     mergedCommitSha: text('merged_commit_sha'),
     mergedLanding: text('merged_landing'),
     mergedClaimedCommit: text('merged_claimed_commit'),

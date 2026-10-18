@@ -207,6 +207,21 @@ describe("a project with stuck issues (ISS-1229 r12)", () => {
     );
   });
 
+  // ISS-1229 r16, the master's ruling on criterion 98: "you" only of the parks the reader owes; the
+  // ones somebody else owes are counted and worded apart.
+  it("counts the parks the reader owes apart from the ones other people owe", () => {
+    const r = projectShape(
+      input({
+        stuckIssues: 4,
+        stuckIssuesByKind: { waiting: 2, waiting_on_others: 2 },
+        stuckIssueRefs: [ISS_9, ISS_3],
+      }),
+    );
+    expect(r.headline).toBe(
+      "2 issues have been waiting for you for over six hours. 2 issues have been waiting for other people for over six hours.",
+    );
+  });
+
   it("says one of a kind in the singular", () => {
     const r = projectShape(input({ stuckIssues: 2, stuckIssuesByKind: { waiting: 1, orphan: 1 }, stuckIssueRefs: [ISS_9] }));
     expect(r.headline).toBe(

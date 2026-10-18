@@ -166,6 +166,16 @@ export function idleRuns(runs: PipelineRunListItem[] | undefined): PipelineRunLi
   return joblessRuns(runs).filter((r) => !worked(r));
 }
 
+/** The open runs the Live sessions section shows, worked by a listed session or by nothing (ISS-1228). */
+export function runsShown(
+  sessions: readonly Pick<LiveSession, "pipelineRunId">[],
+  runs: PipelineRunListItem[] | undefined,
+): PipelineRunListItem[] {
+  const worked = new Set(sessions.map((s) => s.pipelineRunId).filter((id): id is string => !!id));
+  const idle = new Set(idleRuns(runs).map((r) => r.id));
+  return liveRuns(runs).filter((r) => worked.has(r.id) || idle.has(r.id));
+}
+
 export function awaitingReleaseRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {
   return liveRuns(runs).filter((r) => r.currentStep === AWAITING_RELEASE_STEP);
 }
@@ -203,8 +213,11 @@ export interface DashboardAttentionItem {
   status?: string;
   /** The reason a stuck-issue notice tells this item's issue by: the row says it in those words. */
   stuckKind?: StuckIssueKind;
+  /** `waiting_on_others` only: the person the park waits for, whom the row names. */
+  stuckOwedBy?: string;
   /** An answer or review the reader owes, which heads its row above a failed job or a stuck reason. */
   owed?: true;
+  jobId?: string;
   /** The reader's failed job on an issue they owe an answer, listed here rather than as its own row. */
   failedJob?: { jobType: string; failure: string | null };
 }
@@ -229,7 +242,9 @@ function mapAttention(
       since: it.since,
       status: it.status,
       ...(it.stuckKind ? { stuckKind: it.stuckKind } : {}),
+      ...(it.stuckOwedBy ? { stuckOwedBy: it.stuckOwedBy } : {}),
       ...(it.failedJob ? { failedJob: it.failedJob } : {}),
+      ...(actionKind === "retry" && it.jobId ? { jobId: it.jobId } : {}),
     }));
 }
 
@@ -268,7 +283,7 @@ export function projectAttention(
     const asked = awaiting.filter((it) => it.questionId != null);
     const silent = awaiting.filter((it) => it.questionId == null);
     out.push(
-      ...mapAttention(view.failedJobs, slug, "retry", "Approve & retry"),
+      ...mapAttention(view.failedJobs, slug, "retry", "Retry job"),
       ...owed(mapAttention(view.needsReview, slug, "diff", "Open diff")),
       ...owed(mapAttention(asked, slug, "input", "Provide info")),
     );
@@ -294,6 +309,7 @@ export function projectAttention(
       link,
       status: b.status,
       ...(b.stuckKind ? { stuckKind: b.stuckKind } : {}),
+      ...(b.stuckOwedBy ? { stuckOwedBy: b.stuckOwedBy } : {}),
       ...ageOf(ages?.get(b.documentId)),
     });
   }
@@ -328,7 +344,13 @@ export function sessionsWaitingOnYou(
 /** What the stuck-issue notices of a project name: how many issues, and the first few of them. */
 export interface StuckIssues {
   total: number;
-  refs: readonly { issueId: string; documentId: string; title: string; kind: StuckIssueKind }[];
+  refs: readonly {
+    issueId: string;
+    documentId: string;
+    title: string;
+    kind: StuckIssueKind;
+    owedBy?: string;
+  }[];
 }
 
 /** An item whose issue the stuck count holds: a failed job's is counted as that, never as stuck too. */

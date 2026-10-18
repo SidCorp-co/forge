@@ -26,14 +26,16 @@ vi.mock('../notifications/routes.js', () => ({
   createNotification: (...args: unknown[]) => createNotificationMock(...(args as [])),
 }));
 
-const { emitPipelineWedge } = await import('./wedge.js');
+const { emitPipelineWedge, wedgeKeyKind } = await import('./wedge.js');
+
+const JOB_ID = '7d1c2b3a-0000-4000-8000-000000000001';
 
 const BASE_EVENT = {
   projectId: 'proj-1',
   issueId: 'issue-1',
   hop: 'dispatch' as const,
   entity: 'job' as const,
-  entityId: 'job-1',
+  entityId: JOB_ID,
   reason: 'technical why',
   action: 'technical what',
 };
@@ -49,7 +51,7 @@ describe('emitPipelineWedge (ISS-619)', () => {
     await emitPipelineWedge(BASE_EVENT);
     expect(selectWhere).toHaveBeenCalled();
     expect(createNotificationMock).toHaveBeenCalledWith(
-      expect.objectContaining({ resolutionKey: 'wedge:job-1' }),
+      expect.objectContaining({ resolutionKey: `wedge:${JOB_ID}` }),
     );
     const call = createNotificationMock.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(call.body).not.toContain('[entity:');
@@ -84,5 +86,22 @@ describe('emitPipelineWedge (ISS-619)', () => {
     expect(call.body).toContain('WHY: technical why');
     expect(call.body).toContain('WHAT: technical what');
     expect(call.secondaryIssueId).toBeNull();
+  });
+});
+
+describe('a wedge key no resolver ends (ISS-1229 r16)', () => {
+  it('is refused where it is raised, writing nothing', async () => {
+    await emitPipelineWedge({ ...BASE_EVENT, entity: 'session', entityId: 'not-a-session-id' });
+    expect(createNotificationMock).not.toHaveBeenCalled();
+  });
+
+  it('keys each kind by the shape its resolver reads', () => {
+    expect(wedgeKeyKind({ entity: 'session', entityId: JOB_ID })).toBe('session');
+    expect(wedgeKeyKind({ entity: 'run', entityId: `paused:${JOB_ID}` })).toBe('paused_run');
+    expect(wedgeKeyKind({ entity: 'run', entityId: `rounds:${JOB_ID}` })).toBe('review_rounds');
+    expect(wedgeKeyKind({ entity: 'run', entityId: JOB_ID })).toBeNull();
+    expect(wedgeKeyKind({ entity: 'capacity', entityId: `capacity:${JOB_ID}:all` })).toBe(
+      'capacity',
+    );
   });
 });

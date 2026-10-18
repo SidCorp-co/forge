@@ -24,6 +24,7 @@ const liveSessionSchema = z.strictObject({
   deviceId: z.string().nullable(),
   deviceName: z.string().nullable(),
   parentSessionId: z.string().nullable(),
+  pipelineRunId: z.string().nullable(),
   startedAt: z.string().nullable(),
   lastHeartbeatAt: z.string().nullable(),
   createdAt: z.string(),
@@ -69,7 +70,7 @@ export const sessionsAndHoldsSchema = z.strictObject({
 export const readProjectSessionsAndHolds = describeOperation({
   summary: "Read a project's live agent sessions and the issues held on it",
   description:
-    "`sessions` is every session of the project that has not ended, chat sessions excepted, each with the job type and skill a step session was opened under (`jobType`, `skillName`, `null` for any other), the issues it holds (those it leases, or a step session's job's issue), each with `boxReturned`, whether its run's own report says the lease was returned while core still holds it, and the box's own last report (`report`, `null` where the box reported none) how long core lets it go unheard before it ends it (`silenceLimitMs`, `null` where no silence ends it), and whether core holds its box online (`boxOnline`, `null` where it names no box core still holds), since an offline box carries no turn. `holds` is one entry per issue held by a live session, by a claim whose verdict is live, or by a person (`needs_info`, `waiting`, `on_hold`); a session's hold carries the same `boxReturned`. An archived issue is neither held nor listed under a session. `runningChats` is every chat of the project whose turn is running, with the box it runs on, so a box counts every session it holds while the Pipeline page lists no chat. A claim records no time it began, so it carries `renewedAt`, its last renewal; a person's `owes` and `since` are `null` where the park did not record them.",
+    "`sessions` is every session of the project that has not ended, chat sessions excepted, each with the job type and skill a step session was opened under (`jobType`, `skillName`, `null` for any other), the run it works (`pipelineRunId`, `null` for a session on no run), the issues it holds (those it leases, or a step session's job's issue), each with `boxReturned`, whether its run's own report says the lease was returned while core still holds it, and the box's own last report (`report`, `null` where the box reported none) how long core lets it go unheard before it ends it (`silenceLimitMs`, `null` where no silence ends it), and whether core holds its box online (`boxOnline`, `null` where it names no box core still holds), since an offline box carries no turn. `holds` is one entry per issue held by a live session, by a claim whose verdict is live, or by a person (`needs_info`, `waiting`, `on_hold`); a session's hold carries the same `boxReturned`. An archived issue is neither held nor listed under a session. `runningChats` is every chat of the project whose turn is running, with the box it runs on, so a box counts every session it holds while the Pipeline page lists no chat. A claim records no time it began, so it carries `renewedAt`, its last renewal; a person's `owes` and `since` are `null` where the park did not record them.",
   responses: {
     200: json(sessionsAndHoldsSchema),
     400: fail('BAD_REQUEST', 'the project id is not a UUID'),

@@ -57,6 +57,7 @@ import {
   useSessions,
 } from "../hooks";
 import {
+  boxDotOf,
   deriveLiveness,
   isLiveDisplay,
   deriveSessionDisplayStatus,
@@ -64,9 +65,10 @@ import {
   sessionTitle,
   isAwaitingReply,
   isInteractiveSession,
+  isWaitingForABox,
   isRetryable,
   sessionKind,
-  sessionChipStatus,
+  sessionChipStatusOf,
   sessionEndText,
   classifySessionOutcome,
   isRealFailure,
@@ -155,7 +157,7 @@ function matchesFilter(
       return word ? word.label === WORKING_WORD : display === "running";
     }
     case "queued":
-      return row.status === "queued" || row.status === "idle";
+      return isWaitingForABox(row);
     case "attention":
       // ISS-322 — only GENUINE failures, live-stalled (about-to-be-reaped) sessions and sessions
       // their box reports blocked need attention. A terminal `cancelled_stale`/lifecycle cancel is
@@ -241,7 +243,7 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
     const waits: number[] = [];
     rows.forEach((r, i) => {
       const d = displays[i];
-      if (r.status === "queued" || r.status === "idle") {
+      if (isWaitingForABox(r)) {
         queued += 1;
         // Time a still-queued session has been waiting for a runner.
         const since = r.dispatchedAt ?? r.createdAt;
@@ -645,26 +647,21 @@ function SessionIdentity({
 function RunnerCell({
   row,
   deviceName,
-  display,
   now,
 }: {
   row: SessionRow;
   deviceName?: string;
-  display: AgentSessionDisplayStatus;
   now: number;
 }) {
   if (!row.deviceId) return <span className="fg-caption text-subtle">—</span>;
-  const live = isLiveDisplay(display);
-  const liveness = live ? deriveLiveness(row, now) : null;
-  const health =
-    liveness?.state === "stale" || liveness?.state === "reaping"
-      ? "attention"
-      : liveness?.state === "alive"
-        ? "healthy"
-        : null;
+  const health = boxDotOf(row, now);
   return (
     <div className="flex items-center gap-1.5 overflow-hidden">
-      {health && <HealthDot health={health} withLabel={false} />}
+      {health && (
+        <span data-testid="box-dot" data-health={health} className="inline-flex">
+          <HealthDot health={health} withLabel={false} />
+        </span>
+      )}
       {deviceName ? (
         <span className="truncate fg-body-sm text-muted" title={deviceName}>
           {deviceName}
@@ -696,7 +693,7 @@ function StatusCell({
   // (ChatScreen/SessionScreen keep that mapping unchanged; this is list-only).
   const awaitingReply = isAwaitingReply(row);
   const outcome = classifySessionOutcome(display, row.failureReason, row.startedAt != null);
-  const chipStatus = awaitingReply ? "waiting" : sessionChipStatus(display, row.failureReason);
+  const chipStatus = sessionChipStatusOf(row, display);
   const reason = failureReasonLabel(row.failureReason) ?? row.failureReason ?? null;
   // Why it ended, or core's note on one it has not, in the sentences the session page and runs tab say.
   const subLine =
@@ -804,7 +801,7 @@ function SessionTableRow({
         <SessionIdentity row={row} slug={slug} onOpen={open} />
       </TD>
       <TD className="max-w-[160px]">
-        <RunnerCell row={row} deviceName={deviceName} display={display} now={now} />
+        <RunnerCell row={row} deviceName={deviceName} now={now} />
       </TD>
       <TD className="whitespace-nowrap font-mono text-muted">{fmtTime(row.startedAt ?? row.dispatchedAt)}</TD>
       <TD className="text-right font-mono text-muted">{row.usage?.turns ?? "—"}</TD>
@@ -897,7 +894,7 @@ function SessionMobileRow({
         <div className="fg-caption mt-1.5 text-subtle">Started {fmtTime(row.startedAt ?? row.dispatchedAt)}</div>
         {row.deviceId && (
           <div className="mt-2.5">
-            <RunnerCell row={row} deviceName={deviceName} display={display} now={now} />
+            <RunnerCell row={row} deviceName={deviceName} now={now} />
           </div>
         )}
     </li>

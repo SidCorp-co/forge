@@ -18,10 +18,12 @@ export interface AttentionItem {
   since: string;
   issueRef?: string;
   issueTitle?: string;
+  jobId?: string;
   /** Failed job only: its kind of work, as stored; `failedJobWords` says it in words. */
   jobType?: string;
   failure?: string | null;
   stuckKind?: StuckIssueKind;
+  stuckOwedBy?: string;
   failedJob?: { jobType: string; failure: string | null };
   status?: string;
   projectSlug?: string;

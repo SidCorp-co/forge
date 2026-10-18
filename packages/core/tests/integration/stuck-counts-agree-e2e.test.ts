@@ -70,7 +70,7 @@ describe('one board read through the headline, the bell and Attention', () => {
     expect(await held('stranded')).toEqual([...parkedLong].sort());
     expect(await held('idle-issues')).toEqual([...idle].sort());
     expect(SWEEP_DETECTORS.stranded.groupTitle).toBe(
-      'Issues that have been waiting for you for over six hours',
+      'Issues that have been waiting for a person for over six hours',
     );
 
     // Attention: every park the reader owes an answer, however long; past six hours, the bell's.

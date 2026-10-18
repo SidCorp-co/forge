@@ -2,6 +2,7 @@
 
 import type { QueryClient } from "@tanstack/react-query";
 import { invalidateThroughInFlight } from "./invalidate-through-inflight";
+import { moveSessionInLiveReads } from "@/features/pipeline/live-read";
 import { scheduleInvalidation } from "./invalidation-coalescer";
 import { trackJobSeq } from "./seq-tracker";
 
@@ -129,6 +130,10 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "agent-session.updated":
 		case "agent-session.status":
 		case "agent-session.deleted": {
+			// The live read drops a stopped session as its event arrives, before the re-read lands (ISS-1228).
+			if (typeof data?.sessionId === "string" && typeof data?.status === "string") {
+				moveSessionInLiveReads(qc, data.sessionId, data.status);
+			}
 			scheduleInvalidation(qc, ["agent-sessions"]);
 			scheduleInvalidation(qc, [SESSIONS_AND_HOLDS]);
 			// A session's events name no issue, so every open issue page and runs tab re-reads (ISS-1228).
@@ -176,6 +181,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "job.completed":
 		case "job.failed":
 		case "job.resumed":
+		case "job.retried":
 		case "job.cancelled": {
 			scheduleInvalidation(qc, ["jobs", "list"]);
 			scheduleInvalidation(qc, ["admin", "ops"]);

@@ -8,6 +8,7 @@ import { ErrorState, ProjectLoader } from "@/design";
 import { PipelineScreen } from "@/features/pipeline/components/pipeline-screen";
 import { useProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
+import { ProjectMissing } from "@/features/projects/components/project-missing";
 
 export default function ProjectPipelinePage() {
   const params = useParams<{ slug: string }>();
@@ -34,10 +35,7 @@ export default function ProjectPipelinePage() {
   if (!project) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
-        <ErrorState
-          title="Project not found"
-          message="This project doesn't exist or you don't have access to it."
-        />
+        <ProjectMissing slug={slug} />
       </div>
     );
   }
