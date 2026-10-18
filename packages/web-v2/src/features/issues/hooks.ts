@@ -305,11 +305,17 @@ export function useMergeMarker(issueId: string) {
     onSuccess: (answer) => {
       refresh();
       if (answer.action === "already_merged") {
+        // The answer says why nothing moved; its opening sentence is the title's, so it is dropped.
         toast({
           title: "Already marked merged — nothing changed",
-          description: "The mark that stands was kept. To change it, press Unmark, then Mark merged again.",
+          description: answer.detail
+            ? answer.detail.replace(/^Already marked merged[^.]*\.\s*/, "")
+            : "The mark that stands was kept. To change it, press Unmark, then Mark merged again.",
           tone: "info",
         });
+      } else if (answer.movedFrom) {
+        // A later landing of the same issue moves the mark (ISS-1421 round 7); the sentence names both commits.
+        toast({ title: "Landing moved", description: answer.detail, tone: "success" });
       } else {
         toast({ title: "Marked merged", tone: "success" });
       }

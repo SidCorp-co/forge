@@ -83,6 +83,14 @@ vi.mock('./commit-landing.js', async (original) => ({
     sha: commit.toLowerCase().padEnd(40, '0'),
     repository: 'SidCorp-co/specimen',
   }),
+  // A commit named over a witnessed merge is read as this issue's landing (ISS-1421 round 7); this
+  // repository says it is another issue's.
+  readCommitLanding: async ({ commit }: { commit: string }) => ({
+    ok: false as const,
+    code: 'COMMIT_NOT_THIS_ISSUE' as const,
+    detail: `commit ${commit} in SidCorp-co/specimen is not ISS-7's landing`,
+    details: { commit },
+  }),
 }));
 vi.mock('./landing-evidence.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./landing-evidence.js')>()),
@@ -171,10 +179,11 @@ describe('POST /api/issues/:id/merge', () => {
     expect(claimed.detail).toContain('so it is not the merge commit');
   });
 
-  it('carries the sha it witnessed in the answer, so the word can be checked', async () => {
+  it('names the sha it witnessed in seven characters, so a person can read it (ISS-1421)', async () => {
     asObserved();
     const witnessed = await mark();
-    expect(witnessed.detail).toContain(OBSERVED_SHA);
+    expect(witnessed.detail).toContain(`commit ${OBSERVED_SHA.slice(0, 7)},`);
+    expect(witnessed.detail).not.toContain(OBSERVED_SHA);
     expect(witnessed.detail).not.toContain('Forge did not see this merge');
   });
 
@@ -220,11 +229,15 @@ describe('a second mark over a row that already holds a merge Forge witnessed', 
     expect(answer.detail).not.toContain('is not the merge commit Forge holds');
   });
 
-  it('still tells a caller that named a different commit which one the column holds', async () => {
+  // Before round 7 this answered 200 "kept as a claim only" and left the mark at the first merge:
+  // a later commit is now read as this issue's landing, and refused by name where it is not.
+  it("refuses a different commit that is not this issue's landing, by the repository's own refusal", async () => {
     alreadyObserved();
-    const answer = await mark({ target: 'main', commit: 'abc1234' });
-    expect(answer.detail).toContain('abc1234');
-    expect(answer.detail).toContain('named in this mark, is kept as a claim only');
+    const res = await call('POST', { target: 'main', commit: 'abc1234' });
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe('COMMIT_NOT_THIS_ISSUE');
+    expect(body.message).toContain('abc1234');
   });
 });
 

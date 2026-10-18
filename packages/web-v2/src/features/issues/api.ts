@@ -282,10 +282,12 @@ export interface MarkMergedAnswer {
   action: "merged" | "already_merged";
   mark?: string;
   detail?: string;
+  movedFrom?: string | null;
 }
 
 export interface MarkMergedBody {
   target?: string;
   landing?: string;
+  commit?: string;
   note?: string;
 }

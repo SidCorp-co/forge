@@ -15,7 +15,7 @@ import {
   saying,
 } from '../projects/repository-reader.js';
 import { heldIssuePrefixes, issueRefFormatter } from './issue-prefix-read.js';
-import { quoted } from './merge-record.js';
+import { causeAndFix, checkStep, shortCommit } from './merge-record.js';
 
 export type CommitLandingRefusalCode =
   | 'COMMIT_NOT_IN_REPOSITORY'
@@ -76,21 +76,14 @@ function unreadable(
   );
 }
 
-/** Short whole sentences, the cause and the step another part of Forge words each quoted on its own
- *  line (ISS-1421 r5: this ran 66 words with no full stop). */
-function uncheckedCommit(
-  commit: string,
-  why: string,
-  clears: string,
-  after: string[] = [],
-): string {
-  return [
-    `Commit ${commit} could not be checked against this project's repository. The reason:`,
-    quoted(why),
-    'Mark it again once this holds:',
-    quoted(clears.replace(/^once\s+/, '')),
-    ...after,
-  ].join('\n');
+/** What was not checked, why in one clause, and what checks it (ISS-1421: three short sentences). */
+function uncheckedCommit(commit: string, why: string, clears: string, refused = false): string {
+  const step = checkStep({ why, clears, noReader: false });
+  const named = shortCommit(commit);
+  const unread = `could not be checked against this project's repository, because ${causeAndFix(why).cause}.`;
+  return refused
+    ? `Nothing was marked: commit ${named} ${unread} ${step}, or mark it naming no commit, which records a claim that names none.`
+    : `Commit ${named} ${unread} ${step}.`;
 }
 
 /**
@@ -177,7 +170,7 @@ async function landingIn(
     const subject = subjectOf(message);
     return refuse(
       'COMMIT_NOT_THIS_ISSUE',
-      `commit ${sha} in ${repository} is not ${ref}'s landing: its subject "${subject}" does not declare ${ref}. A commit is an issue's when its subject names the key in a closing (…) group, opens with it, or merges a branch named for it`,
+      `commit ${shortCommit(sha)} in ${repository} is not ${ref}'s landing: its subject "${subject}" does not declare ${ref}. A commit is an issue's when its subject names the key in a closing (…) group, opens with it, or merges a branch named for it`,
       { commit: sha, repository, subject, issue: ref },
     );
   }
@@ -200,7 +193,7 @@ async function landingIn(
   }
   return refuse(
     'COMMIT_NOT_LANDED',
-    `commit ${sha} is in ${repository} and ${branches.join(' and ')} ${branches.length > 1 ? 'do' : 'does'} not contain it, so it has not landed. Mark once it is merged there`,
+    `commit ${shortCommit(sha)} is in ${repository} and ${branches.join(' and ')} ${branches.length > 1 ? 'do' : 'does'} not contain it, so it has not landed. Mark once it is merged there`,
     { commit: sha, repository, branches },
   );
 }
@@ -229,10 +222,7 @@ export async function resolveMarkCommit(
   const unresolved = (why: string, route: RepositoryRoute): CommitResolution => ({
     ok: false,
     code: 'COMMIT_UNVERIFIED',
-    detail: uncheckedCommit(commit, why, readableThrough(route), [
-      'The mark was not recorded naming it unchecked.',
-      'Or mark it naming no commit, which records a claim that names none.',
-    ]),
+    detail: uncheckedCommit(commit, why, readableThrough(route), true),
     details: { commit },
     reason: `the repository could not be read: ${why}`,
   });

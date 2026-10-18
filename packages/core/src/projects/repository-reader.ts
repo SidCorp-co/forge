@@ -90,6 +90,7 @@ export interface RepositoryReader {
   commit(ref: string): Promise<CommitLookup>;
   branchHead(branch: string): Promise<BranchRead>;
   contains(sha: string, branch: string): Promise<Containment>;
+  descends(ancestor: string, head: string): Promise<Containment>;
   tagsContaining(commit: string, pattern: string): Promise<TagContainment>;
   carriage(judged: string, served: string): Promise<Carriage>;
   changedPaths(landing: string): Promise<ChangedPaths>;

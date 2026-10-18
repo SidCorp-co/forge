@@ -27,6 +27,12 @@ const LANDING_MAX = 2000;
  *  landed and never that it shipped: the banner beside it says "not shipped yet" (criterion 95). */
 export const BLURB = `Marking merged records where this work landed, which a close needs. ${UNMARK_ACTION} takes it back, unless the issue is closed.`;
 
+/** A later merge of an issue already marked moves the mark forward (ISS-1421 round 7). */
+export const LATER_ACTION = "Mark a later merge";
+export const LATER_BLURB =
+  "This issue is already marked merged. A later merge that carries the marked commit moves the mark to it. " +
+  "Leave Commit empty to use the newest merged pull request.";
+
 /** Outside git the mark names where the work now is, since there is no branch to name (ISS-1327). */
 export const LANDING_BLURB =
   "Say where the work now is: the live URL, the CMS entry or the storefront resource. " +
@@ -63,6 +69,7 @@ export function MergeMarkerControl({
   // reader (once the issue's own key) became a mark saying the work merged into the issue.
   const [target, setTarget] = useState("");
   const [note, setNote] = useState("");
+  const [commit, setCommit] = useState("");
   const [refusal, setRefusal] = useState<string | null>(null);
   const marker = useMergeMarker(issueId);
 
@@ -70,22 +77,19 @@ export function MergeMarkerControl({
     if (open) {
       setTarget("");
       setNote("");
+      setCommit("");
       setRefusal(null);
     }
   }, [open]);
 
-  if (mergedAt) {
-    return (
-      <Button
-        variant="ghost"
-        size="sm"
-        disabled={marker.isPending}
-        onClick={() => marker.unmark()}
-      >
-        {UNMARK_ACTION}
-      </Button>
-    );
-  }
+  const unmarkButton = (
+    <Button variant="ghost" size="sm" disabled={marker.isPending} onClick={() => marker.unmark()}>
+      {UNMARK_ACTION}
+    </Button>
+  );
+  // Outside git a second landing is refused while a mark stands, so only Unmark is offered there.
+  if (mergedAt && outsideGit) return unmarkButton;
+  const later = Boolean(mergedAt);
 
   const trimmedTarget = target.trim();
   const overLimit = outsideGit && trimmedTarget.length > LANDING_MAX;
@@ -93,15 +97,23 @@ export function MergeMarkerControl({
   return (
     <>
       <Button variant="ghost" size="sm" icon="check" onClick={() => setOpen(true)}>
-        {MARK_MERGED_ACTION}
+        {later ? LATER_ACTION : MARK_MERGED_ACTION}
       </Button>
+      {later && unmarkButton}
       {open && (
-        <SlideOver open onClose={() => setOpen(false)} title="Mark this work merged" width={480}>
+        <SlideOver
+          open
+          onClose={() => setOpen(false)}
+          title={later ? LATER_ACTION : "Mark this work merged"}
+          width={480}
+        >
           <div className="flex h-full flex-col gap-4">
             <p className="fg-body-sm text-fg" data-testid="landing-line">
               {landingLine(outsideGit ? "outside_git" : "git", landingSource)}
             </p>
-            <p className="fg-body-sm text-muted">{outsideGit ? LANDING_BLURB : BLURB}</p>
+            <p className="fg-body-sm text-muted">
+              {later ? LATER_BLURB : outsideGit ? LANDING_BLURB : BLURB}
+            </p>
             <Field
               label={WHERE_IT_LANDED_FIELD}
               required
@@ -124,6 +136,18 @@ export function MergeMarkerControl({
                 }}
               />
             </Field>
+            {later && (
+              <Field label="Commit">
+                <Input
+                  value={commit}
+                  placeholder="e.g. the merge commit of the later round"
+                  onChange={(e) => {
+                    setCommit(e.target.value);
+                    setRefusal(null);
+                  }}
+                />
+              </Field>
+            )}
             <Field label="Note">
               <Textarea
                 rows={4}
@@ -161,6 +185,7 @@ export function MergeMarkerControl({
                     {
                       // A project that moves no branch names no target: the landing is where it landed.
                       ...(outsideGit ? { landing: trimmedTarget } : { target: trimmedTarget }),
+                      ...(later && commit.trim() ? { commit: commit.trim() } : {}),
                       ...(note.trim() ? { note: note.trim() } : {}),
                     },
                     // Closed on success only: a refused mark keeps what was typed, and says why.

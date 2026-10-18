@@ -6,7 +6,12 @@
 
 import { describe, expect, it } from 'vitest';
 import { readableThrough } from '../projects/repository-access.js';
-import { describeMergeMark, mergeMarkFields, mergeMarkKindOf } from './merge-record.js';
+import {
+  describeMergeMark,
+  keptClaimRepeat,
+  mergeMarkFields,
+  mergeMarkKindOf,
+} from './merge-record.js';
 
 const AT = new Date('2026-09-20T14:59:37.646Z');
 const SHA = '9a78b0c93f1a2b3c4d5e6f708192a3b4c5d6e7f8';
@@ -64,7 +69,8 @@ describe('the sentence a caller is given', () => {
   it('gives the observed mark a different sentence from the asserted one', () => {
     expect(observed).not.toBe(asserted);
     expect(observed).not.toContain('a claim');
-    expect(observed).toContain(`Forge saw this merge land at commit ${SHA}.`);
+    expect(observed).toContain(`Forge saw this merge land at commit ${SHA.slice(0, 7)},`);
+    expect(observed).not.toContain(SHA);
   });
 
   it('says an unchecked claim was not checked, why, and what checks it, naming the commit once (ISS-1409)', () => {
@@ -77,12 +83,8 @@ describe('the sentence a caller is given', () => {
         noReader: true,
       },
     });
-    expect(unverified).toContain('Commit abc1234 was named, and is kept as a claim.');
-    expect(unverified).toContain(
-      "Forge has no way to read this project's repository, so it did not check it.",
-    );
-    expect(unverified).toContain(
-      'To have it checked, do this, then mark it again:\n> attach a deploy key under Git access',
+    expect(unverified).toBe(
+      "Commit abc1234 was named, and is kept as a claim: Forge has no way to read this project's repository, so it did not check it. Attach a deploy key under Git access, then mark it again.",
     );
     expect(unverified.match(/abc1234/g)).toHaveLength(1);
   });
@@ -97,22 +99,24 @@ describe('the sentence a caller is given', () => {
         noReader: false,
       },
     });
-    expect(failed).toContain(
-      'Forge could not check it. The reason:\n> the git host refused the deploy key attached to this project',
-    );
-    expect(failed).toContain(
-      "Mark it again once this holds:\n> the tracker can read the project's repository with the deploy key",
+    // ISS-1421 — the host's reason as one clause, the step as one short sentence.
+    expect(failed).toBe(
+      'Commit abc1234 was named, and is kept as a claim: Forge could not check it, because the git host refused the deploy key attached to this project. Mark it again once Forge can read the repository.',
     );
     expect(failed).not.toContain('no way to read');
   });
 
   it("says by name that a repeat's other commit was not recorded, and the first claim stands (ISS-1409)", () => {
-    const repeat = describeMergeMark({
-      kind: 'asserted',
-      unverified: { commit: 'abc1234', why: 'w', clears: 'c', noReader: true, notKept: 'def5678' },
+    const repeat = keptClaimRepeat({
+      commit: 'abc1234',
+      why: 'w',
+      clears: 'c',
+      noReader: true,
+      notKept: 'def5678',
     });
-    expect(repeat).toContain('Commit def5678 was not recorded: the first claim, abc1234, stands.');
-    expect(repeat).toContain('To change it, Unmark, then Mark merged again.');
+    expect(repeat).toBe(
+      'Commit def5678 was not recorded: the first claim, abc1234, stands. To record def5678 instead, use Unmark, then Mark merged again.',
+    );
   });
 
   it('carries the claim beside the kind, and never lets it make a mark observed (ISS-1409)', () => {
@@ -153,20 +157,21 @@ describe('the mark sentence names no stored field (ISS-1421 r4)', () => {
   // Repair 1 — a person reads these in the thread: plain short sentences, nothing shouted. A
   // reason or a step another part of Forge words stands quoted on its own `> ` line, as its own.
   const real = [readableThrough('binding'), readableThrough('deploy_key')].flatMap((clears) =>
-    [true, false].map((noReader) =>
-      describeMergeMark({
-        kind: 'asserted',
-        unverified: {
-          commit: 'abc1234',
-          why: noReader
-            ? "set the project's repository under Settings, then attach a deploy key under Git access"
-            : 'git@gitlab.com:sid/desk.git cannot be read: Permission denied (publickey)',
-          clears,
-          noReader,
-          notKept: 'def5678',
-        },
-      }),
-    ),
+    [true, false].flatMap((noReader) => {
+      const unverified = {
+        commit: 'abc1234',
+        why: noReader
+          ? "set the project's repository under Settings, then attach a deploy key under Git access"
+          : 'git@gitlab.com:sid/desk.git cannot be read: Permission denied (publickey)',
+        clears,
+        noReader,
+      };
+      return [
+        describeMergeMark({ kind: 'asserted', unverified }),
+        keptClaimRepeat(unverified),
+        keptClaimRepeat({ ...unverified, notKept: 'def5678' }),
+      ];
+    }),
   );
 
   it.each([...said, ...real].map((sentence, i) => [i, sentence] as const))(

@@ -118,9 +118,9 @@ function MergeMarkBadge({
         <span
           className="fg-body-sm min-w-0 break-all font-mono text-muted"
           data-testid="merged-claim"
-          title="Forge has no way to read this project's repository, so it did not check that this commit exists or landed. Once the repository can be read, marking the issue merged again checks it."
+          title={`Commit ${claimedCommit}. Forge has no way to read this project's repository, so it did not check that this commit exists or landed. Once the repository can be read, marking the issue merged again checks it.`}
         >
-          {claimedCommit.slice(0, 10)} — not verified
+          {claimedCommit.slice(0, 7)} — not verified
         </span>
       </>
     );

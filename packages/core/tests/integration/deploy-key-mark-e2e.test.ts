@@ -67,7 +67,7 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
     const res = await mark(issue, own());
 
     expect(res.mark).toBe('observed');
-    expect(res.markDetail).toContain(`It read the commit from ${GITLAB_URL}, on`);
+    expect(res.markDetail).toContain(`, on main of ${GITLAB_URL}.`);
     expect((await row(issue.id)).merged_commit_sha).toBe(own());
     await advance(issue.id, 'in_progress', 'developed');
     expect((await row(issue.id)).status).toBe('developed');
@@ -91,7 +91,7 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
     [
       'COMMIT_NOT_IN_REPOSITORY',
       () => 'f'.repeat(40),
-      [`${GITLAB_URL} holds no commit ${'f'.repeat(40)}`],
+      [`${GITLAB_URL} holds no commit ${'f'.repeat(7)}.`],
     ],
     [
       'COMMIT_NOT_THIS_ISSUE',
@@ -134,11 +134,15 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
     const branched = await seed({ sessionContext: { branch: `ISS-${SEQ}-elsewhere` } });
     const res = await mark(branched, (at.foreign as string).slice(0, 10));
     expect(res.mark).toBe('asserted');
-    expect(res.markDetail).toContain(`Commit ${at.foreign} was named, and is kept as a claim.`);
+    expect(res.markDetail).toContain(
+      `Commit ${(at.foreign as string).slice(0, 7)} was named, and is kept as a claim:`,
+    );
+    expect(res.namedCommit).toBe(at.foreign);
 
     const person = await seed({ sessionContext: {}, seq: SEQ + 1 });
     const human = await mark(person, (at.foreign as string).slice(0, 10), 'human');
-    expect(human.markDetail).toContain(at.foreign);
+    expect(human.markDetail).toContain((at.foreign as string).slice(0, 7));
+    expect(human.namedCommit).toBe(at.foreign);
     const refused = await refusal(() => mark(person, 'e'.repeat(40), 'human'));
     expect(refused.code).toBe('COMMIT_NOT_IN_REPOSITORY');
     const overlong = await refusal(() => mark(person, `${at.foreign}a`, 'human'));
@@ -191,9 +195,10 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
       expect(res.mark).toBe('asserted');
       expect(res.markDetail).toMatch(/(did not|could not) check it/);
       expect(res.markDetail).toContain(answer.said);
-      for (const s of says) expect(res.markDetail).toContain(s);
-      expect(res.markDetail).toContain(
-        `Mark it again once this holds:\n> the tracker can read the project's repository with the deploy key attached under ${GIT_ACCESS}`,
+      // ISS-1421 — the host's step opens a sentence of its own, so it is read whatever its case.
+      for (const s of says) expect(res.markDetail.toLowerCase()).toContain(s.toLowerCase());
+      expect(res.markDetail).toMatch(
+        /, then mark it again\.$|Mark it again once Forge can read the repository\.$/,
       );
       expect(res.markDetail).not.toMatch(/remote:\s*(\.|\))/);
       expect(res.markDetail).not.toContain('172.65.251.78');
@@ -218,9 +223,7 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
     const res = await mark(issue, at.offBase as string);
     expect(res.mark).toBe('asserted');
     expect(res.markDetail).toContain(`${GITLAB_URL} has no branch staging`);
-    expect(res.markDetail).toContain(
-      `Mark it again once this holds:\n> ${GITLAB_URL} has a branch staging, or the project's base branch and release chain name only branches it has`,
-    );
+    expect(res.markDetail).toContain(`Mark it again once ${GITLAB_URL} has a branch staging.`);
     expect(res.markDetail).not.toContain('with the deploy key attached');
     expect(await row(issue.id)).toMatchObject({ merged_commit_sha: null });
   }, 60_000);
@@ -236,11 +239,9 @@ describe('ISS-1409 — a project whose deploy key cannot be used to read it, or 
 
     expect(res.mark).toBe('asserted');
     expect(res.markDetail).toMatch(/(did not|could not) check it/);
+    expect(res.markDetail).toContain("Forge has no way to read this project's repository");
     expect(res.markDetail).toContain(
-      "Forge holds no GitHub binding and no deploy key for this project's repository on gitlab.com",
-    );
-    expect(res.markDetail).toContain(
-      `attach a deploy key with write access to ${GITLAB_URL} under the project's Settings → Runners → Git access`,
+      `Attach a deploy key with write access to ${GITLAB_URL} under the project's Settings → Runners → Git access`,
     );
     expect(res.markDetail).not.toMatch(
       /bind (a|the) repository|Integrations|through a GitHub binding/,

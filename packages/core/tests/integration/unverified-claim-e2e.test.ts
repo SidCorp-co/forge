@@ -70,7 +70,8 @@ describe('ISS-1409 — no reader: the agent mark is an unverified claim (real Po
     const res = await mark(issue, OWN);
     const audit = (await comments(issue.id)).at(-1) as string;
     for (const text of [res.markDetail, audit]) {
-      expect(text).toContain(`Commit ${OWN}`);
+      expect(text).toContain(`Commit ${OWN.slice(0, 7)} was named`);
+      expect(text).not.toContain(OWN);
       expect(text).toMatch(/(did not|could not) check it/);
       expect(text).toContain('no way to read this project');
       expect(text.match(/Git access/g)).toHaveLength(1);
@@ -92,9 +93,7 @@ describe('ISS-1409 — no reader: the agent mark is an unverified claim (real Po
     const res = await mark(issue, OWN);
     expect(res.mark).toBe('asserted');
     expect(res.markDetail).toContain('the project names no base branch to look for it on');
-    expect(res.markDetail).toContain(
-      'Mark it again once this holds:\n> the project names its base branch',
-    );
+    expect(res.markDetail).toContain('Mark it again once the project names its base branch.');
     expect(await claimOf(issue.id)).toBe(OWN);
     expect(await row(issue.id)).toMatchObject({ merged_commit_sha: null });
     await advance(issue.id, 'in_progress', 'developed');
@@ -131,10 +130,11 @@ describe('ISS-1409 — the claim beside a mark that already stands (real Postgre
     const again = await mark(issue, FOREIGN);
     expect(again.action).toBe('already_merged');
     expect(await claimOf(issue.id)).toBe(OWN);
+    expect(again.namedCommit).toBe(FOREIGN);
     const audit = (await comments(issue.id)).at(-1) as string;
     for (const text of [again.markDetail, audit]) {
-      expect(text).toContain(OWN);
-      expect(text).toContain(`Commit ${FOREIGN} was not recorded`);
+      expect(text).toContain(`the first claim, ${OWN.slice(0, 7)}, stands`);
+      expect(text).toContain(`Commit ${FOREIGN.slice(0, 7)} was not recorded`);
       expect(text).toContain('first claim');
     }
   });
@@ -186,7 +186,7 @@ describe("ISS-1409 — a reader that was read keeps its refusals, and a person's
       expect(res.mark).toBe('asserted');
       expect(res.markDetail).toMatch(/(did not|could not) check it/);
       expect(res.markDetail).toContain(says);
-      expect(res.markDetail).toContain('Mark it again once this holds:\n> the tracker can read');
+      expect(res.markDetail).toContain('Mark it again once Forge can read the repository.');
       expect((await comments(issue.id)).at(-1)).toContain(says);
       expect(await claimOf(issue.id)).toBe(OWN);
       expect(await row(issue.id)).toMatchObject({ merged_commit_sha: null });

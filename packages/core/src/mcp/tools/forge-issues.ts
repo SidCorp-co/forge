@@ -747,6 +747,8 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             action,
             mark,
             markDetail: detail,
+            movedFrom,
+            namedCommit,
           } = await applyMergeMarker({
             issue,
             op: marking ? 'mark' : 'unmark',
@@ -763,7 +765,14 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
               hookActor: principalHookActor(principal),
             },
           });
-          return { ...(await serializeWithAttachments(fresh)), action, mark, detail };
+          return {
+            ...(await serializeWithAttachments(fresh)),
+            action,
+            mark,
+            detail,
+            movedFrom,
+            namedCommit,
+          };
         } catch (err) {
           if (err instanceof MergeMarkerError) {
             // Owed on a git-shape project only (`landing-evidence.ts`), in this door's own words.

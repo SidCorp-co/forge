@@ -1,5 +1,4 @@
-import { db } from '../../db/client.js';
-import { recordIssueMerge } from '../../issues/merge-record.js';
+import { stampObservedMerge } from '../../issues/landing-advance.js';
 import { logger } from '../../logger.js';
 import { hooks } from '../../pipeline/hooks.js';
 import { forgetLiveReading } from '../../projects/live-reading.js';
@@ -88,9 +87,10 @@ const REFRESHING_PR_ACTIONS = new Set([
  *
  * ISS-1073's outcome 3. Somebody pressing Merge on GitHub and Forge merging
  * through `merge.ts` are one landing arriving by two routes, and they produce
- * ONE record because both write through `issues/merge-record.ts` under
- * `merged_commit_sha IS NULL` — whichever gets there first holds the row, and
- * the second reads it back rather than overwriting it.
+ * ONE record: both write through `issues/merge-record.ts`, and the second
+ * reads the same commit and changes nothing. A later merge of the same issue
+ * moves the mark forward where it carries the commit held, and is said on the
+ * issue where it does not (ISS-1421 round 7, `issues/landing-advance.ts`).
  */
 async function stampMergedIssue(ctx: DeliveryContext, payload: PullRequestPayload): Promise<void> {
   const pr = payload.pull_request;
@@ -102,9 +102,10 @@ async function stampMergedIssue(ctx: DeliveryContext, payload: PullRequestPayloa
   if (!headRef) return;
   const issueId = await resolveIssueForHeadRef({ projectId: ctx.projectId, headRef });
   if (!issueId) return;
-  const record = await recordIssueMerge(db, {
+  const record = await stampObservedMerge({
     issueId,
-    evidence: { kind: 'observed', commitSha, mergedAt, via: 'event' },
+    projectId: ctx.projectId,
+    candidate: { sha: commitSha, at: mergedAt, via: 'event' },
   });
   if (!record.wrote) return;
   try {

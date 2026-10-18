@@ -285,6 +285,22 @@ export function githubRepositoryReader(client: GitHubRepoClient): RepositoryRead
       }
     },
 
+    async descends(ancestor: string, head: string): Promise<Containment> {
+      const named = overlong(ancestor, head);
+      if (named) return { why: named };
+      try {
+        // One commit per page: only the status is read, so a long range or a wide diff never
+        // makes the answer unreadable the way a whole compare's file list does.
+        const cmp = await client.get<CompareRead>(
+          `/repos/${repository}/compare/${encodeURIComponent(ancestor)}...${encodeURIComponent(head)}?per_page=1`,
+        );
+        if (!cmp.status) return { why: `${repository} answered no compare status` };
+        return { contains: DESCENDS.has(cmp.status) };
+      } catch (err) {
+        return { why: `${repository} could not compare ${ancestor} with ${head}: ${why(err)}` };
+      }
+    },
+
     async tagsContaining(commit: string, pattern: string): Promise<TagContainment> {
       const named = overlong(commit);
       if (named) return { why: named };

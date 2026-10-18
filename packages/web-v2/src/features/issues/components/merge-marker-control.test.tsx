@@ -8,7 +8,7 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api/client";
-import { BLURB, LANDING_BLURB, MergeMarkerControl } from "./merge-marker-control";
+import { BLURB, LANDING_BLURB, LATER_BLURB, MergeMarkerControl } from "./merge-marker-control";
 
 expect.extend(matchers);
 
@@ -72,6 +72,59 @@ describe("MergeMarkerControl", () => {
     expect(screen.queryByRole("button", { name: "Mark merged" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Unmark" }));
     expect(unmark).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ISS-1421 round 7: once marked, the page offered only Unmark, so a later round could be recorded
+// only by unmarking first, which turns the move into a first mark nothing compares.
+describe("MergeMarkerControl on an issue already marked, whose work lands in git", () => {
+  const MARKED = "2026-10-16T00:00:00.000Z";
+
+  it("offers Mark a later merge beside Unmark", () => {
+    render(<MergeMarkerControl issueId="i1" mergedAt={MARKED} landingShape="git" />);
+    expect(screen.getByRole("button", { name: "Mark a later merge" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Unmark" })).toBeInTheDocument();
+  });
+
+  it("sends the later commit with the target, and never an Unmark", () => {
+    render(<MergeMarkerControl issueId="i1" mergedAt={MARKED} landingShape="git" />);
+    fireEvent.click(screen.getByRole("button", { name: "Mark a later merge" }));
+    expect(screen.getByText(LATER_BLURB)).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: /Where it landed/ }), {
+      target: { value: "main" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: /Commit/ }), {
+      target: { value: " 2b2b2b2 " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
+
+    expect(mark).toHaveBeenCalledWith({ target: "main", commit: "2b2b2b2" }, expect.anything());
+    expect(unmark).not.toHaveBeenCalled();
+  });
+
+  it("sends no commit where Commit is left empty, so the newest merged pull request is read", () => {
+    render(<MergeMarkerControl issueId="i1" mergedAt={MARKED} landingShape="git" />);
+    fireEvent.click(screen.getByRole("button", { name: "Mark a later merge" }));
+    fireEvent.change(screen.getByRole("textbox", { name: /Where it landed/ }), {
+      target: { value: "main" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
+    expect(mark).toHaveBeenCalledWith({ target: "main" }, expect.anything());
+  });
+
+  it("offers only Unmark where the work lands outside git", () => {
+    render(<MergeMarkerControl issueId="i1" mergedAt={MARKED} landingShape="outside_git" />);
+    expect(screen.queryByRole("button", { name: "Mark a later merge" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Unmark" })).toBeInTheDocument();
+  });
+
+  it("introduces the later merge in at most three sentences of at most 25 words", () => {
+    const sentences = LATER_BLURB.trim().split(/(?<=\.)\s+/);
+    expect(sentences.length).toBeLessThanOrEqual(3);
+    for (const sentence of sentences) {
+      expect(sentence).toMatch(/^[A-Z].*\.$/);
+      expect(sentence.split(/\s+/).length).toBeLessThanOrEqual(25);
+    }
   });
 });
 

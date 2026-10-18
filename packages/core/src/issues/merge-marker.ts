@@ -8,6 +8,14 @@ import { findMissingWorkEvidence, readStandingClaim } from '../pipeline/work-evi
 import type { ActorAgency } from './actor-agency.js';
 import { type CommitLanding, readCommitLanding, resolveMarkCommit } from './commit-landing.js';
 import {
+  type LaterLanding,
+  laterLanding,
+  markStays,
+  movedSentence,
+  notDescendantDetail,
+  unreadAnswer,
+} from './landing-advance.js';
+import {
   type LandingShape,
   type Lane,
   landingMarkRefusal,
@@ -21,12 +29,16 @@ import {
 import {
   clearIssueMerge,
   describeMergeMark,
+  keptClaimRepeat,
   type MergeMarkKind,
   type MergeRecord,
   mergeMarkKindOf,
   observedMergeForIssue,
   quoted,
+  readMergeColumns,
   recordIssueMerge,
+  shortCommit,
+  shortenCommits,
 } from './merge-record.js';
 import { refuseUnmarkOnClosed } from './merged-at.js';
 import { findIssueById, type IssueRow } from './read-service.js';
@@ -90,11 +102,13 @@ export class MergeMarkerError extends Error {
       | 'TARGET_REQUIRED'
       | 'PROJECT_KIND_UNKNOWN'
       | 'LANDING_SHAPE_MOVED'
+      | 'LANDING_NOT_DESCENDANT'
       | Exclude<CommitLanding, { ok: true }>['code'],
     message: string,
     readonly details?: Record<string, unknown>,
   ) {
-    super(message);
+    // A person reads seven characters of a commit; `details` keeps the whole sha (ISS-1421).
+    super(shortenCommits(message));
     this.name = 'MergeMarkerError';
   }
 }
@@ -194,6 +208,26 @@ function namesAnother(named: string, kept: string): string | null {
   return a.startsWith(b) || b.startsWith(a) ? null : named;
 }
 
+/** A later commit this mark compared with the one the row held; a different landing is refused. */
+async function compareLater(
+  issue: { id: string; projectId: string; declaredLandingShape: LandingShape | null },
+  commit: string | undefined,
+  observed: { commitSha: string; mergedAt: Date } | null,
+  fromRepository: Extract<CommitLanding, { ok: true }> | null,
+): Promise<LaterLanding | null> {
+  const later = await laterLanding(issue, commit, observed, fromRepository);
+  if (later?.kind === 'refused')
+    throw new MergeMarkerError(later.code, later.detail, later.details);
+  if (later?.kind === 'other') {
+    throw new MergeMarkerError(
+      'LANDING_NOT_DESCENDANT',
+      notDescendantDetail(later.held, later.candidate),
+      { held: later.held, commit: later.candidate },
+    );
+  }
+  return later;
+}
+
 export const NOT_MARKED_MERGED_DETAIL =
   'This issue is not marked merged, so there is no mark to remove. Nothing changed.';
 
@@ -239,6 +273,35 @@ export type MergeMarkerActor = {
   hookActor: Actor;
 };
 
+/** The audit comment a person reads: words, never the action or field names an agent sends. A
+ *  repeat opens with what it did — nothing — and keeps the caller's note quoted whole, a paragraph
+ *  of its own; a first mark names its commit once, in the label only where the detail does not. */
+function threadBody(args: {
+  op: 'mark' | 'unmark';
+  target?: string | undefined;
+  note?: string | undefined;
+  stamp: MergeRecord;
+  claimedCommit: string | null;
+  repeated: boolean;
+  unread: string | null;
+  after: string;
+  markDetail: string;
+}): string {
+  const note = args.note ? quoted(args.note) : null;
+  if (args.repeated) {
+    const parts = args.unread
+      ? [args.unread, note]
+      : [`${alreadyMarkedSentence(args.stamp.mergedAt)}.`, note, args.after];
+    return parts.filter(Boolean).join('\n\n');
+  }
+  const said = args.note ? ` — ${args.note}` : '.';
+  if (args.op !== 'mark') return `Merge mark removed${said}`;
+  const labelled = args.stamp.commitSha ?? args.claimedCommit ?? args.stamp.claimedCommit;
+  const named = labelled ? shortCommit(labelled) : null;
+  const at = named && !args.markDetail.includes(named) ? `, at commit ${named}` : '';
+  return `Marked merged${args.target ? ` into ${args.target}` : ''}${at}${said}\n${args.markDetail}`;
+}
+
 export async function applyMergeMarker(args: {
   /** Already loaded AND authorised by the caller — this function does neither. */
   issue: {
@@ -272,6 +335,10 @@ export async function applyMergeMarker(args: {
    */
   mark: MergeMarkKind;
   markDetail: string;
+  /** The commit the landing moved forward from, where this mark moved it (ISS-1421 round 7). */
+  movedFrom: string | null;
+  /** The whole commit this mark named where no column keeps it; its words show seven characters. */
+  namedCommit: string | null;
 }> {
   const before = args.issue;
 
@@ -290,6 +357,7 @@ export async function applyMergeMarker(args: {
   let readFrom: Extract<CommitLanding, { ok: true }> | null = null;
   /** The repository that holds the claimed commit, where this call read it there. */
   let claimHeldBy: string | null = null;
+  let later: LaterLanding | null = null;
   if (args.op === 'mark') {
     const lane = await markLane(before);
     const shape = lane.shape;
@@ -316,7 +384,11 @@ export async function applyMergeMarker(args: {
             observedSha: observed?.commitSha ?? null,
           })
         : null;
-    if (observed) {
+    later =
+      shape === 'git' ? await compareLater(before, args.commit, observed, fromRepository) : null;
+    if (later?.kind === 'moved') {
+      stampResult = { wrote: true, ...(await readMergeColumns(db, before.id)) };
+    } else if (observed) {
       stampResult = await recordIssueMerge(db, {
         issueId: before.id,
         declared: before.declaredLandingShape ?? null,
@@ -380,15 +452,7 @@ export async function applyMergeMarker(args: {
     await unmarkOrRefuse(before.id);
   }
 
-  const labelled = stampResult.commitSha ?? claimedCommit ?? stampResult.claimedCommit;
   const repeated = args.op === 'mark' && !stampResult.wrote;
-  // The thread is read by people: words, never the action or field names an agent sends. A repeat
-  // opens with what it did — nothing — and keeps the caller's note, which a landing's account reads.
-  const label = repeated
-    ? alreadyMarkedSentence(stampResult.mergedAt)
-    : args.op === 'mark'
-      ? `Marked merged${args.target ? ` into ${args.target}` : ''}${labelled ? `, at commit ${labelled}` : ''}`
-      : 'Merge mark removed';
 
   // Read off the ROW, not off the branch this call took: docs/modules/issues/merge-mark.md.
   const mark: MergeMarkKind =
@@ -409,20 +473,21 @@ export async function applyMergeMarker(args: {
     ...(readFrom && stampResult.wrote ? { readFrom } : {}),
     claimHeldBy,
   });
-  // A repeat naming another commit is already told how to change the claim, by the claim's own words.
-  const step = repeated && !kept?.notKept ? CHANGE_THE_MARK : null;
-  const after = [step, standingDetail].filter(Boolean).join(' ');
+  const after = kept
+    ? keptClaimRepeat(kept)
+    : `${markStays(later, mark, stampResult)} ${CHANGE_THE_MARK}`;
+  const unread =
+    later?.kind === 'unread' ? unreadAnswer(later.held, later.candidate, later.why) : null;
   const markDetail = repeated
-    ? `${alreadyMarkedSentence(stampResult.mergedAt)}. ${after}`
-    : standingDetail;
-  const marked = args.op === 'mark' ? `\n${standingDetail}` : '';
+    ? (unread ?? `${alreadyMarkedSentence(stampResult.mergedAt)}. ${after}`)
+    : later?.kind === 'moved'
+      ? movedSentence(later.from, later.to)
+      : standingDetail;
+  const said = { stamp: stampResult, claimedCommit, repeated, unread, after, markDetail };
   const auditComment = await writeAuditComment(
     before.id,
     args.actor.commentAuthorId,
-    // The thread renders markdown: a repeat's parts are paragraphs, the note quoted whole.
-    repeated
-      ? [`${label}.`, args.note ? quoted(args.note) : null, after].filter(Boolean).join('\n\n')
-      : `${label}${args.note ? ` — ${args.note}` : '.'}${marked}`,
+    threadBody({ ...args, ...said }),
   );
   if (auditComment) {
     await hooks.emit('commentCreated', {
@@ -457,5 +522,9 @@ export async function applyMergeMarker(args: {
   });
 
   const action = args.op !== 'mark' ? 'unmarked' : repeated ? 'already_merged' : 'merged';
-  return { issue, action, mark, markDetail };
+  const [movedFrom, namedCommit] = [
+    later?.kind === 'moved' ? later.from : null,
+    claimedCommit ?? kept?.notKept ?? null,
+  ];
+  return { issue, action, mark, markDetail, movedFrom, namedCommit };
 }
