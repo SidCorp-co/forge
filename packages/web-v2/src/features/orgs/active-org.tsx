@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useMemo } from "react";
+import { createContext, useContext, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";
@@ -31,8 +31,11 @@ interface ActiveOrgContextValue {
   /** Why the orgs could not be read, where they could not: no scope is known, so nothing scoped is read. */
   scopeError: Error | null;
   retryScope: () => void;
-  /** Switch the active org (persists server-side, optimistic). */
+  /** Switch the active org (persists server-side, optimistic): the org switcher's act, and only its. */
   setActiveOrg: (orgId: string) => void;
+  /** Scope this tab's view to an org, as opening one of its projects does, writing nothing: the
+   *  account's stored choice is the switcher's alone (ISS-1229 r16). */
+  viewOrg: (orgId: string) => void;
   /** True when the caller has at most one org → render a static label. */
   isSingle: boolean;
 }
@@ -53,16 +56,19 @@ export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
   const { refetch: refetchOrgs } = orgsQ;
 
   const orgs = useMemo(() => sortOrgs(orgsData ?? []), [orgsData]);
+  // The org this tab is viewing where a visit chose one other than the stored choice; never stored.
+  const [viewing, setViewing] = useState<string | null>(null);
 
   const activeOrg = useMemo(() => {
     if (orgs.length === 0 || !prefsRead) return null;
     const stored = prefs?.activeOrgId ?? null;
     return (
+      (viewing ? orgs.find((o) => o.id === viewing) : undefined) ??
       (stored ? orgs.find((o) => o.id === stored) : undefined) ??
       orgs.find((o) => o.isPersonal) ??
       orgs[0]
     );
-  }, [orgs, prefsRead, prefs?.activeOrgId]);
+  }, [orgs, prefsRead, prefs?.activeOrgId, viewing]);
 
   const mutation = useMutation({
     mutationFn: (orgId: string) => settingsApi.updatePreferences({ activeOrgId: orgId }),
@@ -94,11 +100,15 @@ export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
         void refetchOrgs();
       },
       setActiveOrg: (orgId: string) => {
-        if (orgId !== activeOrg?.id) mutate(orgId);
+        setViewing(null);
+        if (orgId !== (prefs?.activeOrgId ?? null)) mutate(orgId);
+      },
+      viewOrg: (orgId: string) => {
+        if (orgId !== activeOrg?.id) setViewing(orgId);
       },
       isSingle: orgs.length <= 1,
     }),
-    [orgs, activeOrg, scopeRead, scopeError, refetchOrgs, mutate],
+    [orgs, activeOrg, scopeRead, scopeError, refetchOrgs, mutate, prefs?.activeOrgId],
   );
 
   return <ActiveOrgContext.Provider value={value}>{children}</ActiveOrgContext.Provider>;
@@ -114,6 +124,7 @@ export function useActiveOrg(): ActiveOrgContextValue {
     scopeError: null,
     retryScope: () => {},
     setActiveOrg: () => {},
+    viewOrg: () => {},
     isSingle: true,
   };
 }
