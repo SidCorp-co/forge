@@ -18,6 +18,8 @@ describe('FORGE_FACTS', () => {
     const rules = FORGE_FACTS.find((f) => f.id === 'pipeline-rules')?.render() ?? '';
     expect(rules).toContain("leaves the issue's status as it is and re-dispatches the job");
     expect(rules).not.toMatch(/reverts the issue/i);
+    // Codex consult on the round-16 criteria: a crash on an issue already shipped is not retried (retry.ts).
+    expect(rules).toContain('unless the issue already reached `awaiting_release` or `closed`');
   });
 
   it('tells no agent to send a complete entry, the config write ISS-1170 retired', () => {
