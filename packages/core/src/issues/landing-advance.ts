@@ -131,7 +131,7 @@ export function containedSentence(held: string, candidate: string): string {
 }
 
 export function unreadSentence(held: string, candidate: string, why: string): string {
-  return `Commit ${candidate} was not compared with commit ${held}, so the landing stays at ${held}. The reason:\n${quoted(why)}`;
+  return `Commit ${candidate} was not compared with commit ${held}, so the landing stays at ${held}. Mark it again once Forge can read the repository. The reason:\n${quoted(why)}`;
 }
 
 /** The refusal a mark meets where its commit is a different landing from the one the row holds. */

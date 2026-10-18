@@ -446,8 +446,8 @@ export async function applyMergeMarker(args: {
     claimHeldBy,
   });
   // A repeat naming another commit is already told how to change the claim, by the claim's own words.
-  const step = repeated && !kept?.notKept ? CHANGE_THE_MARK : null;
-  const after = [step, laterAside(later), standingDetail].filter(Boolean).join(' ');
+  const step = repeated && !kept?.notKept && later?.kind !== 'unread' ? CHANGE_THE_MARK : null;
+  const after = [step, standingDetail, laterAside(later)].filter(Boolean).join(' ');
   const moved = later?.kind === 'moved' ? `${movedSentence(later.from, later.to)} ` : '';
   const markDetail = repeated
     ? `${alreadyMarkedSentence(stampResult.mergedAt)}. ${after}`

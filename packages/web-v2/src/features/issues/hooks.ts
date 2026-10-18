@@ -308,8 +308,9 @@ export function useMergeMarker(issueId: string) {
         // The answer says why nothing moved, a later commit's unread comparison included.
         toast({
           title: "Already marked merged — nothing changed",
-          description:
-            answer.detail ?? "The mark that stands was kept. To change it, press Unmark, then Mark merged again.",
+          description: answer.detail
+            ? answer.detail.replace(/^Already marked merged[^.]*\.\s*/, "").replace(/\n> /g, " ")
+            : "The mark that stands was kept. To change it, press Unmark, then Mark merged again.",
           tone: "info",
         });
       } else if (answer.movedFrom) {

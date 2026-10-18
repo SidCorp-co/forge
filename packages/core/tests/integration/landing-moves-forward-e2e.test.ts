@@ -170,8 +170,11 @@ describe('where the repository cannot say whether it descends (criteria 108, 113
 
     expect(res.action).toBe('already_merged');
     expect(res.markDetail).toContain(
-      `Commit ${SECOND} was not compared with commit ${FIRST}, so the landing stays at ${FIRST}. The reason:\n> `,
+      `Commit ${SECOND} was not compared with commit ${FIRST}, so the landing stays at ${FIRST}. Mark it again once Forge can read the repository. The reason:\n> `,
     );
+    // The reason stands quoted on the last line, and nothing sends the reader to Unmark.
+    expect(res.markDetail.split('\n').at(-1)).toMatch(/^> /);
+    expect(res.markDetail).not.toContain('use Unmark');
     expect((await row(issue.id)).merged_commit_sha).toBe(FIRST);
     expect((await comments(issue.id)).at(-1)).toContain('The reason:');
   });

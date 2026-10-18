@@ -51,7 +51,10 @@ describe("the notice after Mark merged", () => {
     answer = { id: ISSUE, action: "already_merged", mark: "observed", detail: unread, movedFrom: null };
     const said = await markOnce();
     expect(said.title).toBe("Already marked merged — nothing changed");
-    expect(said.description).toBe(unread);
+    // The title already says nothing changed; the description is the reason, its quote inline.
+    expect(said.description).toBe(
+      "Commit 2b2b2b2 was not compared with commit 1a1a1a1, so the landing stays at 1a1a1a1. The reason: SidCorp-co/forge could not compare",
+    );
   });
 
   it("says Marked merged on a first mark", async () => {
