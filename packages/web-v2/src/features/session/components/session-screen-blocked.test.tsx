@@ -64,7 +64,7 @@ vi.mock("@/features/projects/hooks", () => ({
   useProjects: () => ({ data: [{ id: "p1", slug: "qa", name: "QA", role: "owner" }] }),
 }));
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));
-vi.mock("@/features/pipeline/hooks", () => ({ useSessionsAndHolds: () => read({ sessions: [] }) }));
+vi.mock("@/features/pipeline/hooks", () => ({ useSessionsAndHolds: () => read({ sessions: [], holds: [], runningChats: [] }) }));
 vi.mock("@/features/runs/hooks", () => ({ useRun: () => ({ data: undefined, isLoading: false }) }));
 vi.mock("@/features/runners/hooks", () => ({
   useDevices: () => read([{ id: "d1", name: "bravo", platform: "linux", agentVersion: "0.99.0", status: box.status }]),
@@ -269,6 +269,69 @@ describe("the session page's Runner pill", () => {
       expect(runner).not.toHaveTextContent(/Idle|Healthy/);
     } finally {
       box.status = "online";
+    }
+  });
+});
+
+// ISS-1228 round 15 (judge-39): a session core still held, left idle, showed an ended time and Rerun
+// (which answers 400) and no Stop; a Swept chat's "Why it ended" was a red alert beside a neutral
+// chip; and a run whose box went offline after ten minutes was told "The runner never picked it up".
+describe("a session's page reads core's state", () => {
+  it("offers Stop and no ended time or Rerun on a session core holds while it is idle", () => {
+    page.session = { ...session, kind: "chat", metadata: { type: "chat" }, status: "idle", report: null };
+    try {
+      render(<SessionScreen sessionId="s1" projectSlug="qa" />);
+      expect(screen.getByRole("button", { name: "Stop session" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Rerun" })).not.toBeInTheDocument();
+      expect(screen.getByTitle("Ended (last update on a terminal session)")).toHaveTextContent(/^—\s*ended$/);
+    } finally {
+      page.session = session;
+    }
+  });
+
+  it("offers Rerun and an ended time once core has ended it", () => {
+    page.session = { ...session, status: "failed", failureReason: "user_cancelled", report: null };
+    try {
+      render(<SessionScreen sessionId="s1" projectSlug="qa" />);
+      expect(screen.getByRole("button", { name: "Rerun" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Stop session" })).not.toBeInTheDocument();
+      expect(screen.getByTitle("Ended (last update on a terminal session)")).not.toHaveTextContent(/^—/);
+    } finally {
+      page.session = session;
+    }
+  });
+
+  it("draws a Swept chat's Why it ended in the chip's neutral tone, and a failure's in red", () => {
+    page.session = {
+      ...session,
+      kind: "chat",
+      metadata: { type: "chat" },
+      status: "failed",
+      failureReason: "no_client_ack",
+      report: null,
+    };
+    try {
+      const { container, unmount } = render(<SessionScreen sessionId="s1" projectSlug="qa" />);
+      const swept = within(container).getByText("The session ended. No acknowledgement.").closest("div[style]");
+      expect(swept?.getAttribute("style")).toContain("--ink-600");
+      unmount();
+      page.session = { ...session, status: "failed", failureReason: "agent_killed", report: null };
+      const failed = render(<SessionScreen sessionId="s1" projectSlug="qa" />).container;
+      const red = within(failed).getByText(/^The session ended\./).closest("div[style]");
+      expect(red?.getAttribute("style")).toContain("--red");
+    } finally {
+      page.session = session;
+    }
+  });
+
+  it("tells a session that ran and then lost its box that the box stopped answering", () => {
+    page.session = { ...session, status: "failed", failureReason: "runner_unreachable", report: null };
+    try {
+      render(<SessionScreen sessionId="s1" projectSlug="qa" />);
+      expect(screen.getByText("The box stopped answering while the session ran. Check it's online, then Rerun.")).toBeInTheDocument();
+      expect(screen.queryByText(/never picked it up/)).not.toBeInTheDocument();
+    } finally {
+      page.session = session;
     }
   });
 });

@@ -30,7 +30,9 @@ import {
   sessionStep,
   failureReasonAction,
   failureReasonLabel,
+  isRealFailure,
   type SessionRow,
+  TERMINAL_SESSION_STATUSES,
 } from "@/features/sessions/types";
 import { coreNoteText } from "@/features/sessions/status-sentences";
 import { useSessionCost, useSessions } from "@/features/sessions/hooks";
@@ -165,6 +167,9 @@ export function ContextRail({
   const failureReason = session.failureReason ?? null;
   const showBlocker =
     !!failureReason && (display === "failed" || display === "stalled" || display === "cancelled_stale");
+  const remedy = failureReasonAction(failureReason, "Rerun", session.startedAt != null);
+  // Core has ended it: a session it still holds, idle between turns included, has no end time.
+  const ended = TERMINAL_SESSION_STATUSES.has(session.status);
 
   return (
     <div className="flex flex-col gap-6">
@@ -286,15 +291,14 @@ export function ContextRail({
 
       {showBlocker && (
         <Section title={display === "stalled" ? "Core's note" : "Why it ended"}>
-          <Banner tone={failureReason === "user_cancelled" ? "info" : "danger"}>
+          {/* One tone for one outcome: red only where the chip reads a failure (ISS-1228). */}
+          <Banner tone={display === "stalled" ? "attention" : isRealFailure(display, failureReason) ? "danger" : "neutral"}>
             <span className="font-semibold">
               {display === "stalled"
                 ? coreNoteText(failureReasonLabel(failureReason) ?? failureReason)
                 : sessionEndText(failureReason)}
             </span>
-            {failureReasonAction(failureReason) && (
-              <span className="mt-0.5 block">{failureReasonAction(failureReason, "Rerun")}</span>
-            )}
+            {remedy && <span className="mt-0.5 block">{remedy}</span>}
             {WENT_SILENT.has(failureReason) && items.length > 0 && (
               <span className="mt-0.5 block">{LAST_TURN_SHOWS_WHERE}</span>
             )}
@@ -309,7 +313,7 @@ export function ContextRail({
           </Stat>
           <Stat icon="play" title="Agent started">{fmtTime(session.startedAt)} started</Stat>
           <Stat icon="check" title="Ended (last update on a terminal session)">
-            {live ? "—" : fmtTime(session.updatedAt)} ended
+            {ended ? fmtTime(session.updatedAt) : "—"} ended
           </Stat>
         </div>
       </Section>

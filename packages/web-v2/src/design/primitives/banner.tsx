@@ -2,10 +2,11 @@ import type { ReactNode } from "react";
 import { Icon, type IconName } from "@/design/icons/icon";
 import { IconButton } from "./icon-button";
 
-type Tone = "info" | "attention" | "danger" | "success";
+type Tone = "info" | "neutral" | "attention" | "danger" | "success";
 
 const TONE: Record<Tone, { fg: string; bg: string; border: string; icon: IconName }> = {
   info: { fg: "var(--cobalt-700)", bg: "var(--cobalt-50)", border: "var(--cobalt-100)", icon: "activity" },
+  neutral: { fg: "var(--ink-600)", bg: "var(--paper-100)", border: "var(--paper-200)", icon: "archive" },
   attention: { fg: "var(--amberw-600)", bg: "var(--amberw-50)", border: "var(--amber-50)", icon: "alert" },
   danger: { fg: "var(--red-600)", bg: "var(--red-50)", border: "var(--red-50)", icon: "alert" },
   success: { fg: "var(--green-600)", bg: "var(--green-50)", border: "var(--green-50)", icon: "check" },

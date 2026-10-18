@@ -9,7 +9,7 @@ import {
 import { TERMINAL_AGENT_SESSION_STATUSES } from "@forge/contracts/status-sets";
 import { sessionStatusLabel } from "@/design/primitives/status-chip";
 import { type StatusKey, STOPPED_WORD } from "@/design/status";
-import { ENDING_AS_FAILED, endsAsFailedInText, sessionEndedText } from "./status-sentences";
+import { ENDING_AS_FAILED, endsAsFailedInText, OUTCOME_HOVER, sessionEndedText } from "./status-sentences";
 
 export type AgentSessionStatus =
   | "idle"
@@ -128,6 +128,7 @@ export interface SessionRow {
   report?: SessionBoxReport | null;
   /** How long core lets this session go unheard before ending it; `null` where nothing does. */
   silenceLimitMs?: number | null;
+  boxOnline?: boolean | null;
   /** Every issue the session holds — its leases and its job's issue — as the list names them. */
   issues?: Array<{ id: string; displayId: string; title: string; boxReturned?: boolean }>;
   runtimeState?: string | null;
@@ -282,7 +283,7 @@ export const FAILURE_REASON_ACTION: Record<SessionFailureReason, string> = {
     "Another job on that runner held the repo for ten minutes. Retry once it is free.",
   box_session_saturated:
     "That runner had no session slot free. The job moves to another box on its own.",
-  runner_unreachable: "The runner never picked it up. Check it's online, then Retry.",
+  runner_unreachable: "The box could not be reached. Check it's online, then Retry.",
   duplex_channel_failed: "The session channel dropped. A fresh session is the next step.",
   session_lost: "The session died without reporting. Retry to start it again.",
   ws_publish_failed: "The reply couldn't be delivered. Start a new chat to retry.",
@@ -336,15 +337,24 @@ export function sessionEndText(reason: string | null | undefined): string | null
   return reason ? sessionEndedText(reason, failureReasonLabel(reason)) : null;
 }
 
-/** The remedy in the words of the page it is read on: `button` names that page's own button where it is not Retry. */
+/** A remedy that reads differently by whether the session had started (ISS-1228). */
+const ACTION_BY_START: Partial<Record<SessionFailureReason, { started: string; never: string }>> = {
+  runner_unreachable: {
+    started: "The box stopped answering while the session ran. Check it's online, then Retry.",
+    never: "The runner never picked it up. Check it's online, then Retry.",
+  },
+};
+
+/** The remedy in the words of the page it is read on: `button` is that page's own, `started` whether it had started. */
 export function failureReasonAction(
   reason: string | null | undefined,
   button: "Retry" | "Rerun" = "Retry",
+  started?: boolean,
 ): string | null {
   if (!reason) return null;
-  const action =
-    FAILURE_REASON_ACTION[reason as SessionFailureReason] ??
-    FAILURE_REASON_ACTION[resolveFailureCause(reason)];
+  const cause = (Object.hasOwn(FAILURE_REASON_ACTION, reason) ? reason : resolveFailureCause(reason)) as SessionFailureReason;
+  const byStart = started === undefined ? undefined : ACTION_BY_START[cause];
+  const action = byStart ? (started ? byStart.started : byStart.never) : FAILURE_REASON_ACTION[cause];
   return action.replace(/\bRetry\b/g, button);
 }
 
@@ -356,6 +366,8 @@ export interface SilenceInput {
   updatedAt?: string | null;
   /** The silence after which core ends this session, as core states it on the row. */
   silenceLimitMs?: number | null;
+  /** Whether core holds the session's box online; `null` where it names no box, absent from an older core. */
+  boxOnline?: boolean | null;
 }
 
 /**
@@ -367,14 +379,21 @@ export interface SilenceInput {
 export function sessionSilence(session: SilenceInput, nowMs: number = Date.now()): LivenessResult {
   if (session.status !== "running") return { state: "na", sinceHeartbeatMs: null, reapInMs: null };
   const lastSignal = session.lastHeartbeatAt ?? session.startedAt ?? session.updatedAt ?? null;
-  if (!lastSignal) return { state: "alive", sinceHeartbeatMs: null, reapInMs: null };
+  const unread: LivenessResult = {
+    state: session.boxOnline === false ? "stale" : "alive",
+    sinceHeartbeatMs: null,
+    reapInMs: null,
+  };
+  if (!lastSignal) return unread;
   const lastMs = new Date(lastSignal).getTime();
-  if (Number.isNaN(lastMs)) return { state: "alive", sinceHeartbeatMs: null, reapInMs: null };
+  if (Number.isNaN(lastMs)) return unread;
 
   const since = nowMs - lastMs;
   const limit = session.silenceLimitMs ?? null;
   if (limit !== null && since > limit) return { state: "reaping", sinceHeartbeatMs: since, reapInMs: 0 };
-  if (since <= STALLED_THRESHOLD_MS) return { state: "alive", sinceHeartbeatMs: since, reapInMs: null };
+  // An offline box carries no turn, so its session is quiet however recently it was heard.
+  const heard = session.boxOnline !== false && since <= STALLED_THRESHOLD_MS;
+  if (heard) return { state: "alive", sinceHeartbeatMs: since, reapInMs: null };
   if (limit === null) return { state: "stale", sinceHeartbeatMs: since, reapInMs: null };
   return { state: "stale", sinceHeartbeatMs: since, reapInMs: limit - since };
 }
@@ -399,18 +418,26 @@ export function quietEndText(liveness: LivenessResult): string | null {
 export function deriveLiveness(
   session: Pick<
     SessionRow,
-    "status" | "lastHeartbeatAt" | "startedAt" | "updatedAt" | "metadata" | "silenceLimitMs"
+    "status" | "lastHeartbeatAt" | "startedAt" | "updatedAt" | "metadata" | "silenceLimitMs" | "boxOnline"
   >,
   nowMs: number = Date.now(),
 ): LivenessResult {
-  if (isInteractiveSession(session)) return { state: "na", sinceHeartbeatMs: null, reapInMs: null };
+  const gradable = !isInteractiveSession(session) || session.boxOnline === false;
+  if (!gradable) return { state: "na", sinceHeartbeatMs: null, reapInMs: null };
   return sessionSilence(session, nowMs);
 }
 
 export function deriveSessionDisplayStatus(
   session: Pick<
     SessionRow,
-    "status" | "lastHeartbeatAt" | "startedAt" | "updatedAt" | "metadata" | "report" | "silenceLimitMs"
+    | "status"
+    | "lastHeartbeatAt"
+    | "startedAt"
+    | "updatedAt"
+    | "metadata"
+    | "report"
+    | "silenceLimitMs"
+    | "boxOnline"
   >,
   nowMs: number = Date.now(),
 ): AgentSessionDisplayStatus {
@@ -473,9 +500,10 @@ export interface SessionOutcome {
 export function classifySessionOutcome(
   display: AgentSessionDisplayStatus,
   failureReason?: string | null,
+  started?: boolean,
 ): SessionOutcome {
   if (display === "completed" || display === "completed_via_recovery") {
-    return { bucket: "success", statusKey: "done", label: "Completed", tooltip: "Finished cleanly." };
+    return { bucket: "success", statusKey: "done", label: "Completed", tooltip: OUTCOME_HOVER.completed };
   }
 
   if (display === "cancelled_stale") {
@@ -483,8 +511,7 @@ export function classifySessionOutcome(
       bucket: "swept",
       statusKey: "swept",
       label: "Swept (overdue)",
-      tooltip:
-        "Swept after going stale (no recent heartbeat). This is automatic cleanup, not a failure.",
+      tooltip: OUTCOME_HOVER.sweptStale,
     };
   }
 
@@ -493,7 +520,7 @@ export function classifySessionOutcome(
       bucket: "cleanup",
       statusKey: "archived",
       label: STOPPED_WORD,
-      tooltip: "Stopped on purpose. Not a failure.",
+      tooltip: OUTCOME_HOVER.stopped,
     };
   }
 
@@ -502,7 +529,7 @@ export function classifySessionOutcome(
       bucket: "swept",
       statusKey: "archived",
       label: STOPPED_WORD,
-      tooltip: "A person stopped this session. Not a failure.",
+      tooltip: OUTCOME_HOVER.personStopped,
     };
   }
 
@@ -514,8 +541,7 @@ export function classifySessionOutcome(
         bucket: "cleanup",
         statusKey: "swept",
         label: "Cleaned up",
-        tooltip:
-          "This step was automatically cleaned up when the pipeline finished — not a failure.",
+        tooltip: OUTCOME_HOVER.cleanedUp,
       };
     }
     if (presentation === "swept") {
@@ -523,16 +549,14 @@ export function classifySessionOutcome(
         bucket: "swept",
         statusKey: "swept",
         label: failureReasonLabel(reason) ?? "Cancelled",
-        tooltip:
-          failureReasonAction(reason) ??
-          "Ended by a lifecycle or capacity rule. Not a failure.",
+        tooltip: failureReasonAction(reason, "Retry", started) ?? OUTCOME_HOVER.ruleEnded,
       };
     }
     return {
       bucket: "failed",
       statusKey: "failed",
       label: failureReasonLabel(reason) ?? "Failed",
-      tooltip: failureReasonAction(reason) ?? "The agent step failed. See the run timeline.",
+      tooltip: failureReasonAction(reason, "Retry", started) ?? OUTCOME_HOVER.failed,
     };
   }
 

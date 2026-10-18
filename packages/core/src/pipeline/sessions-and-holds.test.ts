@@ -63,11 +63,38 @@ const project = (over: Partial<Parameters<typeof projectSessionsAndHolds>[0]> = 
     leases: [],
     claims: [],
     persons: [],
+    runningChats: [],
     now: NOW,
     ...over,
   });
 
+describe('projectSessionsAndHolds — running chats', () => {
+  it('answers each running chat with its box, apart from the sessions the Pipeline page lists', () => {
+    const out = project({
+      runningChats: [
+        { id: 'c1', device_id: 'box-a' },
+        { id: 'c2', device_id: null },
+      ],
+    });
+    expect(out.runningChats).toEqual([
+      { id: 'c1', deviceId: 'box-a' },
+      { id: 'c2', deviceId: null },
+    ]);
+    expect(out.sessions).toEqual([]);
+  });
+});
+
 describe('projectSessionsAndHolds — sessions', () => {
+  it.each([
+    ['online', 'online', true],
+    ['offline', 'offline', false],
+    ['revoked', 'revoked', false],
+    ['one core no longer holds', null, null],
+  ] as const)("states whether a session's box is online, for a box %s", (_n, status, online) => {
+    const out = project({ sessions: [session({ device_status: status })] });
+    expect(out.sessions[0]?.boxOnline).toBe(online);
+  });
+
   it('gives each live session the issues it holds and the box report it last sent', () => {
     const out = project({
       sessions: [session()],
@@ -148,7 +175,12 @@ describe('projectSessionsAndHolds — sessions', () => {
   });
 
   it('answers an empty project with empty lists, not a refusal', () => {
-    expect(project()).toEqual({ sessions: [], holds: [], readAt: NOW.toISOString() });
+    expect(project()).toEqual({
+      sessions: [],
+      holds: [],
+      runningChats: [],
+      readAt: NOW.toISOString(),
+    });
   });
 });
 

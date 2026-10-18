@@ -7,7 +7,7 @@ export {
   type StatusKey, type HealthKey, type AvatarHue, type ColorMeta,
 } from "./status";
 
-export { Button, type ButtonProps } from "./primitives/button";
+export { Button, ButtonLink, type ButtonLinkProps, type ButtonProps } from "./primitives/button";
 export { sessionStatusLabel, StatusChip, type StatusChipProps } from "./primitives/status-chip";
 export { MonoTag, type MonoTagProps } from "./primitives/mono-tag";
 export { Avatar, type AvatarProps } from "./primitives/avatar";

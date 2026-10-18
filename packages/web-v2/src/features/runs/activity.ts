@@ -92,10 +92,14 @@ function detailOf(a: PipelineRunAttempt, cause: FailureCause | null): string | n
 }
 
 /** Two attempts collapse into one line only when every readable field agrees. */
-function signature(a: PipelineRunAttempt, cause: FailureCause | null, outcome: string): string {
-  return [a.jobType, a.status, cause ?? "", outcome, deviceLabel(a), detailOf(a, cause) ?? ""].join(
-    "\0",
-  );
+function signature(
+  a: PipelineRunAttempt,
+  cause: FailureCause | null,
+  outcome: string,
+  action: string | null,
+): string {
+  const fields = [a.jobType, a.status, cause ?? "", outcome, action ?? "", deviceLabel(a)];
+  return [...fields, detailOf(a, cause) ?? ""].join("\0");
 }
 
 function verbFor(position: number, repeats: number): string {
@@ -111,7 +115,8 @@ export function deriveActivityFeed(attempts: PipelineRunAttempt[] | undefined): 
     const position = index + 1;
     const cause = causeOf(a);
     const outcome = outcomeOf(a, cause);
-    const sig = signature(a, cause, outcome);
+    const action = cause ? failureReasonAction(cause, "Retry", a.startedAt != null) : null;
+    const sig = signature(a, cause, outcome, action);
     const previous = entries[entries.length - 1];
 
     if (previous && sig === lastSignature) {
@@ -130,7 +135,7 @@ export function deriveActivityFeed(attempts: PipelineRunAttempt[] | undefined): 
       object: jobKindLabel(a.jobType),
       outcome,
       cause,
-      action: cause ? failureReasonAction(cause) : null,
+      action,
       detail: detailOf(a, cause),
       tone: toneOf(a, cause),
       device: deviceLabel(a),

@@ -5,6 +5,7 @@ import {
   leaseDisagreementText,
   offlineSessionDisagreementText,
   quietForText,
+  RUN_DETAIL,
   type SessionDisagreement,
   sessionDisagreementText,
 } from "@/features/sessions/status-sentences";
@@ -49,36 +50,12 @@ export function runState(row: {
 }
 
 const LABELS: Record<RunState, StateLabel> = {
-  "live-runnable": {
-    label: WORKING_WORD,
-    detail: "An agent is running in this worktree.",
-    tone: "active",
-  },
-  "live-blocked": {
-    label: "Blocked, holding the box",
-    detail: "Waiting on a machine or another agent, and keeping its process while it waits.",
-    tone: "attention",
-  },
-  "exited-blocked": {
-    label: "Parked for a person",
-    detail: "The process is gone. The worktree and the branch are kept until someone answers.",
-    tone: "blocked",
-  },
-  "exited-runnable": {
-    label: "Answered, awaiting revival",
-    detail: "The answer is on the record and nothing has restarted this run yet.",
-    tone: "failure",
-  },
-  closed: {
-    label: "Closed",
-    detail: "The close loop finished.",
-    tone: "archived",
-  },
-  unknown: {
-    label: "Unknown",
-    detail: "The box reported a combination this build does not name — nothing may be reclaimed.",
-    tone: "infra",
-  },
+  "live-runnable": { label: WORKING_WORD, detail: RUN_DETAIL.working, tone: "active" },
+  "live-blocked": { label: "Blocked, holding the box", detail: RUN_DETAIL.blockedHolding, tone: "attention" },
+  "exited-blocked": { label: "Parked for a person", detail: RUN_DETAIL.parked, tone: "blocked" },
+  "exited-runnable": { label: "Answered, awaiting revival", detail: RUN_DETAIL.answered, tone: "failure" },
+  closed: { label: "Closed", detail: RUN_DETAIL.closed, tone: "archived" },
+  unknown: { label: "Unknown", detail: RUN_DETAIL.unknown, tone: "infra" },
 };
 
 
@@ -157,14 +134,9 @@ export function pulseText(p: Pulse): string | null {
   return quietForText(since, p.state !== "silent");
 }
 
-const QUIET_DETAIL =
-  "The box last reported this, and core has heard nothing from the run's session since.";
-const ENDED_DETAIL = "Core ended this run's session, so this is what the box last reported, not what is happening.";
-
 /** Core has ended the run's session, whatever the box still says of its process. */
 const coreEnded = (row: Pick<RunSessionRow, "sessionStatus">): boolean =>
   row.sessionStatus != null && TERMINAL_SESSION_STATUSES.has(row.sessionStatus);
-const OFFLINE_DETAIL = "The box is offline: this is what it last reported, not what it is doing.";
 
 /**
  * The chip a run's row shows at `nowMs`. Where the box claims a process, the row says what its
@@ -175,7 +147,13 @@ const OFFLINE_DETAIL = "The box is offline: this is what it last reported, not w
 export function stateLabelAt(
   row: Pick<
     RunSessionRow,
-    "incarnation" | "work" | "lastActivityAt" | "silenceLimitMs" | "sessionStatus" | "sessionRuntimeState"
+    | "incarnation"
+    | "work"
+    | "lastActivityAt"
+    | "silenceLimitMs"
+    | "sessionStatus"
+    | "sessionRuntimeState"
+    | "observedAt"
   > &
     Partial<Pick<RunSessionRow, "deviceStatus" | "sessionFailureReason">>,
   nowMs: number,
@@ -185,12 +163,12 @@ export function stateLabelAt(
   // A person's stop keeps the one word every surface says it with, whatever the box says of its
   // process; the disagreement line beside the chip says what the box reports.
   if (state !== "closed" && coreEnded(row) && row.sessionFailureReason === "user_cancelled") {
-    return { label: STOPPED_WORD, detail: ENDED_DETAIL, tone: "neutral" };
+    return { label: STOPPED_WORD, detail: RUN_DETAIL.ended, tone: "neutral" };
   }
   if (state !== "live-runnable" && state !== "live-blocked") return meta;
   // An ended session is neither quiet nor doing anything: core no longer takes its check-ins.
   if (coreEnded(row)) {
-    return { label: lastReported(row.work === "blocked" ? BLOCKED_WORD : WORKING_WORD), detail: ENDED_DETAIL, tone: "neutral" };
+    return { label: lastReported(row.work === "blocked" ? BLOCKED_WORD : WORKING_WORD), detail: RUN_DETAIL.ended, tone: "neutral" };
   }
   const coreLive = row.sessionStatus != null;
   const word = liveSessionWord(
@@ -204,9 +182,9 @@ export function stateLabelAt(
     },
     nowMs,
   );
-  if (word.quiet) return { label: word.label, detail: QUIET_DETAIL, tone: word.tone };
+  if (word.quiet) return { label: word.label, detail: RUN_DETAIL.quiet, tone: word.tone };
   if (boxOffline(row)) {
-    return { label: lastReported(word.activity), detail: OFFLINE_DETAIL, tone: "neutral" };
+    return { label: lastReported(word.activity), detail: boxOfflineText(formatRelativeTime(row.observedAt)), tone: "neutral" };
   }
   return coreLive ? { label: word.label, detail: meta.detail, tone: word.tone } : meta;
 }

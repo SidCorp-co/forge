@@ -39,6 +39,8 @@ export interface LiveSession {
   /** How long core lets this session go unheard before it ends it; `null` where no silence does;
    *  absent on a read that predates it. */
   silenceLimitMs?: number | null;
+  /** Whether core holds this session's box online; `null` where the session names no box. */
+  boxOnline?: boolean | null;
   /** The job type and skill a step session was opened under, which its title begins with. */
   jobType?: string | null;
   skillName?: string | null;
@@ -77,8 +79,15 @@ export interface HeldIssue extends HeldIssueRef {
   holders: Holder[];
 }
 
+/** A chat whose turn is running on a box: the Pipeline page lists no chat, and its box counts it. */
+export interface RunningChat {
+  id: string;
+  deviceId: string | null;
+}
+
 export interface SessionsAndHolds {
   sessions: LiveSession[];
   holds: HeldIssue[];
+  runningChats: RunningChat[];
   readAt: string;
 }

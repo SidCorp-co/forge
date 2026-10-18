@@ -34,7 +34,7 @@ vi.mock("@/features/runners/hooks", () => ({
 vi.mock("@/features/pipeline/hooks", () => ({
   // The box hosts the live session every case renders, as the dashboard's read says.
   useSessionsAndHolds: () => ({
-    data: { sessions: [{ id: "s-1", deviceId: "dev-1" }], holds: [], readAt: "" },
+    data: { sessions: [{ id: "s-1", deviceId: "dev-1" }], holds: [], runningChats: [], readAt: "" },
     isError: false,
     error: null,
   }),

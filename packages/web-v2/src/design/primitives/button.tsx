@@ -1,4 +1,5 @@
-import type { ButtonHTMLAttributes } from "react";
+import Link from "next/link";
+import type { AnchorHTMLAttributes, ButtonHTMLAttributes } from "react";
 import { cn } from "@/lib/utils/cn";
 import { Icon, type IconName } from "@/design/icons/icon";
 import { Spinner } from "./spinner";
@@ -18,6 +19,12 @@ const SIZES: Record<Size, string> = {
   sm: "text-13 px-[11px] py-[6px] gap-[6px]",
   md: "text-sm px-[15px] py-[9px] gap-[7px]",
 };
+
+const BASE = cn(
+  "inline-flex items-center justify-center whitespace-nowrap rounded-md border font-semibold leading-none",
+  "transition-colors duration-[120ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
+  "disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none",
+);
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
@@ -42,14 +49,7 @@ export function Button({
     <button
       disabled={disabled || loading}
       aria-busy={loading || undefined}
-      className={cn(
-        "inline-flex items-center justify-center whitespace-nowrap rounded-md border font-semibold leading-none",
-        "transition-colors duration-[120ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
-        "disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none",
-        VARIANTS[variant],
-        SIZES[size],
-        className,
-      )}
+      className={cn(BASE, VARIANTS[variant], SIZES[size], className)}
       {...props}
     >
       {loading ? (
@@ -59,5 +59,22 @@ export function Button({
       )}
       {children}
     </button>
+  );
+}
+
+export interface ButtonLinkProps extends AnchorHTMLAttributes<HTMLAnchorElement> {
+  href: string;
+  variant?: Variant;
+  size?: Size;
+  icon?: IconName;
+}
+
+/** A link drawn as a button: what it opens is a page, so it opens in a new tab and copies as one. */
+export function ButtonLink({ href, variant = "secondary", size = "md", icon, className, children, ...props }: ButtonLinkProps) {
+  return (
+    <Link href={href} className={cn(BASE, "no-underline", VARIANTS[variant], SIZES[size], className)} {...props}>
+      {icon && <Icon name={icon} size={size === "sm" ? 15 : 16} />}
+      {children}
+    </Link>
   );
 }

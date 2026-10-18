@@ -33,6 +33,7 @@ import {
   usageSessionMatch,
   usageTotalsSelection,
 } from '../usage-records/rollup.js';
+import { boxOnlineOf, loadBoxStatuses } from './box-online.js';
 import { loadSessionReports } from './box-report.js';
 import { broadcastSession, broadcastTurnAppended, broadcastTurnTruncated } from './broadcast.js';
 import { extractTurnPreview } from './chat-preview.js';
@@ -386,8 +387,10 @@ agentSessionRoutes.get(
     const reportById = await loadSessionReports(pageIds);
     const deadlineById = await loadSilenceDeadlines(pageIds);
     const issuesById = await loadSessionIssues(pageIds);
+    const boxStatus = await loadBoxStatuses(rows.map((r) => r.deviceId));
     const items = rows.map((r) => ({
       ...r,
+      boxOnline: boxOnlineOf(r.deviceId ? boxStatus.get(r.deviceId) : null),
       issues: issuesById.get(r.id) ?? [],
       estimatedCost: costById.get(r.id) ?? 0,
       lastMessagePreview: previewById.get(r.id) ?? null,
@@ -474,9 +477,11 @@ agentSessionRoutes.get(
 
     const reports = await loadSessionReports([row.id]);
     const deadlines = await loadSilenceDeadlines([row.id]);
+    const boxStatus = await loadBoxStatuses([row.deviceId]);
     return c.json(
       answer(ref.sessionReadSchema, {
         ...row,
+        boxOnline: boxOnlineOf(row.deviceId ? boxStatus.get(row.deviceId) : null),
         report: reports.get(row.id) ?? null,
         silenceLimitMs: silenceLimitFrom(
           deadlines.get(row.id) ?? null,

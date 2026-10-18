@@ -62,10 +62,14 @@ export const sessionSchema = tableRow(agentSessions);
 /** How long core lets this session go unheard before it ends it; `null` where no silence does. */
 const silenceLimitMsSchema = z.number().int().nonnegative().nullable();
 
+/** Whether core holds the session's box online; `null` where it names no box core still holds. */
+const boxOnlineSchema = z.boolean().nullable();
+
 /** A session as a reader sees it: the row, what its box last reported about it, and core's silence limit. */
 export const sessionReadSchema = sessionSchema.extend({
   report: sessionReportSchema,
   silenceLimitMs: silenceLimitMsSchema,
+  boxOnline: boxOnlineSchema,
 });
 
 /** A session as a list shows it: no transcript, with its cost, the last line said and every issue
@@ -86,6 +90,7 @@ export const sessionListItemSchema = sessionSchema.omit({ messages: true }).exte
   lastMessagePreview: z.string().nullable(),
   report: sessionReportSchema,
   silenceLimitMs: silenceLimitMsSchema,
+  boxOnline: boxOnlineSchema,
 });
 
 export const sessionListSchema = z.object({

@@ -118,7 +118,7 @@ vi.mock("@/features/runs/hooks", () => ({
 }));
 vi.mock("@/features/pipeline/hooks", () => ({
   useSessionsAndHolds: () => ({
-    data: sessions === undefined ? undefined : { sessions, holds: [], readAt: new Date(NOW).toISOString() },
+    data: sessions === undefined ? undefined : { sessions, holds: [], runningChats: [], readAt: new Date(NOW).toISOString() },
     isLoading: false,
     isError: sessionsError !== null,
     error: sessionsError,

@@ -418,12 +418,8 @@ deviceAuthRoutes.post(
     }
 
     if (wasOffline) {
-      const { roomManager } = await import('../ws/server.js');
-      const { deviceRoom } = await import('../ws/rooms.js');
-      roomManager.publish(deviceRoom(device.id), {
-        event: 'device.status',
-        data: { deviceId: device.id, status: 'online' },
-      });
+      const { publishBoxState } = await import('./box-state-publish.js');
+      await publishBoxState(device.id, 'online');
     }
 
     return c.json(

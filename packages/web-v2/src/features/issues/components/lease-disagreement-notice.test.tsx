@@ -39,6 +39,7 @@ const holder = (boxReturned: boolean): Holder => ({
 
 const read = (holders: Holder[]): SessionsAndHolds => ({
   readAt: "2026-10-17T07:45:00.000Z",
+  runningChats: [],
   sessions: [],
   holds: [{ issueId: "i3", displayId: "ISS-3", title: "j31 charlie", status: "in_progress", holders }],
 });

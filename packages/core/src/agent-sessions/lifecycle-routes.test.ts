@@ -10,10 +10,8 @@ vi.mock('../config/env.js', () => ({
 const selectLimit = vi.fn();
 const selectOrderByLimit = vi.fn();
 const selectOrderBy = vi.fn(() => ({ limit: selectOrderByLimit }));
-const selectWhere = vi.fn(() => ({
-  limit: selectLimit,
-  orderBy: selectOrderBy,
-}));
+const selectFor = vi.fn(async () => [{ status: 'running' }]);
+const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy, for: selectFor }));
 const selectInnerJoinWhere = vi.fn(() => ({ orderBy: selectOrderBy }));
 const innerJoin = vi.fn(() => ({ where: selectInnerJoinWhere }));
 const selectFrom = vi.fn(() => ({ where: selectWhere, innerJoin }));
@@ -74,9 +72,7 @@ vi.mock('../pipeline/activity.js', () => ({
   safeRecordActivity: vi.fn(async () => {}),
 }));
 
-// ISS-101 — interactive session inserts now open a pipeline_run first.
-// Stub the helper so the chained db stub above doesn't need to model
-// pipeline_runs.
+// Stub the run opener so the chained db stub above need not model pipeline_runs.
 vi.mock('../pipeline/runs.js', () => ({
   openIssueRun: vi.fn(async () => ({ id: 'run-1', startedAt: new Date() })),
   openOneShotRun: vi.fn(async () => ({ id: 'run-1' })),
@@ -450,6 +446,8 @@ describe('POST /api/agent-sessions/abort', () => {
         projectId: PROJECT_ID,
         userId: USER_ID,
         deviceId: DEVICE_ID,
+        kind: 'chat',
+        status: 'running',
         metadata: { deviceId: DEVICE_ID },
       },
     ]);

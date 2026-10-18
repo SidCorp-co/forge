@@ -78,8 +78,8 @@ describe("the gate a run session opened under, on the session rail", () => {
 
 		expect(screen.getByText("Declaration gate")).toBeTruthy();
 		expect(screen.getByText(/gate was failing open when this run opened/)).toBeTruthy();
-		expect(screen.getByText(/^295 dispatch\(es\) admitted without a decision, 71\/day over 100h 17m$/)).toBeTruthy();
-		expect(screen.getByText(/^281 of 295: this pane carries no control capability/)).toBeTruthy();
+		expect(screen.getByText("295 dispatches were admitted without a decision, 71/day over 100h 17m.")).toBeTruthy();
+		expect(screen.getByText(/^281 of 295: this pane carries no control capability.*\.$/)).toBeTruthy();
 		expect(useRun).toHaveBeenCalledWith(RUN_ID, true);
 	});
 

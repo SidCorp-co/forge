@@ -52,9 +52,9 @@ describe("the issue header's actions at phone width (criterion 37)", () => {
     ["open", null, ["Run", "Open session", "Issue actions"]],
   ] as const)("at %s offers its controls, Open session in words at every width", (status, run, names) => {
     renderAt(status, run);
-    const buttons = screen.getAllByRole("button");
-    expect(buttons.map((b) => b.getAttribute("aria-label") ?? b.textContent)).toEqual(names);
-    const open = screen.getByRole("button", { name: "Open session" });
+    const controls = [...document.querySelectorAll("button, a[href]")];
+    expect(controls.map((b) => b.getAttribute("aria-label") ?? b.textContent)).toEqual(names);
+    const open = screen.getByRole("link", { name: "Open session" });
     expect(open.querySelector("svg")).not.toBeNull();
     expect(open).toHaveTextContent("Open session");
     // No class hides any part of its words at a width (criterion 86).
@@ -84,19 +84,19 @@ describe("the issue header's primary says what it does", () => {
   );
 });
 
-// ISS-1228 round 14 (judge-36): Open session landed on the unfiltered Agents runs list.
+// ISS-1228 round 14 (judge-36): Open session landed on the unfiltered Agents runs list. Round 15
+// (judge-39): it was a button, so it could not be opened in a new tab or copied.
 describe("Open session opens the issue's session", () => {
-  it("goes to the session page it is given", async () => {
-    const { fireEvent } = await import("@testing-library/react");
-    push.mockClear();
+  it("is a link to the session page it is given, so it opens in a new tab", () => {
     renderAt("in_progress", null, "/projects/forge/agents/s-9");
-    fireEvent.click(screen.getByRole("button", { name: "Open session" }));
-    expect(push).toHaveBeenCalledWith("/projects/forge/agents/s-9");
+    const open = screen.getByRole("link", { name: "Open session" });
+    expect(open).toHaveAttribute("href", "/projects/forge/agents/s-9");
+    expect(screen.queryByRole("button", { name: "Open session" })).toBeNull();
   });
 
   it("is not offered for an issue no session has run", () => {
     renderAt("open", null, null);
-    expect(screen.queryByRole("button", { name: "Open session" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Open session" })).toBeNull();
     expect(screen.getByRole("button", { name: "Issue actions" })).toBeInTheDocument();
   });
 });

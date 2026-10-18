@@ -5,10 +5,18 @@ import { useMemo, useState } from "react";
 import { EmptyState, ErrorState, Input, MonoTag, Skeleton } from "@/design";
 import { useNow } from "@/design/hooks/use-now";
 import { useProjectRuns } from "@/features/runs/hooks";
+import {
+  NO_BOX_REPORTS_A_RUN,
+  NO_RUN_WORKING,
+  noBoxReportsButWorkedText,
+  RUN_APPEARS,
+} from "@/features/sessions/status-sentences";
 import { RUN_STATUS_WORD } from "@/features/runs/run-status-words";
 import type { PipelineRunListItem } from "@/features/runs/types";
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
+import { projectRoom } from "@/lib/ws/rooms";
+import { useRoom } from "@/lib/ws/use-room";
 import { applyFilters, type StateFilter } from "../filter";
 import { useRunSessions } from "../hooks";
 import { openRuns, stalledRuns, workedRuns } from "../stalled-runs";
@@ -127,7 +135,7 @@ function NothingRunning({ projectId, slug }: { projectId: string; slug: string }
       <div className="grid min-h-[40vh] place-items-center">
         <EmptyState
           title="No runs on this project"
-          message="A run appears here as soon as a master opens one on a box serving this project."
+          message={RUN_APPEARS}
         />
       </div>
     );
@@ -136,11 +144,7 @@ function NothingRunning({ projectId, slug }: { projectId: string; slug: string }
   return (
     <section className="flex flex-col gap-2">
       <p className="fg-body-sm text-fg">
-        {worked > 0
-          ? `No box reports a run here, though ${worked} open ${worked === 1 ? "run has" : "runs have"} work behind ${worked === 1 ? "it" : "them"}.`
-          : readWhole
-            ? "No run is working on this project right now."
-            : "No box reports a run on this project right now."}
+        {worked > 0 ? noBoxReportsButWorkedText(worked) : readWhole ? NO_RUN_WORKING : NO_BOX_REPORTS_A_RUN}
       </p>
       {open.length > 0 && (
         <>
@@ -240,6 +244,7 @@ function StalledBand({ projectId, now }: { projectId: string; now: number }) {
 }
 
 export function RunsPane({ scope }: RunsPaneProps) {
+  useRoom(projectRoom(scope.projectId));
   const { data, isLoading, isError, error, refetch } = useRunSessions(scope.projectId);
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<StateFilter>("all");

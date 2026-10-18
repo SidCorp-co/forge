@@ -7,7 +7,7 @@
 
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { lastReported, WORKING_WORD } from "@/design";
+import { HEALTH_META, lastReported, SILENCE_WORD, WORKING_WORD } from "@/design";
 import type { StatusKey } from "@/design/status";
 import { RunRow } from "@/features/agents/components/run-row";
 import type { RunSessionRow } from "@/features/agents/types";
@@ -331,6 +331,50 @@ describe("the sessions list's count of working sessions (ISS-1228 criterion 36)"
     expect(readCounts(container, WORKING_WORD)).toEqual({ figure: "1", tab: "1" });
     listed = row;
     cleanup();
+  });
+});
+
+// ISS-1228 round 15 repair: box-b read Offline in the strip while its session, heard just before the box
+// dropped, read Working with a green dot and the header counted no quiet session.
+describe("a running session whose box is offline, heard moments before it dropped", () => {
+  const offLive: LiveSession = { ...live, lastHeartbeatAt: HEARD_AT, boxOnline: false };
+  const offRow: SessionRow = { ...row, lastHeartbeatAt: HEARD_AT, updatedAt: HEARD_AT, boxOnline: false };
+
+  it("reads what it last reported on every surface, never Working", () => {
+    const quietDoing = lastReported(WORKING_WORD);
+    const { container: pipeline } = render(<SessionsList sessions={[offLive]} slug="pair" now={NOW} />);
+    const pipelineDoing = doingCell(pipeline);
+    cleanup();
+
+    const { container: card } = render(<LiveSessionsCard sessions={[offLive]} slug="pair" now={NOW} read={{ read: "ok" }} />);
+    const dashboardDoing = card.querySelector("li > span")?.textContent;
+    cleanup();
+
+    expect({ pipelineDoing, dashboardDoing, display: deriveSessionDisplayStatus(offRow, NOW) }).toEqual({
+      pipelineDoing: quietDoing,
+      dashboardDoing: quietDoing,
+      display: "stalled",
+    });
+  });
+
+  it("is counted Quiet in the sessions list's header, with its box's dot not green", () => {
+    listed = offRow;
+    const { container: list } = render(<SessionsScreen scope={{ projectId: "p1" }} />);
+    const figure = (label: string) =>
+      [...list.querySelectorAll(".fg-overline")].find((el) => el.textContent === label)?.nextElementSibling?.textContent;
+    const runnerDot = [...list.querySelectorAll<HTMLElement>("tbody span")].find((el) => el.style.borderRadius === "999px");
+    const listChip = list.querySelector("tbody span.rounded-md.font-semibold")?.textContent;
+    const counted = { working: figure(WORKING_WORD), quiet: figure(SILENCE_WORD), listChip };
+    const dot = runnerDot?.style.background;
+    listed = row;
+    cleanup();
+
+    expect(counted).toEqual({
+      working: "0",
+      quiet: "1",
+      listChip: SILENCE_WORD,
+    });
+    expect(dot).toBe(HEALTH_META.attention.dot);
   });
 });
 

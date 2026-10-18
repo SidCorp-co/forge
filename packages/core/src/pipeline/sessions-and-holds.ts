@@ -8,6 +8,7 @@
 
 import type { IssuePark } from '@forge/contracts';
 import { sql } from 'drizzle-orm';
+import { boxOnlineOf } from '../agent-sessions/box-online.js';
 import {
   type LedgerRow,
   loadLedgerRows,
@@ -59,6 +60,8 @@ export interface LiveSession {
   report: SessionReport | null;
   /** How long core lets this session go unheard before it ends it; `null` where no silence does. */
   silenceLimitMs: number | null;
+  /** Whether core holds its box online; `null` where it names no box core still holds. */
+  boxOnline: boolean | null;
 }
 
 export type Holder =
@@ -93,9 +96,16 @@ export interface HeldIssue extends HeldIssueRef {
   holders: Holder[];
 }
 
+/** A chat whose turn is running on a box: listed nowhere on the Pipeline page, counted by its box. */
+export interface RunningChat {
+  id: string;
+  deviceId: string | null;
+}
+
 export interface SessionsAndHolds {
   sessions: LiveSession[];
   holds: HeldIssue[];
+  runningChats: RunningChat[];
   readAt: string;
 }
 
@@ -109,6 +119,7 @@ export interface SessionRow {
   runtime_state: string | null;
   device_id: string | null;
   device_name: string | null;
+  device_status?: string | null;
   parent_session_id: string | null;
   started_at: Date | string | null;
   last_heartbeat_at: Date | string | null;
@@ -169,6 +180,7 @@ export function projectSessionsAndHolds(input: {
   leases: readonly LeaseRow[];
   claims: readonly ClaimInput[];
   persons: readonly PersonInput[];
+  runningChats: readonly { id: string; device_id: string | null }[];
   now: Date;
 }): SessionsAndHolds {
   const ref = (row: { issue_id?: string; id?: string; iss_seq: number; title: string }) => ({
@@ -243,10 +255,12 @@ export function projectSessionsAndHolds(input: {
         s.last_heartbeat_at,
         s.started_at,
       ),
+      boxOnline: boxOnlineOf(s.device_status),
     }),
   );
 
-  return { sessions, holds: [...held.values()], readAt: input.now.toISOString() };
+  const runningChats = input.runningChats.map((c) => ({ id: c.id, deviceId: c.device_id }));
+  return { sessions, holds: [...held.values()], runningChats, readAt: input.now.toISOString() };
 }
 
 const listOf = (values: readonly string[]) =>
@@ -287,7 +301,7 @@ export async function readSessionsAndHolds(
   const sessions = (await db.execute(sql`
     SELECT s.id, s.kind, s.title, s.metadata ->> 'jobType' AS job_type,
            s.metadata ->> 'skillName' AS skill_name,
-           s.status, s.runtime_state, s.device_id, d.name AS device_name,
+           s.status, s.runtime_state, s.device_id, d.name AS device_name, d.status AS device_status,
            s.parent_session_id, s.started_at, s.last_heartbeat_at, s.created_at
       FROM agent_sessions s
       LEFT JOIN devices d ON d.id = s.device_id
@@ -295,6 +309,14 @@ export async function readSessionsAndHolds(
        AND ${liveSessionWhere}
      ORDER BY s.created_at
   `)) as unknown as SessionRow[];
+
+  // Read in the same request as the sessions, so a box's count never mixes two moments (ISS-1228).
+  const runningChats = (await db.execute(sql`
+    SELECT s.id, s.device_id
+      FROM agent_sessions s
+     WHERE s.project_id = ${projectId}::uuid AND s.kind = 'chat' AND s.status = 'running'
+     ORDER BY s.created_at
+  `)) as unknown as Array<{ id: string; device_id: string | null }>;
 
   const ids = sessions.map((s) => s.id);
   const ledger = await loadLedgerRows(ids);
@@ -356,6 +378,7 @@ export async function readSessionsAndHolds(
     leases,
     claims,
     persons,
+    runningChats,
     now,
   });
 }

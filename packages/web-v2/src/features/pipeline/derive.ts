@@ -31,7 +31,9 @@ export function sessionName(
   return title?.trim() || sessionKindLabel(session.kind);
 }
 
-function isQuiet(session: Pick<LiveSession, "status" | "lastHeartbeatAt" | "startedAt">, now: number): boolean {
+type Heard = Pick<LiveSession, "status" | "lastHeartbeatAt" | "startedAt" | "boxOnline">;
+
+function isQuiet(session: Heard, now: number): boolean {
   const { state } = sessionSilence(session, now);
   return state === "stale" || state === "reaping";
 }
@@ -58,7 +60,7 @@ export interface CheckIn {
 /** How long ago the session last checked in, and whether a running one has gone quiet, judged by the
  *  one silence reading the session page and the sessions list also read. */
 export function checkInOf(
-  session: Pick<LiveSession, "status" | "lastHeartbeatAt" | "startedAt">,
+  session: Heard,
   now: number,
 ): CheckIn {
   const quiet = isQuiet(session, now);

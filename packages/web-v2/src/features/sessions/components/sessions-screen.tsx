@@ -37,7 +37,7 @@ import {
 import { TONE_META } from "@/design/status";
 import { SessionChip } from "./session-chip";
 import { useSessionDuration } from "../session-duration";
-import { coreNoteText, leaseDisagreementText } from "../status-sentences";
+import { CHAT_TAG_HOVER, coreNoteText, ENDS_AS_FAILED_HOVER, leaseDisagreementText } from "../status-sentences";
 import { StopSessionConfirm } from "./stop-session-confirm";
 import { isWaitingForInput, sessionWord } from "../session-word";
 import { useOrgScopedProjects, useProject, useProjects } from "@/features/projects/hooks";
@@ -63,6 +63,7 @@ import {
   sessionStep,
   sessionTitle,
   isAwaitingReply,
+  isInteractiveSession,
   isRetryable,
   sessionKind,
   sessionChipStatus,
@@ -515,7 +516,8 @@ function StatPill({ label, value, ink }: { label: string; value: string; ink?: s
 }
 
 /** Build the contextual row-action menu, choosing items by display status. Ending the current turn
- *  leaves the session open, so it is named for that and kept apart from Stop session (ISS-1228). */
+ *  leaves the session open, so it is named for that and kept apart from Stop session, and is offered
+ *  only on a chat whose turn is running: a box ends a chat's turn and nothing else (ISS-1228). */
 export function buildMenuItems(row: SessionRow, display: AgentSessionDisplayStatus, a: RowActions): MenuItem[] {
   const items: MenuItem[] = [];
   const isLive = isLiveDisplay(display);
@@ -526,7 +528,7 @@ export function buildMenuItems(row: SessionRow, display: AgentSessionDisplayStat
     display === "failed" ||
     display === "cancelled_stale";
 
-  if (isLive || display === "idle") {
+  if (isInteractiveSession(row) && row.status === "running") {
     items.push({ label: "End this turn", icon: "pause", onSelect: () => a.abort.mutate(row.id) });
   }
   if (isLive || isQueued) {
@@ -693,7 +695,7 @@ function StatusCell({
   // taking priority over the generic idle→paused mapping used everywhere else
   // (ChatScreen/SessionScreen keep that mapping unchanged; this is list-only).
   const awaitingReply = isAwaitingReply(row);
-  const outcome = classifySessionOutcome(display, row.failureReason);
+  const outcome = classifySessionOutcome(display, row.failureReason, row.startedAt != null);
   const chipStatus = awaitingReply ? "waiting" : sessionChipStatus(display, row.failureReason);
   const reason = failureReasonLabel(row.failureReason) ?? row.failureReason ?? null;
   // Why it ended, or core's note on one it has not, in the sentences the session page and runs tab say.
@@ -721,7 +723,7 @@ function StatusCell({
       )}
       {word?.quiet && <span className="fg-caption text-subtle">{word.label}</span>}
       {endText && (
-        <span className="fg-caption text-subtle" title="Core ends a session as failed once it stays silent this long">
+        <span className="fg-caption text-subtle" title={ENDS_AS_FAILED_HOVER}>
           {endText}
         </span>
       )}
@@ -792,7 +794,7 @@ function SessionTableRow({
           )}
           <SessionKindTag row={row} />
           {hasChildren && (
-            <span className="text-11 text-muted" title="this session owns others in this list">
+            <span className="text-11 text-muted" title="This session owns others in this list.">
               &#8226;
             </span>
           )}
@@ -832,7 +834,7 @@ function SessionKindTag({ row }: { row: SessionRow }) {
   const kind = sessionKind(row);
   const tag = <Badge tone={KIND_TONE[kind]}>{SESSION_KIND_LABEL[kind]}</Badge>;
   if (kind !== "chat") return tag;
-  return <Tooltip label="Interactive chat — spawns no pipeline job, so a running chat is not a wedged runner.">{tag}</Tooltip>;
+  return <Tooltip label={CHAT_TAG_HOVER}>{tag}</Tooltip>;
 }
 
 function SessionMobileRow({
