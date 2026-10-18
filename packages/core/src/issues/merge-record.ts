@@ -281,8 +281,7 @@ export async function recordIssueMerge(
       mergedAt: claimsOnly ? sql`coalesce(${issues.mergedAt}, ${stampExpr})` : stampExpr,
       // When the mark was first set, which the owed-close sweep counts from; a later write keeps it.
       mergeMarkedAt: sql`coalesce(${issues.mergeMarkedAt}, now())`,
-      // A merge Forge read replaces any claim in the same statement: the CHECK holds a claim
-      // beside no commit.
+      // A merge Forge read replaces any claim here: the CHECK holds a claim beside no commit.
       ...(evidence.kind === 'observed'
         ? { mergedCommitSha: evidence.commitSha, mergedClaimedCommit: null }
         : {}),
