@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const server: {
   attention: (orgId?: string | null, expand?: readonly string[]) => Promise<unknown>;
-  devices: () => Promise<unknown>;
+  devices: (orgId?: string | null) => Promise<unknown>;
   activeOrgId: string | null;
   scopeRead: boolean;
 } = {
@@ -31,7 +31,8 @@ vi.mock("@/features/orgs/active-org", () => ({ useActiveOrg: () => ({ activeOrgI
 vi.mock("@/features/runners/hooks", async () => {
   const { useQuery } = await import("@tanstack/react-query");
   return {
-    useDevices: () => useQuery({ queryKey: ["devices", "me", null], queryFn: () => server.devices() }),
+    useDevices: (orgId?: string | null) =>
+      useQuery({ queryKey: ["devices", "me", orgId ?? null], queryFn: () => server.devices(orgId) }),
   };
 });
 
@@ -73,6 +74,23 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("useAttention", () => {
+  // ISS-1229 r16, judge-41: one organisation's Attention listed a runner bound only to another's.
+  it("reads the offline runners of the organisation it reads, and every one's where none is active", async () => {
+    const asked: Array<string | null | undefined> = [];
+    server.devices = async (orgId) => {
+      asked.push(orgId);
+      return [];
+    };
+    server.activeOrgId = "org-a";
+    const { result, unmount } = renderHook(() => useAttention(), { wrapper: wrapper() });
+    await waitFor(() => expect(result.current.devicesRead).toBe("read"));
+    unmount();
+    server.activeOrgId = null;
+    const all = renderHook(() => useAttention(), { wrapper: wrapper() });
+    await waitFor(() => expect(all.result.current.devicesRead).toBe("read"));
+    expect(asked).toEqual(["org-a", null]);
+  });
+
   // ISS-1229 r13, judge-30: the cap was filled across organisations and the screen filtered after it,
   // so the active organisation's items could be cut before the filter saw them. The read asks the
   // route for the active organisation, which cuts before its cap.

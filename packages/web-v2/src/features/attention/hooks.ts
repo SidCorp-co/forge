@@ -38,8 +38,9 @@ export function useAttention(
       previousQuery?.queryKey[1] === orgId ? previous : undefined,
   });
   // `['devices','me']` is already WS-invalidated on device.login/paired/revoked
-  // and reconnect — reusing the runners hook keeps the offline bucket live.
-  const devicesQ = useDevices();
+  // and reconnect — reusing the runners hook keeps the offline bucket live. The organisation read is
+  // the devices' too: a box bound only to another organisation's projects is not this one's (ISS-1229 r16).
+  const devicesQ = useDevices(orgId);
 
   const offlineRunners: AttentionItem[] = useMemo(() => {
     const rows = devicesQ.data ?? [];
