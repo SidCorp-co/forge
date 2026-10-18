@@ -91,6 +91,7 @@ describe("a box going offline or coming back reaches every surface that states i
       ["projects", "p1", "runners"],
       ["projects", "p1", "active-runners"],
       ["agent-sessions"],
+      ["agent-session"],
       ["sessions-and-holds"],
       ["run-sessions"],
     ]) {

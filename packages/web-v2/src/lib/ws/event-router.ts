@@ -255,6 +255,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			scheduleInvalidation(qc, ["projects", data.projectId, "runners"]);
 			scheduleInvalidation(qc, ["projects", data.projectId, "active-runners"]);
 			scheduleInvalidation(qc, ["agent-sessions"]);
+			scheduleInvalidation(qc, ["agent-session"]);
 			scheduleInvalidation(qc, [SESSIONS_AND_HOLDS]);
 			scheduleInvalidation(qc, [RUN_SESSIONS]);
 			return;
