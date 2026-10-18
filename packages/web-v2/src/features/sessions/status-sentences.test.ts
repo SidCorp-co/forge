@@ -135,6 +135,9 @@ describe("every sentence in the one place", () => {
       s.quietForText("1m", true),
       s.sessionEndedText("no_client_ack", "No acknowledgement"),
       s.waitingOnText("human", "approve the restore"),
+      s.runningChatsText(1),
+      s.runningChatsText(2),
+      ...["human", "machine", "master_or_peer", "nobody", null].flatMap((k) => [s.blockedHoldingText(k), s.parkedText(k)]),
     ];
     for (const line of made) expect(line, line).toMatch(SENTENCE);
   });

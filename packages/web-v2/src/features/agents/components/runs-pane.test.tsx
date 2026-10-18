@@ -295,6 +295,11 @@ describe("the runs a box reports (ISS-1228 round 8)", () => {
     const row = within(screen.getByRole("list", { name: "Runs a box reports" })).getByRole("listitem");
     expect(row).toHaveTextContent("Waiting on a person. Approve the database restore in Coolify.");
     expect(row).not.toHaveTextContent(/read the decision/);
+    // Round 16 (judge-42): the chip's hover said a machine or another agent held this wait.
+    expect(within(row).getByText("Blocked").closest("[title]")).toHaveAttribute(
+      "title",
+      "It waits on a person, and keeps its process while it waits.",
+    );
   });
 
   // ISS-1228 round 14 (judge-36): a stopped run still said it waited on a person, with Open questions.

@@ -3194,6 +3194,14 @@
 
 ### Fixed
 
+- **A blocked run says who it waits on the same way on its row and on hover.** A run waiting on a person no longer hovers that a machine holds it, and "Parked for a person" means a person. (ISS-1228)
+- **A session page's times say what they are on hover**, in plain sentences, for a live session as for one that has ended. (ISS-1228)
+- **A chat waiting for your reply reads "Waiting for me" on its row, its page and its side panel**, and is no longer counted as queued or listed under the Queued filter. (ISS-1228)
+- **A chat whose turn is running counts as a live session** on the dashboard's figure and opening sentence, the side rail and the projects list, and the dashboard says how many such chats there are. (ISS-1228)
+- **The dashboard's "runs open" counts only the runs it shows you**, those a listed session works and those nothing works, so the figure matches the list beneath it. (ISS-1228)
+- **Every live session row on the sessions page shows its box's dot**, chats included, and a box that has gone offline shows the same warning dot on every session it holds. (ISS-1228)
+- **Ending a turn on something that is not a chat says what it is in plain words**, such as "This is a run, not a chat. Use Stop session." (ISS-1228)
+- **Stopping a session lowers its box's live-session count at once** on every open page, a session page's side panel included, without waiting for the next refresh. (ISS-1228)
 - **A stop reaches the Agents runs tab at once.** A runs tab open in another tab reads a stopped run as stopped without waiting for its next refresh, and so does a page that reconnects. (ISS-1228)
 - **Every sentence about a box or core reads one way, on the page and on hover.** An offline box reads the same on a run's chip and its row, and every such sentence ends in a stop. (ISS-1228)
 - **A box running a chat is busy.** The sessions page's box strip and the dashboard count a chat whose turn is running among a box's live sessions, so a box running one no longer reads Free. (ISS-1228)

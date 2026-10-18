@@ -14,9 +14,20 @@ import { type KernelActor, recordKernelTransition } from '../lifecycle/transitio
 
 type SessionRow = typeof agentSessions.$inferSelect;
 
-export function turnNotEndable(kind: string): HTTPException {
+/** Each kind but a chat in the words the sessions list tags it with, never its stored name. */
+const KIND_WORDS: Record<Exclude<SessionRow['kind'], 'chat'>, string> = {
+  run_session: 'a run',
+  master: 'a master',
+  pipeline: 'a pipeline step',
+  pm: 'a PM session',
+};
+
+export function turnNotEndable(kind: SessionRow['kind']): HTTPException {
+  const words = kind === 'chat' ? null : KIND_WORDS[kind];
   return new HTTPException(409, {
-    message: `This is a ${kind} session, not a chat, so its box ends no turn of it. Stop the session to end it.`,
+    message: words
+      ? `This is ${words}, not a chat. Use Stop session.`
+      : 'This is not a chat. Use Stop session.',
     cause: { code: 'TURN_NOT_ENDABLE' },
   });
 }

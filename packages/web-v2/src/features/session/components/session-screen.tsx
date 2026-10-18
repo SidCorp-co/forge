@@ -26,6 +26,7 @@ import {
   isRealFailure,
   sessionSilence,
   sessionChipStatus,
+  sessionChipStatusOf,
   sessionEndWord,
   sessionStep,
 } from "@/features/sessions/types";
@@ -310,7 +311,7 @@ export function SessionScreen({
             </div>
             <div className="mt-1 flex items-center gap-2">
               <SessionChip
-                status={sessionChipStatus(display, session.failureReason)}
+                status={sessionChipStatusOf(session, display)}
                 stage={sessionStep(session.metadata) ?? undefined}
                 size="sm"
                 session={session}

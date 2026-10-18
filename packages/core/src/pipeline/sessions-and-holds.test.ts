@@ -95,6 +95,20 @@ describe('projectSessionsAndHolds — sessions', () => {
     expect(out.sessions[0]?.boxOnline).toBe(online);
   });
 
+  // ISS-1228 round 16: the dashboard counted runs open from a set its list did not show.
+  it('names the run each session works, and none for a session on no run', () => {
+    const out = project({
+      sessions: [
+        session({ pipeline_run_id: 'run-7' }),
+        session({ id: 's-master', kind: 'master', pipeline_run_id: null }),
+      ],
+    });
+    expect(out.sessions.map((s) => [s.id, s.pipelineRunId])).toEqual([
+      ['s-run', 'run-7'],
+      ['s-master', null],
+    ]);
+  });
+
   it('gives each live session the issues it holds and the box report it last sent', () => {
     const out = project({
       sessions: [session()],

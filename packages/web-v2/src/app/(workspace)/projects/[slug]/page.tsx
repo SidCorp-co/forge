@@ -34,7 +34,7 @@ import {
   sessionsWaitingOnYou,
   idleRuns,
   joblessRuns,
-  liveRuns,
+  runsShown,
   activeSpend,
   awaitingReleaseRuns,
   projectAttention,
@@ -194,6 +194,9 @@ export default function ProjectOverviewPage() {
   const runItems = runsQ.data?.items;
   const runsState = readOf(runsQ);
   const liveSessions = sessionsQ.data?.sessions ?? [];
+  // A chat whose turn runs is live and keeps its box busy, though the Pipeline page lists no chat.
+  const runningChats = sessionsQ.data?.runningChats?.length ?? 0;
+  const liveCount = liveSessions.length + runningChats;
   const durationsState = readOf(durationsQ);
   const throughputState = readOf(throughputQ);
   const { summary: runners, runners: runnersState, activity: activityState } = fleet;
@@ -214,7 +217,7 @@ export default function ProjectOverviewPage() {
     items: attention,
     cut: attentionLeftOut,
     slug: project.slug,
-    liveSessions: liveSessions.length,
+    liveSessions: liveCount,
     stuckRuns: stuckRuns(joblessRuns(runItems), now),
     failedJobs: attentionState.read === "ok" ? (attentionQ.view?.projectTotals[project.slug]?.failedJobs ?? 0) : 0,
     releaseRuns: runsAwaitingRelease.length,
@@ -234,6 +237,7 @@ export default function ProjectOverviewPage() {
   const liveSection = (
     <LiveSessionsCard
       sessions={liveSessions}
+      runningChats={runningChats}
       slug={project.slug}
       now={now}
       idle={runsIdle}
@@ -295,9 +299,9 @@ export default function ProjectOverviewPage() {
 
         {(reading.shape === "working" || reading.shape === "unread") && (
           <StatStrip
-            liveSessions={liveSessions.length}
+            liveSessions={liveCount}
             sessionsUnread={sessionsState.read !== "ok"}
-            openRuns={liveRuns(runItems).length}
+            openRuns={runsShown(liveSessions, runItems).length}
             runsUnread={runsState.read !== "ok"}
             runnersUnread={runnersState.read !== "ok"}
             activityUnread={activityState.read !== "ok"}

@@ -56,6 +56,7 @@ const reading = {
       deviceId: 'd-1',
       deviceName: 'box-a',
       parentSessionId: null,
+      pipelineRunId: null,
       startedAt: '2026-10-15T01:00:00.000Z',
       lastHeartbeatAt: '2026-10-15T01:59:00.000Z',
       createdAt: '2026-10-15T01:00:00.000Z',

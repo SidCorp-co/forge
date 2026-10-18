@@ -1,4 +1,4 @@
-import type { QueryClient } from "@tanstack/react-query";
+import { QueryClient } from "@tanstack/react-query";
 import { afterEach, describe, expect, it } from "vitest";
 import { routeEvent } from "./event-router";
 import { flushInvalidations } from "./invalidation-coalescer";
@@ -9,6 +9,7 @@ function capture() {
     invalidateQueries: ({ queryKey }: { queryKey?: unknown[] }) => {
       keys.push(JSON.stringify(queryKey));
     },
+    setQueriesData: () => [],
     getQueryCache: () => ({
       findAll: () => [],
       subscribe: () => () => {},
@@ -407,6 +408,45 @@ describe("an open runs tab follows a stop made anywhere (ISS-1228 round 15)", ()
     replayOnReconnect(c.qc);
     expect(c.has(["run-sessions"])).toBe(true);
     expect(c.has(["sessions-and-holds"])).toBe(true);
+  });
+});
+
+// ISS-1228 round 16 (judge-42): an open session page's rail counted "Busy · 3 live sessions" a second
+// after a stop on another tab, then 2 on its next read. The stop's event takes the session out of the
+// live read at once, as it arrives, before the re-read lands.
+describe("a session's stop reaches the live read the box counts at once", () => {
+  const read = () => ({
+    sessions: [
+      { id: "s1", deviceId: "d1" },
+      { id: "s2", deviceId: "d1" },
+    ],
+    holds: [
+      { issueId: "i1", holders: [{ by: "session", sessionId: "s1" }] },
+      { issueId: "i2", holders: [{ by: "session", sessionId: "s1" }, { by: "person", status: "on_hold" }] },
+    ],
+    runningChats: [{ id: "c1", deviceId: "d1" }],
+    readAt: "2026-10-18T15:00:00.000Z",
+  });
+
+  const afterEvent = (data: Record<string, unknown>) => {
+    const qc = new QueryClient();
+    qc.setQueryData(["sessions-and-holds", "p1"], read());
+    routeEvent({ event: "agent-session.status", data, timestamp: "2026-10-18T15:00:01.000Z" }, qc);
+    return qc.getQueryData(["sessions-and-holds", "p1"]) as ReturnType<typeof read>;
+  };
+
+  it("drops a stopped session, and the holds only it kept, before any re-read", () => {
+    const out = afterEvent({ sessionId: "s1", status: "failed", failureReason: "user_cancelled" });
+    expect(out.sessions.map((s) => s.id)).toEqual(["s2"]);
+    expect(out.holds).toEqual([{ issueId: "i2", holders: [{ by: "person", status: "on_hold" }] }]);
+  });
+
+  it("drops a chat whose turn ended from the running chats, and keeps it no longer counted", () => {
+    expect(afterEvent({ sessionId: "c1", status: "idle" }).runningChats).toEqual([]);
+  });
+
+  it("leaves the read as it was for a session still running", () => {
+    expect(afterEvent({ sessionId: "s1", status: "running" })).toEqual(read());
   });
 });
 

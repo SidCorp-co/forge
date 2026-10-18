@@ -283,7 +283,41 @@ describe("a session's page reads core's state", () => {
       render(<SessionScreen sessionId="s1" projectSlug="qa" />);
       expect(screen.getByRole("button", { name: "Stop session" })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Rerun" })).not.toBeInTheDocument();
-      expect(screen.getByTitle("Ended (last update on a terminal session)")).toHaveTextContent(/^—\s*ended$/);
+      expect(screen.getByTitle("When core ended this session. A session core still holds shows a dash.")).toHaveTextContent(/^—\s*ended$/);
+    } finally {
+      page.session = session;
+    }
+  });
+
+  // ISS-1228 round 16 (judge-42): every session page's Timing row hovered "Ended (last update on a
+  // terminal session)", a live session's included, with no stop.
+  it("says on hover what each Timing time is, in sentences, for a live session as for an ended one", () => {
+    for (const status of ["running", "failed"] as const) {
+      page.session = { ...session, status, report: null };
+      try {
+        const { unmount } = render(<SessionScreen sessionId="s1" projectSlug="qa" />);
+        for (const title of [
+          "When core offered this session to a box.",
+          "When the agent on the box started.",
+          "When core ended this session. A session core still holds shows a dash.",
+        ]) {
+          expect(screen.getByTitle(title), `${status}: ${title}`).toBeInTheDocument();
+        }
+        expect(screen.queryByTitle(/terminal session/)).not.toBeInTheDocument();
+        unmount();
+      } finally {
+        page.session = session;
+      }
+    }
+  });
+
+  // ISS-1228 round 16 (judge-42): an idle chat read "Waiting for me" on its list row and "Idle" here.
+  it("calls a chat awaiting its reply Waiting for me in its header and its rail, as its list row does", () => {
+    page.session = { ...session, kind: "chat", metadata: { type: "chat" }, status: "idle", report: null };
+    try {
+      render(<SessionScreen sessionId="s1" projectSlug="qa" />);
+      expect(screen.getAllByText("Waiting for me").length).toBeGreaterThanOrEqual(2);
+      expect(screen.queryByText("Idle")).not.toBeInTheDocument();
     } finally {
       page.session = session;
     }
@@ -295,7 +329,7 @@ describe("a session's page reads core's state", () => {
       render(<SessionScreen sessionId="s1" projectSlug="qa" />);
       expect(screen.getByRole("button", { name: "Rerun" })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Stop session" })).not.toBeInTheDocument();
-      expect(screen.getByTitle("Ended (last update on a terminal session)")).not.toHaveTextContent(/^—/);
+      expect(screen.getByTitle("When core ended this session. A session core still holds shows a dash.")).not.toHaveTextContent(/^—/);
     } finally {
       page.session = session;
     }
