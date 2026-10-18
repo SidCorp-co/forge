@@ -407,7 +407,9 @@ describe('ISS-959 B — what the mark still refuses, and how a mark is corrected
       sql`SELECT body FROM comments WHERE issue_id = ${id}`,
     );
     const body = (rows[0] as { body: string }).body;
-    expect(body.startsWith(`Marked merged into base.\nCommit ${SHA.slice(0, 7)} was named`)).toBe(true);
+    expect(body.startsWith(`Marked merged into base.\nCommit ${SHA.slice(0, 7)} was named`)).toBe(
+      true,
+    );
     expect(body.split(SHA.slice(0, 7))).toHaveLength(2);
   });
 
