@@ -407,10 +407,8 @@ describe('ISS-959 B — what the mark still refuses, and how a mark is corrected
       sql`SELECT body FROM comments WHERE issue_id = ${id}`,
     );
     const body = (rows[0] as { body: string }).body;
-    expect(body).toMatch(
-      new RegExp(`^Marked merged into base\\.\\nCommit ${SHA.slice(0, 7)} was named`),
-    );
-    expect(body.match(new RegExp(SHA.slice(0, 7), 'g'))).toHaveLength(1);
+    expect(body.startsWith(`Marked merged into base.\nCommit ${SHA.slice(0, 7)} was named`)).toBe(true);
+    expect(body.split(SHA.slice(0, 7))).toHaveLength(2);
   });
 
   it('re-marking after an unmark re-adopts whatever Forge now observes', async () => {

@@ -259,7 +259,7 @@ describe('the merge itself', () => {
   it('raises naming the commit when the time cannot be read back', async () => {
     answers = { pullAfterMerge: { number: 481, state: 'closed', merged: true, merged_at: null } };
     await expect(ask()).rejects.toThrow(
-      new RegExp(`MERGED at ${LANDED}, and reading back when GitHub merged it failed`),
+      `MERGED at ${LANDED}, and reading back when GitHub merged it failed`,
     );
     expect(puts()).toHaveLength(1);
   });
@@ -454,7 +454,7 @@ describe('a merge that has already happened', () => {
 describe('when the stamp fails after GitHub merged', () => {
   it('raises naming the commit that landed, and records nothing', async () => {
     transactionThrows = true;
-    await expect(ask()).rejects.toThrow(new RegExp(`MERGED at ${LANDED}, and recording it failed`));
+    await expect(ask()).rejects.toThrow(`MERGED at ${LANDED}, and recording it failed`);
     expect(puts()).toHaveLength(1);
   });
 

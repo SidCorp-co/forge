@@ -160,11 +160,10 @@ describe('a commit the mark already carries changes nothing (criteria 69, 107)',
     const res = await mark(issue, commit);
     expect(res.action).toBe('already_merged');
     expect(res.movedFrom).toBeNull();
-    expect(res.markDetail).toMatch(
-      new RegExp(
-        `^Already marked merged on \\d+ \\w+ \\d{4}, so this call changed nothing\\. ${stays.replace(/\./g, '\\.')} ${CHANGE.replace(/\./g, '\\.')}$`,
-      ),
-    );
+    // The fixed words compared as text, never built into a pattern; only the date is a pattern.
+    const [opening, rest] = res.markDetail.split(', so this call changed nothing. ');
+    expect(opening).toMatch(/^Already marked merged on \d+ \w+ \d{4}$/);
+    expect(rest).toBe(`${stays} ${CHANGE}`);
     readsShort(res.markDetail);
     readsShort((await comments(issue.id)).at(-1) as string);
     expect((await row(issue.id)).merged_commit_sha).toBe(FIRST);
