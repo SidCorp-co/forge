@@ -5,10 +5,10 @@
  * still holds it, so two landings racing from one mark cannot step back.
  */
 
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { forgeAuthorId } from '../comments/forge-author.js';
 import { postSystemComment } from '../comments/system-write.js';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { comments } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { type RepositoryAccessDeps, withRepository } from '../projects/repository-access.js';
@@ -155,8 +155,8 @@ function stayedComment(outcome: LandingAdvance, candidate: string): string | nul
   return null;
 }
 
-async function alreadySaid(issueId: string, body: string): Promise<boolean> {
-  const [row] = await db
+async function alreadySaid(tx: Tx, issueId: string, body: string): Promise<boolean> {
+  const [row] = await tx
     .select({ id: comments.id })
     .from(comments)
     .where(and(eq(comments.issueId, issueId), eq(comments.body, body)))
@@ -180,8 +180,15 @@ export async function advanceObservedLanding(
       : stayedComment(outcome, args.candidate.sha);
   if (!body) return outcome;
   try {
-    if (outcome.kind !== 'moved' && (await alreadySaid(args.issueId, body))) return outcome;
-    await postSystemComment({ issueId: args.issueId, authorId: await forgeAuthorId(db), body });
+    // One lock per issue: GitHub's event and Forge's own merge, reporting one merge, say it once.
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`landing:${args.issueId}`}))`);
+      if (outcome.kind !== 'moved' && (await alreadySaid(tx, args.issueId, body))) return;
+      await postSystemComment(
+        { issueId: args.issueId, authorId: await forgeAuthorId(tx), body },
+        tx,
+      );
+    });
   } catch (err) {
     logger.warn({ err, issueId: args.issueId }, 'landing advance: the comment was not written');
   }

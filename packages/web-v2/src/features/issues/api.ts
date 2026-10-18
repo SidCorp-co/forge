@@ -288,5 +288,6 @@ export interface MarkMergedAnswer {
 export interface MarkMergedBody {
   target?: string;
   landing?: string;
+  commit?: string;
   note?: string;
 }

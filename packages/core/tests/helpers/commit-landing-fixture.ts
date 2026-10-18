@@ -40,7 +40,26 @@ export const repo = {
   down: null as string | null,
   /** A merged pull request Forge projected for the issue, standing in for `repo_pull_requests`. */
   pullRequest: null as { commitSha: string; mergedAt: Date } | null,
+  /** The first compare naming each head in `order` waits for all of them, then each goes on in that
+   *  order, 50ms apart: two racing readers both read the row before either writes. */
+  hold: null as { order: string[]; arrived: Map<string, () => void> } | null,
 };
+
+async function releaseInOrder(hold: { order: string[]; arrived: Map<string, () => void> }) {
+  for (const sha of hold.order) {
+    hold.arrived.get(sha)?.();
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+
+async function waitAtTheHold(head: string): Promise<void> {
+  const hold = repo.hold;
+  if (!hold?.order.includes(head) || hold.arrived.has(head)) return;
+  await new Promise<void>((go) => {
+    hold.arrived.set(head, go);
+    if (hold.arrived.size === hold.order.length) void releaseInOrder(hold);
+  });
+}
 
 /** `merge-record.js` with the projection's merged pull request taken from `repo.pullRequest`. */
 export function fakeMergeRecord(real: typeof MergeRecord): typeof MergeRecord {
@@ -109,6 +128,7 @@ export function fakeGitHubClient(real: typeof GitHubClient): typeof GitHubClient
             }
             const [base, head] = [find(pair[1]), find(pair[2])];
             if (!base || !head) throw new real.GitHubReadError(404, httpError(404, path).message);
+            await waitAtTheHold(head[0]);
             if (base[0] === head[0]) return { status: 'identical' } as T;
             if (head[1].after?.includes(base[0])) return { status: 'ahead' } as T;
             if (base[1].after?.includes(head[0])) return { status: 'behind' } as T;
@@ -156,6 +176,7 @@ export function useCommitLandingWorld() {
     repo.reads.length = 0;
     repo.down = null;
     repo.pullRequest = null;
+    repo.hold = null;
     repo.commits = new Map<string, FakeCommit>([
       [OWN, { message: `fix(core): mark by commit (ISS-${SEQ})`, on: ['main'] }],
       [FOREIGN, { message: 'fix(core): something else (ISS-1316)', on: ['main'] }],

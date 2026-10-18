@@ -215,15 +215,16 @@ describe('a merge Forge observed moves the mark the same way (criteria 104, 105,
     ]);
   });
 
-  it('two later merges racing from FIRST end at the later of them, whichever writes first', async () => {
+  it.each([
+    ['SECOND then THIRD', [SECOND, THIRD], [moved(FIRST, SECOND), moved(SECOND, THIRD)]],
+    ['THIRD then SECOND', [THIRD, SECOND], [moved(FIRST, THIRD)]],
+  ])('two later merges that both read FIRST end at THIRD, writing %s', async (_, order, said) => {
     const issue = await markedAtFirst();
+    repo.hold = { order, arrived: new Map() };
     await Promise.all([stamp(issue.id, SECOND), stamp(issue.id, THIRD)]);
     expect((await row(issue.id)).merged_commit_sha).toBe(THIRD);
-    const moves = (await comments(issue.id)).filter((c) => c.startsWith('The landing moved'));
-    expect(
-      moves.every(
-        (c) => c.endsWith(`to commit ${THIRD}, which carries it.`) || c === moved(FIRST, SECOND),
-      ),
-    ).toBe(true);
+    expect((await comments(issue.id)).filter((c) => c.startsWith('The landing moved'))).toEqual(
+      said,
+    );
   });
 });
