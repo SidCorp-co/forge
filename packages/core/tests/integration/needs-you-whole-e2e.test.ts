@@ -165,6 +165,7 @@ describe("Needs you's whole, on judge-38's shape of board", () => {
       awaitingAsked: 1,
       failedJobs: 0,
       parkedOnly: 0,
+      parkedAsked: 0,
       stuckOnly: 4,
     });
     // The two stuck parks are counted in `awaitingInput`, the four others in `stuckOnly`: the 6.
@@ -181,13 +182,26 @@ describe("Needs you's whole, on judge-38's shape of board", () => {
     ]);
   });
 
+  it("counts another person's park that holds a question as asked, apart from the parks with none", async () => {
+    const other = (await createTestUser(harness.db)).id;
+    await issueAt('needs_info', { question: true, assignee: other });
+    await issueAt('on_hold', { assignee: other });
+
+    const attention = await get<Attention>('/api/me/attention');
+    expect(attention.projectTotals[slug]).toMatchObject({ parkedOnly: 2, parkedAsked: 1 });
+  });
+
   it('counts a stuck issue a failed job of the reader names once, as the failed job', async () => {
     const issue = await issueAt('open');
     await stuck(issue, ':idle');
     await failedJob({ issueId: issue, error: 'session_lost' });
 
     const attention = await get<Attention>('/api/me/attention');
-    expect(attention.projectTotals[slug]).toMatchObject({ failedJobs: 1, stuckOnly: 0 });
+    expect(attention.projectTotals[slug]).toMatchObject({
+      failedJobs: 1,
+      parkedAsked: 0,
+      stuckOnly: 0,
+    });
     expect(attention.failedJobs[0]?.stuckKind).toBe('idle');
   });
 });

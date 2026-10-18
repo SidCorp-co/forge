@@ -166,6 +166,7 @@ describe('the counts beside the lists the Needs you tile is read from', () => {
       awaitingAsked: 0,
       failedJobs: 0,
       parkedOnly: 1,
+      parkedAsked: 0,
       stuckOnly: 0,
     });
     const row = health.find((h) => h.projectSlug === slug);

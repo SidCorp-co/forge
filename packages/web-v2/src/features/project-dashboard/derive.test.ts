@@ -253,7 +253,7 @@ describe("attentionRefusal (ISS-1156)", () => {
   });
 
   it("says nothing of a response that carries both, a project with no entry, or one not loaded yet", () => {
-    const ok = { needsReview: 0, awaitingInput: 1, awaitingAsked: 0, parkedOnly: 1, failedJobs: 0, stuckOnly: 0 };
+    const ok = { needsReview: 0, awaitingInput: 1, awaitingAsked: 0, parkedOnly: 1, failedJobs: 0, parkedAsked: 0, stuckOnly: 0 };
     expect(attentionRefusal(view({ sable: ok }), "sable")).toBeNull();
     expect(attentionRefusal(view({}), "sable")).toBeNull();
     expect(attentionRefusal(undefined, "sable")).toBeNull();
@@ -276,6 +276,7 @@ describe("attentionCut (ISS-1156, whole since ISS-1229 r14)", () => {
     parkedOnly?: number;
     failedJobs?: number;
     stuckOnly?: number;
+    parkedAsked?: number;
   }): AttentionView => ({
     needsReview: [],
     awaitingInput: [],
@@ -292,6 +293,7 @@ describe("attentionCut (ISS-1156, whole since ISS-1229 r14)", () => {
         awaitingAsked: 0,
         parkedOnly: 0,
         failedJobs: 0,
+        parkedAsked: 0,
         stuckOnly: 0,
         ...totals,
       },
@@ -380,14 +382,25 @@ describe("attentionCut (ISS-1156, whole since ISS-1229 r14)", () => {
   it("refuses a response whose totals carry no stuckOnly, by name, since its whole could not be said", () => {
     const old = {
       ...viewWith({}),
-      projectTotals: { sable: { needsReview: 0, awaitingInput: 2, awaitingAsked: 0, failedJobs: 0, parkedOnly: 0 } },
+      projectTotals: {
+        sable: { needsReview: 0, awaitingInput: 2, awaitingAsked: 0, failedJobs: 0, parkedOnly: 0, parkedAsked: 0 },
+      },
     } as unknown as AttentionView;
     expect(() => attentionCut([], old, "sable")).toThrow(/no `stuckOnly`.*not the release/u);
   });
 
+  // The consult on round 15: another person's park holding a question is not "parked with no question".
+  it("counts another person's park that holds a question among the open questions, the whole unchanged", () => {
+    const view = viewWith({ awaitingInput: 2, awaitingAsked: 1, parkedOnly: 3, parkedAsked: 1 });
+    expect(attentionCaption(attentionParts(many("parked", 5), view, "sable"))).toBe(
+      "to act on: 2 issues with an open question · 3 issues parked with no question",
+    );
+    expect(attentionWhole(many("parked", 5), view, "sable")).toBe(5);
+  });
+
   it("counts the stuck issues no other kind holds in the whole, and the stuck rows among what it shows", () => {
     const items = many("parked", 2);
-    const view = viewWith({ awaitingInput: 2, stuckOnly: 12 });
+    const view = viewWith({ awaitingInput: 2, parkedAsked: 0, stuckOnly: 12 });
     expect(attentionWhole(items, view, "sable", 5)).toBe(14);
     expect(attentionCut(items, view, "sable", 5)).toEqual({ shown: 7, whole: 14, peopleCut: false });
     expect(attentionCaption(attentionParts(items, view, "sable", 5))).toBe(
@@ -636,7 +649,7 @@ describe("sessions waiting on you", () => {
       unseenDrafts: [],
       unseenDraftsTotal: 0,
       projectTotals: {
-        sable: { needsReview: 0, awaitingInput: 1, awaitingAsked: 0, parkedOnly: 0, failedJobs: 0, stuckOnly: 0 },
+        sable: { needsReview: 0, awaitingInput: 1, awaitingAsked: 0, parkedOnly: 0, failedJobs: 0, parkedAsked: 0, stuckOnly: 0 },
       },
       offlineRunners: [],
     } as unknown as AttentionView;

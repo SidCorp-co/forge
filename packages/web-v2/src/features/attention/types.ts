@@ -63,6 +63,7 @@ export interface AttentionResponse {
       failedJobs: number;
       /** Parked issues the health row's list holds that no bucket lists, counted once each. */
       parkedOnly: number;
+      parkedAsked: number;
       /** Issues a stuck-issue notice stands for that none of the counts above holds (ISS-1229 r15). */
       stuckOnly: number;
     }

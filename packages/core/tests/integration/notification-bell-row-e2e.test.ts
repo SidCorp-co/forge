@@ -187,6 +187,12 @@ describe('a stuck row by its kind, and nothing of an archived project (ISS-1229 
     expect(sweepRows(await inbox())).toHaveLength(1);
 
     await fx.db.execute(sql`UPDATE projects SET archived_at = now() WHERE id = ${fx.project.id}`);
+    // Nor an invitation to it, which the bell would otherwise offer and count.
+    await fx.db.execute(sql`
+      INSERT INTO project_invitations (token, project_id, email, role, inviter_id, expires_at)
+      SELECT 'archived-r15', ${fx.project.id}, email, 'member', ${fx.owner}, now() + interval '7 days'
+        FROM users WHERE id = ${fx.owner}
+    `);
 
     expect(await openCount()).toBe(0);
     expect(sweepRows(await inbox())).toHaveLength(0);

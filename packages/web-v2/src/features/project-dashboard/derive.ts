@@ -371,7 +371,7 @@ export function attentionRefusal(view: AttentionView | undefined, slug: string):
     return "Needs you cannot say how much it leaves out: the attention response has no `projectTotals`. The server is not the release this page was built for.";
   }
   const totals = view.projectTotals[slug];
-  for (const key of ["parkedOnly", "awaitingAsked", "stuckOnly"] as const) {
+  for (const key of ["parkedOnly", "awaitingAsked", "parkedAsked", "stuckOnly"] as const) {
     if (totals !== undefined && typeof totals[key] !== "number") {
       return `Needs you cannot say how much it leaves out: the attention response's \`projectTotals\` have no \`${key}\`. The server is not the release this page was built for.`;
     }
@@ -414,8 +414,8 @@ export function attentionParts(
   return {
     failed: totals.failedJobs,
     review: totals.needsReview,
-    asked: totals.awaitingAsked,
-    parked: totals.awaitingInput - totals.awaitingAsked + totals.parkedOnly,
+    asked: totals.awaitingAsked + totals.parkedAsked,
+    parked: totals.awaitingInput - totals.awaitingAsked + totals.parkedOnly - totals.parkedAsked,
     stuck: totals.stuckOnly,
     sessions,
   };

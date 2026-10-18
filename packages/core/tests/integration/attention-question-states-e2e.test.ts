@@ -137,6 +137,7 @@ describe('Needs you lists a question only where it moves the work state (real Po
         parkedOnly: 0,
         needsReview: 7,
         failedJobs: 6,
+        parkedAsked: 0,
         stuckOnly: 0,
       });
     });
@@ -153,6 +154,7 @@ describe('Needs you lists a question only where it moves the work state (real Po
           parkedOnly: 0,
           needsReview: 0,
           failedJobs: 0,
+          parkedAsked: 0,
           stuckOnly: 0,
         },
       ]);
@@ -179,6 +181,7 @@ describe('Needs you lists a question only where it moves the work state (real Po
         parkedOnly: 2,
         needsReview: 0,
         failedJobs: 0,
+        parkedAsked: 0,
         stuckOnly: 0,
       });
       const { blockerRowsAll } = await readHealthAggregates([projectId]);

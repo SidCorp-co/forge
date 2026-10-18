@@ -97,6 +97,8 @@ export interface AttentionProjectTotals {
    * once each, so the four add up to its whole count with no issue counted twice (ISS-1229 r14).
    */
   parkedOnly: number;
+  /** Of `parkedOnly`, the issues holding an open question. */
+  parkedAsked: number;
   /** Stuck issues none of the four above counts, which Needs you lists too (ISS-1229 r15). */
   stuckOnly: number;
 }
@@ -151,7 +153,11 @@ export async function selectAttentionTotals(
       .where(and(failedJobsWhere(userId), inScope(scope)))
       .groupBy(projects.slug),
     db
-      .select({ slug: projects.slug, n: count })
+      .select({
+        slug: projects.slug,
+        n: count,
+        asked: sql<number>`(count(*) filter (where ${holdsOpenQuestion}))::int`,
+      })
       .from(issues)
       .innerJoin(projects, eq(projects.id, issues.projectId))
       .leftJoin(projectMembers, memberOf(userId))
@@ -191,6 +197,7 @@ export async function selectAttentionTotals(
       awaitingAsked: 0,
       failedJobs: 0,
       parkedOnly: 0,
+      parkedAsked: 0,
       stuckOnly: 0,
     };
     return totals[slug];
@@ -201,7 +208,10 @@ export async function selectAttentionTotals(
     at(r.slug).awaitingAsked = r.asked;
   }
   for (const r of failed) at(r.slug).failedJobs = r.n;
-  for (const r of parked) at(r.slug).parkedOnly = r.n;
+  for (const r of parked) {
+    at(r.slug).parkedOnly = r.n;
+    at(r.slug).parkedAsked = r.asked;
+  }
   for (const r of stuck) at(r.slug).stuckOnly = r.n;
   return totals;
 }

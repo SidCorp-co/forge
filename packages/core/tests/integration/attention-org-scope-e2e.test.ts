@@ -145,6 +145,7 @@ describe('the Attention read of one organisation', () => {
       awaitingAsked: 0,
       failedJobs: 0,
       parkedOnly: 0,
+      parkedAsked: 0,
       stuckOnly: 0,
     });
   });
