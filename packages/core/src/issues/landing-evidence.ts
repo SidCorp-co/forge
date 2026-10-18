@@ -7,7 +7,11 @@
  * moves (ISS-1327): docs/modules/issues/merge-mark.md.
  */
 
-import { MARK_MERGED_ACTION, WHERE_IT_LANDED_FIELD } from '@forge/contracts/mark-merged-words';
+import {
+  MARK_MERGED_ACTION,
+  UNMARK_ACTION,
+  WHERE_IT_LANDED_FIELD,
+} from '@forge/contracts/mark-merged-words';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { type Db, db } from '../db/client.js';
@@ -125,11 +129,12 @@ export function whereItLands(lane: Lane, opening = false): string {
 }
 
 /** How a git lane's issue whose change lands no file in the repository says so, for every refusal
- *  that meets one sending a landing or with nothing to show. */
+ *  that meets one sending a landing or with nothing to show. Short sentences of its own, so a
+ *  refusal can stand it on a line by itself. */
 export const DECLARE_OUTSIDE_GIT =
-  "Where this change lands no file in the repository — a deployment's settings, a redeploy, a " +
-  'live resource — declare it on the issue first (`landingShape: outside_git` on ' +
-  '`PATCH /api/issues/:id`, or `forge_issues` `update`), then mark it with `landing`.';
+  'Where this change lands no file in the repository, declare that on the issue first. Set ' +
+  '`landingShape` to `outside_git` with `PATCH /api/issues/:id` or `forge_issues` `update`. Then ' +
+  'mark it merged with `landing`.';
 
 /** Which marks count as landed, by shape. `git` keeps the amnesty accepting a claim (its price:
  *  docs/modules/issues/merge-mark.md); on `outside_git` a bare timestamp names nothing landed. */
@@ -191,7 +196,8 @@ export function landingShortfall(row: MergeMarkColumns, lane: Lane): string | nu
   return `${held} ${whose} accepts ${wanted}.`;
 }
 
-/** The mark writer's refusal for this lane, or `null` where the mark may be written. */
+/** The mark writer's refusal for this lane, or `null` where the mark may be written. Each sentence
+ *  opens with a capital and runs short; a step another part words stands on its own line. */
 export function landingMarkRefusal(args: {
   lane: Lane;
   landing: string | null;
@@ -201,17 +207,17 @@ export function landingMarkRefusal(args: {
     return {
       code: 'LANDING_NOT_THIS_SHAPE',
       detail:
-        `\`landing\` names where work landed OUTSIDE git, and ${whereItLands(args.lane)}, so ` +
-        'nothing was marked. Send the mark without `landing`, naming the commit with `commit` ' +
-        `where you have one. ${DECLARE_OUTSIDE_GIT}`,
+        `${whereItLands(args.lane, true)}. A mark here names a commit, never a landing. ` +
+        'Nothing was marked. Send the mark without `landing`, and name the commit in `commit` ' +
+        `where you have one.\n\n${DECLARE_OUTSIDE_GIT}`,
     };
   }
   if (args.lane.shape === 'outside_git' && !args.landing && !args.observed) {
     return {
       code: 'LANDING_REQUIRED',
       detail:
-        `${whereItLands(args.lane, true)} and Forge holds no merged pull request for this issue, so a ` +
-        'mark must name where the work landed and nothing was marked. Send `landing` — the live ' +
+        `${whereItLands(args.lane, true)}. Forge holds no merged pull request for this issue, so ` +
+        'the mark must name where the work landed. Nothing was marked. Send `landing`: the live ' +
         'URL, CMS entry or storefront resource the work now is.',
     };
   }
@@ -236,14 +242,13 @@ export function standingMarkRefusal(args: {
   if (heldLanding === args.sent) return null;
   const heldKind = mergeMarkKindOf(args.held);
   const stands = heldLanding
-    ? `this issue's mark already names ${heldLanding} as where the work landed`
-    : `this issue already carries a mark (${heldKind}) that names no landing`;
+    ? `This issue's mark already says it landed at ${heldLanding}, and that mark stands.`
+    : 'This issue already carries a mark that names no landing, and that mark stands.';
   return {
     code: 'MARK_ALREADY_STANDS',
     detail:
-      `${stands}, and the first mark stands, so ${args.sent} was not recorded and nothing ` +
-      'changed. To change it, `unmark` (Unmark on the rail), then mark again with the landing ' +
-      'that is right.',
+      `${stands} Nothing changed, and ${args.sent} was not recorded. To change it, use ` +
+      `${UNMARK_ACTION}, then ${MARK_MERGED_ACTION} with the landing that is right.`,
     details: { heldLanding, heldKind, sentLanding: args.sent, route: ['unmark', 'mark_merged'] },
   };
 }

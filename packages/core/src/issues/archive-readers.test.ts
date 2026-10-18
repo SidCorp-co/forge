@@ -130,6 +130,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'pipeline/pipeline-config-service.ts': 'reads only stage statuses, all non-terminal',
   'pipeline/run-journal-routes.ts':
     "the canonical key of the one issue the caller named, so an archived issue's page still shows its runs",
+  'pipeline/runs-of-issue.ts':
+    'by the id of the one issue a caller already holds, so an archived issue still reads its own runs',
   'pipeline/shipped-at.ts':
     'the first shipped moment per issue, read only into counts and timings; an archived issue still shipped on its day',
   'pipeline/reconciler.ts': 'reads only entry and in-flight statuses',

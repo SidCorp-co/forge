@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 //
 // ISS-1421 round 2 — judge-28 saw the header's actions menu wrap onto its own line at 390 at
-// Releasing. Open session keeps its accessible name and drops its visible label below `sm`, so the
-// primary, Open session and the menu fit one row; the after-shots at 390 are the measurement.
+// Releasing. Round 6 — judge-37: the release banner sends a reader to "Open session at the top of
+// this page", and below `sm` it was a bare icon. Its words show at every width; the after-shots at
+// 390 are the measurement of the row.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render, screen } from "@testing-library/react";
@@ -49,14 +50,17 @@ describe("the issue header's actions at phone width (criterion 37)", () => {
     ["awaiting_release", null, ["Open session", "Issue actions"]],
     ["in_progress", null, ["Open pipeline", "Open session", "Issue actions"]],
     ["open", null, ["Run", "Open session", "Issue actions"]],
-  ] as const)("at %s offers its controls, Open session's label shown only from sm up", (status, run, names) => {
+  ] as const)("at %s offers its controls, Open session in words at every width", (status, run, names) => {
     renderAt(status, run);
     const buttons = screen.getAllByRole("button");
     expect(buttons.map((b) => b.getAttribute("aria-label") ?? b.textContent)).toEqual(names);
     const open = screen.getByRole("button", { name: "Open session" });
     expect(open.querySelector("svg")).not.toBeNull();
-    const label = screen.getByText("Open session");
-    expect(label.className.split(/\s+/)).toEqual(["hidden", "sm:inline"]);
+    expect(open).toHaveTextContent("Open session");
+    // No class hides any part of its words at a width (criterion 86).
+    for (const el of open.querySelectorAll("*")) {
+      expect(el.getAttribute("class") ?? "", el.outerHTML).not.toMatch(/(^|\s)hidden(\s|$)/);
+    }
   });
 });
 

@@ -6,7 +6,7 @@
 // Every sentence here is short and whole: `release-path-words.test.ts` holds each to that.
 
 import type { IssueStatus } from '../db/schema.js';
-import { statusForCaller } from '../issues/status-sets.js';
+import { statusLabel } from '../issues/status-sets.js';
 import {
   type CloseShortfall,
   rosterCloseShortfalls,
@@ -116,8 +116,8 @@ export function releaseStartsFor(
     case 'gated':
       if (from !== RELEASE_GATE_STATUS) {
         return [
-          `This issue is at ${statusForCaller(from)}.`,
-          `A release carries only issues at ${statusForCaller(RELEASE_GATE_STATUS)}, so it must reach that first.`,
+          `This issue is at ${statusLabel(from)}.`,
+          `A release carries only issues at ${statusLabel(RELEASE_GATE_STATUS)}, so it must reach that first.`,
         ];
       }
       return (

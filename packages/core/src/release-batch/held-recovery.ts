@@ -9,11 +9,13 @@
 
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { jobs } from '../db/schema.js';
+import { type IssueStatus, jobs } from '../db/schema.js';
+import { statusLabel } from '../issues/status-sets.js';
 import { syncAgentSessionLifecycle } from '../jobs/agent-session-link.js';
 import { AUTO_RELEASE_REASONS, HOLD_PAYLOAD_KEY } from '../jobs/hold.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
+import { projectAutoProdDeploy } from '../pipeline/auto-prod-deploy.js';
 import { emitPipelineWedge } from '../pipeline/wedge.js';
 import {
   AWAITING_DECISION,
@@ -22,8 +24,9 @@ import {
   type DecisionRef,
   readDecisionRef,
 } from './decision-state.js';
+import { RELEASE_GATE_STATUS } from './gate.js';
 import { heldBecause, RELEASE_JOB_TYPE, RELEASE_UNSTARTED_DEADLINE_MS } from './job-start.js';
-import { type ProjectPages, projectPages } from './release-links.js';
+import { type ProjectPages, projectPages, releaseRunSentence } from './release-links.js';
 import { recoverStrandedReleasing } from './releasing-recovery.js';
 
 export interface ReleaseHeldRecoveryResult {
@@ -49,19 +52,12 @@ interface HeldRow extends Record<string, unknown> {
 export const HELD_HANDBACK_REASON =
   'the release job was held with nothing to send it, so the release could never move';
 
-/** The sentence that ends each hand-back comment: the page of the release that was handed back. */
-function runPageSentence(runId: string, pages: ProjectPages | null): string {
-  return pages
-    ? `The release it was in is at ${pages.releaseRun(runId)}`
-    : 'The release it was in has been stopped';
-}
-
 export function heldHandbackSentence(
   reason: string | null,
   runId: string,
   pages: ProjectPages | null,
 ): string {
-  return `Its release could never move: its job was held because ${heldBecause(reason)}, and nothing would send it again. ${runPageSentence(runId, pages)}`;
+  return `Its release could never move: its job was held because ${heldBecause(reason)}, and nothing would send it again. ${releaseRunSentence(runId, pages)}`;
 }
 
 export function decisionHandbackSentence(
@@ -73,9 +69,19 @@ export function decisionHandbackSentence(
   return [
     'This release waited on a decision a person owes, so it was handed back rather than left at Releasing.',
     where ? `The question stays open at ${where}.` : 'The question stays open.',
-    'The issue it is asked on is released again once it is answered.',
-    runPageSentence(runId, pages),
+    releaseRunSentence(runId, pages),
   ].join(' ');
+}
+
+/**
+ * The one thing a reader of a decision hand-back does next, by how the project releases (ISS-1421
+ * r6, criterion 67): an automatic release takes the issue again once nothing holds it, so answering
+ * is enough; otherwise a person starts the next release from where the issue now stands.
+ */
+export function decisionNextStep(autoRelease: boolean, at: IssueStatus): string {
+  return autoRelease
+    ? 'This project releases automatically, so answering the question is enough: the next automatic release takes the issue.'
+    : `Answer the question, then start the next release from ${statusLabel(at)}.`;
 }
 
 /**
@@ -178,13 +184,15 @@ export async function recoverHeldReleaseBatches(
       );
       if (!fenced) continue;
       const pages = await projectPages(row.project_id);
+      const auto = onDecision ? await projectAutoProdDeploy(row.project_id) : false;
       const handed = await recoverStrandedReleasing(row.run_id, {
         reason: onDecision
           ? decisionHandbackSentence(decisionOf(row), row.run_id, pages)
           : heldHandbackSentence(row.hold_reason, row.run_id, pages),
         comment: true,
+        ...(onDecision ? { nextStep: (at: IssueStatus) => decisionNextStep(auto, at) } : {}),
       });
-      await emitWedge(row, handed.promoted);
+      await emitWedge(row, handed.promoted, auto, handed.destination ?? RELEASE_GATE_STATUS);
       await syncAgentSessionLifecycle(fenced, 'cancelled');
       recovered++;
     } catch (err) {
@@ -214,14 +222,22 @@ function afterHandBack(promoted: boolean, clear: string): { went: string; next: 
       };
 }
 
-async function emitWedge(row: HeldRow, promoted: boolean): Promise<void> {
+async function emitWedge(
+  row: HeldRow,
+  promoted: boolean,
+  auto: boolean,
+  at: IssueStatus,
+): Promise<void> {
   const decision = row.decision_owed;
-  const { went, next } = afterHandBack(
+  const handed = afterHandBack(
     promoted,
     decision
       ? 'Answer the question on the issue it is asked on'
       : 'Clear what held the release job',
   );
+  // The roster's comments and this notice give one next step for a decision (criterion 67).
+  const next = decision && !promoted ? decisionNextStep(auto, at) : handed.next;
+  const { went } = handed;
   await emitPipelineWedge({
     projectId: row.project_id,
     hop: 'dispatch',

@@ -53,7 +53,7 @@ describe('the refusal names the lane that decided it', () => {
       [],
       [{ sessionContext: null, baseBranch: 'main', releaseChain: [], projectKind: 'standard' }],
     );
-    expect(await findMissingWorkEvidence('iss-1')).toContain('`landingShape: outside_git`');
+    expect(await findMissingWorkEvidence('iss-1')).toContain('Set `landingShape` to `outside_git`');
   });
 });
 

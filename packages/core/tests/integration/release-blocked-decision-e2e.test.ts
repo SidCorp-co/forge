@@ -483,23 +483,8 @@ describe('a question the question screen refuses', () => {
   });
 });
 
-describe('a plain failure from a runner that reads nothing, and a job that is no release', () => {
-  it('holds the release the same way, with a question saying the box could not read the pane', async () => {
-    const release = await runningRelease();
-
-    const res = await post(`/api/jobs/${release.jobId}/fail`, deviceToken, {
-      error: BLOCKED_REASON,
-    });
-    expect(res.status).toBe(200);
-    expect((await res.json()).retry.scheduled).toBe(false);
-
-    const asked = await questionsOn(release.ids[0] as string);
-    expect(asked).toHaveLength(1);
-    expect(promptOf(asked[0])).toContain('could not read');
-    expect((await jobsOf(release.runId)).map((j) => j.status).sort()).toEqual(['failed', 'held']);
-    expect(await fx.runStatus(release.runId)).toBe('running');
-  });
-
+// A release's unreadable ask is refused rather than held on: release-unreadable-ask-e2e.test.ts.
+describe('a job that is no release', () => {
   it('carries the question of a smoke job at project level and does not retry it', async () => {
     const runId = randomUUID();
     const jobId = randomUUID();

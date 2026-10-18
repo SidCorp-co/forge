@@ -12,7 +12,7 @@ import { db } from '../db/client.js';
 import type { JobStatus } from '../db/schema.js';
 import { paneQuestions } from '../questions/pane-question.js';
 import { questionIdFor, writePaneQuestion } from '../questions/pane-question-write.js';
-import { holdBlockedRelease } from '../release-batch/decision-hold.js';
+import { holdBlockedRelease, refuseUnreadableReleaseAsk } from '../release-batch/decision-hold.js';
 import type { HeldDecision } from '../release-batch/decision-state.js';
 import { RELEASE_JOB_TYPE } from '../release-batch/job-start.js';
 import type { BlockedBody } from './blocked-wire.js';
@@ -73,7 +73,12 @@ export async function endBlockedJob(
 
   let held: HeldDecision | null = null;
   let questionIds: string[] = [];
-  if (full.type === RELEASE_JOB_TYPE) {
+  let error = body.error;
+  if (full.type === RELEASE_JOB_TYPE && body.asked.kind === 'unread') {
+    // Refused by name rather than written as a question nobody can answer (ISS-1421 r6).
+    const refused = await refuseUnreadableReleaseAsk(full, body.asked);
+    if (refused) error = `${refused.detail}\n\n${body.error}`;
+  } else if (full.type === RELEASE_JOB_TYPE) {
     held = await holdBlockedRelease(full, body.asked);
     questionIds = held?.questionIds ?? [];
   } else {
@@ -83,7 +88,7 @@ export async function endBlockedJob(
   await failOccupyingJob(
     job,
     deviceId,
-    { error: body.error },
+    { error },
     {
       precomputedRetry: {
         scheduled: false,

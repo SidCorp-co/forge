@@ -20,7 +20,7 @@ import {
   readReleasePath,
   releaseStartsFor,
 } from '../release-batch/release-path-words.js';
-import { statusForCaller } from './status-sets.js';
+import { statusLabel } from './status-sets.js';
 import { TransitionError } from './transition-error.js';
 
 export const RELEASING: IssueStatus = 'releasing';
@@ -46,10 +46,10 @@ export function releasingEntryRefusal(
   return new TransitionError(
     'RELEASING_STARTS_FROM_RELEASE',
     [
-      `${statusForCaller(RELEASING)} means a release batch is carrying this issue to production right now.`,
+      `${statusLabel(RELEASING)} means a release batch is carrying this issue to production right now.`,
       'Only starting a release puts an issue there.',
       ...releaseStartsFor(path, projectId, from, holds, doors),
-      `The issue stays at ${statusForCaller(from)}.`,
+      `The issue stays at ${statusLabel(from)}.`,
     ].join(' '),
     {
       from,
@@ -94,12 +94,12 @@ export async function releasingExitRefusal(
   return new TransitionError(
     'RELEASING_ENDS_BY_RELEASE',
     [
-      `${statusForCaller(RELEASING)} is left only through the release carrying the issue.`,
+      `${statusLabel(RELEASING)} is left only through the release carrying the issue.`,
       'Its finish closes the issue.',
       'Its abort, or the recovery of a release that stopped or could not go on, returns it to the release gate.',
       'The releasing sweep settles an issue whose release has ended.',
       ...where,
-      `The issue stays at ${statusForCaller(RELEASING)}, and ${statusForCaller(ask.to)} was not written.`,
+      `The issue stays at ${statusLabel(RELEASING)}, and ${statusLabel(ask.to)} was not written.`,
     ].join(' '),
     { from: RELEASING, to: ask.to, releaseBatchRunId: runId },
   );
@@ -109,7 +109,7 @@ export async function releasingExitRefusal(
 export async function releasingDoorRefusal(ask: ReleasingDoorAsk): Promise<TransitionError | null> {
   if (ask.releaseRun !== undefined && ask.to !== RELEASING) {
     throw new Error(
-      `releaseRun names the run a move ENTERS ${statusForCaller(RELEASING)} under, and this move goes to ${statusForCaller(ask.to)}`,
+      `releaseRun names the run a move enters ${statusLabel(RELEASING)} under, and this move goes to ${statusLabel(ask.to)}`,
     );
   }
   if (ask.to === RELEASING && ask.from !== RELEASING && ask.releaseRun === undefined) {
@@ -153,7 +153,7 @@ export async function explainReleasingRace(
   if (row && row.status !== from) {
     return new TransitionError(
       'STALE_TRANSITION',
-      `issue status changed concurrently — it left ${statusForCaller(from)} for ${statusForCaller(row.status)} while the release was claiming it`,
+      `issue status changed concurrently — it left ${statusLabel(from)} for ${statusLabel(row.status)} while the release was claiming it`,
       details,
     );
   }
@@ -166,7 +166,7 @@ export async function explainReleasingRace(
   }
   return new TransitionError(
     'STALE_TRANSITION',
-    `release run ${runId} is ${run?.status ?? 'gone'}, not running, so nothing would carry this issue at ${statusForCaller(RELEASING)}`,
+    `release run ${runId} is ${run?.status ?? 'gone'}, not running, so nothing would carry this issue at ${statusLabel(RELEASING)}`,
     details,
   );
 }

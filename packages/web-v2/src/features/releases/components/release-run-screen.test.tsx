@@ -369,6 +369,29 @@ describe("the run screen, read by the person who pressed (ISS-1323 r2)", () => {
 		expect(roster).not.toHaveTextContent("ISS-5");
 	});
 
+	// ISS-1421 r6: the roster said "channel coolify" where the gate panel says Coolify.
+	it("names the channel the way the gate panel does", () => {
+		state({});
+
+		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+
+		expect(screen.getByTestId("roster")).toHaveTextContent("Deploys through Coolify");
+		expect(screen.getByTestId("roster")).not.toHaveTextContent(/channel coolify/i);
+	});
+
+	// ISS-1421 r6 repair: the header read lower-case "cancelled" beside the whole run uuid as a title.
+	it("says the run's status in words and shows its id short", () => {
+		state({ runId: "bbbbbbbb-0000-4000-8000-000000000001", runStatus: "cancelled" });
+
+		render(<ReleaseRunScreen projectId="p1" runId="bbbbbbbb-0000-4000-8000-000000000001" />);
+
+		const header = screen.getByRole("banner");
+		expect(header).toHaveTextContent("Stopped");
+		expect(header).not.toHaveTextContent(/cancelled/);
+		expect(header).toHaveTextContent("bbbbbbbb");
+		expect(header).not.toHaveTextContent("bbbbbbbb-0000-4000-8000-000000000001");
+	});
+
 	it("lays its sections out flat, with no card surface", () => {
 		state({});
 

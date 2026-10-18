@@ -69,6 +69,7 @@ describe("the releasing sweep's comment (ISS-1421 r4)", async () => {
       strandedCause({ release_batch_run_id: 'r', run_status: s, run_exists: true }),
     ),
   ];
+  const RUN_PAGE = 'https://forge.example/projects/shop/releases/run-9';
   const SERVING = 'a1b2c3d4e5f6';
   const LANDING = '0f9e8d7c6b5a';
   const FINDINGS: Comment[1][] = [
@@ -127,7 +128,9 @@ describe("the releasing sweep's comment (ISS-1421 r4)", async () => {
       for (const finding of FINDINGS)
         for (const path of PATHS)
           for (const holds of HOLDS)
-            for (const doors of DOORS) out.push(settleComment(cause, finding, path, holds, doors));
+            for (const doors of DOORS)
+              for (const page of [null, RUN_PAGE])
+                out.push(settleComment(cause, finding, path, holds, doors, page));
     for (const holds of HOLDS)
       out.push(recordRefusedComment('the release record door refused it', holds));
     return out;
@@ -153,6 +156,21 @@ describe("the releasing sweep's comment (ISS-1421 r4)", async () => {
     );
     expect(releaseRunStopped('failed')).toBe(
       'The release run failed without finishing its release',
+    );
+  });
+
+  // ISS-1421 r6, criterion 92: judge-37 read "The release run was cancelled" with nothing to open.
+  it('carries the page of the run that ended, as the hand-back does', () => {
+    const said = settleComment(
+      CAUSES[3] as string,
+      FINDINGS[1] as Comment[1],
+      'gated',
+      HOLDS[0] as Comment[3],
+      DOORS[0] as Comment[4],
+      RUN_PAGE,
+    );
+    expect(said).toMatch(
+      /^\*\*Releasing, with nothing releasing it\.\*\* The release run was cancelled without finishing its release, so nothing was releasing it\. The release it was in is at https:\/\/forge\.example\/projects\/shop\/releases\/run-9\./,
     );
   });
 

@@ -82,7 +82,10 @@ Both are 409 blockers at the create door and at the release-record door alike, e
 issue, its reason and what clears it; a refused create claims nothing and opens no run. Readiness
 reads the same enumerator, so it lists them before anyone presses. The roster answer carries each
 issue's `closeRefusals` (`code`, `reason`, `clears`), and the release gate panel and the issue's
-awaiting-release banner offer no release for such an issue and print why. The unattended sweep
+awaiting-release banner offer no release for such an issue and print why. For a missing record,
+`clears` names Open session only where the issue page's header shows it — a live session holding
+the issue, or a run of it with a session (`packages/core/src/pipeline/runs-of-issue.ts:issueHasSession`)
+— and Reopen in the actions menu everywhere else. The unattended sweep
 leaves such an issue off its cut and writes a `RELEASE_ISSUES_UNCLOSABLE` release hold on it; a
 scheduled cut leaves it off and names it in its outcome. A refusal that arises after the press, a
 question asked mid-run, is still met at the finish below.
@@ -124,7 +127,10 @@ its abort, the recovery of a run that stopped, never started or whose job is hel
 send it (`packages/core/src/release-batch/releasing-recovery.ts:recoverStrandedReleasing`), or the releasing
 sweep, is refused `RELEASING_ENDS_BY_RELEASE`
 (`packages/core/src/issues/releasing-door.ts`, ISS-1421).
-`packages/core/src/release-batch/job-start.ts:readReleaseStart` reads that job, and `GET
+`packages/core/src/release-batch/job-start.ts:readReleaseStart` reads the newest release job, and a
+run any of whose release jobs was dispatched reads `taken` off the first of them, whatever the newest
+did since (a successor held on a decision and cancelled untaken is not a release that never
+started). `GET
 /api/projects/:projectId/release-batches/:runId/state` returns it as `start`. A batch no box has
 started can therefore be told apart from one whose agent is working:
 
@@ -357,6 +363,12 @@ asks it again.
   than that door sends a plain `/fail` whose error carries
   `packages/core/src/jobs/blocked-reason.ts:BLOCKED_PHRASE`; core reads the phrase and takes the
   `unread` path, so core shipped alone already ends the loop for old runners.
+- **An ask nobody can read is refused, never held on.** On a release, an `unread` ask is refused by
+  name in `packages/core/src/release-batch/decision-hold.ts:refuseUnreadableReleaseAsk`
+  (`RELEASE_ASK_UNREADABLE`): no question is written, since a question saying only that it could
+  not be read is one nobody can answer. The roster goes back to Awaiting release with a comment on
+  each issue saying why and what to do next, and the job fails with that refusal leading its error,
+  so the run ends.
 - **The question lands on the tracker.** `packages/core/src/release-batch/decision-hold.ts:holdBlockedRelease`
   writes each pane question as an `agent_questions` row (choice when the dialog gave two or more
   options, free text otherwise) on the first open roster member, with a pointer comment on the
@@ -377,8 +389,11 @@ asks it again.
   hands a release held on an owed decision back on its next once-a-minute pass: the held job is
   cancelled with `packages/core/src/release-batch/decision-state.ts:DECISION_HANDBACK_REASON`, every roster issue returns to
   Awaiting release unclaimed, and each one's comment carries the page the question is open on and
-  the release run's page. An answer given inside that minute still requeues the job; after it, the
-  answer reaches no release agent, and the issue is released again with Release now.
+  the release run's page. The comment ends on one next step, read off the project's release
+  setting by `packages/core/src/release-batch/held-recovery.ts:decisionNextStep`: with automatic
+  release, answering is enough; without it, answer, then start the next release from Awaiting
+  release. An answer given inside that minute still requeues the job; after it, the answer reaches
+  no release agent.
 - **The question outlives the release handed back on it.** `voidOnRunEnd` closes the open
   questions when the run is aborted or fails, except a run the held recovery handed back on its
   decision: that question stays open on the issue it is asked on, and its `OPEN_QUESTIONS`

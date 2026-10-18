@@ -7,7 +7,7 @@
  * takes its predicate and its reason from it, so the recovery and the state never disagree.
  */
 
-import { and, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, or, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices, type JobStatus, jobs } from '../db/schema.js';
 import { actorKey } from '../issues/actor-identity.js';
@@ -137,6 +137,39 @@ export async function personLabel(userId: string): Promise<string> {
   return resolved.get(actorKey('user', userId))?.displayName ?? 'Unknown';
 }
 
+const RELEASE_JOB_COLUMNS = {
+  status: jobs.status,
+  queuedAt: jobs.queuedAt,
+  dispatchedAt: jobs.dispatchedAt,
+  finishedAt: jobs.finishedAt,
+  heldBy: jobs.heldBy,
+  error: jobs.error,
+  deviceName: devices.name,
+  failureReason: jobs.failureReason,
+};
+
+/**
+ * The first `release_batch` job under the run a box took, or `null` where none was. A release is
+ * started once any of its jobs was taken: a held successor a decision left, cancelled since, is not
+ * a release that never started (ISS-1421 r6, criterion 93).
+ */
+async function readFirstTakenJob(runId: string): Promise<ReleaseJobRow | null> {
+  const [row] = await db
+    .select(RELEASE_JOB_COLUMNS)
+    .from(jobs)
+    .leftJoin(devices, eq(devices.id, jobs.deviceId))
+    .where(
+      and(
+        eq(jobs.pipelineRunId, runId),
+        eq(jobs.type, RELEASE_JOB_TYPE),
+        or(isNotNull(jobs.dispatchedAt), inArray(jobs.status, [...TAKEN_STATUSES])),
+      ),
+    )
+    .orderBy(asc(jobs.queuedAt))
+    .limit(1);
+  return row ?? null;
+}
+
 /** The newest `release_batch` job under the run, with the name of the device that took it. */
 async function readReleaseJob(runId: string): Promise<ReleaseJobRow | null> {
   const [row] = await db
@@ -158,6 +191,14 @@ async function readReleaseJob(runId: string): Promise<ReleaseJobRow | null> {
   return row ?? null;
 }
 
+function takenStart(job: ReleaseJobRow): ReleaseStart {
+  return {
+    kind: 'taken',
+    at: (job.dispatchedAt ?? job.queuedAt).toISOString(),
+    device: job.deviceName,
+  };
+}
+
 export async function readReleaseStart(
   runId: string,
   projectId: string,
@@ -172,6 +213,8 @@ export async function readReleaseStart(
   }
   const since = row.queuedAt.toISOString();
   const kind = classifyReleaseJob(row);
+  const earlier = kind === 'taken' ? null : await readFirstTakenJob(runId);
+  if (earlier) return takenStart(earlier);
   const abort = kind === 'taken' ? null : readAbortStamp(runMetadata);
   if (abort) {
     return {
@@ -183,11 +226,7 @@ export async function readReleaseStart(
   }
   switch (kind) {
     case 'taken':
-      return {
-        kind: 'taken',
-        at: (row.dispatchedAt ?? row.queuedAt).toISOString(),
-        device: row.deviceName,
-      };
+      return takenStart(row);
     case 'claimed':
       return {
         kind: 'claimed',

@@ -30,3 +30,22 @@ describe("badgeFor", () => {
     expect(badgeFor(undefined).label).toBe("Not configured");
   });
 });
+
+// ISS-1421 r6, criterion 96 — judge-37 read "Error" and "Disabled" on the Coolify row and the drawer
+// header beside a badge saying "Last check failed" and "Turned off". One set of words everywhere.
+describe("the row and drawer header say what the badge says", () => {
+  it("for a binding turned off, a failed check and one never checked", async () => {
+    const { DIRECTORY_STATUS_META, deriveConnectionStatus } = await import("../../derive");
+    const pill = (over: Partial<IntegrationSummary>) =>
+      DIRECTORY_STATUS_META[
+        deriveConnectionStatus({ active: true, lastHealthStatus: null, breakerOpenedAt: null, ...over })
+      ].label;
+    for (const over of [
+      { active: false, lastHealthStatus: "error" },
+      { lastHealthStatus: "error" },
+      {},
+    ] as Array<Partial<IntegrationSummary>>) {
+      expect(pill(over)).toBe(badgeFor(binding(over)).label);
+    }
+  });
+});

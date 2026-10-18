@@ -180,7 +180,7 @@ describe('finishRefusal — what the abort did to this batch', () => {
 
   it('says a held promoted roster stays at releasing only until the releasing sweep settles it (ISS-1421)', () => {
     expect(said('held')).toMatch(
-      /kept its claims\. Its issues stay at Releasing \(releasing\) only until Forge's releasing sweep reads what production serves/,
+      /kept its claims\. Its issues stay at Releasing only until Forge's releasing sweep reads what production serves/,
     );
     expect(said('held')).toContain(
       'closed by a release record, and the rest go back to the release gate',
@@ -267,7 +267,7 @@ describe('finishRefusal — what the abort did to this batch', () => {
   });
 
   it('names no destination for a roster when no abort recorded one', () => {
-    expect(said('unrecorded')).not.toMatch(/released|Releasing (releasing)|closed|gate/);
+    expect(said('unrecorded')).not.toMatch(/released|Releasing|closed|gate/);
     expect(said('unrecorded')).toMatch(/each issue’s own status and notes are the account/);
   });
 });

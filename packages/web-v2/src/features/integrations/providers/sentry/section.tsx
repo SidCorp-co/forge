@@ -35,6 +35,7 @@ import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { sentry } from "./index";
 import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
+import { STATE_WORDS } from "../../derive";
 
 /** Editable Sentry target row — strings only so inputs stay controlled. */
 interface TargetRow {
@@ -239,7 +240,7 @@ export function SentrySection({ projectId }: { projectId: string }) {
           <CardTitle>Sentry</CardTitle>
           {existing && (
             <Badge tone={existing.active ? "green" : "neutral"}>
-              {existing.active ? "Active" : "Disabled"}
+              {existing.active ? "Active" : STATE_WORDS.off}
             </Badge>
           )}
         </div>

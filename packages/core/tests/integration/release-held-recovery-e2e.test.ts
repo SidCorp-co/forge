@@ -267,6 +267,48 @@ describe('a release held on a decision a person owes (criterion 67)', () => {
   });
 });
 
+// ISS-1421 r6 — judge-37 read anhome ISS-783's comment say both "released again once it is answered"
+// and "a person decides whether it goes back to work or into another batch". One comment, one next
+// step, read off how the project releases (criterion 67).
+describe("a decision hand-back's comment ends on one next step (criterion 67)", () => {
+  async function handBack(): Promise<string> {
+    const a = await fx.insertIssue();
+    const { jobId } = await fx.claim([a]);
+    await hold(jobId, {
+      reason: 'awaiting_decision',
+      autoRelease: false,
+      minutesAgo: 1,
+      decision: 'owed',
+    });
+    expect(await m.recover(new Date())).toEqual({ recovered: 1 });
+    return (await bodies(a)).join('\n');
+  }
+
+  it('says to answer, then start the next release, where a person releases', async () => {
+    const said = await handBack();
+    expect(said).toContain(
+      'Answer the question, then start the next release from Awaiting release.',
+    );
+    expect(said).not.toContain('released again once it is answered');
+    expect(said).not.toMatch(/a person decides/i);
+    expect(said).not.toContain('answering the question is enough');
+  });
+
+  it('says answering is enough where the project releases automatically', async () => {
+    await harness.db.execute(sql`
+      UPDATE projects SET agent_config = jsonb_set(
+        COALESCE(agent_config, '{}'::jsonb), '{pipelineConfig}',
+        COALESCE(agent_config -> 'pipelineConfig', '{}'::jsonb) || '{"autoProdDeploy": true}'::jsonb)
+      WHERE id = ${projectId}
+    `);
+    const said = await handBack();
+    expect(said).toContain('answering the question is enough');
+    expect(said).not.toContain('start the next release');
+    expect(said).not.toContain('released again once it is answered');
+    expect(said).not.toMatch(/a person decides/i);
+  });
+});
+
 // Review of r5: a release that already promoted keeps its roster for the releasing sweep, so the
 // owner's notice may not say its issues were put back at the gate.
 describe('a decision-held release that had already promoted', () => {

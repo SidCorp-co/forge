@@ -135,8 +135,8 @@ async function refuseMovedLane(issue: {
   if (!row || (row.declared ?? null) === judged) return;
   throw new MergeMarkerError(
     'LANDING_SHAPE_MOVED',
-    `this issue's \`landingShape\` moved from ${judged ?? 'null'} to ${row.declared ?? 'null'} ` +
-      'while this mark was judged, so nothing was marked. Mark it again, and it is judged on the ' +
+    `This issue's \`landingShape\` moved from ${judged ?? 'null'} to ${row.declared ?? 'null'} ` +
+      'while this mark was judged. Nothing was marked. Mark it again, and it is judged on the ' +
       'lane the issue holds now.',
     { judged, holds: row.declared },
   );

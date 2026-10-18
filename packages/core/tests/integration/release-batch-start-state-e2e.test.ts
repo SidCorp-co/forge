@@ -214,6 +214,65 @@ describe('the state of a release batch says whether a box has started it', () =>
     expect(start.why).toContain('the pane could not start');
   });
 
+  // ISS-1421 r6, criterion 93 — anhome's release page said "This release never started … before any
+  // box took it" beside the method a box announced: its first job was taken, and the newest, a
+  // successor held on a decision, was cancelled by the hand-back. Any taken job means started.
+  it('reads `taken` off the job a box took, though a later successor was cancelled untaken', async () => {
+    const { runId, jobId } = await opened();
+    const device = await deviceOf();
+    await harness.db.execute(sql`
+      UPDATE jobs SET status = 'failed', dispatched_at = now() - interval '5 minutes',
+        device_id = ${device.id}, finished_at = now() - interval '4 minutes',
+        queued_at = now() - interval '6 minutes'
+      WHERE id = ${jobId}
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO jobs
+      SELECT (jsonb_populate_record(j, jsonb_build_object(
+        'id', gen_random_uuid(), 'status', 'cancelled', 'retry_of', j.id,
+        'dispatched_at', NULL, 'device_id', NULL, 'queued_at', now(), 'finished_at', now(),
+        'error', 'handed back on a decision a person owes'))).*
+      FROM jobs j WHERE j.id = ${jobId}
+    `);
+
+    const { start } = await startOf(runId);
+
+    expect(start).toMatchObject({ kind: 'taken', device: device.name });
+    expect(JSON.stringify(start)).not.toMatch(/never started|before any box took it/);
+  });
+
+  // A taken job starts the stall clock, and an ended run must stop it: anhome's cancelled run read
+  // "Holding: this run is past its stall bound … until a person looks" an hour after it ended.
+  it('reads an ended run as holding nothing, its stall measured up to its end', async () => {
+    const { runId, jobId } = await opened();
+    const device = await deviceOf();
+    await harness.db.execute(sql`
+      UPDATE jobs SET status = 'failed', dispatched_at = now() - interval '40 minutes',
+        device_id = ${device.id}, finished_at = now() - interval '39 minutes'
+      WHERE id = ${jobId}
+    `);
+    await harness.db.execute(sql`
+      UPDATE pipeline_runs SET status = 'cancelled', finished_at = now() - interval '39 minutes'
+      WHERE id = ${runId}
+    `);
+
+    const res = await fetch(
+      `${server.baseUrl}/api/projects/${projectId}/release-batches/${runId}/state`,
+      { headers: { authorization: `Bearer ${jwt}` } },
+    );
+    const body = (await res.json()) as {
+      bounds: {
+        holding: boolean;
+        bounds: { name: string; crossed: boolean; measuredMs: number }[];
+      };
+    };
+
+    expect(body.bounds.holding).toBe(false);
+    const stall = body.bounds.bounds.find((b) => b.name === 'stall');
+    expect(stall?.crossed).toBe(false);
+    expect(stall?.measuredMs).toBeLessThan(5 * 60_000);
+  });
+
   it('reads `none` for a release run that holds no release job', async () => {
     const { runId, jobId } = await opened();
     await harness.db.execute(sql`DELETE FROM jobs WHERE id = ${jobId}`);

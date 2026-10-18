@@ -79,6 +79,10 @@ import {
 } from './routes-reference.js';
 import type { CoolifyConfig, CoolifySecrets } from './types.js';
 
+/** A refusal's message ends as a sentence does, whatever Coolify's own words ended on (ISS-1421 r6). */
+export const asSentence = (message: string): string =>
+  /[.!?]$/.test(message.trimEnd()) ? message.trimEnd() : `${message.trimEnd()}.`;
+
 const describeCoolifyAnswer = (err: CoolifyApiError): string =>
   err.status === 403
     ? describeCoolifyForbidden(err)
@@ -91,7 +95,7 @@ const asHttp = (err: unknown): never => {
   // Coolify's own answer, named: unmapped it reached the caller as a bare INTERNAL_ERROR (ISS-1346).
   if (err instanceof CoolifyApiError) {
     throw new HTTPException(502, {
-      message: describeCoolifyAnswer(err),
+      message: asSentence(describeCoolifyAnswer(err)),
       cause: { code: 'COOLIFY_API_ERROR' },
     });
   }
@@ -122,13 +126,16 @@ const lockedAsHttp = (err: unknown): never => {
  */
 const readAsHttp = (err: unknown, describe: (e: CoolifyApiError) => string): never => {
   if (err instanceof CoolifyApiError) {
-    throw new HTTPException(424, { message: describe(err), cause: { code: 'COOLIFY_API_ERROR' } });
+    throw new HTTPException(424, {
+      message: asSentence(describe(err)),
+      cause: { code: 'COOLIFY_API_ERROR' },
+    });
   }
   if (err instanceof CoolifyReadFailedError) {
     // Coolify answering something that is not JSON did reach Coolify: its own code, so a caller
     // acting on the code is not told Forge could not connect.
     const code = err.kind === 'not-json' ? 'COOLIFY_ANSWER_NOT_JSON' : 'COOLIFY_UNREACHABLE';
-    throw new HTTPException(424, { message: err.message, cause: { code } });
+    throw new HTTPException(424, { message: asSentence(err.message), cause: { code } });
   }
   return asHttp(err);
 };

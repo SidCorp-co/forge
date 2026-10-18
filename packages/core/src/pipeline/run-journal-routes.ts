@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -7,19 +7,13 @@ import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { type RunJournalRow, runJournal } from '../db/schema-journal.js';
-import {
-  RUN_GROUP_METADATA_KEY,
-  RUN_ISSUE_STATUSES_METADATA_KEY,
-} from '../devices/run-session-keys.js';
 import { resolveIssueKeyInProject } from '../issues/issue-route-ref.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { issueJournalSchema, readIssueJournal } from './run-journal-routes-reference.js';
+import { RUN_LIMIT, runsOfIssue } from './runs-of-issue.js';
 import { loadCostByRunIds } from './runs-rollup.js';
-
-/** The most runs one read returns, newest first. */
-const RUN_LIMIT = 50;
 
 const querySchema = z.object({
   projectId: z.uuid(),
@@ -113,47 +107,6 @@ export function groupByRun(
   }));
   out.sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime() || b.ordinal - a.ordinal);
   return { runs: out };
-}
-
-interface RunRow extends Record<string, unknown> {
-  id: string;
-  kind: RunKind;
-  status: RunStatus;
-  started_at: string | Date;
-  finished_at: string | Date | null;
-  grp: string[] | null;
-  session_id: string | null;
-}
-
-/**
- * Every run of the issue, oldest first: the runs whose own column names it, and the group runs it
- * was opened in, by `runGroup` or — on a run older than that key — the keys `runIssueStatuses` was
- * stamped with, or by an attempt the journal holds for it.
- */
-async function runsOfIssue(projectId: string, issueId: string, key: string): Promise<RunRow[]> {
-  const keysOf = (field: string, shape: 'array' | 'object') =>
-    shape === 'array'
-      ? sql`(SELECT array_agg(k) FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(r.metadata -> ${field}::text) = 'array' THEN r.metadata -> ${field}::text ELSE '[]'::jsonb END) AS k)`
-      : sql`(SELECT array_agg(k) FROM jsonb_object_keys(CASE WHEN jsonb_typeof(r.metadata -> ${field}::text) = 'object' THEN r.metadata -> ${field}::text ELSE '{}'::jsonb END) AS k)`;
-  return (await db.execute(sql`
-    SELECT r.id, r.kind, r.status, r.started_at, r.finished_at,
-           CASE WHEN r.issue_id IS NULL
-                THEN COALESCE(${keysOf(RUN_GROUP_METADATA_KEY, 'array')},
-                              ${keysOf(RUN_ISSUE_STATUSES_METADATA_KEY, 'object')},
-                              ARRAY[]::text[])
-           END AS grp,
-           (SELECT s.id FROM agent_sessions s WHERE s.pipeline_run_id = r.id
-             ORDER BY s.started_at DESC, s.id DESC LIMIT 1) AS session_id
-      FROM pipeline_runs r
-     WHERE r.project_id = ${projectId}
-       AND (r.issue_id = ${issueId}
-            OR (r.issue_id IS NULL
-                AND (COALESCE(jsonb_exists(r.metadata -> ${RUN_GROUP_METADATA_KEY}::text, ${key}), false)
-                     OR COALESCE(jsonb_exists(r.metadata -> ${RUN_ISSUE_STATUSES_METADATA_KEY}::text, ${key}), false)
-                     OR EXISTS (SELECT 1 FROM run_journal j
-                                 WHERE j.run_id = r.id AND j.issue_id = ${issueId}))))
-     ORDER BY r.started_at, r.id
-  `)) as unknown as RunRow[];
 }
 
 const asDate = (v: string | Date): Date => (v instanceof Date ? v : new Date(v));

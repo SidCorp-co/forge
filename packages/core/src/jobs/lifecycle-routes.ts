@@ -405,7 +405,8 @@ jobLifecycleDeviceRoutes.post(
     }
 
     // A runner that predates the blocked door ends a pane stopped on a question with this plain
-    // failure. A retry of the job would stop on the same question, so it is held like the other.
+    // failure. A retry of the job would stop on the same question, so it ends like the other: on a
+    // release the unread ask is refused by name and the release stopped (ISS-1421 r6).
     if (isBlockedReason(input.error)) {
       const ended = await endBlockedJob(job, device.id, {
         error: input.error,

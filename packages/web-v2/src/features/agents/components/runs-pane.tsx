@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { EmptyState, ErrorState, Input, MonoTag, Skeleton, STOPPED_WORD } from "@/design";
+import { EmptyState, ErrorState, Input, MonoTag, Skeleton } from "@/design";
 import { useNow } from "@/design/hooks/use-now";
 import { useProjectRuns } from "@/features/runs/hooks";
+import { RUN_STATUS_WORD } from "@/features/runs/run-status-words";
 import type { PipelineRunListItem } from "@/features/runs/types";
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
@@ -24,9 +25,9 @@ export interface RunsPaneProps {
 }
 
 const CLOSED_STATUS_WORD: Record<string, string> = {
-  completed: "Completed",
-  failed: "Failed",
-  cancelled: STOPPED_WORD,
+  completed: RUN_STATUS_WORD.completed,
+  failed: RUN_STATUS_WORD.failed,
+  cancelled: RUN_STATUS_WORD.cancelled,
 };
 
 const RUN_KIND_WORD: Record<string, string> = {
@@ -36,7 +37,10 @@ const RUN_KIND_WORD: Record<string, string> = {
   system: "System run",
 };
 
-const OPEN_STATUS_WORD: Record<string, string> = { running: "Running", paused: "Paused" };
+const OPEN_STATUS_WORD: Record<string, string> = {
+  running: RUN_STATUS_WORD.running,
+  paused: RUN_STATUS_WORD.paused,
+};
 
 /** The project's runs that have closed, newest first: what the tab offers where no box reports a run. */
 function closedRuns(runs: readonly PipelineRunListItem[] | undefined): PipelineRunListItem[] {

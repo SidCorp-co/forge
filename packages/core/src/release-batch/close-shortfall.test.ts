@@ -30,6 +30,11 @@ vi.mock('../issues/transition-evidence.js', () => ({
   checkTransitionEvidence: (...a: unknown[]) => evidence(...a),
 }));
 
+const hasSession = vi.fn(async (..._a: unknown[]) => true);
+vi.mock('../pipeline/runs-of-issue.js', () => ({
+  issueHasSession: (...a: unknown[]) => hasSession(...a),
+}));
+
 const { ENTRY_RECORDS_CLEAR, rosterCloseShortfalls, shortfallLine, shortfallSaid } = await import(
   './close-shortfall.js'
 );
@@ -42,6 +47,7 @@ beforeEach(() => {
   asked.mockResolvedValue([]);
   declared.mockResolvedValue([]);
   evidence.mockResolvedValue(null);
+  hasSession.mockResolvedValue(true);
 });
 
 describe('rosterCloseShortfalls', () => {
@@ -113,6 +119,21 @@ describe('rosterCloseShortfalls', () => {
         declaredCriteria: ['plan', 'release_note'],
       }),
     );
+  });
+
+  // ISS-1421 r6: since ISS-1228 the header shows Open session only where the issue has a session.
+  it('names Reopen, not Open session, for an issue with no session to open', async () => {
+    hasSession.mockResolvedValue(false);
+    evidence.mockResolvedValue({
+      code: 'ENTRY_CRITERIA_UNMET',
+      detail: 'needs a release note',
+      details: { unmet: ['release_note'] },
+    });
+    const [found] = (await rosterCloseShortfalls(PROJECT, ['a'])).get('a') ?? [];
+    expect(hasSession).toHaveBeenCalledWith(PROJECT, 'a');
+    expect(found?.clears).toContain("use Reopen in the issue's actions menu");
+    expect(found?.clearsHere).toContain('use Reopen in the actions menu at the top of this page');
+    expect(`${found?.clears} ${found?.clearsHere}`).not.toMatch(/Open session/);
   });
 
   it('reads the declaration once for the whole roster and keeps every shortfall a row has', async () => {

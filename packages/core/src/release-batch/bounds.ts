@@ -94,9 +94,16 @@ const STALL_WHY: Record<StallOrigin['from'], string> = {
  */
 export function readBounds(
   attempts: ReleaseAttemptRow[],
-  opts: { now?: number; total?: number; stall?: number; takenAt?: Date | null } = {},
+  opts: {
+    now?: number;
+    total?: number;
+    stall?: number;
+    takenAt?: Date | null;
+    /** The run has ended: its bounds measure up to `at` where it is known, and nothing holds. */
+    ended?: { at: Date | null } | undefined;
+  } = {},
 ): BoundsReading {
-  const now = opts.now ?? Date.now();
+  const now = opts.ended?.at?.getTime() ?? opts.now ?? Date.now();
   const totalThreshold = opts.total ?? BOUND_DEFAULTS.total;
   const stallThreshold = opts.stall ?? BOUND_DEFAULTS.stall;
 
@@ -149,5 +156,5 @@ export function readBounds(
 
   const bounds = [total, stall, regression];
   const crossedNames = bounds.filter((b) => b.crossed).map((b) => b.name);
-  return { holding: crossedNames.length > 0, crossedNames, bounds };
+  return { holding: opts.ended === undefined && crossedNames.length > 0, crossedNames, bounds };
 }

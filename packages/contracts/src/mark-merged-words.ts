@@ -1,6 +1,7 @@
 // Mark merged's own words: its page and core's refusals both read them, so both name it alike.
 
 export const MARK_MERGED_ACTION = 'Mark merged';
+export const UNMARK_ACTION = 'Unmark';
 export const WHERE_IT_LANDED_FIELD = 'Where it landed';
 export const WORK_LANDS_ROW = 'Work lands';
 

@@ -19,6 +19,7 @@ import {
   AGENT_ACCESS_CLOSED,
   AgentAccessChoice, agentAccessBody, agentAccessDeniedReason, mayWriteAgentAccess} from "@/features/integrations/components/agent-access-control";
 import { ProjectIntegrationsPanel } from "@/features/integrations/components/project-integrations-panel";
+import { connectionPickerLabels } from "@/features/integrations/connection-identity";
 import { cardProvider, isProviderCard } from "@/features/integrations/derive";
 import {
   useBindExistingConnection,
@@ -33,7 +34,6 @@ import { providerCanDeploy } from "@forge/contracts/deploy-capability";
 import type {
   AgentAccess,
   BindingRole,
-  ConnectionSummary,
   DeployStage,
 } from "@/features/integrations/types";
 
@@ -56,13 +56,6 @@ const STAGE_CHOICES: { value: DeployStage; label: string; hint: string }[] = [
 /** The section an "add a live deploy target" link lands on, named by its `?add=` and its id. */
 export const LIVE_DEPLOY_TARGET = "live-deploy-target";
 
-/** A connection as the picker lists it: its name, then its provider's. A name stored before
- *  ISS-1421 opens with the provider's lower-case id, which the label already says. */
-export function connectionLabel(c: Pick<ConnectionSummary, "provider" | "displayName">): string {
-  const provider = providerLabel(c.provider);
-  const name = c.displayName?.replace(new RegExp(`^${c.provider} · `), "");
-  return name ? `${name} · ${provider}` : provider;
-}
 
 /** The providers this tab can start a live deploy target on, named as their rows name them. */
 function useDeployProviders(projectId: string): { provider: string; label: string }[] {
@@ -108,7 +101,10 @@ function ShareExistingCard({
   );
 
   const connectionOptions: SelectOption[] = useMemo(
-    () => eligible.map((c) => ({ value: c.id, label: connectionLabel(c) })),
+    () => {
+      const labels = connectionPickerLabels(eligible);
+      return eligible.map((c) => ({ value: c.id, label: labels.get(c.id) ?? c.id }));
+    },
     [eligible],
   );
 

@@ -36,6 +36,7 @@ import {
   useTestConnection,
   useUpdateConnection,
 } from "../hooks";
+import { connectionTitle } from "../connection-identity";
 import { deriveConnectionStatus } from "../derive";
 import { ConnectionReleaseRunnerField } from "./release-runner-field";
 import { PROVIDER_MODULES, providerIcon, providerLabel, providerModule } from "../providers/registry";
@@ -60,7 +61,7 @@ function HeaderTitle({
   const update = useUpdateConnection();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
-  const label = connection.displayName ?? providerLabel(connection.provider);
+  const label = connectionTitle(connection);
 
   const save = () => {
     const next = draft.trim();
