@@ -48,7 +48,6 @@ describe('the idle-issue notice, in the words a reader uses (ISS-1229)', () => {
         ...record('none'),
         status: 'open',
         since: '2026-10-15 11:00:00+00',
-        reason: 'no runner that takes this project’s work is connected, so nothing can pick it up',
         said: 'no runner is connected to take this project’s work',
         waitingFor: 'work to start on it',
       },
@@ -89,8 +88,6 @@ describe('the idle-issue notice of a held release', () => {
       projectName: 'Desk',
       record: {
         ...record('none'),
-        reason:
-          'the automatic release is holding it (RELEASE_CRITERIA_UNEARNED): criterion 3: unjudged. A person clears this.',
         said: 'the automatic release leaves this issue out, because criterion 3 is not earned at what this project is serving',
         waitingFor: 'a verdict on each criterion named',
       },
