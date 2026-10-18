@@ -114,6 +114,7 @@ const NOT_DISCOVERY: Record<string, string> = {
   'notifications/deliver.ts': 'by issue id',
   'notifications/notify-mentions.ts': 'by issue id',
   'notifications/notify-transitions.ts': 'by issue id',
+  'notifications/waiting-titles.ts': 'by notification id: the issue a waiting-park notice already names',
   'notifications/routes.ts':
     'the issue a stuck-issue record names, through heldAsFailedJobWhere, which composes the predicate',
   'jobs/loop-monitor-axis.ts':
@@ -159,6 +160,7 @@ const NOT_DISCOVERY: Record<string, string> = {
     "which issue a waiting commit is the work of; an archived issue still owns its commits, or they would read as nobody's",
   'projects/routes.ts': 'by issue id',
   'projects/service.ts': 'by issue id',
+  'projects/stuck-issue-kinds.ts': 'by issue id: who owes the park a notice stands for',
   'projects/stranded-work.ts':
     'reads only `awaiting_release` or unclosed issues, and only a closed or dropped issue can be archived',
   'prompt/issue-snapshot.ts':
