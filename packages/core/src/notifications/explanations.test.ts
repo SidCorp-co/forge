@@ -67,6 +67,8 @@ describe('the words a person reads on a sweep group', () => {
     (id) => {
       const { explanation } = SWEEP_DETECTORS[id as keyof typeof SWEEP_DETECTORS];
       expect(explanation).not.toMatch(/`strand`|job pool|\bwake\b/);
+      // ISS-1229 r16: no command or code name a person cannot type anywhere, such as `unmark`.
+      expect(explanation).not.toMatch(/`/);
     },
   );
 });

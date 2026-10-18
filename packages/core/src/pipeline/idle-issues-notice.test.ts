@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('../db/client.js', () => ({ db: {} }));
 
 const { idleNotice } = await import('./idle-issues.js');
+const { STRAND_RULES, strandSaid } = await import('./strand-rules.js');
+type StrandEvidence = import('./strand-rules.js').StrandEvidence;
 
 const now = new Date('2026-10-15T12:00:00.000Z');
 
@@ -14,6 +16,7 @@ function record(lease: string) {
     status: 'awaiting_release',
     since: '2026-10-12 09:00:00.5+00',
     reason: 'the code carries a merge mark and nothing has moved the row since',
+    said: 'its code was merged and nothing has moved it on since',
     waitingFor: 'a person to release it',
     owes: 'human',
     lease,
@@ -30,7 +33,7 @@ describe('the idle-issue notice, in the words a reader uses (ISS-1229)', () => {
     });
     expect(title).toBe('ISS-9 reads Awaiting release and nothing is working it — Desk');
     expect(body).toBe(
-      'It has read Awaiting release for 3 days: the code carries a merge mark and nothing has moved the row since. ' +
+      'It has read Awaiting release for 3 days, and its code was merged and nothing has moved it on since. ' +
         'It waits for a person to release it; a person owes that move.',
     );
     expect(body).not.toMatch(STORED_TIME);
@@ -46,14 +49,15 @@ describe('the idle-issue notice, in the words a reader uses (ISS-1229)', () => {
         status: 'open',
         since: '2026-10-15 11:00:00+00',
         reason: 'no runner that takes this project’s work is connected, so nothing can pick it up',
-        waitingFor: 'a run to be dispatched onto it',
+        said: 'no runner is connected to take this project’s work',
+        waitingFor: 'work to start on it',
       },
       now,
     });
     expect(body.split(/(?<=[.!?])\s+/)).toHaveLength(2);
     expect(body).toBe(
-      'It has read Open for 1 hour: no runner that takes this project’s work is connected, so nothing can pick it up. ' +
-        'It waits for a run to be dispatched onto it; a person owes that move.',
+      'It has read Open for 1 hour, and no runner is connected to take this project’s work. ' +
+        'It waits for work to start on it; a person owes that move.',
     );
   });
 
@@ -68,7 +72,7 @@ describe('the idle-issue notice, in the words a reader uses (ISS-1229)', () => {
       });
       expect(title).toBe('ISS-9 reads Awaiting release and no live work could be confirmed — Desk');
       expect(body).toContain(
-        'It has read Awaiting release for 3 days, no live work confirmed: the code carries a merge mark',
+        'It has read Awaiting release for 3 days, and no live work could be confirmed because its code was merged',
       );
       expect(`${title} ${body}`).not.toMatch(STORED_TIME);
       expect(`${title} ${body}`).not.toContain('awaiting_release');
@@ -77,7 +81,9 @@ describe('the idle-issue notice, in the words a reader uses (ISS-1229)', () => {
 });
 
 describe('the idle-issue notice of a held release', () => {
-  it('names the hold in its first sentence and leaves the remedy to the hold, in two sentences', () => {
+  // ISS-1229 r16: the body carried the hold's code and the sweep's own words; it says the hold's
+  // first sentence, which is written for a person, and never its code.
+  it('names the hold in its first sentence, in its own words, and leaves the remedy to the hold', () => {
     const { body } = idleNotice({
       ref: 'ISS-9',
       projectName: 'Desk',
@@ -85,13 +91,53 @@ describe('the idle-issue notice of a held release', () => {
         ...record('none'),
         reason:
           'the automatic release is holding it (RELEASE_CRITERIA_UNEARNED): criterion 3: unjudged. A person clears this.',
+        said: 'the automatic release leaves this issue out, because criterion 3 is not earned at what this project is serving',
         waitingFor: 'a verdict on each criterion named',
       },
       now,
     });
     expect(body).toBe(
-      'It has read Awaiting release for 3 days: the automatic release is holding it (RELEASE_CRITERIA_UNEARNED): criterion 3: unjudged. ' +
+      'It has read Awaiting release for 3 days, and the automatic release leaves this issue out, because criterion 3 is not earned at what this project is serving. ' +
         'It waits for a verdict on each criterion named; a person owes that move.',
     );
+    expect(body).not.toMatch(/[A-Z]{3,}_[A-Z_]+/);
+  });
+});
+
+describe('the idle-issue notice says why in a person’s words (ISS-1229 r16)', () => {
+  const evidence = (over: Partial<StrandEvidence> = {}): StrandEvidence => ({
+    merged: false,
+    everRan: false,
+    poolHasRunner: true,
+    lease: { verdict: 'none', fanout: 0 } as StrandEvidence['lease'],
+    ...over,
+  });
+  const SYSTEM_WORDS = /\b(lease|dispatch(ed)?|row|run|merge mark|holder|admitted|drive)\b/i;
+
+  it.each([
+    ['open', evidence()],
+    ['open', evidence({ poolHasRunner: false })],
+    ['in_progress', evidence({ everRan: true })],
+    ['developed', evidence({ everRan: true, merged: true })],
+    ['in_progress', evidence({ lease: { verdict: 'expired', fanout: 0, stopped: true } as StrandEvidence['lease'] })],
+    ['in_progress', evidence({ lease: { verdict: 'shared', fanout: 3 } as StrandEvidence['lease'] })],
+  ] as const)('a %s issue', (status, ev) => {
+    const rule = STRAND_RULES[status];
+    const said = strandSaid({ status, rule, evidence: ev });
+    const { body } = idleNotice({
+      ref: 'ISS-4',
+      projectName: 'Desk',
+      record: {
+        status,
+        since: '2026-10-15 11:00:00+00',
+        said,
+        waitingFor: rule.watch ? rule.waitingFor : '',
+        owes: 'agent',
+        lease: ev.lease.verdict,
+      },
+      now,
+    });
+    expect(body).not.toMatch(SYSTEM_WORDS);
+    expect(body.split(/(?<=[.!?])\s+/)).toHaveLength(2);
   });
 });

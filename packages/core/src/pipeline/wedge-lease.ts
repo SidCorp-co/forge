@@ -60,7 +60,7 @@ export function buildWedgeResetBody(args: {
   return [
     `**Moved by the reconciler: ${statusLabel(args.from)} -> ${statusLabel(args.to)}**`,
     '',
-    `The reconciler's autonomous wedge pass made this move, not a person. It found nothing working the issue: its latest job is a \`drive\` job that is no longer live, no job is queued or running, nothing wrote to the issue for ${args.grace}, and ${leaseSentence(args.reading)}.`,
+    `The reconciler's autonomous wedge pass made this move, not a person. It found nothing working the issue: the agent that last worked on it has stopped, no work is queued or running, nothing wrote to the issue for ${args.grace}, and ${leaseSentence(args.reading)}.`,
     '',
     `The issue is back at ${statusLabel(args.to)}, where the next dispatch takes it up again.`,
   ].join('\n');
