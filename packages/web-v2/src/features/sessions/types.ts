@@ -156,9 +156,7 @@ export interface SessionCost {
   models: { model: string; cost: number; requests: number }[];
 }
 
-/** Client-side filter tabs. `waiting` = an interactive chat idle after its last
- *  turn (genuinely awaiting the owner's reply — ISS-664). `attention` = failed +
- *  stalled + cancelled_stale (unchanged; job failures, not reply-waiting). */
+/** Client-side filter tabs; `matchesFilter` in sessions-screen.tsx says what each one lists. */
 export type SessionFilter = "all" | "waiting" | "running" | "queued" | "attention";
 
 export type AgentSessionKind = "master" | "run_session" | "pipeline" | "pm" | "chat";
@@ -213,6 +211,13 @@ export function isAwaitingReply(
   session: Pick<SessionRow, "status" | "metadata"> & { kind?: AgentSessionKind | null },
 ): boolean {
   return isInteractiveSession(session) && session.status === "idle";
+}
+
+/** Queued, or a box session not yet started; a chat idle between turns waits on its person (ISS-1228). */
+export function isWaitingForABox(
+  session: Pick<SessionRow, "status" | "metadata"> & { kind?: AgentSessionKind | null },
+): boolean {
+  return session.status === "queued" || (session.status === "idle" && !isInteractiveSession(session));
 }
 
 /** Operator-facing label for each terminal failure reason — surfaced on the
@@ -573,6 +578,29 @@ export function classifySessionOutcome(
 export function sessionChipStatus(display: AgentSessionDisplayStatus, failureReason?: string | null): StatusKey {
   const outcome = classifySessionOutcome(display, failureReason);
   return outcome.bucket === "active" ? statusToChip(display) : outcome.statusKey;
+}
+
+/** One chip on the list row, the page and the rail, never Idle on one of them (ISS-1228). */
+export function sessionChipStatusOf(
+  session: Pick<SessionRow, "status" | "metadata" | "failureReason"> & { kind?: AgentSessionKind | null },
+  display: AgentSessionDisplayStatus,
+): StatusKey {
+  return isAwaitingReply(session) ? "waiting" : sessionChipStatus(display, session.failureReason);
+}
+
+/** The box dot a session's row draws: on every session core has not ended that names a box, of any
+ *  kind, healthy while the box answers and the session is heard from, attention where either is not. */
+export function boxDotOf(
+  session: Pick<
+    SessionRow,
+    "status" | "deviceId" | "lastHeartbeatAt" | "startedAt" | "updatedAt" | "metadata" | "silenceLimitMs" | "boxOnline"
+  >,
+  nowMs: number,
+): "healthy" | "attention" | null {
+  if (!session.deviceId || TERMINAL_SESSION_STATUSES.has(session.status)) return null;
+  if (session.boxOnline === false) return "attention";
+  const { state } = deriveLiveness(session, nowMs);
+  return state === "stale" || state === "reaping" ? "attention" : "healthy";
 }
 
 export function sessionEndWord(display: AgentSessionDisplayStatus, failureReason?: string | null): string {

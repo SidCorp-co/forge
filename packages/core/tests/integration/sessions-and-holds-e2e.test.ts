@@ -72,19 +72,30 @@ describe('readSessionsAndHolds — sessions (ISS-1228)', () => {
     expect(out.sessions.map((s) => s.kind)).toEqual(['run_session']);
   });
 
-  it('counts for the rail and the console exactly the sessions it lists, not the runs left open', async () => {
+  // Round 16: the dashboard counts a chat whose turn is running as live, so the rail counts it too.
+  it('counts for the rail and the console the sessions it lists and the running chats, not the runs left open', async () => {
     await session('run_session', 'running');
     await session('run_session', 'completed');
     await session('chat', 'running');
+    await session('chat', 'idle');
     const { readLiveSessionCounts } = await import('../../src/pipeline/live-session.js');
     const counts = await readLiveSessionCounts([fx.projectId]);
     const out = await read();
     const [openRuns] = (await fx.db.execute(sql`
       SELECT count(*)::int AS n FROM pipeline_runs WHERE project_id = ${fx.projectId} AND status = 'running'
     `)) as unknown as Array<{ n: number }>;
-    expect(openRuns?.n).toBe(3);
-    expect(counts).toEqual([{ projectId: fx.projectId, n: out.sessions.length }]);
+    expect(openRuns?.n).toBe(4);
+    expect(counts).toEqual([
+      { projectId: fx.projectId, n: out.sessions.length + out.runningChats.length },
+    ]);
     expect(out.sessions).toHaveLength(1);
+    expect(out.runningChats).toHaveLength(1);
+    // Round 16: the dashboard counts the runs it lists from the runs these sessions name.
+    const [own] = (await fx.db.execute(sql`
+      SELECT pipeline_run_id::text AS run FROM agent_sessions WHERE id = ${out.sessions[0]?.id ?? ''}
+    `)) as unknown as Array<{ run: string | null }>;
+    expect(own?.run).toBeTruthy();
+    expect(out.sessions[0]?.pipelineRunId).toBe(own?.run);
   });
 
   it('gives a session the issue its lease names, and that issue a session hold', async () => {

@@ -10,6 +10,7 @@ import { Icon, LiveDot, MonoTag, SILENCE_TONE, SILENCE_WORD } from "@/design";
 import { TONE_META } from "@/design/status";
 import { checkInOf, orderSessions, sessionName } from "@/features/pipeline/derive";
 import { liveSessionWord } from "@/features/sessions/session-word";
+import { runningChatsText } from "@/features/sessions/status-sentences";
 import type { LiveSession } from "@/features/pipeline/types";
 import type { PipelineRunListItem } from "@/features/runs/types";
 import type { ReadState } from "../shape";
@@ -17,6 +18,8 @@ import { DashboardSection, EmptyLine, RowList, unreadSection } from "./dashboard
 
 export interface LiveSessionsCardProps {
   sessions: readonly LiveSession[];
+  /** Chats whose turn is running: live, and counted in the Sessions live figure, though not listed. */
+  runningChats?: number;
   slug: string;
   now: number;
   /** Open runs nothing works: no live job and no session on them. Shown as a count rather than hidden. */
@@ -72,7 +75,7 @@ function SessionRow({ session, slug, now }: { session: LiveSession; slug: string
   );
 }
 
-export function LiveSessionsCard({ sessions, slug, now, idle = [], read, runsRead }: LiveSessionsCardProps) {
+export function LiveSessionsCard({ sessions, runningChats = 0, slug, now, idle = [], read, runsRead }: LiveSessionsCardProps) {
   const router = useRouter();
 
   const idleNote = runsRead?.read !== "pending" && runsRead?.read !== "failed" && idle.length > 0 && (
@@ -89,10 +92,22 @@ export function LiveSessionsCard({ sessions, slug, now, idle = [], read, runsRea
     </button>
   );
 
+  const chatNote = runningChats > 0 && (
+    <button
+      type="button"
+      onClick={() => router.push(`/projects/${slug}/agents`)}
+      className="fg-caption mt-1 flex w-full items-center gap-1.5 rounded-md py-2 text-left text-muted transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+    >
+      <Icon name="agent" size={13} className="flex-none text-subtle" />
+      <span className="min-w-0 flex-1">{runningChatsText(runningChats)}</span>
+      <Icon name="chevronRight" size={13} className="flex-none text-subtle" />
+    </button>
+  );
+
   const unread = unreadSection("Live sessions", "The project's live sessions", read, true);
   if (unread) return unread;
 
-  if (sessions.length === 0) {
+  if (sessions.length === 0 && runningChats === 0) {
     return (
       <div>
         <EmptyLine title="Live sessions" status="none live right now" />
@@ -108,6 +123,7 @@ export function LiveSessionsCard({ sessions, slug, now, idle = [], read, runsRea
           <SessionRow key={session.id} session={session} slug={slug} now={now} />
         ))}
       </RowList>
+      {chatNote}
       {idleNote}
     </DashboardSection>
   );

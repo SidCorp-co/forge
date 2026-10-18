@@ -42,6 +42,7 @@ let work: Record<string, number>;
 let runs: unknown[] | undefined;
 let runsError: unknown;
 let sessions: unknown[] | undefined;
+let runningChats: unknown[];
 let sessionsError: unknown;
 let parked: Record<string, unknown>;
 let throughputRows: unknown[];
@@ -72,6 +73,7 @@ function reset() {
   runs = [];
   runsError = null;
   sessions = [];
+  runningChats = [];
   sessionsError = null;
   parked = { data: { items: [], totalCount: 0 }, ...settled, isPlaceholderData: false };
   throughputRows = WEEK;
@@ -118,7 +120,7 @@ vi.mock("@/features/runs/hooks", () => ({
 }));
 vi.mock("@/features/pipeline/hooks", () => ({
   useSessionsAndHolds: () => ({
-    data: sessions === undefined ? undefined : { sessions, holds: [], runningChats: [], readAt: new Date(NOW).toISOString() },
+    data: sessions === undefined ? undefined : { sessions, holds: [], runningChats, readAt: new Date(NOW).toISOString() },
     isLoading: false,
     isError: sessionsError !== null,
     error: sessionsError,
@@ -208,6 +210,7 @@ const liveSession = (over: Record<string, unknown> = {}) => ({
   deviceId: "dv1",
   deviceName: "box-1",
   parentSessionId: null,
+  pipelineRunId: "r1",
   startedAt: ago(600),
   lastHeartbeatAt: ago(4),
   createdAt: ago(600),
@@ -279,7 +282,7 @@ describe("a quiet project", () => {
 describe("a working project", () => {
   it("opens on a sentence counting what is live and what needs a person, over a figures row with a comparison each", () => {
     runs = [run(), run({ id: "r2", issueRef: "ISS-2" })];
-    sessions = [liveSession(), liveSession({ id: "s2" })];
+    sessions = [liveSession(), liveSession({ id: "s2", pipelineRunId: "r2" })];
     attentionView = view({ pair: { needsReview: 0, awaitingInput: 1, parkedOnly: 0, failedJobs: 0, awaitingAsked: 0, parkedAsked: 0, stuckOnly: 0 } }, {
       awaitingInput: [attentionItem(7, ago(2 * 3600))],
     });
@@ -752,16 +755,50 @@ describe("a page whose figures sit beside other counts of the same things", () =
     expect(container).not.toHaveTextContent("Nothing here needs you");
   });
 
-  it("counts the sessions the Pipeline page lists, and says how many runs are open as the navigation rail counts them", () => {
+  // ISS-1228 round 16 (judge-42): "3 runs open" sat above a list of one run, the other two being runs
+  // no listed session works. The caption counts the open runs the Live sessions section shows: those
+  // its rows work, and those nothing works, which it counts beneath them.
+  it("counts the open runs the Live sessions section shows, and no run it does not", () => {
     runs = [
       run(),
       run({ id: "r2", liveJobs: 0, startedAt: ago(600), lastSessionBeatAt: ago(30) }),
       run({ id: "r3", currentStep: "tested", liveJobs: 0 }),
+      run({ id: "r4", liveJobs: 0, startedAt: ago(600), lastSessionBeatAt: null }),
+      run({ id: "r5", status: "completed" }),
     ];
-    sessions = [liveSession()];
+    sessions = [liveSession(), liveSession({ id: "s-master", kind: "master", pipelineRunId: null })];
     mount();
-    expect(figure("Sessions live").getByText("1")).toBeInTheDocument();
-    expect(figure("Sessions live").getByText(/3 runs open$/)).toBeInTheDocument();
+    expect(figure("Sessions live").getByText("2")).toBeInTheDocument();
+    expect(figure("Sessions live").getByText(/· 2 runs open$/)).toBeInTheDocument();
+    const live = screen.getByRole("region", { name: "Live sessions" });
+    expect(within(live).getAllByRole("listitem")).toHaveLength(2);
+    expect(within(live).getByRole("button", { name: /1 open run has nothing working it/ })).toBeInTheDocument();
+  });
+
+  // ISS-1228 round 16 (judge-42): "Sessions live 2" and "2 sessions are live." while the caption
+  // counted a box busy because of a chat neither figure counted.
+  it("counts a chat whose turn is running among the live sessions, in the figure, the headline and the section", () => {
+    sessions = [liveSession()];
+    runningChats = [{ id: "c1", deviceId: "dv2" }];
+    projectRunnerRows = [
+      { runnerId: "rn1", deviceId: "dv1", deviceName: "box-1", deviceStatus: "online", runnerStatus: "enabled", platform: "linux" },
+      { runnerId: "rn2", deviceId: "dv2", deviceName: "box-2", deviceStatus: "online", runnerStatus: "enabled", platform: "linux" },
+    ];
+    mount();
+    expect(figure("Sessions live").getByText("2")).toBeInTheDocument();
+    expect(figure("Sessions live").getByText(/^2 of 2 runners busy/)).toBeInTheDocument();
+    expect(headline()).toHaveTextContent("2 sessions are live.");
+    const live = screen.getByRole("region", { name: "Live sessions" });
+    expect(within(live).getByText("1 chat has a turn running.")).toBeInTheDocument();
+  });
+
+  it("calls a project live where only a chat's turn runs", () => {
+    sessions = [];
+    runningChats = [{ id: "c1", deviceId: "dv1" }];
+    const { container } = mount();
+    expect(shape(container)).toBe("working");
+    expect(headline()).toHaveTextContent("1 session is live.");
+    expect(screen.getByText("1 chat has a turn running.")).toBeInTheDocument();
   });
 
   it("says nothing of open runs where none is open", () => {

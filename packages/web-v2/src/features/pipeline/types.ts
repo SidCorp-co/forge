@@ -31,6 +31,8 @@ export interface LiveSession {
   deviceId: string | null;
   deviceName: string | null;
   parentSessionId: string | null;
+  /** The run it works; the dashboard counts runs open from the sessions it lists. */
+  pipelineRunId?: string | null;
   startedAt: string | null;
   lastHeartbeatAt: string | null;
   createdAt: string;
