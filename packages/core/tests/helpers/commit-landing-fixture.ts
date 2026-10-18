@@ -29,6 +29,8 @@ export const OWN_TWIN = `${OWN.slice(0, 7)}${'0'.repeat(33)}`;
 interface FakeCommit {
   message: string;
   on: string[];
+  /** Every commit this one carries, itself aside: what a compare from one of them reads `ahead`. */
+  after?: string[];
 }
 
 export const repo = {
@@ -98,6 +100,19 @@ export function fakeGitHubClient(real: typeof GitHubClient): typeof GitHubClient
               sha: hit[0],
               commit: { message: hit[1].message, committer: { date: '2026-09-30T09:00:00Z' } },
             } as T;
+          }
+          // A compare of two commits, asked for its status alone (`descends`).
+          const pair = /\/compare\/([0-9a-f]+)\.\.\.([0-9a-f]+)\?per_page=1$/.exec(path);
+          if (pair?.[1] && pair[2]) {
+            if (repo.down === 'compare') {
+              throw new real.GitHubReadError(502, httpError(502, path).message);
+            }
+            const [base, head] = [find(pair[1]), find(pair[2])];
+            if (!base || !head) throw new real.GitHubReadError(404, httpError(404, path).message);
+            if (base[0] === head[0]) return { status: 'identical' } as T;
+            if (head[1].after?.includes(base[0])) return { status: 'ahead' } as T;
+            if (base[1].after?.includes(head[0])) return { status: 'behind' } as T;
+            return { status: 'diverged' } as T;
           }
           const cmp = /\/compare\/([0-9a-f]+)\.\.\.(.+)$/.exec(path);
           if (cmp?.[1] && cmp[2]) {

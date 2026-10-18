@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { repoPullRequests } from '../db/schema-repo-projection.js';
@@ -14,6 +14,7 @@ export type MergeEvidence =
       via: 'kernel' | 'event' | 'repository';
       /** Where the work also landed outside git, on a project whose landing is named. */
       landing?: string | null;
+      supersedes?: string | null;
     }
   | { kind: 'landed'; landing: string; at?: Date | null; via: 'mark' }
   | {
@@ -136,7 +137,7 @@ export function describeMergeMark(args: {
   return `Commit ${args.claimedCommit} was named, and is kept as a claim. Forge did not see this merge, so it is not the merge commit.${held}`;
 }
 
-async function readBack(
+export async function readMergeColumns(
   executor: MergeRecordExecutor,
   issueId: string,
 ): Promise<Omit<MergeRecord, 'wrote'>> {
@@ -185,9 +186,12 @@ export async function recordIssueMerge(
   // A claim may be attached to a bare `asserted` mark (one naming no commit, landing or claim), the
   // way an observed write may replace one: the first stamp still wins `merged_at`.
   const claimsOnly = evidence.kind === 'asserted' && Boolean(evidence.unverifiedCommit);
+  const supersedes = evidence.kind === 'observed' ? (evidence.supersedes ?? null) : null;
   const gate =
     evidence.kind === 'observed'
-      ? isNull(issues.mergedCommitSha)
+      ? supersedes
+        ? eq(issues.mergedCommitSha, supersedes)
+        : isNull(issues.mergedCommitSha)
       : claimsOnly
         ? or(
             isNull(issues.mergedAt),
@@ -240,7 +244,7 @@ export async function recordIssueMerge(
       claimedCommit: wrote.mergedClaimedCommit,
     };
   }
-  const held = await readBack(executor, issueId);
+  const held = await readMergeColumns(executor, issueId);
   return { wrote: false, ...held };
 }
 
@@ -281,7 +285,7 @@ export async function observedMergeForIssue(
         isNotNull(repoPullRequests.mergedAt),
       ),
     )
-    .orderBy(asc(repoPullRequests.mergedAt))
+    .orderBy(desc(repoPullRequests.mergedAt))
     .limit(1);
   if (!row?.sha || !row.at) return null;
   return { commitSha: row.sha, mergedAt: row.at };

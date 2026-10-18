@@ -98,7 +98,7 @@ async function runMergeMarker(
 
   const actor = restActor(c);
   try {
-    const { action, mark, markDetail } = await applyMergeMarker({
+    const { action, mark, markDetail, movedFrom } = await applyMergeMarker({
       issue,
       op,
       ...(body.target ? { target: body.target } : {}),
@@ -116,7 +116,9 @@ async function runMergeMarker(
     // caller reads `action: 'merged'` and has no way to learn that what it wrote is a claim
     // Forge did not observe; the sentence has been composed for the audit trail since ISS-959
     // and never reached the one party that could act on it.
-    return c.json(answer(mergeMarkAnswerSchema, { id: issueId, action, mark, detail: markDetail }));
+    return c.json(
+      answer(mergeMarkAnswerSchema, { id: issueId, action, mark, detail: markDetail, movedFrom }),
+    );
   } catch (err) {
     if (err instanceof MergeMarkerError) {
       if (err.code === 'ISSUE_NOT_FOUND') throw notFound('issue not found');

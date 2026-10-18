@@ -8,6 +8,13 @@ import { findMissingWorkEvidence, readStandingClaim } from '../pipeline/work-evi
 import type { ActorAgency } from './actor-agency.js';
 import { type CommitLanding, readCommitLanding, resolveMarkCommit } from './commit-landing.js';
 import {
+  type LaterLanding,
+  laterAside,
+  laterLanding,
+  movedSentence,
+  notDescendantDetail,
+} from './landing-advance.js';
+import {
   type LandingShape,
   type Lane,
   landingMarkRefusal,
@@ -26,6 +33,7 @@ import {
   mergeMarkKindOf,
   observedMergeForIssue,
   quoted,
+  readMergeColumns,
   recordIssueMerge,
 } from './merge-record.js';
 import { refuseUnmarkOnClosed } from './merged-at.js';
@@ -90,6 +98,7 @@ export class MergeMarkerError extends Error {
       | 'TARGET_REQUIRED'
       | 'PROJECT_KIND_UNKNOWN'
       | 'LANDING_SHAPE_MOVED'
+      | 'LANDING_NOT_DESCENDANT'
       | Exclude<CommitLanding, { ok: true }>['code'],
     message: string,
     readonly details?: Record<string, unknown>,
@@ -194,6 +203,26 @@ function namesAnother(named: string, kept: string): string | null {
   return a.startsWith(b) || b.startsWith(a) ? null : named;
 }
 
+/** A later commit this mark compared with the one the row held; a different landing is refused. */
+async function compareLater(
+  issue: { id: string; projectId: string; declaredLandingShape: LandingShape | null },
+  commit: string | undefined,
+  observed: { commitSha: string; mergedAt: Date } | null,
+  fromRepository: Extract<CommitLanding, { ok: true }> | null,
+): Promise<LaterLanding | null> {
+  const later = await laterLanding(issue, commit, observed, fromRepository);
+  if (later?.kind === 'refused')
+    throw new MergeMarkerError(later.code, later.detail, later.details);
+  if (later?.kind === 'other') {
+    throw new MergeMarkerError(
+      'LANDING_NOT_DESCENDANT',
+      notDescendantDetail(later.held, later.candidate),
+      { held: later.held, commit: later.candidate },
+    );
+  }
+  return later;
+}
+
 export const NOT_MARKED_MERGED_DETAIL =
   'This issue is not marked merged, so there is no mark to remove. Nothing changed.';
 
@@ -272,6 +301,8 @@ export async function applyMergeMarker(args: {
    */
   mark: MergeMarkKind;
   markDetail: string;
+  /** The commit the landing moved forward from, where this mark moved it (ISS-1421 round 7). */
+  movedFrom: string | null;
 }> {
   const before = args.issue;
 
@@ -290,6 +321,7 @@ export async function applyMergeMarker(args: {
   let readFrom: Extract<CommitLanding, { ok: true }> | null = null;
   /** The repository that holds the claimed commit, where this call read it there. */
   let claimHeldBy: string | null = null;
+  let later: LaterLanding | null = null;
   if (args.op === 'mark') {
     const lane = await markLane(before);
     const shape = lane.shape;
@@ -316,7 +348,11 @@ export async function applyMergeMarker(args: {
             observedSha: observed?.commitSha ?? null,
           })
         : null;
-    if (observed) {
+    later =
+      shape === 'git' ? await compareLater(before, args.commit, observed, fromRepository) : null;
+    if (later?.kind === 'moved') {
+      stampResult = { wrote: true, ...(await readMergeColumns(db, before.id)) };
+    } else if (observed) {
       stampResult = await recordIssueMerge(db, {
         issueId: before.id,
         declared: before.declaredLandingShape ?? null,
@@ -411,11 +447,12 @@ export async function applyMergeMarker(args: {
   });
   // A repeat naming another commit is already told how to change the claim, by the claim's own words.
   const step = repeated && !kept?.notKept ? CHANGE_THE_MARK : null;
-  const after = [step, standingDetail].filter(Boolean).join(' ');
+  const after = [step, laterAside(later), standingDetail].filter(Boolean).join(' ');
+  const moved = later?.kind === 'moved' ? `${movedSentence(later.from, later.to)} ` : '';
   const markDetail = repeated
     ? `${alreadyMarkedSentence(stampResult.mergedAt)}. ${after}`
-    : standingDetail;
-  const marked = args.op === 'mark' ? `\n${standingDetail}` : '';
+    : `${moved}${standingDetail}`;
+  const marked = args.op === 'mark' ? `\n${markDetail}` : '';
   const auditComment = await writeAuditComment(
     before.id,
     args.actor.commentAuthorId,
@@ -457,5 +494,6 @@ export async function applyMergeMarker(args: {
   });
 
   const action = args.op !== 'mark' ? 'unmarked' : repeated ? 'already_merged' : 'merged';
-  return { issue, action, mark, markDetail };
+  const movedFrom = later?.kind === 'moved' ? later.from : null;
+  return { issue, action, mark, markDetail, movedFrom };
 }

@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { pipelineRuns } from '../../db/schema.js';
 import { repoPullRequests } from '../../db/schema-repo-projection.js';
+import { advanceObservedLanding } from '../../issues/landing-advance.js';
 import { recordIssueMerge } from '../../issues/merge-record.js';
 import { logger } from '../../logger.js';
 import { hooks } from '../../pipeline/hooks.js';
@@ -111,8 +112,25 @@ async function assertCaller(req: MergeRequest, projectId: string): Promise<void>
   }
 }
 
-/** The evidence write: the issue's stamp and the projection row, together or not at all. */
+/** The evidence write: the issue's stamp and the projection row, together or not at all. A mark
+ *  already holding another commit is moved forward after it, read against the repository. */
 async function writeEvidence(args: {
+  row: StoredRow;
+  commitSha: string;
+  mergedAt: Date;
+}): Promise<{ stamped: boolean }> {
+  const { row, commitSha, mergedAt } = args;
+  const first = await writeStampAndRow(args);
+  if (first.stamped || !row.issueId) return first;
+  const advance = await advanceObservedLanding({
+    issueId: row.issueId,
+    projectId: row.projectId,
+    candidate: { sha: commitSha, at: mergedAt, via: 'kernel' },
+  });
+  return { stamped: advance.kind === 'moved' };
+}
+
+async function writeStampAndRow(args: {
   row: StoredRow;
   commitSha: string;
   mergedAt: Date;

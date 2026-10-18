@@ -38,9 +38,10 @@ timestamp is `unmarked`.
 
 ## What `mark_merged` writes, on each path
 
-`applyMergeMarker` looks for a merged pull request Forge has projected
+`applyMergeMarker` looks for the issue's most recently merged pull request Forge has projected
 (`observedMergeForIssue`). Where it finds one it stamps `merged_at` AND
-`merged_commit_sha`, from that record. Where it finds none it stamps `merged_at` alone.
+`merged_commit_sha`, from that record. Where it finds none it stamps `merged_at` alone. A row
+that already holds a commit is moved forward by a later one, never overwritten (below).
 
 Where an agent marks an issue on the `git` shape that holds no other work evidence
 (`findMissingWorkEvidence`) and the call carries `data.commit`, the commit is the only trace
@@ -162,8 +163,8 @@ naming a commit is checked only for the repository holding it, not read as this 
 it does not clear it, and names `statusEntryCriteria` as the
 declaration to change where the project's work leaves none of these.
 
-Where the row already holds a stamp, the gated UPDATE moves nothing and the answer
-describes what the row HOLDS, not which branch this call took. Both the answer and the thread
+Where the row already holds a stamp and the call names no later landing (below), the gated
+UPDATE moves nothing and the answer describes what the row HOLDS, not which branch this call took. Both the answer and the thread
 comment open by saying so — "Already marked merged on 17 Oct 2026, so this call changed
 nothing." — with the caller's note whole on a line of its own and never the "Marked merged" a
 first mark opens with (`packages/core/src/issues/merge-marker.ts:alreadyMarkedSentence`). An `unmark`
@@ -180,6 +181,44 @@ the correction, and neither the row nor the thread is written. The first stamp w
 as for `merged_at`; a `200` that kept the old landing while the caller was told it had sent the
 evidence is what this replaced (ISS-1327). The exact landing re-sent is answered `already_merged`
 like any other repeat.
+
+## A later landing moves the mark forward (ISS-1421 round 7)
+
+An issue worked in rounds merges more than once, and the mark is where it landed: the release
+gate, the roster, live reach and the issue's properties all read `merged_commit_sha`. Until round 7
+the observed write was gated on an empty column and `observedMergeForIssue` read the OLDEST merged
+pull request, so the first round held the mark for ever and every later one was answered "changed
+nothing"; ISS-1421 read its first round's commit after three more had merged.
+
+`packages/core/src/issues/landing-advance.ts` reads a candidate commit against the one the row
+holds through the project's repository (`RepositoryReader.descends`: one GitHub compare's status,
+or `merge-base --is-ancestor` over the deploy key's fetch). The candidate is the commit a mark
+names, read as this issue's landing by `readCommitLanding` (a person's included), or, where the
+mark names none, the most recently merged pull request's merge commit; an older merged pull
+request is not read.
+
+- **It descends:** the mark moves to it, commit and time, and the comment and the answer say "The
+  landing moved from commit A to commit B, which carries it." The answer's `movedFrom` names A.
+  The write names A as the commit it moves from (`recordIssueMerge`'s `supersedes`) and lands only
+  while the column still holds A; a write that loses that race reads the row again and compares
+  again, at most three times, and only a write that took is reported as a move.
+- **The same commit, or one A already carries:** nothing changes, answered as any repeat, with
+  "Commit B is already in commit A, where the landing stands." where they differ.
+- **Neither:** a different landing. The mark door refuses it `LANDING_NOT_DESCENDANT`, naming both
+  commits and Unmark then Mark merged as the way to move it there, and writes nothing.
+- **The repository cannot say:** the mark stays, answered as a repeat, quoting why. Like an agent's
+  unverified claim (ISS-1409), a read Forge could not take is not evidence the work is false.
+
+A merge Forge observes itself takes the same reading: GitHub's `pull_request` event
+(`packages/core/src/integrations/github/projection-events.ts:stampMergedIssue`) and Forge's own merge
+(`packages/core/src/integrations/github/merge.ts:writeEvidence`), both through `stampObservedMerge`
+and `advanceObservedLanding`. Nobody is there to refuse, so a merge that does not descend, or that
+could not be compared, is left with a comment on the issue saying so, once; a redelivery of a merge
+the mark already holds says nothing.
+
+What does not move: an unverified claim (`merged_claimed_commit`), since no read could place it on
+a line, and a `landed` mark outside git, which has no commit. No stored row was rewritten: a mark
+left at an earlier round moves on that issue's next mark or next observed merge.
 
 ## Every `git` mark's commit is one the repository holds
 
@@ -324,6 +363,3 @@ handler that mapped every row through one reading, would stay green through it. 
 `packages/core/src/mcp/tools/forge-issues-merge-mark.test.ts` calls the tool factory's own
 handler. `packages/core/src/issues/merge-mark-surfaces.test.ts` keeps the helpers' own
 property, which is a different claim.
-
-The observed branch is only ever exercised under a mocked projection: on any database
-here `repo_pull_requests` is empty, so the branch is unreachable in the field.

@@ -310,6 +310,9 @@ export function useMergeMarker(issueId: string) {
           description: "The mark that stands was kept. To change it, press Unmark, then Mark merged again.",
           tone: "info",
         });
+      } else if (answer.movedFrom) {
+        // A later landing of the same issue moves the mark (ISS-1421 round 7); the sentence names both commits.
+        toast({ title: "Landing moved", description: answer.detail, tone: "success" });
       } else {
         toast({ title: "Marked merged", tone: "success" });
       }

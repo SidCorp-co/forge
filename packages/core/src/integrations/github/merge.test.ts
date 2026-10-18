@@ -85,6 +85,16 @@ const recordIssueMerge = vi.fn(
 vi.mock('../../issues/merge-record.js', () => ({
   recordIssueMerge: (...a: unknown[]) => recordIssueMerge(...(a as [])),
 }));
+// A mark already holding a commit is read against the repository after the stamp (ISS-1421 r7).
+const advanceObservedLanding = vi.fn(
+  async (): Promise<{ kind: string; held?: string; from?: string; to?: string }> => ({
+    kind: 'same',
+    held: 'x',
+  }),
+);
+vi.mock('../../issues/landing-advance.js', () => ({
+  advanceObservedLanding: (...a: unknown[]) => advanceObservedLanding(...(a as [])),
+}));
 
 const recordDelivery = vi.fn(async () => 'delivery-1');
 const updateDelivery = vi.fn(async () => undefined);
@@ -412,8 +422,26 @@ describe('a merge that has already happened', () => {
   it('reports stamped=false where the row already carried this evidence', async () => {
     answers = merged;
     recordIssueMerge.mockResolvedValue({ wrote: false, mergedAt: null, commitSha: LANDED });
+    advanceObservedLanding.mockResolvedValueOnce({ kind: 'same', held: LANDED });
     const outcome = await ask();
     expect(outcome?.kind === 'already-merged' && outcome.stamped).toBe(false);
+  });
+
+  it('reports stamped=true where the merge moved a mark held at an earlier commit forward', async () => {
+    answers = merged;
+    recordIssueMerge.mockResolvedValue({ wrote: false, mergedAt: null, commitSha: 'a'.repeat(40) });
+    advanceObservedLanding.mockResolvedValueOnce({
+      kind: 'moved',
+      from: 'a'.repeat(40),
+      to: LANDED,
+    });
+    const outcome = await ask();
+    expect(outcome?.kind === 'already-merged' && outcome.stamped).toBe(true);
+    expect(advanceObservedLanding).toHaveBeenCalledWith(
+      expect.objectContaining({
+        candidate: expect.objectContaining({ sha: LANDED, via: 'kernel' }),
+      }),
+    );
   });
 
   it('refuses a merge GitHub reports without a commit to record', async () => {

@@ -32,9 +32,16 @@ vi.mock('./projection.js', () => ({
     pr.merged === true || pr.merged_at ? 'merged' : pr.state === 'closed' ? 'closed' : 'open',
 }));
 
-const recordIssueMerge = vi.fn(async () => ({ wrote: false, mergedAt: null, commitSha: null }));
-vi.mock('../../issues/merge-record.js', () => ({
-  recordIssueMerge: (...a: unknown[]) => recordIssueMerge(...(a as [])),
+// The stamp a merge GitHub reported writes: the first onto an empty mark, a later one moved
+// forward (`landing-advance.ts`, proved against Postgres in landing-moves-forward-e2e).
+const stampObservedMerge = vi.fn(
+  async (_args: unknown): Promise<{ wrote: boolean; advance: null }> => ({
+    wrote: false,
+    advance: null,
+  }),
+);
+vi.mock('../../issues/landing-advance.js', () => ({
+  stampObservedMerge: (args: unknown) => stampObservedMerge(args),
 }));
 
 let linkedIssueId: string | null = null;
@@ -185,44 +192,41 @@ describe('a merge somebody else made', () => {
 
   it('stamps the issue the head branch names, with the commit and time GitHub reported', async () => {
     await applyProjectedEvent(ctx, 'pull_request', merged());
-    expect(recordIssueMerge).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        issueId: 'iss-1073',
-        evidence: {
-          kind: 'observed',
-          commitSha: 'e45b4ecf596c58e10135c25af4f7279a0a804802',
-          mergedAt: new Date('2026-09-18T06:30:01.449Z'),
-          via: 'event',
-        },
-      }),
-    );
+    expect(stampObservedMerge).toHaveBeenCalledWith({
+      issueId: 'iss-1073',
+      projectId: 'p',
+      candidate: {
+        sha: 'e45b4ecf596c58e10135c25af4f7279a0a804802',
+        at: new Date('2026-09-18T06:30:01.449Z'),
+        via: 'event',
+      },
+    });
   });
 
   it('stamps even when the projection wrote no row', async () => {
     applyPullRequestEvent.mockResolvedValueOnce(0);
     await applyProjectedEvent(ctx, 'pull_request', merged());
-    expect(recordIssueMerge).toHaveBeenCalled();
+    expect(stampObservedMerge).toHaveBeenCalled();
   });
 
   it('stamps nothing for a pull request that closed without merging', async () => {
     await applyProjectedEvent(ctx, 'pull_request', merged({ merged: false, merged_at: null }));
-    expect(recordIssueMerge).not.toHaveBeenCalled();
+    expect(stampObservedMerge).not.toHaveBeenCalled();
   });
 
   it('stamps nothing when GitHub sent no merge commit', async () => {
     await applyProjectedEvent(ctx, 'pull_request', merged({ merge_commit_sha: null }));
-    expect(recordIssueMerge).not.toHaveBeenCalled();
+    expect(stampObservedMerge).not.toHaveBeenCalled();
   });
 
   it('stamps nothing for a branch that names no issue on this project', async () => {
     linkedIssueId = null;
     await applyProjectedEvent(ctx, 'pull_request', merged());
-    expect(recordIssueMerge).not.toHaveBeenCalled();
+    expect(stampObservedMerge).not.toHaveBeenCalled();
   });
 
   it('does not announce a stamp it did not write', async () => {
-    recordIssueMerge.mockResolvedValueOnce({ wrote: false, mergedAt: null, commitSha: null });
+    stampObservedMerge.mockResolvedValueOnce({ wrote: false, advance: null });
     const heard: unknown[] = [];
     const { hooks } = await import('../../pipeline/hooks.js');
     hooks.on('contractInputChanged', async (p) => void heard.push(p), { name: 'merged-arm-test' });

@@ -65,6 +65,8 @@ describe('a name longer than a whole sha, on a GitHub binding', () => {
     expect(await r.changedPaths(name)).toEqual({ kind: 'unread', why: overlong(name) });
     expect(await r.range('main', name)).toEqual({ why: overlong(name) });
     expect(await r.contains(name, 'main')).toEqual({ why: overlong(name) });
+    expect(await r.descends(name, SHA)).toEqual({ why: overlong(name) });
+    expect(await r.descends(SHA, name)).toEqual({ why: overlong(name) });
     expect(client.asked).toEqual([]);
   });
 
@@ -232,5 +234,50 @@ describe('tagsContaining, on a GitHub binding', () => {
       why: overlong(name),
     });
     expect(client.asked).toEqual([]);
+  });
+});
+
+/** Round 7 of ISS-1421: whether a later landing carries the one a mark holds, from one compare's status. */
+describe('descends, on a GitHub binding', () => {
+  const LATER = '2222222222222222222222222222222222222222';
+  function comparing(status: string | null | Error): GitHubRepoClient & { asked: string[] } {
+    const asked: string[] = [];
+    return {
+      bindingId: 'b',
+      appId: '1',
+      owner: 'o',
+      repo: 'r',
+      fullName: 'o/r',
+      asked,
+      async get<T>(path: string): Promise<T> {
+        asked.push(path);
+        if (status instanceof Error) throw status;
+        return (status === null ? {} : { status }) as T;
+      },
+      async publish<T>(): Promise<T> {
+        throw new Error('a repository read never publishes');
+      },
+    };
+  }
+
+  it.each([
+    ['ahead', true],
+    ['identical', true],
+    ['behind', false],
+    ['diverged', false],
+  ])('reads %s as contains %s, asking one page of one commit', async (status, contains) => {
+    const client = comparing(status);
+    expect(await githubRepositoryReader(client).descends(SHA, LATER)).toEqual({ contains });
+    expect(client.asked).toEqual([`/repos/o/r/compare/${SHA}...${LATER}?per_page=1`]);
+  });
+
+  it('says why where the compare answers no status or fails, never that it does not descend', async () => {
+    expect(await githubRepositoryReader(comparing(null)).descends(SHA, LATER)).toEqual({
+      why: 'o/r answered no compare status',
+    });
+    const failed = await githubRepositoryReader(
+      comparing(new GitHubReadError(404, 'GET compare returned HTTP 404')),
+    ).descends(SHA, LATER);
+    expect('why' in failed && failed.why).toContain(`o/r could not compare ${SHA} with ${LATER}`);
   });
 });

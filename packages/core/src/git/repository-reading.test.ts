@@ -427,3 +427,43 @@ describe('the fetch budget', () => {
     });
   });
 });
+
+describe('descends', () => {
+  it('says a later commit carries an earlier one on its line, and the same commit carries itself', async () => {
+    const r = reader();
+    expect(await r.descends(sha.judged as string, sha.merge as string)).toEqual({ contains: true });
+    expect(await r.descends(sha.shipped as string, sha.side as string)).toEqual({ contains: true });
+    expect(await r.descends(sha.judged as string, sha.judged as string)).toEqual({
+      contains: true,
+    });
+  });
+
+  it('says an earlier commit does not carry a later one, nor one on another line', async () => {
+    const r = reader();
+    expect(await r.descends(sha.merge as string, sha.judged as string)).toEqual({
+      contains: false,
+    });
+    expect(await r.descends(sha.side as string, sha.after as string)).toEqual({ contains: false });
+    expect(await r.descends(sha.judged as string, sha.orphan as string)).toEqual({
+      contains: false,
+    });
+  });
+
+  it('resolves an abbreviated sha, and fetches a whole one no branch holds', async () => {
+    const r = reader();
+    expect(await r.descends((sha.shipped as string).slice(0, 9), sha.tagged as string)).toEqual({
+      contains: true,
+    });
+  });
+
+  it('says why, rather than answering no, where a commit cannot be read', async () => {
+    const missing = 'f'.repeat(40);
+    const read = await reader().descends(sha.judged as string, missing);
+    expect('why' in read && read.why).toContain(missing);
+    const nowhere = await reader(`file://${join(root, 'nowhere.git')}`).descends(
+      sha.judged as string,
+      sha.merge as string,
+    );
+    expect('why' in nowhere).toBe(true);
+  });
+});

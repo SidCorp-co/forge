@@ -7,6 +7,8 @@ export const mergeMarkAnswerSchema = z.object({
   action: z.enum(['merged', 'already_merged', 'unmarked']),
   mark: mergeMarkSchema,
   detail: z.string(),
+  /** The commit the landing moved forward from, where this mark moved it; null on every other answer. */
+  movedFrom: z.string().nullable(),
 });
 
 export const mergePullRequestAnswerSchema = z.object({
@@ -35,6 +37,8 @@ const MARK_REFUSALS = {
   COMMIT_NOT_THIS_ISSUE: "the commit is not this issue's work",
   COMMIT_NOT_LANDED: 'the commit has not landed on the base branch',
   COMMIT_UNVERIFIED: 'Forge cannot read the repository to check the commit',
+  LANDING_NOT_DESCENDANT:
+    "the commit does not descend from the one the issue's mark holds, so it is a different landing",
 };
 
 const describeMark = (summary: string, description: string) =>
