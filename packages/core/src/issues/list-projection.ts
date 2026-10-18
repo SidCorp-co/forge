@@ -33,6 +33,7 @@ export const REST_ISSUE_LIST_COLUMNS = {
   externalId: issues.externalId,
   reopenCount: issues.reopenCount,
   mergedAt: issues.mergedAt,
+  mergeMarkedAt: issues.mergeMarkedAt,
   mergedCommitSha: issues.mergedCommitSha,
   mergedLanding: issues.mergedLanding,
   mergedClaimedCommit: issues.mergedClaimedCommit,

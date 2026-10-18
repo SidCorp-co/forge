@@ -3,7 +3,6 @@
 import { useParams, useRouter } from "next/navigation";
 import {
   Badge,
-  EmptyState,
   ErrorState,
   IconButton,
   MonoTag,
@@ -52,7 +51,7 @@ import {
   spendComparison,
   stuckRuns,
 } from "@/features/project-dashboard/shape";
-import { useAttention } from "@/features/attention/hooks";
+import { useAttention, useRetryFailedJob } from "@/features/attention/hooks";
 import { useIssues } from "@/features/issues/hooks";
 import { formatElapsed } from "@/features/overview/derive";
 import { useSessionsAndHolds } from "@/features/pipeline/hooks";
@@ -63,6 +62,7 @@ import { useSchedules } from "@/features/schedules/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
+import { ProjectMissing } from "@/features/projects/components/project-missing";
 
 /** The window the spend and where-time-goes sections read; the throughput section's is its own. */
 const METRICS_WINDOW_DAYS = 7;
@@ -85,6 +85,7 @@ export default function ProjectOverviewPage() {
   // on `projectId` so they no-op until the slug resolves.
   // The project's own organisation, whichever one the rail has open: its counts are this project's.
   const attentionQ = useAttention({ orgId: project?.orgId ?? null });
+  const retryJob = useRetryFailedJob();
   const runsQ = useProjectRuns(projectId);
   const sessionsQ = useSessionsAndHolds(projectId);
   const durationsQ = useStepDurations({ days: METRICS_WINDOW_DAYS, projectId }, !!projectId);
@@ -130,11 +131,7 @@ export default function ProjectOverviewPage() {
   if (!project) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
-        <EmptyState
-          title="Project not found"
-          message="This project doesn't exist or you don't have access to it."
-          mascot
-        />
+        <ProjectMissing slug={slug} />
       </div>
     );
   }
@@ -349,6 +346,8 @@ export default function ProjectOverviewPage() {
                       }
                     : undefined
                 }
+                onRetryJob={(jobId) => retryJob.mutate(jobId)}
+                retryingJobId={retryJob.isPending ? (retryJob.variables ?? null) : null}
                 shape={reading.shape}
                 stuck={stuckIssues}
                 whole={needsYouWhole}

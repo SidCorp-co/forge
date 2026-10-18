@@ -181,6 +181,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "job.completed":
 		case "job.failed":
 		case "job.resumed":
+		case "job.retried":
 		case "job.cancelled": {
 			scheduleInvalidation(qc, ["jobs", "list"]);
 			scheduleInvalidation(qc, ["admin", "ops"]);

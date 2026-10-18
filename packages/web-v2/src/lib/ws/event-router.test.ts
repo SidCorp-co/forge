@@ -449,3 +449,12 @@ describe("a session's stop reaches the live read the box counts at once", () => 
     expect(afterEvent({ sessionId: "s1", status: "running" })).toEqual(read());
   });
 });
+
+// ISS-1229 r16: a person retrying a failed job takes the failure off every open Needs you list.
+describe("a failed job retried by a person", () => {
+  it("refreshes the attention read and the job lists", () => {
+    const c = send("job.retried", { jobId: "j2", retryOf: "j1" });
+    expect(c.has(["attention"])).toBe(true);
+    expect(c.has(["jobs", "list"])).toBe(true);
+  });
+});

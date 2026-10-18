@@ -97,8 +97,10 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }));
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => {} }));
+const retryJob = vi.fn();
 vi.mock("@/features/attention/hooks", () => ({
   useAttention: () => ({ view: attentionView, read: attentionRead, error: attentionError, refetch }),
+  useRetryFailedJob: () => ({ mutate: retryJob, isPending: false, variables: undefined }),
 }));
 vi.mock("@/features/runs/hooks", () => ({
   useProjectRuns: () => ({
@@ -371,6 +373,17 @@ describe("a degraded project", () => {
     expect(link).toHaveAttribute("href", "/projects/pair/issues/d7");
     expect(within(band).getAllByRole("link")).toHaveLength(1);
     expect(figures()).toBeNull();
+  });
+
+  // ISS-1229 r16, judge-41: "Approve & retry" opened the issue page and retried nothing.
+  it("retries a failed job from its row, without leaving the page", () => {
+    retryJob.mockClear();
+    attentionView = view({ pair: { needsReview: 0, awaitingInput: 0, parkedOnly: 0, failedJobs: 1, awaitingAsked: 0, parkedAsked: 0, stuckOnly: 0 } }, {
+      failedJobs: [{ kind: "failed_job", jobId: "job-9", title: "build failed", jobType: "drive", failure: null, link: "/projects/pair/issues/d9", since: ago(3 * DAY), issueRef: "ISS-9", projectSlug: "pair" }],
+    });
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "Retry job" }));
+    expect(retryJob).toHaveBeenCalledWith("job-9");
   });
 
   it("is degraded by a run stuck with no job, and offers the pipeline", () => {

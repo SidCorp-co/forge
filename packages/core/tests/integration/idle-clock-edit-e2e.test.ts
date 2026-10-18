@@ -105,7 +105,7 @@ describe('the idle sweep times its grace from when nothing has worked the issue'
     expect(told(control)).toBe(true);
     expect(told(edited)).toBe(true);
     expect(emitted.find((e) => e.issueId === edited)?.body).toMatch(
-      /^It has read Open for 16 minutes:/,
+      /^It has read Open for 16 minutes, and /,
     );
   });
 

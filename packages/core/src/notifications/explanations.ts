@@ -1,3 +1,4 @@
+import { UNMARK_ACTION } from '@forge/contracts/mark-merged-words';
 import type { StuckIssueKind } from '@forge/contracts/notifications';
 import { stuckGroupTitle } from '@forge/contracts/stuck-words';
 
@@ -13,8 +14,7 @@ export const SWEEP_DETECTORS = {
   'owed-close': {
     kind: 'owed_close',
     groupTitle: stuckGroupTitle('owed_close'),
-    explanation:
-      'The step that owed the close did not write it. Read the branch, then close the issue — or, if it never landed, clear the mark with `unmark` and move the issue to Dropped.',
+    explanation: `Its code is marked as merged, and nobody closed it. Check that the change is live, then close the issue; if it never landed, use ${UNMARK_ACTION} in the issue's properties and move it to Dropped.`,
   },
   stranded: {
     kind: 'waiting',
@@ -31,7 +31,7 @@ export const SWEEP_DETECTORS = {
     kind: 'orphan',
     groupTitle: stuckGroupTitle('orphan'),
     explanation:
-      'Nothing has been moved: whether the issue or the run record is the wrong half is not decidable from here.',
+      'Nothing has been moved: it is not clear from here whether the issue or its work record is wrong.',
   },
 } as const satisfies Record<
   string,
@@ -60,6 +60,12 @@ export function sweepGroup(
 export function detectorOfGroupKey(groupKey: string | null): SweepDetector | null {
   const named = groupKey === null ? undefined : GROUP_KEY_SHAPE.exec(groupKey)?.[1];
   return named !== undefined && named in SWEEP_DETECTORS ? (named as SweepDetector) : null;
+}
+
+/** A sweep group's title as its detector says it now, so a delivery stored before a wording changed reads the same. */
+export function groupTitleOfGroupKey(groupKey: string | null): string | null {
+  const detector = detectorOfGroupKey(groupKey);
+  return detector === null ? null : SWEEP_DETECTORS[detector].groupTitle;
 }
 
 export function explanationOfGroupKey(groupKey: string | null): string | null {

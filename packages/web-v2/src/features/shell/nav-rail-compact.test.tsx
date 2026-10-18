@@ -289,3 +289,15 @@ describe("the project switcher and the Escape key", () => {
 		expect(document.activeElement).toBe(issues);
 	});
 });
+
+// ISS-1229 r16, judge-41: What's New drew the notifications bell with a dot of its own, so a dot stayed
+// beside the bell after the bell said "You're all caught up". It draws an icon of its own.
+describe("the What's New button", () => {
+	it("draws an icon that is not the notifications bell", () => {
+		renderRail();
+
+		const svg = screen.getByLabelText("What's New").querySelector("svg");
+		expect(svg?.getAttribute("class")).toContain("lucide-megaphone");
+		expect(svg?.getAttribute("class")).not.toContain("lucide-bell");
+	});
+});

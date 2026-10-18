@@ -140,6 +140,9 @@ describe("the active org, while the stored preference is still being read", () =
     await waitFor(() => expect(seen).toContain(SCRATCH.id));
     // One reading of where it ends: still on the project, scoped to the project's own org.
     await waitFor(() => expect({ pushed, active: seen[seen.length - 1] }).toEqual({ pushed: [], active: QA.id }));
+    // ISS-1229 r16, judge-41: the visit scoped the shared account on the server, so every other tab
+    // and device switched with it. Viewing writes nothing; only the org switcher does.
+    expect(updatePreferences).not.toHaveBeenCalled();
   });
 
   it("names no org until the stored preference has been read, and then names that one", async () => {

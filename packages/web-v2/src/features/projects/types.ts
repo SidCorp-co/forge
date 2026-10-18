@@ -57,6 +57,8 @@ export interface ProjectHealthRow {
     status: string;
     /** The reason a stuck-issue notice tells this parked issue by, where one stands. */
     stuckKind?: StuckIssueKind;
+    /** `waiting_on_others` only: the person the park waits for. */
+    stuckOwedBy?: string;
   }>;
   /** Every parked issue: the count behind the capped `blockers`. */
   blockersTotal: number;
@@ -81,7 +83,14 @@ export interface ProjectHealthRow {
   /** Up to five of them, longest-standing first. */
   /** The same issues, each once under its most specific reason, so the kinds add up to `stuckIssues`. */
   stuckIssuesByKind: Partial<Record<StuckIssueKind, number>>;
-  stuckIssueRefs: Array<{ issueId: string; documentId: string; title: string; kind: StuckIssueKind }>;
+  stuckIssueRefs: Array<{
+    issueId: string;
+    documentId: string;
+    title: string;
+    kind: StuckIssueKind;
+    /** `waiting_on_others` only: the person the park waits for. */
+    owedBy?: string;
+  }>;
 }
 
 export interface CreateProjectInput {

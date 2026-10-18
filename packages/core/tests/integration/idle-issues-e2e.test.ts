@@ -189,7 +189,7 @@ describe('The inverses: a detector that flags everything is the same defect', ()
       for (const note of emitted) {
         expect(note.title).toContain('no live work could be confirmed');
         expect(note.title).not.toContain('nothing is working it');
-        expect(note.body).toMatch(/^It has read .+, no live work confirmed: /);
+        expect(note.body).toMatch(/^It has read .+, and no live work could be confirmed because /);
       }
     },
   );
@@ -201,7 +201,7 @@ describe('The inverses: a detector that flags everything is the same defect', ()
 
     expect(emitted).toHaveLength(1);
     expect(emitted[0]?.title).toContain('nothing is working it');
-    expect(emitted[0]?.body).toMatch(/^It has read Developed for \d+ days: /);
+    expect(emitted[0]?.body).toMatch(/^It has read Developed for \d+ days, and /);
   });
 
   it('leaves a row alone whose unexpired lease is held on it and nothing else', async () => {
@@ -545,6 +545,7 @@ describe('An automatic release hold decides what an awaiting_release strand says
       reason: 'criterion 3: unjudged. A person clears this.',
       owes: 'agent',
       waitingFor,
+      words: ['Criterion 3 has no verdict yet.', 'A person clears this.', 'Then it releases.'],
     };
     const merged = '2026-09-14T00:00:00.000Z';
     const held = await seedIssue({
@@ -562,9 +563,11 @@ describe('An automatic release hold decides what an awaiting_release strand says
     const plain = await strandOf(unheld);
     expect([plain?.owes, plain?.waitingFor]).toEqual(['human', 'a person to release it']);
     // Two sentences: the hold by its first, then what it waits for; its remedy is the hold's comment.
-    const note = emitted.find((n) => n.body.includes('RELEASE_CRITERIA_UNEARNED'));
+    // In the hold's own words, never its code (ISS-1229 r16).
+    const note = emitted.find((n) => n.body.includes('criterion 3 has no verdict yet'));
+    expect(note?.body).not.toContain('RELEASE_CRITERIA_UNEARNED');
     expect(note?.body).toMatch(
-      /criterion 3: unjudged\. It waits for a verdict on each criterion named/,
+      /criterion 3 has no verdict yet\. It waits for a verdict on each criterion named/,
     );
     expect(note?.body).not.toContain('A person clears this');
     expect(note?.body).not.toContain('..');

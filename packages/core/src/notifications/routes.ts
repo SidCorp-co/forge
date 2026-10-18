@@ -19,7 +19,7 @@ import { heldAsFailedJobWhere } from '../me/attention-failed-jobs.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
 import { readPendingInvitations } from '../projects/pending-invitations.js';
-import { stuckKindSql } from '../projects/stuck-issue-kinds.js';
+import { readerStuckKindSql } from '../projects/stuck-issue-kinds.js';
 import { recordAndDeliver } from './deliver.js';
 import { explanationOfGroupKey } from './explanations.js';
 import {
@@ -39,6 +39,7 @@ import {
   patchNotification,
 } from './routes-reference.js';
 import { silenceRoutes } from './silences-routes.js';
+import { bellTitlesFor, retitledFor } from './waiting-titles.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -162,6 +163,19 @@ notificationRoutes.get(
     const userId = c.get('userId');
 
     const ofProject = projectId ? sql`AND cn.project_id = ${projectId}` : sql``;
+    // A row spanning two projects belongs to neither, so it is counted once, in the whole count.
+    const onlyThisProject = projectId
+      ? sql`AND NOT EXISTS (
+          SELECT 1 FROM notification_delivery_members ob
+          JOIN notifications cn ON cn.id = ob.notification_id
+          WHERE ob.delivery_id = ${notificationDeliveries.id}
+            AND cn.project_id IS DISTINCT FROM ${projectId}
+            AND cn.type <> 'invitation_received'
+            AND cn.resolved_at IS NULL
+            AND ${stillTrueOf(carried)}
+            AND ${toldTo(userId, carried)}
+        )`
+      : sql``;
     const [[row], invitations] = await Promise.all([
       db
         .select({ n: sql<number>`count(*)::int` })
@@ -179,7 +193,7 @@ notificationRoutes.get(
                 AND ${stillTrueOf(carried)}
                 AND ${toldTo(userId, carried)}
                 ${ofProject}
-            )`,
+            ) ${onlyThisProject}`,
           ),
         ),
       readPendingInvitations(userId),
@@ -294,8 +308,9 @@ notificationRoutes.get(
           string | null
         >`CASE WHEN ${several} THEN NULL ELSE min(${notifications.agentSessionId}::text) END`,
         notificationId: sql<string>`min(${notifications.id}::text)`,
-        // The tag a stuck row wears is its kind's, which every record a sweep groups shares.
-        stuckKind: sql<StuckIssueKind | null>`CASE WHEN min(${notifications.type}) = 'issue_stranded' THEN ${stuckKindSql(sql`min(${notifications.resolutionKey})`)} END`,
+        // The tag a stuck row wears is its kind's, which every record a sweep groups shares; a park
+        // is told to this reader as theirs only where they owe it (ISS-1229 r16).
+        stuckKind: sql<StuckIssueKind | null>`CASE WHEN min(${notifications.type}) = 'issue_stranded' THEN ${readerStuckKindSql(sql`min(${notifications.resolutionKey})`, sql`min(${notifications.issueId}::text)::uuid`, userId)} END`,
       })
       .from(notificationDeliveries)
       .innerJoin(
@@ -321,8 +336,10 @@ notificationRoutes.get(
       .offset((page - 1) * pageSize);
 
     const named = await projectsNamed(rows.map((r) => r.projectId));
-    const items = rows.map((r) => ({
+    const titles = await bellTitlesFor(userId, rows);
+    const items = rows.map((r, i) => ({
       ...r,
+      title: titles[i] ?? r.title,
       explanation: explanationOfGroupKey(r.groupKey),
       projectSlug: (r.projectId && named.get(r.projectId)?.slug) || null,
       projectName: (r.projectId && named.get(r.projectId)?.name) || null,
@@ -389,8 +406,9 @@ notificationRoutes.patch(
  *
  * ISS-1063 — grouping turns fifteen bell rows into one, and without this route that is a
  * loss: the reader would be told fifteen issues are parked and given no way to reach any
- * of them. The list route answers the counts; this answers the members, newest first,
- * still-open ones first.
+ * of them. The list route answers the counts; this answers the members, newest first: a condition
+ * or task that has ended leaves the group, so nothing it said in the present tense is left standing
+ * beside the ones still true (ISS-1229 r16). An event cannot end, so a group of events lists all.
  */
 notificationRoutes.get(
   '/:id/members',
@@ -436,14 +454,12 @@ notificationRoutes.get(
           eq(notificationDeliveryMembers.deliveryId, id),
           onLiveProject(notifications.projectId),
           toldTo(userId, notifications),
+          sql`(${notifications.kind} = 'signal' OR (${notifications.resolvedAt} IS NULL AND ${stillTrue}))`,
         ),
       )
-      .orderBy(
-        desc(sql`(${notifications.resolvedAt} IS NULL AND ${stillTrue})`),
-        desc(notificationDeliveryMembers.deliveredAt),
-      );
+      .orderBy(desc(notificationDeliveryMembers.deliveredAt));
 
-    return c.json(answer(deliveryMembersSchema, rows));
+    return c.json(answer(deliveryMembersSchema, await retitledFor(userId, rows)));
   },
 );
 

@@ -9,6 +9,8 @@ import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
 import { type SweepDetector, sweepGroup } from '../notifications/explanations.js';
 import { projectAdminUserIdsFor, projectHasAdminSql } from '../notifications/project-admins.js';
+import { waitingParkTitle } from '../notifications/waiting-titles.js';
+import { parkOwerNameSql } from '../projects/stuck-issue-kinds.js';
 import { resolveArchivedProjectNotices } from './archived-project-notices.js';
 import {
   FRESH_SIGHTING_LIMIT,
@@ -100,12 +102,6 @@ async function surfaceOnce(args: {
   return sent?.delivered ?? 0;
 }
 
-/** What a park asks of the person, by the kind it stored; a park that stored none is waiting for them. */
-const PARK_ASKS: Record<string, string> = {
-  needs_decision: 'your decision',
-  needs_resource: 'something only a person can supply',
-};
-
 /** When the issue was parked: the row's own `updated_at` moves on any write (ISS-1229). */
 const PARKED_AT = statusEnteredAtSql({
   id: sql`"issues"."id"`,
@@ -127,6 +123,7 @@ function readParks(args: { scope: Scope; where: SQL[]; order: SQL[]; limit: numb
       mergedAt: issues.mergedAt,
       parkedAt: sql<string>`${PARKED_AT}::text`,
       waitingKind: issues.waitingKind,
+      owedBy: sql<string | null>`${parkOwerNameSql(sql`"issues"."id"`)}`,
       cursorTs: sql<string>`${PARKED_AT}::text`,
       projectName: projects.name,
     })
@@ -146,6 +143,9 @@ function readParks(args: { scope: Scope; where: SQL[]; order: SQL[]; limit: numb
 
 const TERMINAL = issueStatuses.filter(isTerminalPlacement);
 
+/** When the merge mark was set; a mark made before that was stored counts from the merge (ISS-1229 r16). */
+const MARKED_AT = sql`coalesce("issues"."merge_marked_at", "issues"."merged_at")`;
+
 /** One read of merged issues still open with nothing running, `where` narrowing it, by merge time. */
 function readOwedCloses(args: { scope: Scope; where: SQL[]; order: SQL[]; limit: number }) {
   return db
@@ -156,8 +156,8 @@ function readOwedCloses(args: { scope: Scope; where: SQL[]; order: SQL[]; limit:
       issSeq: issues.issSeq,
       status: issues.status,
       title: issues.title,
-      mergedAt: issues.mergedAt,
-      cursorTs: sql<string>`"issues"."merged_at"::text`,
+      markedAt: sql<Date>`${MARKED_AT}`.mapWith(issues.mergedAt),
+      cursorTs: sql<string>`${MARKED_AT}::text`,
       projectName: projects.name,
     })
     .from(issues)
@@ -255,7 +255,13 @@ export async function detectStrandedIssues(
         projectId: row.projectId,
         issueId: row.id,
         resolutionKey: strandedResolutionKey(row.id),
-        title: `${ref} is waiting for ${PARK_ASKS[row.waitingKind ?? ''] ?? 'you'} — ${row.projectName}`,
+        // Stored in the third person; each reader's bell reads it back as theirs where they owe it.
+        title: waitingParkTitle({
+          ref,
+          waitingKind: row.waitingKind,
+          owedBy: { you: false, name: row.owedBy },
+          projectName: row.projectName,
+        }),
         body: `${ref} "${row.title}": ${lead}.`,
       });
       if (sent < 0) unreachable += 1;
@@ -298,14 +304,14 @@ export async function detectOwedCloses(
     const page = await readOwedCloses({
       scope,
       where: [
-        sql`"issues"."merged_at" < ${window.until}::timestamptz`,
+        sql`${MARKED_AT} < ${window.until}::timestamptz`,
         ...(window.after
           ? [
-              sql`("issues"."merged_at", "issues"."id") > (${window.after.ts}::timestamptz, ${window.after.id}::uuid)`,
+              sql`(${MARKED_AT}, "issues"."id") > (${window.after.ts}::timestamptz, ${window.after.id}::uuid)`,
             ]
           : []),
       ],
-      order: [asc(issues.mergedAt), asc(issues.id)],
+      order: [asc(MARKED_AT), asc(issues.id)],
       limit: STRANDED_SCAN_LIMIT,
     });
 
@@ -326,10 +332,10 @@ export async function detectOwedCloses(
         scope,
         where: [
           unraisedConditionSql(sql`"issues"."id"`, OWED_CLOSE_KEY_SUFFIX),
-          sql`"issues"."merged_at" < ${cutoff.toISOString()}::timestamptz`,
+          sql`${MARKED_AT} < ${cutoff.toISOString()}::timestamptz`,
           projectHasAdminSql(sql`"issues"."project_id"`),
         ],
-        order: [desc(issues.mergedAt), desc(issues.id)],
+        order: [desc(MARKED_AT), desc(issues.id)],
         limit: FRESH_SIGHTING_LIMIT,
       }),
     );
@@ -340,8 +346,8 @@ export async function detectOwedCloses(
     let unreachable = 0;
     for (const row of rows) {
       const ref = row.issSeq !== null ? formatIssueRef(row.issuePrefix, row.issSeq) : 'An issue';
-      // The query admits only rows carrying a merge mark, so `mergedAt` is never null here.
-      const age = elapsedWords(row.mergedAt as Date, now);
+      // The query admits only rows carrying a merge mark, so `markedAt` is never null here.
+      const age = elapsedWords(row.markedAt, now);
       const sent = await surfaceOnce({
         now,
         admins,

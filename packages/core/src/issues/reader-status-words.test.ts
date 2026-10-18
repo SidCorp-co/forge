@@ -120,6 +120,7 @@ const READS: Record<string, 'person' | 'caller'> = {
   'issues/transition-evidence.ts': 'caller',
   'issues/transition-reason.ts': 'caller',
   'issues/work-state.ts': 'caller',
+  'jobs/retry-failed-job.ts': 'person',
   'mcp/tools/forge-step-start.ts': 'caller',
   'messaging/claim-rules.ts': 'caller',
   'notifications/notify-transitions.ts': 'person',

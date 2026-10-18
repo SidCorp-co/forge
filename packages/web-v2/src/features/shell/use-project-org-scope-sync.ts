@@ -19,7 +19,7 @@ export function useProjectOrgScopeSync(opts: {
   const { slug, activeProject } = opts;
   const router = useRouter();
 
-  const { orgs, activeOrgId, setActiveOrg } = useActiveOrg();
+  const { orgs, activeOrgId, viewOrg } = useActiveOrg();
   const lastScopedSlugRef = useRef<string | null>(null);
   useEffect(() => {
     if (!slug) {
@@ -40,11 +40,12 @@ export function useProjectOrgScopeSync(opts: {
     if (slug === lastScopedSlugRef.current) return; // same project: don't fight a manual switch
     lastScopedSlugRef.current = slug;
     // Only re-scope to an org the caller actually belongs to (ISS-472: an org
-    // outside `orgs` would resolve straight back and storm setActiveOrg).
+    // outside `orgs` would resolve straight back and storm the scope). Viewing scopes this tab
+    // alone and writes nothing: the account's stored org is the switcher's (ISS-1229 r16).
     if (target !== activeOrgId && orgs.some((o) => o.id === target)) {
-      setActiveOrg(target);
+      viewOrg(target);
     }
-  }, [slug, activeProject?.orgId, activeOrgId, orgs, setActiveOrg]);
+  }, [slug, activeProject?.orgId, activeOrgId, orgs, viewOrg]);
 
   // Remember the last project visited so the rail can keep showing a project
   // context (mark + tier) even on workspace screens — no vanishing block.

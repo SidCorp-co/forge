@@ -61,6 +61,7 @@ function strand(projectId: string, i: number) {
     cursorTs: `2026-08-01 00:00:0${i}+00`,
     projectName: 'Seed',
     waitingKind: null as string | null,
+    owedBy: 'Ana' as string | null,
   };
 }
 
@@ -70,6 +71,7 @@ function merged(projectId: string, i: number) {
     ...strand(projectId, i),
     status: 'developed',
     mergedAt: new Date('2026-08-01T00:00:00.000Z'),
+    markedAt: new Date('2026-08-01T00:00:00.000Z'),
     cursorTs: `2026-08-01 00:00:0${i}+00`,
   };
 }
@@ -204,16 +206,19 @@ describe('what a stranded notice says, in the words a reader uses (ISS-1229)', (
     rows.value = [strand('p1', 1)];
     await detectStrandedIssues(now);
     expect(sent().body).toBe('ISS-1 "strand 1": it has been parked for 3 days.');
-    expect(sent().title).toBe('ISS-1 is waiting for you — Seed');
+    expect(sent().title).toBe('ISS-1 is waiting for Ana — Seed');
   });
 
   // ISS-1229 r13: "is waiting on you" and "parked with nothing coming for them" framed one state two
-  // ways, and neither said what the person was asked for.
+  // ways, and neither said what the person was asked for. r16: the stored title names who owes the
+  // park, since it is read by admins who do not; the bell says "your" to the one who does.
   it.each([
-    ['needs_decision', 'ISS-1 is waiting for your decision — Seed'],
-    ['needs_resource', 'ISS-1 is waiting for something only a person can supply — Seed'],
-  ])('says in its title what a %s park asks of the person', async (kind, title) => {
-    rows.value = [{ ...strand('p1', 1), waitingKind: kind }];
+    ['needs_decision', 'Ana', "ISS-1 is waiting for Ana's decision — Seed"],
+    ['needs_resource', 'Ana', 'ISS-1 is waiting for something only Ana can supply — Seed'],
+    ['needs_decision', null, 'ISS-1 is waiting for a decision — Seed'],
+    ['needs_resource', null, 'ISS-1 is waiting for something only a person can supply — Seed'],
+  ])('says in its title what a %s park asks, and of whom (%s)', async (kind, owedBy, title) => {
+    rows.value = [{ ...strand('p1', 1), waitingKind: kind, owedBy }];
     await detectStrandedIssues(now);
     expect(sent().title).toBe(title);
   });

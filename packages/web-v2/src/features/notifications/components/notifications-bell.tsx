@@ -160,7 +160,6 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
         text: texts[i] ?? m.title,
         sub: m.body ?? undefined,
         time: formatRelativeTime(m.deliveredAt),
-        open: m.open,
     }));
   }, [membersQuery.data]);
   const onToggleGroup = useCallback(

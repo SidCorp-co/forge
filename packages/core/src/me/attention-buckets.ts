@@ -116,6 +116,8 @@ export interface AttentionMentionRow {
 }
 
 export interface AttentionFailedJobRow {
+  /** The failed job, which a person retries by it. */
+  jobId: string;
   type: string;
   finishedAt: Date | null;
   createdAt: Date;

@@ -6,7 +6,7 @@ import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { readStuckKinds } from '../projects/stuck-kinds-read.js';
+import { readStuckKinds, type StuckReason } from '../projects/stuck-kinds-read.js';
 import {
   ATTENTION_BUCKETS,
   type AttentionAwaitingRow,
@@ -49,12 +49,15 @@ interface AttentionItem {
   issueRef?: string;
   /** Failed-job only: the title of the issue the job ran for, where it ran for one. */
   issueTitle?: string;
+  /** Failed-job only: the job a person retries from the row. */
+  jobId?: string;
   /** Failed-job only: the kind of work, as stored, which a screen words. */
   jobType?: string;
   /** Failed-job only: the stored cause code a screen words; a sentence the job wrote is the title's alone. */
   failure?: string | null;
   /** The reason a stuck-issue notice tells the item's issue by, where one stands. */
   stuckKind?: StuckIssueKind;
+  stuckOwedBy?: string;
   /** Owed answer or review only: the reader's failed job on the issue, which this row names under it. */
   failedJob?: { jobType: string; failure: string | null };
   status?: string;
@@ -101,10 +104,11 @@ function issueItem(kind: AttentionKind, r: AttentionIssueRow): AttentionItem {
 function withStuckKind(
   item: AttentionItem,
   issueId: string | null,
-  kinds: ReadonlyMap<string, StuckIssueKind>,
+  kinds: ReadonlyMap<string, StuckReason>,
 ): AttentionItem {
-  const stuckKind = issueId ? kinds.get(issueId) : undefined;
-  return stuckKind ? { ...item, stuckKind } : item;
+  const told = issueId ? kinds.get(issueId) : undefined;
+  if (!told) return item;
+  return { ...item, stuckKind: told.kind, ...(told.owedBy ? { stuckOwedBy: told.owedBy } : {}) };
 }
 
 /** An item owed an answer, naming the reader's failed job on its issue where one stands (ISS-1229 r15). */
@@ -164,6 +168,7 @@ function mentionItem(r: AttentionMentionRow): AttentionItem {
 function failedJobItem(r: AttentionFailedJobRow): AttentionItem {
   const item: AttentionItem = {
     kind: 'failed_job',
+    jobId: r.jobId,
     title: r.error ? `${r.type} failed: ${r.error.slice(0, 80)}` : `${r.type} job failed`,
     jobType: r.type,
     failure: failureCode(r),
@@ -245,10 +250,10 @@ meAttentionRoutes.get(
 
     const owedIds = [...needsReviewRows.map((r) => r.id), ...awaitingInputRows.map((r) => r.id)];
     const [kinds, failures] = await Promise.all([
-      readStuckKinds([
-        ...owedIds,
-        ...failedJobRows.flatMap((r) => (r.issueDocId ? [r.issueDocId] : [])),
-      ]),
+      readStuckKinds(
+        [...owedIds, ...failedJobRows.flatMap((r) => (r.issueDocId ? [r.issueDocId] : []))],
+        userId,
+      ),
       selectStandingFailures(userId, owedIds),
     ]);
     const needsReview = needsReviewRows.map((r) =>

@@ -16,6 +16,7 @@ const attentionItem = z.object({
   since: z.string(),
   issueRef: z.string().optional(),
   issueTitle: z.string().optional().describe('Failed job only: the title of its issue'),
+  jobId: z.string().optional().describe('Failed job only: the job a person retries from the row'),
   jobType: z.string().optional().describe('Failed job only: its kind of work, as stored'),
   failure: z
     .string()
@@ -28,6 +29,10 @@ const attentionItem = z.object({
     .enum(STUCK_ISSUE_KINDS)
     .optional()
     .describe("The reason a stuck-issue notice tells the item's issue by, where one stands"),
+  stuckOwedBy: z
+    .string()
+    .optional()
+    .describe('`waiting_on_others` only: the person the park waits for'),
   failedJob: z
     .object({ jobType: z.string(), failure: z.string().nullable() })
     .optional()

@@ -12,16 +12,16 @@ export function buildCapReachedCommentBody(args: {
   driveSessions: number;
 }): string {
   return [
-    `🛑 **The driver stopped at ${statusLabel(args.fromStatus)} ${args.cap} times without finishing** — this issue is now waiting on you.`,
+    `🛑 **The agent working on this issue stopped at ${statusLabel(args.fromStatus)} ${args.cap} times without finishing** — this issue is now waiting on you.`,
     '',
-    `Each time, the \`drive\` job exited cleanly but left the issue at ${statusLabel(args.fromStatus)} with no work queued behind it, so nothing in the pipeline could carry it forward. The reconciler re-entered the driver ${args.cap} times; a ${args.cap + 1}th would mint another session with no reason to expect a different ending.`,
+    `Each time, the agent finished without an error but left the issue at ${statusLabel(args.fromStatus)} with no work queued behind it, so nothing could carry it forward. Forge started it again ${args.cap} times; another try would most likely end the same way.`,
     '',
     'What to look at:',
-    '- Read the last drive session on this issue. An agent that stops here usually hit a decision it could not make alone, or a limit mid-turn.',
+    '- Read the last agent session on this issue. An agent that stops here usually hit a decision it could not make alone, or a limit mid-turn.',
     '- If the work is genuinely blocked on an answer, answer it here — the issue resumes from this status on your reply.',
     '- If the work is already done (branch pushed, PR open), close the issue rather than resuming it.',
     '',
-    `Rescue counting resets once the issue moves on, so a resumed issue gets a full allowance again. This run has burned ${args.driveSessions} drive sessions so far.`,
+    `The count starts again once the issue moves on, so a resumed issue gets every try back. ${args.driveSessions === 1 ? '1 agent session has' : `${args.driveSessions} agent sessions have`} worked on it so far.`,
   ].join('\n');
 }
 

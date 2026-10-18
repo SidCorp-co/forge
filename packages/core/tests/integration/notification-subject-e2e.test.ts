@@ -190,7 +190,7 @@ describe('a notification about no issue', () => {
       projectId: project.id,
       hop: 'dispatch',
       entity: 'capacity',
-      entityId: 'capacity:p:build',
+      entityId: `capacity:${project.id}:build`,
       reason: 'no runner',
       action: 'bring one online',
       title: 'No capacity: no runner online for this project',

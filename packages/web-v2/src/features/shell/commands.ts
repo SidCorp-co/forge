@@ -71,7 +71,7 @@ export function buildWorkspaceCommands(deps: WorkspaceCommandDeps): Command[] {
   }
   out.push({
     label: "What's New",
-    icon: "bell",
+    icon: "news",
     group: "navigate",
     keywords: "changelog release notes updates go to",
     onRun: () => router.push("/whats-new"),
