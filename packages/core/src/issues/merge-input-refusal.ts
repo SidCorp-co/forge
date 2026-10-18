@@ -31,8 +31,10 @@ export function targetRequiredDetail(door: MarkDoor): string {
 export function markInputRefusal(error: MarkInputError): string {
   const issue = error.issues[0];
   if (issue?.code === 'unrecognized_keys') {
-    const keys = issue.keys.map((k) => `\`${k}\``).join(', ');
-    return `Leave out ${keys}, because a mark takes only ${MARK_KEYS}.`;
+    const [first] = issue.keys;
+    const named = first && /^[A-Za-z_][\w]{0,39}$/.test(first) ? `\`${first}\`` : 'fields';
+    const more = issue.keys.length > 1 ? ` and ${issue.keys.length - 1} more` : '';
+    return `Leave out ${named}${more}, because a mark takes only ${MARK_KEYS}.`;
   }
   const field = issue?.path[0];
   return (

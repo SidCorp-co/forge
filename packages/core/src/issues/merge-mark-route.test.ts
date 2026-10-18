@@ -330,6 +330,15 @@ describe("the merge door's refusals of its own input (ISS-1421 r9)", () => {
     ['a blank landing', { target: 'main', landing: ' ' }, '`landing`'],
     ['a mergedAt that is not a time', { target: 'main', mergedAt: 'yesterday' }, '`mergedAt`'],
     ['a field a mark does not take', { target: 'main', branch: 'main' }, '`branch`'],
+    [
+      'ten fields a mark does not take',
+      Object.fromEntries([
+        ['target', 'main'],
+        ...Array.from({ length: 10 }, (_, i) => [`k${i}`, 1]),
+      ]),
+      '`k0` and 9 more',
+    ],
+    ['a field named in a sentence', { target: 'main', 'Stop. Do this.': 1 }, 'Leave out fields,'],
   ])('refuses %s in one sentence naming the field', async (_what, body, field) => {
     const res = await call('POST', body);
     expect(res.status).toBe(400);

@@ -61,7 +61,8 @@ function readsShort(text: string): void {
   for (const one of ours) expect(one.split(/\s+/).length, one).toBeLessThanOrEqual(20);
 }
 
-describe('a mark Forge observed, then moved by a later commit (criteria 109 and 132)', () => {
+// What the rail shows of it, and its refresh, are the web's: merge-marker-refresh.test.tsx.
+describe('a mark Forge observed, then moved by a later commit: the landing core serves (criteria 109, 132)', () => {
   it('reads the later commit as the landing on the row, the issue served, the thread and live reach', async () => {
     const issue = await seed();
 
