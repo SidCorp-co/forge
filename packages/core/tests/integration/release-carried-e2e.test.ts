@@ -305,7 +305,7 @@ describe('where the range is not read', () => {
       (w) => w.code === 'RELEASE_CARRIED_UNREAD',
     );
     expect(warned?.message).toContain(
-      "set an SSH clone URL under the project's Settings → Shape & release → Repository and a deploy key under the project's Settings → Runners → Git access",
+      "Set an SSH clone URL under the project's Settings → Shape & release → Repository. Then attach a deploy key under the project's Settings → Runners → Git access.",
     );
     expect(warned?.message).not.toMatch(/Bind the repository|Integrations/);
   });

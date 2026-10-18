@@ -63,11 +63,13 @@ the reader it has fails, or no base branch is named) the agent's commit is kept 
 already holds a branch, meets there. On the git route the cause is one of five. The first is that the name of the
 host the URL names did not resolve, which is found before any connection is made
 (`packages/core/src/git/bounded-fetch.ts:unresolvedHostRefusal`). The other four are read from
-what the host said (`packages/core/src/git/bounded-fetch.ts:hostRefusal`) and quoted in its words
-past any `remote:` banner: the host refused the key; it took the key but will not let it read that
-repository, or none is there; the host could not be reached; or the repository lacks a branch.
-Each of the first four says what clears it, and where that is access for the key it asks for write
-access, as Test connection under Git access does, since the runner pushes with the same key.
+what the host said (`packages/core/src/git/bounded-fetch.ts:hostRefusal`): the host refused the key;
+it took the key but will not let it read that repository, or none is there; the host could not be
+reached; or the repository lacks a branch. Each of the first four says what clears it, and where that
+is access for the key it asks for write access, as Test connection under Git access does, since the
+runner pushes with the same key. That is at most three short sentences with no dash, and the host's
+own line, past any `remote:` banner, stands apart beneath them (`Refused.said`, put on its own line by
+`packages/core/src/projects/repository-reader.ts:saying`).
 What clears it is named beside the cause, in the answer to an agent's mark (the claim's) and in the
 refusal to a person's: mark again once the tracker can read the repository: through the GitHub binding where the project has one, otherwise with the deploy key
 over the SSH clone URL under Git access; where a branch is missing, once the repository has it or
@@ -233,12 +235,13 @@ rail's hover, where an observed commit and a claim's both show by seven characte
 most three short sentences of Forge's own: what happened, why in one clause, what to do, each
 capitalised, stopped and at most 20 words. Another part of Forge's reason — a host's refusal —
 stands quoted on a line of its own beneath them (`withReason`), opened capitalised unless it opens on
-an address and stopped where it was not, never cut into one of them; a commit's subject is quoted
+an address and stopped where it was not, never cut into one of them; the host's own line under it is
+quoted whole as code, one piece (`quotedRefusal`), as the releasing sweep's comment quotes it too; a commit's subject is quoted
 there as the commit holds it, unstopped. A repository holding no commit is named in the sentence
 itself, so its reader's own words are quoted only where they say more (an overlong sha). A toast keeps
 the quoted reason to its first clause on a line of its own, the mark's comment holding it whole
 (`packages/web-v2/src/features/issues/hooks.ts:answerInBrief`), and a refusal shown beside the form,
-which writes no comment, puts it whole on a line of its own
+which writes no comment, puts it whole on a line of its own, the host's line as it said it
 (`packages/web-v2/src/features/issues/hooks.ts:answerShown`). A first mark's comment names its commit once: the label carries it only where the sentence
 after it does not, and a repository's address shows there as code, never a mail link, a bare
 `user@host` in a quoted host reason included (`addressesAsCode`). A note, on a first mark, an unmark

@@ -14,8 +14,7 @@ const REMOTE = 'git@gitlab.com:sid/desk.git';
 const GIT_ACCESS = "the project's Settings → Runners → Git access";
 const REPO_URL_AT = "the project's Settings → Shape & release → Repository";
 /** What every sentence asks the key be given: Test connection's too (`ssh-keys.test.ts`). */
-const ASK =
-  "write access to that repository, since Forge reads the repository with it and the project's runner pushes with it";
+const ASK = "write access to the repository, since the project's runner pushes with it";
 
 const refusalOf = (a: HostAnswer) =>
   fetchRefusal({ stderr: a.stderr + GIT_TRAILER, code: 128 }, REMOTE);
@@ -67,10 +66,10 @@ describe('fetchRefusal, in the words each host sends', () => {
     (answer) => {
       const why = refusalOf(answer);
       expect(why).toContain(
-        `the git host took the deploy key attached to this project but will not let it read ${REMOTE}`,
+        `The git host took this project's deploy key but will not let it read ${REMOTE}.`,
       );
-      expect(why).toContain(`give the deploy key attached under ${GIT_ACCESS} ${ASK}`);
-      expect(why).toContain(`correct the SSH clone URL set under ${REPO_URL_AT}`);
+      expect(why).toContain(`Give that key ${ASK}.`);
+      expect(why).toContain(`If none lives there, fix the SSH clone URL under ${REPO_URL_AT}.`);
     },
   );
 
@@ -78,7 +77,7 @@ describe('fetchRefusal, in the words each host sends', () => {
     'reads $name as a key the host refused, naming the repository to add it to',
     (answer) => {
       expect(refusalOf(answer)).toBe(
-        `the git host refused the deploy key attached to this project (${answer.said}) — give its public key write access to ${REMOTE}, since Forge reads the repository with it and the project's runner pushes with it; the key is the one attached under ${GIT_ACCESS}`,
+        `The git host refused this project's deploy key. Give the key write access to ${REMOTE}, since the project's runner pushes with it. It is under ${GIT_ACCESS}.\n${answer.said}`,
       );
     },
   );
@@ -87,11 +86,12 @@ describe('fetchRefusal, in the words each host sends', () => {
   it('names the host that could not be reached, then the URL to check, with no word about access', () => {
     const answer = unreachable('172.65.251.78');
     const why = refusalOf(answer);
-    expect(why).toMatch(/^the git host gitlab\.com could not be reached \(ssh: connect to host /);
-    expect(why).toContain(answer.said);
-    expect(why).not.toContain(`${REMOTE} names`);
-    expect(why).toContain('the deploy key was never offered');
-    expect(why).toContain(`check that the SSH clone URL ${REMOTE}, set under ${REPO_URL_AT}`);
+    expect(why).toMatch(
+      /^The git host gitlab\.com could not be reached, so the deploy key was never offered\./,
+    );
+    expect(why.split('\n')[1]).toContain(answer.said);
+    expect(why).toContain(`Check that the SSH clone URL ${REMOTE} names the right host`);
+    expect(why).toContain(`It is set under ${REPO_URL_AT}.`);
     expect(why).not.toMatch(/(read|write) access/);
   });
 
@@ -101,9 +101,7 @@ describe('fetchRefusal, in the words each host sends', () => {
     (answer) => {
       const why = refusalOf(answer);
       expect(why).toContain('write access');
-      expect(why).toContain(
-        "since Forge reads the repository with it and the project's runner pushes with it",
-      );
+      expect(why).toContain("since the project's runner pushes with it");
       expect(why).not.toContain('read access');
     },
   );
@@ -111,10 +109,13 @@ describe('fetchRefusal, in the words each host sends', () => {
   it('holds the act that clears a refusal apart from its cause', () => {
     const said = hostRefusal({ stderr: GITLAB_NO_ACCESS.stderr + GIT_TRAILER, code: 128 }, REMOTE);
     expect(said.cause).toBe(
-      `the git host took the deploy key attached to this project but will not let it read ${REMOTE} (${GITLAB_NO_ACCESS.said})`,
+      `the git host took this project's deploy key but will not let it read ${REMOTE}`,
     );
     expect(said.clears).toContain(ASK);
-    expect(refusalOf(GITLAB_NO_ACCESS)).toBe(`${said.cause} — ${said.clears}`);
+    expect(said.said).toContain(GITLAB_NO_ACCESS.said);
+    expect(refusalOf(GITLAB_NO_ACCESS)).toBe(
+      `The git host took this project's deploy key but will not let it read ${REMOTE}. ${said.clears?.charAt(0).toUpperCase()}${said.clears?.slice(1)}.\n${said.said}`,
+    );
   });
 
   it.each([
@@ -133,7 +134,7 @@ describe('fetchRefusal, in the words each host sends', () => {
       { stderr: "fatal: couldn't find remote ref refs/heads/staging\n", code: 128 },
       REMOTE,
     );
-    expect(why).toBe('the repository has no branch staging, so it cannot be compared');
+    expect(why).toBe('The repository has no branch staging, so it cannot be compared.');
   });
 
   it("quotes any other answer whole, and git's exit status where there is none", () => {
@@ -142,9 +143,42 @@ describe('fetchRefusal, in the words each host sends', () => {
         { stderr: 'remote: \nfatal: protocol error: bad pack header\n', code: 128 },
         REMOTE,
       ),
-    ).toBe('the git host answered the fetch with: fatal: protocol error: bad pack header');
+    ).toBe('The git host refused the fetch.\nfatal: protocol error: bad pack header');
     expect(fetchRefusal({ stderr: '', code: 128 }, REMOTE)).toBe(
-      'the git host answered the fetch with: git exited 128',
+      'The fetch failed, and git exited 128.',
+    );
+  });
+});
+
+// ISS-1421 r9 repair: the coordinator read this reason under a mark as one ~50-word sentence with an
+// em dash and the host's words in brackets inside it, which rendered as "( git@github.com : …)".
+// Worded here, every surface quoting it gets: at most three short sentences, no dash, and the
+// host's own line apart from them, whole.
+describe('the git-access refusal reads in short sentences, the host apart (ISS-1421 r9)', () => {
+  it.each([
+    keyUnknown('github.com'),
+    GITLAB_NO_ACCESS,
+    GITHUB_NOT_FOUND,
+    unreachable('172.65.251.78'),
+  ])('words $name in at most three short sentences, the host line on its own', (answer) => {
+    const [ours, ...host] = refusalOf(answer).split('\n');
+    expect(host).toHaveLength(1);
+    expect(host[0]).toContain(answer.said);
+    expect(ours).not.toContain(answer.said);
+    expect(ours).not.toMatch(/ — | – /);
+    const sentences = (ours as string).split(/(?<=\.)\s+(?=[A-Z])/);
+    expect(sentences.length, ours).toBeLessThanOrEqual(3);
+    for (const one of sentences) {
+      expect(one, one).toMatch(/^[A-Z]/);
+      expect(one, one).toMatch(/\.$/);
+      expect(one.split(/\s+/).length, one).toBeLessThanOrEqual(20);
+    }
+  });
+
+  it('says a refused key in the words the coordinator asked for', () => {
+    expect(refusalOf(keyUnknown('github.com')).split('\n')[0]).toBe(
+      "The git host refused this project's deploy key. Give the key write access to " +
+        `${REMOTE}, since the project's runner pushes with it. It is under ${GIT_ACCESS}.`,
     );
   });
 });

@@ -1,13 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projectGitCredentials, projects, workspaceSshKeys } from '../db/schema.js';
-import {
-  GIT_ACCESS,
-  hostOf,
-  KEY_ACCESS,
-  REPO_URL_AT,
-  WHY_KEY_ACCESS,
-} from '../git/bounded-fetch.js';
+import { GIT_ACCESS, hostOf, KEY_ACCESS, REPO_URL_AT } from '../git/bounded-fetch.js';
 import { classifyGitRemote } from '../git/provision-credential.js';
 import { type BranchRefs, readRemoteDivergence } from '../git/remote-divergence.js';
 import {
@@ -64,14 +58,14 @@ function noCredential(repoUrl: string | null): Refused {
     return {
       cause:
         'this project has no GitHub binding and names no repository URL, so there is no repository to read',
-      clears: `set an SSH clone URL under ${REPO_URL_AT} and a deploy key under ${GIT_ACCESS}`,
+      clears: `set an SSH clone URL under ${REPO_URL_AT}. Then attach a deploy key under ${GIT_ACCESS}`,
     };
   }
   const host = hostOf(repoUrl);
-  const github = host === 'github.com' ? ', or bind the repository on its Integrations page' : '';
+  const github = host === 'github.com' ? '. Or bind the repository on its Integrations page' : '';
   return {
-    cause: `Forge holds no GitHub binding and no deploy key for this project's repository on ${host}, so it cannot read the repository`,
-    clears: `attach a deploy key with ${KEY_ACCESS} to ${repoUrl.trim()} under ${GIT_ACCESS} (${WHY_KEY_ACCESS})${github}`,
+    cause: `Forge cannot read this project's repository on ${host}, since it holds no GitHub binding and no deploy key`,
+    clears: `attach a deploy key with ${KEY_ACCESS} to ${repoUrl.trim()} under ${GIT_ACCESS}${github}`,
   };
 }
 

@@ -10,6 +10,7 @@ import {
   keptClaimRepeat,
   markAgainOnce,
   threadBody,
+  withReason,
 } from './merge-record.js';
 
 // ISS-1421 — every sentence a mark answers a person with: commits in seven characters, at most three
@@ -276,5 +277,23 @@ describe("a mark's refusals, at each door (ISS-1421 r9)", () => {
     expect(targetRequiredDetail('mcp')).toBe(
       'Name where the work merged as `data.target`: base, prod or feature.',
     );
+  });
+});
+
+// ISS-1421 r9 repair: the host's line rendered as "( git@github.com : Permission denied …)", a code
+// span inside brackets with a gap before the colon. It now stands as one code line of its own.
+describe("the host's own line under a mark (ISS-1421 r9)", () => {
+  const WHY =
+    "The git host refused this project's deploy key. Give the key write access to git@github.com:acme/shop.git, since the project's runner pushes with it.\ngit@github.com: Permission denied (publickey).";
+
+  it('quotes our sentences, then the host line whole as code on a line of its own', () => {
+    const said = withReason('The mark stays a claim that names no commit.', WHY);
+    expect(said).toBe(
+      'The mark stays a claim that names no commit.\n' +
+        "> The git host refused this project's deploy key. Give the key write access to git@github.com:acme/shop.git, since the project's runner pushes with it.\n" +
+        '>\n> `git@github.com: Permission denied (publickey).`',
+    );
+    expect(addressesAsCode(said)).toContain('> `git@github.com: Permission denied (publickey).`');
+    expect(addressesAsCode(said)).not.toMatch(/\(`?git@github\.com`? ?:/);
   });
 });

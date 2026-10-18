@@ -3223,6 +3223,7 @@
 - **A later merge of the same issue moves where it landed.** Marking a later commit that carries the marked one, or a later pull request merging, moves the mark; a commit on another line is refused. (ISS-1421)
 - **A refused Mark merged says what to send in one short sentence, naming your door's own field.** A missing or blank target no longer answers "Invalid input", and REST callers are not sent to the agent tool. (ISS-1421)
 - **A mark's comment shows a host's address as code, never a mail link, and quotes a first mark's note on its own line.** (ISS-1421)
+- **A git host's refusal reads in at most three short sentences, with no dash.** The host's own words sit beneath them on a line of their own, shown whole as code. (ISS-1421)
 - **A turned-off integration in the Agent MCP servers panel is no longer told to be set up.** (ISS-1421)
 - **A mark answers in three short sentences, naming commits by seven characters.** What happened, why in one clause, what to do; the whole commit stays in the answer's fields and on hover. (ISS-1421)
 - **An issue is at Releasing only while a release carries it.** Release now starts it; status menus do not. A stranded issue closes if production serves its code, else returns to Awaiting release, where Reopen sits in the menu. (ISS-1421)

@@ -382,13 +382,16 @@ function waitingOnDecisionSentence(displayId: string | null | undefined): string
   return `A release is already running for this project and is waiting on a decision: its agent stopped on a question, ${where}. Answer it there and that release goes on; or abort it with what you found. A second release would claim the same issues, so it is not started.`;
 }
 
-/** The warning a promote chain with no route to read its repository gets instead; `why` says which
- *  route to declare, in the words of the host its URL names. */
+/** The warning a promote chain with no route to read its repository gets instead; `why`, last and on
+ *  a line of its own, says which route to declare, in the words of the host its URL names. */
 export function carriedUnreadWarningSentence(why: string): string {
-  return withCosts(
+  const said = withCosts(
     'RELEASE_CARRIED_UNREAD',
-    `This project promotes a branch onto production and Forge has no route to read its repository, so it could not read which landings this release carries beyond the issues it names: ${why}. Once it can, every release names each issue its range carries.`,
+    'This project promotes a branch onto production, and Forge has no route to read its repository. ' +
+      'So it could not read which landings this release carries beyond the issues it names. ' +
+      'Once it can, every release names each issue its range carries.',
   );
+  return `${said}\n${why.trim()}`;
 }
 
 /** One issue the finish's close would refuse, as `RELEASE_ISSUES_UNCLOSABLE` carries it. */

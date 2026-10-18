@@ -12,6 +12,7 @@ import type { IssueStatus, LandingShape } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { transitionIssueStatus } from '../issues/apply-transition.js';
 import { laneOrNull } from '../issues/landing-evidence.js';
+import { quotedRefusal } from '../issues/merge-record.js';
 import { statusLabel } from '../issues/status-sets.js';
 import { logger } from '../logger.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
@@ -134,13 +135,8 @@ export function findingSentence(
     case 'not-read':
       return next;
     case 'unread':
-      return `What production serves could not be read, so the sweep did not close it. ${next}\n\n${quoted(finding.why)}`;
+      return `What production serves could not be read, so the sweep did not close it. ${next}\n\n${quotedRefusal(finding.why)}`;
   }
-}
-
-/** A reason another system gave, kept whole on a quoted line rather than spliced into a sentence. */
-function quoted(why: string): string {
-  return `> ${why.replace(/\s+/g, ' ').trim()}`;
 }
 
 /** The whole comment the sweep leaves on a row it takes off Releasing. */
@@ -265,7 +261,7 @@ export function recordRefusedComment(why: string, holds: GateHolds): string {
     `It stays at ${GATE}.`,
     ...nextAtGateFor('gated', holds),
   ].join(' ');
-  return `${said}\n\n${quoted(why)}`;
+  return `${said}\n\n${quotedRefusal(why)}`;
 }
 
 async function sayRecordRefused(row: StrandedRow, why: string): Promise<void> {

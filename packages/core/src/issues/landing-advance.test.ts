@@ -106,7 +106,7 @@ describe('standingAgainst', () => {
     };
     expect(await standingAgainst('p', A, B, refused)).toEqual({
       kind: 'unread',
-      why: 'no binding',
+      why: 'No binding.',
     });
   });
 

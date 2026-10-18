@@ -97,7 +97,7 @@ describe('the sentence a caller is given', () => {
       kind: 'asserted',
       unverified: {
         commit: 'abc1234',
-        why: 'the git host refused the deploy key attached to this project',
+        why: "the git host refused this project's deploy key",
         clears: "once the tracker can read the project's repository with the deploy key",
         noReader: false,
       },
@@ -105,7 +105,7 @@ describe('the sentence a caller is given', () => {
     // ISS-1421 — three short sentences of ours, the host's reason quoted on its own line.
     expect(failed).toBe(
       'Commit abc1234 was named and is kept as a claim. Forge could not check it against the repository. Mark it again once Forge can read the repository.\n' +
-        '> The git host refused the deploy key attached to this project.',
+        "> The git host refused this project's deploy key.",
     );
     expect(failed).not.toContain('no way to read');
   });

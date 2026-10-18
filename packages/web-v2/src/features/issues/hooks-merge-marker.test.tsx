@@ -48,9 +48,10 @@ describe("the notice after Mark merged", () => {
     // ISS-1421 — core's answer: our sentences, then the reader's reason quoted on a "> " line.
     const ours =
       "The mark stays at commit 1a1a1a1. Forge could not check commit 2b2b2b2 against the repository. Mark it again once it can.";
+    // Round 9: the reason's sentences on one quoted line, the host's own words after it as a code line.
     const why =
-      "The git host gitlab.com could not be reached (ssh: connect to host gitlab.com port 22: Connection timed out), so the deploy key was never offered — check that the SSH clone URL git@gitlab.com:sid/desk.git names the right host.";
-    answer = { id: ISSUE, action: "already_merged", mark: "observed", detail: `${ours}\n> ${why}`, movedFrom: null };
+      "> The git host gitlab.com could not be reached, so the deploy key was never offered. Check that the SSH clone URL `git@gitlab.com:sid/desk.git` names the right host, and that the host is up.\n>\n> `ssh: connect to host gitlab.com port 22: Connection timed out`";
+    answer = { id: ISSUE, action: "already_merged", mark: "observed", detail: `${ours}\n${why}`, movedFrom: null };
     const said = await markOnce();
     expect(said.title).toBe("Already marked merged — nothing changed");
     // The reason's first clause on a line of its own, never the host's whole account after a

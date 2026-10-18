@@ -386,7 +386,7 @@ export function ReleaseDetails({ projectId }: { projectId: string }) {
           </h4>
           <ul className="mt-1 divide-y divide-line border-y border-line">
             {r.warnings.map((w) => (
-              <li key={`${w.code}:${w.message}`} className="fg-body-sm py-2.5 text-fg" data-code={w.code}>
+              <li key={`${w.code}:${w.message}`} className="fg-body-sm whitespace-pre-line py-2.5 text-fg" data-code={w.code}>
                 {inlineCode(w.reader)}
               </li>
             ))}

@@ -49,16 +49,22 @@ beforeEach(async () => {
   await attachDeployKey(db, projectId, GITLAB_URL);
 });
 
-/** What a person reads of a mark: no whole sha, at most three sentences of ours, each short. */
+/** What a person reads of a mark: no whole sha, short sentences of ours and of the quoted reason. */
 function readsShort(text: string): void {
   expect(text).not.toMatch(/[0-9a-f]{40}/);
-  const ours = text
-    .split('\n')
-    .filter((l) => l.trim() !== '' && !l.startsWith('> '))
-    .join(' ')
-    .split(/(?<=\.)\s+(?=[A-Z])/);
+  const lines = text.split('\n').filter((l) => l.trim() !== '' && l.trim() !== '>');
+  const sentences = (ls: string[]) => ls.join(' ').split(/(?<=\.)\s+(?=[A-Z])/);
+  const ours = sentences(lines.filter((l) => !l.startsWith('>')));
   expect(ours.length, text).toBeLessThanOrEqual(4);
-  for (const one of ours) expect(one.split(/\s+/).length, one).toBeLessThanOrEqual(20);
+  // ISS-1421 r9: the quoted reason is three short sentences at most, the host's own line apart as code.
+  const quoted = lines.filter((l) => l.startsWith('> '));
+  const reason = sentences(quoted.filter((l) => !l.startsWith('> `')).map((l) => l.slice(2)));
+  expect(reason.length, text).toBeLessThanOrEqual(3);
+  for (const one of [...ours, ...reason]) {
+    expect(one.split(/\s+/).length, one).toBeLessThanOrEqual(20);
+    expect(one, one).not.toMatch(/ — /);
+  }
+  for (const host of quoted.filter((l) => l.startsWith('> `'))) expect(host).toMatch(/^> `[^`]+`$/);
 }
 
 // What the rail shows of it, and its refresh, are the web's: merge-marker-refresh.test.tsx.
@@ -151,7 +157,7 @@ describe('a host that stops answering leaves an observed mark where it stood (cr
     expect((await row(issue.id)).merged_commit_sha).toBe(at.first);
     // Criterion 125: the host's own address, quoted beneath, is code in the thread.
     const said = (await comments(issue.id)).at(-1) as string;
-    expect(said).toContain('`git@gitlab.com`: Permission denied (publickey).');
+    expect(said).toContain('\n>\n> `git@gitlab.com: Permission denied (publickey).`');
     expect(said).not.toMatch(/(?<!`)git@gitlab\.com(?!`|:sid)/);
     readsShort(said);
     const { db } = current();
