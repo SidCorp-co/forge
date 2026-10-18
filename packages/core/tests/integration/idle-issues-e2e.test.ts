@@ -189,7 +189,7 @@ describe('The inverses: a detector that flags everything is the same defect', ()
       for (const note of emitted) {
         expect(note.title).toContain('no live work could be confirmed');
         expect(note.title).not.toContain('nothing is working it');
-        expect(note.body).toMatch(/^No live work could be confirmed for /);
+        expect(note.body).toMatch(/^It has read .+, no live work confirmed: /);
       }
     },
   );
@@ -201,7 +201,7 @@ describe('The inverses: a detector that flags everything is the same defect', ()
 
     expect(emitted).toHaveLength(1);
     expect(emitted[0]?.title).toContain('nothing is working it');
-    expect(emitted[0]?.body).toMatch(/^Nothing has worked it for /);
+    expect(emitted[0]?.body).toMatch(/^It has read Developed for \d+ days: /);
   });
 
   it('leaves a row alone whose unexpired lease is held on it and nothing else', async () => {

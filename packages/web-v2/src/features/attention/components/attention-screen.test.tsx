@@ -200,6 +200,29 @@ describe("an Attention group", () => {
     expect(screen.queryByText("Failed")).not.toBeInTheDocument();
   });
 
+  it("names a failed job's stuck reason under its failure, in one clause", () => {
+    state.failed = [
+      {
+        kind: "failed_job",
+        title: "drive failed: exit 1",
+        jobType: "drive",
+        failure: "session_lost",
+        link: "/projects/shop/issues/d16",
+        since: new Date(0).toISOString(),
+        issueRef: "SHOP-16",
+        issueTitle: "Retry the payout export",
+        stuckKind: "idle",
+        status: "failed",
+        projectSlug: "shop",
+        projectName: "Shop",
+      },
+    ];
+    render(<AttentionScreen />);
+    expect(
+      screen.getByText("Issue work failed: Session lost. It is in a live status with no live work behind it."),
+    ).toBeInTheDocument();
+  });
+
   // ISS-1229 r14, judge-35: 32 parks were headed 20, with nothing saying 12 more waited.
   it("heads a capped group with every item it holds, says how many it shows, and lists them all on asking", () => {
     state.awaiting = Array.from({ length: 20 }, (_, i) => ({

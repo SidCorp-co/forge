@@ -30,7 +30,7 @@ describe('the idle-issue notice, in the words a reader uses (ISS-1229)', () => {
     });
     expect(title).toBe('ISS-9 reads Awaiting release and nothing is working it — Desk');
     expect(body).toBe(
-      'Nothing has worked it for 3 days: the code carries a merge mark and nothing has moved the row since. ' +
+      'It has read Awaiting release for 3 days: the code carries a merge mark and nothing has moved the row since. ' +
         'It waits for a person to release it; a person owes that move.',
     );
     expect(body).not.toMatch(STORED_TIME);
@@ -52,7 +52,7 @@ describe('the idle-issue notice, in the words a reader uses (ISS-1229)', () => {
     });
     expect(body.split(/(?<=[.!?])\s+/)).toHaveLength(2);
     expect(body).toBe(
-      'Nothing has worked it for 1 hour: no runner that takes this project’s work is connected, so nothing can pick it up. ' +
+      'It has read Open for 1 hour: no runner that takes this project’s work is connected, so nothing can pick it up. ' +
         'It waits for a run to be dispatched onto it; a person owes that move.',
     );
   });
@@ -68,7 +68,7 @@ describe('the idle-issue notice, in the words a reader uses (ISS-1229)', () => {
       });
       expect(title).toBe('ISS-9 reads Awaiting release and no live work could be confirmed — Desk');
       expect(body).toContain(
-        'No live work could be confirmed for 3 days: the code carries a merge mark',
+        'It has read Awaiting release for 3 days, no live work confirmed: the code carries a merge mark',
       );
       expect(`${title} ${body}`).not.toMatch(STORED_TIME);
       expect(`${title} ${body}`).not.toContain('awaiting_release');
@@ -90,7 +90,7 @@ describe('the idle-issue notice of a held release', () => {
       now,
     });
     expect(body).toBe(
-      'Nothing has worked it for 3 days: the automatic release is holding it (RELEASE_CRITERIA_UNEARNED): criterion 3: unjudged. ' +
+      'It has read Awaiting release for 3 days: the automatic release is holding it (RELEASE_CRITERIA_UNEARNED): criterion 3: unjudged. ' +
         'It waits for a verdict on each criterion named; a person owes that move.',
     );
   });

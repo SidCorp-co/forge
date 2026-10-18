@@ -26,6 +26,7 @@ import { useOrgScopedProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
+import { stuckClause } from "@forge/contracts/stuck-words";
 import { failedJobClause, failedJobWords } from "../failed-job-words";
 import { useAttention } from "../hooks";
 import type { AttentionBucket, AttentionItem, AttentionKind } from "../types";
@@ -82,7 +83,8 @@ function KindTag({ kind }: { kind: AttentionKind }) {
 
 function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (link: string) => void }) {
   const said = item.kind === "failed_job" ? failedJobWords(item) : item.title;
-  const under = item.issueTitle ? said : item.failedJob ? failedJobClause(item.failedJob) : null;
+  const lower = item.failedJob ? failedJobClause(item.failedJob) : item.stuckKind ? stuckClause(item.stuckKind) : null;
+  const under = item.issueTitle ? (lower ? `${said.replace(/[.]?$/, ".")} ${lower}` : said) : lower;
   return (
     <button
       type="button"

@@ -466,8 +466,8 @@ export function idleNotice(args: {
     ? `${ref} reads ${label} and no live work could be confirmed — ${projectName}`
     : `${ref} reads ${label} and nothing is working it — ${projectName}`;
   const truth = unconfirmed
-    ? `No live work could be confirmed for ${age}: ${firstSentence(record.reason)}`
-    : `Nothing has worked it for ${age}: ${firstSentence(record.reason)}`;
+    ? `It has read ${label} for ${age}, no live work confirmed: ${firstSentence(record.reason)}`
+    : `It has read ${label} for ${age}: ${firstSentence(record.reason)}`;
   const who = record.owes === 'human' ? 'a person' : 'an agent';
   return { title, body: `${truth} It waits for ${record.waitingFor}; ${who} owes that move.` };
 }
