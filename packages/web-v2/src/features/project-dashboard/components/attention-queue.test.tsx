@@ -3,7 +3,7 @@
 // ISS-1156 — an empty list is "All caught up" only where nothing is owed beyond it.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { StatusChip } from "@/design/primitives/status-chip";
 import { AttentionQueue } from "./attention-queue";
@@ -11,7 +11,8 @@ import { AttentionQueue } from "./attention-queue";
 expect.extend(matchers);
 afterEach(cleanup);
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+const push = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 
 describe("the Needs your attention list with nothing in it", () => {
   it("says all caught up where nothing is owed", () => {
@@ -221,7 +222,7 @@ describe("the Needs your attention list with nothing in it", () => {
             ...base,
             key: "retry",
             actionKind: "retry",
-            actionLabel: "Approve & retry",
+            actionLabel: "Retry job",
             title: "Export the March invoices",
             detail: "Issue work failed: Session lost",
             issueRef: "ISS-15",
@@ -377,5 +378,52 @@ describe("the Needs you chip of a session waiting on you", () => {
     const tag = screen.getByText("Waiting").parentElement;
     expect(drawing(tag)).toBe(waiting);
     expect(drawing(tag)).not.toBe(working);
+  });
+});
+
+// ISS-1229 r16, judge-41: "Approve & retry" opened the issue page and retried nothing. A failed job's
+// button retries the job; a failed row with no job to retry says where it goes instead.
+describe("a failed job's row", () => {
+  const failed = {
+    since: new Date(0).toISOString(),
+    key: "retry-1",
+    actionKind: "retry" as const,
+    actionLabel: "Retry job",
+    title: "Export the March invoices",
+    issueRef: "ISS-15",
+    link: "/projects/pair/issues/d15",
+  };
+
+  it("retries the job, and goes nowhere", () => {
+    push.mockClear();
+    const onRetryJob = vi.fn();
+    render(
+      <AttentionQueue items={[{ ...failed, jobId: "j-15" }]} cut={null} onRetryJob={onRetryJob} slug="pair" now={0} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Retry job" }));
+    expect(onRetryJob).toHaveBeenCalledWith("j-15");
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("waits while its retry is on the way", () => {
+    render(
+      <AttentionQueue
+        items={[{ ...failed, jobId: "j-15" }]}
+        cut={null}
+        onRetryJob={() => {}}
+        retryingJobId="j-15"
+        slug="pair"
+        now={0}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Retrying…" })).toBeDisabled();
+  });
+
+  it("says Open issue where it has no job to retry, and opens it", () => {
+    push.mockClear();
+    render(<AttentionQueue items={[failed]} cut={null} onRetryJob={() => {}} slug="pair" now={0} />);
+    expect(screen.queryByRole("button", { name: "Retry job" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Open issue" }));
+    expect(push).toHaveBeenCalledWith("/projects/pair/issues/d15");
   });
 });

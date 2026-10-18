@@ -16,6 +16,7 @@ const attentionItem = z.object({
   since: z.string(),
   issueRef: z.string().optional(),
   issueTitle: z.string().optional().describe('Failed job only: the title of its issue'),
+  jobId: z.string().optional().describe('Failed job only: the job a person retries from the row'),
   jobType: z.string().optional().describe('Failed job only: its kind of work, as stored'),
   failure: z
     .string()

@@ -207,6 +207,8 @@ export interface DashboardAttentionItem {
   stuckOwedBy?: string;
   /** An answer or review the reader owes, which heads its row above a failed job or a stuck reason. */
   owed?: true;
+  /** `retry` only: the failed job the row's button retries. */
+  jobId?: string;
   /** The reader's failed job on an issue they owe an answer, listed here rather than as its own row. */
   failedJob?: { jobType: string; failure: string | null };
 }
@@ -233,6 +235,7 @@ function mapAttention(
       ...(it.stuckKind ? { stuckKind: it.stuckKind } : {}),
       ...(it.stuckOwedBy ? { stuckOwedBy: it.stuckOwedBy } : {}),
       ...(it.failedJob ? { failedJob: it.failedJob } : {}),
+      ...(actionKind === "retry" && it.jobId ? { jobId: it.jobId } : {}),
     }));
 }
 
@@ -271,7 +274,7 @@ export function projectAttention(
     const asked = awaiting.filter((it) => it.questionId != null);
     const silent = awaiting.filter((it) => it.questionId == null);
     out.push(
-      ...mapAttention(view.failedJobs, slug, "retry", "Approve & retry"),
+      ...mapAttention(view.failedJobs, slug, "retry", "Retry job"),
       ...owed(mapAttention(view.needsReview, slug, "diff", "Open diff")),
       ...owed(mapAttention(asked, slug, "input", "Provide info")),
     );

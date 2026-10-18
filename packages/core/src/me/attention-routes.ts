@@ -49,6 +49,8 @@ interface AttentionItem {
   issueRef?: string;
   /** Failed-job only: the title of the issue the job ran for, where it ran for one. */
   issueTitle?: string;
+  /** Failed-job only: the job a person retries from the row. */
+  jobId?: string;
   /** Failed-job only: the kind of work, as stored, which a screen words. */
   jobType?: string;
   /** Failed-job only: the stored cause code a screen words; a sentence the job wrote is the title's alone. */
@@ -166,6 +168,7 @@ function mentionItem(r: AttentionMentionRow): AttentionItem {
 function failedJobItem(r: AttentionFailedJobRow): AttentionItem {
   const item: AttentionItem = {
     kind: 'failed_job',
+    jobId: r.jobId,
     title: r.error ? `${r.type} failed: ${r.error.slice(0, 80)}` : `${r.type} job failed`,
     jobType: r.type,
     failure: failureCode(r),
@@ -247,10 +250,10 @@ meAttentionRoutes.get(
 
     const owedIds = [...needsReviewRows.map((r) => r.id), ...awaitingInputRows.map((r) => r.id)];
     const [kinds, failures] = await Promise.all([
-      readStuckKinds([
-        ...owedIds,
-        ...failedJobRows.flatMap((r) => (r.issueDocId ? [r.issueDocId] : [])),
-      ], userId),
+      readStuckKinds(
+        [...owedIds, ...failedJobRows.flatMap((r) => (r.issueDocId ? [r.issueDocId] : []))],
+        userId,
+      ),
       selectStandingFailures(userId, owedIds),
     ]);
     const needsReview = needsReviewRows.map((r) =>

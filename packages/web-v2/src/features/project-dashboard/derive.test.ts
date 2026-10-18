@@ -211,6 +211,30 @@ describe("projectAttention (ISS-1156)", () => {
     expect(onNone?.detail).toBeUndefined();
   });
 
+  // ISS-1229 r16, judge-41: the button read "Approve & retry" and opened the issue. It names what it does.
+  it("gives a failed job's row the job its button retries, and a label that says so", () => {
+    const [row] = projectAttention(
+      {
+        ...view([]),
+        failedJobs: [
+          {
+            kind: "failed_job",
+            jobId: "job-4",
+            title: "drive failed",
+            jobType: "drive",
+            failure: "session_lost",
+            link: "/projects/sable/issues/doc-4",
+            since: "2026-10-08T00:00:00Z",
+            projectSlug: "sable",
+          },
+        ],
+      },
+      "sable",
+      [],
+    );
+    expect(row).toMatchObject({ actionKind: "retry", actionLabel: "Retry job", jobId: "job-4" });
+  });
+
   it("refuses a parked issue at a status the kernel does not have, by name, rather than word it by a guess", () => {
     expect(() =>
       projectAttention(undefined, "sable", [{ issueId: "ISS-3", documentId: "doc-3", title: "Issue 3", status: "banana" }]),

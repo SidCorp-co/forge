@@ -51,7 +51,7 @@ import {
   spendComparison,
   stuckRuns,
 } from "@/features/project-dashboard/shape";
-import { useAttention } from "@/features/attention/hooks";
+import { useAttention, useRetryFailedJob } from "@/features/attention/hooks";
 import { useIssues } from "@/features/issues/hooks";
 import { formatElapsed } from "@/features/overview/derive";
 import { useSessionsAndHolds } from "@/features/pipeline/hooks";
@@ -85,6 +85,7 @@ export default function ProjectOverviewPage() {
   // on `projectId` so they no-op until the slug resolves.
   // The project's own organisation, whichever one the rail has open: its counts are this project's.
   const attentionQ = useAttention({ orgId: project?.orgId ?? null });
+  const retryJob = useRetryFailedJob();
   const runsQ = useProjectRuns(projectId);
   const sessionsQ = useSessionsAndHolds(projectId);
   const durationsQ = useStepDurations({ days: METRICS_WINDOW_DAYS, projectId }, !!projectId);
@@ -341,6 +342,8 @@ export default function ProjectOverviewPage() {
                       }
                     : undefined
                 }
+                onRetryJob={(jobId) => retryJob.mutate(jobId)}
+                retryingJobId={retryJob.isPending ? (retryJob.variables ?? null) : null}
                 shape={reading.shape}
                 stuck={stuckIssues}
                 whole={needsYouWhole}

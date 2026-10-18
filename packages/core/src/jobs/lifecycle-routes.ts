@@ -51,9 +51,12 @@ import {
   readReasonBody,
   resumedSchema,
   resumeJob,
+  retriedSchema,
+  retryJob,
 } from './lifecycle-routes-reference.js';
 import { JobResumeError, resumeHeldJob } from './resume-job.js';
 import type { RetryOutcome } from './retry.js';
+import { JobRetryError, retryFailedJob } from './retry-failed-job.js';
 import { deriveSessionFinal } from './session-transcript.js';
 import { OCCUPYING_JOB_STATUSES } from './status-sets.js';
 import { jobTurnVerdictRoutes } from './turn-verdict-routes.js';
@@ -581,6 +584,44 @@ jobLifecycleUserRoutes.post(
       return c.json(answer(resumedSchema, result));
     } catch (e) {
       if (e instanceof JobResumeError) {
+        if (e.code === 'NOT_FOUND') throw notFound(e.message);
+        throw conflict(e.message, e.code);
+      }
+      throw e;
+    }
+  },
+);
+
+// ISS-1229 r16 — a person retries a failed job. The project page's "Approve & retry" opened the issue
+// and did nothing else: no route let a person retry a job that failed for good.
+jobLifecycleUserRoutes.post(
+  '/:id/retry',
+  requireAuth(),
+  assertEmailVerified(),
+  retryJob,
+  declaresInput('json', cancelBodySchema),
+  zValidator('param', jobIdParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const job = await loadJob(id);
+    const access = await loadProjectAccess(job.projectId, userId);
+    assertProjectRole(access, 'member', 'not a project member');
+
+    const { reason } = await readReasonBody(c.req);
+
+    try {
+      const result = await retryFailedJob(id, {
+        actorUserId: userId,
+        reason: reason ?? 'manual retry (REST)',
+        source: 'rest',
+      });
+      return c.json(answer(retriedSchema, result));
+    } catch (e) {
+      if (e instanceof JobRetryError) {
         if (e.code === 'NOT_FOUND') throw notFound(e.message);
         throw conflict(e.message, e.code);
       }

@@ -18,6 +18,8 @@ export interface AttentionItem {
   since: string;
   issueRef?: string;
   issueTitle?: string;
+  /** Failed job only: the job a person retries from the row. */
+  jobId?: string;
   /** Failed job only: its kind of work, as stored; `failedJobWords` says it in words. */
   jobType?: string;
   failure?: string | null;

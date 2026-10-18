@@ -409,3 +409,12 @@ describe("an open runs tab follows a stop made anywhere (ISS-1228 round 15)", ()
     expect(c.has(["sessions-and-holds"])).toBe(true);
   });
 });
+
+// ISS-1229 r16: a person retrying a failed job takes the failure off every open Needs you list.
+describe("a failed job retried by a person", () => {
+  it("refreshes the attention read and the job lists", () => {
+    const c = send("job.retried", { jobId: "j2", retryOf: "j1" });
+    expect(c.has(["attention"])).toBe(true);
+    expect(c.has(["jobs", "list"])).toBe(true);
+  });
+});

@@ -21,7 +21,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/client.js';
 import { issues, jobs, projects } from '../db/schema.js';
 import { issueArchiveSide } from '../issues/archive.js';
-import { ISSUE_RESOLVED_STATUSES } from '../issues/status-sets.js';
+import { ISSUE_RESOLVED_STATUSES, ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
 import {
   type AttentionFailedJobRow,
   type AttentionScope,
@@ -87,10 +87,13 @@ export function heldAsFailedJobWhere(userId: string): SQL {
   ) as SQL;
 }
 
-/** An issue the job ran for that is still open and not archived; a job on no issue is listed too. */
+/**
+ * An issue the job ran for that is still open and not archived; a job on no issue is listed too. A
+ * dropped issue is finished as surely as a closed one: its failure asks nobody to retry it (ISS-1229 r16).
+ */
 export function failedJobIssueWhere(): SQL {
   return and(
-    notInArray(issues.status, [...ISSUE_RESOLVED_STATUSES]),
+    notInArray(issues.status, [...ISSUE_RESOLVED_STATUSES, ...ISSUE_TERMINAL_STATUSES]),
     ...issueArchiveSide(false),
   ) as SQL;
 }
@@ -147,6 +150,7 @@ export function selectFailedJobs(
   return capped(
     db
       .select({
+        jobId: jobs.id,
         type: jobs.type,
         finishedAt: jobs.finishedAt,
         createdAt: jobs.createdAt,
