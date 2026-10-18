@@ -104,7 +104,9 @@ describe('sweepAutomaticReleases — a row its release could not close', () => {
     );
     expect(holds['iss-2']).toMatchObject({ code: 'RELEASE_ISSUES_UNCLOSABLE', owes: 'human' });
     // ISS-1421 r6, criterion 90: the banner's sentence, never the code.
-    expect(holds['iss-2']?.reason).toContain('It holds 1 open question. Answer it');
+    expect(holds['iss-2']?.reason).toContain(
+      'because it holds 1 open question and its close would be refused. Answer it',
+    );
     expect(holds['iss-2']?.reason).not.toContain('OPEN_QUESTIONS');
     expect(result).toMatchObject({ issuesCut: 2, issuesExcluded: 1 });
   });

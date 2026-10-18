@@ -41,7 +41,7 @@ describe("ISS-1350 — every git mark's commit is one the repository holds (real
       const refused = await refusal(() => mark(issue, ISS_578_PAIR, agency));
       expect(refused.code).toBe('COMMIT_NOT_IN_REPOSITORY');
       expect(refused.message).toContain(
-        `GitHub finds no commit ${ISS_578_PAIR.slice(0, 7)} in ${repo.fullName}`,
+        `The repository ${repo.fullName} holds no commit ${ISS_578_PAIR.slice(0, 7)}.`,
       );
       expect(await row(issue.id)).toMatchObject({ merged_at: null, merged_commit_sha: null });
       expect(await comments(issue.id)).toEqual([]);
@@ -71,7 +71,7 @@ describe("ISS-1350 — every git mark's commit is one the repository holds (real
   it.each([
     ['no_binding', 'names no repository URL, so there is no repository to read'],
     ['read', 'HTTP 502'],
-    ['mint', 'minting an installation token: HTTP 404'],
+    ['mint', 'Minting an installation token: HTTP 404.'],
   ] as const)(
     "refuses a person's mark COMMIT_UNVERIFIED when the repository cannot be read (%s) (criterion 4)",
     async (down, says) => {
@@ -82,12 +82,11 @@ describe("ISS-1350 — every git mark's commit is one the repository holds (real
       expect(refused.message).toContain(says);
       expect(
         refused.message.startsWith(
-          `Nothing was marked: commit ${OWN.slice(0, 7)} could not be checked against`,
+          `Nothing was marked, because Forge could not check commit ${OWN.slice(0, 7)} against the repository.`,
         ),
       ).toBe(true);
-      expect(refused.message).toContain(
-        'mark it naming no commit, which records a claim that names none',
-      );
+      // ISS-1421 r8, criterion 124: offered only here, on an issue not yet marked.
+      expect(refused.message).toContain('Or mark it naming no commit, which records a claim.');
       expect(await row(issue.id)).toMatchObject({ merged_at: null, merged_commit_sha: null });
     },
   );
@@ -98,7 +97,7 @@ describe("ISS-1350 — every git mark's commit is one the repository holds (real
     const res = await mark(issue, short, 'human');
     // ISS-1421 — a person reads seven characters of the resolved commit; the row keeps all forty.
     expect(res.markDetail).toContain(
-      `Commit ${OWN.slice(0, 7)} was named, and is kept as a claim:`,
+      `Commit ${OWN.slice(0, 7)} is in ${repo.fullName}, and is noted in the comment only.`,
     );
     expect(res.namedCommit).toBe(OWN);
     const audit = (await comments(issue.id)).at(-1) ?? '';
@@ -109,13 +108,17 @@ describe("ISS-1350 — every git mark's commit is one the repository holds (real
     expect(audit).not.toContain(`at commit ${short}.`);
   });
 
-  it("keeps a person's resolved commit a claim, and says the repository holds it (criteria 6, 7)", async () => {
+  it("keeps a person's resolved commit out of the row, and says the repository holds it (criteria 6, 7; ISS-1421 r8)", async () => {
     const issue = await seed({ sessionContext: {} });
     const res = await mark(issue, OWN, 'human');
     expect(res.mark).toBe('asserted');
-    expect((await row(issue.id)).merged_commit_sha).toBeNull();
-    expect(res.markDetail).toContain(
-      `The repository ${repo.fullName} has it, but Forge did not check that it is this issue's work.`,
+    // Neither column keeps it: the answer says the comment alone holds it, and the row agrees.
+    expect(await row(issue.id)).toMatchObject({
+      merged_commit_sha: null,
+      merged_claimed_commit: null,
+    });
+    expect(res.markDetail).toBe(
+      `Commit ${OWN.slice(0, 7)} is in ${repo.fullName}, and is noted in the comment only. Forge did not see this merge, so the mark is a claim that names no commit.`,
     );
   });
 

@@ -176,7 +176,7 @@ describe('POST /api/issues/:id/merge', () => {
     const claimed = await mark({ target: 'main', commit: 'abc1234' });
     expect(claimed.detail).toContain('Forge did not see this merge');
     expect(claimed.detail).toContain('abc1234');
-    expect(claimed.detail).toContain('so it is not the merge commit');
+    expect(claimed.detail).toContain('so the mark is a claim that names no commit');
   });
 
   it('names the sha it witnessed in seven characters, so a person can read it (ISS-1421)', async () => {
@@ -202,7 +202,7 @@ describe('POST /api/issues/:id/merge', () => {
     asObserved();
     const disagreeing = await mark({ target: 'main', commit: 'abc1234' });
     expect(disagreeing.detail).toContain('abc1234');
-    expect(disagreeing.detail).toContain('named in this mark, is kept as a claim only');
+    expect(disagreeing.detail).toContain('named in this mark, was not recorded');
   });
 });
 

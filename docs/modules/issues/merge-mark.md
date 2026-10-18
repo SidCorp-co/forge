@@ -120,7 +120,9 @@ whether it is `noReader`); a repository that was read and says no never carries 
   another issue's, not on the base or live branch) is refused as before, by name, and nothing is
   written. A person's mark naming a commit, and an agent's naming one on an issue that already
   holds a branch, still go through `resolveMarkCommit` and are refused
-  `COMMIT_UNVERIFIED` where nothing can read.
+  `COMMIT_UNVERIFIED` where nothing can read, on an issue not yet marked; only that refusal offers
+  a mark naming no commit. On an issue already marked the call writes nothing and is answered, in
+  its reply and its comment, with where the mark stays, the reason quoted (ISS-1421 r8).
 - **It is verified later by a repeat mark.** With a claim standing, `agentEvidence` reads the
   repository for the commit the repeat names, or the claim, before it takes the claim as evidence.
   Readable and agreeing: the one writer's observed stamp, whose gate is the empty
@@ -227,11 +229,22 @@ message — names a commit by its first seven characters (`packages/core/src/iss
 `MergeMarkerError` shortens any whole sha in its message). The whole sha stays where a caller reads
 it as data: the row (`mergedCommitSha`, `mergedClaimedCommit`), the answer's `movedFrom` and
 `namedCommit` (the commit this mark named where no column keeps it), a refusal's `details`, and the
-rail's hover. An answer is at most three short sentences: what happened, why, what to do. Another
-part of Forge's reason is cut to its first clause (`firstClause`); a fix it names after ` — ` is kept
-whole as the step (`checkStep`). A first mark's comment names its commit once: the label carries it
-only where the sentence after it does not. No answer repeats "Forge saw this merge land" before the
-point; `packages/core/src/issues/mark-words.test.ts` holds every sentence builder to this.
+rail's hover, where an observed commit and a claim's both show by seven characters. An answer is at
+most three short sentences of Forge's own: what happened, why in one clause, what to do, each
+capitalised, stopped and at most 20 words. Another part of Forge's reason — a host's refusal —
+stands quoted on a line of its own beneath them (`withReason`), opened capitalised unless it opens on
+an address and stopped where it was not, never cut into one of them; a commit's subject is quoted
+there as the commit holds it, unstopped. A repository holding no commit is named in the sentence
+itself, so its reader's own words are quoted only where they say more (an overlong sha). A toast keeps
+the quoted reason to its first clause on a line of its own, the mark's comment holding it whole
+(`packages/web-v2/src/features/issues/hooks.ts:answerInBrief`), and a refusal shown beside the form,
+which writes no comment, puts it whole on a line of its own
+(`packages/web-v2/src/features/issues/hooks.ts:answerShown`). A first mark's comment names its commit once: the label carries it only where the sentence
+after it does not, and a repository's address shows there as code, never a mail link
+(`addressesAsCode`). An MCP `target` of `base`, `prod` or `feature` is written as the branch it
+means (`packages/core/src/issues/mark-target.ts:markTargetBranch`). No answer repeats "Forge saw
+this merge land" before the point; `packages/core/src/issues/mark-words.test.ts` holds every
+sentence builder to this.
 
 ## Every `git` mark's commit is one the repository holds
 
@@ -239,11 +252,14 @@ A claim is still checked (ISS-1350). On a `git` project every commit a mark reco
 an agent's on an issue that has a branch, one beside a merged pull request — is first
 resolved by the project's repository (`packages/core/src/issues/commit-landing.ts:resolveMarkCommit`, the same commit
 read `readCommitLanding` takes). The repository holding no such commit refuses the mark
-`COMMIT_NOT_IN_REPOSITORY`; a repository that cannot be read refuses it `COMMIT_UNVERIFIED`, naming
-why, and a mark naming no commit is the route that still records. A resolved commit is recorded by
-the full sha the repository gives (the answer's `namedCommit`), never as the caller typed it. It stays a claim: Forge read that
-the repository holds it, not that it is this issue's landing, so `merged_commit_sha` is not stamped
-from it and the answer says which of the two Forge read. The one commit not read is the merged pull
+`COMMIT_NOT_IN_REPOSITORY`; a repository that cannot be read refuses it `COMMIT_UNVERIFIED` on an
+issue not yet marked, naming why, and a mark naming no commit is the route that still records. A
+resolved commit is named by the full sha the repository gives (the answer's `namedCommit`), never
+as the caller typed it. No column keeps it: Forge read that the repository holds it, not that it is
+this issue's landing, so `merged_commit_sha` is not stamped from it, and a person's commit is no work
+evidence (`packages/core/src/pipeline/work-evidence.ts:gitDetail`), so `merged_claimed_commit` is
+not either. The answer and the comment say it is noted in the comment only and that the mark is a
+claim naming no commit — what the rail and a repeat mark say of the row. The one commit not read is the merged pull
 request's own merge sha, which Forge already holds.
 
 Where the caller names no commit, the mark records none. No step handoff is read for one: the

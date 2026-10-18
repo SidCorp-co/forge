@@ -20,11 +20,11 @@ import {
 } from './commit-landing.js';
 import type { LandingShape } from './landing-evidence.js';
 import {
-  firstClause,
   type MergeMarkKind,
   readMergeColumns,
   recordIssueMerge,
   shortCommit as s,
+  withReason,
 } from './merge-record.js';
 
 /** How a candidate commit stands against the commit a mark holds. */
@@ -133,10 +133,12 @@ export function movedSentence(from: string, to: string): string {
   return `The landing moved from commit ${s(from)} to commit ${s(to)}, which carries it.`;
 }
 
-export function unreadAnswer(held: string, candidate: string, why: string): string {
-  return (
-    `The mark stays at commit ${s(held)}, and commit ${s(candidate)} was not compared with it. ` +
-    `Forge could not read the repository: ${firstClause(why)}. Mark it again once it can.`
+/** A named commit Forge could not check, on an issue already marked: where the mark stays, what
+ *  was not checked, and the step, with the host's reason quoted beneath. `stays` is `markStays`. */
+export function unreadAnswer(stays: string, candidate: string, why: string): string {
+  return withReason(
+    `${stays} Forge could not check commit ${s(candidate)} against the repository. Mark it again once it can.`,
+    why,
   );
 }
 
@@ -155,7 +157,10 @@ function stayedComment(outcome: LandingAdvance, candidate: string): string | nul
     return `${seen}, which does not descend from commit ${s(outcome.held)}. The mark stays at ${s(outcome.held)}.`;
   }
   if (outcome.kind !== 'unread') return null;
-  return `${seen}, and was not compared with commit ${s(outcome.held)}. Forge could not read the repository: ${firstClause(outcome.why)}. The mark stays at ${s(outcome.held)}.`;
+  return withReason(
+    `${seen}. Forge could not check it against commit ${s(outcome.held)} in the repository. The mark stays at ${s(outcome.held)}.`,
+    outcome.why,
+  );
 }
 
 async function alreadySaid(tx: Tx, issueId: string, body: string): Promise<boolean> {

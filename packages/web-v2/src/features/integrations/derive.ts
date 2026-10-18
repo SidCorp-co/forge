@@ -76,6 +76,7 @@ export function groupCardsByProvider(cards: StatusCard[]): ProviderCardGroup[] {
 }
 
 export function deriveDirectoryStatus(card: Pick<StatusCard, "status" | "meta">): DirectoryStatus {
+  if (card.status === "disabled") return "disabled";
   if (card.meta?.lastHealthStatus === "needs_reauth") return "needs_reauth";
   if (card.meta?.lastHealthStatus === "needs_scope") return "needs_scope";
   const breakerOpen = card.meta?.breakerOpen === true;
@@ -86,8 +87,6 @@ export function deriveDirectoryStatus(card: Pick<StatusCard, "status" | "meta">)
       return "degraded";
     case "error":
       return "error";
-    case "disabled":
-      return "disabled";
     case "unverified":
       return breakerOpen ? "degraded" : "unverified";
     default:

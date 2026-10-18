@@ -8,14 +8,21 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api/client";
-import { BLURB, LANDING_BLURB, LATER_BLURB, MergeMarkerControl } from "./merge-marker-control";
+import {
+  BLURB,
+  EMPTY_COMMIT_LINE,
+  LANDING_BLURB,
+  LATER_BLURB,
+  MergeMarkerControl,
+} from "./merge-marker-control";
 
 expect.extend(matchers);
 
 const mark = vi.fn();
 const unmark = vi.fn();
 
-vi.mock("../hooks", () => ({
+vi.mock("../hooks", async () => ({
+  answerShown: (await vi.importActual<typeof import("../hooks")>("../hooks")).answerShown,
   useMergeMarker: () => ({ mark, unmark, isPending: false }),
 }));
 
@@ -118,8 +125,27 @@ describe("MergeMarkerControl on an issue already marked, whose work lands in git
     expect(screen.getByRole("button", { name: "Unmark" })).toBeInTheDocument();
   });
 
+  // ISS-1421 r8, criterion 127: the empty-Commit line showed where no pull request was held.
+  it("says an empty Commit uses the newest merged pull request only where one is held at another commit", () => {
+    const A = "a".repeat(40);
+    const B = "b".repeat(40);
+    const opened = (props: { mergedCommitSha?: string | null; newestMergedPull?: string | null }) => {
+      const view = render(
+        <MergeMarkerControl issueId="i1" mergedAt={MARKED} landingShape="git" {...props} />,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Mark a later merge" }));
+      const said = screen.queryByText(EMPTY_COMMIT_LINE, { exact: false }) !== null;
+      view.unmount();
+      return said;
+    };
+    expect(opened({ mergedCommitSha: A, newestMergedPull: B })).toBe(true);
+    expect(opened({ mergedCommitSha: A, newestMergedPull: null })).toBe(false);
+    expect(opened({ mergedCommitSha: A, newestMergedPull: A })).toBe(false);
+    expect(opened({ mergedCommitSha: A })).toBe(false);
+  });
+
   it("introduces the later merge in at most three sentences of at most 25 words", () => {
-    const sentences = LATER_BLURB.trim().split(/(?<=\.)\s+/);
+    const sentences = `${LATER_BLURB} ${EMPTY_COMMIT_LINE}`.trim().split(/(?<=\.)\s+/);
     expect(sentences.length).toBeLessThanOrEqual(3);
     for (const sentence of sentences) {
       expect(sentence).toMatch(/^[A-Z].*\.$/);
@@ -191,6 +217,21 @@ describe("MergeMarkerControl on a project whose work lands outside git (ISS-1327
     const alert = screen.getByRole("alert");
     expect(alert).toHaveTextContent("https://mowmentbrand.com/prodcts/linen-tee");
     expect(alert).toHaveTextContent("press Unmark");
+  });
+
+  it("shows a refusal's quoted reason on a line of its own, never after a literal '> ' (ISS-1421 r8)", () => {
+    const ours = "Commit 1a1a1a1 is not ISS-1's landing, because its subject does not name ISS-1.";
+    mark.mockImplementation((_body, options) =>
+      options?.onError?.(new ApiError(422, `${ours}\n> fix(core): something else (ISS-77)`, "COMMIT_NOT_THIS_ISSUE")),
+    );
+    open();
+    fireEvent.change(screen.getByPlaceholderText(/https:\/\/shop\.example\.com/), {
+      target: { value: "https://shop.example.com/a" },
+    });
+    submit();
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe(`${ours}\nfix(core): something else (ISS-77)`);
+    expect(alert.className).toContain("whitespace-pre-line");
   });
 
   it("keeps a landing past 2000 characters whole, says the limit, and will not send it", () => {

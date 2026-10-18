@@ -222,7 +222,9 @@ function ConfigPane({
   return (
     <>
       <ProviderSection provider={provider} projectId={projectId} stage={stageFromCardKey} />
-      {binding && (
+      {/* A provider's section carries its own agents switch, with its own refusal words, so the
+          pane adds one only where there is no section (ISS-1421 r8, criterion 128). */}
+      {binding && !SECTIONS.has(provider) && (
         <section className="mt-4">
           <AgentAccessControl projectId={projectId} binding={binding} canEdit={canEdit} />
         </section>

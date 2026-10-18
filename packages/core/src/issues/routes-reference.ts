@@ -140,6 +140,12 @@ const issueDetailFields = {
     .describe(
       'The branch the work-evidence gate counts for this issue: sessionContext.branch or sessionContext.worklog.branch, unless it names the base branch or the live branch. Null where the gate counts no branch.',
     ),
+  newestMergedPull: z
+    .string()
+    .nullable()
+    .describe(
+      'The merge commit of the most recently merged pull request Forge holds for this issue: the commit a Mark merged naming no commit compares with the mark. Null where Forge holds none.',
+    ),
   labels: z.array(issueLabelSchema),
   comments: z.array(z.never()),
   activity: z.array(z.never()),

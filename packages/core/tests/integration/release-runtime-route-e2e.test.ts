@@ -424,7 +424,7 @@ describe('a reason every waiting row shares is said once (judge finding 1)', () 
     if (!hold) throw new Error('the first sweep wrote no hold');
     await harness.db.execute(sql`
       UPDATE comments SET body = ${releaseHoldComment(hold)}
-       WHERE issue_id = ${oldest} AND body LIKE '%release-hold: %'
+       WHERE issue_id = ${oldest} AND (body LIKE '**Held by the automatic release**%' OR body LIKE '**The automatic release is holding this issue%')
     `);
 
     await sweep();

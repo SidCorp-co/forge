@@ -92,7 +92,7 @@ describe('ISS-1409 — no reader: the agent mark is an unverified claim (real Po
     const issue = await seed({ sessionContext: {} });
     const res = await mark(issue, OWN);
     expect(res.mark).toBe('asserted');
-    expect(res.markDetail).toContain('the project names no base branch to look for it on');
+    expect(res.markDetail).toContain('The project names no base branch to look for it on');
     expect(res.markDetail).toContain('Mark it again once the project names its base branch.');
     expect(await claimOf(issue.id)).toBe(OWN);
     expect(await row(issue.id)).toMatchObject({ merged_commit_sha: null });
@@ -176,7 +176,7 @@ describe("ISS-1409 — a reader that was read keeps its refusals, and a person's
 
   it.each([
     ['read', 'HTTP 502'],
-    ['mint', 'minting an installation token: HTTP 404'],
+    ['mint', 'Minting an installation token: HTTP 404.'],
   ] as const)(
     'records an unverified claim naming the cause where the configured reader fails (%s), and advances the issue (criterion 6)',
     async (down, says) => {

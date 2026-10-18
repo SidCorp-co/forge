@@ -129,12 +129,15 @@ describe('target is owed where the project moves branches, and only there', () =
     expect(marked.json().mark).toBe('landed');
   });
 
-  it('refuses a standard mark with no target at both doors in the words it always used', async () => {
+  it('refuses a standard mark with no target at both doors, the page door in a sentence', async () => {
     const w = await world('standard');
     const id = await seedIssue(w);
     const res = await rest('POST', `/api/issues/${id}/merge`, w.token, {});
     expect(res.status).toBe(400);
-    expect(JSON.stringify(await res.json())).toContain('target is required');
+    // ISS-1421 r8, criterion 131: capitalised, stopped, naming what to fill in.
+    expect(JSON.stringify(await res.json())).toContain(
+      'A target is required. Name the branch the work merged into as the target.',
+    );
 
     const viaTool = await tool(w.pat, { action: 'mark_merged', data: { issueId: id } });
     expect(viaTool.isError).toBe(true);

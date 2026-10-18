@@ -50,6 +50,7 @@ import {
 import { readLandingShape } from './landing-evidence.js';
 import { issueListPageQuery, serializeRestListRow } from './list-projection.js';
 import { liveReachForIssue } from './live-reach-read.js';
+import { observedMergeForIssue } from './merge-record.js';
 import { isSelfReferentialBranch } from './metadata.js';
 import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from './patch-fields.js';
 import { pipelineHealthUnderived, safeHydratePipelineHealthForIssues } from './pipeline-health.js';
@@ -245,6 +246,7 @@ issueProjectRoutes.get(
         pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(serialized.status),
         liveReach: await liveReachForIssue(issue),
         recordedBranch: (await collectWorkEvidence(issue.id)).branch,
+        newestMergedPull: (await observedMergeForIssue(db, issue.id))?.commitSha ?? null,
         labels: labelRows,
         comments: [],
         activity: [],
@@ -402,6 +404,7 @@ issueRoutes.get(
         pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(serialized.status),
         liveReach: await liveReachForIssue(issue),
         recordedBranch: (await collectWorkEvidence(issue.id)).branch,
+        newestMergedPull: (await observedMergeForIssue(db, issue.id))?.commitSha ?? null,
         labels: labelRows,
         comments: [],
         activity: [],

@@ -42,7 +42,12 @@ import {
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { mergedLandingSchema } from './landing-evidence.js';
-import { applyMergeMarker, MergeMarkerError, mergedCommitShaSchema } from './merge-marker.js';
+import {
+  applyMergeMarker,
+  MergeMarkerError,
+  mergedCommitShaSchema,
+  TARGET_REQUIRED_DETAIL,
+} from './merge-marker.js';
 import {
   markMerged,
   mergeMarkAnswerSchema,
@@ -132,7 +137,7 @@ async function runMergeMarker(
       // Whether a target is owed is the project's shape (`landing-evidence.ts`); the body is
       // the one this door has always answered a missing target with.
       if (err.code === 'TARGET_REQUIRED') {
-        throw badRequest({ formErrors: ['target is required'], fieldErrors: {} });
+        throw badRequest({ formErrors: [TARGET_REQUIRED_DETAIL], fieldErrors: {} });
       }
       throw new HTTPException(422, {
         message: err.message,

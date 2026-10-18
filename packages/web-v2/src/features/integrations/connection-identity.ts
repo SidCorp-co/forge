@@ -53,25 +53,30 @@ function apart(
   return out;
 }
 
+type Labelled = {
+  id: string;
+  provider: string;
+  displayName: string | null;
+  config: Record<string, unknown>;
+  createdAt: string;
+};
+
 /**
- * How a picker lists each connection: its name, else what it points at, then its provider. Only
- * where that is all there is are two alike told apart by when each was added: the day, then the
- * time on it. A number is left for two added in the same minute (ISS-1421 r6, criterion 100).
+ * The one rule every list names a connection by: its name, else what it points at, else its
+ * provider. Only where that is all there is are two alike told apart by when each was added: the
+ * day, then the time on it. A number is left for two added in the same minute (ISS-1421 r6,
+ * criterion 100). `withProvider` follows a name with its provider, for a list mixing providers;
+ * the Connections page lists one app per section and shows the provider beside it (r8, 129).
  */
-export function connectionPickerLabels(
-  connections: ReadonlyArray<{
-    id: string;
-    provider: string;
-    displayName: string | null;
-    config: Record<string, unknown>;
-    createdAt: string;
-  }>,
+export function connectionLabels(
+  connections: ReadonlyArray<Labelled>,
+  withProvider: boolean,
 ): Map<string, string> {
   const base = new Map<string, string>();
   for (const c of connections) {
     const provider = providerLabel(c.provider);
     const name = connectionName(c) ?? connectionTarget(c);
-    base.set(c.id, name ? `${name} · ${provider}` : provider);
+    base.set(c.id, name ? (withProvider ? `${name} · ${provider}` : name) : provider);
   }
   const byOrder = [...connections].sort(
     (a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id),
@@ -95,6 +100,11 @@ export function connectionPickerLabels(
     out.set(c.id, n === 1 ? label : `${label} (${n})`);
   }
   return out;
+}
+
+/** How the share picker lists each connection: the one rule, each name followed by its provider. */
+export function connectionPickerLabels(connections: ReadonlyArray<Labelled>): Map<string, string> {
+  return connectionLabels(connections, true);
 }
 
 export function connectionTarget(connection: {

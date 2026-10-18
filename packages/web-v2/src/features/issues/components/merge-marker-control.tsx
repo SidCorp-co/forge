@@ -11,7 +11,7 @@ import { useEffect, useState } from "react";
 import { Button, Field, Input, Textarea } from "@/design";
 import { SlideOver } from "@/design/patterns/slide-over";
 import { formatApiError } from "@/lib/api/error";
-import { useMergeMarker } from "../hooks";
+import { answerShown, useMergeMarker } from "../hooks";
 import type { LandingShape } from "../types";
 import {
   MARK_MERGED_ACTION,
@@ -30,8 +30,17 @@ export const BLURB = `Marking merged records where this work landed, which a clo
 /** A later merge of an issue already marked moves the mark forward (ISS-1421 round 7). */
 export const LATER_ACTION = "Mark a later merge";
 export const LATER_BLURB =
-  "This issue is already marked merged. A later merge that carries the marked commit moves the mark to it. " +
-  "Leave Commit empty to use the newest merged pull request.";
+  "This issue is already marked merged. A later merge that carries the marked commit moves the mark to it.";
+/** Said only where Forge holds a merged pull request at another commit than the mark's: anywhere
+ *  else an empty Commit has nothing to compare and changes nothing (ISS-1421 r8, criterion 127). */
+export const EMPTY_COMMIT_LINE = "Leave Commit empty to use the newest merged pull request.";
+
+export function emptyCommitCompares(newestMergedPull: string | null | undefined, held: string | null | undefined): boolean {
+  if (!newestMergedPull) return false;
+  const a = newestMergedPull.toLowerCase();
+  const b = (held ?? "").toLowerCase();
+  return b === "" || !(a.startsWith(b) || b.startsWith(a));
+}
 
 /** Outside git the mark names where the work now is, since there is no branch to name (ISS-1327). */
 export const LANDING_BLURB =
@@ -47,6 +56,8 @@ interface MergeMarkerControlProps {
   /** Whose answer `landingShape` is: the issue's own declaration, or its project's shape. Absent
    *  where the server does not say, and then the panel names no source. */
   landingSource?: "issue" | "project" | undefined;
+  mergedCommitSha?: string | null | undefined;
+  newestMergedPull?: string | null | undefined;
 }
 
 /** Where this issue's work lands and who said so, since the two can differ. */
@@ -62,6 +73,8 @@ export function MergeMarkerControl({
   mergedAt,
   landingShape,
   landingSource,
+  mergedCommitSha,
+  newestMergedPull,
 }: MergeMarkerControlProps) {
   const outsideGit = landingShape === "outside_git";
   const [open, setOpen] = useState(false);
@@ -112,7 +125,13 @@ export function MergeMarkerControl({
               {landingLine(outsideGit ? "outside_git" : "git", landingSource)}
             </p>
             <p className="fg-body-sm text-muted">
-              {later ? LATER_BLURB : outsideGit ? LANDING_BLURB : BLURB}
+              {later
+                ? emptyCommitCompares(newestMergedPull, mergedCommitSha)
+                  ? `${LATER_BLURB} ${EMPTY_COMMIT_LINE}`
+                  : LATER_BLURB
+                : outsideGit
+                  ? LANDING_BLURB
+                  : BLURB}
             </p>
             <Field
               label={WHERE_IT_LANDED_FIELD}
@@ -159,7 +178,7 @@ export function MergeMarkerControl({
             {refusal && (
               <p
                 role="alert"
-                className="fg-body-sm rounded-md border border-line bg-surface-subtle px-3 py-2"
+                className="fg-body-sm whitespace-pre-line rounded-md border border-line bg-surface-subtle px-3 py-2"
                 style={{ color: "var(--red-600)" }}
               >
                 {refusal}
@@ -189,7 +208,7 @@ export function MergeMarkerControl({
                       ...(note.trim() ? { note: note.trim() } : {}),
                     },
                     // Closed on success only: a refused mark keeps what was typed, and says why.
-                    { onSuccess: () => setOpen(false), onError: (err) => setRefusal(formatApiError(err)) },
+                    { onSuccess: () => setOpen(false), onError: (err) => setRefusal(answerShown(formatApiError(err))) },
                   );
                 }}
               >

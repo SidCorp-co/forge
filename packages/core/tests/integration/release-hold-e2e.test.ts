@@ -120,7 +120,7 @@ async function holdOf(issueId: string): Promise<Record<string, unknown> | null> 
 async function holdComments(issueId: string): Promise<string[]> {
   const rows = (await harness.db.execute(sql`
     SELECT body FROM comments
-     WHERE issue_id = ${issueId} AND body LIKE '%release-hold: %'
+     WHERE issue_id = ${issueId} AND (body LIKE '**Held by the automatic release**%' OR body LIKE '**The automatic release is holding this issue%')
      ORDER BY created_at ASC, id ASC
   `)) as unknown as Array<{ body: string }>;
   return rows.map((r) => r.body);
@@ -150,8 +150,8 @@ describe('a held row says why, once per reason', () => {
     expect(String(written?.reason)).toMatch(/read at \d{4}-\d\d-\d\dT/);
     const comments = await holdComments(id);
     expect(comments).toHaveLength(1);
-    expect(comments[0]).toContain('criterion 1');
-    expect(comments[0]).toContain('which a person owes');
+    expect(comments[0]).toContain('criterion 1 is not earned');
+    expect(comments[0]).toContain('A person records a verdict on each');
 
     const second = await sweep();
     expect(second.holdsWritten).toBe(0);
@@ -256,9 +256,10 @@ describe('a criteria hold names each served commit once', () => {
       `criterion 2: judged at ${JUDGED_B}, which is not a commit this project is serving`,
     );
     expect(times(reason, SERVING)).toBe(1);
+    // The comment is three sentences (ISS-1421 r8 repair 2): the reading is the stored hold's.
     const comments = await holdComments(id);
     expect(comments).toHaveLength(1);
-    expect(times(String(comments[0]), SERVING)).toBe(1);
+    expect(times(String(comments[0]), SERVING)).toBe(0);
   }, 30_000);
 
   it('reads one judged commit spelled full and short as one commit', async () => {
@@ -273,7 +274,7 @@ describe('a criteria hold names each served commit once', () => {
     expect(reason).not.toContain(`judged at ${JUDGED_A.slice(0, 8)},`);
     expect(times(reason, SERVING)).toBe(1);
     const comments = await holdComments(id);
-    expect(times(String(comments[0]), SERVING)).toBe(1);
+    expect(times(String(comments[0]), SERVING)).toBe(0);
   }, 30_000);
 });
 
@@ -318,11 +319,16 @@ describe('every exit before the cut is written on the row', () => {
     const said = releaseBlockerSentence('RELEASE_TARGET_UNDECLARED', { releaseChain });
     for (const id of [oldest, middle, newest]) expect((await holdOf(id))?.reason).toBe(said);
     expect(said).not.toContain(projectId);
-    const names = (await fx.displayIds([oldest, middle, newest])).map((n) => `\`${n}\``);
+    // ISS-1421 r8, criterion 90: the covered issues named in the heading, in plain words, and the
+    // comment three sentences with no backticked word (repair 2).
+    const names = await fx.displayIds([oldest, middle, newest]);
     const posted = await holdComments(oldest);
     expect(posted).toHaveLength(1);
-    expect(posted[0]).toContain(
-      `3 issues of this project, oldest merge first: ${names.join(', ')}.`,
+    expect(posted[0]).toBe(
+      `**Held by the automatic release** for ${names[0]}, ${names[1]} and ${names[2]}\n\n` +
+        'A release has nowhere to land, because no active deploy binding of this project carries its live stage. ' +
+        'A person adds one under Settings → Integrations, or chooses "Repository, no release" under Shape & release. ' +
+        'The next sweep then releases the waiting issues.',
     );
 
     // A row joining the same hold carries it, and costs the oldest no second comment.
@@ -447,7 +453,7 @@ describe('the hold and its comment commit together', () => {
     });
 
     const authors = await harness.db.execute<{ author_id: string }>(sql`
-      SELECT author_id FROM comments WHERE issue_id = ${id} AND body LIKE '%release-hold: %'
+      SELECT author_id FROM comments WHERE issue_id = ${id} AND (body LIKE '**Held by the automatic release**%' OR body LIKE '**The automatic release is holding this issue%')
     `);
     expect(authors.map((r) => r.author_id)).toEqual([FORGE_AUTHOR_ID]);
   }, 30_000);

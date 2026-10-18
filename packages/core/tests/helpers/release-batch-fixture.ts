@@ -278,7 +278,9 @@ export function releaseBatchFixture(
   async function holdComments(issueId: string): Promise<number> {
     const rows = (await harness().db.execute(sql`
       SELECT count(*)::int AS n FROM comments
-       WHERE issue_id = ${issueId} AND body LIKE '%release-hold: %'
+       WHERE issue_id = ${issueId}
+         AND (body LIKE '**Held by the automatic release**%'
+              OR body LIKE '**The automatic release is holding this issue%')
     `)) as unknown as Array<{ n: number }>;
     return Number(rows[0]?.n ?? 0);
   }

@@ -196,8 +196,10 @@ describe('where the repository cannot say whether it descends (criteria 108, 113
 
     expect(res.action).toBe('already_merged');
     // What happened, why in one clause, what to do: and nothing sends the reader to Unmark.
+    // ISS-1421 r8: the host's reason stands quoted on a line of its own, beneath three of ours.
     expect(res.markDetail).toBe(
-      `The mark stays at commit ${s(FIRST)}, and commit ${s(SECOND)} was not compared with it. Forge could not read the repository: SidCorp-co/specimen could not compare ${s(FIRST)} with ${s(SECOND)}: GET /repos/SidCorp-co/specimen/compare/${s(FIRST)}...${s(SECOND)}?per_page=1 on SidCorp-co/specimen returned HTTP 502. Mark it again once it can.`,
+      `The mark stays at commit ${s(FIRST)}. Forge could not check commit ${s(SECOND)} against the repository. Mark it again once it can.\n` +
+        `> SidCorp-co/specimen could not compare ${s(FIRST)} with ${s(SECOND)}: GET /repos/SidCorp-co/specimen/compare/${s(FIRST)}...${s(SECOND)}?per_page=1 on SidCorp-co/specimen returned HTTP 502.`,
     );
     readsShort(res.markDetail);
     expect((await row(issue.id)).merged_commit_sha).toBe(FIRST);
