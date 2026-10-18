@@ -1,6 +1,6 @@
 /**
- * What makes an agent session live: not a chat, and not at a terminal status. The session list and
- * every count that says "live" read this one condition, so no count disagrees with the list.
+ * A session listed as live is no chat and not ended; a count of live sessions adds the chats whose
+ * turn is running, as the dashboard and a box's busy count do (ISS-1228).
  */
 
 import { type SQL, sql } from 'drizzle-orm';
@@ -11,6 +11,8 @@ export const liveSessionWhere: SQL = sql`s.kind <> 'chat' AND s.status NOT IN ($
   terminalAgentSessionStatuses.map((v) => sql`${v}`),
   sql`, `,
 )})`;
+
+export const liveCountWhere: SQL = sql`((${liveSessionWhere}) OR (s.kind = 'chat' AND s.status = 'running'))`;
 
 export type LiveSessionCountRow = { projectId: string; n: number };
 
@@ -23,7 +25,7 @@ export function readLiveSessionCounts(projectIds: string[]): Promise<LiveSession
        projectIds.map((id) => sql`${id}::uuid`),
        sql`, `,
      )})
-       AND ${liveSessionWhere}
+       AND ${liveCountWhere}
      GROUP BY s.project_id
   `) as unknown as Promise<LiveSessionCountRow[]>;
 }
