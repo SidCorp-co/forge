@@ -3,7 +3,6 @@
 import { useParams, useRouter } from "next/navigation";
 import {
   Badge,
-  EmptyState,
   ErrorState,
   IconButton,
   MonoTag,
@@ -63,6 +62,7 @@ import { useSchedules } from "@/features/schedules/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
+import { ProjectMissing } from "@/features/projects/components/project-missing";
 
 /** The window the spend and where-time-goes sections read; the throughput section's is its own. */
 const METRICS_WINDOW_DAYS = 7;
@@ -130,11 +130,7 @@ export default function ProjectOverviewPage() {
   if (!project) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
-        <EmptyState
-          title="Project not found"
-          message="This project doesn't exist or you don't have access to it."
-          mascot
-        />
+        <ProjectMissing slug={slug} />
       </div>
     );
   }
