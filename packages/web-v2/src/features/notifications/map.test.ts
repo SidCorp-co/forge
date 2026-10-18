@@ -55,7 +55,13 @@ describe("toNotificationItem", () => {
 
   it("labels a resolved notice as resolved and a several-record row as a group", () => {
     expect(toNotificationItem(row({ resolvedNotice: true })).label).toBe("RESOLVED");
-    expect(toNotificationItem(row({ members: 4, openMembers: 3 })).group).toEqual({ total: 4, open: 3 });
+    // ISS-1229 r16: a resolved record leaves its group, so the group counts the open ones alone.
+    expect(toNotificationItem(row({ members: 4, openMembers: 3 })).group).toEqual({ count: 3, open: true });
+    expect(toNotificationItem(row({ members: 4, openMembers: 0 })).group).toBeUndefined();
+    expect(toNotificationItem(row({ kind: "signal", members: 4, openMembers: 0 })).group).toEqual({
+      count: 4,
+      open: false,
+    });
     expect(toNotificationItem(row()).group).toBeUndefined();
   });
 });
@@ -90,7 +96,8 @@ describe("a stuck-issue row whose condition has since resolved (ISS-1229 r12)", 
 
   // ISS-1229 r15: judge-38 read STRANDED on every stuck group, a word none of their titles says.
   it.each([
-    ["waiting", "WAITING", "Issues that have been waiting for you for over six hours"],
+    ["waiting", "WAITING", "Issues that have been waiting for a person for over six hours"],
+    ["waiting_on_others", "WAITING", "Issues that have been waiting for a person for over six hours"],
     ["idle", "NO LIVE WORK", "Issues that are in a live status with no live work behind them"],
     ["owed_close", "NEVER CLOSED", "Issues that shipped their code and were never closed"],
     ["orphan", "NO RUN", "Issues that assert work in progress with no run behind them"],

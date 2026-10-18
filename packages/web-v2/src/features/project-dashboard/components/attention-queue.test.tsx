@@ -171,6 +171,44 @@ describe("the Needs your attention list with nothing in it", () => {
     expect(list).toHaveTextContent("Showing 7 of 14.");
   });
 
+  // ISS-1229 r16, judge-41 on criterion 98: the Member's parks read to the Owner as waiting for the
+  // Owner. A park somebody else owes names them, whether listed as a park or as a stuck row.
+  it("names who another person's park waits for, never the reader", () => {
+    render(
+      <AttentionQueue
+        items={[
+          {
+            key: "parked-d2",
+            actionKind: "parked" as const,
+            actionLabel: "Open issue",
+            title: "Choose a carrier",
+            detail: "Blocked on a person — Waiting",
+            issueRef: "ISS-2",
+            link: "/projects/pair/issues/d2",
+            stuckKind: "waiting_on_others" as const,
+            stuckOwedBy: "Mai",
+          },
+        ]}
+        cut={{ shown: 2, whole: 2, peopleCut: false }}
+        whole={2}
+        shape="degraded"
+        slug="pair"
+        now={0}
+        stuck={{
+          total: 2,
+          refs: [
+            { issueId: "ISS-2", documentId: "d2", title: "Choose a carrier", kind: "waiting_on_others" as const, owedBy: "Mai" },
+            { issueId: "ISS-3", documentId: "d3", title: "Price list", kind: "waiting_on_others" as const, owedBy: "Bao" },
+          ],
+        }}
+      />,
+    );
+    const list = screen.getByRole("region", { name: "Needs your attention" });
+    expect(screen.getByText("Has been waiting for Mai for over six hours")).toBeInTheDocument();
+    expect(screen.getByText("Has been waiting for Bao for over six hours")).toBeInTheDocument();
+    expect(list).not.toHaveTextContent(/waiting for you/u);
+  });
+
   // ISS-1229 r15, the master's ruling: an answer owed outranks a failed job, which outranks a stuck
   // reason; a row takes the highest and names the next one down under it, and a failed job's issue is
   // counted as that, never among the stuck issues too.

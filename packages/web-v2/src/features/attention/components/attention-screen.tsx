@@ -83,7 +83,11 @@ function KindTag({ kind }: { kind: AttentionKind }) {
 
 function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (link: string) => void }) {
   const said = item.kind === "failed_job" ? failedJobWords(item) : item.title;
-  const lower = item.failedJob ? failedJobClause(item.failedJob) : item.stuckKind ? stuckClause(item.stuckKind) : null;
+  const lower = item.failedJob
+    ? failedJobClause(item.failedJob)
+    : item.stuckKind
+      ? stuckClause(item.stuckKind, item.stuckOwedBy)
+      : null;
   const under = item.issueTitle ? (lower ? `${said.replace(/[.]?$/, ".")} ${lower}` : said) : lower;
   return (
     <button

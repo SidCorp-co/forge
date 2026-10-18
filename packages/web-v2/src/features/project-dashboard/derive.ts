@@ -203,6 +203,8 @@ export interface DashboardAttentionItem {
   status?: string;
   /** The reason a stuck-issue notice tells this item's issue by: the row says it in those words. */
   stuckKind?: StuckIssueKind;
+  /** `waiting_on_others` only: the person the park waits for, whom the row names. */
+  stuckOwedBy?: string;
   /** An answer or review the reader owes, which heads its row above a failed job or a stuck reason. */
   owed?: true;
   /** The reader's failed job on an issue they owe an answer, listed here rather than as its own row. */
@@ -229,6 +231,7 @@ function mapAttention(
       since: it.since,
       status: it.status,
       ...(it.stuckKind ? { stuckKind: it.stuckKind } : {}),
+      ...(it.stuckOwedBy ? { stuckOwedBy: it.stuckOwedBy } : {}),
       ...(it.failedJob ? { failedJob: it.failedJob } : {}),
     }));
 }
@@ -294,6 +297,7 @@ export function projectAttention(
       link,
       status: b.status,
       ...(b.stuckKind ? { stuckKind: b.stuckKind } : {}),
+      ...(b.stuckOwedBy ? { stuckOwedBy: b.stuckOwedBy } : {}),
       ...ageOf(ages?.get(b.documentId)),
     });
   }
@@ -328,7 +332,14 @@ export function sessionsWaitingOnYou(
 /** What the stuck-issue notices of a project name: how many issues, and the first few of them. */
 export interface StuckIssues {
   total: number;
-  refs: readonly { issueId: string; documentId: string; title: string; kind: StuckIssueKind }[];
+  refs: readonly {
+    issueId: string;
+    documentId: string;
+    title: string;
+    kind: StuckIssueKind;
+    /** `waiting_on_others` only: the person the park waits for. */
+    owedBy?: string;
+  }[];
 }
 
 /** An item whose issue the stuck count holds: a failed job's is counted as that, never as stuck too. */

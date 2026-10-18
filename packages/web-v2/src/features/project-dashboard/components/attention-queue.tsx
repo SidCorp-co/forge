@@ -64,9 +64,13 @@ function StuckTag() {
 /** Why an item is listed, then its next reason down: an answer owed, a failed job, a stuck reason (ISS-1229 r15). */
 function itemWords(it: DashboardAttentionItem): { stuck: boolean; detail?: string } {
   if (it.stuckKind && !it.owed && it.actionKind !== "retry") {
-    return { stuck: true, detail: stuckRowWords(it.stuckKind) };
+    return { stuck: true, detail: stuckRowWords(it.stuckKind, it.stuckOwedBy) };
   }
-  const under = it.failedJob ? failedJobClause(it.failedJob) : it.stuckKind ? stuckClause(it.stuckKind) : null;
+  const under = it.failedJob
+    ? failedJobClause(it.failedJob)
+    : it.stuckKind
+      ? stuckClause(it.stuckKind, it.stuckOwedBy)
+      : null;
   if (!under) return { stuck: false, detail: it.detail };
   return { stuck: false, detail: it.detail ? `${it.detail.replace(/[.]?$/, ".")} ${under}` : under };
 }
@@ -171,7 +175,7 @@ export function AttentionQueue({
             <li key={`stuck-${r.documentId}`} className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 py-2">
               <StuckTag />
               <MonoTag>{r.issueId}</MonoTag>
-              <RowText title={r.title} detail={stuckRowWords(r.kind)} />
+              <RowText title={r.title} detail={stuckRowWords(r.kind, r.owedBy)} />
               <Button
                 size="sm"
                 variant="secondary"

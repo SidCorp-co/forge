@@ -22,6 +22,8 @@ export interface AttentionItem {
   jobType?: string;
   failure?: string | null;
   stuckKind?: StuckIssueKind;
+  /** `waiting_on_others` only: the person the park waits for. */
+  stuckOwedBy?: string;
   failedJob?: { jobType: string; failure: string | null };
   status?: string;
   projectSlug?: string;

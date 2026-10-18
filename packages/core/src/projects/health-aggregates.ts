@@ -8,7 +8,7 @@ import { createLimiter } from '../lib/bounded-concurrency.js';
 import { heldAsFailedJobWhere } from '../me/attention-failed-jobs.js';
 import { readLiveSessionCounts } from '../pipeline/live-session.js';
 import { firstShipped } from '../pipeline/shipped-at.js';
-import { stuckKindSql, stuckRankSql } from './stuck-issue-kinds.js';
+import { parkOwerNameSql, readerStuckKindSql, stuckRankSql } from './stuck-issue-kinds.js';
 
 /**
  * The twelve independent per-project reads behind `GET /api/projects/health`, and
@@ -180,8 +180,10 @@ export type StuckIssueRow = {
   issSeq: number;
   issuePrefix: string | null;
   title: string;
-  /** The most specific reason a standing notice gives for it (`STUCK_NOTICES`). */
+  /** The most specific reason a standing notice gives for it (`STUCK_NOTICES`), told to the reader. */
   kind: StuckIssueKind;
+  /** `waiting_on_others` only: the person the park waits for. */
+  owedBy: string | null;
   /** How many issues of the project a notice stands for, beside the first `STUCK_ISSUES_LISTED`. */
   total: number;
   /** The same issues counted once each, by that reason, so the kinds add up to `total` (ISS-1229 r14). */
@@ -198,7 +200,7 @@ const readStuckIssueRows = (projectIds: string[], readerId: string) =>
   db.execute(sql`
     WITH stuck AS (
       SELECT n.project_id, i.id, i.iss_seq, p.issue_prefix, i.title, n.created_at,
-             ${stuckKindSql(sql`n.resolution_key`)} AS kind,
+             ${readerStuckKindSql(sql`n.resolution_key`, sql`i.id`, readerId)} AS kind,
              ${stuckRankSql(sql`n.resolution_key`)} AS rank
         FROM notifications n
         JOIN issues i ON i.id = n.issue_id
@@ -217,7 +219,8 @@ const readStuckIssueRows = (projectIds: string[], readerId: string) =>
         FROM (SELECT project_id, kind, count(*)::int AS n FROM first_notice GROUP BY project_id, kind) k
        GROUP BY project_id
     )
-    SELECT "projectId", id, "issSeq", "issuePrefix", title, kind, total::int AS total, "byKind" FROM (
+    SELECT "projectId", id, "issSeq", "issuePrefix", title, kind, total::int AS total, "byKind",
+           CASE WHEN kind = 'waiting_on_others' THEN ${parkOwerNameSql(sql`ranked.id`)} END AS "owedBy" FROM (
       SELECT f.project_id AS "projectId", f.id, f.iss_seq AS "issSeq", f.issue_prefix AS "issuePrefix",
              f.title, f.kind, b."byKind",
              count(*) OVER (PARTITION BY f.project_id) AS total,

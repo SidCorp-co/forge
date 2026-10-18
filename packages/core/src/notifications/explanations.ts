@@ -62,6 +62,12 @@ export function detectorOfGroupKey(groupKey: string | null): SweepDetector | nul
   return named !== undefined && named in SWEEP_DETECTORS ? (named as SweepDetector) : null;
 }
 
+/** A sweep group's title as its detector says it now, so a delivery stored before a wording changed reads the same. */
+export function groupTitleOfGroupKey(groupKey: string | null): string | null {
+  const detector = detectorOfGroupKey(groupKey);
+  return detector === null ? null : SWEEP_DETECTORS[detector].groupTitle;
+}
+
 export function explanationOfGroupKey(groupKey: string | null): string | null {
   const detector = detectorOfGroupKey(groupKey);
   return detector === null ? null : SWEEP_DETECTORS[detector].explanation;

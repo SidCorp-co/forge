@@ -9,6 +9,8 @@ import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
 import { type SweepDetector, sweepGroup } from '../notifications/explanations.js';
 import { projectAdminUserIdsFor, projectHasAdminSql } from '../notifications/project-admins.js';
+import { waitingParkTitle } from '../notifications/waiting-titles.js';
+import { parkOwerNameSql } from '../projects/stuck-issue-kinds.js';
 import { resolveArchivedProjectNotices } from './archived-project-notices.js';
 import {
   FRESH_SIGHTING_LIMIT,
@@ -100,12 +102,6 @@ async function surfaceOnce(args: {
   return sent?.delivered ?? 0;
 }
 
-/** What a park asks of the person, by the kind it stored; a park that stored none is waiting for them. */
-const PARK_ASKS: Record<string, string> = {
-  needs_decision: 'your decision',
-  needs_resource: 'something only a person can supply',
-};
-
 /** When the issue was parked: the row's own `updated_at` moves on any write (ISS-1229). */
 const PARKED_AT = statusEnteredAtSql({
   id: sql`"issues"."id"`,
@@ -127,6 +123,7 @@ function readParks(args: { scope: Scope; where: SQL[]; order: SQL[]; limit: numb
       mergedAt: issues.mergedAt,
       parkedAt: sql<string>`${PARKED_AT}::text`,
       waitingKind: issues.waitingKind,
+      owedBy: sql<string | null>`${parkOwerNameSql(sql`"issues"."id"`)}`,
       cursorTs: sql<string>`${PARKED_AT}::text`,
       projectName: projects.name,
     })
@@ -255,7 +252,13 @@ export async function detectStrandedIssues(
         projectId: row.projectId,
         issueId: row.id,
         resolutionKey: strandedResolutionKey(row.id),
-        title: `${ref} is waiting for ${PARK_ASKS[row.waitingKind ?? ''] ?? 'you'} — ${row.projectName}`,
+        // Stored in the third person; each reader's bell reads it back as theirs where they owe it.
+        title: waitingParkTitle({
+          ref,
+          waitingKind: row.waitingKind,
+          owedBy: { you: false, name: row.owedBy },
+          projectName: row.projectName,
+        }),
         body: `${ref} "${row.title}": ${lead}.`,
       });
       if (sent < 0) unreachable += 1;

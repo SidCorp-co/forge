@@ -44,6 +44,7 @@ interface ProjectHealthRow {
     title: string;
     status: string;
     stuckKind?: StuckIssueKind;
+    stuckOwedBy?: string;
   }>;
   /** Every parked issue, the count behind the capped `blockers` list. */
   blockersTotal: number;
@@ -75,6 +76,7 @@ interface ProjectHealthRow {
     documentId: string;
     title: string;
     kind: StuckIssueKind;
+    owedBy?: string;
   }>;
 }
 
@@ -146,11 +148,13 @@ projectHealthRoutes.get('/health', readProjectHealth, async (c) => {
   // A parked issue a stuck-issue notice stands for is listed by that notice's words (ISS-1229 r15).
   const blockerKinds = await readStuckKinds(
     [...blockersByProject.values()].flatMap((list) => list.map((b) => b.documentId)),
+    userId,
   );
   for (const list of blockersByProject.values()) {
     for (const b of list) {
-      const stuckKind = blockerKinds.get(b.documentId);
-      if (stuckKind) b.stuckKind = stuckKind;
+      const told = blockerKinds.get(b.documentId);
+      if (told) b.stuckKind = told.kind;
+      if (told?.owedBy) b.stuckOwedBy = told.owedBy;
     }
   }
   const blockersTotalByProject = new Map<string, number>();
@@ -184,6 +188,7 @@ projectHealthRoutes.get('/health', readProjectHealth, async (c) => {
       documentId: r.id,
       title: r.title,
       kind: r.kind,
+      ...(r.owedBy ? { owedBy: r.owedBy } : {}),
     });
     stuckRefsByProject.set(r.projectId, refs);
   }

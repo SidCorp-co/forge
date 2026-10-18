@@ -19,9 +19,9 @@ import { heldAsFailedJobWhere } from '../me/attention-failed-jobs.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
 import { readPendingInvitations } from '../projects/pending-invitations.js';
-import { stuckKindSql } from '../projects/stuck-issue-kinds.js';
+import { readerStuckKindSql } from '../projects/stuck-issue-kinds.js';
 import { recordAndDeliver } from './deliver.js';
-import { explanationOfGroupKey } from './explanations.js';
+import { explanationOfGroupKey, groupTitleOfGroupKey } from './explanations.js';
 import {
   closedSchema,
   deleteNotification,
@@ -39,6 +39,7 @@ import {
   patchNotification,
 } from './routes-reference.js';
 import { silenceRoutes } from './silences-routes.js';
+import { waitingTitlesFor } from './waiting-titles.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -294,8 +295,9 @@ notificationRoutes.get(
           string | null
         >`CASE WHEN ${several} THEN NULL ELSE min(${notifications.agentSessionId}::text) END`,
         notificationId: sql<string>`min(${notifications.id}::text)`,
-        // The tag a stuck row wears is its kind's, which every record a sweep groups shares.
-        stuckKind: sql<StuckIssueKind | null>`CASE WHEN min(${notifications.type}) = 'issue_stranded' THEN ${stuckKindSql(sql`min(${notifications.resolutionKey})`)} END`,
+        // The tag a stuck row wears is its kind's, which every record a sweep groups shares; a park
+        // is told to this reader as theirs only where they owe it (ISS-1229 r16).
+        stuckKind: sql<StuckIssueKind | null>`CASE WHEN min(${notifications.type}) = 'issue_stranded' THEN ${readerStuckKindSql(sql`min(${notifications.resolutionKey})`, sql`min(${notifications.issueId}::text)::uuid`, userId)} END`,
       })
       .from(notificationDeliveries)
       .innerJoin(
@@ -321,8 +323,20 @@ notificationRoutes.get(
       .offset((page - 1) * pageSize);
 
     const named = await projectsNamed(rows.map((r) => r.projectId));
+    // A waiting park's title says "you" only to the reader who owes it, and a sweep's group is named
+    // by its detector as it reads now, whatever a delivery stored before (ISS-1229 r16).
+    const told = await waitingTitlesFor(
+      userId,
+      rows.filter((r) => r.members === 1 && !r.resolvedNotice).map((r) => r.notificationId),
+    );
     const items = rows.map((r) => ({
       ...r,
+      title:
+        r.members === 1 && !r.resolvedNotice
+          ? (told.get(r.notificationId) ?? r.title)
+          : r.members > 1
+            ? (groupTitleOfGroupKey(r.groupKey) ?? r.title)
+            : r.title,
       explanation: explanationOfGroupKey(r.groupKey),
       projectSlug: (r.projectId && named.get(r.projectId)?.slug) || null,
       projectName: (r.projectId && named.get(r.projectId)?.name) || null,
@@ -389,8 +403,9 @@ notificationRoutes.patch(
  *
  * ISS-1063 — grouping turns fifteen bell rows into one, and without this route that is a
  * loss: the reader would be told fifteen issues are parked and given no way to reach any
- * of them. The list route answers the counts; this answers the members, newest first,
- * still-open ones first.
+ * of them. The list route answers the counts; this answers the members, newest first: a condition
+ * or task that has ended leaves the group, so nothing it said in the present tense is left standing
+ * beside the ones still true (ISS-1229 r16). An event cannot end, so a group of events lists all.
  */
 notificationRoutes.get(
   '/:id/members',
@@ -436,14 +451,22 @@ notificationRoutes.get(
           eq(notificationDeliveryMembers.deliveryId, id),
           onLiveProject(notifications.projectId),
           toldTo(userId, notifications),
+          // An event cannot end, so it is listed whole; a condition or task that has ended is not.
+          sql`(${notifications.kind} = 'signal' OR (${notifications.resolvedAt} IS NULL AND ${stillTrue}))`,
         ),
       )
-      .orderBy(
-        desc(sql`(${notifications.resolvedAt} IS NULL AND ${stillTrue})`),
-        desc(notificationDeliveryMembers.deliveredAt),
-      );
+      .orderBy(desc(notificationDeliveryMembers.deliveredAt));
 
-    return c.json(answer(deliveryMembersSchema, rows));
+    const told = await waitingTitlesFor(
+      userId,
+      rows.map((r) => r.id),
+    );
+    return c.json(
+      answer(
+        deliveryMembersSchema,
+        rows.map((r) => ({ ...r, title: told.get(r.id) ?? r.title })),
+      ),
+    );
   },
 );
 
