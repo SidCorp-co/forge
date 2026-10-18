@@ -413,7 +413,7 @@ describe('the fetch budget', () => {
     }).commit(head);
     expect(read).toEqual({
       kind: 'unreadable',
-      why: "fetching every branch's commits from the git host passed 128 KiB, the most one reading may fetch — the host may not honour the commits-only filter",
+      why: "Fetching every branch's commits from the git host passed 128 KiB, the most one reading may fetch. The host may not honour the commits-only filter.",
     });
   });
 
@@ -423,7 +423,7 @@ describe('the fetch budget', () => {
     );
     expect(read).toEqual({
       kind: 'unreadable',
-      why: "fetching every branch's commits from the git host took longer than 0.001s",
+      why: "Fetching every branch's commits from the git host took longer than 0.001s.",
     });
   });
 });

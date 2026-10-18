@@ -101,8 +101,8 @@ export function markAgainOnce(clears: string): string {
 /** What checks it, in a sentence of ours; the host's own fix travels in the quoted reason. */
 export function checkStep(u: { why?: string; clears: string; noReader: boolean }): string {
   if (!u.noReader) return markAgainOnce(u.clears);
-  const fix = u.why?.split(' — ')[1] ?? '';
-  if (/^set an SSH clone URL/i.test(fix)) {
+  const fix = u.why ?? '';
+  if (/\bset an SSH clone URL/i.test(fix)) {
     return "Set the repository's SSH clone URL and a deploy key, then mark it again";
   }
   return /\bbind the repository\b/.test(fix)
@@ -115,19 +115,26 @@ export function quoted(words: string): string {
   return `> ${words.replace(/\s+/g, ' ').trim()}`;
 }
 
-/** Our sentences, then the reason another part of Forge gave, quoted beneath them (criterion 63). */
-export function withReason(sentences: string, why: string | null | undefined): string {
-  const said = why
-    ?.trim()
+/** A refusal quoted beneath ours: its sentences on one quoted line, each host line after it whole as code. */
+export function quotedRefusal(why: string): string {
+  const [ours = '', ...host] = why.trim().split('\n');
+  const said = ours
+    .trim()
     .replace(/([^.!?])$/, '$1.')
     .replace(/^[a-z](?=[a-z]*\s)/, (c) => c.toUpperCase());
-  return said ? `${sentences}\n${quoted(shortenCommits(said))}` : sentences;
+  const code = host.flatMap((l) => (l.trim() ? [`>\n> \`${l.trim().replace(/`/g, "'")}\``] : []));
+  return [quoted(said), ...code].join('\n');
 }
 
-/** A repository's address as a comment shows it: code, so `git@host:org/repo` is never a mail link. */
+/** Our sentences, then the reason another part of Forge gave, quoted beneath them (criterion 63). */
+export function withReason(sentences: string, why: string | null | undefined): string {
+  return why?.trim() ? `${sentences}\n${quotedRefusal(shortenCommits(why))}` : sentences;
+}
+
+/** A repository's address as code, so `git@host:org/repo` or `user@host` is never a mail link. */
 export function addressesAsCode(text: string): string {
   return text.replace(
-    /(`[^`\n]*`)|((?:[\w.-]+@[\w.-]+:|(?:ssh|git|https?):\/\/)[^\s`'"<>()]*[^\s`'"<>().,;:])/g,
+    /(`[^`\n]*`)|((?:ssh|git|https?):\/\/[^\s`'"<>()]*[^\s`'"<>().,;:]|[\w.-]+@[\w-]+(?:\.[\w-]+)*(?::[^\s`'"<>()]*[^\s`'"<>().,;:])?)/g,
     (whole, code: string | undefined, address: string | undefined) =>
       code ? whole : `\`${address}\``,
   );
@@ -274,8 +281,7 @@ export async function recordIssueMerge(
       mergedAt: claimsOnly ? sql`coalesce(${issues.mergedAt}, ${stampExpr})` : stampExpr,
       // When the mark was first set, which the owed-close sweep counts from; a later write keeps it.
       mergeMarkedAt: sql`coalesce(${issues.mergeMarkedAt}, now())`,
-      // A merge Forge read replaces any claim in the same statement: the CHECK holds a claim
-      // beside no commit.
+      // A merge Forge read replaces any claim here: the CHECK holds a claim beside no commit.
       ...(evidence.kind === 'observed'
         ? { mergedCommitSha: evidence.commitSha, mergedClaimedCommit: null }
         : {}),
@@ -390,11 +396,11 @@ export function threadBody(args: {
       : [`${alreadyMarkedSentence(args.stamp.mergedAt)}.`, note, addressesAsCode(args.after)];
     return parts.filter(Boolean).join('\n\n');
   }
-  const said = args.note ? ` — ${args.note}` : '.';
-  if (args.op !== 'mark') return `Merge mark removed${said}`;
+  if (args.op !== 'mark') return ['Merge mark removed.', note].filter(Boolean).join('\n\n');
   const labelled = args.stamp.commitSha ?? args.claimedCommit ?? args.stamp.claimedCommit;
   const named = labelled ? shortCommit(labelled) : null;
   const at = named && !args.markDetail.includes(named) ? `, at commit ${named}` : '';
   const into = args.target ? ` into ${args.target}` : '';
-  return `Marked merged${into}${at}${said}\n${addressesAsCode(args.markDetail)}`;
+  const said = `Marked merged${into}${at}.\n${addressesAsCode(args.markDetail)}`;
+  return note ? `${said}\n\n${note}` : said;
 }

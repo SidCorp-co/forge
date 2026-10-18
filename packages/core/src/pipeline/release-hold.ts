@@ -128,6 +128,11 @@ const HOLD_HEADINGS = [
   '**The automatic release is holding this issue at Awaiting release.**',
 ] as const;
 
+export function holdText(words: HoldWords): string {
+  const [holds, does, then] = words;
+  return does.startsWith('- ') ? `${holds}\n\n${does}\n\n${then}` : words.join(' ');
+}
+
 export function releaseHoldComment(
   hold: ReleaseHold,
   shared = false,
@@ -138,7 +143,7 @@ export function releaseHoldComment(
     shared && covers.length > 1
       ? ` for ${covers.slice(0, -1).join(', ')} and ${covers.at(-1)}`
       : '';
-  if (hold.words) return `${HOLD_HEADINGS[0]}${covered}\n\n${hold.words.join(' ')}`;
+  if (hold.words) return `${HOLD_HEADINGS[0]}${covered}\n\n${holdText(hold.words)}`;
   const who = hold.owes === 'human' ? 'a person' : 'an agent run';
   return `${HOLD_HEADINGS[0]}\n\n${hold.reason}\n\nIt is waiting for ${hold.waitingFor}, which ${who} owes.`;
 }

@@ -23,6 +23,7 @@ import {
   type CommitLookup,
   type Containment,
   type FoundCommit,
+  inClause,
   MARK_WITH_WHOLE_SHA,
   overlongCommitName,
   overlongLookup,
@@ -205,7 +206,7 @@ export class GitReading {
       );
       return true;
     } catch (err) {
-      if (err instanceof GitRefusal && err.message === ABSENT) return false;
+      if (err instanceof GitRefusal && err.refused.cause === ABSENT) return false;
       throw err;
     }
   }
@@ -323,8 +324,8 @@ export class GitReading {
     const named = (r: Refused) => (this.opts.pin ? refusedNamingTheHost(r, this.opts.pin) : r);
     if (err instanceof GitRefusal) return named(err.refused);
     const stderr = hostSaid(((err as GitFailure).stderr ?? '').toString());
-    const cause = stderr || (err instanceof Error ? err.message : String(err));
-    return named({ cause: `reading ${this.remote} failed: ${cause}` });
+    const said = stderr || (err instanceof Error ? err.message : String(err));
+    return named({ cause: `reading ${this.remote} failed`, ...(said ? { said } : {}) });
   }
 
   /** `refusedBy` as one sentence. */
@@ -440,8 +441,8 @@ export function gitRepositoryReader(
       try {
         return await carriageIn(g, judged, served);
       } catch (err) {
-        const { cause, clears } = g.refusedBy(err);
-        const why = `${remote} could not compare ${judged} with ${served}: ${cause}`;
+        const { clears, ...refused } = g.refusedBy(err);
+        const why = `${remote} could not compare ${judged} with ${served}: ${inClause(refused)}`;
         return clears === undefined ? { kind: 'unread', why } : { kind: 'unread', why, clears };
       }
     },
@@ -450,8 +451,8 @@ export function gitRepositoryReader(
       try {
         return await changedIn(g, landing);
       } catch (err) {
-        const { cause, clears } = g.refusedBy(err);
-        const why = `${remote} could not read what ${landing} changed: ${cause}`;
+        const { clears, ...refused } = g.refusedBy(err);
+        const why = `${remote} could not read what ${landing} changed: ${inClause(refused)}`;
         return clears === undefined ? { kind: 'unread', why } : { kind: 'unread', why, clears };
       }
     },
@@ -460,7 +461,7 @@ export function gitRepositoryReader(
       try {
         return await rangeIn(g, base, headRef);
       } catch (err) {
-        return { why: `${remote} could not compare ${base} with ${headRef}: ${g.failed(err)}` };
+        return { why: `${remote} could not compare ${base} with ${headRef}. ${g.failed(err)}` };
       }
     },
   };

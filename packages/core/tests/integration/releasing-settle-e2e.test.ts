@@ -203,7 +203,7 @@ describe('a row at Releasing that nothing carries (criteria 13, 14, 15, 16, 17)'
     expect(said).toContain(
       'What production serves could not be read, so the sweep did not close it.',
     );
-    expect(said).toContain('\n\n> the probe of the live deployment reports it down');
+    expect(said).toContain('\n\n> The probe of the live deployment reports it down');
     expect(said).not.toContain('answered down');
     expect(await recordFor(id)).toBeNull();
   });
@@ -437,7 +437,7 @@ describe('a landing marked while the sweep judges it (criterion 15)', () => {
       `The release record that would close this issue was refused. It stays at Awaiting release.`,
     );
     expect(said.at(-1)).toContain(
-      `\n\n> its landing commit is now ${SHIPPED}, not ${judged}, which production was read as carrying`,
+      `\n\n> Its landing commit is now ${SHIPPED}, not ${judged}, which production was read as carrying`,
     );
   });
 });

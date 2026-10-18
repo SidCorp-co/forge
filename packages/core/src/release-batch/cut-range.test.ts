@@ -107,7 +107,7 @@ describe('readRangeTo (ISS-1386)', () => {
 
     expect(unbound.kind).toBe('unbound');
     expect(unbound.kind === 'unbound' && unbound.why).toContain(
-      "set an SSH clone URL under the project's Settings → Shape & release → Repository and a deploy key under the project's Settings → Runners → Git access",
+      "Set an SSH clone URL under the project's Settings → Shape & release → Repository. Then attach a deploy key under the project's Settings → Runners → Git access.",
     );
     expect(unbound.kind === 'unbound' && unbound.why).not.toContain('bind a repository');
     expect(failed.kind).toBe('unread');

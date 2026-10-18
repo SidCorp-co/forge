@@ -218,7 +218,7 @@ describe('a tag list that could not be read is never read as one holding no tag'
     const refusal = await refused();
 
     expect(refusal.code).toBe('RELEASE_TAG_UNREAD');
-    expect(refusal.detail).toContain('no repository is bound — bind one');
+    expect(refusal.detail).toMatch(/close again\.\nNo repository is bound\. Bind one\.$/);
     expect(tagsContaining).not.toHaveBeenCalled();
   });
 

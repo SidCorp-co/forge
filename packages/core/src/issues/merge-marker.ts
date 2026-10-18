@@ -20,12 +20,14 @@ import {
   type Lane,
   landingMarkRefusal,
   laneFrom,
+  type MarkDoor,
   markTargetRequired,
   readDeclaredLandingShape,
   readLandingShape,
   standingMarkRefusal,
   UnknownProjectKindError,
 } from './landing-evidence.js';
+import { targetRequiredDetail } from './merge-input-refusal.js';
 import {
   alreadyMarkedSentence,
   CHANGE_THE_MARK,
@@ -185,10 +187,11 @@ async function agentEvidence(
   issueId: string,
   shape: LandingShape,
   sent: { commit?: string | undefined; landing?: string | undefined },
+  door: MarkDoor,
 ): Promise<AgentEvidence | null> {
   const standing = shape === 'git' ? await readStandingClaim(issueId) : null;
   if (standing) return agentCommit(issueId, sent.commit ?? standing);
-  const missing = await findMissingWorkEvidence(issueId, db, 'mark');
+  const missing = await findMissingWorkEvidence(issueId, db, 'mark', door);
   if (!missing || (shape === 'outside_git' && sent.landing)) return null;
   if (!sent.commit || shape !== 'git') throw new MergeMarkerError('NO_WORK_EVIDENCE', missing);
   return agentCommit(issueId, sent.commit);
@@ -237,10 +240,6 @@ async function compareLater(
   }
   return later;
 }
-
-/** What a git mark sent with no target is refused with, on every door that answers in words. */
-export const TARGET_REQUIRED_DETAIL =
-  'A target is required. Name the branch the work merged into as the target.';
 
 export const NOT_MARKED_MERGED_DETAIL =
   'This issue is not marked merged, so there is no mark to remove. Nothing changed.';
@@ -321,6 +320,8 @@ export async function applyMergeMarker(args: {
   landing?: string | undefined;
   mergedAt?: Date | null;
   actor: MergeMarkerActor;
+  /** The door the mark came through, so a refusal names the field its caller sends. */
+  door?: MarkDoor;
 }): Promise<{
   issue: IssueRow;
   action: 'merged' | 'already_merged' | 'unmarked';
@@ -340,6 +341,7 @@ export async function applyMergeMarker(args: {
   namedCommit: string | null;
 }> {
   const before = args.issue;
+  const door = args.door ?? 'rest';
 
   let stampResult: MergeRecord = {
     wrote: true,
@@ -364,16 +366,16 @@ export async function applyMergeMarker(args: {
     // A landing on a git lane is refused below whatever the target, and that refusal names the
     // real fault, so the missing target is not reported ahead of it.
     if (markTargetRequired(shape) && !args.target && !args.landing) {
-      throw new MergeMarkerError('TARGET_REQUIRED', TARGET_REQUIRED_DETAIL);
+      throw new MergeMarkerError('TARGET_REQUIRED', targetRequiredDetail(door));
     }
     if (args.actor.agency === 'agent') {
-      const evidence = await agentEvidence(before.id, shape, args);
+      const evidence = await agentEvidence(before.id, shape, args, door);
       if (evidence?.kind === 'read') fromRepository = evidence.landing;
       if (evidence?.kind === 'unverified') unverified = evidence;
     }
     const observed = await observedMergeForIssue(db, before.id);
     const landing = args.landing ?? null;
-    const refused = landingMarkRefusal({ lane, landing, observed: observed !== null });
+    const refused = landingMarkRefusal({ lane, landing, observed: observed !== null, door });
     if (refused) throw new MergeMarkerError(refused.code, refused.detail);
     // Every read is taken before the first write, so a refusal leaves the row as it found it.
     const recorded =

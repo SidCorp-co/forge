@@ -68,9 +68,9 @@ function unreadRefusal(pattern: string, landing: string, why: string): ReleaseTa
   return {
     code: 'RELEASE_TAG_UNREAD',
     detail:
-      `this project ships by version tag, so Closed (closed) means a tag matching \`${pattern}\` contains the landing commit ${landing}, and the tags could not be read: ${why}. ` +
-      'Nothing was closed, and a tag list that could not be read is not read as one holding no tag. ' +
-      'Fix what let the read fail (a GitHub binding whose installation can read the repository, or the deploy key attached under Git access), then close again.',
+      `this project ships by version tag, so Closed (closed) means a tag matching \`${pattern}\` contains the landing commit ${landing}. ` +
+      'The tags could not be read, so nothing was closed: a tag list that could not be read is not read as one holding no tag. ' +
+      `Fix what let the read fail, then close again.\n${why}`,
     details: { requires: 'releaseTag', pattern, landing, read: 'unread', why },
   };
 }

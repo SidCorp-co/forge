@@ -86,7 +86,10 @@ awaiting-release banner offer no release for such an issue and print why. For a 
 `clears` names Open session only where the issue page's header shows it — a live session holding
 the issue, or a run of it with a session (`packages/core/src/pipeline/runs-of-issue.ts:issueHasSession`)
 — and Reopen in the actions menu everywhere else. The unattended sweep
-leaves such an issue off its cut and writes a `RELEASE_ISSUES_UNCLOSABLE` release hold on it; a
+leaves such an issue off its cut and writes a `RELEASE_ISSUES_UNCLOSABLE` release hold on it, whose
+comment says one shortfall in a sentence and its act in the next, and several as a line each, the
+reason then its act, no sentence past 20 words
+(`packages/core/src/pipeline/release-hold-kinds.ts:closeRefusedHold`); a
 scheduled cut leaves it off and names it in its outcome. A refusal that arises after the press, a
 question asked mid-run, is still met at the finish below.
 

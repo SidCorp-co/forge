@@ -234,6 +234,24 @@ describe("MergeMarkerControl on a project whose work lands outside git (ISS-1327
     expect(alert.className).toContain("whitespace-pre-line");
   });
 
+  it("shows the host's own line under the reason as it said it, with no quote marks or code ticks (ISS-1421 r9)", () => {
+    const ours = "Forge could not check commit 1a1a1a1 against the repository.";
+    const reason = "The git host refused this project's deploy key. It is under the project's Settings → Runners → Git access.";
+    mark.mockImplementation((_body, options) =>
+      options?.onError?.(
+        new ApiError(422, `${ours}\n> ${reason}\n>\n> \`git@github.com: Permission denied (publickey).\``, "COMMIT_UNREADABLE"),
+      ),
+    );
+    open();
+    fireEvent.change(screen.getByPlaceholderText(/https:\/\/shop\.example\.com/), {
+      target: { value: "https://shop.example.com/a" },
+    });
+    submit();
+    expect(screen.getByRole("alert").textContent).toBe(
+      `${ours}\n${reason}\ngit@github.com: Permission denied (publickey).`,
+    );
+  });
+
   it("keeps a landing past 2000 characters whole, says the limit, and will not send it", () => {
     open();
     const long = `https://shop.example.com/${"x".repeat(2000)}`;

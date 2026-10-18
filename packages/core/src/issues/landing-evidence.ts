@@ -152,6 +152,25 @@ export const mergedLandingSchema = z
   .min(1, 'landing must name where the work landed — a URL, a CMS entry, a storefront resource')
   .max(MERGED_LANDING_MAX, `landing must be at most ${MERGED_LANDING_MAX} characters`);
 
+export type MarkDoor = 'rest' | 'mcp';
+
+/** A mark's field as the caller at `door` sends it: `landing` on REST, `data.landing` on MCP. */
+export function markField(door: MarkDoor, name: 'target' | 'landing' | 'commit'): string {
+  return `\`${door === 'mcp' ? `data.${name}` : name}\``;
+}
+
+/** Where the lane says the work lands, in words and naming no stored field. */
+function laneInWords(lane: Lane): string {
+  const where = lane.shape === 'git' ? 'in git' : 'outside git';
+  return lane.declared
+    ? `this issue is declared to land ${where}`
+    : `this project's work lands ${where}`;
+}
+
+export function sendLanding(door: MarkDoor): string {
+  return `Send ${markField(door, 'landing')} naming the live URL, CMS entry or storefront resource the work now is.`;
+}
+
 /** How work that did land is claimed on this lane, written once for every refusal naming it.
  *  `held` is the mark already on the row: the first stamp wins, so a bare one is cleared first.
  *  `then` is the act the refused caller takes once the claim stands: the close, or the status. */
@@ -196,29 +215,30 @@ export function landingShortfall(row: MergeMarkColumns, lane: Lane): string | nu
   return `${held} ${whose} accepts ${wanted}.`;
 }
 
-/** The mark writer's refusal for this lane, or `null` where the mark may be written. Each sentence
- *  opens with a capital and runs short; a step another part words stands on its own line. */
+/** The mark writer's refusal for this lane, or `null` where the mark may be written: what
+ *  happened and why in one sentence, then the step in the field this door's caller sends (r9). */
 export function landingMarkRefusal(args: {
   lane: Lane;
   landing: string | null;
   observed: boolean;
+  door?: MarkDoor;
 }): { code: 'LANDING_REQUIRED' | 'LANDING_NOT_THIS_SHAPE'; detail: string } | null {
+  const door = args.door ?? 'rest';
   if (args.lane.shape === 'git' && args.landing) {
     return {
       code: 'LANDING_NOT_THIS_SHAPE',
       detail:
-        `${whereItLands(args.lane, true)}. A mark here names a commit, never a landing. ` +
-        'Nothing was marked. Send the mark without `landing`, and name the commit in `commit` ' +
-        `where you have one.\n\n${DECLARE_OUTSIDE_GIT}`,
+        `Nothing was marked, because ${laneInWords(args.lane)}, where a mark names a commit. ` +
+        `Send the mark without ${markField(door, 'landing')}, naming the commit in ` +
+        `${markField(door, 'commit')} where you have one.\n\n> ${DECLARE_OUTSIDE_GIT}`,
     };
   }
   if (args.lane.shape === 'outside_git' && !args.landing && !args.observed) {
     return {
       code: 'LANDING_REQUIRED',
       detail:
-        `${whereItLands(args.lane, true)}. Forge holds no merged pull request for this issue, so ` +
-        'the mark must name where the work landed. Nothing was marked. Send `landing`: the live ' +
-        'URL, CMS entry or storefront resource the work now is.',
+        `Nothing was marked, because ${laneInWords(args.lane)} and no merged pull request ` +
+        `shows where. ${sendLanding(door)}`,
     };
   }
   return null;

@@ -190,7 +190,7 @@ describe('ISS-1398 — the release weighs a verdict through the deploy key', () 
     expect(result.issuesCut).toBe(0);
     const reason = String((await fx.holdOf(id))?.reason);
     expect(reason).toContain('whether what it serves carries it could not be read');
-    expect(reason).toContain('the git host refused the deploy key attached to this project');
+    expect(reason).toContain("the git host refused this project's deploy key");
     expect(reason).not.toMatch(/GitHub binding|Integrations/);
   }, 60_000);
 
@@ -206,7 +206,7 @@ describe('ISS-1398 — the release weighs a verdict through the deploy key', () 
     expect(reason).toContain('whether what it serves carries it could not be read');
     expect(reason).toContain(GITLAB_NO_ACCESS.said);
     expect(reason).toContain(
-      `the git host took the deploy key attached to this project but will not let it read ${GITLAB_URL}`,
+      `the git host took this project's deploy key but will not let it read ${GITLAB_URL}`,
     );
     expect(reason).not.toMatch(/remote:\s*(\.|\))/);
     expect(reason).not.toMatch(/GitHub binding|Integrations/);
@@ -224,14 +224,13 @@ describe('ISS-1398 — the release weighs a verdict through the deploy key', () 
     await sweep();
 
     const reason = String((await fx.holdOf(id))?.reason);
-    const fix = `give the deploy key attached under the project's Settings → Runners → Git access write access to that repository`;
+    const fix =
+      "give that key write access to the repository, since the project's runner pushes with it";
     expect(reason).toContain('whether what it serves carries it could not be read');
     expect(reason).toContain("what this issue's landing changed could not be read");
-    expect(reason.split('Settings → Runners → Git access')).toHaveLength(2);
+    expect(reason.split('If none lives there, fix the SSH clone URL')).toHaveLength(2);
     expect(reason.split(fix)).toHaveLength(2);
-    expect(reason).toContain(
-      `A person clears this by making the repository readable: on the git host, ${fix}`,
-    );
+    expect(reason).toContain(`A person clears this by making the repository readable: ${fix}`);
     expect(reason.indexOf(fix)).toBeLessThan(reason.indexOf('record a verdict'));
     expect(reason).not.toContain('read access');
   }, 60_000);
@@ -303,7 +302,7 @@ describe('ISS-1398 — the range a merge-branch release carries, read through th
 
     const warned = readiness?.warnings.find((w) => w.code === 'RELEASE_CARRIED_UNREAD');
     expect(warned?.message).toContain(
-      `attach a deploy key with write access to ${GITLAB_URL} under the project's Settings → Runners → Git access`,
+      `\nForge cannot read this project's repository on gitlab.com, since it holds no GitHub binding and no deploy key. Attach a deploy key with write access to ${GITLAB_URL} under the project's Settings → Runners → Git access.`,
     );
     expect(warned?.message).not.toMatch(/bind (a|the) repository|Integrations/);
   }, 60_000);

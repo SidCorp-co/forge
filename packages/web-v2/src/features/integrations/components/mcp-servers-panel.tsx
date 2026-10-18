@@ -36,7 +36,13 @@ const REASON_META: Record<
     bg: "var(--bg-sunken)",
     icon: "dot",
   },
-  disabled: { label: STATE_WORDS.off, fg: "var(--fg-subtle)", bg: "var(--bg-sunken)", icon: "dot" },
+  disabled: {
+    label: STATE_WORDS.off,
+    fg: "var(--fg-subtle)",
+    bg: "var(--bg-sunken)",
+    icon: "dot",
+    hint: "It is set up and turned off, so agents do not get its MCP server until it is turned back on.",
+  },
   no_credential: {
     label: "No credential",
     fg: "var(--amberw-600)",
@@ -151,7 +157,8 @@ function McpServerRow({
         <p className="truncate font-mono text-12-5 text-muted" title={entry.url}>
           {entry.url}
         </p>
-      ) : entry.provider ? (
+      ) : entry.provider && !entry.configured ? (
+        // Only a row with nothing set up is told to set it up; any other reads its own state (r9).
         <p className="fg-body-sm text-subtle">
           Set up {providerLabel(entry.provider)} in the list above to give agents its MCP server.
         </p>

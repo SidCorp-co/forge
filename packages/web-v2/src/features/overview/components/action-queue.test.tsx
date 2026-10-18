@@ -55,7 +55,7 @@ describe("the action queue (ISS-1217)", () => {
                 name: "SidDesk",
                 baseBranch: "staging",
                 liveBranch: "master",
-                reason: "the git host refused the deploy key attached to this project",
+                reason: "the git host refused this project's deploy key",
               },
             ],
           },
@@ -70,7 +70,7 @@ describe("the action queue (ISS-1217)", () => {
     const record = screen.getByRole("link", { name: /SidDesk/ });
     expect(record).toHaveAttribute("href", "/projects/sid-desk");
     expect(record).toHaveTextContent(
-      "SidDeskthe git host refused the deploy key attached to this project",
+      "SidDeskthe git host refused this project's deploy key",
     );
     expect(record).not.toHaveTextContent(/\d+[smhd]$/);
   });

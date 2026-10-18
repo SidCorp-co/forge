@@ -113,8 +113,8 @@ describe("an outside-git lane's NO_WORK_EVIDENCE says what that lane and that do
     });
     expect(viaTool.isError).toBe(true);
     expect(viaTool.text).toContain('NO_WORK_EVIDENCE');
-    expect(viaTool.text).toMatch(/Nothing was marked\./);
-    expect(viaTool.text).toContain('`data.landing`');
+    expect(viaTool.text).toMatch(/Nothing was marked, because /);
+    expect(viaTool.text).toContain('Send `data.landing`');
     expect(viaTool.text).not.toContain('before advancing');
     expect(viaTool.text).not.toContain(RELEASE_CHAIN_PARAGRAPH);
   });

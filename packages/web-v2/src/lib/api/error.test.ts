@@ -149,6 +149,14 @@ describe('formatApiError — the merge-mark refusals, in the web\'s words', () =
     expect(msg).not.toContain('landed');
   });
 
+  it('names the panel field, never the REST one, for a mark naming no landing (ISS-1421 r9)', () => {
+    const msg = formatApiError(new ApiError(422, 'Send `landing` naming the live URL.', 'LANDING_REQUIRED'));
+    expect(msg).toBe(
+      'Nothing was marked, because no merged pull request shows where this work landed. Fill in “Where it landed” with the live URL, CMS entry or storefront resource.',
+    );
+    expect(msg).not.toContain('`');
+  });
+
   it('names the landing that stands, and Unmark, for a refused correction', () => {
     const msg = formatApiError(
       new ApiError(422, 'core sentence', 'MARK_ALREADY_STANDS', { heldLanding: 'https://shop.example.com/a' }),

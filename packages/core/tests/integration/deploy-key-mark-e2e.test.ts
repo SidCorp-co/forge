@@ -166,30 +166,29 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
     [
       GITLAB_NO_ACCESS,
       [
-        `the git host took the deploy key attached to this project but will not let it read ${GITLAB_URL}`,
-        `give the deploy key attached under ${GIT_ACCESS} write access to that repository, since Forge reads the repository with it and the project's runner pushes with it`,
+        `the git host took this project's deploy key but will not let it read ${GITLAB_URL}.`,
+        "give that key write access to the repository, since the project's runner pushes with it.",
       ],
     ],
     [
       GITHUB_NOT_FOUND,
-      [
-        `the git host took the deploy key attached to this project but will not let it read ${GITLAB_URL}`,
-      ],
+      [`the git host took this project's deploy key but will not let it read ${GITLAB_URL}.`],
     ],
-    [NO_REPOSITORY, [`correct the SSH clone URL set under ${REPO_URL_AT}`]],
+    [NO_REPOSITORY, [`if none lives there, fix the SSH clone URL under ${REPO_URL_AT}.`]],
     [
       keyUnknown('gitlab.com'),
       [
-        'the git host refused the deploy key attached to this project',
-        `give its public key write access to ${GITLAB_URL}, since Forge reads the repository with it and the project's runner pushes with it`,
+        "the git host refused this project's deploy key.",
+        `give the key write access to ${GITLAB_URL}, since the project's runner pushes with it.`,
+        `it is under ${GIT_ACCESS}.`,
       ],
     ],
     [
       unreachable('172.65.251.78'),
       [
-        'the git host gitlab.com could not be reached',
+        'the git host gitlab.com could not be reached, so the deploy key was never offered.',
         'ssh: connect to host gitlab.com',
-        `check that the SSH clone URL ${GITLAB_URL}, set under ${REPO_URL_AT}`,
+        `check that the SSH clone URL ${GITLAB_URL} names the right host, and that the host is up.`,
       ],
     ],
   ];
@@ -253,7 +252,7 @@ describe('ISS-1409 — a project whose deploy key cannot be used to read it, or 
     expect(res.markDetail).toContain("Forge has no way to read this project's repository");
     expect(res.markDetail).toContain('Attach a deploy key, then mark it again.');
     expect(res.markDetail).toContain(
-      `attach a deploy key with write access to ${GITLAB_URL} under the project's Settings → Runners → Git access`,
+      `Attach a deploy key with write access to ${GITLAB_URL} under the project's Settings → Runners → Git access.`,
     );
     expect(res.markDetail).not.toMatch(
       /bind (a|the) repository|Integrations|through a GitHub binding/,

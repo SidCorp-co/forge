@@ -78,7 +78,7 @@ async function carriedAt(
   try {
     return await withRepository(projectId, async (access): Promise<ProductionFinding> => {
       if (access.kind === 'refused') {
-        return { kind: 'unread', why: `the repository could not be read: ${saying(access)}` };
+        return { kind: 'unread', why: `the repository could not be read. ${saying(access)}` };
       }
       const carriage = await carriageOf(access.reader, landing, serving);
       if (carriage.kind === 'unread') {

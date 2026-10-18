@@ -152,7 +152,20 @@ describe("the releasing sweep's comment (ISS-1421 r4)", async () => {
       HOLDS[0] as Comment[3],
     );
     expect(said).toContain(
-      '\n\n> the probe at https://shop.example/version answered 503 Service Unavailable',
+      '\n\n> The probe at https://shop.example/version answered 503 Service Unavailable.',
+    );
+    // ISS-1421 r9: the host's own line is quoted whole as code, under the sentences, as the mark's is.
+    const keyRefused = settleComment(
+      CAUSES[0] as string,
+      {
+        kind: 'unread',
+        why: "the repository could not be read. The git host refused this project's deploy key.\ngit@github.com: Permission denied (publickey).",
+      } as Comment[1],
+      'gated',
+      HOLDS[0] as Comment[3],
+    );
+    expect(keyRefused).toMatch(
+      /\n\n> The repository could not be read\. The git host refused this project's deploy key\.\n>\n> `git@github\.com: Permission denied \(publickey\)\.`$/,
     );
     expect(releaseRunStopped('failed')).toBe(
       'The release run failed without finishing its release',

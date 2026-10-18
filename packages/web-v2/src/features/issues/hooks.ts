@@ -288,14 +288,21 @@ export function useTransitionIssue() {
  */
 /** A mark's answer as a toast or alert shows it: a quoted "> " reason on a line of its own. */
 export function answerShown(text: string): string {
-  return text.replace(/\n> /g, "\n");
+  return text
+    .split("\n")
+    .flatMap((line) => {
+      if (!line.startsWith(">")) return [line];
+      const said = line.replace(/^> ?/, "").replace(/^`(.*)`$/, "$1");
+      return said ? [said] : [];
+    })
+    .join("\n");
 }
 
 /** A toast keeps the quoted reason to its first clause; the comment the mark wrote holds it whole. */
 export function answerInBrief(text: string): string {
   const [ours, why] = text.split("\n> ");
   if (!why) return text;
-  const clause = why.split(/ \(| — |, so |; |: /)[0]?.replace(/[.,]$/, "") ?? why;
+  const clause = why.split(/\n| \(| — |, so |; |: |\. /)[0]?.replace(/[.,]$/, "") ?? why;
   return `${ours}\n${clause}.`;
 }
 

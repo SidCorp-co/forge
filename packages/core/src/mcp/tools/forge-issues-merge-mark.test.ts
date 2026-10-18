@@ -366,3 +366,25 @@ describe('forge_issues on a project whose work lands outside git (ISS-1327)', ()
     expect(text).toContain('LANDING_REQUIRED');
   });
 });
+
+// ISS-1421 r9, criteria 119 and 131: judge-43 read "data.target is required for mark_merged" and a
+// four-sentence LANDING_REQUIRED. This door's refusals name the field an MCP caller sends.
+describe('mark_merged refusals name the MCP field (ISS-1421 r9)', () => {
+  it('refuses a mark with no target in one sentence naming data.target', async () => {
+    await expect(call({ action: 'mark_merged', data: { issueId: ISSUE_ID } })).rejects.toThrow(
+      'BAD_REQUEST: Name where the work merged as `data.target`: base, prod or feature.',
+    );
+    expect(setPayloads).toEqual([]);
+  });
+
+  it('refuses a website mark naming no landing with data.landing as the step', async () => {
+    shape = 'outside_git';
+    const refused = await call({
+      action: 'mark_merged',
+      data: { issueId: ISSUE_ID, target: 'prod' },
+    }).catch((err: Error) => err.message);
+    expect(refused).toMatch(/^LANDING_REQUIRED: Nothing was marked, because /);
+    expect(refused).toContain('Send `data.landing` naming the live URL');
+    expect(refused).not.toContain('landingShape');
+  });
+});
