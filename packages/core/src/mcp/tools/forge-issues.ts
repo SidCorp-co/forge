@@ -30,6 +30,7 @@ import {
 } from '../../issues/landing-evidence.js';
 import { type IssueListRow, listIssueRows } from '../../issues/list-service.js';
 import { markTargetBranch } from '../../issues/mark-target.js';
+import { mergedAtRefusal, refusedAsMark } from '../../issues/merge-input-refusal.js';
 import {
   applyMergeMarker,
   MergeMarkerError,
@@ -426,6 +427,13 @@ async function resolveProjectId(input: Input, ctx: McpContext): Promise<string> 
   return resolveEffectiveProjectId(ctx, input.projectId);
 }
 
+/** A mark's `data.mergedAt`, refused in the mark's own sentence where it names no date. */
+function markedAt(value: string): Date {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) throw new Error(`BAD_REQUEST: ${mergedAtRefusal('mcp')}`);
+  return d;
+}
+
 function parseDate(value: string, field: string): Date {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) {
@@ -443,7 +451,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     // An update refused by its input check has written nothing either, and says so (ISS-1229 r12).
     const { input, refs } = unwrittenIfUpdate(args, () => {
       refuseUnservedIssueAction((args as { action?: unknown } | null)?.action);
-      const input = inputSchema.parse(args);
+      const input = refusedAsMark(args, () => inputSchema.parse(args));
       const refs = refsFor(input, ctx, principal);
       refuseStrayArchiveFields(input);
 
@@ -737,7 +745,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
       case 'mark_merged':
       case 'unmark': {
         const ref = input.data?.issueId;
-        if (!ref) throw new Error(`BAD_REQUEST: data.issueId is required for ${input.action}`);
+        if (!ref) throw new Error('BAD_REQUEST: Name the issue as `data.issueId`.');
         const marking = input.action === 'mark_merged';
         const issue = await loadIssue(await refs.issue('data.issueId', ref));
         await assertPrincipalIsWriter(principal, issue.projectId);
@@ -760,7 +768,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             ...(input.data?.commit ? { commit: input.data.commit } : {}),
             ...(input.data?.landing ? { landing: input.data.landing } : {}),
             ...(input.data?.mergedAt
-              ? { mergedAt: parseDate(input.data.mergedAt, 'mergedAt') }
+              ? { mergedAt: markedAt(input.data.mergedAt) }
               : {}),
             door: 'mcp',
             actor: {
