@@ -5,6 +5,7 @@ import { notifications } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { resolveNotifications } from '../notifications/auto-resolve.js';
 import { PENDING_STALE_MS } from '../notifications/deliver.js';
+import { stuckRankSql } from '../projects/stuck-issue-kinds.js';
 import { RELEASED_PER_PASS } from './owed-sighting.js';
 import { WEDGE_KEY_KINDS, WEDGE_KEY_SHAPES, type WedgeKeyKind } from './wedge.js';
 
@@ -91,6 +92,22 @@ async function endedWedges(): Promise<{ ended: string[]; unread: string[] }> {
   };
 }
 
+/** Held stuck-issue notices a more specific notice still standing for the same issue outranks. */
+async function outrankedHeldKeys(): Promise<string[]> {
+  const rows = await db.execute<{ resolution_key: string }>(sql`
+    SELECT DISTINCT held.resolution_key FROM notifications held
+     WHERE held.state = 'inhibited' AND held.type = 'issue_stranded'
+       AND held.resolved_at IS NULL AND held.issue_id IS NOT NULL
+       AND EXISTS (
+         SELECT 1 FROM notifications up
+          WHERE up.issue_id = held.issue_id AND up.type = 'issue_stranded'
+            AND up.resolved_at IS NULL AND up.id <> held.id
+            AND ${stuckRankSql(sql`up.resolution_key`)} < ${stuckRankSql(sql`held.resolution_key`)}
+       )
+  `);
+  return rows.map((r) => r.resolution_key);
+}
+
 /** Never throws — same contract as every other sweeper pass. */
 export async function reevaluateConditions(now: Date = new Date()): Promise<ReevaluateResult> {
   const result: ReevaluateResult = { resolved: 0, released: 0, dropped: 0 };
@@ -103,6 +120,13 @@ export async function reevaluateConditions(now: Date = new Date()): Promise<Reev
       );
     }
     for (const key of [...wedges.ended, ...wedges.unread]) {
+      result.resolved += await resolveNotifications(key);
+    }
+
+    // One issue, one stuck reason (ISS-1229 r16, judge-41 on criterion 94): held notices of one issue
+    // released together would each go out, so a less specific one behind a more specific one standing
+    // for the same issue is retired here rather than released beside it.
+    for (const key of await outrankedHeldKeys()) {
       result.resolved += await resolveNotifications(key);
     }
 

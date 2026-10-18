@@ -285,3 +285,26 @@ describe('where a wedge is raised', () => {
     expect(row?.key).toBe(`wedge:${sessionId}`);
   });
 });
+
+describe('two reasons held for one issue behind one wedge (judge-41, criterion 94)', () => {
+  it('releases only the more specific one, and retires the other rather than telling both', async () => {
+    const w = await world();
+    const sessionId = await session(w, 'failed');
+    const { wedgeId, heldId: owedId } = await wedgeHolding(w, `wedge:${sessionId}`);
+    await harness.db.execute(sql`
+      UPDATE notifications SET resolution_key = ${`issue:${w.issueId}:owed-close`} WHERE id = ${owedId}::uuid
+    `);
+    const [idle] = (await harness.db.execute(sql`
+      INSERT INTO notifications (project_id, issue_id, type, kind, tier, state, title, resolution_key,
+                                 inhibited_by, pending_since, last_seen_at)
+      VALUES (${w.projectId}::uuid, ${w.issueId}::uuid, 'issue_stranded', 'condition', 'ticket',
+              'inhibited', 'held', ${`issue:${w.issueId}:idle`}, ${wedgeId}::uuid, now(), now())
+      RETURNING id
+    `)) as unknown as Array<{ id: string }>;
+
+    await reevaluate(new Date());
+
+    expect(await stateOf(owedId)).toEqual({ state: 'pending', resolved: false });
+    expect((await stateOf(idle?.id ?? '')).resolved).toBe(true);
+  });
+});
