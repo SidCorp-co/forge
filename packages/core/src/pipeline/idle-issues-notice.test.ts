@@ -116,8 +116,16 @@ describe('the idle-issue notice says why in a person’s words (ISS-1229 r16)', 
     ['open', evidence({ poolHasRunner: false })],
     ['in_progress', evidence({ everRan: true })],
     ['developed', evidence({ everRan: true, merged: true })],
-    ['in_progress', evidence({ lease: { verdict: 'expired', fanout: 0, stopped: true } as StrandEvidence['lease'] })],
-    ['in_progress', evidence({ lease: { verdict: 'shared', fanout: 3 } as StrandEvidence['lease'] })],
+    [
+      'in_progress',
+      evidence({
+        lease: { verdict: 'expired', fanout: 0, stopped: true } as StrandEvidence['lease'],
+      }),
+    ],
+    [
+      'in_progress',
+      evidence({ lease: { verdict: 'shared', fanout: 3 } as StrandEvidence['lease'] }),
+    ],
   ] as const)('a %s issue', (status, ev) => {
     const rule = STRAND_RULES[status];
     const said = strandSaid({ status, rule, evidence: ev });

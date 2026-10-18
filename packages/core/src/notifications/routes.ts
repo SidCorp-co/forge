@@ -21,7 +21,7 @@ import { hooks } from '../pipeline/hooks.js';
 import { readPendingInvitations } from '../projects/pending-invitations.js';
 import { readerStuckKindSql } from '../projects/stuck-issue-kinds.js';
 import { recordAndDeliver } from './deliver.js';
-import { explanationOfGroupKey, groupTitleOfGroupKey } from './explanations.js';
+import { explanationOfGroupKey } from './explanations.js';
 import {
   closedSchema,
   deleteNotification,
@@ -39,7 +39,7 @@ import {
   patchNotification,
 } from './routes-reference.js';
 import { silenceRoutes } from './silences-routes.js';
-import { waitingTitlesFor } from './waiting-titles.js';
+import { bellTitlesFor, retitledFor } from './waiting-titles.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -163,8 +163,7 @@ notificationRoutes.get(
     const userId = c.get('userId');
 
     const ofProject = projectId ? sql`AND cn.project_id = ${projectId}` : sql``;
-    // A row is one project's only where every record still open in it is that project's: a group
-    // spanning two belongs to neither, so it is counted once, in the whole count (ISS-1229 r16).
+    // A row spanning two projects belongs to neither, so it is counted once, in the whole count.
     const onlyThisProject = projectId
       ? sql`AND NOT EXISTS (
           SELECT 1 FROM notification_delivery_members ob
@@ -337,20 +336,10 @@ notificationRoutes.get(
       .offset((page - 1) * pageSize);
 
     const named = await projectsNamed(rows.map((r) => r.projectId));
-    // A waiting park's title says "you" only to the reader who owes it, and a sweep's group is named
-    // by its detector as it reads now, whatever a delivery stored before (ISS-1229 r16).
-    const told = await waitingTitlesFor(
-      userId,
-      rows.filter((r) => r.members === 1 && !r.resolvedNotice).map((r) => r.notificationId),
-    );
-    const items = rows.map((r) => ({
+    const titles = await bellTitlesFor(userId, rows);
+    const items = rows.map((r, i) => ({
       ...r,
-      title:
-        r.members === 1 && !r.resolvedNotice
-          ? (told.get(r.notificationId) ?? r.title)
-          : r.members > 1
-            ? (groupTitleOfGroupKey(r.groupKey) ?? r.title)
-            : r.title,
+      title: titles[i] ?? r.title,
       explanation: explanationOfGroupKey(r.groupKey),
       projectSlug: (r.projectId && named.get(r.projectId)?.slug) || null,
       projectName: (r.projectId && named.get(r.projectId)?.name) || null,
@@ -465,22 +454,12 @@ notificationRoutes.get(
           eq(notificationDeliveryMembers.deliveryId, id),
           onLiveProject(notifications.projectId),
           toldTo(userId, notifications),
-          // An event cannot end, so it is listed whole; a condition or task that has ended is not.
           sql`(${notifications.kind} = 'signal' OR (${notifications.resolvedAt} IS NULL AND ${stillTrue}))`,
         ),
       )
       .orderBy(desc(notificationDeliveryMembers.deliveredAt));
 
-    const told = await waitingTitlesFor(
-      userId,
-      rows.map((r) => r.id),
-    );
-    return c.json(
-      answer(
-        deliveryMembersSchema,
-        rows.map((r) => ({ ...r, title: told.get(r.id) ?? r.title })),
-      ),
-    );
+    return c.json(answer(deliveryMembersSchema, await retitledFor(userId, rows)));
   },
 );
 

@@ -16,11 +16,15 @@ describe('FORGE_FACTS', () => {
   // tell an agent the system reverts the issue after a crash.
   it('says a crashed job leaves its issue where it is', () => {
     const rules = FORGE_FACTS.find((f) => f.id === 'pipeline-rules')?.render() ?? '';
-    expect(rules).toContain("leaves the issue's status as it is. A failure that can be retried is re-dispatched");
+    expect(rules).toContain(
+      "leaves the issue's status as it is. A failure that can be retried is re-dispatched",
+    );
     expect(rules).not.toMatch(/reverts the issue/i);
     // Codex consult on the round-16 criteria: a crash on an issue already shipped is not retried (retry.ts).
     expect(rules).toContain('one that cannot, or whose budget is spent, leaves the JOB `held`');
-    expect(rules).toContain('already reached `awaiting_release` or `closed` is counted done, and nothing is re-dispatched');
+    expect(rules).toContain(
+      'already reached `awaiting_release` or `closed` is counted done, and nothing is re-dispatched',
+    );
   });
 
   it('tells no agent to send a complete entry, the config write ISS-1170 retired', () => {

@@ -1,5 +1,5 @@
-import type { StuckIssueKind } from '@forge/contracts/notifications';
 import { UNMARK_ACTION } from '@forge/contracts/mark-merged-words';
+import type { StuckIssueKind } from '@forge/contracts/notifications';
 import { stuckGroupTitle } from '@forge/contracts/stuck-words';
 
 /**
@@ -14,8 +14,7 @@ export const SWEEP_DETECTORS = {
   'owed-close': {
     kind: 'owed_close',
     groupTitle: stuckGroupTitle('owed_close'),
-    explanation:
-      `Its code is marked as merged, and nobody closed it. Check that the change is live, then close the issue; if it never landed, use ${UNMARK_ACTION} in the issue's properties and move it to Dropped.`,
+    explanation: `Its code is marked as merged, and nobody closed it. Check that the change is live, then close the issue; if it never landed, use ${UNMARK_ACTION} in the issue's properties and move it to Dropped.`,
   },
   stranded: {
     kind: 'waiting',

@@ -37,7 +37,9 @@ export async function readStuckKinds(
   return new Map(
     rows.map((r) => [
       r.issueId,
-      r.kind === 'waiting_on_others' && r.owedBy ? { kind: r.kind, owedBy: r.owedBy } : { kind: r.kind },
+      r.kind === 'waiting_on_others' && r.owedBy
+        ? { kind: r.kind, owedBy: r.owedBy }
+        : { kind: r.kind },
     ]),
   );
 }

@@ -110,7 +110,10 @@ async function run(w: World, status: string): Promise<string> {
   return id;
 }
 
-async function runner(w: World, faulted: { auth?: boolean; quarantinedFor?: number }): Promise<string> {
+async function runner(
+  w: World,
+  faulted: { auth?: boolean; quarantinedFor?: number },
+): Promise<string> {
   const device = await createTestDevice(harness.db, w.ownerId);
   const id = randomUUID();
   const until =

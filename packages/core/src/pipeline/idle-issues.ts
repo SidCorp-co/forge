@@ -74,7 +74,6 @@ export interface StrandRecord {
   waitingFor: string;
   owes: string;
   reason: string;
-  /** `reason` in a person's words, which the notice says (ISS-1229 r16); absent on a record written before. */
   said?: string;
   lease: string;
   evidence: { merged: boolean; everRan: boolean; poolHasRunner: boolean; leaseFanout: number };
@@ -463,7 +462,6 @@ export function idleNotice(args: {
   const title = unconfirmed
     ? `${ref} reads ${label} and no live work could be confirmed — ${projectName}`
     : `${ref} reads ${label} and nothing is working it — ${projectName}`;
-  // Why, in a person's words: the record's technical reason is for whoever debugs the sweep.
   const why = record.said ?? 'nothing is working on it';
   const truth = unconfirmed
     ? `It has read ${label} for ${age}, and no live work could be confirmed because ${why}.`

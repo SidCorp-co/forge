@@ -207,7 +207,6 @@ export interface DashboardAttentionItem {
   stuckOwedBy?: string;
   /** An answer or review the reader owes, which heads its row above a failed job or a stuck reason. */
   owed?: true;
-  /** `retry` only: the failed job the row's button retries. */
   jobId?: string;
   /** The reader's failed job on an issue they owe an answer, listed here rather than as its own row. */
   failedJob?: { jobType: string; failure: string | null };
@@ -340,7 +339,6 @@ export interface StuckIssues {
     documentId: string;
     title: string;
     kind: StuckIssueKind;
-    /** `waiting_on_others` only: the person the park waits for. */
     owedBy?: string;
   }[];
 }

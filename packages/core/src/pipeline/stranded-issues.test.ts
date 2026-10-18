@@ -213,7 +213,7 @@ describe('what a stranded notice says, in the words a reader uses (ISS-1229)', (
   // ways, and neither said what the person was asked for. r16: the stored title names who owes the
   // park, since it is read by admins who do not; the bell says "your" to the one who does.
   it.each([
-    ['needs_decision', 'Ana', 'ISS-1 is waiting for Ana\'s decision — Seed'],
+    ['needs_decision', 'Ana', "ISS-1 is waiting for Ana's decision — Seed"],
     ['needs_resource', 'Ana', 'ISS-1 is waiting for something only Ana can supply — Seed'],
     ['needs_decision', null, 'ISS-1 is waiting for a decision — Seed'],
     ['needs_resource', null, 'ISS-1 is waiting for something only a person can supply — Seed'],

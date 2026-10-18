@@ -40,20 +40,16 @@ export function stuckKindSql(key: SQL): SQL {
   return byNotice(key, (i) => sql.raw(`'${STUCK_NOTICES[i]?.kind}'`), sql.raw(`'other'`));
 }
 
-/** Who owes an issue's park: its assignee, or where it has none whoever filed it (`ownedForAnswer`). */
+/** Who owes an issue's park: its assignee, else whoever filed it (`ownedForAnswer`). */
 export function parkOwerSql(issueId: SQL): SQL {
   return sql`(SELECT coalesce(po.assignee_id, po.created_by_id) FROM issues po WHERE po.id = ${issueId})`;
 }
 
-/** That person as a screen names somebody: their display name, else their address; null where nobody owes it. */
 export function parkOwerNameSql(issueId: SQL): SQL {
   return sql`(SELECT coalesce(pu.display_name, pu.email) FROM users pu WHERE pu.id = ${parkOwerSql(issueId)})`;
 }
 
-/**
- * The kind a notice tells this reader by: a waiting park somebody else owes is theirs to answer, so
- * it is never told to the reader as waiting for them (ISS-1229 r16).
- */
+/** The kind a notice tells this reader by: a waiting park somebody else owes is never theirs. */
 export function readerStuckKindSql(key: SQL, issueId: SQL, readerId: string): SQL {
   return sql`(CASE WHEN ${stuckKindSql(key)} = 'waiting'
                     AND ${parkOwerSql(issueId)} IS DISTINCT FROM ${readerId}::uuid

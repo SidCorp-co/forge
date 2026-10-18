@@ -1,7 +1,7 @@
 import { and, eq, isNotNull, isNull, lt, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { terminalAgentSessionStatuses } from '../db/session-vocabulary.js';
 import { notifications } from '../db/schema.js';
+import { terminalAgentSessionStatuses } from '../db/session-vocabulary.js';
 import { logger } from '../logger.js';
 import { resolveNotifications } from '../notifications/auto-resolve.js';
 import { PENDING_STALE_MS } from '../notifications/deliver.js';
@@ -116,16 +116,14 @@ export async function reevaluateConditions(now: Date = new Date()): Promise<Reev
     if (wedges.unread.length > 0) {
       logger.error(
         { keys: wedges.unread },
-        'notifications: ended wedges keyed on a shape no resolver reads — nothing could ever end them, and each held its project\'s stuck-issue notices',
+        "notifications: ended wedges keyed on a shape no resolver reads — nothing could ever end them, and each held its project's stuck-issue notices",
       );
     }
     for (const key of [...wedges.ended, ...wedges.unread]) {
       result.resolved += await resolveNotifications(key);
     }
 
-    // One issue, one stuck reason (ISS-1229 r16, judge-41 on criterion 94): held notices of one issue
-    // released together would each go out, so a less specific one behind a more specific one standing
-    // for the same issue is retired here rather than released beside it.
+    // One issue, one stuck reason (criterion 94): released together, each would go out.
     for (const key of await outrankedHeldKeys()) {
       result.resolved += await resolveNotifications(key);
     }

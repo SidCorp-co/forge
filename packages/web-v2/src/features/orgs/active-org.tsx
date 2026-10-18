@@ -33,8 +33,7 @@ interface ActiveOrgContextValue {
   retryScope: () => void;
   /** Switch the active org (persists server-side, optimistic): the org switcher's act, and only its. */
   setActiveOrg: (orgId: string) => void;
-  /** Scope this tab's view to an org, as opening one of its projects does, writing nothing: the
-   *  account's stored choice is the switcher's alone (ISS-1229 r16). */
+  /** Scope this tab's view to an org, as opening one of its projects does, writing nothing. */
   viewOrg: (orgId: string) => void;
   /** True when the caller has at most one org → render a static label. */
   isSingle: boolean;

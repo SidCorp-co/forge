@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { parkOwerNameSql, parkOwerSql } from '../projects/stuck-issue-kinds.js';
+import { groupTitleOfGroupKey } from './explanations.js';
 
 /** Who a waiting park is owed by, as one reader is told it: them, a named person, or nobody known. */
 export type ParkOwedBy = { you: true } | { you: false; name: string | null };
@@ -75,5 +76,41 @@ export async function waitingTitlesFor(
         projectName: r.projectName,
       }),
     ]),
+  );
+}
+
+/** Each record retitled for this reader: a waiting park says "you" only to whoever owes it. */
+export async function retitledFor<T extends { id: string; title: string }>(
+  readerId: string,
+  rows: T[],
+): Promise<T[]> {
+  const told = await waitingTitlesFor(
+    readerId,
+    rows.map((r) => r.id),
+  );
+  return rows.map((r) => ({ ...r, title: told.get(r.id) ?? r.title }));
+}
+
+type BellRow = {
+  notificationId: string;
+  members: number;
+  resolvedNotice: boolean;
+  groupKey: string | null;
+  title: string;
+};
+
+/** A bell row's title as this reader reads it now: a single park retitled, a sweep group by its detector. */
+export async function bellTitlesFor(readerId: string, rows: BellRow[]): Promise<string[]> {
+  const single = (r: BellRow) => r.members === 1 && !r.resolvedNotice;
+  const told = await waitingTitlesFor(
+    readerId,
+    rows.filter(single).map((r) => r.notificationId),
+  );
+  return rows.map((r) =>
+    single(r)
+      ? (told.get(r.notificationId) ?? r.title)
+      : r.members > 1
+        ? (groupTitleOfGroupKey(r.groupKey) ?? r.title)
+        : r.title,
   );
 }

@@ -170,7 +170,8 @@ export function strandSaid(args: {
 }): string {
   const { status, evidence } = args;
   const lease = evidence.lease;
-  if (status === 'awaiting_release' && evidence.releaseHold) return holdClause(evidence.releaseHold);
+  if (status === 'awaiting_release' && evidence.releaseHold)
+    return holdClause(evidence.releaseHold);
   if (lease.verdict === 'abandoned') {
     return `the agent working on it stopped answering ${silence(lease)}, so it was let go`;
   }
@@ -188,15 +189,15 @@ export function strandSaid(args: {
   }
   if (lease.verdict === 'malformed') return 'who is working on it could not be read';
   if (evidence.everRan && !evidence.merged) return 'work on it stopped before its code was merged';
-  if (evidence.everRan && evidence.merged) return 'its code was merged and nothing has moved it on since';
+  if (evidence.everRan && evidence.merged)
+    return 'its code was merged and nothing has moved it on since';
   return 'nothing is working on it';
 }
 
-function technicalReason(args: {
-  status: string;
-  rule: StrandRule;
-  evidence: StrandEvidence;
-}): { reason: string; owes: StrandOwner } {
+function technicalReason(args: { status: string; rule: StrandRule; evidence: StrandEvidence }): {
+  reason: string;
+  owes: StrandOwner;
+} {
   const { status, rule, evidence } = args;
   const fallbackOwner: StrandOwner = rule.watch ? rule.owes : 'human';
   const lease = evidence.lease;

@@ -1,7 +1,13 @@
 // What each kind of stuck-issue notice says of an issue, once, for the bell, the headline and Needs
 // you alike (ISS-1229 r14). The kinds restate `notifications.ts`'s: this file is built on its own.
 
-export type StuckKind = 'waiting' | 'waiting_on_others' | 'idle' | 'owed_close' | 'orphan' | 'other';
+export type StuckKind =
+  | 'waiting'
+  | 'waiting_on_others'
+  | 'idle'
+  | 'owed_close'
+  | 'orphan'
+  | 'other';
 
 const SAID: Readonly<Record<StuckKind, { one: string; many: string }>> = {
   waiting: {

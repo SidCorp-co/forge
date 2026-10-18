@@ -76,7 +76,6 @@ describe('the words a person reads on a sweep group', () => {
 // ISS-1229 r14, judge-35's failure of 90: the headline said an owed close in other words than the
 // bell's group. One sentence per kind now; this fails the moment a surface words a kind its own way.
 describe('one sentence per stuck kind, on the bell and the project page alike', () => {
-  // A waiting group holds the reader's parks and other people's, so it names neither (ISS-1229 r16).
   const ownKindSentence = Object.keys(SWEEP_DETECTORS).filter((id) => id !== 'stranded');
 
   it.each(ownKindSentence)('titles the %s group with its kind’s sentence', (id) => {
@@ -97,11 +96,15 @@ describe('one sentence per stuck kind, on the bell and the project page alike', 
     expect(groupTitle).toBe(stuckGroupTitle('waiting'));
     expect(groupTitle).toBe(stuckGroupTitle('waiting_on_others'));
     expect(groupTitle).not.toMatch(/\byou\b/);
-    expect(stuckCountSentence('waiting', 2)).toBe('2 issues have been waiting for you for over six hours.');
+    expect(stuckCountSentence('waiting', 2)).toBe(
+      '2 issues have been waiting for you for over six hours.',
+    );
     expect(stuckCountSentence('waiting_on_others', 2)).toBe(
       '2 issues have been waiting for other people for over six hours.',
     );
-    expect(stuckRowWords('waiting_on_others', 'Mai')).toBe('Has been waiting for Mai for over six hours');
+    expect(stuckRowWords('waiting_on_others', 'Mai')).toBe(
+      'Has been waiting for Mai for over six hours',
+    );
   });
 
   it('says an owed close in the bell group’s words on the headline', () => {
