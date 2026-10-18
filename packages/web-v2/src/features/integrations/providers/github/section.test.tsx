@@ -11,6 +11,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConnectionDirectoryItem } from "@forge/contracts";
 import type { IntegrationSummary } from "../../types";
+import { ApiError } from "@/lib/api/client";
 
 const PROJECT = "da368b0a-8e21-4763-9d90-8f7b9d0c7115";
 const CONNECTION = "b1d6b9c2-5f3a-4a1e-9f0e-6c2a7d8e4f10";
@@ -329,6 +330,19 @@ describe("a project with no github binding row at all", () => {
     mount();
 
     expect(picker()).not.toBeNull();
+  });
+
+  // ISS-1421 r8: a reusable connection whose App was never finished read "Invalid input".
+  it("says what is missing where the reusable connection's App was never finished", () => {
+    items = [];
+    const said =
+      "This GitHub connection has no App yet: creating it on GitHub was never finished. Use Create a separate App instead.";
+    repos = { isLoading: false, isError: true, error: new ApiError(409, said, "GITHUB_APP_UNFINISHED") };
+
+    mount();
+
+    expect(screen.getByText(said)).toBeInTheDocument();
+    expect(screen.queryByText(/Invalid input/)).toBeNull();
   });
 
   it("still creates the binding through the bind-existing route, with the body it sent before", () => {

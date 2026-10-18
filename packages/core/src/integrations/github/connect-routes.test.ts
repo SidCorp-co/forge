@@ -252,16 +252,21 @@ describe('GET /:projectId/integrations/github/repositories — what the door doe
     expect((await bodyOf(res)).details).toEqual({ connectionId: 'required' });
   });
 
-  it('refuses a bound App that was never converted, rather than calling GitHub with no key', async () => {
+  // ISS-1421 r8: the drawer printed the web's generic "Invalid input" for this, since BAD_REQUEST
+  // is worded generically there; the refusal names what is missing and what to do, by its own code.
+  it('refuses a bound App that was never finished by name, rather than calling GitHub with no key', async () => {
     reaches();
     store.decryptConnectionSecrets.mockReturnValue({});
 
     const res = await repositories();
+    const body = await bodyOf(res);
 
-    expect(res.status).toBe(400);
-    expect((await bodyOf(res)).details).toEqual({
-      connectionId: 'the App was never converted',
-    });
+    expect(res.status).toBe(409);
+    expect(body.code).toBe('GITHUB_APP_UNFINISHED');
+    expect(body.message).toBe(
+      'This GitHub connection has no App yet: creating it on GitHub was never finished. Use Create a separate App instead.',
+    );
+    expect(body.details).toEqual({ connectionId: CONNECTION_ID });
   });
 });
 

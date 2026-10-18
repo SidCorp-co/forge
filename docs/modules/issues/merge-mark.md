@@ -235,8 +235,10 @@ capitalised, stopped and at most 20 words. Another part of Forge's reason — a 
 stands quoted on a line of its own beneath them (`withReason`), opened capitalised unless it opens on
 an address and stopped where it was not, never cut into one of them; a commit's subject is quoted
 there as the commit holds it, unstopped. A repository holding no commit is named in the sentence
-itself, so its reader's own words are quoted only where they say more (an overlong sha). A toast or
-a refusal shown beside the form puts the quoted reason on a line of its own as well
+itself, so its reader's own words are quoted only where they say more (an overlong sha). A toast keeps
+the quoted reason to its first clause on a line of its own, the mark's comment holding it whole
+(`packages/web-v2/src/features/issues/hooks.ts:answerInBrief`), and a refusal shown beside the form,
+which writes no comment, puts it whole on a line of its own
 (`packages/web-v2/src/features/issues/hooks.ts:answerShown`). A first mark's comment names its commit once: the label carries it only where the sentence
 after it does not, and a repository's address shows there as code, never a mail link
 (`addressesAsCode`). An MCP `target` of `base`, `prod` or `feature` is written as the branch it

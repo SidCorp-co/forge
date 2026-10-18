@@ -261,7 +261,7 @@ function SetRepository({
 
         {update.isError && <Banner tone="danger">{formatApiError(update.error)}</Banner>}
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Button onClick={submit} disabled={!chosen || update.isPending}>
             {update.isPending ? "Saving…" : "Save repository"}
           </Button>
@@ -343,7 +343,7 @@ function UseExistingApp({
 
         {bind.isError && <Banner tone="danger">{formatApiError(bind.error)}</Banner>}
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Button onClick={submit} disabled={!chosen || bind.isPending}>
             {bind.isPending ? "Connecting…" : "Connect repository"}
           </Button>
@@ -421,7 +421,7 @@ function CreateApp({
 
         {connect.isError && <Banner tone="danger">{formatApiError(connect.error)}</Banner>}
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Button onClick={start} disabled={connect.isPending}>
             {connect.isPending ? "Preparing…" : "Create GitHub App"}
           </Button>

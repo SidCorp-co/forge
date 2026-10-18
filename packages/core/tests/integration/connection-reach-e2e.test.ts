@@ -442,9 +442,9 @@ describe('every door reaches the same connections', () => {
 
       const res = await repositoriesAs(who().id, connection.id);
 
-      // 400 is the App being reached and never converted; 404 would be the refusal.
-      expect(res.status).toBe(400);
-      expect((await bodyOf(res)).details).toEqual({ connectionId: 'the App was never converted' });
+      // 409 is the App being reached and never finished; 404 would be the refusal.
+      expect(res.status).toBe(409);
+      expect((await bodyOf(res)).code).toBe('GITHUB_APP_UNFINISHED');
     },
   );
 

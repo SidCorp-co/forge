@@ -291,6 +291,14 @@ export function answerShown(text: string): string {
   return text.replace(/\n> /g, "\n");
 }
 
+/** A toast keeps the quoted reason to its first clause; the comment the mark wrote holds it whole. */
+export function answerInBrief(text: string): string {
+  const [ours, why] = text.split("\n> ");
+  if (!why) return text;
+  const clause = why.split(/ \(| — |, so |; |: /)[0]?.replace(/[.,]$/, "") ?? why;
+  return `${ours}\n${clause}.`;
+}
+
 export function useMergeMarker(issueId: string) {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -314,13 +322,13 @@ export function useMergeMarker(issueId: string) {
         toast({
           title: "Already marked merged — nothing changed",
           description: answer.detail
-            ? answerShown(answer.detail.replace(/^Already marked merged[^.]*\.\s*/, ""))
+            ? answerInBrief(answer.detail.replace(/^Already marked merged[^.]*\.\s*/, ""))
             : "The mark that stands was kept. To change it, press Unmark, then Mark merged again.",
           tone: "info",
         });
       } else if (answer.movedFrom) {
         // A later landing of the same issue moves the mark (ISS-1421 round 7); the sentence names both commits.
-        toast({ title: "Landing moved", description: answerShown(answer.detail ?? ""), tone: "success" });
+        toast({ title: "Landing moved", description: answerInBrief(answer.detail ?? ""), tone: "success" });
       } else {
         toast({ title: "Marked merged", tone: "success" });
       }

@@ -22,10 +22,11 @@ describe('the hold the automatic release leaves on an issue whose close would be
       },
     ]);
     expect(hold.code).toBe('RELEASE_ISSUES_UNCLOSABLE');
+    // What holds it in one sentence, each shortfall's step after it, then what follows (r8).
     expect(hold.reason).toContain(
-      'It holds 1 open question. Answer it in the Decision waiting card above.',
+      'because it holds 1 open question, it is not marked merged and its close would be refused. Answer it in the Decision waiting card above. Use Mark merged',
     );
-    expect(hold.reason).toContain('It is not marked merged. Use Mark merged');
+    expect(hold.reason).toMatch(/The next sweep releases it once that is done\.$/);
     expect(hold.reason).not.toMatch(/OPEN_QUESTIONS|CLOSE_REQUIRES_SHIPPED|`|\(/);
     expect(hold.owes).toBe('human');
   });

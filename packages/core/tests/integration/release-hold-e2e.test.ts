@@ -120,7 +120,7 @@ async function holdOf(issueId: string): Promise<Record<string, unknown> | null> 
 async function holdComments(issueId: string): Promise<string[]> {
   const rows = (await harness.db.execute(sql`
     SELECT body FROM comments
-     WHERE issue_id = ${issueId} AND body LIKE '**The automatic release is holding this issue%'
+     WHERE issue_id = ${issueId} AND (body LIKE '**Held by the automatic release**%' OR body LIKE '**The automatic release is holding this issue%')
      ORDER BY created_at ASC, id ASC
   `)) as unknown as Array<{ body: string }>;
   return rows.map((r) => r.body);
@@ -323,7 +323,7 @@ describe('every exit before the cut is written on the row', () => {
     const posted = await holdComments(oldest);
     expect(posted).toHaveLength(1);
     expect(posted[0]).toContain(
-      `3 issues of this project, oldest merge first: ${names.join(', ')}.`,
+      `This one comment stands for ${names.join(', ')}, oldest merge first.`,
     );
 
     // A row joining the same hold carries it, and costs the oldest no second comment.
@@ -448,7 +448,7 @@ describe('the hold and its comment commit together', () => {
     });
 
     const authors = await harness.db.execute<{ author_id: string }>(sql`
-      SELECT author_id FROM comments WHERE issue_id = ${id} AND body LIKE '**The automatic release is holding this issue%'
+      SELECT author_id FROM comments WHERE issue_id = ${id} AND (body LIKE '**Held by the automatic release**%' OR body LIKE '**The automatic release is holding this issue%')
     `);
     expect(authors.map((r) => r.author_id)).toEqual([FORGE_AUTHOR_ID]);
   }, 30_000);

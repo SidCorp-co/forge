@@ -8,7 +8,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { and, eq, inArray, like, sql } from 'drizzle-orm';
+import { and, eq, inArray, like, or, sql } from 'drizzle-orm';
 import { forgeAuthorId } from '../comments/forge-author.js';
 import { postSystemComment } from '../comments/system-write.js';
 import { db } from '../db/client.js';
@@ -17,7 +17,7 @@ import type { IssueCriteriaReport } from '../issues/criteria-verdicts.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
 import { logger } from '../logger.js';
 import { type ServingReading, servingClause } from '../release-batch/serving-reading.js';
-import { shortfallSaid } from '../release-batch/shortfall-words.js';
+import { shortfallSentence } from '../release-batch/shortfall-words.js';
 import type { RuntimeReading } from '../release-batch/weighing.js';
 
 /** The session_context key this module owns. */
@@ -32,6 +32,8 @@ export interface ReleaseHold {
   readonly reason: string;
   readonly owes: ReleaseHoldOwner;
   readonly waitingFor: string;
+  /** The reason already says what to do and what follows, so the comment adds no waiting line. */
+  readonly stepNamed?: true;
 }
 
 /** The hold as it is stored on the row. */
@@ -220,19 +222,17 @@ export function runtimeUnroutedHold(missing: string, route: string): ReleaseHold
 export function closeRefusedHold(
   shortfalls: ReadonlyArray<{ code: string; reason: string; clears: string; clearsHere?: string }>,
 ): ReleaseHold {
-  // The banner's own sentence for each shortfall, never its code (ISS-1421 r6, criterion 90): the
-  // comment sits on the issue's page below the controls the banner names.
-  const said = shortfalls
-    .map((s) => shortfallSaid({ reason: s.reason, clears: s.clearsHere ?? s.clears }))
-    .join(' ');
+  // What holds it, what to do, what follows (ISS-1421 r8, criterion 90), never a shortfall's code.
+  const why = shortfalls.map((s) => shortfallSentence(s.reason).replace(/^It/, 'it').slice(0, -1));
+  const acts = shortfalls.map((s) => s.clearsHere ?? s.clears).join(' ');
   return {
     code: 'RELEASE_ISSUES_UNCLOSABLE',
     reason:
-      'The automatic release leaves this issue off: its close would be refused when the release ' +
-      `finishes, so releasing it would only hand it back here. ${said} The next sweep carries it ` +
-      'once that is cleared.',
+      `The automatic release leaves this issue out, because ${why.join(', ')} and its close would ` +
+      `be refused. ${acts} The next sweep releases it once that is done.`,
     owes: shortfalls.some((s) => s.code === 'OPEN_QUESTIONS') ? 'human' : 'agent',
     waitingFor: 'what its close is refused for to be cleared',
+    stepNamed: true,
   };
 }
 
@@ -342,14 +342,13 @@ export function cutFailedHold(reasons: readonly string[]): ReleaseHold {
   };
 }
 
-const COVERS_LINE = /^When this was written it held \d+ issues? of this project.*$/m;
+const COVERS_LINE =
+  /^(?:When this was written it held \d+ issues? of this project.*|This one comment stands for .*)$/m;
 
-function coversLine(covers: readonly string[]): string[] {
-  if (covers.length === 0) return [];
-  const n = `${covers.length} issue${covers.length === 1 ? '' : 's'}`;
-  const which = covers.join(', ');
-  return ['', `When this was written it held ${n} of this project, oldest merge first: ${which}.`];
-}
+const HOLD_HEADINGS = [
+  '**Held by the automatic release**',
+  '**The automatic release is holding this issue at Awaiting release.**',
+] as const;
 
 export function releaseHoldComment(
   hold: ReleaseHold,
@@ -357,17 +356,14 @@ export function releaseHoldComment(
   covers: readonly string[] = [],
 ): string {
   const who = hold.owes === 'human' ? 'a person' : 'an agent run';
-  const where = shared
-    ? ' The same reason holds every issue of this project it names, and is written on the oldest alone.'
-    : '';
-  return [
-    '**The automatic release is holding this issue at Awaiting release.**',
-    '',
-    hold.reason,
-    '',
-    `It is waiting for ${hold.waitingFor}, which ${who} owes.${where}`,
-    ...(shared ? coversLine(covers) : []),
-  ].join('\n');
+  const waiting = hold.stepNamed
+    ? ''
+    : `\n\nIt is waiting for ${hold.waitingFor}, which ${who} owes.`;
+  const covered =
+    shared && covers.length > 1
+      ? `\n\nThis one comment stands for ${covers.join(', ')}, oldest merge first.`
+      : '';
+  return `${HOLD_HEADINGS[0]}\n\n${hold.reason}${waiting}${covered}`;
 }
 
 /** A comment's words as they are compared: the covered rows, a reading time and a reset set aside. */
@@ -423,7 +419,7 @@ async function saidBefore(issueId: string, hold: ReleaseHold, body: string): Pro
     .where(
       and(
         eq(comments.issueId, issueId),
-        like(comments.body, '**The automatic release is holding this issue%'),
+        or(...HOLD_HEADINGS.map((h) => like(comments.body, `${h}%`))),
       ),
     );
   return posted.some(

@@ -68,15 +68,16 @@ export const listGithubRepositories = onProject(
       'The repositories every installation of a GitHub App reaches, for the repository picker',
     responses: {
       200: json(repositoriesSchema),
-      400: fail(
-        'BAD_REQUEST',
-        '`connectionId` is missing, is not a GitHub App, or its App was never converted',
-      ),
+      400: fail('BAD_REQUEST', '`connectionId` is missing, or is not a GitHub App'),
       403: notProjectAdmin,
       404: fail({
         NOT_FOUND: 'no such project, or the caller cannot see it',
         CONNECTION_NOT_REACHABLE: 'the connection does not exist, or the caller cannot reach it',
       }),
+      409: fail(
+        'GITHUB_APP_UNFINISHED',
+        'the connection holds no App: creating it on GitHub was never finished',
+      ),
     },
   }),
 );

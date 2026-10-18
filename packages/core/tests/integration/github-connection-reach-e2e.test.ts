@@ -9,10 +9,10 @@
  * against whoever clicked, and the route re-derived visibility from the
  * caller's personal principal after it had already proved project admin.
  *
- * 404 versus 400 is the whole discriminator here and it needs no network: a
+ * 404 versus 409 is the whole discriminator here and it needs no network: a
  * connection the route cannot resolve is `CONNECTION_NOT_REACHABLE` (it was
  * `connection not found` before ISS-1216 named the refusal), and one it
- * resolves whose App was never converted is `the App was never converted`.
+ * resolves whose App was never finished is `GITHUB_APP_UNFINISHED` (ISS-1421 r8).
  * The second means the App was reached.
  */
 
@@ -115,7 +115,7 @@ beforeEach(async () => {
   await createTestProjectMember(harness.db, { userId: clicker.id, projectId, role: 'admin' });
 });
 
-/** An App minted the old way, and never converted — so a reach shows as 400, not a GitHub call. */
+/** An App minted the old way, and never finished — so a reach shows as 409, not a GitHub call. */
 async function appOwnedBy(userId: string, boundTo: string | null = projectId) {
   const connection = await mods.createConnection({
     ownerType: 'user',
@@ -155,8 +155,8 @@ describe("the repository picker's reach", () => {
     const body = await bodyOf(res);
 
     expect(body.code).not.toBe('CONNECTION_NOT_REACHABLE');
-    expect(res.status).toBe(400);
-    expect(body.details).toEqual({ connectionId: 'the App was never converted' });
+    expect(res.status).toBe(409);
+    expect(body.code).toBe('GITHUB_APP_UNFINISHED');
   });
 
   it('reaches it through a binding that was switched off, which is where a repick starts', async () => {
@@ -165,13 +165,13 @@ describe("the repository picker's reach", () => {
       sql`UPDATE integration_bindings SET active = false WHERE connection_id = ${connection.id}`,
     );
 
-    expect((await repositoriesAs(orgOwner.id, connection.id)).status).toBe(400);
+    expect((await repositoriesAs(orgOwner.id, connection.id)).status).toBe(409);
   });
 
   it('still reaches an App the caller owns that no binding points at yet', async () => {
     const connection = await appOwnedBy(orgOwner.id, null);
 
-    expect((await repositoriesAs(orgOwner.id, connection.id)).status).toBe(400);
+    expect((await repositoriesAs(orgOwner.id, connection.id)).status).toBe(409);
   });
 
   it('reaches an App bound to a different project of the same org, because the caller administers that one', async () => {
@@ -182,8 +182,8 @@ describe("the repository picker's reach", () => {
 
     const res = await repositoriesAs(orgOwner.id, connection.id, projectId);
 
-    expect(res.status).toBe(400);
-    expect((await bodyOf(res)).details).toEqual({ connectionId: 'the App was never converted' });
+    expect(res.status).toBe(409);
+    expect((await bodyOf(res)).code).toBe('GITHUB_APP_UNFINISHED');
   });
 
   it('refuses an App bound only to a project the caller does not administer', async () => {
