@@ -245,4 +245,24 @@ describe('ending a turn, against the database', () => {
     `)) as unknown as Array<{ from_status: string; to_status: string }>;
     expect(moves).toEqual([{ from_status: 'running', to_status: 'idle' }]);
   });
+
+  it('records the move from the status the row holds when written, not the one read before', async () => {
+    const { project, box } = await aBox();
+    const id = await aSession({
+      projectId: project.id,
+      deviceId: box.id,
+      kind: 'chat',
+      lastHeartbeatAt: new Date().toISOString(),
+    });
+    const readWhileIdle = await rowOf(id);
+    await harness.db.execute(sql`UPDATE agent_sessions SET status = 'running' WHERE id = ${id}`);
+    const { endChatTurn } = await import('../../src/agent-sessions/turn-end.js');
+
+    await endChatTurn(readWhileIdle, actor);
+
+    const moves = (await harness.db.execute(sql`
+      SELECT from_status, to_status FROM kernel_transitions WHERE entity_id = ${id} AND source = 'session-abort'
+    `)) as unknown as Array<{ from_status: string; to_status: string }>;
+    expect(moves).toEqual([{ from_status: 'running', to_status: 'idle' }]);
+  });
 });

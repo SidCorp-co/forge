@@ -71,6 +71,22 @@ describe("deriveActivityFeed", () => {
     expect(feed.map((e) => e.device)).toEqual(["ubuntu5", "ubuntu6"]);
   });
 
+  it.each([
+    ["never started, then ran", [null, "2026-08-30T10:00:05.000Z"]],
+    ["ran, then never started", ["2026-08-30T10:00:05.000Z", null]],
+  ])("keeps two lost-box attempts apart when one %s, each with its own remedy", (_n, starts) => {
+    const feed = deriveActivityFeed(
+      starts.map((startedAt) => attempt({ failureCause: "runner_unreachable", startedAt })),
+    );
+
+    expect(feed).toHaveLength(2);
+    expect(feed.map((e) => e.action)).toEqual(
+      starts.map((s) =>
+        s ? expect.stringContaining("stopped answering") : expect.stringContaining("never picked"),
+      ),
+    );
+  });
+
   it("re-opens a group when a third attempt differs from the collapsed pair", () => {
     const feed = deriveActivityFeed([
       attempt({ failureCause: "provider_spend_cap" }),

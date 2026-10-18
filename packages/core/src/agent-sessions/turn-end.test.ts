@@ -1,7 +1,8 @@
 import { HTTPException } from 'hono/http-exception';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { updateReturning, updateSet, insertValues } = vi.hoisted(() => ({
+const { lockedRow, updateReturning, updateSet, insertValues } = vi.hoisted(() => ({
+  lockedRow: vi.fn(),
   updateReturning: vi.fn(),
   updateSet: vi.fn(),
   insertValues: vi.fn(),
@@ -10,6 +11,7 @@ const { updateReturning, updateSet, insertValues } = vi.hoisted(() => ({
 vi.mock('../db/client.js', () => {
   const tx = {
     execute: vi.fn(async () => []),
+    select: () => ({ from: () => ({ where: () => ({ for: lockedRow }) }) }),
     update: () => ({
       set: (v: unknown) => {
         updateSet(v);
@@ -45,6 +47,7 @@ async function refusal(
 }
 
 beforeEach(() => {
+  lockedRow.mockReset();
   updateReturning.mockReset();
   updateSet.mockReset();
   insertValues.mockReset();
@@ -77,14 +80,16 @@ describe('endChatTurn', () => {
   });
 
   it('refuses with SESSION_ENDED where the chat ended between the read and the write', async () => {
-    updateReturning.mockResolvedValueOnce([]);
+    lockedRow.mockResolvedValueOnce([{ status: 'completed' }]);
     expect(await refusal(endChatTurn(row('chat', 'running'), ACTOR))).toMatchObject({
       code: 'SESSION_ENDED',
     });
+    expect(updateSet).not.toHaveBeenCalled();
     expect(insertValues).not.toHaveBeenCalled();
   });
 
   it('leaves a running chat idle and records the move from the status it read', async () => {
+    lockedRow.mockResolvedValueOnce([{ status: 'running' }]);
     updateReturning.mockResolvedValueOnce([{ id: 's1', kind: 'chat', status: 'idle' }]);
     const out = await endChatTurn(row('chat', 'running'), ACTOR);
     expect(out.status).toBe('idle');
@@ -101,6 +106,7 @@ describe('endChatTurn', () => {
   });
 
   it('records no move for a chat already idle', async () => {
+    lockedRow.mockResolvedValueOnce([{ status: 'idle' }]);
     updateReturning.mockResolvedValueOnce([{ id: 's1', kind: 'chat', status: 'idle' }]);
     await endChatTurn(row('chat', 'idle'), ACTOR);
     expect(insertValues).not.toHaveBeenCalled();

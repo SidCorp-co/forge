@@ -4,7 +4,7 @@
  * on, and its reaper, which reads `running` only, would never end it (ISS-1228).
  */
 
-import { and, eq, inArray } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
@@ -31,24 +31,31 @@ export function chatEnded(): HTTPException {
 const isOpen = (status: string): boolean =>
   (LIVE_SESSION_STATUSES as readonly string[]).includes(status);
 
-/** Leaves the chat `idle`, recording the move; the kind is judged before the status. */
+/**
+ * Leaves the chat `idle`, recording the move from the status the locked row holds, never the one the
+ * caller read; the kind is judged before the status.
+ */
 export async function endChatTurn(session: SessionRow, actor: KernelActor): Promise<SessionRow> {
   if (session.kind !== 'chat') throw turnNotEndable(session.kind);
   if (!isOpen(session.status)) throw chatEnded();
   const updated = await withKernelMarker(db, async (tx) => {
+    const [held] = await tx
+      .select({ status: agentSessions.status })
+      .from(agentSessions)
+      .where(eq(agentSessions.id, session.id))
+      .for('update');
+    if (!held || !isOpen(held.status)) return undefined;
     const [row] = await tx
       .update(agentSessions)
       .set({ status: 'idle', updatedAt: new Date() })
-      .where(
-        and(eq(agentSessions.id, session.id), inArray(agentSessions.status, LIVE_SESSION_STATUSES)),
-      )
+      .where(eq(agentSessions.id, session.id))
       .returning();
-    if (row && session.status !== 'idle') {
+    if (row && held.status !== 'idle') {
       await recordKernelTransition(tx, [
         {
           entity: 'session',
           entityId: row.id,
-          fromStatus: session.status,
+          fromStatus: held.status,
           toStatus: 'idle',
           reason: 'turn_ended',
           actor,
