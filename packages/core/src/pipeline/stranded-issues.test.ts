@@ -71,6 +71,7 @@ function merged(projectId: string, i: number) {
     ...strand(projectId, i),
     status: 'developed',
     mergedAt: new Date('2026-08-01T00:00:00.000Z'),
+    markedAt: new Date('2026-08-01T00:00:00.000Z'),
     cursorTs: `2026-08-01 00:00:0${i}+00`,
   };
 }
