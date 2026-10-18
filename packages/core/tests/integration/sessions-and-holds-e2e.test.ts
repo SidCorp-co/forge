@@ -59,6 +59,19 @@ describe('readSessionsAndHolds — sessions (ISS-1228)', () => {
     expect(out.sessions.map((s) => s.id)).toEqual([live]);
   });
 
+  it('answers a chat whose turn is running, with its box, and no idle or ended chat', async () => {
+    const running = await session('chat', 'running');
+    await session('chat', 'idle');
+    await session('chat', 'completed');
+    await session('run_session', 'running');
+    const out = await read();
+    const [box] = (await fx.db.execute(sql`
+      SELECT device_id FROM agent_sessions WHERE id = ${running}
+    `)) as unknown as Array<{ device_id: string }>;
+    expect(out.runningChats).toEqual([{ id: running, deviceId: box?.device_id }]);
+    expect(out.sessions.map((s) => s.kind)).toEqual(['run_session']);
+  });
+
   it('counts for the rail and the console exactly the sessions it lists, not the runs left open', async () => {
     await session('run_session', 'running');
     await session('run_session', 'completed');

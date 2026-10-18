@@ -87,12 +87,12 @@ describe("runGateNote", () => {
 	it("names the count, the rate and the window of a gate that was failing open", () => {
 		const note = runGateNote({ read: "ok", condition: runGate() });
 		expect(note?.verdict).toBe("failing_open");
-		expect(note?.detail).toBe("30 dispatch(es) admitted without a decision, 144/day over 5h 00m");
+		expect(note?.detail).toBe("30 dispatches were admitted without a decision, 144/day over 5h 00m.");
 	});
 
 	it("says when one reason accounts for the whole count", () => {
 		expect(runGateNote({ read: "ok", condition: runGate() })?.reason).toBe(
-			"every one of them: this pane carries no control capability",
+			"Every one of them: this pane carries no control capability.",
 		);
 	});
 
@@ -106,7 +106,7 @@ describe("runGateNote", () => {
 				],
 			}),
 		});
-		expect(note?.reason).toBe("20 of 30: no control capability");
+		expect(note?.reason).toBe("20 of 30: no control capability.");
 	});
 
 	it("still states a gate that had marked without reaching failing open", () => {
@@ -148,7 +148,7 @@ describe("runGateNote", () => {
 			condition: runGate({ perDay: null, windowMs: null }),
 		});
 		expect(note?.detail).toBe(
-			"30 dispatch(es) admitted without a decision, at an unstated rate over an unknown span",
+			"30 dispatches were admitted without a decision, at an unstated rate over an unknown span.",
 		);
 	});
 });

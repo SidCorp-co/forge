@@ -20,7 +20,7 @@ import { useSessionDuration } from "@/features/sessions/session-duration";
 import { sessionWord, WAITING_FOR_INPUT_WORD } from "@/features/sessions/session-word";
 import { useProjects } from "@/features/projects/hooks";
 import { useDevices } from "@/features/runners/hooks";
-import { isJobDriven, sessionTitle } from "@/features/sessions/types";
+import { isJobDriven, sessionTitle, TERMINAL_SESSION_STATUSES } from "@/features/sessions/types";
 import {
   deriveSessionDisplayStatus,
   isRealFailure,
@@ -173,6 +173,7 @@ export function SessionScreen({
   const streamedChars = useMemo(() => tailOutputSize(items), [items]);
 
   const display = session ? deriveSessionDisplayStatus(session) : "queued";
+  const coreEnded = session ? TERMINAL_SESSION_STATUSES.has(session.status) : false;
   const { live, answering } = sessionActivity(display);
   const elapsed = useSessionDuration(session, live);
   const now = useNow(1000, display === "stalled");
@@ -330,7 +331,9 @@ export function SessionScreen({
               onClose={() => setStopAsked(false)}
               onConfirm={() => cancel.mutate(undefined, { onSuccess: () => setStopAsked(false) })}
             />
-            {live ? (
+            {/* Stop on every session core has not ended, an idle or queued one included; Rerun only once
+                it has, so a held session is never offered a rerun in place of a stop (ISS-1228). */}
+            {!coreEnded ? (
               <Button
                 variant="danger"
                 size="sm"

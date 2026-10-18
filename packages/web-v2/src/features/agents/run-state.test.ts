@@ -26,6 +26,7 @@ const row = (over: Partial<Parameters<typeof stateLabelAt>[0]> = {}): Parameters
   silenceLimitMs: 10 * 60_000,
   sessionStatus: "running",
   sessionRuntimeState: "working",
+  observedAt: new Date(Date.now() - 4 * 60_000).toISOString(),
   ...over,
 });
 
@@ -184,3 +185,34 @@ describe("offlineText beside a live session", () => {
   });
 });
 
+
+// ISS-1228 round 15 (judge-39): on one runs-tab row an offline box read "The box is offline. It last
+// reported 10m ago." beside a chip whose hover said "The box is offline: this is what it last
+// reported, …", and every chip hover was worded outside the one place.
+describe("a run chip's hover", () => {
+  it("says an offline box the way the row's own line says it, word for word", () => {
+    const r = row({ deviceStatus: "offline" });
+    const live = { incarnation: "live", observedAt: r.observedAt, sessionId: "s1", sessionStatus: "running", deviceStatus: "offline" };
+    expect(stateLabelAt(r, NOW).detail).toBe(offlineText(live));
+    expect(stateLabelAt(r, NOW).detail).toBe("The box is offline. It last reported 4m ago.");
+  });
+
+  it("is a capitalised sentence ending in a stop in every state a run can be in", () => {
+    const states = [
+      row(),
+      row({ work: "blocked" }),
+      row({ incarnation: "exited", work: "blocked" }),
+      row({ incarnation: "exited", work: "runnable" }),
+      row({ work: "done" }),
+      row({ incarnation: "lost" }),
+      row({ lastActivityAt: SILENT }),
+      row({ sessionStatus: "failed" }),
+      row({ sessionStatus: "failed", sessionFailureReason: "user_cancelled" }),
+      row({ deviceStatus: "offline" }),
+    ];
+    for (const r of states) {
+      const { detail } = stateLabelAt(r, NOW);
+      expect(detail, detail).toMatch(/^[A-Z][\s\S]*[.!?]$/);
+    }
+  });
+});

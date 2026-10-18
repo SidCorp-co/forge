@@ -13,6 +13,7 @@ import { RunsPane } from "./runs-pane";
 expect.extend(matchers);
 
 const state = vi.hoisted(() => ({
+  rooms: [] as unknown[],
   runs: [] as unknown[],
   total: 0,
   ledger: [] as unknown[],
@@ -20,6 +21,7 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/projects/qa/agents" }));
+vi.mock("@/lib/ws/use-room", () => ({ useRoom: (room: unknown) => state.rooms.push(room) }));
 vi.mock("next/link", () => ({
   default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
 }));
@@ -479,5 +481,16 @@ describe("an ended run and a long title on the runs tab (ISS-1228 round 13)", ()
     expect(closed.className).not.toMatch(/\btruncate\b/);
     expect(closed.className).toContain("break-words");
     expect(screen.getByText("Stopped")).toBeInTheDocument();
+  });
+});
+
+// ISS-1228 round 15 (judge-39): a runs tab open in another tab read a stopped run as live until its
+// 20-second poll, because the tab joined no room, so no session event ever reached it.
+describe("the runs tab hears its project's events", () => {
+  it("joins the project's room", async () => {
+    const { projectRoom } = await import("@/lib/ws/rooms");
+    state.rooms = [];
+    pane();
+    expect(state.rooms).toContain(projectRoom("p1"));
   });
 });

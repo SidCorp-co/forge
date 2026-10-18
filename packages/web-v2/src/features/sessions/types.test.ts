@@ -470,3 +470,33 @@ describe("an ended session's one outcome word", () => {
   });
 });
 
+
+// ISS-1228 round 15 (judge-39): a run that ran ten minutes before its box went offline was told
+// "The runner never picked it up", which is not what happened.
+describe("the remedy for a box that could not be reached", () => {
+  it("says the box stopped answering where the session had started", () => {
+    expect(failureReasonAction("runner_unreachable", "Rerun", true)).toBe(
+      "The box stopped answering while the session ran. Check it's online, then Rerun.",
+    );
+  });
+
+  it("says the runner never picked it up only where it never started", () => {
+    expect(failureReasonAction("runner_unreachable", "Retry", false)).toBe(
+      "The runner never picked it up. Check it's online, then Retry.",
+    );
+  });
+
+  it("claims neither where the caller cannot say whether it started", () => {
+    expect(failureReasonAction("runner_unreachable")).toBe("The box could not be reached. Check it's online, then Retry.");
+  });
+
+  it("reads a reason no start changes the same either way", () => {
+    expect(failureReasonAction("heartbeat_timeout", "Retry", true)).toBe(failureReasonAction("heartbeat_timeout"));
+  });
+
+  it("puts it on the sessions list's chip too", () => {
+    expect(classifySessionOutcome("failed", "runner_unreachable", true).tooltip).toBe(
+      "The box stopped answering while the session ran. Check it's online, then Retry.",
+    );
+  });
+});

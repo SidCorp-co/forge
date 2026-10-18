@@ -56,7 +56,7 @@ function beatingNow(): SessionsAndHolds {
     issues: [],
     report: null,
   };
-  return { sessions: [live], holds: [], readAt: new Date(clock).toISOString() };
+  return { sessions: [live], holds: [], runningChats: [], readAt: new Date(clock).toISOString() };
 }
 
 function wrapper({ children }: { children: ReactNode }) {

@@ -53,6 +53,7 @@ import {
 } from './session-access.js';
 import { recordSessionCreatedActivity } from './session-activity.js';
 import { type AgentSessionPatch, finalizeScheduleSessionFailure } from './session-failure.js';
+import { endChatTurn } from './turn-end.js';
 
 export async function loadProjectBySlug(slug: string) {
   const [row] = await db
@@ -217,20 +218,13 @@ agentSessionLifecycleRoutes.post(
     const input = c.req.valid('json');
     const userId = c.get('userId');
 
-    await ensureSessionOwnerOrAdmin(input.sessionId, userId);
+    const { session } = await ensureSessionOwnerOrAdmin(input.sessionId, userId);
+    const updated = await endChatTurn(session, {
+      type: 'user',
+      id: userId,
+      agency: c.get('agency') ?? 'human',
+    });
 
-    const [updated] = await withKernelMarker(db, async (tx) =>
-      tx
-        .update(agentSessions)
-        .set({ status: 'idle', updatedAt: new Date() })
-        .where(eq(agentSessions.id, input.sessionId))
-        .returning(),
-    );
-    if (!updated) throw notFound('agent session not found');
-
-    // Aborting a pipeline session just flips it to `idle`; the failure path
-    // (ISS-393) reverts the issue to its stage entry-status or parks it at
-    // `waiting`, so there is no separate hold flag to pin here.
     const meta = (updated.metadata ?? {}) as {
       type?: string;
       issueId?: string;

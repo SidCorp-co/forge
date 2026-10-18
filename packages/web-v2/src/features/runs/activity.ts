@@ -130,7 +130,7 @@ export function deriveActivityFeed(attempts: PipelineRunAttempt[] | undefined): 
       object: jobKindLabel(a.jobType),
       outcome,
       cause,
-      action: cause ? failureReasonAction(cause) : null,
+      action: cause ? failureReasonAction(cause, "Retry", a.startedAt != null) : null,
       detail: detailOf(a, cause),
       tone: toneOf(a, cause),
       device: deviceLabel(a),

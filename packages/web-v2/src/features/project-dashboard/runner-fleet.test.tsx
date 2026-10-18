@@ -20,6 +20,7 @@ const { world } = vi.hoisted(() => ({
   world: {
     runners: [] as Array<Record<string, unknown>>,
     live: [] as Array<{ id: string; deviceId: string | null }>,
+    chats: [] as Array<{ id: string; deviceId: string | null }> | undefined,
     queued: [] as Array<{ deviceId: string; queued: number; running: number }>,
     queueFails: false,
     activeFails: false,
@@ -54,7 +55,7 @@ vi.mock("@/features/sessions/hooks", () => ({
 }));
 vi.mock("@/features/pipeline/hooks", () => ({
   useSessionsAndHolds: () => ({
-    data: { sessions: world.live, holds: [], readAt: HEARD },
+    data: { sessions: world.live, holds: [], runningChats: world.chats, readAt: HEARD },
     isError: false,
     error: null,
   }),
@@ -62,6 +63,7 @@ vi.mock("@/features/pipeline/hooks", () => ({
 
 afterEach(() => {
   cleanup();
+  world.chats = [];
   world.queued = [];
   world.queueFails = false;
   world.activeFails = false;
@@ -182,5 +184,35 @@ describe("the box strip's queue", () => {
     world.live = [];
     world.queueFails = true;
     expect(queueWord()).toBe("queue not read");
+  });
+});
+
+// ISS-1228 round 15 (judge-39): with a chat's turn running on j39-a and no run session, the strip
+// read "j39-a · Primary · Free" above the chat's Working row.
+describe("a box counts every live session it holds, a running chat's included (criteria 102, 111)", () => {
+  it("calls a box running a chat's turn busy on both, counting it", () => {
+    world.runners = [runner("d1", "online")];
+    world.live = [];
+    world.chats = [{ id: "c1", deviceId: "d1" }];
+    expect(readBoth([])).toEqual({ caption: "1 of 1 runners busy", boxes: ["Busy · 1 live session"] });
+  });
+
+  it("adds a running chat to the run sessions the box holds", () => {
+    world.runners = [runner("d1", "online"), runner("d2", "online")];
+    world.live = [{ id: "s-d1", deviceId: "d1" }];
+    world.chats = [{ id: "c1", deviceId: "d1" }, { id: "c2", deviceId: "d2" }];
+    expect(readBoth([liveRow("d1")])).toEqual({
+      caption: "2 of 2 runners busy",
+      boxes: ["Busy · 2 live sessions", "Busy · 1 live session"],
+    });
+  });
+});
+
+describe("a reading from a core that answers no running chats", () => {
+  it("calls its boxes neither busy nor free, rather than free while a chat may run on them", () => {
+    world.runners = [runner("d1", "online")];
+    world.live = [];
+    world.chats = undefined;
+    expect(readBoth([]).boxes).toEqual(["activity not read"]);
   });
 });

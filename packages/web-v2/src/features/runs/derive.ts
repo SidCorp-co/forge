@@ -1,5 +1,11 @@
 import type { StatusKey } from "@/design/status";
 import { gateReasonLine } from "@/features/runners/types";
+import {
+  GATE_TEXT,
+  gateAdmittedText,
+  gateReasonText,
+  gateUnreadableDetailText,
+} from "@/features/sessions/status-sentences";
 import { formatDurationMs } from "@/lib/utils/format";
 import type { PipelineRunStatus, PipelineRunSummary, RunGate, StepDurationRow } from "./types";
 
@@ -93,51 +99,35 @@ export interface RunGateNote {
 
 /** The run could not be fetched: the condition is unknown, which is not "none". */
 export function runGateUnfetched(message: string): RunGateNote {
-  return {
-    verdict: "unreadable",
-    headline: "This run's record could not be read, so its gate condition is unknown",
-    detail: message,
-    reason: null,
-  };
+  return { verdict: "unreadable", headline: GATE_TEXT.unfetched, detail: message, reason: null };
 }
 
-/** `undefined` is a response that did not carry the field, and says nothing. */
+/** `undefined` is a response that did not carry the field, and says nothing. Every line is worded in
+ *  `status-sentences.ts`, as every sentence about a box is (ISS-1228). */
 export function runGateNote(gate: RunGate | null | undefined): RunGateNote | null {
   if (gate === undefined) return null;
   if (gate === null) {
-    return {
-      verdict: "none",
-      headline: "The box reported no gate condition when this run opened",
-      detail: "Its runner sent none, so this record cannot say whether the gate was deciding.",
-      reason: null,
-    };
+    return { verdict: "none", headline: GATE_TEXT.none, detail: GATE_TEXT.noneDetail, reason: null };
   }
   if (gate.read === "unreadable") {
     return {
       verdict: "unreadable",
-      headline: "This run recorded a gate condition that cannot be read",
-      detail: `${gate.reason} — the run was not opened with no condition, so this is not "the gate was deciding".`,
+      headline: GATE_TEXT.unreadable,
+      detail: gateUnreadableDetailText(gate.reason),
       reason: null,
     };
   }
   const c = gate.condition;
   if (c.verdict === "clear") {
-    return {
-      verdict: "clear",
-      headline: "This box's gate was deciding when this run opened",
-      detail: "No dispatch on record had gone through without a decision.",
-      reason: null,
-    };
+    return { verdict: "clear", headline: GATE_TEXT.clear, detail: GATE_TEXT.clearDetail, reason: null };
   }
   const rate = c.perDay === null ? "at an unstated rate" : `${Math.round(c.perDay)}/day`;
   const window = c.windowMs === null ? "an unknown span" : formatDurationMs(c.windowMs);
+  const reason = gateReasonLine(c.byReason, c.count);
   return {
     verdict: c.verdict,
-    headline:
-      c.verdict === "failing_open"
-        ? "This box's gate was failing open when this run opened"
-        : "This box's gate had admitted undecided dispatches when this run opened",
-    detail: `${c.count} dispatch(es) admitted without a decision, ${rate} over ${window}`,
-    reason: gateReasonLine(c.byReason, c.count),
+    headline: c.verdict === "failing_open" ? GATE_TEXT.failingOpen : GATE_TEXT.marked,
+    detail: gateAdmittedText(c.count, rate, window),
+    reason: reason === null ? null : gateReasonText(reason),
   };
 }

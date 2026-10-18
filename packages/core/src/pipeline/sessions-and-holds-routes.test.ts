@@ -82,6 +82,7 @@ const reading = {
       holders: [{ by: 'person', status: 'needs_info', owes: null, since: null, why: null }],
     },
   ],
+  runningChats: [{ id: '7a0c1f3e-2b4d-4e5f-8a9b-0c1d2e3f4a5b', deviceId: null }],
   readAt: '2026-10-15T02:00:00.000Z',
 };
 

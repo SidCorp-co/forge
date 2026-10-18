@@ -74,9 +74,7 @@ vi.mock('../pipeline/activity.js', () => ({
   safeRecordActivity: vi.fn(async () => {}),
 }));
 
-// ISS-101 — interactive session inserts now open a pipeline_run first.
-// Stub the helper so the chained db stub above doesn't need to model
-// pipeline_runs.
+// Stub the run opener so the chained db stub above need not model pipeline_runs.
 vi.mock('../pipeline/runs.js', () => ({
   openIssueRun: vi.fn(async () => ({ id: 'run-1', startedAt: new Date() })),
   openOneShotRun: vi.fn(async () => ({ id: 'run-1' })),
@@ -450,6 +448,8 @@ describe('POST /api/agent-sessions/abort', () => {
         projectId: PROJECT_ID,
         userId: USER_ID,
         deviceId: DEVICE_ID,
+        kind: 'chat',
+        status: 'running',
         metadata: { deviceId: DEVICE_ID },
       },
     ]);

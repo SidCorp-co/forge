@@ -50,6 +50,7 @@ vi.mock("@/features/pipeline/hooks", () => ({
         { id: "s-c1", deviceId: "dev-c" },
       ],
       holds: [],
+      runningChats: [],
       readAt: "",
     },
     isError: false,

@@ -20,6 +20,7 @@ import { useRunnerFleet } from "@/features/project-dashboard/runner-fleet";
 import type { ReadState } from "@/features/project-dashboard/shape";
 import { useProject } from "@/features/projects/hooks";
 import { boxHealth, boxWord } from "../box-state";
+import { DISPATCH_STALLED, PRIMARY_BOX_HOVER, queuedBehindText, queuedWithNoBoxText } from "../status-sentences";
 import {
   deriveLiveness,
   isLiveDisplay,
@@ -83,9 +84,7 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
     <div className="flex flex-col gap-3">
       {dispatchStalled && (
         <Banner tone="danger">
-          <span className="font-semibold">Dispatch stalled — no runner online.</span>{" "}
-          {queuedCount} session{queuedCount === 1 ? "" : "s"} queued with no runner to pick it up.
-          Bring a runner online or check device pairing.
+          <span className="font-semibold">{DISPATCH_STALLED}</span> {queuedWithNoBoxText(queuedCount)}
         </Banner>
       )}
 
@@ -123,7 +122,7 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
 
                 <div className="flex items-center gap-1.5">
                   {isPrimary && (
-                    <Tooltip label="Primary runner (pinned default)">
+                    <Tooltip label={PRIMARY_BOX_HOVER}>
                       <MonoTag hue="cobalt">Primary</MonoTag>
                     </Tooltip>
                   )}
@@ -140,7 +139,7 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
                   >
                     {boxWord(d, activityRead)}
                   </span>
-                  <span data-testid="box-queue" className="fg-caption text-subtle" title={`${queued} queued behind this runner`}>
+                  <span data-testid="box-queue" className="fg-caption text-subtle" title={queuedBehindText(queued)}>
                     {queueWord(queued, fleet.queue)}
                   </span>
                 </div>

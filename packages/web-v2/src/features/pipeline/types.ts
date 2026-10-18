@@ -77,8 +77,15 @@ export interface HeldIssue extends HeldIssueRef {
   holders: Holder[];
 }
 
+/** A chat whose turn is running on a box: the Pipeline page lists no chat, and its box counts it. */
+export interface RunningChat {
+  id: string;
+  deviceId: string | null;
+}
+
 export interface SessionsAndHolds {
   sessions: LiveSession[];
   holds: HeldIssue[];
+  runningChats: RunningChat[];
   readAt: string;
 }

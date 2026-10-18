@@ -47,8 +47,18 @@ export const sendToSession = describeOperation({
 });
 
 export const abortSession = describeOperation({
-  summary: 'Stop the in-flight turn and leave the session idle so it can be resumed',
-  responses: { 200: json(okSchema), 403: notYours, 404: noSession },
+  summary: "End a chat's in-flight turn and leave the session idle so it can be resumed",
+  description:
+    "Only a chat's box ends a turn, so every other kind is refused, ended or not, and Stop session is what ends it.",
+  responses: {
+    200: json(okSchema),
+    403: notYours,
+    404: noSession,
+    409: fail({
+      TURN_NOT_ENDABLE: 'the session is not a chat, so its box ends no turn of it',
+      SESSION_ENDED: 'the chat has ended, so it has no turn to end',
+    }),
+  },
 });
 
 export const cancelSession = describeOperation({

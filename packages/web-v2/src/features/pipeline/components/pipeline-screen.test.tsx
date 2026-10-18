@@ -35,6 +35,7 @@ vi.mock("../hooks", () => ({ useSessionsAndHolds: () => query }));
 
 const reading: SessionsAndHolds = {
   readAt: "2026-10-15T01:59:50.000Z",
+  runningChats: [],
   sessions: [
     {
       id: "m1",

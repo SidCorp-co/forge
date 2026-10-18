@@ -116,6 +116,8 @@ describe("a reconnect still repairs every prefix it repaired before", () => {
     for (const key of [
       ["issues"],
       ["run-journal"],
+      ["run-sessions"],
+      ["sessions-and-holds"],
       ["jobs"],
       ["projects"],
       ["agent-sessions"],
@@ -135,7 +137,7 @@ describe("a reconnect still repairs every prefix it repaired before", () => {
     ]) {
       expect(c.has(key)).toBe(true);
     }
-    expect(c.keys).toHaveLength(18);
+    expect(c.keys).toHaveLength(20);
   });
 });
 
@@ -352,5 +354,36 @@ describe("an open issue page's runs follow a stop made anywhere (ISS-1228 round 
     const { replayOnReconnect } = await import("./event-router");
     replayOnReconnect(c.qc);
     expect(c.has(["run-journal"])).toBe(true);
+  });
+});
+
+describe("an open runs tab follows a stop made anywhere (ISS-1228 round 15)", () => {
+  // Judge-39: the Agents runs tab open in another tab read a stopped run as Working, or waiting on a
+  // person, for 3 to 13 seconds, until its 20-second poll; a stop never re-read its query.
+  it.each([
+    ["agent-session.status", { sessionId: "s1", status: "failed", failureReason: "user_cancelled" }],
+    ["agent-session.updated", { sessionId: "s1" }],
+    ["agent-session.created", { sessionId: "s2" }],
+    ["pipeline_run.status_changed", { runId: "r1", status: "cancelled" }],
+  ])("%s re-reads the runs tab of every open project", async (event, data) => {
+    const { QueryClient } = await import("@tanstack/react-query");
+    const { runSessionsKey } = await import("@/features/agents/hooks");
+    const qc = new QueryClient();
+    qc.setQueryData(runSessionsKey("p1"), { runs: [] });
+    routeEvent({ event, data, timestamp: "2026-10-18T12:00:00.000Z" }, qc);
+    flushInvalidations();
+    expect(qc.getQueryState(runSessionsKey("p1"))?.isInvalidated).toBe(true);
+  });
+
+  it("a comment, which moves no run, does not", () => {
+    expect(send("comment.created", { issueId: "i1" }).has(["run-sessions"])).toBe(false);
+  });
+
+  it("a reconnect repairs it, and the Pipeline page's read with it", async () => {
+    const c = capture();
+    const { replayOnReconnect } = await import("./event-router");
+    replayOnReconnect(c.qc);
+    expect(c.has(["run-sessions"])).toBe(true);
+    expect(c.has(["sessions-and-holds"])).toBe(true);
   });
 });

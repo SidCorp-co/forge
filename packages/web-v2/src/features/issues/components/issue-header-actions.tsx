@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, IconButton, Menu, type MenuItem } from "@/design";
+import { Button, ButtonLink, IconButton, Menu, type MenuItem } from "@/design";
 import { useRouter } from "next/navigation";
 import type { IssueStatus } from "../types";
 
@@ -74,15 +74,11 @@ export function IssueHeaderActions({
       />
       {/* Its words at every width: the release banner sends a reader to "Open session at the top
           of this page", so at 390 it cannot be an icon alone (ISS-1421 round 6, criterion 86). */}
+      {/* A link, so it opens in a new tab and copies as the session's address (ISS-1228). */}
       {sessionHref && (
-        <Button
-          variant="secondary"
-          size="sm"
-          icon="agent"
-          onClick={() => router.push(sessionHref)}
-        >
+        <ButtonLink href={sessionHref} variant="secondary" size="sm" icon="agent">
           Open session
-        </Button>
+        </ButtonLink>
       )}
       <Menu
         align="right"

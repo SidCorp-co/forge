@@ -2178,6 +2178,13 @@
       "when": 1812067200000,
       "tag": "0336_a_member_says_when_it_reached_the_reader",
       "breakpoints": true
+    },
+    {
+      "idx": 338,
+      "version": "7",
+      "when": 1812240000000,
+      "tag": "0338_a_box_session_is_never_left_idle",
+      "breakpoints": true
     }
   ]
 }
