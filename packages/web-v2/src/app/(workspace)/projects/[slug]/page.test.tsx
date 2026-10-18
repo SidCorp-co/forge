@@ -466,7 +466,8 @@ describe("a Needs you row on a project with parked and stuck issues", () => {
 // ISS-1229 r15, judge-38 on 81 and 87: 14 stuck, two of them the reader's own Waiting parks. Needs you
 // listed those two as plain parks, said 9 more where 7 were missing, and headed 2 over seven rows.
 describe("Needs you on judge-38's board of 14 stuck issues", () => {
-  it("tells the stuck parks by their notice and counts the whole set, 14, in the heading and the overflow", () => {
+  // The master's r15 ruling: a park the reader owes heads its row, naming its notice under it.
+  it("names the stuck parks' notice under the parks they are and counts the whole set, 14, in the heading and the overflow", () => {
     stuckIssues = 14;
     stuckIssueRefs = [10, 9, 8, 4, 2].map((n) => ({ issueId: `ISS-${n}`, documentId: `d${n}`, title: `Stuck ${n}`, kind: "idle" }));
     attentionView = view(
@@ -480,7 +481,7 @@ describe("Needs you on judge-38's board of 14 stuck issues", () => {
     mount();
     const list = screen.getByRole("region", { name: "Needs your attention" });
     expect(list).toHaveTextContent(/^Needs your attention14/u);
-    expect(within(list).getAllByText("Has been waiting for you for over six hours")).toHaveLength(2);
+    expect(within(list).getAllByText(/\. It has been waiting for you for over six hours\.$/u)).toHaveLength(2);
     expect(list).toHaveTextContent("And 7 more stuck. All 14 stuck issues are in Issues.");
     expect(list).not.toHaveTextContent(/9 more|stuck · 14/u);
     expect(list).toHaveTextContent("Showing 7 of 14.");

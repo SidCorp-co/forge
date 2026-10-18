@@ -155,6 +155,19 @@ describe("projectAttention (ISS-1156)", () => {
     );
   });
 
+  // ISS-1229 r15, the master's ruling: an answer the reader owes heads its row, naming its failed job.
+  it("marks the rows the reader owes an answer, carries their failed job, and leaves other people's parks unmarked", () => {
+    const asked = { ...awaiting(1, "q1", "needs_info"), failedJob: { jobType: "drive", failure: "session_lost" } };
+    const items = projectAttention(view([asked, awaiting(2, null, "waiting")]), "sable", [
+      { issueId: "ISS-3", documentId: "doc-3", title: "Issue 3", status: "waiting", stuckKind: "waiting" },
+    ]);
+    expect(items.map((i) => [i.issueRef, i.owed ?? false, i.failedJob?.failure ?? null])).toEqual([
+      ["ISS-1", true, "session_lost"],
+      ["ISS-2", true, null],
+      ["ISS-3", false, null],
+    ]);
+  });
+
   it("lists an issue once even where it is both holding a question and in the project's blockers", () => {
     const items = projectAttention(view([awaiting(1, "q1", "needs_info")]), "sable", [
       { issueId: "ISS-1", documentId: "doc-1", title: "Issue 1", status: "needs_info" },

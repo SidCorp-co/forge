@@ -10,11 +10,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button, Icon, MonoTag, type IconName } from "@/design";
 import { TONE_META, type SemanticTone } from "@/design/status";
-import { stuckRowWords } from "@forge/contracts/stuck-words";
+import { failedJobClause } from "@/features/attention/failed-job-words";
+import { stuckClause, stuckRowWords } from "@forge/contracts/stuck-words";
 import { WORK_STATE_LABELS } from "@forge/contracts/work-state";
 import {
   type AttentionActionKind,
   type AttentionCut,
+  countedStuck,
   type DashboardAttentionItem,
   type StuckIssues,
   stuckLeftOut,
@@ -57,6 +59,16 @@ function StuckTag() {
       Stuck
     </span>
   );
+}
+
+/** Why an item is listed, then its next reason down: an answer owed, a failed job, a stuck reason (ISS-1229 r15). */
+function itemWords(it: DashboardAttentionItem): { stuck: boolean; detail?: string } {
+  if (it.stuckKind && !it.owed && it.actionKind !== "retry") {
+    return { stuck: true, detail: stuckRowWords(it.stuckKind) };
+  }
+  const under = it.failedJob ? failedJobClause(it.failedJob) : it.stuckKind ? stuckClause(it.stuckKind) : null;
+  if (!under) return { stuck: false, detail: it.detail };
+  return { stuck: false, detail: it.detail ? `${it.detail.replace(/[.]?$/, ".")} ${under}` : under };
 }
 
 /** A row's title, whole and wrapping, with why it is listed read under it. */
@@ -174,7 +186,7 @@ export function AttentionQueue({
       )}
       {stuckUnlisted > 0 && (
         <p className="fg-caption mt-2 text-subtle">
-          {stuckRows.length > 0 || items.some((it) => it.stuckKind)
+          {stuckRows.length > 0 || items.some(countedStuck)
             ? `And ${stuckUnlisted} more stuck. `
             : `${stuckUnlisted} stuck. `}
           {/* The list it opens holds exactly the issues the headline counts as stuck (ISS-1229 r14). */}
@@ -237,11 +249,10 @@ export function AttentionQueue({
         {items.map((it) => {
           const m = ACTION_META[it.actionKind];
           const t = TONE_META[ACTION_TONE[it.actionKind]];
-          // A stuck issue is told by its notice's words wherever it is listed; a failed job keeps its failure.
-          const told = it.stuckKind && it.actionKind !== "retry" ? it.stuckKind : null;
+          const said = itemWords(it);
           return (
             <li key={it.key} className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 py-2">
-              {told ? (
+              {said.stuck ? (
                 <StuckTag />
               ) : (
                 <span
@@ -255,7 +266,7 @@ export function AttentionQueue({
               {it.issueRef && <MonoTag>{it.issueRef}</MonoTag>}
               {/* Narrow: kind, ref and age share the first line, then the whole title wraps on its own,
                   then the action. Wide: one line, in the order they are read; the title wraps there too. */}
-              <RowText title={it.title} detail={told ? stuckRowWords(told) : it.detail} />
+              <RowText title={it.title} detail={said.detail} />
               <span className="ml-auto flex-none sm:ml-0">
                 <AgeChip since={it.since} now={now} />
               </span>

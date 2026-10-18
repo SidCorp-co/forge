@@ -27,3 +27,9 @@ export function failedJobWords(item: Pick<AttentionItem, "jobType" | "failure">)
   const work = jobKindLabel(item.jobType);
   return why ? `${work} failed: ${why}` : `${work} failed`;
 }
+
+/** A failed job said under the row an answer owed heads, as in "A job on it failed: Session lost." */
+export function failedJobClause(job: { failure: string | null }): string {
+  const why = failureWords(job.failure);
+  return why ? `A job on it failed: ${why}.` : "A job on it failed.";
+}

@@ -179,6 +179,27 @@ describe("an Attention group", () => {
     expect(named.compareDocumentPosition(said) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  // ISS-1229 r15, the master's ruling: an issue owed an answer and holding a failed job was two rows.
+  it("lists an issue owed an answer once, as that, naming its failed job under it", () => {
+    state.awaiting = [
+      {
+        kind: "awaiting_input",
+        title: "Export the March invoices",
+        link: "/projects/shop/issues/d15",
+        since: new Date(0).toISOString(),
+        issueRef: "SHOP-15",
+        projectSlug: "shop",
+        projectName: "Shop",
+        failedJob: { jobType: "drive", failure: "session_lost" },
+      },
+    ];
+    render(<AttentionScreen />);
+    const row = screen.getByRole("button", { name: /Export the March invoices/u });
+    expect(row).toContainElement(screen.getByText("A job on it failed: Session lost."));
+    expect(screen.getAllByText("SHOP-15")).toHaveLength(1);
+    expect(screen.queryByText("Failed")).not.toBeInTheDocument();
+  });
+
   // ISS-1229 r14, judge-35: 32 parks were headed 20, with nothing saying 12 more waited.
   it("heads a capped group with every item it holds, says how many it shows, and lists them all on asking", () => {
     state.awaiting = Array.from({ length: 20 }, (_, i) => ({

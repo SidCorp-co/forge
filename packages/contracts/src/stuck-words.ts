@@ -51,3 +51,7 @@ export function stuckRowWords(kind: StuckKind): string {
   const one = SAID[kind].one;
   return `${one.charAt(0).toUpperCase()}${one.slice(1)}`;
 }
+
+export function stuckClause(kind: StuckKind): string {
+  return `It ${SAID[kind].one}.`;
+}

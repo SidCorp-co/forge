@@ -22,6 +22,7 @@ export interface AttentionItem {
   jobType?: string;
   failure?: string | null;
   stuckKind?: StuckIssueKind;
+  failedJob?: { jobType: string; failure: string | null };
   status?: string;
   projectSlug?: string;
   projectName?: string;

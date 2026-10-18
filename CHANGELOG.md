@@ -3360,6 +3360,8 @@
 - **A failed job names its failure in Forge's words,** such as "Issue work failed: Session lost", never the agent's own diagnostic. (ISS-1229)
 - **An archived project's items leave Attention, its badge, Needs you and the bell,** whose links opened on "not found". (ISS-1229)
 - **A stuck row in the bell is tagged in its group's own words,** such as Waiting or Never closed, rather than Stranded. (ISS-1229)
+- **An issue is one row, counted once:** an answer you owe heads it, then your failed job, then a stuck reason, with the next one named under it, such as "A job on it failed: Session lost." (ISS-1229)
+- **The idle-issue notice says in two sentences** what is true and what the issue waits for. (ISS-1229)
 - **Shape & release no longer says a project ships nothing because its base branch is empty.** Under a shape that releases, the Live block says no deploy connection serves it and asks for the base branch. (ISS-1171)
 - **A refused test credential is named by its label, every time.** The form and a refused save name each row the same way, and by its number only where it has no label. (ISS-1171)
 - **Shape & release refuses a test credential with no password, or one listed twice, by name.** The row is marked where it is wrong and nothing is saved; an agent writing the same is refused too. (ISS-1171)

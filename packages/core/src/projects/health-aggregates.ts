@@ -5,6 +5,7 @@ import { issues, pipelineRuns, projectMembers, projects, runners, users } from '
 import { HUMAN_PARK_STATUSES } from '../issues/status-sets.js';
 import { readWorkStateRows } from '../issues/work-state-read.js';
 import { createLimiter } from '../lib/bounded-concurrency.js';
+import { heldAsFailedJobWhere } from '../me/attention-failed-jobs.js';
 import { readLiveSessionCounts } from '../pipeline/live-session.js';
 import { firstShipped } from '../pipeline/shipped-at.js';
 import { stuckKindSql, stuckRankSql } from './stuck-issue-kinds.js';
@@ -189,8 +190,11 @@ export type StuckIssueRow = {
 
 export const STUCK_ISSUES_LISTED = 5;
 
-/** Issues with a stuck-issue notice standing, longest-standing first, each once under its most specific reason. */
-const readStuckIssueRows = (projectIds: string[]) =>
+/**
+ * Issues with a stuck-issue notice standing, longest-standing first, each once under its most specific
+ * reason; an issue the reader's failed jobs list is counted there, never here too (ISS-1229 r15).
+ */
+const readStuckIssueRows = (projectIds: string[], readerId: string) =>
   db.execute(sql`
     WITH stuck AS (
       SELECT n.project_id, i.id, i.iss_seq, p.issue_prefix, i.title, n.created_at,
@@ -203,6 +207,7 @@ const readStuckIssueRows = (projectIds: string[]) =>
          AND n.state = 'firing'
          AND n.resolved_at IS NULL
          AND n.project_id IN (${idList(projectIds)})
+         AND NOT EXISTS (SELECT 1 FROM issues WHERE issues.id = i.id AND ${heldAsFailedJobWhere(readerId)})
     ), first_notice AS (
       SELECT DISTINCT ON (project_id, id) project_id, id, iss_seq, issue_prefix, title, created_at, kind
         FROM stuck
@@ -231,7 +236,7 @@ const readStuckIssueRows = (projectIds: string[]) =>
  * awaited query with the next row-set from a queue: the limiter starts parked
  * tasks in the order they asked, so the nth read still reads the nth row-set.
  */
-export async function readHealthAggregates(projectIds: string[]) {
+export async function readHealthAggregates(projectIds: string[], readerId: string) {
   const run = healthReadLimiter.run.bind(healthReadLimiter);
   const [
     statusRows,
@@ -258,7 +263,7 @@ export async function readHealthAggregates(projectIds: string[]) {
     run(() => readIssueActivityRows(projectIds)),
     run(() => readRunActivityRows(projectIds)),
     run(() => readLiveSessionCounts(projectIds)),
-    run(() => readStuckIssueRows(projectIds)),
+    run(() => readStuckIssueRows(projectIds, readerId)),
   ]);
 
   return {

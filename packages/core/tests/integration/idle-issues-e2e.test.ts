@@ -189,7 +189,7 @@ describe('The inverses: a detector that flags everything is the same defect', ()
       for (const note of emitted) {
         expect(note.title).toContain('no live work could be confirmed');
         expect(note.title).not.toContain('nothing is working it');
-        expect(note.body).toContain('establishes nothing either way');
+        expect(note.body).toMatch(/^No live work could be confirmed for /);
       }
     },
   );
@@ -201,7 +201,7 @@ describe('The inverses: a detector that flags everything is the same defect', ()
 
     expect(emitted).toHaveLength(1);
     expect(emitted[0]?.title).toContain('nothing is working it');
-    expect(emitted[0]?.body).toContain('no live job, run or lease behind it');
+    expect(emitted[0]?.body).toMatch(/^Nothing has worked it for /);
   });
 
   it('leaves a row alone whose unexpired lease is held on it and nothing else', async () => {
@@ -561,8 +561,12 @@ describe('An automatic release hold decides what an awaiting_release strand says
     expect(String(strand?.reason)).toContain('(RELEASE_CRITERIA_UNEARNED): criterion 3: unjudged');
     const plain = await strandOf(unheld);
     expect([plain?.owes, plain?.waitingFor]).toEqual(['human', 'a person to release it']);
-    const note = emitted.find((n) => n.body.includes('A person clears this'));
-    expect(note?.body).toContain('A person clears this. It is waiting for');
+    // Two sentences: the hold by its first, then what it waits for; its remedy is the hold's comment.
+    const note = emitted.find((n) => n.body.includes('RELEASE_CRITERIA_UNEARNED'));
+    expect(note?.body).toMatch(
+      /criterion 3: unjudged\. It waits for a verdict on each criterion named/,
+    );
+    expect(note?.body).not.toContain('A person clears this');
     expect(note?.body).not.toContain('..');
   });
 });

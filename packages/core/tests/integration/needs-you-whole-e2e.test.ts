@@ -102,6 +102,7 @@ async function failedJob(
     error?: string | null;
     failureReason?: string | null;
     project?: string;
+    minutesAgo?: number;
   } = {},
 ): Promise<void> {
   const runId = randomUUID();
@@ -114,7 +115,8 @@ async function failedJob(
     INSERT INTO jobs (id, project_id, pipeline_run_id, issue_id, type, status, created_by,
                       created_at, error, failure_reason)
     VALUES (${randomUUID()}, ${project}, ${runId}, ${over.issueId ?? null}, 'drive', 'failed',
-            ${viewer}, now(), ${over.error ?? null}, ${over.failureReason ?? null})
+            ${viewer}, now() - make_interval(mins => ${over.minutesAgo ?? 0}), ${over.error ?? null},
+            ${over.failureReason ?? null})
   `);
 }
 
@@ -126,8 +128,14 @@ async function get<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-type Item = { issueRef?: string; stuckKind?: string; failure?: string | null };
+type Item = {
+  issueRef?: string;
+  stuckKind?: string;
+  failure?: string | null;
+  failedJob?: { jobType: string; failure: string | null };
+};
 type Attention = {
+  needsReview: Item[];
   awaitingInput: Item[];
   failedJobs: Item[];
   projectTotals: Record<string, Record<string, number>>;
@@ -137,6 +145,8 @@ type Attention = {
 type Health = Array<{
   projectSlug: string;
   stuckIssues: number;
+  stuckIssuesByKind: Record<string, number>;
+  stuckIssueRefs: Array<{ issueId: string }>;
   blockers: Array<{ issueId: string; stuckKind?: string }>;
 }>;
 
@@ -255,5 +265,81 @@ describe('an archived project, in the attention read', () => {
     expect(attention.bucketTotals).toMatchObject({ awaitingInput: 1, failedJobs: 0 });
     expect(attention.total).toBe(1);
     expect(Object.keys(attention.projectTotals)).toEqual([slug]);
+  });
+});
+
+// ISS-1229 r15, the master's ruling on the round's hand-back: ISS-15 was the failed job on Needs you
+// and also one of the "8 issues in a live status with no live work" and a NO LIVE WORK bell row. One
+// issue is one row, counted once: an answer the reader owes > a failed job > a stuck reason.
+describe('one issue, one row, counted once', () => {
+  const stuckIssuesListed = async () =>
+    (await get<{ total: number }>(`/api/projects/${projectId}/issues/search?stuck=true`)).total;
+
+  it('counts a failed and stuck issue once, as the failed job, by its latest failure', async () => {
+    const failed = await issueAt('open');
+    await stuck(failed, ':idle');
+    await failedJob({ issueId: failed, error: 'heartbeat_timeout', minutesAgo: 30 });
+    await failedJob({ issueId: failed, error: 'session_lost' });
+    // Beside it, a stuck issue no failure names, which stays stuck.
+    await stuck(await issueAt('open'), ':idle');
+
+    const attention = await get<Attention>('/api/me/attention');
+    const health = await get<Health>('/api/projects/health');
+    const row = health.find((h) => h.projectSlug === slug);
+
+    expect(attention.failedJobs.map((j) => [j.failure, j.stuckKind])).toEqual([
+      ['session_lost', 'idle'],
+    ]);
+    expect(attention.bucketTotals.failedJobs).toBe(1);
+    expect(attention.projectTotals[slug]).toMatchObject({ failedJobs: 1, stuckOnly: 1 });
+    expect(attention.total).toBe(1);
+    expect(row?.stuckIssues).toBe(1);
+    expect(row?.stuckIssuesByKind).toEqual({ idle: 1 });
+    expect(row?.stuckIssueRefs).toHaveLength(1);
+    expect(await stuckIssuesListed()).toBe(1);
+  });
+
+  it('lists an issue owed an answer and holding a failed job once, as the answer, naming the failure', async () => {
+    const asked = await issueAt('needs_info', { question: true });
+    await failedJob({ issueId: asked, error: 'session_lost' });
+    const review = await issueAt('developed');
+    await failedJob({ issueId: review, failureReason: 'heartbeat_timeout' });
+
+    const attention = await get<Attention>('/api/me/attention');
+
+    expect(attention.failedJobs).toEqual([]);
+    expect(attention.bucketTotals).toMatchObject({
+      awaitingInput: 1,
+      needsReview: 1,
+      failedJobs: 0,
+    });
+    expect(attention.projectTotals[slug]).toMatchObject({
+      awaitingInput: 1,
+      needsReview: 1,
+      failedJobs: 0,
+    });
+    expect(attention.total).toBe(2);
+    expect(attention.awaitingInput[0]?.failedJob).toEqual({
+      jobType: 'drive',
+      failure: 'session_lost',
+    });
+    expect(attention.needsReview[0]?.failedJob).toEqual({
+      jobType: 'drive',
+      failure: 'heartbeat_timeout',
+    });
+  });
+
+  it('keeps counting as stuck an issue whose failed job is listed under the answer it is owed', async () => {
+    const park = await issueAt('waiting', { assignee: null });
+    await stuck(park, ':stranded');
+    await failedJob({ issueId: park, error: 'session_lost' });
+
+    const attention = await get<Attention>('/api/me/attention');
+    const row = (await get<Health>('/api/projects/health')).find((h) => h.projectSlug === slug);
+
+    expect(attention.failedJobs).toEqual([]);
+    expect(attention.awaitingInput[0]?.failedJob?.failure).toBe('session_lost');
+    expect(row?.stuckIssues).toBe(1);
+    expect(await stuckIssuesListed()).toBe(1);
   });
 });

@@ -203,6 +203,10 @@ export interface DashboardAttentionItem {
   status?: string;
   /** The reason a stuck-issue notice tells this item's issue by: the row says it in those words. */
   stuckKind?: StuckIssueKind;
+  /** An answer or review the reader owes, which heads its row above a failed job or a stuck reason. */
+  owed?: true;
+  /** The reader's failed job on an issue they owe an answer, listed here rather than as its own row. */
+  failedJob?: { jobType: string; failure: string | null };
 }
 
 function mapAttention(
@@ -225,8 +229,11 @@ function mapAttention(
       since: it.since,
       status: it.status,
       ...(it.stuckKind ? { stuckKind: it.stuckKind } : {}),
+      ...(it.failedJob ? { failedJob: it.failedJob } : {}),
     }));
 }
+
+const owed = (items: DashboardAttentionItem[]) => items.map((it) => ({ ...it, owed: true as const }));
 
 function ageOf(since: string | undefined): { since?: string } {
   return since ? { since } : {};
@@ -262,11 +269,11 @@ export function projectAttention(
     const silent = awaiting.filter((it) => it.questionId == null);
     out.push(
       ...mapAttention(view.failedJobs, slug, "retry", "Approve & retry"),
-      ...mapAttention(view.needsReview, slug, "diff", "Open diff"),
-      ...mapAttention(asked, slug, "input", "Provide info"),
+      ...owed(mapAttention(view.needsReview, slug, "diff", "Open diff")),
+      ...owed(mapAttention(asked, slug, "input", "Provide info")),
     );
     parked.push(
-      ...mapAttention(silent, slug, "parked", "Open issue").map((it) => ({
+      ...owed(mapAttention(silent, slug, "parked", "Open issue")).map((it) => ({
         ...it,
         ...(it.status ? { detail: parkedTitle(it.status) } : {}),
       })),
@@ -324,6 +331,11 @@ export interface StuckIssues {
   refs: readonly { issueId: string; documentId: string; title: string; kind: StuckIssueKind }[];
 }
 
+/** An item whose issue the stuck count holds: a failed job's is counted as that, never as stuck too. */
+export function countedStuck(it: DashboardAttentionItem): boolean {
+  return it.stuckKind !== undefined && it.actionKind !== "retry";
+}
+
 /** The stuck issues Needs you does not already list as an item, each a row of its own. */
 export function stuckRowsOf(
   items: readonly DashboardAttentionItem[],
@@ -340,7 +352,7 @@ export function stuckRowsOf(
 export function stuckLeftOut(items: readonly DashboardAttentionItem[], stuck: StuckIssues | undefined): number {
   if (!stuck) return 0;
   const shown = new Set([
-    ...items.flatMap((it) => (it.stuckKind && it.issueRef ? [it.issueRef] : [])),
+    ...items.flatMap((it) => (countedStuck(it) && it.issueRef ? [it.issueRef] : [])),
     ...stuckRowsOf(items, stuck).map((r) => r.issueId),
   ]);
   return Math.max(stuck.total - shown.size, 0);

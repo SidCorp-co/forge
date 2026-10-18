@@ -44,6 +44,18 @@ function makeChain() {
   return chain;
 }
 
+/** The captured SQL as text; a column it embeds refers back to its table, so a repeat is skipped. */
+function sqlText(captured: unknown): string {
+  const seen = new WeakSet<object>();
+  return JSON.stringify(captured, (_key, value: unknown) => {
+    if (value && typeof value === 'object') {
+      if (seen.has(value)) return undefined;
+      seen.add(value);
+    }
+    return value;
+  });
+}
+
 vi.mock('../db/client.js', () => ({
   db: {
     select: () => makeChain(),
@@ -307,7 +319,7 @@ describe('GET /api/projects/health', () => {
 
     expect(res.status).toBe(200);
     // The captured sql template serializes its literal chunks.
-    const serialized = JSON.stringify(executedSql);
+    const serialized = sqlText(executedSql);
     expect(serialized).toContain('pipeline_run_step_durations');
     expect(serialized).toContain('IN (');
     expect(serialized).not.toContain('ANY(');
@@ -425,7 +437,7 @@ describe('GET /api/projects/health, the stuck issues (ISS-1229 r12)', () => {
       stuckIssuesByKind: {},
       stuckIssueRefs: [],
     });
-    const stuckRead = JSON.stringify(executedSql).replace(/\\n\s*/g, ' ');
+    const stuckRead = sqlText(executedSql).replace(/\\n\s*/g, ' ');
     expect(stuckRead).toContain("n.type = 'issue_stranded'");
     expect(stuckRead).toContain("n.state = 'firing'");
     expect(stuckRead).toContain('n.resolved_at IS NULL');

@@ -15,6 +15,7 @@ import {
   projects,
 } from '../db/schema.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
+import { heldAsFailedJobWhere } from '../me/attention-failed-jobs.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
 import { readPendingInvitations } from '../projects/pending-invitations.js';
@@ -51,7 +52,7 @@ const listQuerySchema = z.object({
   openOnly: flag,
   /** Only deliveries of this type — applied before the page is cut, so a page is all matches. */
   type: z.enum(notificationTypes).optional(),
-  /** Only deliveries that are still unread, as {@link unreadDelivery} reads it. */
+  /** Only deliveries that are still unread, as {@link unreadDeliveryOf} reads it. */
   unread: flag,
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
@@ -96,6 +97,16 @@ const stillTrueOf = (n: { kind: SQLWrapper; state: SQLWrapper; projectId: SQLWra
 const stillTrue = stillTrueOf(notifications);
 
 /**
+ * One issue, one row (ISS-1229 r15, the master's ruling): a stuck-issue notice on an issue the reader's
+ * failed jobs list is told there, as that failed job, so the bell neither counts nor lists it.
+ */
+const toldTo = (userId: string, n: { type: SQLWrapper; issueId: SQLWrapper }) => sql`NOT (
+  ${n.type} = 'issue_stranded' AND EXISTS (
+    SELECT 1 FROM issues WHERE issues.id = ${n.issueId} AND ${heldAsFailedJobWhere(userId)}
+  )
+)`;
+
+/**
  * ISS-1168 — whether a delivery still asks to be read, as state and not as text.
  *
  * `read_at` says whether a PERSON looked, and nothing but a person writes it. Whether there is still
@@ -104,14 +115,21 @@ const stillTrue = stillTrueOf(notifications);
  * end, so it asks until it is read. Deriving it keeps both facts true: resolving a condition writes
  * no read stamp for somebody who never looked, and the owner's inbox still stops demanding it.
  */
-const carried = { kind: sql`cn.kind`, state: sql`cn.state`, projectId: sql`cn.project_id` };
-const unreadDelivery = sql`(
+const carried = {
+  kind: sql`cn.kind`,
+  state: sql`cn.state`,
+  projectId: sql`cn.project_id`,
+  type: sql`cn.type`,
+  issueId: sql`cn.issue_id`,
+};
+const unreadDeliveryOf = (userId: string) => sql`(
   ${notificationDeliveries.readAt} IS NULL
   AND NOT ${notificationDeliveries.resolvedNotice}
   AND EXISTS (
     SELECT 1 FROM notification_delivery_members cb
     JOIN notifications cn ON cn.id = cb.notification_id
     WHERE cb.delivery_id = ${notificationDeliveries.id}
+      AND ${toldTo(userId, carried)}
       AND ((cn.kind = 'signal' AND ${onLiveProject(carried.projectId)})
         OR (cn.resolved_at IS NULL AND ${stillTrueOf(carried)}))
   )
@@ -159,6 +177,7 @@ notificationRoutes.get(
                 AND cn.type <> 'invitation_received'
                 AND cn.resolved_at IS NULL
                 AND ${stillTrueOf(carried)}
+                AND ${toldTo(userId, carried)}
                 ${ofProject}
             )`,
           ),
@@ -202,7 +221,12 @@ notificationRoutes.get(
 
     // The filters choose WHICH deliveries are listed; they never thin out what a listed delivery
     // carries, or a group seen through a project filter would read as the one record that survived.
-    const ofRecords = [sql`cn.kind IS NOT NULL`, onLiveProject(carried.projectId)];
+    const ofRecords = [
+      sql`cn.kind IS NOT NULL`,
+      onLiveProject(carried.projectId),
+      toldTo(userId, carried),
+    ];
+    const unreadDelivery = unreadDeliveryOf(userId);
     if (projectId) ofRecords.push(sql`cn.project_id = ${projectId}`);
     if (type) ofRecords.push(sql`cn.type = ${type}`);
     if (openOnly) ofRecords.push(sql`(cn.resolved_at IS NULL AND ${stillTrueOf(carried)})`);
@@ -284,6 +308,7 @@ notificationRoutes.get(
         and(
           eq(notifications.id, notificationDeliveryMembers.notificationId),
           onLiveProject(notifications.projectId),
+          toldTo(userId, notifications),
         ),
       )
       .where(where)
@@ -407,7 +432,11 @@ notificationRoutes.get(
       .innerJoin(notifications, eq(notifications.id, notificationDeliveryMembers.notificationId))
       .leftJoin(projects, eq(projects.id, notifications.projectId))
       .where(
-        and(eq(notificationDeliveryMembers.deliveryId, id), onLiveProject(notifications.projectId)),
+        and(
+          eq(notificationDeliveryMembers.deliveryId, id),
+          onLiveProject(notifications.projectId),
+          toldTo(userId, notifications),
+        ),
       )
       .orderBy(
         desc(sql`(${notifications.resolvedAt} IS NULL AND ${stillTrue})`),

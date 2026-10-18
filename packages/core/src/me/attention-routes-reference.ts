@@ -28,6 +28,12 @@ const attentionItem = z.object({
     .enum(STUCK_ISSUE_KINDS)
     .optional()
     .describe("The reason a stuck-issue notice tells the item's issue by, where one stands"),
+  failedJob: z
+    .object({ jobType: z.string(), failure: z.string().nullable() })
+    .optional()
+    .describe(
+      "Needs review and awaiting input only: the reader's latest failed job on the issue, which is listed here rather than as a failed job",
+    ),
   status: z.string().optional(),
   projectSlug: z.string().optional(),
   projectName: z.string().optional(),

@@ -16,12 +16,16 @@ import {
   type AttentionMentionRow,
   type AttentionReconcileRow,
   selectAwaitingInput,
-  selectFailedJobs,
   selectMentions,
   selectNeedsReview,
   selectPendingSkillUpdates,
   selectUnseenDrafts,
 } from './attention-buckets.js';
+import {
+  type StandingFailure,
+  selectFailedJobs,
+  selectStandingFailures,
+} from './attention-failed-jobs.js';
 import { attentionSchema, readAttention } from './attention-routes-reference.js';
 import {
   type AttentionProjectTotals,
@@ -51,6 +55,8 @@ interface AttentionItem {
   failure?: string | null;
   /** The reason a stuck-issue notice tells the item's issue by, where one stands. */
   stuckKind?: StuckIssueKind;
+  /** Owed answer or review only: the reader's failed job on the issue, which this row names under it. */
+  failedJob?: { jobType: string; failure: string | null };
   status?: string;
   projectSlug?: string;
   projectName?: string;
@@ -99,6 +105,16 @@ function withStuckKind(
 ): AttentionItem {
   const stuckKind = issueId ? kinds.get(issueId) : undefined;
   return stuckKind ? { ...item, stuckKind } : item;
+}
+
+/** An item owed an answer, naming the reader's failed job on its issue where one stands (ISS-1229 r15). */
+function withFailedJob(
+  item: AttentionItem,
+  issueId: string,
+  failures: ReadonlyMap<string, StandingFailure>,
+): AttentionItem {
+  const job = failures.get(issueId);
+  return job ? { ...item, failedJob: { jobType: job.type, failure: failureCode(job) } } : item;
 }
 
 /** One lower-case token: the shape a stored cause code has, and a sentence never does. */
@@ -227,15 +243,20 @@ meAttentionRoutes.get(
       selectAttentionTotals(userId, scope),
     ]);
 
-    const kinds = await readStuckKinds([
-      ...needsReviewRows.map((r) => r.id),
-      ...awaitingInputRows.map((r) => r.id),
-      ...failedJobRows.flatMap((r) => (r.issueDocId ? [r.issueDocId] : [])),
+    const owedIds = [...needsReviewRows.map((r) => r.id), ...awaitingInputRows.map((r) => r.id)];
+    const [kinds, failures] = await Promise.all([
+      readStuckKinds([
+        ...owedIds,
+        ...failedJobRows.flatMap((r) => (r.issueDocId ? [r.issueDocId] : [])),
+      ]),
+      selectStandingFailures(userId, owedIds),
     ]);
     const needsReview = needsReviewRows.map((r) =>
-      withStuckKind(issueItem('needs_review', r), r.id, kinds),
+      withFailedJob(withStuckKind(issueItem('needs_review', r), r.id, kinds), r.id, failures),
     );
-    const awaitingInput = awaitingInputRows.map((r) => withStuckKind(awaitingItem(r), r.id, kinds));
+    const awaitingInput = awaitingInputRows.map((r) =>
+      withFailedJob(withStuckKind(awaitingItem(r), r.id, kinds), r.id, failures),
+    );
     const mentions = mentionRows.map(mentionItem);
     const failedJobs = failedJobRows.map((r) =>
       withStuckKind(failedJobItem(r), r.issueDocId, kinds),

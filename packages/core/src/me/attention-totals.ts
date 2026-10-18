@@ -20,9 +20,6 @@ import {
   type AttentionBucket,
   type AttentionScope,
   awaitingInputWhere,
-  failedJobIssueWhere,
-  failedJobOwnWhere,
-  failedJobsWhere,
   inScope,
   isNot,
   memberOf,
@@ -33,6 +30,11 @@ import {
   pendingSkillUpdateWhere,
   unseenDraftCondition,
 } from './attention-buckets.js';
+import {
+  failedJobIssueWhere,
+  failedJobOwnWhere,
+  failedJobsWhere,
+} from './attention-failed-jobs.js';
 
 const count = sql<number>`count(*)::int`;
 

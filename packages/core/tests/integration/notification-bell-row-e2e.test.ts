@@ -7,7 +7,7 @@
 
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { createTestProject } from '../helpers/factories.js';
+import { createTestProject, createTestUser } from '../helpers/factories.js';
 import { type InboxRow, registerInboxFixture } from '../helpers/inbox-fixture.js';
 
 const fx = registerInboxFixture();
@@ -219,5 +219,46 @@ describe('a stuck row by its kind, and nothing of an archived project (ISS-1229 
     expect((await membersOf(row?.id ?? '')).map((m) => m.title)).toEqual([
       expect.stringContaining('Invoicing'),
     ]);
+  });
+});
+
+// ISS-1229 r15, the master's ruling: an issue the reader's failed jobs list was also a NO LIVE WORK bell
+// row. One issue is one row: its failed job tells it, so the bell neither counts nor lists its notice,
+// and tells it again once the failed job is retried.
+describe("a stuck issue the reader's failed job tells, in the bell", () => {
+  const openCount = async () => {
+    const res = await fx.app.request('/api/notifications/open-count', { headers: auth() });
+    expect(res.status).toBe(200);
+    return ((await res.json()) as { count: number }).count;
+  };
+
+  it('is neither counted nor listed while the failed job stands', async () => {
+    const issue = await seedShipped(91, 'Export the March invoices');
+    await announce(() => fx.mods.detectOwedCloses());
+    expect(await openCount()).toBe(1);
+
+    // Another person's issue, so the reader owes it no answer; the failed job is the reader's.
+    const other = await createTestUser(fx.db);
+    await fx.db.execute(sql`UPDATE issues SET assignee_id = ${other.id} WHERE id = ${issue}`);
+    const run = crypto.randomUUID();
+    const job = crypto.randomUUID();
+    await fx.db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, kind, status, started_at)
+      VALUES (${run}, ${fx.project.id}, 'system', 'failed', now())
+    `);
+    await fx.db.execute(sql`
+      INSERT INTO jobs (id, project_id, pipeline_run_id, issue_id, type, status, created_by, error)
+      VALUES (${job}, ${fx.project.id}, ${run}, ${issue}, 'drive', 'failed', ${fx.owner}, 'session_lost')
+    `);
+
+    expect(await openCount()).toBe(0);
+    expect(sweepRows(await inbox())).toHaveLength(0);
+
+    await fx.db.execute(sql`
+      INSERT INTO jobs (id, project_id, pipeline_run_id, issue_id, type, status, created_by, retry_of)
+      VALUES (${crypto.randomUUID()}, ${fx.project.id}, ${run}, ${issue}, 'drive', 'queued', ${fx.owner}, ${job})
+    `);
+    expect(await openCount()).toBe(1);
+    expect(sweepRows(await inbox())).toHaveLength(1);
   });
 });

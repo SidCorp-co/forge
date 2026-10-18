@@ -132,7 +132,7 @@ projectHealthRoutes.get('/health', readProjectHealth, async (c) => {
   if (visibleProjects.length === 0) return c.json(answer(projectHealthListSchema, []));
 
   const projectIds = visibleProjects.map((p) => p.id);
-  const agg = await readHealthAggregates(projectIds);
+  const agg = await readHealthAggregates(projectIds, userId);
   const claimHeldByProject = await countClaimHeldIssuesByProject(projectIds);
 
   const rowsByProject = new Map<string, WorkStateRow[]>();

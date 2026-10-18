@@ -120,8 +120,10 @@ describe('Needs you lists a question only where it moves the work state (real Po
     }
 
     it('counts every issue and job a bucket holds, where its list is cut', async () => {
-      const { AWAITING_INPUT_CAP, selectAwaitingInput, selectFailedJobs, selectNeedsReview } =
-        await import('../../src/me/attention-buckets.js');
+      const { AWAITING_INPUT_CAP, selectAwaitingInput, selectNeedsReview } = await import(
+        '../../src/me/attention-buckets.js'
+      );
+      const { selectFailedJobs } = await import('../../src/me/attention-failed-jobs.js');
       const { selectAttentionTotals } = await import('../../src/me/attention-totals.js');
       for (let i = 0; i < AWAITING_INPUT_CAP + 5; i++) await issueAt('needs_info', false);
       for (let i = 0; i < 7; i++) await issueAt('developed', false);
@@ -184,7 +186,7 @@ describe('Needs you lists a question only where it moves the work state (real Po
         parkedAsked: 0,
         stuckOnly: 0,
       });
-      const { blockerRowsAll } = await readHealthAggregates([projectId]);
+      const { blockerRowsAll } = await readHealthAggregates([projectId], owner);
       expect(blockerRowsAll).toHaveLength(3);
       expect((totals?.awaitingInput ?? 0) + (totals?.parkedOnly ?? 0)).toBe(4);
     });
