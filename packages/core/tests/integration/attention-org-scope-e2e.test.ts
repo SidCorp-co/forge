@@ -142,8 +142,10 @@ describe('the Attention read of one organisation', () => {
     expect((body.projectTotals as Record<string, { awaitingInput: number }>)[busy.slug]).toEqual({
       needsReview: 0,
       awaitingInput: 32,
+      awaitingAsked: 0,
       failedJobs: 0,
       parkedOnly: 0,
+      stuckOnly: 0,
     });
   });
 

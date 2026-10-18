@@ -133,9 +133,11 @@ describe('Needs you lists a question only where it moves the work state (real Po
       const [slug] = Object.keys(await selectAttentionTotals(owner));
       expect((await selectAttentionTotals(owner))[slug as string]).toEqual({
         awaitingInput: AWAITING_INPUT_CAP + 5,
+        awaitingAsked: 0,
         parkedOnly: 0,
         needsReview: 7,
         failedJobs: 6,
+        stuckOnly: 0,
       });
     });
 
@@ -144,7 +146,16 @@ describe('Needs you lists a question only where it moves the work state (real Po
       await issueAt('closed', true);
       await issueAt('in_progress', true);
       const totals = Object.values(await selectAttentionTotals(owner));
-      expect(totals).toEqual([{ awaitingInput: 1, parkedOnly: 0, needsReview: 0, failedJobs: 0 }]);
+      expect(totals).toEqual([
+        {
+          awaitingInput: 1,
+          awaitingAsked: 1,
+          parkedOnly: 0,
+          needsReview: 0,
+          failedJobs: 0,
+          stuckOnly: 0,
+        },
+      ]);
     });
 
     it("counts the health row's parked issues no bucket lists, so the parts add up once", async () => {
@@ -162,7 +173,14 @@ describe('Needs you lists a question only where it moves the work state (real Po
       const [totals] = Object.values(await selectAttentionTotals(owner));
       // The reader owes the first two; the other two are parked by someone else, held only by the
       // health row's parked list, and are the project's parked-only part (ISS-1229 r14).
-      expect(totals).toEqual({ awaitingInput: 2, parkedOnly: 2, needsReview: 0, failedJobs: 0 });
+      expect(totals).toEqual({
+        awaitingInput: 2,
+        awaitingAsked: 1,
+        parkedOnly: 2,
+        needsReview: 0,
+        failedJobs: 0,
+        stuckOnly: 0,
+      });
       const { blockerRowsAll } = await readHealthAggregates([projectId]);
       expect(blockerRowsAll).toHaveLength(3);
       expect((totals?.awaitingInput ?? 0) + (totals?.parkedOnly ?? 0)).toBe(4);

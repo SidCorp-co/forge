@@ -32,6 +32,20 @@ export function stuckCountSentence(kind: StuckKind, n: number): string {
   return n === 1 ? `1 issue ${SAID[kind].one}.` : `${n} issues ${SAID[kind].many}.`;
 }
 
+// A bell row's tag for a kind: a phrase its group's title says, never a word none of them uses.
+const TAG: Readonly<Record<StuckKind, string | null>> = {
+  waiting: 'WAITING',
+  idle: 'NO LIVE WORK',
+  owed_close: 'NEVER CLOSED',
+  orphan: 'NO RUN',
+  other: null,
+};
+
+/** The bell row's tag for a kind, as in "NEVER CLOSED"; null where the kind has no words of its own. */
+export function stuckTag(kind: StuckKind): string | null {
+  return TAG[kind];
+}
+
 /** What a row says of its one issue, as in "Shipped its code and was never closed". */
 export function stuckRowWords(kind: StuckKind): string {
   const one = SAID[kind].one;

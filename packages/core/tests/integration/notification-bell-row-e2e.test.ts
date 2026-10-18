@@ -7,6 +7,7 @@
 
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
+import { createTestProject } from '../helpers/factories.js';
 import { type InboxRow, registerInboxFixture } from '../helpers/inbox-fixture.js';
 
 const fx = registerInboxFixture();
@@ -160,5 +161,57 @@ describe('one bell row per notice, one clock, one count (ISS-1229 r13)', () => {
     const [row] = (await inbox()).items as [InboxRow];
     expect(row.body).toBe('stood 23 minutes');
     expect(emitted).toEqual(['stood 23 minutes']);
+  });
+});
+
+// ISS-1229 r15, from judge-38's reader notes and the master's brief: a stuck row was tagged STRANDED,
+// a word none of the group titles says, and a project's records still counted once it was archived.
+describe('a stuck row by its kind, and nothing of an archived project (ISS-1229 r15)', () => {
+  const openCount = async () => {
+    const res = await fx.app.request('/api/notifications/open-count', { headers: auth() });
+    expect(res.status).toBe(200);
+    return ((await res.json()) as { count: number }).count;
+  };
+
+  it('names the kind a stuck row tells, which its tag is drawn from', async () => {
+    await seedShipped(71, 'Repair invoice export');
+    await announce(() => fx.mods.detectOwedCloses());
+    const [row] = sweepRows(await inbox()) as Array<InboxRow & { stuckKind: string | null }>;
+    expect(row?.stuckKind).toBe('owed_close');
+  });
+
+  it('neither counts nor lists a row whose records are all about an archived project', async () => {
+    await seedShipped(72, 'Repair invoice export');
+    await announce(() => fx.mods.detectOwedCloses());
+    expect(await openCount()).toBe(1);
+    expect(sweepRows(await inbox())).toHaveLength(1);
+
+    await fx.db.execute(sql`UPDATE projects SET archived_at = now() WHERE id = ${fx.project.id}`);
+
+    expect(await openCount()).toBe(0);
+    expect(sweepRows(await inbox())).toHaveLength(0);
+    expect(sweepRows(await inbox('?unread=true'))).toHaveLength(0);
+  });
+
+  it("counts only a grouped row's records about live projects, and lists only those as its members", async () => {
+    const other = await createTestProject(fx.db, fx.owner, { name: 'Ledger' });
+    const longAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    await fx.db.execute(sql`
+      INSERT INTO issues (id, project_id, title, status, created_by_id, merged_at, iss_seq, updated_at)
+      VALUES (${crypto.randomUUID()}, ${other.id}, 'Close the ledger', 'waiting', ${fx.owner},
+              ${longAgo}, 1, ${longAgo})
+    `);
+    await seedShipped(73, 'Repair invoice export');
+    await announce(() => fx.mods.detectOwedCloses());
+    const [before] = sweepRows(await inbox());
+    expect(before?.members).toBe(2);
+
+    await fx.db.execute(sql`UPDATE projects SET archived_at = now() WHERE id = ${other.id}`);
+
+    const [row] = sweepRows(await inbox());
+    expect({ members: row?.members, open: row?.openMembers }).toEqual({ members: 1, open: 1 });
+    expect((await membersOf(row?.id ?? '')).map((m) => m.title)).toEqual([
+      expect.stringContaining('Invoicing'),
+    ]);
   });
 });

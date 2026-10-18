@@ -73,9 +73,15 @@ export interface AttentionScope {
   orgId?: string | undefined;
 }
 
-/** Applied before each cap, so a cap filled by one organisation cannot empty another (ISS-1229 r13). */
-export function inScope(scope: AttentionScope): SQL | undefined {
-  return scope.orgId ? eq(projects.orgId, scope.orgId) : undefined;
+/**
+ * Applied before each cap, so a cap filled by one organisation cannot empty another (ISS-1229 r13).
+ * An archived project's page answers not found, so nothing of it is counted or listed (ISS-1229 r15).
+ */
+export function inScope(scope: AttentionScope): SQL {
+  return and(
+    isNull(projects.archivedAt),
+    scope.orgId ? eq(projects.orgId, scope.orgId) : undefined,
+  ) as SQL;
 }
 
 const retryJobs = alias(jobs, 'retry_jobs');

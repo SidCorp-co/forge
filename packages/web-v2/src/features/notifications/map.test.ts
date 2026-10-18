@@ -28,6 +28,7 @@ const row = (over: Partial<NotificationRow> = {}): NotificationRow => ({
   agentSessionId: null,
   createdAt: "2026-10-01T10:00:00.000Z",
   toldAt: "2026-10-01T10:00:00.000Z",
+  stuckKind: "waiting",
   ...over,
 });
 
@@ -78,13 +79,31 @@ describe("a stuck-issue row whose condition has since resolved (ISS-1229 r12)", 
 
   it("leaves a stuck-issue row that still holds as it stands", () => {
     const item = toNotificationItem(row({ body: "still stuck" }));
-    expect(item.label).toBe("STRANDED");
+    expect(item.label).toBe("WAITING");
     expect(item.sub).toBe("still stuck");
   });
 
   it("reads a group whose every record has cleared as resolved too", () => {
     expect(toNotificationItem(row({ members: 3, openMembers: 0, body: null })).label).toBe("RESOLVED");
-    expect(toNotificationItem(row({ members: 3, openMembers: 1, body: null })).label).toBe("STRANDED");
+    expect(toNotificationItem(row({ members: 3, openMembers: 1, body: null })).label).toBe("WAITING");
+  });
+
+  // ISS-1229 r15: judge-38 read STRANDED on every stuck group, a word none of their titles says.
+  it.each([
+    ["waiting", "WAITING", "Issues that have been waiting for you for over six hours"],
+    ["idle", "NO LIVE WORK", "Issues that are in a live status with no live work behind them"],
+    ["owed_close", "NEVER CLOSED", "Issues that shipped their code and were never closed"],
+    ["orphan", "NO RUN", "Issues that assert work in progress with no run behind them"],
+  ] as const)("tags a %s group with words its own title says", (stuckKind, tag, title) => {
+    const item = toNotificationItem(row({ stuckKind, title, members: 3, openMembers: 3 }));
+    expect(item.label).toBe(tag);
+    expect(title.toUpperCase()).toContain(tag);
+    expect(item.label).not.toBe("STRANDED");
+  });
+
+  it("gives a stuck row whose kind has no words of its own no tag at all", () => {
+    expect(toNotificationItem(row({ stuckKind: "other" })).label).toBeUndefined();
+    expect(toNotificationItem(row({ stuckKind: null })).label).toBeUndefined();
   });
 
   it("never reads a done task as a resolved condition", () => {

@@ -1,3 +1,4 @@
+import type { StuckIssueKind } from '@forge/contracts/notifications';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -5,6 +6,7 @@ import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { readStuckKinds } from '../projects/stuck-kinds-read.js';
 import {
   ATTENTION_BUCKETS,
   type AttentionAwaitingRow,
@@ -45,8 +47,10 @@ interface AttentionItem {
   issueTitle?: string;
   /** Failed-job only: the kind of work, as stored, which a screen words. */
   jobType?: string;
-  /** Failed-job only: what the classifier named, else the job's own error; a screen words a known cause. */
+  /** Failed-job only: the stored cause code a screen words; a sentence the job wrote is the title's alone. */
   failure?: string | null;
+  /** The reason a stuck-issue notice tells the item's issue by, where one stands. */
+  stuckKind?: StuckIssueKind;
   status?: string;
   projectSlug?: string;
   projectName?: string;
@@ -88,6 +92,33 @@ function issueItem(kind: AttentionKind, r: AttentionIssueRow): AttentionItem {
   };
 }
 
+function withStuckKind(
+  item: AttentionItem,
+  issueId: string | null,
+  kinds: ReadonlyMap<string, StuckIssueKind>,
+): AttentionItem {
+  const stuckKind = issueId ? kinds.get(issueId) : undefined;
+  return stuckKind ? { ...item, stuckKind } : item;
+}
+
+/** One lower-case token: the shape a stored cause code has, and a sentence never does. */
+const STORED_CODE = /^[a-z][a-z0-9_-]*$/;
+
+/**
+ * The cause a person is told, as its stored code: the classifier's where it wrote one, else the job's
+ * own error where that is a code. A sentence either wrote is a diagnostic, kept in the title an API
+ * caller reads and never handed to a screen to word (ISS-1229 r15).
+ */
+export function failureCode(
+  r: Pick<AttentionFailedJobRow, 'failureReason' | 'error'>,
+): string | null {
+  for (const said of [r.failureReason, r.error]) {
+    const code = said?.trim();
+    if (code && STORED_CODE.test(code)) return code;
+  }
+  return null;
+}
+
 function awaitingItem(r: AttentionAwaitingRow): AttentionItem {
   return {
     ...issueItem('awaiting_input', r),
@@ -119,7 +150,7 @@ function failedJobItem(r: AttentionFailedJobRow): AttentionItem {
     kind: 'failed_job',
     title: r.error ? `${r.type} failed: ${r.error.slice(0, 80)}` : `${r.type} job failed`,
     jobType: r.type,
-    failure: r.failureReason ?? r.error,
+    failure: failureCode(r),
     link: r.issueDocId ? issueLink(r.projectSlug, r.issueDocId) : `/projects/${r.projectSlug}`,
     since: (r.finishedAt ?? r.createdAt).toISOString(),
     status: 'failed',
@@ -196,10 +227,19 @@ meAttentionRoutes.get(
       selectAttentionTotals(userId, scope),
     ]);
 
-    const needsReview = needsReviewRows.map((r) => issueItem('needs_review', r));
-    const awaitingInput = awaitingInputRows.map(awaitingItem);
+    const kinds = await readStuckKinds([
+      ...needsReviewRows.map((r) => r.id),
+      ...awaitingInputRows.map((r) => r.id),
+      ...failedJobRows.flatMap((r) => (r.issueDocId ? [r.issueDocId] : [])),
+    ]);
+    const needsReview = needsReviewRows.map((r) =>
+      withStuckKind(issueItem('needs_review', r), r.id, kinds),
+    );
+    const awaitingInput = awaitingInputRows.map((r) => withStuckKind(awaitingItem(r), r.id, kinds));
     const mentions = mentionRows.map(mentionItem);
-    const failedJobs = failedJobRows.map(failedJobItem);
+    const failedJobs = failedJobRows.map((r) =>
+      withStuckKind(failedJobItem(r), r.issueDocId, kinds),
+    );
     const pendingSkillUpdates = pendingSkillUpdateRows.map(skillUpdateItem);
     const unseenDrafts = unseenDraftRows.map((r) => issueItem('unseen_draft', r));
 

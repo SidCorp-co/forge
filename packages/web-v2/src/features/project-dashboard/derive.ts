@@ -7,6 +7,7 @@ import type { IssueStatus } from "@/features/issues/types";
 import { jobKindsLabel } from "@/features/overview/job-kinds";
 import type { PipelineRunListItem, StepDurationRow } from "@/features/runs/types";
 import type { ProjectHealthRow } from "@/features/projects/types";
+import type { StuckIssueKind } from "@forge/contracts/notifications";
 import {
   type ActiveRunner,
   type ProjectRunner,
@@ -200,6 +201,8 @@ export interface DashboardAttentionItem {
   /** When the wait began: the state entered or the question opened, never a last write. */
   since?: string;
   status?: string;
+  /** The reason a stuck-issue notice tells this item's issue by: the row says it in those words. */
+  stuckKind?: StuckIssueKind;
 }
 
 function mapAttention(
@@ -221,6 +224,7 @@ function mapAttention(
       link: it.link,
       since: it.since,
       status: it.status,
+      ...(it.stuckKind ? { stuckKind: it.stuckKind } : {}),
     }));
 }
 
@@ -282,6 +286,7 @@ export function projectAttention(
       issueRef: b.issueId,
       link,
       status: b.status,
+      ...(b.stuckKind ? { stuckKind: b.stuckKind } : {}),
       ...ageOf(ages?.get(b.documentId)),
     });
   }
@@ -313,20 +318,39 @@ export function sessionsWaitingOnYou(
     }));
 }
 
-const ATTENTION_PARTS: ReadonlyArray<{ kind: AttentionActionKind; one: string; many: string }> = [
-  { kind: "retry", one: "failed job", many: "failed jobs" },
-  { kind: "diff", one: "to review", many: "to review" },
-  { kind: "input", one: "issue with an open question", many: "issues with an open question" },
-  { kind: "parked", one: "issue parked with no question", many: "issues parked with no question" },
-  { kind: "session", one: "session waiting on you", many: "sessions waiting on you" },
-];
+/** What the stuck-issue notices of a project name: how many issues, and the first few of them. */
+export interface StuckIssues {
+  total: number;
+  refs: readonly { issueId: string; documentId: string; title: string; kind: StuckIssueKind }[];
+}
+
+/** The stuck issues Needs you does not already list as an item, each a row of its own. */
+export function stuckRowsOf(
+  items: readonly DashboardAttentionItem[],
+  stuck: StuckIssues | undefined,
+): StuckIssues["refs"] {
+  const listed = new Set(items.map((it) => it.issueRef));
+  return (stuck?.refs ?? []).filter((r) => !listed.has(r.issueId));
+}
+
+/**
+ * The stuck issues Needs you does not show at all: the whole count less every stuck issue on it, as a
+ * row of its own or as an item its notice tells, each once (ISS-1229 r15).
+ */
+export function stuckLeftOut(items: readonly DashboardAttentionItem[], stuck: StuckIssues | undefined): number {
+  if (!stuck) return 0;
+  const shown = new Set([
+    ...items.flatMap((it) => (it.stuckKind && it.issueRef ? [it.issueRef] : [])),
+    ...stuckRowsOf(items, stuck).map((r) => r.issueId),
+  ]);
+  return Math.max(stuck.total - shown.size, 0);
+}
 
 /**
  * How much of what a person has to act on the list leaves out. Core caps each source and counts it
- * whole beside it: the project's failed jobs, reviews and parks the reader owes, plus the parked
- * issues no bucket lists (`parkedOnly`), so the parts add up to the whole with no issue counted
- * twice, and the sessions waiting on the person are listed whole. The figure is that whole, never
- * "at least" (ISS-1229 r14).
+ * whole beside it: failed jobs, reviews, the reader's parks, the parks no bucket lists (`parkedOnly`)
+ * and the stuck issues none of those holds (`stuckOnly`), each issue once; sessions are listed whole.
+ * The figure is that whole, never "at least" (ISS-1229 r14, r15).
  */
 export interface AttentionCut {
   shown: number;
@@ -347,56 +371,104 @@ export function attentionRefusal(view: AttentionView | undefined, slug: string):
     return "Needs you cannot say how much it leaves out: the attention response has no `projectTotals`. The server is not the release this page was built for.";
   }
   const totals = view.projectTotals[slug];
-  if (totals !== undefined && typeof totals.parkedOnly !== "number") {
-    return "Needs you cannot say how much it leaves out: the attention response's `projectTotals` have no `parkedOnly`. The server is not the release this page was built for.";
+  for (const key of ["parkedOnly", "awaitingAsked", "stuckOnly"] as const) {
+    if (totals !== undefined && typeof totals[key] !== "number") {
+      return `Needs you cannot say how much it leaves out: the attention response's \`projectTotals\` have no \`${key}\`. The server is not the release this page was built for.`;
+    }
   }
   return null;
 }
 
+/** Needs you's whole, by kind: each counted whole, listed or not, so the kinds add up to the figure. */
+export interface AttentionParts {
+  failed: number;
+  review: number;
+  asked: number;
+  parked: number;
+  stuck: number;
+  sessions: number;
+}
+
+/** The parts of Needs you's whole; where core counted nothing for the project, the rows on the page. */
+export function attentionParts(
+  items: readonly DashboardAttentionItem[],
+  view: AttentionView | undefined,
+  slug: string,
+  stuckRows = 0,
+): AttentionParts {
+  const refusal = attentionRefusal(view, slug);
+  if (refusal !== null) throw new Error(refusal);
+  const totals = view?.projectTotals[slug];
+  const listed = (kind: AttentionActionKind) => items.filter((i) => i.actionKind === kind).length;
+  const sessions = listed("session");
+  if (!totals) {
+    return {
+      failed: listed("retry"),
+      review: listed("diff"),
+      asked: listed("input"),
+      parked: listed("parked"),
+      stuck: stuckRows,
+      sessions,
+    };
+  }
+  return {
+    failed: totals.failedJobs,
+    review: totals.needsReview,
+    asked: totals.awaitingAsked,
+    parked: totals.awaitingInput - totals.awaitingAsked + totals.parkedOnly,
+    stuck: totals.stuckOnly,
+    sessions,
+  };
+}
+
+/** Every item Needs you holds, listed or not: the one number its figure, heading and caption say. */
 export function attentionWhole(
   items: readonly DashboardAttentionItem[],
   view: AttentionView | undefined,
   slug: string,
+  stuckRows = 0,
 ): number {
-  const refusal = attentionRefusal(view, slug);
-  if (refusal !== null) throw new Error(refusal);
-  const totals = view?.projectTotals[slug];
-  const sessions = items.filter((i) => i.actionKind === "session").length;
-  if (!totals) return items.length;
-  return totals.failedJobs + totals.needsReview + totals.awaitingInput + totals.parkedOnly + sessions;
+  const p = attentionParts(items, view, slug, stuckRows);
+  return p.failed + p.review + p.asked + p.parked + p.stuck + p.sessions;
 }
 
+/** Where the list's rows (its items and its stuck rows) fall short of the whole; null where they do not. */
 export function attentionCut(
   items: readonly DashboardAttentionItem[],
   view: AttentionView | undefined,
   slug: string,
+  stuckRows = 0,
 ): AttentionCut | null {
   if (!view) return null;
-  const whole = attentionWhole(items, view, slug);
-  if (whole <= items.length) return null;
+  const whole = attentionWhole(items, view, slug, stuckRows);
+  const shown = items.length + stuckRows;
+  if (whole <= shown) return null;
   const totals = view.projectTotals[slug];
   const listedPeople = items.filter((i) => i.actionKind === "input" || i.actionKind === "parked").length;
   const people = (totals?.awaitingInput ?? 0) + (totals?.parkedOnly ?? 0);
-  return { shown: items.length, whole, peopleCut: people > listedPeople };
+  return { shown, whole, peopleCut: people > listedPeople };
 }
 
+const ATTENTION_PARTS: ReadonlyArray<{ part: keyof AttentionParts; one: string; many: string }> = [
+  { part: "failed", one: "failed job", many: "failed jobs" },
+  { part: "review", one: "to review", many: "to review" },
+  { part: "asked", one: "issue with an open question", many: "issues with an open question" },
+  { part: "parked", one: "issue parked with no question", many: "issues parked with no question" },
+  { part: "stuck", one: "other issue reported stuck", many: "other issues reported stuck" },
+  { part: "sessions", one: "session waiting on you", many: "sessions waiting on you" },
+];
+
 /**
- * What the Needs you tile counts, said under its figure: items a person has to act on, by kind.
- * A failed job or a held dependency is no issue's work state, so this figure is not Blocked on a
- * person and the tile says what it is instead of sitting beside that count unexplained. Where the
- * list is cut the caption says how much of the whole it shows.
+ * What the Needs you tile counts, by kind, said under its figure. A failed job or a held dependency is
+ * no issue's work state, so this figure is not Blocked on a person and the tile says what it is instead.
+ * How many rows the list shows is said under the list, never here (ISS-1229 r15).
  */
-export function attentionCaption(
-  items: readonly DashboardAttentionItem[],
-  cut: AttentionCut | null = null,
-): string {
-  const parts = ATTENTION_PARTS.flatMap(({ kind, one, many }) => {
-    const n = items.filter((i) => i.actionKind === kind).length;
+export function attentionCaption(parts: AttentionParts): string {
+  const said = ATTENTION_PARTS.flatMap(({ part, one, many }) => {
+    const n = parts[part];
     return n === 0 ? [] : [`${n} ${n === 1 ? one : many}`];
   });
-  const said = parts.length === 0 ? "nothing listed to act on" : `to act on: ${parts.join(" · ")}`;
-  if (cut) return `${said} — ${cut.shown} of ${cut.whole} listed`;
-  return parts.length === 0 ? "nothing to act on" : said;
+  return said.length === 0 ? "nothing to act on" : `to act on: ${said.join(" · ")}`;
 }
 
 /* ------------------------------------------------------------------ *

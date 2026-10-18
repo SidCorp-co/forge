@@ -1,6 +1,7 @@
 import type { NotificationAction, NotificationItem } from "@/design";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { NOTIFICATION_TYPES } from "@forge/contracts/notifications";
+import { stuckTag } from "@forge/contracts/stuck-words";
 import type { NotificationRow, NotificationType, PendingInvitation } from "./types";
 
 /** What a type is called wherever a person picks or reads one. Every type has an entry, so a new
@@ -14,7 +15,7 @@ export const TYPE_NAMES: Record<NotificationType, string> = {
   intake_pending: "Intake review",
   schedule_report: "Schedule reports",
   reconcile_gate_pending: "Skill updates",
-  issue_stranded: "Stranded issues",
+  issue_stranded: "Stuck issues",
   retry_rescue_threshold: "Retry rescues",
   ops_alert: "Operations",
 };
@@ -23,9 +24,9 @@ export const TYPE_NAMES: Record<NotificationType, string> = {
 export const TYPE_FILTER_OPTIONS: { value: NotificationType; label: string }[] =
   NOTIFICATION_TYPES.map((value) => ({ value, label: TYPE_NAMES[value] }));
 
-/** Short uppercase tag shown in the row's leading MonoTag. */
-function typeLabel(type: string): string {
-  switch (type) {
+/** Short uppercase tag shown in the row's leading MonoTag; a stuck row's is its kind's, or none. */
+function typeLabel(row: Pick<NotificationRow, "type" | "stuckKind">): string | undefined {
+  switch (row.type) {
     case "issue_status_changed":
       return "STATUS";
     case "pipeline_wedge":
@@ -37,7 +38,8 @@ function typeLabel(type: string): string {
     case "reconcile_gate_pending":
       return "SKILL";
     case "issue_stranded":
-      return "STRANDED";
+      // Words its group's title says, never one none of them uses (ISS-1229 r15).
+      return row.stuckKind ? (stuckTag(row.stuckKind) ?? undefined) : undefined;
     case "retry_rescue_threshold":
       return "RETRY";
     case "intake_pending":
@@ -90,7 +92,7 @@ export function toNotificationItem(
   const cleared = clearedCondition(row);
   return {
     id: row.id,
-    label: row.resolvedNotice || cleared ? "RESOLVED" : typeLabel(row.type),
+    label: row.resolvedNotice || cleared ? "RESOLVED" : typeLabel(row),
     text: row.title,
     sub: subOf(row),
     time: formatRelativeTime(row.toldAt),

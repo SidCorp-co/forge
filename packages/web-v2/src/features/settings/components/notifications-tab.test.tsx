@@ -89,6 +89,7 @@ const row = (n: number, over: Partial<NotificationRow> = {}): NotificationRow =>
   severity: null,
   createdAt: "2026-10-01T10:00:00.000Z",
   toldAt: "2026-10-01T10:00:00.000Z",
+  stuckKind: null,
   ...over,
 });
 
@@ -358,7 +359,7 @@ describe("a row names what it is about and opens it", () => {
     const link = screen.getByRole("link", { name: "ISS-41 shipped but never closed — Invoicing" });
     expect(link).toHaveAttribute("href", `/projects/invoicing/issues/${ISSUE}`);
     expect(link.className).toContain("min-h-11");
-    expect(screen.getByText("Invoicing · Stranded issues")).toBeInTheDocument();
+    expect(screen.getByText("Invoicing · Stuck issues")).toBeInTheDocument();
   });
 
   it("opens its project where it names no issue, the ops page for a platform alert, and plain text for a project-less other", async () => {

@@ -96,7 +96,7 @@ describe("the Needs your attention list with nothing in it", () => {
     expect(screen.getAllByRole("button", { name: "Open issue" })).toHaveLength(2);
   });
 
-  it("counts its own items in the heading and the stuck issues beside them on their own line", () => {
+  it("counts every row it heads in the heading, the stuck rows among them", () => {
     render(
       <AttentionQueue
         items={[
@@ -124,8 +124,51 @@ describe("the Needs your attention list with nothing in it", () => {
       />,
     );
     const list = screen.getByRole("region", { name: "Needs your attention" });
-    expect(list).toHaveTextContent(/^Needs your attention1/u);
-    expect(list).toHaveTextContent("Also reported stuck · 2");
+    expect(list).toHaveTextContent(/^Needs your attention3/u);
+    expect(list).toHaveTextContent("Also reported stuck");
+    expect(list).not.toHaveTextContent(/Also reported stuck ·/u);
+  });
+
+  // ISS-1229 r15, judge-38 on 81: two Waiting parks became stuck and were listed as plain parks, the
+  // overflow said 9 more where 7 were missing, and "Also reported stuck · 14" read as 14 beyond them.
+  it("tells a stuck park by its notice, says truly how many stuck issues it leaves out, and heads the whole", () => {
+    const park = (n: number) => ({
+      key: `parked-${n}`,
+      actionKind: "parked" as const,
+      actionLabel: "Open issue",
+      title: `Park ${n}`,
+      detail: "Blocked on a person — Waiting",
+      issueRef: `ISS-${n}`,
+      link: `/projects/pair/issues/d${n}`,
+      stuckKind: "waiting" as const,
+    });
+    render(
+      <AttentionQueue
+        items={[park(11), park(12)]}
+        cut={{ shown: 7, whole: 14, peopleCut: false }}
+        whole={14}
+        shape="degraded"
+        slug="pair"
+        now={0}
+        stuck={{
+          total: 14,
+          refs: [10, 9, 8, 4, 2].map((n) => ({
+            issueId: `ISS-${n}`,
+            documentId: `d${n}`,
+            title: `Stuck ${n}`,
+            kind: "idle" as const,
+          })),
+        }}
+      />,
+    );
+    const list = screen.getByRole("region", { name: "Needs your attention" });
+    expect(list).toHaveTextContent(/^Needs your attention14/u);
+    expect(screen.getAllByText("Has been waiting for you for over six hours")).toHaveLength(2);
+    expect(list).not.toHaveTextContent("Blocked on a person — Waiting");
+    expect(screen.getAllByText("Stuck")).toHaveLength(7);
+    expect(list).toHaveTextContent("And 7 more stuck. All 14 stuck issues are in Issues.");
+    expect(list).not.toHaveTextContent(/9 more|· 14/u);
+    expect(list).toHaveTextContent("Showing 7 of 14.");
   });
 
   it("names a stuck issue once where it is already listed to act on", () => {

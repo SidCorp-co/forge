@@ -1,4 +1,6 @@
 
+import type { StuckIssueKind } from "@forge/contracts/notifications";
+
 export type AttentionKind =
   | "needs_review"
   | "awaiting_input"
@@ -19,6 +21,7 @@ export interface AttentionItem {
   /** Failed job only: its kind of work, as stored; `failedJobWords` says it in words. */
   jobType?: string;
   failure?: string | null;
+  stuckKind?: StuckIssueKind;
   status?: string;
   projectSlug?: string;
   projectName?: string;
@@ -56,9 +59,12 @@ export interface AttentionResponse {
     {
       needsReview: number;
       awaitingInput: number;
+      awaitingAsked: number;
       failedJobs: number;
       /** Parked issues the health row's list holds that no bucket lists, counted once each. */
       parkedOnly: number;
+      /** Issues a stuck-issue notice stands for that none of the counts above holds (ISS-1229 r15). */
+      stuckOnly: number;
     }
   >;
   total: number;

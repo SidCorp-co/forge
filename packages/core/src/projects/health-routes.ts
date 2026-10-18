@@ -20,6 +20,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type BlockerRow, readHealthAggregates } from './health-aggregates.js';
 import { projectHealthListSchema, readProjectHealth } from './health-routes-reference.js';
+import { readStuckKinds } from './stuck-kinds-read.js';
 
 interface ProjectHealthRow {
   /** Project UUID — needed by web-v2 to join the `GET /api/projects` list rows
@@ -37,7 +38,13 @@ interface ProjectHealthRow {
   /** How many issues are in each work state, by the same rule the pulse and the issues search count by. */
   work: WorkStateCounts;
   /** The most recently updated parked issues, capped at `PER_PROJECT_BLOCKER_CAP`. */
-  blockers: Array<{ issueId: string; documentId: string; title: string; status: string }>;
+  blockers: Array<{
+    issueId: string;
+    documentId: string;
+    title: string;
+    status: string;
+    stuckKind?: StuckIssueKind;
+  }>;
   /** Every parked issue, the count behind the capped `blockers` list. */
   blockersTotal: number;
   pendingEscalations: number;
@@ -136,6 +143,16 @@ projectHealthRoutes.get('/health', readProjectHealth, async (c) => {
   }
 
   const blockersByProject = groupBlockers(agg.blockerRowsAll);
+  // A parked issue a stuck-issue notice stands for is listed by that notice's words (ISS-1229 r15).
+  const blockerKinds = await readStuckKinds(
+    [...blockersByProject.values()].flatMap((list) => list.map((b) => b.documentId)),
+  );
+  for (const list of blockersByProject.values()) {
+    for (const b of list) {
+      const stuckKind = blockerKinds.get(b.documentId);
+      if (stuckKind) b.stuckKind = stuckKind;
+    }
+  }
   const blockersTotalByProject = new Map<string, number>();
   for (const r of agg.blockerRowsAll) {
     blockersTotalByProject.set(r.projectId, (blockersTotalByProject.get(r.projectId) ?? 0) + 1);

@@ -163,8 +163,10 @@ describe('the counts beside the lists the Needs you tile is read from', () => {
     expect(attention.projectTotals[slug]).toEqual({
       needsReview: 0,
       awaitingInput: 0,
+      awaitingAsked: 0,
       failedJobs: 0,
       parkedOnly: 1,
+      stuckOnly: 0,
     });
     const row = health.find((h) => h.projectSlug === slug);
     expect({ listed: row?.blockers.map((b) => b.status), total: row?.blockersTotal }).toEqual({
