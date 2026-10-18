@@ -1,11 +1,5 @@
-/**
- * ISS-1215 — why the automatic release is not taking an issue, written on the issue.
- *
- * On an `autoProdDeploy` project `awaiting_release` is a transit state that `release-sweep.ts`
- * moves a row out of, so every way that sweep declines a row is written here rather than logged
- * alone: a held row must not read like one nobody looked at. This module is the one writer of
- * `session_context.releaseHold`, its comment, and the clearers that take it off a row.
- */
+/** ISS-1215 — the one writer of `session_context.releaseHold`, its comment, and the clearers that
+ *  take it off a row; what each kind of hold says is `release-hold-kinds.ts`'s. */
 
 import { createHash } from 'node:crypto';
 import { and, eq, inArray, like, or, sql } from 'drizzle-orm';
@@ -13,12 +7,23 @@ import { forgeAuthorId } from '../comments/forge-author.js';
 import { postSystemComment } from '../comments/system-write.js';
 import { db } from '../db/client.js';
 import { comments, issues } from '../db/schema.js';
-import type { IssueCriteriaReport } from '../issues/criteria-verdicts.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
 import { logger } from '../logger.js';
-import { type ServingReading, servingClause } from '../release-batch/serving-reading.js';
-import { shortfallSentence } from '../release-batch/shortfall-words.js';
-import type { RuntimeReading } from '../release-batch/weighing.js';
+
+export {
+  closeRefusedHold,
+  closeUnreadableHold,
+  criteriaHold,
+  criteriaUnreadableHold,
+  cutFailedHold,
+  gateUnreadableHold,
+  NO_RELEASE_GATE_HOLD,
+  queuedBehindHold,
+  refusalHold,
+  runtimeUnroutedHold,
+  targetUndeclaredHold,
+  withoutAges,
+} from './release-hold-kinds.js';
 
 /** The session_context key this module owns. */
 export const RELEASE_HOLD_KEY = 'releaseHold';
@@ -32,9 +37,11 @@ export interface ReleaseHold {
   readonly reason: string;
   readonly owes: ReleaseHoldOwner;
   readonly waitingFor: string;
-  /** The reason already says what to do and what follows, so the comment adds no waiting line. */
-  readonly stepNamed?: true;
+  /** What the comment says: what holds it, what a person does, what happens then (ISS-1421 r8). */
+  readonly words?: HoldWords | undefined;
 }
+
+export type HoldWords = readonly [holds: string, does: string, then: string];
 
 /** The hold as it is stored on the row. */
 export interface StoredReleaseHold extends ReleaseHold {
@@ -49,7 +56,9 @@ const SAID_LIMIT = 20;
 
 /** What a reason says, to compare by: a reading time or a reset drifting does not change it. */
 export function saidKey(hold: ReleaseHold): string {
-  const said = [hold.code, comparable(hold.reason), hold.owes, hold.waitingFor].join('\u0000');
+  // A comment says its words, so two reasons worded alike are one thing said (ISS-1421 r8).
+  const words = hold.words ? comparable(hold.words.join(' ')) : comparable(hold.reason);
+  const said = [hold.code, words, hold.owes, hold.waitingFor].join('\u0000');
   return createHash('sha256').update(said).digest('hex').slice(0, 16);
 }
 
@@ -76,15 +85,14 @@ export function readReleaseHold(value: unknown): ReleaseHold | null {
   const waitingFor = text(v.waitingFor);
   const owes = v.owes === 'agent' || v.owes === 'human' ? v.owes : null;
   if (!code || !reason || !waitingFor || !owes) return null;
-  return { code, reason, owes, waitingFor };
+  const words = Array.isArray(v.words) && v.words.length === 3 && v.words.every((w) => text(w));
+  return words
+    ? { code, reason, owes, waitingFor, words: v.words as unknown as HoldWords }
+    : { code, reason, owes, waitingFor };
 }
 
-/**
- * The same reason with the moment a probe was read taken out of it. The host and the commit are
- * what the hold SAYS; the clock value beside them moves every tick while the answer stands still,
- * and a rewritten hold is a re-commented hold — a comment a minute for as long as a row is held.
- * So a stored reason keeps the timestamp of the reading that wrote it (ISS-1215, ISS-1286).
- */
+/** A reason without the moment a probe was read, which moves every tick while the answer stands
+ *  still; a stored reason keeps the timestamp of the reading that wrote it (ISS-1215, ISS-1286). */
 export function withoutReadingTimes(text: string): string {
   return text.replace(/read at \d{4}-\d{2}-\d{2}T[\d:.]+Z/g, 'read at a moment');
 }
@@ -111,239 +119,9 @@ export function sameReleaseHold(a: ReleaseHold | null, b: ReleaseHold): boolean 
     a.waitingFor === b.waitingFor
   );
 }
-
-function criteriaNamed(numbers: readonly number[]): string {
-  if (numbers.length === 1) return `criterion ${numbers[0]}`;
-  return `each of criteria ${numbers.slice(0, -1).join(', ')} and ${numbers.at(-1)}`;
-}
-
-/** One clause per distinct reason, carrying every criterion it holds, in first-criterion order. */
-function reasonsByWhy(report: IssueCriteriaReport): string {
-  const byWhy = new Map<string, number[]>();
-  for (const c of report.unearned) byWhy.set(c.why, [...(byWhy.get(c.why) ?? []), c.criterion]);
-  return [...byWhy].map(([why, numbers]) => `${criteriaNamed(numbers)}: ${why}`).join('; ');
-}
-
-/** What one declared runtime was read as running, for the judge clause (ISS-1368). */
-function runtimeClause(runtime: RuntimeReading): string {
-  const { serving } = runtime;
-  const read =
-    serving.kind === 'serving'
-      ? servingClause(serving)
-      : serving.kind === 'unreadable'
-        ? `nothing could be read, read at ${serving.readAt}: ${serving.why}`
-        : `nothing reports it: ${serving.missing}`;
-  return `the \`${runtime.name}\` runtime, under ${runtime.paths.map((p) => `\`${p}\``).join(', ')}: ${read}`;
-}
-
-/** Where a verdict has to be judged to count — the one place the reading is said (ISS-1346). */
-function judgeClause(serving: ServingReading, runtimes: readonly RuntimeReading[]): string {
-  const deployment = deploymentClause(serving, runtimes);
-  if (serving.kind === 'serving' || runtimes.length === 0) return deployment;
-  // The allowance above is the deployment's: a declared runtime with nothing read still holds.
-  return (
-    `${deployment}. A criterion held in a declared runtime earns only at a build it is running — ` +
-    runtimes.map(runtimeClause).join('; ')
-  );
-}
-
-function deploymentClause(serving: ServingReading, runtimes: readonly RuntimeReading[]): string {
-  if (serving.kind === 'serving' && runtimes.length > 0) {
-    return (
-      'record a verdict on each criterion named, judged at a commit the runtime it is held in is ' +
-      `running — the deployment: ${servingClause(serving)}; ${runtimes.map(runtimeClause).join('; ')}`
-    );
-  }
-  if (serving.kind === 'serving') {
-    return (
-      'record a verdict on each criterion named, judged at a commit this project is serving — ' +
-      servingClause(serving)
-    );
-  }
-  if (serving.kind === 'unreadable') {
-    const asked = serving.hosts.length === 0 ? '' : ` (read from ${serving.hosts.join(', ')})`;
-    return (
-      `nothing could be read from what this project answers through${asked}, read at ` +
-      `${serving.readAt}: ${serving.why}. Record a verdict on each criterion named — a verdict ` +
-      'nothing could check still earns the criterion, and this sentence is why it reads as weaker'
-    );
-  }
-  return (
-    `nothing here can read what this project is serving: ${serving.missing}. To give it a way, ` +
-    `${serving.route}, then record a verdict on each criterion named`
-  );
-}
-
-/**
- * Owed by a person: nothing dispatched claims a row at `awaiting_release`, and the release that
- * would is the one holding it, so every act that moves the row from here is somebody's by hand.
- * A failed repository read's clearing act leads the remedy, once: a new verdict does not repair it.
- */
-export function criteriaHold(report: IssueCriteriaReport): ReleaseHold {
-  const reasons = reasonsByWhy(report);
-  const judge = judgeClause(report.serving, report.runtimes);
-  const clears = [...new Set(report.unearned.flatMap((c) => c.clears ?? []))];
-  const others = `${judge}; or, having seen the change running in production, close the issue by hand; or move it out of Awaiting release if it is not to ship.`;
-  const remedy =
-    clears.length === 0
-      ? `A person clears this: ${others}`
-      : `A person clears this by making the repository readable: ${clears.join('; and ')}. The next sweep then weighs it again. Otherwise: ${others}`;
-  const readable = clears.length === 0 ? '' : 'the repository readable again, ';
-  return {
-    code: 'RELEASE_CRITERIA_UNEARNED',
-    reason:
-      'The automatic release carries only an issue whose every acceptance criterion is earned, and ' +
-      `this one is not — ${reasons}. ${remedy}`,
-    owes: 'human',
-    waitingFor: `${readable}a verdict on each criterion named at the running deployment, or the issue closed by hand`,
-  };
-}
-
-/**
- * The one reason every criteria-held row of a project with no runtime route shares (ISS-1346).
- * No run can clear it: nothing can read what the project serves, so no verdict a run writes can
- * be weighed. It is the project's to answer, and the sweep comments it on one row alone.
- */
-export function runtimeUnroutedHold(missing: string, route: string): ReleaseHold {
-  return {
-    code: 'RELEASE_RUNTIME_UNROUTED',
-    reason:
-      `The automatic release carries only an issue whose every acceptance criterion is earned at ` +
-      `what this project is serving, and nothing here can read what it is serving: ${missing}, ` +
-      'and no live binding declares `verify.probes`. No verdict a run records can be weighed until ' +
-      `that changes, so this is the project's to answer and not this issue's: ${route}, and the ` +
-      'next sweep weighs every waiting issue again.',
-    owes: 'human',
-    waitingFor: 'a way for this project to be read for what it is serving',
-  };
-}
-
-/** What the finish's close would refuse this row for, which the sweep reads before it cuts (ISS-1337). */
-export function closeRefusedHold(
-  shortfalls: ReadonlyArray<{ code: string; reason: string; clears: string; clearsHere?: string }>,
-): ReleaseHold {
-  // What holds it, what to do, what follows (ISS-1421 r8, criterion 90), never a shortfall's code.
-  const why = shortfalls.map((s) => shortfallSentence(s.reason).replace(/^It/, 'it').slice(0, -1));
-  const acts = shortfalls.map((s) => s.clearsHere ?? s.clears).join(' ');
-  return {
-    code: 'RELEASE_ISSUES_UNCLOSABLE',
-    reason:
-      `The automatic release leaves this issue out, because ${why.join(', ')} and its close would ` +
-      `be refused. ${acts} The next sweep releases it once that is done.`,
-    owes: shortfalls.some((s) => s.code === 'OPEN_QUESTIONS') ? 'human' : 'agent',
-    waitingFor: 'what its close is refused for to be cleared',
-    stepNamed: true,
-  };
-}
-
-export function closeUnreadableHold(message: string): ReleaseHold {
-  return {
-    code: 'RELEASE_CLOSE_UNREADABLE',
-    reason:
-      'Whether this issue could be closed by a release could not be read, so the automatic ' +
-      `release did not carry it: ${message}. Nothing was claimed or moved, and the next sweep ` +
-      'reads it again.',
-    owes: 'human',
-    waitingFor: 'the close check to be readable',
-  };
-}
-
-export function targetUndeclaredHold(message: string): ReleaseHold {
-  return {
-    code: 'RELEASE_TARGET_UNDECLARED',
-    reason: message,
-    owes: 'human',
-    waitingFor: 'a live deploy binding for the release to land on',
-  };
-}
-
-export function gateUnreadableHold(message: string): ReleaseHold {
-  return {
-    code: 'RELEASE_GATE_UNREADABLE',
-    reason:
-      `The release gate for this project could not be read, so the automatic release did not ` +
-      `decide anything about this issue: ${message}. Nothing was claimed or moved, and the next ` +
-      'sweep reads the gate again.',
-    owes: 'human',
-    waitingFor: 'the release gate to be readable',
-  };
-}
-
-export function criteriaUnreadableHold(message: string): ReleaseHold {
-  return {
-    code: 'RELEASE_CRITERIA_UNREADABLE',
-    reason:
-      `The verdicts on this issue could not be read, so the automatic release could not tell ` +
-      `whether its criteria are earned: ${message}. Nothing was claimed or moved, and the next ` +
-      'sweep reads them again.',
-    owes: 'human',
-    waitingFor: 'the verdicts to be readable',
-  };
-}
-
-export function queuedBehindHold(carried: number): ReleaseHold {
-  return {
-    code: 'RELEASE_QUEUED_BEHIND',
-    reason:
-      `One release carries at most ${carried} issues, the oldest merges first, and this one is ` +
-      'behind them. It was not sent this tick and goes in a later automatic release.',
-    owes: 'agent',
-    waitingFor: 'a later automatic release',
-  };
-}
-
-export const NO_RELEASE_GATE_HOLD: ReleaseHold = {
-  code: 'NO_RELEASE_GATE',
-  reason:
-    'This project declares no release (its `releaseChain` is empty), so there is no release for ' +
-    'the automatic sweep to carry this issue into, and nothing will move it from ' +
-    'Awaiting release. Either declare a release chain with a live deploy binding, or close the ' +
-    'issue.',
-  owes: 'human',
-  waitingFor: 'a person to declare a release or close the issue',
-};
-
-// A refusal that clears itself (a release already running, a claim another writer won) is owed by
-// the release path; every other one names a declaration or a fleet a person has to change.
-const SELF_CLEARING: Readonly<Record<string, string>> = {
-  BATCH_IN_FLIGHT: 'the release already in flight to finish',
-  CLAIM_CONFLICT: 'the next sweep, after the claim another writer took is settled',
-};
-
-/**
- * A refusal's words without the heartbeat ages `runnerHoldClause` puts in them. An age moves every
- * tick while the refusal stands still, so kept in, it would read as a new reason each sweep and
- * comment every minute of an outage; stored, it would be false a minute later.
- */
-const AGED =
-  / (It is up and reporting), last seen [\w ]+ ago\.| (?:It last reported|Last seen) [\w ]+ ago\./g;
-export function withoutAges(text: string): string {
-  return text.replace(AGED, (_aged, up: string | undefined) => (up ? ` ${up}.` : ''));
-}
-
-export function refusalHold(code: string, reasons: readonly string[]): ReleaseHold {
-  const selfClearing = SELF_CLEARING[code];
-  return {
-    code,
-    reason: withoutAges(`The automatic release was refused: ${reasons.join(' ')}`),
-    owes: selfClearing ? 'agent' : 'human',
-    waitingFor: selfClearing ?? 'the refusal named here to be cleared',
-  };
-}
-
-export function cutFailedHold(reasons: readonly string[]): ReleaseHold {
-  return {
-    code: 'RELEASE_CUT_FAILED',
-    reason:
-      `An automatic release attempt failed: ${withoutAges(reasons.join(' '))} This issue is unchanged: not ` +
-      'claimed, not moved, no half-release. The next sweep tries again on its own.',
-    owes: 'human',
-    waitingFor: 'the failure named here to be fixed',
-  };
-}
-
 const COVERS_LINE =
   /^(?:When this was written it held \d+ issues? of this project.*|This one comment stands for .*)$/m;
+const COVERS_HEADING = /^(\*\*Held by the automatic release\*\*) for .*$/m;
 
 const HOLD_HEADINGS = [
   '**Held by the automatic release**',
@@ -355,20 +133,20 @@ export function releaseHoldComment(
   shared = false,
   covers: readonly string[] = [],
 ): string {
-  const who = hold.owes === 'human' ? 'a person' : 'an agent run';
-  const waiting = hold.stepNamed
-    ? ''
-    : `\n\nIt is waiting for ${hold.waitingFor}, which ${who} owes.`;
+  // The rows one comment stands for go in its heading, so they are not a fourth sentence.
   const covered =
     shared && covers.length > 1
-      ? `\n\nThis one comment stands for ${covers.join(', ')}, oldest merge first.`
+      ? ` for ${covers.slice(0, -1).join(', ')} and ${covers.at(-1)}`
       : '';
-  return `${HOLD_HEADINGS[0]}\n\n${hold.reason}${waiting}${covered}`;
+  if (hold.words) return `${HOLD_HEADINGS[0]}${covered}\n\n${hold.words.join(' ')}`;
+  const who = hold.owes === 'human' ? 'a person' : 'an agent run';
+  return `${HOLD_HEADINGS[0]}\n\n${hold.reason}\n\nIt is waiting for ${hold.waitingFor}, which ${who} owes.`;
 }
 
 /** A comment's words as they are compared: the covered rows, a reading time and a reset set aside. */
 function saidInComment(body: string): string {
-  return comparable(body.replace(COVERS_LINE, '').replace(/\n{3,}/g, '\n\n'));
+  const named = body.replace(COVERS_HEADING, '$1').replace(COVERS_LINE, '');
+  return comparable(named.replace(/\n{3,}/g, '\n\n'));
 }
 
 /**
@@ -411,7 +189,8 @@ export async function commentOnce(
  *  comment of the words before round 8 carried the hold's code on a line of its own, and is read
  *  as this hold's where it carries that code and this reason. */
 async function saidBefore(issueId: string, hold: ReleaseHold, body: string): Promise<boolean> {
-  const wanted = new Set([saidInComment(body), saidInComment(releaseHoldComment(hold))]);
+  const before = { ...hold, words: undefined };
+  const wanted = new Set([saidInComment(body), saidInComment(releaseHoldComment(before))]);
   const reason = comparable(hold.reason);
   const posted = await db
     .select({ body: comments.body })
@@ -451,17 +230,10 @@ export interface ReleaseHoldTally {
 }
 
 /**
- * Write one hold onto each row, with one comment where the hold changed to words not already
- * commented on that row since it was last held afresh (`said`, ISS-1346): a runner flipping between
- * two states is two reasons said once each, not a comment per flip, and the row's `releaseHold`
- * always carries the words standing now.
- *
- * The hold and its comment commit together, so a failed insert leaves the old hold and the next
- * sweep tries both again, rather than a stored hold whose comment nobody posted. The update is
- * guarded on the hold the read saw, so of two writers racing from one prior hold only one writes
- * and only that one comments, and on the row still waiting unclaimed, so a row a release took in
- * between is left as it is. `updated_at` is left alone: a held row must not read as freshly worked,
- * and the sweep's own cursor walks on it.
+ * Write one hold onto each row, with one comment where its words are new to `said` (ISS-1346).
+ * The hold and its comment commit together, guarded on the hold the read saw and on the row still
+ * waiting unclaimed, so of two racing writers only one writes and comments. `updated_at` is left
+ * alone: the sweep's own cursor walks on it.
  */
 export async function writeReleaseHolds(args: {
   issueIds: readonly string[];
@@ -485,7 +257,8 @@ export async function writeReleaseHolds(args: {
     const carried = readReleaseHold(row.held);
     if (carried && sameReleaseHold(carried, hold)) {
       tally.unchanged += 1;
-      if (args.commentOn?.has(row.id)) await commentOnce(row, carried, covers);
+      if (args.commentOn?.has(row.id))
+        await commentOnce(row, { ...carried, words: hold.words }, covers);
       continue;
     }
     const said = carried ? saidOf(row.held) : [];

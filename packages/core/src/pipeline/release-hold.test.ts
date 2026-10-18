@@ -226,10 +226,10 @@ describe('the hold a row carries (ISS-1215)', () => {
     expect(cutFailedHold(['lock timeout']).reason).toContain('not claimed, not moved');
   });
 
-  it('writes a comment carrying the reason and who owes it, never the stored key or the code', () => {
+  it('writes a comment naming what holds it and who acts, never the stored key or the code', () => {
     const body = releaseHoldComment(criteriaHold(REPORT));
-    expect(body).toContain('criterion 3: no verdict was recorded for it');
-    expect(body).toContain('which a person owes.');
+    expect(body).toContain('criteria 1 and 3 are not earned');
+    expect(body).toContain('A person records a verdict');
     expect(body).not.toMatch(/release-?hold|RELEASE_CRITERIA_UNEARNED/i);
     expect(body).not.toContain('oldest alone');
   });

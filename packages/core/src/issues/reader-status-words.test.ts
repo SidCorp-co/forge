@@ -131,6 +131,7 @@ const READS: Record<string, 'person' | 'caller'> = {
   'pipeline/outbox-worker.ts': 'person',
   'pipeline/stranded-issues.ts': 'person',
   'pipeline/release-hold.ts': 'person',
+  'pipeline/release-hold-kinds.ts': 'person',
   'pipeline/wedge-lease.ts': 'person',
   'pm/dispatch-service.ts': 'caller',
   'projects/stranded-work.ts': 'caller',

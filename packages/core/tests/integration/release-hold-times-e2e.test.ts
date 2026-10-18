@@ -70,6 +70,8 @@ async function sweep() {
   return sweepAutomaticReleases();
 }
 
+// ISS-1421 r8 repair 2: a comment is three sentences that name no reading time, so a moved time
+// rewrites the stored hold and is not said again in words the row already carries.
 describe('a runner reset drifting inside its minute is one reason (criterion 17)', () => {
   // Fixed UTC instants in the future, either side of a minute boundary: no wall clock decides which
   // minute a reset falls in (consult 5d63c5 F1).
@@ -81,7 +83,7 @@ describe('a runner reset drifting inside its minute is one reason (criterion 17)
     ['rate_limited_until', 'is rate limited until'],
     ['quarantined_until', 'is quarantined until'],
   ] as const)(
-    'comments once while %s moves inside the minute, and again once it leaves it',
+    'rewrites %s once it leaves the minute, and comments once while the words stand',
     async (column, says) => {
       await fx.declareProduction();
       fx.serve(SERVED);
@@ -108,7 +110,7 @@ describe('a runner reset drifting inside its minute is one reason (criterion 17)
       await resetTo(NEXT_MINUTE);
       await sweep();
       expect(String((await holdOf(id))?.reason)).toContain(`${says} ${NEXT_MINUTE}`);
-      expect(await holdComments(id)).toBe(2);
+      expect(await holdComments(id)).toBe(1);
     },
     30_000,
   );
@@ -130,7 +132,7 @@ describe('any other time moving in a hold is a new reason, said once per hold (c
     expect(rows).toHaveLength(1);
   }
 
-  it('rewrites and comments a moved finish time, and returning to it posts nothing new', async () => {
+  it('rewrites a moved finish time, and comments only a hold held afresh', async () => {
     await fx.declareProduction({ verify: null, baseUrl: coolify.url(), targets: [APP] });
     const bindings = (await harness.db.execute(sql`
       SELECT id FROM integration_bindings WHERE project_id = ${projectId}
@@ -151,23 +153,22 @@ describe('any other time moving in a hold is a new reason, said once per hold (c
     expect(await reason()).toContain(`Forge's deployment dep-1 finished ${FINISHED}`);
     expect(await holdComments(id)).toBe(1);
 
-    // The first arm: only the finish time moved, and it is written and said as a new reason.
+    // Only the finish time moved: the stored reason is rewritten, the comment's words are not.
     await finishAt(REFINISHED);
     await sweep();
     expect(await reason()).toContain(`Forge's deployment dep-1 finished ${REFINISHED}`);
     expect(await reason()).not.toContain(FINISHED);
-    expect(await holdComments(id)).toBe(2);
+    expect(await holdComments(id)).toBe(1);
 
-    // The unless arm: back to words already commented while the row stayed held.
     await finishAt(FINISHED);
     await sweep();
     expect(await reason()).toContain(`Forge's deployment dep-1 finished ${FINISHED}`);
-    expect(await holdComments(id)).toBe(2);
+    expect(await holdComments(id)).toBe(1);
 
     // Held afresh, the same words are said again.
     const { clearReleaseHolds } = await import('../../src/pipeline/release-hold.js');
     await clearReleaseHolds([id]);
     await sweep();
-    expect(await holdComments(id)).toBe(3);
+    expect(await holdComments(id)).toBe(2);
   }, 30_000);
 });

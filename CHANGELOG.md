@@ -3206,7 +3206,7 @@
 - **A box on the sessions page reads one way, and silent sessions are ended by name.** "Spare" no longer sits beside a box's state, and "Sweep zombies" is "End silent sessions", asked first. (ISS-1228)
 - **A commit you name when marking merged is kept in that comment only, and the answer says so.** An issue already marked whose repository cannot be read now says where its mark stays. (ISS-1421)
 - **The issue's properties show the commit a merge landed at, by seven characters.** The whole commit shows on hover, after a later merge moves the mark too. (ISS-1421)
-- **The automatic release's hold comment reads in words only**: what holds the issue, what to do, and what happens then, with no stored key or code line. (ISS-1421)
+- **Every automatic-release hold comment is three short sentences**: what holds the issue, what a person does, what happens then; several close refusals are named in one sentence and their steps listed in the next. No backticks or codes. (ISS-1421)
 - **The GitHub drawer says what is missing when a connection's App was never finished**, instead of a generic invalid-input message. (ISS-1421)
 - **A turned-off integration reads Turned off everywhere**, whatever its last check found; the Agent MCP servers panel no longer says it is connected. (ISS-1421)
 - **Each integration drawer shows the agents switch once, and Connections tells apart two connections to one host** the way the share picker does. (ISS-1421)
