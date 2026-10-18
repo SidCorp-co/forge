@@ -382,7 +382,7 @@ export function NavRail({
       <div className="mt-auto flex flex-col gap-1 border-t border-line-subtle pt-3">
         {onWhatsNew && (
           <NavRow
-            item={{ key: "whats-new", label: "What's New", icon: "bell", badge: whatsNewBadge }}
+            item={{ key: "whats-new", label: "What's New", icon: "news", badge: whatsNewBadge }}
             active={activeKey === "whats-new"}
             collapsed={collapsed}
             onClick={onWhatsNew}

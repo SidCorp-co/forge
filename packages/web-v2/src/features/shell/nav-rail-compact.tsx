@@ -458,7 +458,7 @@ export function NavRailCompact({
             }
             className="relative inline-flex size-8 items-center justify-center rounded-md text-subtle transition-colors hover:bg-hover hover:text-fg"
           >
-            <Icon name="bell" size={18} />
+            <Icon name="news" size={18} />
             {whatsNewBadge && whatsNewBadge > 0 ? (
               <span
                 aria-hidden
