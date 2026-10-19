@@ -3,7 +3,7 @@ import { db } from '../db/client.js';
 import { notifications } from '../db/schema.js';
 import { terminalAgentSessionStatuses } from '../db/session-vocabulary.js';
 import { logger } from '../logger.js';
-import { resolveNotifications } from '../notifications/auto-resolve.js';
+import { resolveNotificationById, resolveNotifications } from '../notifications/auto-resolve.js';
 import { PENDING_STALE_MS } from '../notifications/deliver.js';
 import { stuckRankSql } from '../projects/stuck-issue-kinds.js';
 import { RELEASED_PER_PASS } from './owed-sighting.js';
@@ -39,8 +39,17 @@ const STILL_HOLDS: Readonly<Record<WedgeKeyKind, (w: WedgeKeyParts) => SQL>> = {
                                       AND s.status NOT IN (${TERMINAL_SESSION}))`,
   runner: ({ uid }) => sql`EXISTS (SELECT 1 FROM runners r WHERE r.id = ${uid}
                                      AND (r.limit_reason = 'auth' OR r.quarantined_until > now()))`,
-  outbox: ({ uid }) => sql`EXISTS (SELECT 1 FROM pipeline_outbox o WHERE o.id = ${uid}
-                                     AND o.processed_at IS NULL)`,
+  // Raised once the row is out of redeliveries, so its row is never processed: what ends it is the
+  // issue moving on — off the status the change took it to, finished, archived, or the change re-applied.
+  outbox: ({ uid }) => sql`EXISTS (SELECT 1 FROM pipeline_outbox o JOIN issues i ON i.id = o.issue_id
+                                    WHERE o.id = ${uid} AND o.processed_at IS NULL
+                                      AND i.status = o.to_status
+                                      AND i.status NOT IN ('closed', 'dropped')
+                                      AND i.archived_at IS NULL
+                                      AND NOT EXISTS (SELECT 1 FROM pipeline_outbox later
+                                                       WHERE later.issue_id = o.issue_id
+                                                         AND later.created_at > o.created_at
+                                                         AND later.processed_at IS NOT NULL))`,
   // Capacity is short only while work waits for it: no queued job of the stage, nothing is held up.
   capacity: ({ rest, uid }) => sql`EXISTS (SELECT 1 FROM jobs j WHERE j.project_id = ${uid}
                                              AND j.status = 'queued'
@@ -92,6 +101,15 @@ async function endedWedges(): Promise<{ ended: string[]; unread: string[] }> {
   };
 }
 
+/** Firing wedges stored with no key at all, from before keys existed: no resolver could reach one. */
+async function keylessWedges(): Promise<Array<{ id: string; title: string; project_id: string | null }>> {
+  return db.execute<{ id: string; title: string; project_id: string | null }>(sql`
+    SELECT n.id, n.title, n.project_id FROM notifications n
+     WHERE n.type = 'pipeline_wedge' AND n.state = 'firing' AND n.resolved_at IS NULL
+       AND n.resolution_key IS NULL
+  `);
+}
+
 /** Held stuck-issue notices a more specific notice still standing for the same issue outranks. */
 async function outrankedHeldKeys(): Promise<string[]> {
   const rows = await db.execute<{ resolution_key: string }>(sql`
@@ -122,6 +140,14 @@ export async function reevaluateConditions(now: Date = new Date()): Promise<Reev
     for (const key of [...wedges.ended, ...wedges.unread]) {
       result.resolved += await resolveNotifications(key);
     }
+    const keyless = await keylessWedges();
+    if (keyless.length > 0) {
+      logger.error(
+        { wedges: keyless.map((w) => ({ id: w.id, title: w.title, projectId: w.project_id })) },
+        "notifications: ended wedges stored with no key — nothing could ever end them, and each held its project's stuck-issue notices",
+      );
+    }
+    for (const w of keyless) result.resolved += await resolveNotificationById(w.id);
 
     // One issue, one stuck reason (criterion 94): released together, each would go out.
     for (const key of await outrankedHeldKeys()) {

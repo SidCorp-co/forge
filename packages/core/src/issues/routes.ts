@@ -29,7 +29,7 @@ import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { issueArchiveSide } from './archive.js';
 import { AttachmentError } from './attachment-service.js';
 import { registerIssueAttributeRoutes } from './attributes/routes.js';
-import { createIssue, IssueCreateError } from './create-service.js';
+import { archivedProjectRefusal, createIssue, IssueCreateError } from './create-service.js';
 import { hydrateCreatorsForIssues } from './creator.js';
 import { toHttpDependencyError } from './dependency-routes.js';
 import { IssueDependencyError } from './dependency-service.js';
@@ -197,6 +197,9 @@ function toHttpCreateError(err: unknown): unknown {
   }
   if (err instanceof IssueCreateError) {
     const code = err.code;
+    if (code === 'PROJECT_ARCHIVED') {
+      return new HTTPException(409, { message: archivedProjectRefusal(err.value), cause: { code } });
+    }
     return new HTTPException(400, { message: `${code}: ${err.value}`, cause: { code } });
   }
   return err;

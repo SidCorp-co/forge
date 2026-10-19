@@ -45,6 +45,7 @@ interface ProjectHealthRow {
     status: string;
     stuckKind?: StuckIssueKind;
     stuckOwedBy?: string;
+    readerOwns?: true;
   }>;
   /** Every parked issue, the count behind the capped `blockers` list. */
   blockersTotal: number;
@@ -52,7 +53,7 @@ interface ProjectHealthRow {
   avgCycleTimeDays: number;
   /** Pipeline runs currently `running` or `paused`: open runs, which is not proof anything works them. */
   liveRuns: number;
-  /** Agent sessions live by `liveSessionWhere`, the count the pipeline surface's session list makes. */
+  /** Agent sessions live by `liveCountWhere`: the listed live sessions and the chats whose turn is running. */
   liveSessions: number;
   /** Runners in the `online` state. */
   runnerCount: number;
@@ -107,6 +108,7 @@ function groupBlockers(rows: BlockerRow[]): Map<string, ProjectHealthRow['blocke
       documentId: r.id,
       title: r.title,
       status: r.status,
+      ...(r.readerOwns ? { readerOwns: true as const } : {}),
     });
     byProject.set(r.projectId, arr);
   }

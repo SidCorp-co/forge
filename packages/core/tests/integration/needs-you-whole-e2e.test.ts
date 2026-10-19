@@ -194,8 +194,10 @@ describe("Needs you's whole, on judge-38's shape of board", () => {
 
   it("counts another person's park that holds a question as asked, apart from the parks with none", async () => {
     const other = (await createTestUser(harness.db)).id;
+    await stuck(await issueAt('needs_info', { question: true, assignee: other }), ':stranded');
+    await stuck(await issueAt('on_hold', { assignee: other }), ':stranded');
+    // A park no notice stands for is its owner's alone, not the reader's (ISS-1229 r17, judge-44).
     await issueAt('needs_info', { question: true, assignee: other });
-    await issueAt('on_hold', { assignee: other });
 
     const attention = await get<Attention>('/api/me/attention');
     expect(attention.projectTotals[slug]).toMatchObject({ parkedOnly: 2, parkedAsked: 1 });

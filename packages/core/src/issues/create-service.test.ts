@@ -222,10 +222,30 @@ describe('createIssue — entry status allow-list (ISS-130 / ISS-236)', () => {
   });
 });
 
+describe('createIssue — an archived project', () => {
+  it('is refused PROJECT_ARCHIVED, naming the way out, before anything is claimed or written', async () => {
+    selectLimit.mockResolvedValueOnce([{ archivedAt: new Date('2026-10-18T09:00:00Z') }]);
+    const refused = await createIssue(
+      { projectId: PROJECT_ID, title: 'New', detectorKey: 'lint/no-any' },
+      writer,
+    ).catch((e: unknown) => e);
+    expect(refused).toBeInstanceOf(IssueCreateError);
+    expect((refused as { code: string }).code).toBe('PROJECT_ARCHIVED');
+    expect((refused as Error).message).toBe(
+      'PROJECT_ARCHIVED: this project was archived on 2026-10-18, so it takes no new issues; an owner or admin of its organisation can unarchive it first',
+    );
+    expect(claimMock).not.toHaveBeenCalled();
+    expect(txInsert).not.toHaveBeenCalled();
+  });
+});
+
 describe('createIssue — one live issue per detectorKey', () => {
   it('returns the existing issue and writes nothing when the key is already claimed', async () => {
     claimMock.mockResolvedValueOnce({ existingIssueId: 'existing-id' });
-    selectLimit.mockResolvedValueOnce([{ issSeq: 42, status: 'open' }]);
+    // The project's own row is read first: an archived one takes no issue (ISS-1229 r17).
+    selectLimit
+      .mockResolvedValueOnce([{ archivedAt: null }])
+      .mockResolvedValueOnce([{ issSeq: 42, status: 'open' }]);
 
     const result = await createIssue(
       { projectId: PROJECT_ID, title: 'New', detectorKey: 'lint/no-any' },

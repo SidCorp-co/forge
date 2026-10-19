@@ -283,6 +283,7 @@ export const createIssueRoute = describeOperation({
       CYCLE_DETECTED: 'a relation would close a loop of blocking issues',
       CYCLE_DEPTH_EXCEEDED: 'the blocking chain is too deep to check for a loop',
       ISSUE_ARCHIVED: 'a relation names an archived issue',
+      PROJECT_ARCHIVED: 'the project is archived, and takes no new issue until it is unarchived',
     }),
   },
 });

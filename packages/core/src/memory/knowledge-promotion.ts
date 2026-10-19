@@ -60,6 +60,13 @@ export async function resolveKnowledgePromotion(
 export async function proposeKnowledgePromotions(projectId: string): Promise<void> {
   const cfg = await resolveKnowledgePromotion(projectId);
   if (!cfg.enabled) return;
+  // An archived project takes no new issue (ISS-1229 r17); its proposals wait for an unarchive.
+  const [project] = await db
+    .select({ archivedAt: projects.archivedAt })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  if (project?.archivedAt) return;
 
   const ageThreshold = new Date(Date.now() - PROMOTION_AGE_DAYS * 24 * 60 * 60 * 1000);
 

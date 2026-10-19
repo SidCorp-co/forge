@@ -15,7 +15,7 @@ import {
 } from '../db/schema.js';
 import { visibleProjectsWhere } from '../lib/authz.js';
 import { BLOCKED_STATUSES } from '../projects/health-aggregates.js';
-import { stuckNoticeStandsSql } from '../projects/stuck-issue-kinds.js';
+import { parkOwerSql, stuckNoticeStandsSql } from '../projects/stuck-issue-kinds.js';
 import {
   type AttentionBucket,
   type AttentionScope,
@@ -95,8 +95,9 @@ export interface AttentionProjectTotals {
   failedJobs: number;
   /**
    * Issues of the project parked at a status the health row's parked list (`blockers`) holds, that no
-   * bucket above lists: other people's parks, mostly. Needs you lists them beside the buckets and
-   * once each, so the four add up to its whole count with no issue counted twice (ISS-1229 r14).
+   * bucket above lists, owned by the reader or with a stuck-issue notice standing for it. Needs you
+   * lists them beside the buckets and once each, so the four add up to its whole count with no issue
+   * counted twice (ISS-1229 r14); another person's park no notice stands for is not the reader's (r17).
    */
   parkedOnly: number;
   /** Of `parkedOnly`, the issues holding an open question. */
@@ -167,6 +168,8 @@ export async function selectAttentionTotals(
       .where(
         and(
           inArray(issues.status, [...BLOCKED_STATUSES]),
+          // The reader's own park; another person's once a stuck-issue notice stands for it (ISS-1229 r17).
+          sql`(${parkOwerSql(sql`${issues.id}`)} = ${userId}::uuid OR ${stuckNoticeStandsSql(sql`${issues.id}`)})`,
           ...visibleProjectsWhere(),
           inScope(scope),
           inNoBucketOf(userId),

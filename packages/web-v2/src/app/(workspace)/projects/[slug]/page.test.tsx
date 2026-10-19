@@ -18,9 +18,9 @@ const ago = (seconds: number) => new Date(NOW - seconds * 1000).toISOString();
 const DAY = 86_400;
 
 const PAIR_BLOCKERS: unknown[] = [
-  { issueId: "ISS-5", documentId: "d5", status: "on_hold" },
-  { issueId: "ISS-2", documentId: "d2", status: "on_hold" },
-  { issueId: "ISS-3", documentId: "d3", status: "needs_info" },
+  { issueId: "ISS-5", documentId: "d5", status: "on_hold", readerOwns: true },
+  { issueId: "ISS-2", documentId: "d2", status: "on_hold", readerOwns: true },
+  { issueId: "ISS-3", documentId: "d3", status: "needs_info", readerOwns: true },
 ];
 const QUIET_WORK = { open: 0, in_flight: 0, awaiting_release: 0, blocked_on_person: 0, draft: 0, finished: 0 };
 const BUSY_WORK = { open: 1, in_flight: 1, awaiting_release: 0, blocked_on_person: 5, draft: 0, finished: 0 };
@@ -395,7 +395,7 @@ describe("a degraded project", () => {
 
   // ISS-1229 r8: a parked issue is aged from when it entered its status, which an edit does not move.
   it("degrades on a parked issue that has stood at its status fourteen days, however recent its last write", () => {
-    blockers = [{ issueId: "ISS-5", documentId: "d5", status: "on_hold" }];
+    blockers = [{ issueId: "ISS-5", documentId: "d5", status: "on_hold", readerOwns: true }];
     parked = {
       data: {
         items: [{ id: "d5", updatedAt: ago(60), statusEnteredAt: ago(112 * DAY), waitingOnPersonSince: null }],
@@ -414,7 +414,7 @@ describe("a degraded project", () => {
   });
 
   it("degrades on a parked issue whose open question has waited fourteen days", () => {
-    blockers = [{ issueId: "ISS-5", documentId: "d5", status: "needs_info" }];
+    blockers = [{ issueId: "ISS-5", documentId: "d5", status: "needs_info", readerOwns: true }];
     parked = {
       data: { items: [{ id: "d5", updatedAt: ago(60), waitingOnPersonSince: ago(15 * DAY) }], totalCount: 1 },
       ...settled,
@@ -456,7 +456,7 @@ describe("a project with an issue a stuck-issue notice stands for (ISS-1229 r12)
 // notice's words, so no row said which work it was.
 describe("a Needs you row on a project with parked and stuck issues", () => {
   it("names each row by its issue's title, with why it is listed after it", () => {
-    blockers = [{ issueId: "SHOP-44", documentId: "d44", title: "Production SMTP credentials", status: "waiting" }];
+    blockers = [{ issueId: "SHOP-44", documentId: "d44", title: "Production SMTP credentials", status: "waiting", readerOwns: true }];
     stuckIssues = 2;
     stuckIssueRefs = [
       { issueId: "SHOP-53", documentId: "d53", title: "Nightly stock import", kind: "idle" },
@@ -852,6 +852,7 @@ describe("a page whose figures sit beside other counts of the same things", () =
       documentId: `d${40 + i}`,
       title: `Park ${40 + i}`,
       status: "needs_info",
+      readerOwns: true,
     }));
     attentionView = view({ pair: { needsReview: 0, awaitingInput: 32, parkedOnly: 0, failedJobs: 0, awaitingAsked: 0, parkedAsked: 0, stuckOnly: 0 } }, {
       awaitingInput: Array.from({ length: 20 }, (_, i) => attentionItem(i + 1, ago(3600), { status: "needs_info" })),
@@ -885,6 +886,23 @@ describe("a page whose figures sit beside other counts of the same things", () =
 });
 
 describe("the project dashboard's Needs you", () => {
+  // ISS-1229 r17, judge-44: a viewer's page counted other people's parks "to act on" before any notice.
+  it("lists and counts no park of another person's before a stuck-issue notice stands for it", () => {
+    work = { ...BUSY_WORK, blocked_on_person: 2 };
+    blockers = [
+      { issueId: "ISS-61", documentId: "d61", title: "Mai's export question", status: "waiting" },
+      { issueId: "ISS-62", documentId: "d62", title: "Mai's stuck park", status: "waiting", stuckKind: "waiting_on_others", stuckOwedBy: "Mai" },
+    ];
+    attentionView = view({
+      pair: { needsReview: 0, awaitingInput: 0, parkedOnly: 1, failedJobs: 0, awaitingAsked: 0, parkedAsked: 0, stuckOnly: 0 },
+    });
+    mount();
+    const list = screen.getByRole("region", { name: "Needs your attention" });
+    expect(list).not.toHaveTextContent("Mai's export question");
+    expect(list).toHaveTextContent("Mai's stuck park");
+    expect(figure("Needs you").getByText("1")).toBeInTheDocument();
+  });
+
   it("says 4 where the viewer's own waiting issue is owed and none of it is listed, beside 3 parks (j4's F1)", () => {
     blockers = PAIR_BLOCKERS;
     work = { ...BUSY_WORK, blocked_on_person: 4 };

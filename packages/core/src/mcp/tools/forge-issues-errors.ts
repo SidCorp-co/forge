@@ -78,6 +78,9 @@ export function toMcpIssueError(err: unknown): unknown {
     );
   }
   if (err instanceof IssueCreateError) {
+    if (err.code === 'PROJECT_ARCHIVED') {
+      return new Error(err.message);
+    }
     if (err.code === 'INVALID_DETECTOR_KEY') {
       return new Error(
         `BAD_REQUEST: data.detectorKey must be lowercase slash-separated slugs, max 120 chars (got '${err.value}')`,

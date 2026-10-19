@@ -12,6 +12,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import type { RequestIdVars } from '../../src/middleware/request-id.js';
 import {
   createTestProject,
+  createTestProjectMember,
   createTestUser,
   setupTestDatabase,
   type TestDatabase,
@@ -216,5 +217,38 @@ describe('a person retries a failed job', () => {
       sql`SELECT count(*)::int AS n FROM jobs WHERE retry_of = ${failed}`,
     );
     expect(Number(n?.n)).toBe(0);
+  });
+
+  // ISS-1229 r17, judge-44: a viewer IS a project member, and "not a project member" sent an agent to
+  // ask for a membership it already held.
+  it('refuses a viewer naming the role it needs and the role it holds', async () => {
+    const failed = await seedJob('failed');
+    const viewer = (await createTestUser(harness.db)).id;
+    await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${viewer}`);
+    await createTestProjectMember(harness.db, { userId: viewer, projectId, role: 'viewer' });
+    await signIn(viewer);
+    const res = await retry(failed, viewer);
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { error?: { message?: string }; message?: string };
+    const said = JSON.stringify(body);
+    expect(said).toContain('requires the project member role or above');
+    expect(said).toContain('the role held is viewer');
+    expect(said).not.toContain('not a project member');
+    const [n] = await harness.db.execute<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM jobs WHERE retry_of = ${failed}`,
+    );
+    expect(Number(n?.n)).toBe(0);
+  });
+
+  // ISS-1229 r17, judge-44: a failure whose issue already had new work of its kind queued was offered
+  // for retry, and the route refused it for ever, so the row never left.
+  it('lists no failure whose issue already has live work of its kind', async () => {
+    const failed = await seedJob('failed');
+    expect(await failedJobIds()).toEqual([failed]);
+    await harness.db.execute(sql`
+      INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, created_by, type, status)
+      VALUES (${randomUUID()}, ${projectId}, ${issueId}, ${runId}, ${ownerId}, 'drive', 'queued')
+    `);
+    expect(await failedJobIds()).toEqual([]);
   });
 });
