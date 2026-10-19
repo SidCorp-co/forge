@@ -7,9 +7,9 @@ here rather than filed, because a residual out of reach leaves as a line in `doc
 ## Nothing bounds the wait the silence buys
 
 ISS-1265 makes the runner say nothing when a master pane refuses a message — a draft at the
-composer, a choice list, a tmux that could not be asked. A socket with no tmux server behind it is
-not one of these: no server holds no session, and that message is acked `gone`. Core reads that silence as `unknown`, which
-is true, and waits.
+composer, a choice list, a tmux that could not be asked, a socket file that is not there. A socket
+file with no server listening on it is not one of these: no server holds no session, and that
+message is acked `gone`. Core reads the silence as `unknown`, which is true, and waits.
 
 What nothing does is end the waiting.
 
