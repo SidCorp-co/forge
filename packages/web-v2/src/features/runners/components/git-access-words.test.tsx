@@ -7,13 +7,14 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render } from "@testing-library/react";
-import { KEY_ACCESS, WHY_KEY_ACCESS } from "@forge/contracts/deploy-key-words";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 expect.extend(matchers);
 
-/** What core's Test connection answers when the host refuses the key, worded from the same source. */
-const REFUSED = `The git host refused this deploy key. Give it ${KEY_ACCESS} to the repository, ${WHY_KEY_ACCESS}.\nPermission denied (publickey).`;
+/** Core's Test connection answer when the host refuses the key, as core's own tests pin it. */
+const REFUSED =
+  "The git host refused this deploy key. Give it read access to the repository, which is all Forge needs; devices that push with it need write access.\nPermission denied (publickey).";
+const NEED = "which is all Forge needs; devices that push with it need write access";
 
 const idle = { mutate: vi.fn(), isPending: false };
 vi.mock("../hooks", async () => {
@@ -54,8 +55,8 @@ describe("the Git access card", () => {
     const asks = text.match(/[^.]*\baccess\b[^.]*\./g) ?? [];
     expect(asks.length).toBeGreaterThanOrEqual(2);
     for (const sentence of asks) {
-      expect(sentence, sentence).toContain(KEY_ACCESS);
-      expect(sentence, sentence).toContain(WHY_KEY_ACCESS);
+      expect(sentence, sentence).toContain("read access");
+      expect(sentence, sentence).toContain(NEED);
       expect(sentence, sentence).not.toMatch(/\(write\s+access\)/);
     }
   });
