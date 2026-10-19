@@ -78,9 +78,11 @@ export function runReadingChip(run: RunLiveFields, nowMs: number): { status: Sta
 export const runHasStarted = (run: Pick<PipelineRunSummary, "status" | "reading">): boolean =>
   run.status === "running" && (run.reading === "running" || run.reading === "waiting");
 
-/** What a run's time is: when it opened while nothing has started, when it started once it has. */
-export const runSinceWord = (run: Pick<PipelineRunSummary, "status" | "reading">): string =>
-  run.status === "running" && (run.reading === "queued" || run.reading === "starting") ? "Opened" : "Started";
+/** What a run's time is: when it opened while nothing works it, when it started once an agent does. */
+export function runSinceWord(run: RunLiveFields, nowMs: number): string {
+  if (run.status !== "running" || run.reading === "waiting") return "Started";
+  return runReadingChip(run, nowMs).label === RUN_STATUS_WORD.running ? "Started" : "Opened";
+}
 
 /** Median of a numeric list (`null` for an empty list). Used by the dashboard's
  *  where-time-goes aggregate. */

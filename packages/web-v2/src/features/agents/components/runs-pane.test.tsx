@@ -4,7 +4,7 @@
 // no run is working rather than that the project has no runs, and lists the runs that have closed.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PipelineRunListItem } from "@/features/runs/types";
 import type { RunSessionRow } from "../types";
@@ -187,7 +187,8 @@ describe("the Agents runs tab with nothing running on a box", () => {
   });
 
   // ISS-1228 round 14 (judge-36): the tab counted an open run with work behind it and listed none.
-  it("lists every open run it counts as having work behind it, and only those", () => {
+  // Round 18 repair: the band named ISS-5 as having nothing working on it while the list left it out.
+  it("lists every open run, one nothing works reading Nothing working, so the band names only listed runs", () => {
     state.runs = [
       run({ id: "o", issueRef: "ISS-4", issueTitle: "fourth", status: "running", finishedAt: null, liveJobs: 1 }),
       run({ id: "idle", issueRef: "ISS-5", status: "running", finishedAt: null }),
@@ -196,13 +197,19 @@ describe("the Agents runs tab with nothing running on a box", () => {
     state.total = 3;
     pane();
     const open = within(screen.getByRole("list", { name: "Open runs" })).getAllByRole("listitem");
-    expect(open).toHaveLength(1);
-    expect(open[0]).toHaveTextContent("ISS-4");
+    expect(open.map((r) => [r.querySelector("a")?.textContent, r.querySelector("[data-run-status]")?.textContent])).toEqual([
+      ["ISS-4", "Running"],
+      ["ISS-5", "Nothing working"],
+    ]);
     expect(open[0]).toHaveTextContent("fourth");
     expect(within(open[0] as HTMLElement).getByRole("link", { name: "ISS-4" })).toHaveAttribute(
       "href",
       "/projects/qa/issues/i1",
     );
+    expect(within(screen.getByText(/has nothing working on it/)).getByRole("link")).toHaveTextContent("ISS-5");
+    // Criterion 141: a run says Started only once something runs; nothing runs this one.
+    expect(open[1]?.querySelector("[data-run-since]")?.textContent).toMatch(/^Opened .+ ago$/);
+    expect(open[0]?.querySelector("[data-run-since]")?.textContent).toMatch(/^Started .+ ago$/);
   });
 
   it("claims no run is working only off a whole reading of the project's runs", () => {
@@ -319,6 +326,37 @@ const ledgerRow = (over: Partial<RunSessionRow>): RunSessionRow => ({
 });
 
 describe("the runs a box reports (ISS-1228 round 8)", () => {
+  // ISS-1228 round 18 repair: a run the band names must be a row somewhere on the tab, whatever a box
+  // reports for the same issue.
+  it("lists every open run nothing works beside the runs boxes report, each reading Nothing working", () => {
+    state.ledger = [ledgerRow({ issues: [{ issueKey: "ISS-1", leaseReturned: false }] })];
+    const idle = { status: "running" as const, finishedAt: null, liveJobs: 0 };
+    state.runs = [run({ ...idle, id: "r1", issueRef: "ISS-1" }), run({ ...idle, id: "r5", issueRef: "ISS-5" })];
+    state.total = 2;
+    pane();
+    const rows = within(screen.getByRole("list", { name: "Open runs nothing works" })).getAllByRole("listitem");
+    expect(rows.map((r) => [r.querySelector("a")?.textContent, r.querySelector("[data-run-status]")?.textContent])).toEqual([
+      ["ISS-1", "Nothing working"],
+      ["ISS-5", "Nothing working"],
+    ]);
+    const band = screen.getByText(/have nothing working on them/);
+    expect(within(band).getAllByRole("link").map((a) => a.textContent)).toEqual(["ISS-1", "ISS-5"]);
+  });
+
+  it("filters the runs nothing works as it filters the runs boxes report", () => {
+    state.ledger = [ledgerRow({ issues: [{ issueKey: "ISS-1", leaseReturned: false }] })];
+    state.runs = [run({ id: "r5", issueRef: "ISS-5", issueTitle: "fifth", status: "running", finishedAt: null, liveJobs: 0 })];
+    state.total = 1;
+    pane();
+    fireEvent.change(screen.getByRole("textbox", { name: "Filter runs" }), { target: { value: "fifth" } });
+    expect(screen.queryByRole("list", { name: "Runs a box reports" })).toBeNull();
+    expect(within(screen.getByRole("list", { name: "Open runs nothing works" })).getByText("ISS-5")).toBeInTheDocument();
+    expect(screen.queryByText("No runs match")).toBeNull();
+    fireEvent.change(screen.getByRole("textbox", { name: "Filter runs" }), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Working" }));
+    expect(screen.queryByRole("list", { name: "Open runs nothing works" })).toBeNull();
+  });
+
   it("shows what a blocked run waits on in the box's own words", () => {
     state.ledger = [
       ledgerRow({ work: "blocked", blockerKind: "human", waitingOn: "approve the database restore in Coolify" }),

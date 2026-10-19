@@ -3200,7 +3200,7 @@
 - **A chat waiting for your reply reads "Waiting for me" on the runs tab and in its run drawer**, never Running. (ISS-1228)
 - **A run session's drawer is titled by its issue and offers Open issue**, and a run a session works without jobs no longer says nothing has run. (ISS-1228)
 - **The run drawer offers only what a run can take**: Cancel run before anything has started, Pause and Stop once it has, and no Rerun or Fork. (ISS-1228)
-- **An open run with nothing working on it reads "Nothing working"** on the runs tab and in its run drawer, and the runs tab names each such run with a link to it. (ISS-1228)
+- **An open run with nothing working on it reads "Nothing working"** on the runs tab and in its run drawer, and the runs tab lists each such run as a row and names it, linked, above the list. (ISS-1228)
 - **The run drawer says which box never took queued work**, such as "box-a never took it before the queue timeout", without core's own reason text, and offers a remedy only on the latest attempt. (ISS-1228)
 - **Stuck-work notifications and a wait on nobody read as plain sentences**, without "Pipeline wedge", hop names or WHERE/WHY/WHAT. (ISS-1228)
 - **Forge no longer calls a person by their email address.** Someone with no display name reads "another member" in notices, the bell and the project page, older bell rows included, and a refused retry reads the same sentence everywhere. (ISS-1229)

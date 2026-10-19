@@ -110,7 +110,8 @@ function render(ui: ReactElement) {
 /** The word the runs tab's row says of the run. */
 function rowWord(issueRef: string): string {
   render(<RunsPane scope={{ projectId: "p1", slug: "rigjobs" }} />);
-  const row = screen.getByText(issueRef).closest("li") as HTMLElement;
+  const list = screen.getByRole("list", { name: "Open runs" });
+  const row = within(list).getByText(issueRef).closest("li") as HTMLElement;
   const word = row.querySelector("[data-run-status]")?.textContent ?? "";
   cleanup();
   return word;
@@ -163,6 +164,8 @@ describe("one run, one word on the runs tab, the drawer header and the activity 
     const link = within(band).getByRole("link", { name: "ISS-5" });
     expect(link).toHaveAttribute("href", "/ops?run=run-ISS-5");
     cleanup();
+    // The band names only runs the list below it shows (the r18b shots named ISS-5 above four rows without it).
+    expect(rowWord("ISS-5")).toBe("Nothing working");
     const { header, rows } = drawer("ISS-5");
     expect(header).toBe("Nothing working");
     // Its one attempt is over, so the activity says what became of it rather than what the run is doing.
