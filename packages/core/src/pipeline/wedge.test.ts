@@ -79,12 +79,16 @@ describe('emitPipelineWedge (ISS-619)', () => {
     expect(call.secondaryIssueId).toBe('issue-31');
   });
 
-  it('falls back to the technical WHERE/WHY/WHAT template when no presentation fields are given', async () => {
+  it('falls back to plain sentences for its hop and subject when no presentation fields are given (ISS-1228)', async () => {
     await emitPipelineWedge(BASE_EVENT);
     const call = createNotificationMock.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(call.title).toBe('Pipeline wedge: dispatch hop miss on job');
-    expect(call.body).toContain('WHY: technical why');
-    expect(call.body).toContain('WHAT: technical what');
+    expect(call.title).toBe('Work could not be sent to a box');
+    expect(call.body).toBe(
+      'Core could not hand this work to any box. Check that a box bound to this project is online.',
+    );
+    for (const jargon of ['Pipeline wedge', 'hop', 'WHERE', 'WHY', 'WHAT', 'technical']) {
+      expect(`${call.title} ${call.body}`).not.toContain(jargon);
+    }
     expect(call.secondaryIssueId).toBeNull();
   });
 });

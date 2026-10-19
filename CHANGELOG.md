@@ -3194,6 +3194,13 @@
 
 ### Fixed
 
+- **A job its runner is working reads Running in the run drawer**, in its header and its activity alike, instead of "Starting" under a Running header. (ISS-1228)
+- **A job its runner took but never started goes back to the queue** once its session is ended, instead of reading "Starting" for as long as its master lives; the next attempt gets a fresh session. (ISS-1228)
+- **The run drawer shows no failure or remedy on work still open**, names the runner that took or was sent it, and says "Never started" of work that ended before anything ran. (ISS-1228)
+- **A chat waiting for your reply reads "Waiting for me" on the runs tab and in its run drawer**, never Running. (ISS-1228)
+- **A run session's drawer is titled by its issue and offers Open issue.** (ISS-1228)
+- **The run drawer offers only what a run can take**: Cancel run before anything has started, Pause and Stop once it has, and no Rerun or Fork. (ISS-1228)
+- **Stuck-work notifications and a wait on nobody read as plain sentences**, without "Pipeline wedge", hop names or WHERE/WHY/WHAT. (ISS-1228)
 - **A master that ended as the last session on its box's tmux server is reported ended.** Its messages used to wait and its run stayed open for ever; a tmux the box cannot ask still says nothing. (ISS-1265)
 - **A running master is no longer reported ended when its box's tmux socket file goes missing.** Its messages wait instead of its run closing, and the box's log names the missing socket and the masters on it. (ISS-1265)
 - **A blocked run always says it is waiting**, on its row as on hover, even where its box did not say on whom: it reads "Waiting on someone the box did not name." A working run shows no wait. (ISS-1228)

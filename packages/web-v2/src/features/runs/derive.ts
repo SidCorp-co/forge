@@ -1,4 +1,5 @@
 import type { StatusKey } from "@/design/status";
+import { sessionStatusLabel } from "@/design/primitives/status-chip";
 import { gateReasonLine } from "@/features/runners/types";
 import {
   GATE_TEXT,
@@ -8,7 +9,7 @@ import {
 } from "@/features/sessions/status-sentences";
 import { formatDurationMs } from "@/lib/utils/format";
 import { RUN_STATUS_WORD } from "./run-status-words";
-import type { PipelineRunStatus, PipelineRunSummary, RunGate, StepDurationRow } from "./types";
+import type { PipelineRunStatus, PipelineRunSummary, RunGate, RunReading, StepDurationRow } from "./types";
 
 /** Map a run status to the design-kit `StatusKey` vocabulary (chip + card). */
 export function runStatusToStatusKey(status: PipelineRunStatus): StatusKey {
@@ -26,6 +27,12 @@ export function runStatusToStatusKey(status: PipelineRunStatus): StatusKey {
   }
 }
 
+const OPEN_RUN_WORD: Record<Exclude<RunReading, "running">, { status: StatusKey; label: string }> = {
+  starting: { status: "queued", label: "Starting" },
+  queued: { status: "queued", label: "Queued" },
+  waiting: { status: "waiting", label: sessionStatusLabel("waiting") },
+};
+
 /** The one word a run reads on every surface, the runs tab and the drawer's header alike: an open run
  *  by what core says its agent is doing, any other by its own status (ISS-1228). */
 export function runReadingChip(run: Pick<PipelineRunSummary, "status" | "reading">): {
@@ -35,8 +42,12 @@ export function runReadingChip(run: Pick<PipelineRunSummary, "status" | "reading
   if (run.status !== "running" || run.reading === null || run.reading === "running") {
     return { status: runStatusToStatusKey(run.status), label: RUN_STATUS_WORD[run.status] };
   }
-  return run.reading === "starting" ? { status: "queued", label: "Starting" } : { status: "queued", label: "Queued" };
+  return OPEN_RUN_WORD[run.reading];
 }
+
+/** Whether anything has started on an open run: an agent working, or a chat waiting on its person. */
+export const runHasStarted = (run: Pick<PipelineRunSummary, "status" | "reading">): boolean =>
+  run.status === "running" && (run.reading === "running" || run.reading === "waiting");
 
 /** What a run's time is: when it opened while nothing has started, when it started once it has. */
 export const runSinceWord = (run: Pick<PipelineRunSummary, "status" | "reading">): string =>

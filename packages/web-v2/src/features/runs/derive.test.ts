@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aggregateStepCosts, median, runGateNote, runReadingChip } from "./derive";
+import { aggregateStepCosts, median, runGateNote, runHasStarted, runReadingChip } from "./derive";
 import type { PipelineRunStatus, RunGateCondition, RunReading, StepDurationRow } from "./types";
 
 function step(over: Partial<StepDurationRow> & { step: string }): StepDurationRow {
@@ -157,6 +157,22 @@ describe("runGateNote", () => {
 // Queued, and the drawer read a sent run Running beside "not started yet". One reading, from core.
 describe("runReadingChip — the one word a run reads on every surface", () => {
   const of = (status: PipelineRunStatus, reading: RunReading | null = null) => runReadingChip({ status, reading });
+
+  it("reads a chat waiting on its person as Waiting for me (ISS-1228 round 18)", () => {
+    expect(of("running", "waiting")).toEqual({ status: "waiting", label: "Waiting for me" });
+  });
+
+  it("calls a run started only once an agent works on it or a chat waits on its person", () => {
+    const started = (reading: RunReading | null) => runHasStarted({ status: "running", reading });
+    expect([started("running"), started("waiting"), started("starting"), started("queued"), started(null)]).toEqual([
+      true,
+      true,
+      false,
+      false,
+      false,
+    ]);
+    expect(runHasStarted({ status: "completed", reading: "running" })).toBe(false);
+  });
 
   it("reads an open run by what core says its agent is doing", () => {
     expect(of("running", "queued")).toEqual({ status: "queued", label: "Queued" });

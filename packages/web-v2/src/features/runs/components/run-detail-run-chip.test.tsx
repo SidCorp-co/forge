@@ -48,6 +48,7 @@ function attempt(status: string, over: Partial<PipelineRunAttempt> = {}): Pipeli
     failureAction: null,
     queuedAt: "2026-09-05T14:16:00Z",
     startedAt: status === "queued" ? null : "2026-09-05T14:17:00Z",
+    ranAt: status === "running" ? "2026-09-05T14:17:30Z" : null,
     finishedAt: null,
     autoRetry: null,
     takenBy: null,
@@ -72,6 +73,8 @@ function summary(status: PipelineRunStatus, over: Partial<PipelineRunSummary> = 
     liveJobs: 1,
     lastSessionBeatAt: null,
     reading: null,
+    group: { source: "none", issues: [], detail: "a job-lane run carries its one issue in its own column" },
+    groupTitles: {},
     attempts: [],
     retrySummary: null,
     gateAtOpen: null,
@@ -168,13 +171,38 @@ describe("the Ops drawer, which opens a run with no issue row (ISS-1297)", () =>
     expect(screen.queryByRole("button", { name: /^(Stop now|Confirm stop)$/ })).toBeNull();
   });
 
-  // ISS-1228 round 17 review: a sent run read Running and could be stopped; reading Starting it must
-  // still be, as a box already holds it.
-  it("offers Pause run and Stop now on a run a box has taken or been sent", () => {
-    run = summary("running", { attempts: [attempt("dispatched")], reading: "starting" });
+  // ISS-1228 round 18 (judge-53): a working job's header read Running over its activity's Starting;
+  // core now answers the job running, and the header reads it.
+  it("reads a job its box is working as Running in the header", () => {
+    run = summary("running", { attempts: [attempt("running")], reading: "running" });
     open();
-    expect(screen.getByRole("button", { name: "Pause run" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Stop now" })).toBeInTheDocument();
+    expect(within(opsHeader()).getByText("Running · Issue work")).toBeInTheDocument();
+  });
+
+  // ISS-1228 round 18 (judge-53): Pause run and Stop now were offered on runs nothing had started.
+  it.each([
+    ["queued", "queued"],
+    ["dispatched", "starting"],
+  ] as const)("offers Cancel run, and neither Pause run nor Stop now, on a run whose job is %s", (status, reading) => {
+    run = summary("running", { attempts: [attempt(status)], reading });
+    open();
+    expect(screen.getByRole("button", { name: "Cancel run" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Pause run" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Stop now" })).toBeNull();
+  });
+
+  it("offers no Cancel run on a run that has started", () => {
+    run = summary("running", { attempts: [attempt("running")], reading: "running" });
+    open();
+    expect(screen.queryByRole("button", { name: "Cancel run" })).toBeNull();
+  });
+
+  // ISS-1228 round 18 (judge-53): a chat waiting on its person read Running.
+  it("reads a run whose chat waits on its person as Waiting for me, never running", () => {
+    run = summary("running", { kind: "interactive", attempts: [], reading: "waiting" });
+    open();
+    expect(within(opsHeader()).getByText("Waiting for me")).toBeInTheDocument();
+    expect(within(opsHeader()).queryByText(/running/i)).toBeNull();
   });
 
   it("still offers both for a running run, and Resume run for a paused one", () => {
@@ -224,5 +252,47 @@ describe("Open issue from the Ops drawer", () => {
     run = summary("running", { issueId: null, issueRef: null, reading: "running" });
     render(<RunDetail open onClose={vi.fn()} runId="r1" projectSlugs={SLUGS} />);
     expect(menu()).toBeNull();
+  });
+
+  // ISS-1228 round 18 (judge-53): a run session's drawer read "run c9a719ee · Pipeline run" with no
+  // Open issue though its run named ISS-1.
+  const runSession = (issues: string[]) =>
+    summary("running", {
+      issueId: null,
+      issueRef: null,
+      issueTitle: null,
+      currentStep: null,
+      lane: "run_session",
+      group: { source: "run_group", issues, detail: null },
+      groupTitles: { "ISS-1": "Fix the login page", "ISS-4": "Tidy the footer" },
+      reading: "running",
+    });
+
+  it("titles a run session by the one issue it holds and offers Open issue", () => {
+    run = runSession(["ISS-1"]);
+    render(<RunDetail open onClose={vi.fn()} runId="r1" projectSlugs={SLUGS} />);
+    expect(screen.getByText("ISS-1")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Fix the login page" })).toBeInTheDocument();
+    expect(screen.queryByText("run r1")).toBeNull();
+    expect(menu()).not.toBeNull();
+  });
+
+  it("offers Open for each issue of a run session over several", () => {
+    run = runSession(["ISS-1", "ISS-4"]);
+    render(<RunDetail open onClose={vi.fn()} runId="r1" projectSlugs={SLUGS} />);
+    fireEvent.click(screen.getByRole("button", { name: "More run actions" }));
+    expect(screen.getByRole("menuitem", { name: "Open ISS-1" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Open ISS-4" })).toBeInTheDocument();
+  });
+});
+
+// ISS-1228 round 18 (judge-53): Rerun and Fork only toasted "isn't supported yet".
+describe("the drawer's menu offers only what the run takes", () => {
+  it("lists no action that only says it is not supported", () => {
+    run = summary("running", { reading: "running" });
+    render(<RunDetail open onClose={vi.fn()} runId="r1" projectSlugs={SLUGS} />);
+    fireEvent.click(screen.getByRole("button", { name: "More run actions" }));
+    const items = screen.getAllByRole("menuitem").map((i) => i.textContent);
+    expect(items).toEqual(["Open issue", "Copy link"]);
   });
 });

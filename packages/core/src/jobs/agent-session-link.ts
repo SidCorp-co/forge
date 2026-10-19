@@ -1,6 +1,12 @@
 import { and, eq, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type AgentSessionKind, agentSessions, issues, jobs } from '../db/schema.js';
+import {
+  type AgentSessionKind,
+  agentSessions,
+  issues,
+  jobs,
+  terminalAgentSessionStatuses,
+} from '../db/schema.js';
 import { masterSessionIfOwned } from '../devices/master-owner.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
@@ -33,6 +39,17 @@ function buildTitle(skillName: string | null, jobType: string, issueTitle: strin
   return `${head}${tail}`.slice(0, TITLE_MAX);
 }
 
+/** A session core has ended, or no longer holds, takes no more frames, so a job taken again after it ended needs a new
+ *  one: reusing it would run the attempt under a session that can never read as running (ISS-1228). */
+async function sessionHasEnded(sessionId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ status: agentSessions.status })
+    .from(agentSessions)
+    .where(eq(agentSessions.id, sessionId))
+    .limit(1);
+  return row === undefined || (terminalAgentSessionStatuses as readonly string[]).includes(row.status);
+}
+
 /**
  * The master session holding this job, where it holds one core can stand behind.
  *
@@ -61,7 +78,9 @@ export async function ensureAgentSessionForJob(
   context: { repoPath: string | null; resume: ResumeRecord },
 ): Promise<string | null> {
   try {
-    if (job.agentSessionId) return job.agentSessionId;
+    if (job.agentSessionId && !(await sessionHasEnded(job.agentSessionId))) {
+      return job.agentSessionId;
+    }
 
     let parentSession: {
       id: string;

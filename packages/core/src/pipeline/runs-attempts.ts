@@ -34,6 +34,8 @@ export interface PipelineRunAttempt {
   failureAction: 'terminal' | 'quarantine' | 'failover' | 'retry' | null;
   queuedAt: string | null;
   startedAt: string | null;
+  /** When the attempt's own session first reported its agent working; null where it never did. */
+  ranAt: string | null;
   finishedAt: string | null;
   autoRetry: { round: number; target: string | null; tries: number; done: string[] } | null;
   /** The box whose session holds the job before it starts: a taken job is never "unassigned". */
@@ -70,6 +72,7 @@ export async function loadAttemptsForRun(runId: string): Promise<{
       failureDetail: agentSessions.failureDetail,
       queuedAt: jobs.queuedAt,
       startedAt: jobs.dispatchedAt,
+      ranAt: agentSessions.startedAt,
       finishedAt: jobs.finishedAt,
       payload: jobs.payload,
       takenDeviceId: takenDevice,
@@ -109,6 +112,7 @@ export async function loadAttemptsForRun(runId: string): Promise<{
       failureAction: r.failureAction ?? null,
       queuedAt: toIso(r.queuedAt),
       startedAt: toIso(r.startedAt),
+      ranAt: toIso(r.ranAt),
       finishedAt: toIso(r.finishedAt),
       autoRetry: ar,
       takenBy: r.takenDeviceId

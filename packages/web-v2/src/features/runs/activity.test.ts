@@ -29,6 +29,7 @@ function attempt(over: Partial<PipelineRunAttempt> = {}): PipelineRunAttempt {
     failureAction: null,
     queuedAt: "2026-08-30T10:00:00.000Z",
     startedAt: "2026-08-30T10:00:05.000Z",
+    ranAt: "2026-08-30T10:00:06.000Z",
     finishedAt: "2026-08-30T10:01:00.000Z",
     autoRetry: null,
     takenBy: null,
@@ -77,7 +78,7 @@ describe("deriveActivityFeed", () => {
     ["ran, then never started", ["2026-08-30T10:00:05.000Z", null]],
   ])("keeps two lost-box attempts apart when one %s, each with its own remedy", (_n, starts) => {
     const feed = deriveActivityFeed(
-      starts.map((startedAt) => attempt({ failureCause: "runner_unreachable", startedAt })),
+      starts.map((ranAt) => attempt({ failureCause: "runner_unreachable", ranAt })),
     );
 
     expect(feed).toHaveLength(2);
@@ -125,7 +126,7 @@ describe("deriveActivityFeed", () => {
     ]);
 
     expect(feed.map((e) => e.outcome)).toEqual([
-      "Queued — no runner has picked it up",
+      "Queued — no box has taken it yet",
       "Still running",
     ]);
     expect(feed.every((e) => e.open)).toBe(true);
@@ -183,7 +184,7 @@ describe("deriveActivityFeed", () => {
         takenBy: { deviceId: "d9", deviceName: "box-taker" },
       }),
     ]);
-    expect(entry?.outcome).toBe("Taken by a runner, not started yet");
+    expect(entry?.outcome).toBe("Taken by box-taker, not started yet");
     expect(entry?.device).toBe("box-taker");
     // The master's read of the r17 shots: the row said Queued beside the drawer's Starting.
     expect(entry?.verb).toBe("Starting");
@@ -192,11 +193,56 @@ describe("deriveActivityFeed", () => {
   it("never says Ran or Retried of an attempt that has not started", () => {
     const feed = deriveActivityFeed([
       attempt({ status: "failed", failureCause: "agent_killed" }),
-      attempt({ status: "queued", startedAt: null, finishedAt: null }),
-      attempt({ jobType: "review", status: "dispatched", startedAt: null, finishedAt: null }),
-      attempt({ jobType: "smoke", status: "queued", startedAt: null, finishedAt: null, takenBy: { deviceId: "d9", deviceName: null } }),
+      attempt({ status: "queued", startedAt: null, ranAt: null, finishedAt: null }),
+      attempt({ jobType: "review", status: "dispatched", ranAt: null, finishedAt: null }),
+      attempt({ jobType: "smoke", status: "queued", startedAt: null, ranAt: null, finishedAt: null, takenBy: { deviceId: "d9", deviceName: null } }),
+      attempt({ jobType: "drive", status: "running", finishedAt: null }),
+      attempt({ jobType: "pm", status: "held", startedAt: null, ranAt: null, finishedAt: null }),
     ]);
-    expect(feed.map((e) => e.verb)).toEqual(["Ran", "Queued", "Starting", "Starting"]);
+    expect(feed.map((e) => e.verb)).toEqual(["Ran", "Queued", "Starting", "Starting", "Running", "Held"]);
+  });
+
+  // ISS-1228 round 18 (judge-53): past core's queue timeout a taken job read "Taken by a runner" over
+  // the failed session's "No runner picked it up" remedy, and a sent job core timed out before any box
+  // claimed it read "Ran · Queue timeout".
+  it("shows no cause or remedy on an attempt still open, whatever its session ended of", () => {
+    const feed = deriveActivityFeed([
+      attempt({
+        status: "queued",
+        startedAt: null,
+        ranAt: null,
+        finishedAt: null,
+        deviceId: null,
+        deviceName: null,
+        failureCause: "queue_timeout",
+        failureDetail: "no worker claimed the session within the queue timeout",
+        takenBy: { deviceId: "d9", deviceName: "box-taker" },
+      }),
+      attempt({ status: "dispatched", ranAt: null, finishedAt: null, failureCause: "queue_timeout" }),
+    ]);
+    expect(feed.map((e) => [e.cause, e.action, e.tone])).toEqual([
+      [null, null, "open"],
+      [null, null, "open"],
+    ]);
+    expect(feed.map((e) => e.outcome)).toEqual([
+      "Taken by box-taker, not started yet",
+      "Sent to ubuntu5, not started yet",
+    ]);
+  });
+
+  it("reads an attempt that ended before any box started it as Never started, never Ran", () => {
+    const feed = deriveActivityFeed([
+      attempt({
+        status: "failed",
+        ranAt: null,
+        failureCause: "queue_timeout",
+        failureReason: "dispatch never claimed by a runner (no ack / no started event within grace window)",
+      }),
+      attempt({ jobType: "review", status: "cancelled", ranAt: null, failureCause: "pipeline_cancelled" }),
+      attempt({ jobType: "smoke", status: "failed", failureCause: "agent_killed" }),
+    ]);
+    expect(feed.map((e) => e.verb)).toEqual(["Never started", "Never started", "Retried"]);
+    expect(feed[0]?.action).toEqual(expect.stringContaining("No runner picked it up"));
   });
 
   it("labels the first attempt Ran and a later one Retried", () => {

@@ -45,22 +45,33 @@ export interface ActivityEntry {
 
 const OPEN_STATUSES: ReadonlySet<string> = new Set(LIVE_JOB_STATUSES);
 
-/** Runner-friendly device name, never a bare empty cell; a taken job is on the box that took it. */
-function deviceLabel(a: PipelineRunAttempt): string {
+/** The box an attempt is on, by name where core knows one; a taken job is on the box that took it. */
+function boxOf(a: PipelineRunAttempt): string | null {
   if (a.deviceName) return a.deviceName;
   if (a.deviceId) return a.deviceId.slice(0, 8);
   if (a.takenBy) return a.takenBy.deviceName ?? a.takenBy.deviceId.slice(0, 8);
-  return "unassigned";
+  return null;
 }
 
-/** An attempt not started reads the run's own word: Starting where a box has taken or been sent it,
- *  Queued where none has, never Ran (ISS-1228). */
-function unstartedVerb(a: PipelineRunAttempt): string | null {
+/** Runner-friendly device name, never a bare empty cell. */
+const deviceLabel = (a: PipelineRunAttempt): string => boxOf(a) ?? "unassigned";
+
+/** An open attempt reads the run's own word for it — Running, Starting where a box has taken or been
+ *  sent it, Queued where none has, Held — and a finished one that no box ever started reads Never
+ *  started: never Ran for work that did not run (ISS-1228). */
+function stateVerb(a: PipelineRunAttempt): string | null {
+  if (a.status === "running") return "Running";
   if (a.status === "dispatched" || (a.status === "queued" && a.takenBy)) return "Starting";
-  return a.status === "queued" ? "Queued" : null;
+  if (a.status === "queued") return "Queued";
+  if (a.status === "held") return "Held";
+  if (a.status !== "done" && a.ranAt === null) return "Never started";
+  return null;
 }
 
+/** An open attempt has no cause and so no remedy, whatever its session ended of: the attempt has
+ *  not ended, and a remedy on it would send a person after a failure that has not happened. */
 function causeOf(a: PipelineRunAttempt): FailureCause | null {
+  if (OPEN_STATUSES.has(a.status)) return null;
   if (a.failureCause) return resolveFailureCause(a.failureCause);
   if (a.status !== "failed" && a.status !== "cancelled") return null;
   if (a.failureReason && LEGACY_NEUTRAL_REASONS.has(a.failureReason)) return null;
@@ -73,13 +84,14 @@ function toneOf(a: PipelineRunAttempt, cause: FailureCause | null): ActivityTone
   return FAILURE_CAUSE_PRESENTATION[cause];
 }
 
-/** Outcome text for an attempt that never finished — never a blank cell. */
+/** Outcome text for an attempt that never finished — never a blank cell, and the box by its name. */
 function openOutcome(a: PipelineRunAttempt): string {
+  const box = boxOf(a) ?? "a box";
   if (a.status === "running") return "Still running";
-  if (a.status === "dispatched") return "Sent to a runner, not started yet";
+  if (a.status === "dispatched") return `Sent to ${box}, not started yet`;
   if (a.status === "held") return "Held — waiting on a gate";
-  if (a.takenBy) return "Taken by a runner, not started yet";
-  return "Queued — no runner has picked it up";
+  if (a.takenBy) return `Taken by ${box}, not started yet`;
+  return "Queued — no box has taken it yet";
 }
 
 function outcomeOf(a: PipelineRunAttempt, cause: FailureCause | null): string {
@@ -112,8 +124,8 @@ function signature(
 }
 
 function verbFor(a: PipelineRunAttempt, position: number, repeats: number): string {
-  const unstarted = unstartedVerb(a);
-  if (unstarted) return unstarted;
+  const state = stateVerb(a);
+  if (state) return state;
   if (repeats > 1) return "Retried";
   return position === 1 ? "Ran" : "Retried";
 }
@@ -126,7 +138,7 @@ export function deriveActivityFeed(attempts: PipelineRunAttempt[] | undefined): 
     const position = index + 1;
     const cause = causeOf(a);
     const outcome = outcomeOf(a, cause);
-    const action = cause ? failureReasonAction(cause, "Retry", a.startedAt != null) : null;
+    const action = cause ? failureReasonAction(cause, "Retry", a.ranAt != null) : null;
     const sig = signature(a, cause, outcome, action);
     const previous = entries[entries.length - 1];
 

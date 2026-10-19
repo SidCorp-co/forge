@@ -60,10 +60,10 @@ export const pipelineRunListItemSchema = z.object({
   liveJobs: z.number(),
   lastSessionBeatAt: nullableIso,
   reading: z
-    .enum(['running', 'starting', 'queued'])
+    .enum(['running', 'starting', 'waiting', 'queued'])
     .nullable()
     .describe(
-      "what the run's agent is doing: running once a job runs or a session on it beats, starting where a box has taken or been sent a job it has not started, queued where only an untaken job waits",
+      "what the run's agent is doing: running once a job runs or a session core holds running has beaten, starting where a box has taken or been sent a job it has not started or a queued session beats, waiting where only a chat waits on its person's reply, queued where only an untaken job waits",
     ),
   residentMaster: z
     .object({
@@ -89,6 +89,9 @@ const attemptSchema = z.object({
   failureAction: z.enum(['terminal', 'quarantine', 'failover', 'retry']).nullable(),
   queuedAt: nullableIso,
   startedAt: nullableIso,
+  ranAt: nullableIso.describe(
+    "when the attempt's own session first reported its agent working; null where it never did",
+  ),
   finishedAt: nullableIso,
   autoRetry: z
     .object({
