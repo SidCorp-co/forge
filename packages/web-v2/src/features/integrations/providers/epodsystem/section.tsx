@@ -72,8 +72,7 @@ function badgeFor(existing: IntegrationSummary | undefined): BadgeView {
       tone: "green",
     };
   }
-  if (existing.lastHealthStatus === "error")
-    return { label: "Invalid key", tone: "red" };
+  if (existing.lastHealthStatus === "error") return { label: STATE_WORDS.failed, tone: "red" };
   return { label: STATE_WORDS.unchecked, tone: "neutral" };
 }
 
@@ -311,7 +310,6 @@ function EpodsystemBindingRow({
         >
           Test
         </Button>
-        <IntegrationEnabledControl projectId={projectId} binding={binding} />
         <Button
           variant="danger"
           icon="trash"
@@ -321,6 +319,8 @@ function EpodsystemBindingRow({
           Delete
         </Button>
       </div>
+
+      <IntegrationEnabledControl projectId={projectId} binding={binding} />
 
       <AgentAccessControl
         projectId={projectId}

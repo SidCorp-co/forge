@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { IntegrationSummary } from "../../types";
-import { badgeFor } from "./section";
+import { bindingBadge as badgeFor } from "../../derive";
 
 const binding = (over: Partial<IntegrationSummary>) =>
   ({ active: true, lastHealthStatus: null, breakerOpenedAt: null, ...over }) as IntegrationSummary;

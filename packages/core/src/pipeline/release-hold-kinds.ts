@@ -183,11 +183,6 @@ function shortfallStep(s: Shortfall): string {
     .replace(/\. /g, ', then ');
 }
 
-/** A shortfall's reason in the banner's words, without the clause saying who requires it. */
-function shortfallWhy(s: Shortfall): string {
-  return shortfallSentence(s.reason).replace(/, which .*$/, '.');
-}
-
 const capitalised = (clause: string): string =>
   `${clause.charAt(0).toUpperCase()}${clause.slice(1)}`;
 
@@ -203,7 +198,9 @@ export function closeRefusedHold(shortfalls: readonly Shortfall[]): ReleaseHold 
     one
       ? 'The automatic release cannot close this issue.'
       : `The automatic release cannot close this issue, for ${shortfalls.length} reasons.`,
-    shortfalls.map((s) => `- ${shortfallWhy(s)} ${capitalised(shortfallStep(s))}.`).join('\n'),
+    shortfalls
+      .map((s) => `- ${shortfallSentence(s.reason)} ${capitalised(shortfallStep(s))}.`)
+      .join('\n'),
     one
       ? 'The next sweep releases it once that is done.'
       : 'The next sweep releases it once each is done.',

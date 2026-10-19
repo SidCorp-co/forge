@@ -13,6 +13,12 @@ export const AGENT_ACCESS_CLOSED: AgentAccess = "none";
 
 export const GRANT_LABEL = "Agents on this project may use this";
 
+/** When a provider's MCP tools reach agents: every switch between them and the agent, named as the
+ *  drawer labels it, so no drawer introduction leaves one out (ISS-1421 r12). */
+export function reachesAgentsWhile(tools: string): string {
+  return `${tools} reach this project's agents only while its shared credential, Enabled and the grant below are all on.`;
+}
+
 const KIND_COPY: Record<
   Exclude<AgentPathKind, "none">,
   { granted: string; withheld: string }
@@ -38,12 +44,12 @@ export type ReadFrom = "drawer" | "panel";
 
 const OFF = "Agents get nothing from it while it is turned off.";
 
-/** The control that turns it back on, named as its drawer labels it (ISS-1421 r11). */
+/** Each control that turns it back on, named as its drawer labels it, and where it is (ISS-1421 r11, r12). */
 function backOn(tier: TurnedOff, from: ReadFrom): string {
   const where = from === "drawer" ? "in this drawer" : "in its drawer, opened from the list above,";
   if (tier === "both") {
-    const at = from === "drawer" ? "in this drawer" : "in its drawer opened from the list above";
-    return `once Enabled and its shared credential are both back on, ${at}`;
+    const both = from === "drawer" ? "both in this drawer" : "both in its drawer, opened from the list above";
+    return `once you press Enable credential and switch Enabled back on, ${both}`;
   }
   return tier === "binding"
     ? `once Enabled ${where} is switched back on`

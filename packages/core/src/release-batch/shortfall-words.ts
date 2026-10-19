@@ -62,7 +62,7 @@ export function entryRecordsShortfallWords(
 ): ShortfallWords {
   return {
     code: 'ENTRY_CRITERIA_UNMET',
-    reason: `missing ${entryRecordsInWords(unmet)}, which this project requires before a close`,
+    reason: `missing ${entryRecordsInWords(unmet)}`,
     ...(hasSession
       ? { clears: ENTRY_RECORDS_CLEAR, clearsHere: ENTRY_RECORDS_CLEAR_HERE }
       : { clears: ENTRY_RECORDS_REOPEN, clearsHere: ENTRY_RECORDS_REOPEN_HERE }),

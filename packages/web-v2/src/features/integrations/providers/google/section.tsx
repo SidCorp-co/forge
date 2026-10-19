@@ -251,11 +251,12 @@ function GoogleBindingPanel({
         <Button variant="secondary" onClick={handleTest} loading={test.isPending}>
           Test
         </Button>
-        <IntegrationEnabledControl projectId={projectId} binding={binding} />
         <Button variant="danger" icon="trash" loading={remove.isPending} onClick={handleDelete}>
           Disconnect
         </Button>
       </div>
+
+      <IntegrationEnabledControl projectId={projectId} binding={binding} />
 
       <AgentAccessControl
         projectId={projectId}

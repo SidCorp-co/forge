@@ -7,6 +7,7 @@
 // stepper. Workspace-level `/runners` is the device-global roll-up (pair /
 // rename / revoke); project membership (admin) gates the writes here.
 
+import { ADD_DEPLOY_KEY } from "@forge/contracts/deploy-key-words";
 import { ConnTestMessage } from "@/features/resources/components/conn-test-message";
 import {
   Badge,
@@ -99,7 +100,7 @@ function CopyButton({
  * the same pool entry, reusable across every project in the org. The repository URL and workspace
  * setup it clones with are edited under Settings → Shape & release (ISS-1171).
  */
-function GitConfigCard({
+export function GitConfigCard({
 	projectId,
 	orgId,
 	slug,
@@ -187,10 +188,7 @@ function GitConfigCard({
 									label="Copy public key"
 								/>
 							</div>
-							<p className="fg-body-sm text-subtle">
-								Add this public key to your repo&apos;s deploy keys (write
-								access) so runners can clone + push.
-							</p>
+							<p className="fg-body-sm text-subtle">{ADD_DEPLOY_KEY}</p>
 							{testCred.data && (
 								<Banner tone={testCred.data.ok ? "success" : "danger"}>
 									<ConnTestMessage message={testCred.data.message} />

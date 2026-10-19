@@ -4,9 +4,11 @@ import type { ConnectionDirectoryItem } from "@forge/contracts";
 import { useProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { integrationConnectionsApi, integrationsApi } from "./api";
 import type {
+  BindingListResponse,
+  BindingSummary,
   BindExistingConnectionRequest,
   ConnectionUpdateInput,
   CreateIntegrationInput,
@@ -29,6 +31,31 @@ export function useIntegrationsList(projectId: string | undefined) {
     queryFn: () => integrationsApi.list(projectId as string),
     enabled: !!projectId,
   });
+}
+
+/**
+ * Every cached project list reads a write's own answer before any refetch. A drawer that waited for
+ * the refetch went on showing the state before the write for as long as that read did not land,
+ * and the person who pressed Enabled was told it had not taken (ISS-1421 r12).
+ */
+function writeThrough(qc: QueryClient, edit: (row: BindingSummary) => BindingSummary): void {
+  qc.setQueriesData<BindingListResponse>({ queryKey: ["integrations", "list"] }, (list) => {
+    if (!list) return list;
+    const items = list.items.map(edit);
+    return { ...list, items, bindings: items };
+  });
+}
+
+function writeBinding(qc: QueryClient, saved: BindingSummary): void {
+  writeThrough(qc, (row) => (row.id === saved.id ? saved : row));
+}
+
+function writeConnectionActive(qc: QueryClient, connectionId: string, active: boolean): void {
+  writeThrough(qc, (row) =>
+    row.connectionId === connectionId
+      ? { ...row, connectionActive: active, active: row.bindingActive && active }
+      : row,
+  );
 }
 
 function useInvalidateIntegrations(projectId: string | undefined) {
@@ -156,12 +183,14 @@ export function useCreateProviderIntegration(projectId: string | undefined) {
 
 /** Patch a Coolify/Epodsystem integration (config/secrets/active). */
 export function useUpdateProviderIntegration(projectId: string | undefined) {
+  const qc = useQueryClient();
   const invalidate = useInvalidateIntegrations(projectId);
   const { toast } = useToast();
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: UpdateIntegrationInput }) =>
       integrationsApi.update(projectId as string, id, body),
-    onSuccess: () => {
+    onSuccess: (answer) => {
+      writeBinding(qc, answer.integration);
       invalidate();
       toast({ title: "Integration saved", tone: "success" });
     },
@@ -331,12 +360,14 @@ function useInvalidateConnections() {
 
 /** Patch a connection (displayName/config/secrets/active). */
 export function useUpdateConnection() {
+  const qc = useQueryClient();
   const invalidate = useInvalidateConnections();
   const { toast } = useToast();
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: ConnectionUpdateInput }) =>
       integrationConnectionsApi.update(id, body),
-    onSuccess: () => {
+    onSuccess: (answer) => {
+      writeConnectionActive(qc, answer.connection.id, answer.connection.active);
       invalidate();
       toast({ title: "Connection saved", tone: "success" });
     },

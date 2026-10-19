@@ -1,8 +1,8 @@
 
 import type { IntegrationCapabilities } from "@forge/contracts";
-import type { IconName } from "@/design";
+import type { BadgeProps, IconName } from "@/design";
 import { isDrillableProvider } from "./providers/registry";
-import type { StatusCard } from "./types";
+import type { IntegrationSummary, StatusCard } from "./types";
 
 export type DirectoryStatus =
   | "connected"
@@ -122,6 +122,21 @@ export const STATE_WORDS = {
   failed: "Last check failed",
   unchecked: "Not checked yet",
 } as const;
+
+export interface BadgeView {
+  label: string;
+  tone: NonNullable<BadgeProps["tone"]>;
+}
+
+/** A section's badge: a failed check is never "Active", turned off is not a breaker (ISS-1421). */
+export function bindingBadge(existing: IntegrationSummary | undefined): BadgeView {
+  if (!existing) return { label: "Not configured", tone: "amber" };
+  if (!existing.active) return { label: STATE_WORDS.off, tone: "neutral" };
+  if (existing.breakerOpenedAt !== null) return { label: "Degraded", tone: "amber" };
+  if (existing.lastHealthStatus === "ok") return { label: "Connected", tone: "green" };
+  if (existing.lastHealthStatus === "error") return { label: STATE_WORDS.failed, tone: "red" };
+  return { label: STATE_WORDS.unchecked, tone: "neutral" };
+}
 
 /** Icon + text + tinted-pill metadata for each directory state. Never
  *  color-only — every state pairs an icon and a label (a11y AC). */

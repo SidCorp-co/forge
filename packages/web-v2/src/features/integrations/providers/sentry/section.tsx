@@ -30,12 +30,12 @@ import type {
 import {
   AGENT_ACCESS_CLOSED,
   AgentAccessChoice,
-  AgentAccessControl, agentAccessBody, agentAccessDeniedReason, mayWriteAgentAccess} from "../../components/agent-access-control";
+  AgentAccessControl, agentAccessBody, agentAccessDeniedReason, mayWriteAgentAccess, reachesAgentsWhile} from "../../components/agent-access-control";
 import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { sentry } from "./index";
 import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
-import { STATE_WORDS } from "../../derive";
+import { bindingBadge } from "../../derive";
 
 /** Editable Sentry target row — strings only so inputs stay controlled. */
 interface TargetRow {
@@ -239,18 +239,15 @@ export function SentrySection({ projectId }: { projectId: string }) {
         <div className="flex items-center justify-between gap-2">
           <CardTitle>Sentry</CardTitle>
           {existing && (
-            <Badge tone={existing.active ? "green" : "neutral"}>
-              {existing.active ? "Active" : STATE_WORDS.off}
-            </Badge>
+            <Badge tone={bindingBadge(existing).tone}>{bindingBadge(existing).label}</Badge>
           )}
         </div>
       </div>
       <div className="flex flex-col gap-4">
         <p className="fg-body-sm text-muted">
-          Store one Sentry host + auth token, then register every Sentry project it can read
-          (e.g. backend, frontend, mobile). The official Sentry MCP tools reach this
-          project&apos;s agents only while Enabled and the grant below are both on; the target list
-          is then shared with them so they query the right org/project.
+          Store one Sentry host and auth token, then add every Sentry project it can read, such as
+          backend, frontend or mobile. {reachesAgentsWhile("The official Sentry MCP tools")} Agents
+          are given the project list, so they query the right organization and project.
         </p>
 
         <Field
@@ -433,6 +430,8 @@ export function SentrySection({ projectId }: { projectId: string }) {
           />
         )}
 
+        {existing && <IntegrationEnabledControl projectId={projectId} binding={existing} />}
+
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
           <div className="flex items-center gap-3">
             <Button
@@ -454,20 +453,14 @@ export function SentrySection({ projectId }: { projectId: string }) {
             )}
           </div>
           {existing && (
-            <div className="flex items-center gap-4">
-              <IntegrationEnabledControl
-                projectId={projectId}
-                binding={existing}
-              />
-              <Button
-                variant="danger"
-                icon="trash"
-                loading={remove.isPending}
-                onClick={() => remove.mutate(existing.id)}
-              >
-                Remove
-              </Button>
-            </div>
+            <Button
+              variant="danger"
+              icon="trash"
+              loading={remove.isPending}
+              onClick={() => remove.mutate(existing.id)}
+            >
+              Remove
+            </Button>
           )}
         </div>
       </div>

@@ -83,13 +83,13 @@ describe("the agents switch on a binding that is turned off", () => {
       "drawer",
       "both",
       "all",
-      "They may use it once Enabled and its shared credential are both back on, in this drawer.",
+      "They may use it once you press Enable credential and switch Enabled back on, both in this drawer.",
     ],
     [
       "panel",
       "both",
       "none",
-      "A grant takes effect once Enabled and its shared credential are both back on, in its drawer opened from the list above.",
+      "A grant takes effect once you press Enable credential and switch Enabled back on, both in its drawer, opened from the list above.",
     ],
   ] as const)("names the switch that turns it back on, read from the %s, turned off at the %s, granted %s", (from, tier, access, said) => {
     const text = show(false, access, "direct-mcp", {
@@ -99,6 +99,9 @@ describe("the agents switch on a binding that is turned off", () => {
     });
     expect(text).toContain(said);
     expect(text).not.toMatch(/Turning this on|turned back on\./);
+    // r12: judge-55 read the both-off line naming Enabled alone, never the control for the credential.
+    if (tier !== "binding") expect(text).toContain("Enable credential");
+    if (tier !== "credential") expect(text).toMatch(/\bEnabled\b/);
     for (const sentence of text.match(/[A-Z][^.]*\./g) ?? []) {
       expect(sentence.split(/\s+/).length, sentence).toBeLessThanOrEqual(25);
     }

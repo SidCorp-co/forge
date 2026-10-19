@@ -107,7 +107,7 @@ describe('rosterCloseShortfalls', () => {
     const [found] = (await rosterCloseShortfalls(PROJECT, ['a'])).get('a') ?? [];
     expect(found).toMatchObject({
       code: 'ENTRY_CRITERIA_UNMET',
-      reason: 'missing a plan and a release note, which this project requires before a close',
+      reason: 'missing a plan and a release note',
       clearsHere:
         "An agent writes them through Forge's issue tools. To start one, press Open session at the top of this page.",
     });
@@ -178,10 +178,7 @@ describe('shortfallSaid', () => {
     ['not marked merged', 'It is not marked merged.'],
     ['no mark naming where its work landed', 'It has no mark naming where its work landed.'],
     ['holds 2 open questions', 'It holds 2 open questions.'],
-    [
-      'missing a plan, which this project requires before a close',
-      'It is missing a plan, which this project requires before a close.',
-    ],
+    ['missing a plan', 'It is missing a plan.'],
   ])('says "%s" as a sentence of its own, ahead of what clears it', (reason, sentence) => {
     const said = shortfallSaid({ reason, clears: 'Do this.' });
     expect(said).toBe(`${sentence} Do this.`);

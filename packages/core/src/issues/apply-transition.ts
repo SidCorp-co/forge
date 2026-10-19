@@ -18,7 +18,11 @@ import { actorAgency, type DeviceLite, type TransitionActor } from './actor-agen
 import { archivedAmong, archiveRefusalForTransition } from './archive.js';
 import { resolveAutonomousParkTarget, storedWaitingKind } from './autonomous-park.js';
 import { describeRewrite, noOpSentence, type TransitionRewrite } from './close-substitution.js';
-import { assertIssueNeverEnteredPipeline, explainDraftRace } from './draft-entry.js';
+import {
+  assertIssueNeverEnteredPipeline,
+  draftExitRefusal,
+  explainDraftRace,
+} from './draft-entry.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
 import { recordDropUnblock } from './drop-unblock.js';
 import { resolveDeclaredEntryCriteria } from './entry-criteria.js';
@@ -227,11 +231,11 @@ export async function stageIssueTransition(
     if (requestedStatus === 'draft') {
       await assertIssueNeverEnteredPipeline(issue.id, fromStatus);
     } else {
-      throw new TransitionError(
-        'ILLEGAL_TRANSITION',
-        `a Draft (draft) issue may only move to ${DRAFT_EXIT_TARGETS.map(statusForCaller).join(', ')}. ${statusForCaller(requestedStatus)} is a legal target from every other status, but not from Draft (draft) — promote it to Open (open) first, or use Dropped (dropped) to discard it.`,
-        { from: fromStatus, to: requestedStatus, allowedFromDraft: [...DRAFT_EXIT_TARGETS] },
-      );
+      throw new TransitionError('ILLEGAL_TRANSITION', draftExitRefusal(requestedStatus), {
+        from: fromStatus,
+        to: requestedStatus,
+        allowedFromDraft: [...DRAFT_EXIT_TARGETS],
+      });
     }
   }
 

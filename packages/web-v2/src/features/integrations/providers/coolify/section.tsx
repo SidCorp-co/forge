@@ -2,7 +2,6 @@
 
 import {
   Badge,
-  type BadgeProps,
   Banner,
   Button,
   CardTitle,
@@ -46,22 +45,7 @@ import type {
   IntegrationTestResult,
 } from "../../types";
 import type { CoolifyReadConfig } from "./config";
-import { STATE_WORDS } from "../../derive";
-
-interface BadgeView {
-  label: string;
-  tone: NonNullable<BadgeProps["tone"]>;
-}
-
-/** What the binding's own fields hold: a health check is not a deploy, and turned off is not a breaker. */
-export function badgeFor(existing: IntegrationSummary | undefined): BadgeView {
-  if (!existing) return { label: "Not configured", tone: "amber" };
-  if (!existing.active) return { label: STATE_WORDS.off, tone: "neutral" };
-  if (existing.breakerOpenedAt !== null) return { label: "Degraded", tone: "amber" };
-  if (existing.lastHealthStatus === "ok") return { label: "Connected", tone: "green" };
-  if (existing.lastHealthStatus === "error") return { label: STATE_WORDS.failed, tone: "red" };
-  return { label: STATE_WORDS.unchecked, tone: "neutral" };
-}
+import { bindingBadge } from "../../derive";
 
 export function CoolifySection({ projectId, stage: openedAt }: { projectId: string; stage?: DeployStage }) {
   const [stage, setStage] = useState<DeployStage>(openedAt ?? "preview");
@@ -80,8 +64,8 @@ export function CoolifySection({ projectId, stage: openedAt }: { projectId: stri
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center justify-between gap-2">
           <CardTitle>Coolify</CardTitle>
-          <Badge tone={badgeFor(existing).tone}>
-            {badgeFor(existing).label}
+          <Badge tone={bindingBadge(existing).tone}>
+            {bindingBadge(existing).label}
           </Badge>
         </div>
       </div>
