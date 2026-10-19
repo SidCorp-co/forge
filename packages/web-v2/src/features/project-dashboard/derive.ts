@@ -298,6 +298,8 @@ export function projectAttention(
   for (const b of blockers ?? []) {
     const link = `/projects/${slug}/issues/${b.documentId}`;
     if (listed.has(link)) continue;
+    // Another person's park is the reader's to act on only once a stuck-issue notice stands for it (ISS-1229 r17).
+    if (!b.readerOwns && !b.stuckKind) continue;
     listed.add(link);
     parked.push({
       key: `parked-${b.documentId}`,

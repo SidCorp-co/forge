@@ -27,6 +27,14 @@ describe('FORGE_FACTS', () => {
     );
   });
 
+  // ISS-1229 r17, judge-44: the fact said Draft is never a target while the transition door takes it
+  // for an issue that never entered the pipeline (ISS-787, draft-entry.ts); the fact says what the door does.
+  it('says Draft is a target only for an issue that never entered the pipeline', () => {
+    const rules = FORGE_FACTS.find((f) => f.id === 'pipeline-rules')?.render() ?? '';
+    expect(rules).not.toMatch(/draft\W* is never a valid target/i);
+    expect(rules).toContain('a target only for an issue that has never entered the pipeline');
+  });
+
   it('tells no agent to send a complete entry, the config write ISS-1170 retired', () => {
     const texts = [OPERATING_AFFORDANCES_TEXT, ...FORGE_FACTS.map((f) => f.render())];
     expect(texts.filter((t) => /complete entry/i.test(t))).toEqual([]);

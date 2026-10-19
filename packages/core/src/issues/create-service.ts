@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import type { BodyFormat } from '../body/formats.js';
 import { prepareBody } from '../body/prepare.js';
 import { db } from '../db/client.js';
-import { type IssueStatus, issueLabels, issues } from '../db/schema.js';
+import { type IssueStatus, issueLabels, issues, projects } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import type { Actor } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -30,14 +30,14 @@ import {
   writeIssueRelations,
 } from './relations-service.js';
 
-export type IssueCreateErrorCode = 'INVALID_STATUS' | 'INVALID_DETECTOR_KEY';
+export type IssueCreateErrorCode = 'INVALID_STATUS' | 'INVALID_DETECTOR_KEY' | 'PROJECT_ARCHIVED';
 
 export class IssueCreateError extends Error {
   constructor(
     readonly code: IssueCreateErrorCode,
     readonly value: string,
   ) {
-    super(code);
+    super(code === 'PROJECT_ARCHIVED' ? `${code}: ${archivedProjectRefusal(value)}` : code);
     this.name = 'IssueCreateError';
   }
 }
@@ -110,6 +110,23 @@ export type CreateIssueResult =
       bodyWarnings: string[];
     };
 
+/** An archived project takes no new issue: one filed there would be worked by nobody (ISS-1229 r17). */
+async function refuseArchivedProject(projectId: string): Promise<void> {
+  const [project] = await db
+    .select({ archivedAt: projects.archivedAt })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  if (project?.archivedAt) {
+    throw new IssueCreateError('PROJECT_ARCHIVED', project.archivedAt.toISOString().slice(0, 10));
+  }
+}
+
+/** The refusal's sentence, which every door that files an issue sends as it is. */
+export function archivedProjectRefusal(archivedOn: string): string {
+  return `this project was archived on ${archivedOn}, so it takes no new issues; an owner or admin of its organisation can unarchive it first`;
+}
+
 export async function createIssue(
   input: CreateIssueInput,
   writer: IssueCreateWriter,
@@ -119,6 +136,7 @@ export async function createIssue(
     throw new IssueCreateError('INVALID_STATUS', requestedStatus);
   }
 
+  await refuseArchivedProject(input.projectId);
   const intake = await applyIntakeGate(input.projectId, requestedStatus as IssueStatus);
 
   let decodedAttachments: DecodedAttachment[] = [];

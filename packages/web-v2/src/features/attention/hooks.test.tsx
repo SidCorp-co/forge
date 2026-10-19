@@ -229,3 +229,25 @@ describe("useAttention", () => {
     ]);
   });
 });
+
+// ISS-1229 r17, judge-44: the toast read "a drive job is already queued or running on this issue",
+// the stored job type, to a person.
+describe("retryRefusalWords", () => {
+  it("names no stored job type where work of its kind is already queued", async () => {
+    const { retryRefusalWords } = await import("./hooks");
+    const { ApiError } = await import("@/lib/api/client");
+    const said = retryRefusalWords(
+      new ApiError(409, "a drive job is already queued or running on this issue; that one is its retry", "ALREADY_ACTIVE"),
+    );
+    expect(said).toBe("The same work is already queued or running on this issue, and that is its retry.");
+    expect(said).not.toContain("drive");
+  });
+
+  it("says any other refusal as the server said it", async () => {
+    const { retryRefusalWords } = await import("./hooks");
+    const { ApiError } = await import("@/lib/api/client");
+    expect(retryRefusalWords(new ApiError(409, "the issue this job ran for is at Closed, so there is nothing to retry it for", "ISSUE_RESOLVED"))).toContain(
+      "at Closed",
+    );
+  });
+});

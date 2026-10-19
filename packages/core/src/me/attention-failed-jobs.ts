@@ -22,6 +22,7 @@ import { db } from '../db/client.js';
 import { issues, jobs, projects } from '../db/schema.js';
 import { issueArchiveSide } from '../issues/archive.js';
 import { ISSUE_RESOLVED_STATUSES, ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
+import { LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import {
   type AttentionFailedJobRow,
   type AttentionScope,
@@ -36,14 +37,31 @@ import {
 
 const retryJobs = alias(jobs, 'retry_jobs');
 const laterJob = alias(jobs, 'later_failed_job');
+const liveJob = alias(jobs, 'live_job_of_its_kind');
 
-/** A failed job of the caller's that nothing retried, from the last week: the part read off `jobs`. */
+/**
+ * A failed job of the caller's that nothing retried, from the last week: the part read off `jobs`.
+ * Live work of its kind on its issue is its retry already, which the retry route refuses to add to,
+ * so a row offering one would offer a button that never works (ISS-1229 r17).
+ */
 export function failedJobOwnWhere(userId: string, job: typeof jobs | typeof laterJob = jobs): SQL {
   return and(
     eq(job.createdBy, userId),
     eq(job.status, 'failed'),
     sql`${job.createdAt} >= now() - interval '7 days'`,
     notExists(db.select({ one: sql`1` }).from(retryJobs).where(eq(retryJobs.retryOf, job.id))),
+    notExists(
+      db
+        .select({ one: sql`1` })
+        .from(liveJob)
+        .where(
+          and(
+            eq(liveJob.issueId, job.issueId),
+            eq(liveJob.type, job.type),
+            inArray(liveJob.status, [...LIVE_JOB_STATUSES]),
+          ),
+        ),
+    ),
   ) as SQL;
 }
 

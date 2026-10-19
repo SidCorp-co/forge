@@ -127,7 +127,7 @@ describe('the discovery reads outside the plan inventory', () => {
     expect(new Set(body.items.map((i) => i.issueId))).toEqual(new Set([live]));
   });
 
-  it("leaves an archived issue out of attention's mentions and failed jobs", async () => {
+  it("leaves an archived issue out of attention's mentions", async () => {
     const ids = { archived: await seed(1, 'dropped'), live: await seed(2, 'dropped') };
     for (const issue of Object.values(ids)) {
       const comment = randomUUID();
@@ -135,6 +135,17 @@ describe('the discovery reads outside the plan inventory', () => {
         INSERT INTO comments (id, issue_id, author_id, body) VALUES (${comment}, ${issue}, ${userId}, 'hi')`);
       await harness.db.execute(sql`
         INSERT INTO comment_mentions (comment_id, user_id) VALUES (${comment}, ${userId})`);
+    }
+    await archive(['ISS-1']);
+    const buckets = await import('../../src/me/attention-buckets.js');
+    expect((await buckets.selectMentions(userId)).map((r) => r.issSeq)).toEqual([2]);
+  });
+
+  // A failed job is listed only while its issue is open (ISS-1229 r16), so the pair is held at a live
+  // status; only a finished issue can be archived, so the archived one is marked in place.
+  it("leaves an archived issue out of attention's failed jobs", async () => {
+    const ids = { archived: await seed(1, 'in_progress'), live: await seed(2, 'in_progress') };
+    for (const issue of Object.values(ids)) {
       const run = randomUUID();
       await harness.db.execute(sql`
         INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at)
@@ -143,9 +154,7 @@ describe('the discovery reads outside the plan inventory', () => {
         INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, type, status, created_by, queued_at)
         VALUES (${randomUUID()}, ${projectId}, ${issue}, ${run}, 'drive', 'failed', ${userId}, now())`);
     }
-    await archive(['ISS-1']);
-    const buckets = await import('../../src/me/attention-buckets.js');
-    expect((await buckets.selectMentions(userId)).map((r) => r.issSeq)).toEqual([2]);
+    await harness.db.execute(sql`UPDATE issues SET archived_at = now() WHERE id = ${ids.archived}`);
     const failed = await import('../../src/me/attention-failed-jobs.js');
     expect((await failed.selectFailedJobs(userId)).map((r) => r.issSeq)).toEqual([2]);
   });

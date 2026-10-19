@@ -57,7 +57,10 @@ async function world(): Promise<World> {
 }
 
 /** A firing wedge on `key`, and the issue's stuck-issue notice it holds. */
-async function wedgeHolding(w: World, key: string): Promise<{ wedgeId: string; heldId: string }> {
+async function wedgeHolding(
+  w: World,
+  key: string | null,
+): Promise<{ wedgeId: string; heldId: string }> {
   const [wedge] = (await harness.db.execute(sql`
     INSERT INTO notifications (project_id, type, kind, tier, state, title, resolution_key, pending_since, last_seen_at)
     VALUES (${w.projectId}::uuid, 'pipeline_wedge', 'condition', 'page', 'firing',
@@ -128,12 +131,14 @@ async function runner(
   return id;
 }
 
-async function outbox(w: World, processed: boolean): Promise<string> {
+/** The change that parked the issue, out of redeliveries as a wedged row is, or processed. */
+async function outbox(w: World, processed: boolean, at = new Date()): Promise<string> {
   const id = randomUUID();
   await harness.db.execute(sql`
-    INSERT INTO pipeline_outbox (id, issue_id, project_id, from_status, to_status, processed_at)
-    VALUES (${id}::uuid, ${w.issueId}::uuid, ${w.projectId}::uuid, 'open', 'in_progress',
-            ${processed ? new Date().toISOString() : null}::timestamptz)
+    INSERT INTO pipeline_outbox (id, issue_id, project_id, from_status, to_status, attempts,
+                                 processed_at, created_at)
+    VALUES (${id}::uuid, ${w.issueId}::uuid, ${w.projectId}::uuid, 'in_progress', 'waiting', 3,
+            ${processed ? at.toISOString() : null}::timestamptz, ${at.toISOString()}::timestamptz)
   `);
   return id;
 }
@@ -250,6 +255,83 @@ describe('every other key kind ends with its subject and holds while it stands',
 
     expect((await stateOf(wedgeId)).resolved).toBe(true);
     expect((await stateOf(heldId)).state).toBe('pending');
+  });
+});
+
+// ISS-1229 r17, judge-44: an outbox wedge is raised once its row is out of redeliveries, and the
+// worker never processes such a row again, so a resolver waiting for it to be processed held the
+// wedge, and its project's notices, for ever (mowment's, since 2026-08-25).
+describe('an outbox wedge, whose row is never processed again', () => {
+  it('holds while its issue still reads the status the change took it to', async () => {
+    const w = await world();
+    const { wedgeId, heldId } = await wedgeHolding(w, `wedge:${await outbox(w, false)}`);
+    await reevaluate(new Date());
+    expect((await stateOf(wedgeId)).resolved).toBe(false);
+    expect((await stateOf(heldId)).state).toBe('inhibited');
+  });
+
+  for (const moved of [
+    { how: 'its issue has closed', write: sql`status = 'closed', merged_at = now()` },
+    { how: 'its issue has been dropped', write: sql`status = 'dropped'` },
+    { how: 'its issue reads another status', write: sql`status = 'in_progress'` },
+    { how: 'its issue is archived', write: sql`archived_at = now()` },
+  ]) {
+    it(`ends once ${moved.how}, and the notice it held goes out`, async () => {
+      const w = await world();
+      const { wedgeId, heldId } = await wedgeHolding(w, `wedge:${await outbox(w, false)}`);
+      await harness.db.execute(sql`UPDATE issues SET ${moved.write} WHERE id = ${w.issueId}::uuid`);
+      await reevaluate(new Date());
+      expect((await stateOf(wedgeId)).resolved).toBe(true);
+      expect((await stateOf(heldId)).state).toBe('pending');
+    });
+  }
+
+  it('ends once a later change of its issue has been processed', async () => {
+    const w = await world();
+    const { wedgeId } = await wedgeHolding(
+      w,
+      `wedge:${await outbox(w, false, new Date(Date.now() - 60_000))}`,
+    );
+    await outbox(w, true);
+    await reevaluate(new Date());
+    expect((await stateOf(wedgeId)).resolved).toBe(true);
+  });
+});
+
+// ISS-1229 r17, judge-44: 180 wedges raised before keys existed fire with no key at all; the sweep read
+// only keyed rows, so none was ever resolved or logged, and each kept holding its project's notices.
+describe('a wedge stored with no key', () => {
+  it('is resolved on the next sweep, and the notice it held goes out', async () => {
+    const w = await world();
+    const { wedgeId, heldId } = await wedgeHolding(w, null);
+    await reevaluate(new Date());
+    expect((await stateOf(wedgeId)).resolved).toBe(true);
+    expect((await stateOf(heldId)).state).toBe('pending');
+  });
+
+  it('holds no notice raised or ripening while it stands', async () => {
+    const w = await world();
+    await wedgeHolding(w, null);
+    const { recordAndDeliver } = await import('../../src/notifications/deliver.js');
+    const other = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO issues (id, project_id, title, status, created_by_id, iss_seq, waiting_kind)
+      VALUES (${other}::uuid, ${w.projectId}::uuid, 'parked too', 'waiting', ${w.ownerId}::uuid, 2, 'needs_decision')
+    `);
+    const input = {
+      type: 'issue_stranded' as const,
+      recipients: [w.ownerId],
+      title: 'parked too',
+      projectId: w.projectId,
+      issueId: other,
+      resolutionKey: `issue:${other}:stranded`,
+    };
+    const first = await recordAndDeliver(input);
+    await harness.db.execute(sql`
+      UPDATE notifications SET pending_since = now() - interval '10 minutes' WHERE id = ${first?.id}::uuid
+    `);
+    await recordAndDeliver(input);
+    expect((await stateOf(first?.id ?? '')).state).toBe('firing');
   });
 });
 

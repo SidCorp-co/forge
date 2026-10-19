@@ -59,6 +59,8 @@ export interface ProjectHealthRow {
     stuckKind?: StuckIssueKind;
     /** `waiting_on_others` only: the person the park waits for. */
     stuckOwedBy?: string;
+    /** The reader owns the park; another person's is theirs to act on only once a notice stands for it. */
+    readerOwns?: true;
   }>;
   /** Every parked issue: the count behind the capped `blockers`. */
   blockersTotal: number;

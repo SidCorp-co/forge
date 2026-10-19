@@ -176,7 +176,10 @@ export const retryJob = describeOperation({
       'BAD_REQUEST',
       'the body names a field other than `reason`, or `reason` is over 500 characters',
     ),
-    403: fail('FORBIDDEN', "the caller is not a member of the job's project"),
+    403: fail(
+      'FORBIDDEN',
+      "the caller holds less than the member role on the job's project; the refusal names the role it holds",
+    ),
     404: noJob,
     409: fail({
       NOT_FAILED: 'the job is not failed; a held job is resumed, a live one is left to finish',

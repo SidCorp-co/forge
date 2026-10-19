@@ -102,6 +102,35 @@ describe('one issue, one stuck reason', () => {
     ]);
   });
 
+  // ISS-1229 r17, judge-44: two reasons ripening in one sweep both went out, and the lesser was retired
+  // seven seconds after its delivery, so the bell held the issue twice.
+  it('delivers only the more specific of two reasons that ripen in the same sweep', async () => {
+    const shipped = await issue(6, 'developed', 8, true);
+    const s = await sweeps();
+    const pass = async () => {
+      await s.reconcileIdleIssues(new Date());
+      await s.detectOwedCloses(new Date());
+    };
+
+    await pass();
+    expect(await standing(shipped)).toEqual(['idle', 'owed-close']);
+    await fx.db.execute(
+      sql`UPDATE notifications SET pending_since = now() - interval '10 minutes'`,
+    );
+    await pass();
+    await pass();
+
+    expect(await standing(shipped)).toEqual(['owed-close']);
+    const told = (await fx.db.execute(sql`
+      SELECT regexp_replace(n.resolution_key, '^issue:[^:]+:', '') AS sweep
+        FROM notification_delivery_members m JOIN notifications n ON n.id = m.notification_id
+       WHERE n.issue_id = ${shipped}
+    `)) as unknown as Array<{ sweep: string }>;
+    expect(told.map((t) => t.sweep)).toEqual(['owed-close']);
+    const rows = fx.sweepRows(await fx.inbox());
+    expect(rows.map((r) => r.title)).toEqual([expect.stringMatching(/never closed/i)]);
+  });
+
   it('counts each stuck issue once in the headline’s kinds, adding up to the stuck total', async () => {
     await issue(3, 'in_progress', 3);
     await issue(4, 'in_progress', 3);
