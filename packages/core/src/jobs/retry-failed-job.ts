@@ -160,7 +160,8 @@ export async function retryFailedJob(
     if (isUniqueViolation(err)) {
       throw new JobRetryError(
         'ALREADY_ACTIVE',
-        `a ${job.type} job is already queued or running on this issue; that one is its retry`,
+        // The page and the API caller read one sentence, which names no stored job type (ISS-1229 r18).
+        'The same work is already queued or running on this issue, and that is its retry.',
       );
     }
     throw err;
