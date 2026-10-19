@@ -116,11 +116,22 @@ enum AtThePane {
     Gone,
     /// Nothing was typed, and nothing here establishes that the session ended:
     /// the pane was read alive and refused the message, or tmux could not be
-    /// asked. `Ack` has no word for it, and RFC 0003 already defines what the
-    /// runner does with what it cannot honestly claim — it says nothing, core
-    /// reads that as `unknown`, and the message waits instead of being
-    /// replaced. The string is why, for the log.
-    Unsaid(String),
+    /// asked or broke while typing. `Ack` has no word for it, and RFC 0003
+    /// already defines what the runner does with what it cannot honestly claim
+    /// — it says nothing, core reads that as `unknown`, and the message waits
+    /// instead of being replaced.
+    Unsaid(terminal::NotTyped),
+}
+
+/// What the log says of a message that went unacked, by what happened: only a
+/// refusal is a pane that was read.
+fn why_unsaid(why: &terminal::NotTyped) -> &'static str {
+    match why {
+        terminal::NotTyped::Refused(_) => "the pane was read alive and refused it",
+        terminal::NotTyped::Gone(_) | terminal::NotTyped::Failed(_) => {
+            "tmux gave no answer saying this session ended"
+        }
+    }
 }
 
 async fn deliver_to_pane(
@@ -133,7 +144,7 @@ async fn deliver_to_pane(
         Ok(_) => AtThePane::Took,
         Err(terminal::NotTyped::Gone(_)) => AtThePane::Gone,
         Err(why @ (terminal::NotTyped::Refused(_) | terminal::NotTyped::Failed(_))) => {
-            AtThePane::Unsaid(why.to_string())
+            AtThePane::Unsaid(why)
         }
     })
 }
@@ -163,9 +174,10 @@ async fn deliver(
             // the ack vocabulary has no answer that is true here, and the half
             // of that which used to be quiet was the half that lied.
             AtThePane::Unsaid(why) => tracing::error!(
-                "[inbox] session={} seq={}: {why} — NO ack is being sent, because the pane was read and `gone` would say this session ended when this box has not established that. Core reads the silence as `unknown` and waits",
+                "[inbox] session={} seq={}: {why} — NO ack is being sent, because {} and `gone` would say this session ended when this box has not established that. Core reads the silence as `unknown` and waits",
                 frame.session_id,
-                frame.seq
+                frame.seq,
+                why_unsaid(&why)
             ),
         }
         return;
@@ -244,6 +256,56 @@ mod tests {
             (buf, tracing::subscriber::set_default(sub))
         }
 
+        /// One HTTP request's path and body: read to the blank line, then to
+        /// the length the headers declare, however many reads that takes.
+        async fn read_request<R: tokio::io::AsyncRead + Unpin>(sock: &mut R) -> (String, String) {
+            use tokio::io::AsyncReadExt;
+            let mut seen = Vec::new();
+            let mut buf = [0u8; 4096];
+            let head_end = loop {
+                if let Some(at) = seen.windows(4).position(|w| w == b"\r\n\r\n") {
+                    break at + 4;
+                }
+                match sock.read(&mut buf).await {
+                    Ok(0) | Err(_) => break seen.len(),
+                    Ok(n) => seen.extend_from_slice(&buf[..n]),
+                }
+            };
+            let head = String::from_utf8_lossy(&seen[..head_end]).into_owned();
+            let declared = head
+                .lines()
+                .filter_map(|l| l.split_once(':'))
+                .find(|(k, _)| k.trim().eq_ignore_ascii_case("content-length"))
+                .and_then(|(_, v)| v.trim().parse::<usize>().ok())
+                .unwrap_or(0);
+            while seen.len() < head_end + declared {
+                match sock.read(&mut buf).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => seen.extend_from_slice(&buf[..n]),
+                }
+            }
+            let path = head.split_whitespace().nth(1).unwrap_or("").to_string();
+            let body = String::from_utf8_lossy(&seen[head_end..]).into_owned();
+            (path, body)
+        }
+
+        /// A reader that hands out one chunk per read, so a request split
+        /// across reads is split on every run rather than when TCP happens to.
+        struct Chunks(std::collections::VecDeque<Vec<u8>>);
+
+        impl tokio::io::AsyncRead for Chunks {
+            fn poll_read(
+                mut self: std::pin::Pin<&mut Self>,
+                _: &mut std::task::Context<'_>,
+                buf: &mut tokio::io::ReadBuf<'_>,
+            ) -> std::task::Poll<std::io::Result<()>> {
+                if let Some(chunk) = self.0.pop_front() {
+                    buf.put_slice(&chunk);
+                }
+                std::task::Poll::Ready(Ok(()))
+            }
+        }
+
         /// A core that records every request rather than answering one way.
         ///
         /// `transport::fake_core` serves a fixed answer and keeps nothing, and what
@@ -260,16 +322,9 @@ mod tests {
                 while let Ok((mut sock, _)) = listener.accept().await {
                     let writes = writes.clone();
                     tokio::spawn(async move {
-                        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-                        let mut buf = [0u8; 4096];
-                        let n = sock.read(&mut buf).await.unwrap_or(0);
-                        let whole = String::from_utf8_lossy(&buf[..n]).into_owned();
-                        let path = whole.split_whitespace().nth(1).unwrap_or("").to_string();
-                        let body = whole.split("\r\n\r\n").nth(1).unwrap_or("").to_string();
-                        writes
-                            .lock()
-                            .expect("the request journal")
-                            .push((path, body));
+                        use tokio::io::AsyncWriteExt;
+                        let request = read_request(&mut sock).await;
+                        writes.lock().expect("the request journal").push(request);
                         let _ = sock
                             .write_all(
                                 b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}",
@@ -414,11 +469,108 @@ mod tests {
         async fn a_tmux_that_cannot_be_asked_is_never_acked_gone() {
             let _serialised = ONE_AT_A_TIME.lock().await;
             let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-            let sent = send_one(Asked::NoServer, &composer(""), None).await;
+            let sent = send_one(Asked::Forbidden, &composer(""), None).await;
             assert!(
                 sent.acks.is_empty(),
-                "no server answered, so nobody established that the session ended: {:?}",
+                "the socket refused this box, so nobody established that the session ended: {:?}",
                 sent.acks
+            );
+        }
+
+        /// ISS-1265 round 3, F3: tmux's two sentences for a socket nothing
+        /// listens on are absence, since a server that is not running holds no
+        /// session.
+        #[allow(clippy::await_holding_lock)]
+        #[tokio::test]
+        async fn a_socket_with_no_server_behind_it_is_acked_gone() {
+            let _serialised = ONE_AT_A_TIME.lock().await;
+            let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            for asked in [Asked::NoServer, Asked::NeverServed] {
+                let sent = send_one(asked, &composer(""), None).await;
+                assert_eq!(
+                    sent.outcomes(),
+                    vec![r#"{"outcome":"gone"}"#.to_string()],
+                    "tmux said no server runs on the runner's socket ({asked:?})"
+                );
+                assert!(
+                    !sent.log.contains("WARN"),
+                    "a socket with no server is an answer, not an alarm: {}",
+                    sent.log
+                );
+            }
+        }
+
+        /// ISS-1265 round 3, F4: the silent arm said `the pane was read` for
+        /// every case, including a tmux nobody could run, where nothing was.
+        #[allow(clippy::await_holding_lock)]
+        #[tokio::test]
+        async fn the_silence_for_a_tmux_nobody_could_run_does_not_claim_a_read() {
+            let _serialised = ONE_AT_A_TIME.lock().await;
+            let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let no_tmux = crate::daemon::terminal::testing::UnaskableTmux::installed();
+            let (acks, log) = send_frame().await;
+            assert!(no_tmux.asked() > 0, "the question went to the fake tmux");
+            assert!(acks.is_empty(), "nothing was established: {acks:?}");
+            assert!(
+                log.contains("ERROR") && log.to_lowercase().contains("no ack"),
+                "the silence is still said at error level: {log}"
+            );
+            assert!(
+                !log.contains("pane was read"),
+                "no pane was read, and the line may not say one was: {log}"
+            );
+        }
+
+        /// ISS-1265 round 3, the review's end-to-end ask: a master whose pane
+        /// was the last session on a real tmux server, and has ended, is
+        /// answered `gone`.
+        #[allow(clippy::await_holding_lock)]
+        #[tokio::test]
+        async fn a_master_whose_pane_ended_as_the_servers_last_is_acked_gone() {
+            let _serialised = ONE_AT_A_TIME.lock().await;
+            let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let iso = crate::daemon::terminal::testing::IsolatedServer::new("inboxgone");
+            if !terminal::available() {
+                crate::daemon::terminal::testing::cannot_run(
+                    "tmux is not installed here — the read this rests on cannot run",
+                );
+                return;
+            }
+            if !iso.took() {
+                crate::daemon::terminal::testing::cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not ending a session on it");
+                return;
+            }
+            let started = terminal::tmux(&["new-session", "-d", "-s", PANE, "sleep 60"])
+                .await
+                .expect("tmux runs");
+            assert!(started.status.success(), "the master pane must start");
+            crate::daemon::terminal::testing::end_the_last_session(PANE).await;
+            let (acks, log) = send_frame().await;
+            assert_eq!(
+                acks.iter().map(|(_, b)| b.clone()).collect::<Vec<_>>(),
+                vec![r#"{"outcome":"gone"}"#.to_string()],
+                "the master ended, so core is told so: {log}"
+            );
+            assert!(
+                !log.contains("WARN"),
+                "a server that stopped with its last session is no alarm: {log}"
+            );
+        }
+
+        /// ISS-1265 round 3, F2: a request whose body arrives after its
+        /// headers is recorded whole, or a positive ack reads as an empty one.
+        #[tokio::test]
+        async fn the_recording_core_keeps_a_body_that_arrives_after_its_headers() {
+            let body = r#"{"outcome":"delivered"}"#;
+            let head = format!(
+                "POST /api/x HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n",
+                body.len()
+            );
+            let mut split = Chunks([head.into_bytes(), body.as_bytes().to_vec()].into());
+            assert_eq!(
+                read_request(&mut split).await,
+                ("/api/x".to_string(), body.to_string()),
+                "the body that came in its own read is the body recorded"
             );
         }
 

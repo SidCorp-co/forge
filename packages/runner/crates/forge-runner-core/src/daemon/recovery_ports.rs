@@ -46,17 +46,15 @@ pub async fn pane_presence(name: &str) -> MasterPresence {
 ///
 /// `pane_pid` answers `None` alike for a pane tmux does not have and for a tmux
 /// that could not be asked, and recovery writes `Gone` on the run's row as the
-/// end of its subagent. So absence is taken only from a session list tmux did
-/// give that lacks the name. An empty list is no answer, the same way
-/// `terminal::has_session` reads a server nobody reached (ISS-1265, ISS-1312).
+/// end of its subagent. So the answer is `terminal::has_session`'s, which keeps
+/// the two apart: absence is tmux saying no session by that name is on the
+/// runner's socket, including no server running there, and a question tmux
+/// did not answer is `Unanswered` (ISS-1265, ISS-1312).
 async fn absent_or_unanswered(name: &str) -> MasterPresence {
-    let listed = terminal::names_with_prefix("").await;
-    if listed.is_empty() {
-        MasterPresence::Unanswered
-    } else if listed.iter().any(|n| n == name) {
-        MasterPresence::Alive
-    } else {
-        MasterPresence::Gone
+    match terminal::has_session(name).await {
+        terminal::Presence::Present => MasterPresence::Alive,
+        terminal::Presence::Absent => MasterPresence::Gone,
+        terminal::Presence::Unaskable => MasterPresence::Unanswered,
     }
 }
 
@@ -227,31 +225,14 @@ mod tests {
         let _ = terminal::kill(&other).await;
     }
 
-    /// ISS-1312 criterion 31: `pane_pid` answers `None` for a tmux server
-    /// nobody reached exactly as for a pane that is absent, and the port read
-    /// that as `Gone`, which recovery writes on the row as the end of the run's
-    /// subagent. The server is one of the test's own that was never started,
-    /// rather than a narrowed `PATH`, which every test spawning a process at
-    /// the same moment would inherit.
-    #[cfg(unix)]
-    #[allow(clippy::await_holding_lock)]
+    /// ISS-1312 criterion 31: `pane_pid` answers `None` for a tmux nobody
+    /// could ask exactly as for a pane that is absent, and the port read that
+    /// as `Gone`, which recovery writes on the row as the end of the run's
+    /// subagent. The tmux here is one that cannot be run at all, the
+    /// installing thread's own rather than a narrowed `PATH`.
     #[tokio::test]
     async fn a_pane_tmux_could_not_be_asked_about_is_unanswered_rather_than_gone() {
-        let _serialised = terminal::testing::ONE_AT_A_TIME.lock().await;
-        let _env = crate::auth::cred_store::ENV_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let iso = terminal::testing::IsolatedServer::new("portunasked");
-        if !terminal::available() {
-            terminal::testing::cannot_run(
-                "tmux is not installed here — the read this rests on cannot run",
-            );
-            return;
-        }
-        if !iso.took() {
-            terminal::testing::cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not asking it about a pane");
-            return;
-        }
+        let no_tmux = terminal::testing::UnaskableTmux::installed();
         let registry = Registry::new();
         registry.remember_for_test("proj-1", "sess-1", "forge-master-portunasked");
         let port = PaneMasters { masters: &registry };
@@ -260,6 +241,49 @@ mod tests {
             port.state("sess-1").await,
             MasterPresence::Unanswered,
             "a question nobody answered is not a pane that ended"
+        );
+        assert!(no_tmux.asked() > 0, "the question went to the fake tmux");
+    }
+
+    /// ISS-1265 round 3, F3: tmux 3.6 takes its server down with the last
+    /// session, then answers `no server running on <sock>`. An empty session
+    /// list read as no answer left that master open for ever wherever no
+    /// keepalive holds the server up; a server that is not running on the
+    /// runner's own socket holds no session.
+    #[cfg(unix)]
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_registered_pane_whose_server_stopped_with_it_is_gone() {
+        let _serialised = terminal::testing::ONE_AT_A_TIME.lock().await;
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let iso = terminal::testing::IsolatedServer::new("portlast");
+        if !terminal::available() {
+            terminal::testing::cannot_run(
+                "tmux is not installed here — the read this rests on cannot run",
+            );
+            return;
+        }
+        if !iso.took() {
+            terminal::testing::cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not ending a session on it");
+            return;
+        }
+        let name = terminal::session_name(terminal::MASTER_PREFIX, "portlast");
+        let started = terminal::tmux(&["new-session", "-d", "-s", &name, "sleep 60"])
+            .await
+            .expect("tmux runs");
+        assert!(started.status.success(), "the master pane must start");
+        let registry = Registry::new();
+        registry.remember_for_test("proj-1", "sess-1", &name);
+        let port = PaneMasters { masters: &registry };
+        assert_eq!(port.state("sess-1").await, MasterPresence::Alive);
+
+        terminal::testing::end_the_last_session(&name).await;
+        assert_eq!(
+            port.state("sess-1").await,
+            MasterPresence::Gone,
+            "the pane ended and took the server with it; reading that as no answer leaves the master open for ever"
         );
     }
 

@@ -69,7 +69,7 @@ pub fn session_name(prefix: &str, raw: &str) -> String {
 
 #[expect(
     clippy::disallowed_methods,
-    reason = "the tmux socket's dir, a writer held by ISS-1265, which owes its move to config::base_dir"
+    reason = "the tmux socket's dir, a writer owed its move to config::base_dir: docs/proposals/the-tmux-socket-dir-resolves-through-the-reader.md"
 )]
 fn session_config_dir() -> Option<std::path::PathBuf> {
     crate::config::Config::path()
@@ -169,29 +169,39 @@ pub async fn pane_pid(name: &str) -> Option<u32> {
 /// What tmux answered when it was asked whether it holds a session.
 ///
 /// `has-session` exits non-zero for two different facts and says which in its
-/// own words on stderr: a session this server does not hold, and a question it
-/// could not answer at all. [`alive`] folds both into `false`, which is right
-/// for a caller deciding whether to bother doing something and wrong for one
-/// about to tell core that a session ended — only the middle value here is an
-/// ending, and reporting the last one as an ending invents the answer
-/// (`VISION: state-never-lies`, ISS-1265).
+/// own words on stderr: no session by that name on the runner's socket, and a
+/// question it could not answer at all. [`alive`] folds both into `false`,
+/// which is right for a caller deciding whether to bother doing something and
+/// wrong for one about to tell core that a session ended — only the middle
+/// value here is an ending, and reporting the last one as an ending invents the
+/// answer (`VISION: state-never-lies`, ISS-1265).
 ///
-/// This is not [`still_there`], which answers `kill`'s postcondition: there a
-/// server that is not running IS the outcome the caller wanted, and here it is
-/// a socket this box may simply be looking at the wrong one of.
+/// No server on the socket is absence, not an unanswered question: tmux 3.6
+/// takes its server down with the last session, so a master that was the last
+/// pane reads `no server running` once it has ended, and reading that as
+/// unknown left its messages and its run open for ever wherever no keepalive
+/// held the server up (ISS-1265 round 3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Presence {
+pub(crate) enum Presence {
     Present,
     Absent,
     Unaskable,
 }
 
-/// tmux's own wording for a session it does not hold. Anything else it says is
-/// something this code has not been taught to read, and an unread answer is
-/// not an ending.
-const NO_SUCH_SESSION: [&str; 2] = ["can't find session", "session not found"];
+/// tmux's own wording for a session it does not hold: a server that answered
+/// without it, a socket whose server has exited (`ECONNREFUSED`), and a socket
+/// no server ever made (`ENOENT`, in `strerror`'s English; another language
+/// reads as unaskable, the safe direction). Anything else it says,
+/// `Permission denied` and `server exited unexpectedly` among them, is not an
+/// answer about the session, and an unread answer is not an ending.
+const NO_SUCH_SESSION: [&str; 4] = [
+    "can't find session",
+    "session not found",
+    "no server running on",
+    "(no such file or directory)",
+];
 
-async fn has_session(name: &str) -> Presence {
+pub(crate) async fn has_session(name: &str) -> Presence {
     let target = session_target(name);
     let out = match tmux(&["has-session", "-t", &target]).await {
         Ok(out) => out,
@@ -412,11 +422,11 @@ async fn bring_up_server() -> bool {
 }
 
 /// Starts the session server here with the keepalive session, where no unit
-/// holds it. Without it the server's only sessions are panes, tmux's
-/// `exit-empty` takes the server with the last of them, and a master that
-/// exited reads as a tmux nobody could ask rather than as gone, so its exit is
-/// never recorded and the next sweep places another on its name (ISS-1344 r4,
-/// from ISS-1382's judge). A shell sleeping in a loop, because BSD `sleep`
+/// holds it. Without it the server's only sessions are panes and tmux's
+/// `exit-empty` takes the server with the last of them, so the next placement
+/// starts it cold. A master that exits as the last pane still reads as gone:
+/// [`has_session`] reads no server on the socket as no session (ISS-1344 r4,
+/// ISS-1265). A shell sleeping in a loop, because BSD `sleep`
 /// takes no `infinity`, and `tail -f /dev/null` gives up on a character device
 /// the first time another process writes to it, which a loaded box does at once.
 async fn hold_the_keepalive_here() {
@@ -437,13 +447,13 @@ async fn hold_the_keepalive_here() {
     };
     match refused {
         None if server_answers_within(KEEPALIVE_READY_WITHIN).await => tracing::info!(
-            "[terminal] the session server holds {KEEPALIVE} here, so it outlives its last pane and a master's exit is read as one"
+            "[terminal] the session server holds {KEEPALIVE} here, so it outlives its last pane"
         ),
         None => tracing::warn!(
-            "[terminal] {KEEPALIVE} was started here and the socket never answered within {KEEPALIVE_READY_WITHIN:?} — a master that is the server's last pane is not read as gone when it exits"
+            "[terminal] {KEEPALIVE} was started here and the socket never answered within {KEEPALIVE_READY_WITHIN:?} — the server goes with its last pane and starts cold for the next"
         ),
         Some(why) => tracing::warn!(
-            "[terminal] could not start {KEEPALIVE} here ({why}) — a master that is the server's last pane is not read as gone when it exits"
+            "[terminal] could not start {KEEPALIVE} here ({why}) — the server goes with its last pane and starts cold for the next"
         ),
     }
 }
@@ -644,9 +654,7 @@ pub fn shell_quote(s: &str) -> String {
 pub const PANE_BRIEF_DELAY: Duration = Duration::from_secs(5);
 
 pub async fn brief_new_pane(name: &str, text: &str) -> Result<()> {
-    if !alive(name).await {
-        return Err(Error::Other(format!("no session named {name}")));
-    }
+    present_or_not_typed(name).await?;
     tokio::time::sleep(PANE_BRIEF_DELAY).await;
     send_line(name, text).await.map(|_| ()).map_err(Error::from)
 }
@@ -691,6 +699,17 @@ pub enum NotTyped {
 impl From<NotTyped> for Error {
     fn from(why: NotTyped) -> Self {
         Error::Other(why.to_string())
+    }
+}
+
+/// Why nothing may be typed at `name`, where tmux does not say it is there.
+async fn present_or_not_typed(name: &str) -> std::result::Result<(), NotTyped> {
+    match has_session(name).await {
+        Presence::Present => Ok(()),
+        Presence::Absent => Err(NotTyped::Gone(name.to_string())),
+        Presence::Unaskable => Err(NotTyped::Failed(format!(
+            "{name}: nothing was typed — tmux could not be asked whether this session is there, so whether it is running is unknown rather than settled. Ask again once tmux answers."
+        ))),
     }
 }
 
@@ -739,15 +758,7 @@ pub async fn screen(name: &str) -> Option<String> {
 /// The read comes a few milliseconds before the paste, and tmux has no lock
 /// over a pane's input, so a keystroke landing in between is not seen.
 pub async fn send_line(name: &str, text: &str) -> std::result::Result<Prompt, NotTyped> {
-    match has_session(name).await {
-        Presence::Present => {}
-        Presence::Absent => return Err(NotTyped::Gone(name.to_string())),
-        Presence::Unaskable => {
-            return Err(NotTyped::Failed(format!(
-                "{name}: nothing was typed — tmux could not be asked whether this session is there, so whether it is running is unknown rather than settled. Ask again once tmux answers."
-            )))
-        }
-    }
+    present_or_not_typed(name).await?;
     let target = pane_target(name);
     let (read, capture) = read_prompt(&target).await;
     let prompt = match read {
@@ -1196,6 +1207,32 @@ pub(crate) mod testing {
         }
     }
 
+    #[cfg(unix)]
+    /// Ends `name` as its server's last session, and returns once tmux says no
+    /// server runs on the socket: a client asking in the moment the server is
+    /// going is told `server exited unexpectedly`, which is not the answer
+    /// under test. Panics where it never says so, so a test resting on this
+    /// cannot pass on a server that stayed up.
+    pub(crate) async fn end_the_last_session(name: &str) {
+        let ended = super::tmux(&["kill-session", "-t", &super::session_target(name)])
+            .await
+            .expect("tmux runs");
+        assert!(ended.status.success(), "{name} must end");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let listed = super::tmux(&["list-sessions"]).await.expect("tmux runs");
+            let said = String::from_utf8_lossy(&listed.stderr).into_owned();
+            if said.contains("no server running on") {
+                return;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the server never went with its last session; tmux last said: {said}"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
+    }
+
     /// A tmux this box cannot run at all: every call comes back as a spawn
     /// error rather than as an answer.
     ///
@@ -1316,16 +1353,22 @@ pub(crate) mod testing {
     #[cfg(unix)]
     /// What a shim tmux answers when it is asked whether a session is there.
     ///
-    /// tmux exits non-zero for both of the last two and says which in its own
-    /// words on stderr. That sentence is the only thing parting a session this
-    /// box does not hold from a server this box cannot reach, so a test that
-    /// cannot produce both sentences cannot reach the two answers
-    /// [`super::has_session`] now gives.
+    /// tmux exits non-zero for every one but the first and says which in its
+    /// own words on stderr, each sentence here the one tmux 3.6 prints. That
+    /// sentence is the only thing parting a session this box does not hold
+    /// from a server this box cannot reach, so a test that cannot produce each
+    /// of them cannot reach the answers [`super::has_session`] gives.
     #[derive(Debug, Clone, Copy)]
     pub(crate) enum Asked {
         Present,
+        /// A server that answered and holds no session by that name.
         Absent,
+        /// A socket whose server exited with its last session: nothing listens.
         NoServer,
+        /// A socket no server ever made.
+        NeverServed,
+        /// A socket this box may not connect to: nobody was asked.
+        Forbidden,
     }
 
     #[cfg(unix)]
@@ -1335,6 +1378,8 @@ pub(crate) mod testing {
                 Asked::Present => "present",
                 Asked::Absent => "absent",
                 Asked::NoServer => "no-server",
+                Asked::NeverServed => "never-served",
+                Asked::Forbidden => "forbidden",
             }
         }
     }
@@ -1376,7 +1421,9 @@ case "$verb" in
     case "$FORGE_TEST_TMUX_ASKED" in
       present) exit 0 ;;
       absent) echo "can't find session: shim" >&2; exit 1 ;;
-      *) echo "no server running on /shim/tmux.sock" >&2; exit 1 ;;
+      no-server) echo "no server running on /shim/tmux.sock" >&2; exit 1 ;;
+      never-served) echo "error connecting to /shim/tmux.sock (No such file or directory)" >&2; exit 1 ;;
+      *) echo "error connecting to /shim/tmux.sock (Permission denied)" >&2; exit 1 ;;
     esac ;;
   capture-pane) cat "$FORGE_TEST_TMUX_CAPTURE"; exit 0 ;;
 esac
@@ -3176,14 +3223,26 @@ done
             );
         }
 
-        {
-            let _tmux = ShimTmux::installed(Asked::NoServer, &shim_composer(""), None);
+        for asked in [Asked::NoServer, Asked::NeverServed] {
+            let _tmux = ShimTmux::installed(asked, &shim_composer(""), None);
             let why = send_line(SHIM_PANE, "MESSAGE")
                 .await
-                .expect_err("no server answered, so nothing was typed");
+                .expect_err("no server runs on the socket, so no session does");
+            assert_eq!(
+                why,
+                NotTyped::Gone(SHIM_PANE.to_string()),
+                "tmux said no server runs on the runner's own socket ({asked:?}), and a server that is not running holds no session"
+            );
+        }
+
+        {
+            let _tmux = ShimTmux::installed(Asked::Forbidden, &shim_composer(""), None);
+            let why = send_line(SHIM_PANE, "MESSAGE")
+                .await
+                .expect_err("the socket refused this box, so nothing was typed");
             assert!(
                 matches!(why, NotTyped::Failed(_)),
-                "a server that could not be reached is not a session that ended: {why:?}"
+                "a server this box may not reach is not a session that ended: {why:?}"
             );
             assert!(
                 why.to_string().contains("could not be asked"),
@@ -3361,6 +3420,8 @@ done
             (Asked::Present, true),
             (Asked::Absent, false),
             (Asked::NoServer, false),
+            (Asked::NeverServed, false),
+            (Asked::Forbidden, false),
         ] {
             let _tmux = ShimTmux::installed(asked, &shim_composer(""), None);
             assert_eq!(
@@ -3369,5 +3430,102 @@ done
                 "alive on {asked:?} must not move: every other caller reads this bool"
             );
         }
+    }
+
+    /// What tmux itself answers `has-session` on a socket of the test's own,
+    /// read raw: the plant the two tests below rest on.
+    #[cfg(unix)]
+    async fn tmux_said(name: &str) -> String {
+        let out = tmux(&["has-session", "-t", &session_target(name)])
+            .await
+            .expect("tmux runs");
+        String::from_utf8_lossy(&out.stderr).trim().to_string()
+    }
+
+    /// ISS-1265 round 3, F3: tmux 3.6 answers `no server running on <sock>`
+    /// for a session that ended as its server's last, because `exit-empty`
+    /// takes the server with it. Read on a real server, not a shim, since what
+    /// tmux prints there is the whole subject.
+    #[cfg(unix)]
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_session_that_ended_as_its_servers_last_is_absent() {
+        let _serialised = ONE_AT_A_TIME.lock().await;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let iso = testing::IsolatedServer::new("lastgone");
+        if !available() {
+            cannot_run("tmux is not installed here — the read this rests on cannot run");
+            return;
+        }
+        if !iso.took() {
+            cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not ending a session on it");
+            return;
+        }
+        let name = session_name(MASTER_PREFIX, "lastgone");
+        let started = tmux(&["new-session", "-d", "-s", &name, "sleep 60"])
+            .await
+            .expect("tmux runs");
+        assert!(started.status.success(), "the session must start");
+        assert_eq!(has_session(&name).await, Presence::Present);
+        testing::end_the_last_session(&name).await;
+        let said = tmux_said(&name).await;
+        assert!(
+            said.contains("no server running on"),
+            "the plant: the server went with its last session, so tmux says no server runs there: {said}"
+        );
+        assert_eq!(
+            has_session(&name).await,
+            Presence::Absent,
+            "a server that is not running on the runner's own socket holds no session by any name"
+        );
+        assert_eq!(
+            send_line(&name, "MESSAGE").await,
+            Err(NotTyped::Gone(name.clone())),
+            "and a message to it is refused as a session that ended"
+        );
+    }
+
+    #[cfg(unix)]
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_socket_no_server_ever_made_holds_no_session() {
+        let _serialised = ONE_AT_A_TIME.lock().await;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let iso = testing::IsolatedServer::new("neverserved");
+        if !available() {
+            cannot_run("tmux is not installed here — the read this rests on cannot run");
+            return;
+        }
+        if !iso.took() {
+            cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not asking it");
+            return;
+        }
+        let name = session_name(MASTER_PREFIX, "neverserved");
+        let said = tmux_said(&name).await;
+        assert!(
+            said.contains("No such file or directory"),
+            "the plant: no server ever made this socket: {said}"
+        );
+        assert_eq!(has_session(&name).await, Presence::Absent);
+    }
+
+    /// ISS-1265 round 3, F5: `brief_new_pane` minted `no session named …` from
+    /// `alive`'s `false`, which a tmux nobody could run also answers.
+    #[tokio::test]
+    async fn a_brief_to_a_pane_tmux_could_not_be_asked_about_says_so() {
+        let no_tmux = UnaskableTmux::installed();
+        let why = brief_new_pane(SHIM_PANE, "BRIEF")
+            .await
+            .expect_err("nothing could be asked, so nothing was typed")
+            .to_string();
+        assert!(no_tmux.asked() > 0, "the question went to the fake tmux");
+        assert!(
+            why.contains("could not be asked"),
+            "the sentence says the question went unanswered: {why}"
+        );
+        assert!(
+            !why.contains("no session named"),
+            "and never borrows the one minted for a session tmux said it does not hold: {why}"
+        );
     }
 }

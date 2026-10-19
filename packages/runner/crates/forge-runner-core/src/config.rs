@@ -727,8 +727,8 @@ mod tests {
             (
                 "forge-runner-core/src/daemon/terminal.rs",
                 [8, 8, 7],
-                "session_config_dir, the tmux socket's dir, a writer held by ISS-1265, which owes \
-                 its move to base_dir; unoverridden_config_dir's platform arm, a comparison; \
+                "session_config_dir, the tmux socket's dir, a writer owed its move to base_dir \
+                 (docs/proposals/the-tmux-socket-dir-resolves-through-the-reader.md); unoverridden_config_dir's platform arm, a comparison; \
                  MCP_TOOL_TIMEOUT; and tests reading PATH, MCP_TOOL_TIMEOUT, \
                  FORGE_TEST_REQUIRE_TMUX and the fake tmux's own variables",
             ),
