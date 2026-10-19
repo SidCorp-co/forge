@@ -97,8 +97,9 @@ export function RunDetail({ open, onClose, runId, projectSlugs, canWrite = true 
   const title = run?.issueTitle ?? "Pipeline run";
   const chip = run ? runReadingChip(run) : null;
   const chipStatus = chip?.status ?? null;
-  // A run reading Queued has nothing started, so there is no step to pause after and no agent to stop.
-  const hasStarted = run?.status === "running" && chipStatus !== "queued";
+  // A run reading Queued is in no box's hands, so there is no step to pause after and no agent to stop;
+  // one Starting is on a box already, and keeps both (ISS-1228).
+  const hasStarted = run?.status === "running" && run.reading !== "queued";
   // Pause is a "finish the in-flight step, then halt" gate (it does NOT abort
   // the running agent — only Cancel does). So a paused run with a step still
   // `running` is transitional ("Pausing…"); once that step clears it is fully

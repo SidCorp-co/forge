@@ -168,6 +168,15 @@ describe("the Ops drawer, which opens a run with no issue row (ISS-1297)", () =>
     expect(screen.queryByRole("button", { name: /^(Stop now|Confirm stop)$/ })).toBeNull();
   });
 
+  // ISS-1228 round 17 review: a sent run read Running and could be stopped; reading Starting it must
+  // still be, as a box already holds it.
+  it("offers Pause run and Stop now on a run a box has taken or been sent", () => {
+    run = summary("running", { attempts: [attempt("dispatched")], reading: "starting" });
+    open();
+    expect(screen.getByRole("button", { name: "Pause run" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Stop now" })).toBeInTheDocument();
+  });
+
   it("still offers both for a running run, and Resume run for a paused one", () => {
     run = summary("running", { attempts: [attempt("running")], reading: "running" });
     open();
