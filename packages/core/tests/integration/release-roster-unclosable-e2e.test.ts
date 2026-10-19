@@ -327,9 +327,7 @@ describe('a release still ships every row whose close stands', () => {
         new RegExp(`^${unmarkedKey}: It has no mark naming where its work landed`),
       ),
       expect.stringMatching(new RegExp(`^${askedKey}: It holds 1 open question`)),
-      expect.stringMatching(
-        new RegExp(`^${unplannedKey}: It is missing a plan\\. `),
-      ),
+      expect.stringMatching(new RegExp(`^${unplannedKey}: It is missing a plan\\. `)),
     ]);
     expect(outcome.output).toContain('left off 3 issues whose close');
     for (const id of [rows.unmarked, rows.asked, rows.unplanned]) {
