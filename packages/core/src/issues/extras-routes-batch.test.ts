@@ -208,7 +208,7 @@ const headers = async () => ({
 const DRAFT_REFUSED = {
   reason: 'illegal_transition',
   code: 'ILLEGAL_TRANSITION',
-  message: expect.stringContaining('a Draft (draft) issue may only move to'),
+  message: expect.stringContaining('A Draft issue can move only to'),
 };
 
 describe('PATCH /api/issues/batch', () => {

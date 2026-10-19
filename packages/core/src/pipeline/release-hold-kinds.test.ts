@@ -59,19 +59,18 @@ const UNMERGED = {
 };
 const RECORDS = {
   code: 'ENTRY_CRITERIA_UNMET',
-  reason: 'missing a test report, which this project requires before a close',
+  reason: 'missing a test report',
   clears: 'An agent writes them. To start one, press Open session at the top of the issue page.',
   clearsHere: 'An agent writes them. To start one, press Open session at the top of this page.',
 };
 // r10: judge-46 read a 25-word sentence where the issue had no session to open.
 const RECORDS_NO_SESSION = {
   code: 'ENTRY_CRITERIA_UNMET',
-  reason:
-    'missing a plan, acceptance criteria and a release note, which this project requires before a close',
+  reason: 'missing a plan, acceptance criteria and a release note',
   clears:
-    "An agent writes them through Forge's issue tools. This issue has no session to open, so use Reopen in the issue's actions menu. The agent that takes it writes them.",
+    "This issue has no session, so use Reopen in the issue's actions menu to start an agent that writes them.",
   clearsHere:
-    "An agent writes them through Forge's issue tools. This issue has no session to open, so use Reopen in the actions menu at the top of this page. The agent that takes it writes them.",
+    'This issue has no session, so use Reopen in the actions menu above to start an agent that writes them.',
 };
 const QUESTIONS = { ...QUESTION, reason: 'holds 2 open questions' };
 const UNREAD_REPORT: IssueCriteriaReport = {

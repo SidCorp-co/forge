@@ -42,10 +42,9 @@ const HOLDS: GateHolds[] = [
         clears: 'Answer them in their "Decision waiting" cards on the issue\'s page.',
       },
       {
-        reason:
-          'missing a plan, acceptance criteria and a release note, which this project requires before a close',
+        reason: 'missing a plan, acceptance criteria and a release note',
         clears:
-          "An agent writes them through Forge's issue tools. To start one, press Open session at the top of the issue's page.",
+          "Press Open session at the top of the issue's page to start an agent, and it writes them.",
       },
     ],
   },

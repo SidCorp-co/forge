@@ -107,9 +107,9 @@ describe('rosterCloseShortfalls', () => {
     const [found] = (await rosterCloseShortfalls(PROJECT, ['a'])).get('a') ?? [];
     expect(found).toMatchObject({
       code: 'ENTRY_CRITERIA_UNMET',
-      reason: 'missing a plan and a release note, which this project requires before a close',
+      reason: 'missing a plan and a release note',
       clearsHere:
-        "An agent writes them through Forge's issue tools. To start one, press Open session at the top of this page.",
+        'Press Open session at the top of this page to start an agent, and it writes them.',
     });
     expect(evidence).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -119,6 +119,32 @@ describe('rosterCloseShortfalls', () => {
         declaredCriteria: ['plan', 'release_note'],
       }),
     );
+  });
+
+  // ISS-1421 r12 repair: an unmarked issue missing a merge mark read "It is not marked merged." and
+  // then "… and a merge mark" in the records line: one reason, said twice.
+  it('names a missing merge mark once, as the landing shortfall, never again among the records', async () => {
+    unshipped.mockResolvedValue({ detail: 'no merged_at', details: { requires: 'mergedAt' } });
+    declared.mockResolvedValue(['plan', 'merged_mark']);
+    evidence.mockResolvedValue({
+      code: 'ENTRY_CRITERIA_UNMET',
+      detail: 'needs a plan',
+      details: { unmet: ['plan', 'merged_mark'] },
+    });
+    const found = (await rosterCloseShortfalls(PROJECT, ['a'])).get('a') ?? [];
+    expect(found.map((f) => f.reason)).toEqual(['not marked merged', 'missing a plan']);
+  });
+
+  it('leaves no records line where the merge mark was the only record missing', async () => {
+    unshipped.mockResolvedValue({ detail: 'no merged_at', details: { requires: 'mergedAt' } });
+    declared.mockResolvedValue(['merged_mark']);
+    evidence.mockResolvedValue({
+      code: 'ENTRY_CRITERIA_UNMET',
+      detail: 'needs a merge mark',
+      details: { unmet: ['merged_mark'] },
+    });
+    const found = (await rosterCloseShortfalls(PROJECT, ['a'])).get('a') ?? [];
+    expect(found.map((f) => f.code)).toEqual(['CLOSE_REQUIRES_SHIPPED']);
   });
 
   // ISS-1421 r6: since ISS-1228 the header shows Open session only where the issue has a session.
@@ -132,7 +158,7 @@ describe('rosterCloseShortfalls', () => {
     const [found] = (await rosterCloseShortfalls(PROJECT, ['a'])).get('a') ?? [];
     expect(hasSession).toHaveBeenCalledWith(PROJECT, 'a');
     expect(found?.clears).toContain("use Reopen in the issue's actions menu");
-    expect(found?.clearsHere).toContain('use Reopen in the actions menu at the top of this page');
+    expect(found?.clearsHere).toContain('use Reopen in the actions menu above');
     expect(`${found?.clears} ${found?.clearsHere}`).not.toMatch(/Open session/);
   });
 
@@ -178,10 +204,7 @@ describe('shortfallSaid', () => {
     ['not marked merged', 'It is not marked merged.'],
     ['no mark naming where its work landed', 'It has no mark naming where its work landed.'],
     ['holds 2 open questions', 'It holds 2 open questions.'],
-    [
-      'missing a plan, which this project requires before a close',
-      'It is missing a plan, which this project requires before a close.',
-    ],
+    ['missing a plan', 'It is missing a plan.'],
   ])('says "%s" as a sentence of its own, ahead of what clears it', (reason, sentence) => {
     const said = shortfallSaid({ reason, clears: 'Do this.' });
     expect(said).toBe(`${sentence} Do this.`);
@@ -193,7 +216,7 @@ describe('shortfallSaid', () => {
 
   it('names who writes a missing record, and the door that starts one where none is working', () => {
     expect(ENTRY_RECORDS_CLEAR).toBe(
-      "An agent writes them through Forge's issue tools. To start one, press Open session at the top of the issue's page.",
+      "Press Open session at the top of the issue's page to start an agent, and it writes them.",
     );
     expect(ENTRY_RECORDS_CLEAR).not.toMatch(/agent working this issue/);
   });

@@ -394,7 +394,6 @@ function RocketchatBindingPanel({
         <Button variant="secondary" onClick={handleTest} loading={test.isPending}>
           Test
         </Button>
-        <IntegrationEnabledControl projectId={projectId} binding={binding} />
         <Button
           variant="danger"
           icon="trash"
@@ -404,6 +403,8 @@ function RocketchatBindingPanel({
           Disconnect
         </Button>
       </div>
+
+      <IntegrationEnabledControl projectId={projectId} binding={binding} />
 
       <AgentAccessControl
         projectId={projectId}

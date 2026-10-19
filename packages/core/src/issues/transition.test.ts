@@ -387,8 +387,7 @@ describe('POST /api/issues/:id/transition — draft as a target (ISS-787)', () =
     expect(res.status).toBe(409);
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('ILLEGAL_TRANSITION');
-    expect(body.message).toContain('2 pipeline run(s)');
-    expect(body.message).toContain('7 job(s)');
+    expect(body.message).toContain('2 pipeline runs and 7 jobs');
     expect(dbUpdate).not.toHaveBeenCalled();
   });
 

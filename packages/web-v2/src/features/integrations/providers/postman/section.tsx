@@ -31,12 +31,12 @@ import type {
 import {
   AGENT_ACCESS_CLOSED,
   AgentAccessChoice,
-  AgentAccessControl, agentAccessBody, agentAccessDeniedReason, mayWriteAgentAccess} from "../../components/agent-access-control";
+  AgentAccessControl, agentAccessBody, agentAccessDeniedReason, mayWriteAgentAccess, reachesAgentsWhile} from "../../components/agent-access-control";
 import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { postman } from "./index";
 import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
-import { STATE_WORDS } from "../../derive";
+import { bindingBadge } from "../../derive";
 
 const DEFAULT_WORKSPACE = "Forge Integration";
 
@@ -170,17 +170,14 @@ export function PostmanSection({ projectId }: { projectId: string }) {
         <div className="flex items-center justify-between gap-2">
           <CardTitle>Postman</CardTitle>
           {existing && (
-            <Badge tone={existing.active ? "green" : "neutral"}>
-              {existing.active ? "Active" : STATE_WORDS.off}
-            </Badge>
+            <Badge tone={bindingBadge(existing).tone}>{bindingBadge(existing).label}</Badge>
           )}
         </div>
       </div>
       <div className="flex flex-col gap-4">
         <p className="fg-body-sm text-muted">
-          Store a Postman API key + write-target. Being connected is not the same as being
-          usable: the official Postman MCP tools reach this project&apos;s agents only while
-          Enabled and the grant below are both on.
+          Store a Postman API key and the workspace Forge writes to. Being connected is not the same
+          as being usable. {reachesAgentsWhile("The official Postman MCP tools")}
         </p>
 
         <Field
@@ -301,6 +298,8 @@ export function PostmanSection({ projectId }: { projectId: string }) {
           />
         )}
 
+        {existing && <IntegrationEnabledControl projectId={projectId} binding={existing} />}
+
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
           <div className="flex items-center gap-3">
             <Button
@@ -322,20 +321,14 @@ export function PostmanSection({ projectId }: { projectId: string }) {
             )}
           </div>
           {existing && (
-            <div className="flex items-center gap-4">
-              <IntegrationEnabledControl
-                projectId={projectId}
-                binding={existing}
-              />
-              <Button
-                variant="danger"
-                icon="trash"
-                loading={remove.isPending}
-                onClick={() => remove.mutate(existing.id)}
-              >
-                Remove
-              </Button>
-            </div>
+            <Button
+              variant="danger"
+              icon="trash"
+              loading={remove.isPending}
+              onClick={() => remove.mutate(existing.id)}
+            >
+              Remove
+            </Button>
           )}
         </div>
       </div>

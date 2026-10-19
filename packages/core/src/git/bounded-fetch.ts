@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { KEY_ACCESS, WHY_KEY_ACCESS } from '@forge/contracts/deploy-key-words';
 import { type Refused, saying } from '../projects/repository-reader.js';
 import type { PinnedSshHost } from './ssh-host-guard.js';
 
@@ -8,11 +9,7 @@ import type { PinnedSshHost } from './ssh-host-guard.js';
 export const GIT_ACCESS = "the project's Settings → Runners → Git access";
 export const REPO_URL_AT = "the project's Settings → Shape & release → Repository";
 
-// Forge only reads with the key, but devices clone and push with it (ISS-1398, ISS-1421 r11).
-export const KEY_ACCESS = 'read access';
-const KEY_NEED = 'all Forge needs; devices that push with it need write access';
-export const WHY_KEY_ACCESS = `which is ${KEY_NEED}`;
-export const READ_ACCESS_IS = `Read access is ${KEY_NEED}`;
+export { KEY_ACCESS, READ_ACCESS_IS, WHY_KEY_ACCESS } from '@forge/contracts/deploy-key-words';
 
 /** The host a remote names, for a sentence; the URL itself where no host can be read from it. */
 export function hostOf(repoUrl: string): string {
@@ -65,6 +62,10 @@ const GIT_TRAILER =
 
 const RULE = /^[=\-*#_~]{3,}$/;
 
+/** An absolute path in a reply: Forge's own temp files or the server's, neither a person's to read. */
+const QUOTED_PATH = /(['"])\/[^'"\n]*\1/g;
+const BARE_PATH = /(?<=^|[\s(=])\/[\w.@+-]+(?:\/[\w.@+-]*)*/g;
+
 /** The first line a git host said with words in it, past git's `remote:` prefix, banner rules
  *  (GitLab opens a refusal with them) and git's own trailer, which is kept only where alone. */
 export function hostSaid(stderr: string): string {
@@ -72,8 +73,14 @@ export function hostSaid(stderr: string): string {
     .split(/\r?\n/)
     .map((l) => l.replace(/^remote:/i, '').trim())
     .filter((l) => l !== '' && !RULE.test(l));
-  return (lines.find((l) => !GIT_TRAILER.test(l)) ?? lines[0] ?? '').slice(0, 300);
+  return (lines.find((l) => !GIT_TRAILER.test(l)) ?? lines[0] ?? '')
+    .replace(QUOTED_PATH, '$1[path hidden]$1')
+    .replace(BARE_PATH, '[path hidden]')
+    .slice(0, 300);
 }
+
+/** ssh could not load the stored key, so nothing was offered: Forge's failure, not the host's. */
+const KEY_UNLOADABLE = /^load key .*: (?:error in libcrypto|invalid format|incorrect passphrase)/im;
 
 const KEY_REFUSED =
   /permission denied \(|no supported authentication methods|too many authentication failures/i;
@@ -87,12 +94,16 @@ const UNREACHABLE =
 
 export type HostRefusal =
   | { kind: 'no_branch'; branch: string; said: string }
-  | { kind: 'key_refused' | 'no_access' | 'unreachable' | 'other'; said: string };
+  | {
+      kind: 'key_unreadable' | 'key_refused' | 'no_access' | 'unreachable' | 'other';
+      said: string;
+    };
 
 export function readHostRefusal(stderr: string): HostRefusal {
   const said = hostSaid(stderr);
   const missing = stderr.match(/couldn't find remote ref (?:refs\/heads\/)?(\S+)/i);
   if (missing?.[1]) return { kind: 'no_branch', branch: missing[1], said };
+  if (KEY_UNLOADABLE.test(stderr)) return { kind: 'key_unreadable', said: '' };
   if (KEY_REFUSED.test(stderr)) return { kind: 'key_refused', said };
   if (NO_ACCESS.test(stderr)) return { kind: 'no_access', said };
   if (UNREACHABLE.test(stderr)) return { kind: 'unreachable', said };
@@ -118,6 +129,12 @@ export function hostRefusal(err: GitFailure, remote: string): Refused {
   switch (answer.kind) {
     case 'no_branch':
       return { cause: `the repository has no branch ${answer.branch}, so it cannot be compared` };
+    case 'key_unreadable':
+      return {
+        cause:
+          "Forge could not read this project's stored deploy key, so it was never offered to the git host",
+        clears: `detach it and generate a new one under ${GIT_ACCESS}`,
+      };
     case 'key_refused':
       return {
         cause: "the git host refused this project's deploy key",

@@ -100,14 +100,15 @@ const KEPT_LINES: Array<[string, RegExp, string]> = [
 /** Who reads the sentences a file builds through `statusLabel` or `statusForCaller`. A file new to
  *  either helper is refused until it is placed here. The release path's refusals are a person's: their
  *  way out is a release and never a status a caller sends back, so the label stands alone there
- *  (ISS-1421 r6, the master's ruling; the code and `details` still carry the values). */
+ *  (ISS-1421 r6, the master's ruling; the code and `details` still carry the values). The Draft
+ *  refusals are met on the status menu and read the same way (ISS-1421 r12). */
 const READS: Record<string, 'person' | 'caller'> = {
   'integrations/github/check-run-body.ts': 'person',
   'integrations/sentry/intake-issue.ts': 'caller',
   'issues/apply-transition.ts': 'caller',
   'issues/archive.ts': 'caller',
   'issues/close-substitution.ts': 'caller',
-  'issues/draft-entry.ts': 'caller',
+  'issues/draft-entry.ts': 'person',
   'issues/landing-evidence.ts': 'caller',
   'issues/merge-marker.ts': 'caller',
   'issues/merged-at.ts': 'caller',

@@ -15,16 +15,16 @@ export interface ShortfallWords {
 }
 
 export const ENTRY_RECORDS_CLEAR =
-  "An agent writes them through Forge's issue tools. To start one, press Open session at the top of the issue's page.";
+  "Press Open session at the top of the issue's page to start an agent, and it writes them.";
 
 const ENTRY_RECORDS_CLEAR_HERE =
-  "An agent writes them through Forge's issue tools. To start one, press Open session at the top of this page.";
+  'Press Open session at the top of this page to start an agent, and it writes them.';
 
 const ENTRY_RECORDS_REOPEN =
-  "An agent writes them through Forge's issue tools. This issue has no session to open, so use Reopen in the issue's actions menu. The agent that takes it writes them.";
+  "This issue has no session, so use Reopen in the issue's actions menu to start an agent that writes them.";
 
 const ENTRY_RECORDS_REOPEN_HERE =
-  "An agent writes them through Forge's issue tools. This issue has no session to open, so use Reopen in the actions menu at the top of this page. The agent that takes it writes them.";
+  'This issue has no session, so use Reopen in the actions menu above to start an agent that writes them.';
 
 export function landingShortfallWords(outsideGit: boolean): ShortfallWords {
   return {
@@ -62,7 +62,7 @@ export function entryRecordsShortfallWords(
 ): ShortfallWords {
   return {
     code: 'ENTRY_CRITERIA_UNMET',
-    reason: `missing ${entryRecordsInWords(unmet)}, which this project requires before a close`,
+    reason: `missing ${entryRecordsInWords(unmet)}`,
     ...(hasSession
       ? { clears: ENTRY_RECORDS_CLEAR, clearsHere: ENTRY_RECORDS_CLEAR_HERE }
       : { clears: ENTRY_RECORDS_REOPEN, clearsHere: ENTRY_RECORDS_REOPEN_HERE }),

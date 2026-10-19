@@ -6,6 +6,7 @@ import {
   GITLAB_NO_ACCESS,
   type HostAnswer,
   keyUnknown,
+  keyUnloadable,
   NO_REPOSITORY,
   unreachable,
 } from './host-answers.fixture.js';
@@ -44,6 +45,40 @@ describe('hostSaid', () => {
   it('is empty for an empty stderr, and keeps at most 300 characters', () => {
     expect(hostSaid('')).toBe('');
     expect(hostSaid(`remote: ${'x'.repeat(400)}`)).toHaveLength(300);
+  });
+});
+
+// ISS-1421 r12 repair: Test connection read ssh failing to load the stored key as the git host
+// refusing it, and printed the temp path Forge wrote the key to.
+describe('a stored key Forge cannot load', () => {
+  it.each([keyUnloadable('error in libcrypto'), keyUnloadable('invalid format')])(
+    'reads $name as Forge failing, never as the host refusing',
+    (answer) => {
+      const why = refusalOf(answer);
+      expect(why).toMatch(/^Forge could not read this project's stored deploy key/);
+      expect(why).toContain('never offered to the git host');
+      expect(why).toContain(`Detach it and generate a new one under ${GIT_ACCESS}.`);
+      expect(why).not.toMatch(/git host refused|read access|Permission denied/);
+      expect(why).not.toMatch(/\/home\/|forge-tmp|id_deploy/);
+    },
+  );
+});
+
+describe('hostSaid hides every absolute path a reply carries', () => {
+  it.each([
+    ["a temp path of Forge's own", 'Load key "/home/dev/.cache/forge-tmp/k/id_deploy": bad\n'],
+    [
+      'a path on the git server',
+      "fatal: '/srv/git/sid/desk.git' does not appear to be a git repository\n",
+    ],
+    ['a one-part path', "fatal: '/repo.git' does not appear to be a git repository\n"],
+    ['a quoted path with a space', 'Load key "/home/build user/key": bad\n'],
+    ['a bare path', 'fatal: /srv/git/desk.git: no such repository\n'],
+  ])('%s', (_name, stderr) => {
+    const said = hostSaid(stderr);
+    expect(said).not.toMatch(/(^|[\s'"(])\/[\w.-]/);
+    expect(said).not.toMatch(/build|user\/key|repo\.git|desk|forge-tmp/);
+    expect(said).toContain('[path hidden]');
   });
 });
 

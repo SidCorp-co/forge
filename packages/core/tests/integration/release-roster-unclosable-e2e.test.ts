@@ -170,10 +170,10 @@ describe('a release names, before the press, the rows its finish could not close
     expect(refusalsOf(rows.unplanned)).toEqual([
       expect.objectContaining({
         code: 'ENTRY_CRITERIA_UNMET',
-        reason: 'missing a plan, which this project requires before a close',
+        reason: 'missing a plan',
         // No run of it has a session, so the header shows no Open session to press (ISS-1228).
         clears:
-          "An agent writes them through Forge's issue tools. This issue has no session to open, so use Reopen in the issue's actions menu. The agent that takes it writes them.",
+          "This issue has no session, so use Reopen in the issue's actions menu to start an agent that writes them.",
       }),
     ]);
   });
@@ -198,7 +198,7 @@ describe('a release names, before the press, the rows its finish could not close
     const [refusal] = roster.issues.find((i) => i.id === rows.unplanned)?.closeRefusals ?? [];
 
     expect(refusal?.clears).toBe(
-      "An agent writes them through Forge's issue tools. To start one, press Open session at the top of the issue's page.",
+      "Press Open session at the top of the issue's page to start an agent, and it writes them.",
     );
   });
 
@@ -220,9 +220,7 @@ describe('a release names, before the press, the rows its finish could not close
     expect(body).toContain(String(unmarkedKey));
     expect(body).toContain('RELEASE_ISSUES_UNCLOSABLE');
     expect(body).toContain(`\`${askedKey}\` holds 1 open question`);
-    expect(body).toContain(
-      `\`${unplannedKey}\` missing a plan, which this project requires before a close`,
-    );
+    expect(body).toContain(`\`${unplannedKey}\` missing a plan`);
     for (const id of Object.values(rows)) {
       expect(await fx.stored(id)).toMatchObject({ status: 'awaiting_release', claim: null });
     }
@@ -329,9 +327,7 @@ describe('a release still ships every row whose close stands', () => {
         new RegExp(`^${unmarkedKey}: It has no mark naming where its work landed`),
       ),
       expect.stringMatching(new RegExp(`^${askedKey}: It holds 1 open question`)),
-      expect.stringMatching(
-        new RegExp(`^${unplannedKey}: It is missing a plan, which this project requires`),
-      ),
+      expect.stringMatching(new RegExp(`^${unplannedKey}: It is missing a plan\\. `)),
     ]);
     expect(outcome.output).toContain('left off 3 issues whose close');
     for (const id of [rows.unmarked, rows.asked, rows.unplanned]) {

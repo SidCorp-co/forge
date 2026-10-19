@@ -72,7 +72,14 @@ export async function generateSshKeypair(comment: string): Promise<GeneratedSshK
 export interface SshConnTest {
   ok: boolean;
   /** Machine-readable outcome for the UI to phrase / colour. */
-  code: 'authenticated' | 'auth_denied' | 'host_unreachable' | 'not_found' | 'timeout' | 'error';
+  code:
+    | 'authenticated'
+    | 'auth_denied'
+    | 'key_unreadable'
+    | 'host_unreachable'
+    | 'not_found'
+    | 'timeout'
+    | 'error';
   /** Human-readable one-liner (safe to show — no secrets). */
   message: string;
   /** Remote HEAD sha on success, for a "reachable @ abc123" confirmation. */
@@ -167,6 +174,13 @@ async function lsRemote(
     const answer = readHostRefusal((e.stderr ?? '').toString());
     const said = namingTheHost(answer.said, pin);
     switch (answer.kind) {
+      case 'key_unreadable':
+        return {
+          ok: false,
+          code: 'key_unreadable',
+          message:
+            'Forge could not read the stored deploy key, so it was never offered to the git host. Detach it and generate a new one.',
+        };
       case 'key_refused':
         return {
           ok: false,

@@ -41,7 +41,14 @@ export interface ProjectGitAccessInput {
 
 export interface SshConnTestResult {
   ok: boolean;
-  code: 'authenticated' | 'auth_denied' | 'host_unreachable' | 'not_found' | 'timeout' | 'error';
+  code:
+    | 'authenticated'
+    | 'auth_denied'
+    | 'key_unreadable'
+    | 'host_unreachable'
+    | 'not_found'
+    | 'timeout'
+    | 'error';
   message: string;
   headSha?: string;
 }

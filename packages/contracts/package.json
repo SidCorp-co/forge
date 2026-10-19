@@ -42,6 +42,10 @@
       "types": "./dist/stuck-words.d.ts",
       "default": "./dist/stuck-words.js"
     },
+    "./deploy-key-words": {
+      "types": "./dist/deploy-key-words.d.ts",
+      "default": "./dist/deploy-key-words.js"
+    },
     "./deploy-capability": {
       "types": "./src/deploy-capability.ts",
       "default": "./src/deploy-capability.ts"
