@@ -434,10 +434,10 @@ describe("migration 0343: a stored title quotes its issue's title and its projec
     ]);
   });
 
-  // Consult f0e175 F1/F2: titles as their producers and the delivery door store them, then 0342.
+  // Consults f0e175 and 2d5735: titles as their producers and the door store them, then 0342.
   it('restores a mention and an intake notice as the delivery door stored them', async () => {
     const actor = await person('Lan', 'lan.handle@example.com');
-    const quoted = 'Refund ops@desk.example.com before Friday';
+    const quoted = 'Refund ops@desk.example.com moved to Closed';
     const issueId = await issueTitled(11, quoted);
     const { HooksBus } = await import('../../src/pipeline/hooks.js');
     const { registerNotifyMentionsSubscriber } = await import(

@@ -76,12 +76,13 @@ BEGIN
     texts := '{}';
     -- The one quoted part the title's template names, where it has one.
     slot_kind := NULL;
-    m := regexp_match(r.title, '^((?:Resolved — )?[A-Za-z][A-Za-z0-9]{1,5}-[0-9]+ — )(.+)( moved to [^—]+)$');
-    IF m IS NULL THEN
-      m := regexp_match(r.title, '^((?:Resolved — )?(?:[A-Za-z][A-Za-z0-9]{1,5}-[0-9]+ — )?(?:@[^ ]+|someone) mentioned you in ")(.*)(")$');
-    END IF;
+    -- The mention and intake leads first: an issue title may itself read "… moved to …".
+    m := regexp_match(r.title, '^((?:Resolved — )?(?:[A-Za-z][A-Za-z0-9]{1,5}-[0-9]+ — )?(?:@[^ ]+|someone) mentioned you in ")(.*)(")$');
     IF m IS NULL THEN
       m := regexp_match(r.title, '^((?:Resolved — )?(?:[A-Za-z][A-Za-z0-9]{1,5}-[0-9]+ — )?Awaiting intake review: )(.+)()$');
+    END IF;
+    IF m IS NULL THEN
+      m := regexp_match(r.title, '^((?:Resolved — )?[A-Za-z][A-Za-z0-9]{1,5}-[0-9]+ — )(.+)( moved to [^—]+)$');
     END IF;
     IF m IS NOT NULL THEN
       slot_kind := 'issue';
