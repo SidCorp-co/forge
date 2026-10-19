@@ -241,7 +241,7 @@ pub(crate) async fn has_session(name: &str) -> Presence {
     let said = String::from_utf8_lossy(&out.stderr);
     let lower = said.to_lowercase();
     if says_no_socket_file(&lower) {
-        missing_socket::say(name);
+        missing_socket::say(name, &said);
         return Presence::Unaskable;
     }
     if NO_SUCH_SESSION
@@ -301,7 +301,14 @@ mod missing_socket {
             .remove(&socket);
     }
 
-    pub(super) fn say(name: &str) {
+    /// The socket tmux says it tried, which is the only name for it where
+    /// no socket was resolved and tmux went to its default one (consult F1).
+    fn named_by(said: &str) -> Option<&str> {
+        let after = said.split_once("error connecting to ")?.1;
+        after.rsplit_once(" (").map(|(path, _)| path)
+    }
+
+    pub(super) fn say(name: &str, said: &str) {
         let socket = super::socket_path();
         if !SAID
             .lock()
@@ -311,9 +318,14 @@ mod missing_socket {
             tracing::debug!("[terminal] {name}: the tmux socket file is still not there");
             return;
         }
-        let shown = socket.as_deref().map_or_else(
-            || "of the default server".to_string(),
-            |p| p.display().to_string(),
+        let shown = named_by(said).map_or_else(
+            || {
+                socket.as_deref().map_or_else(
+                    || "of the default server".to_string(),
+                    |p| p.display().to_string(),
+                )
+            },
+            str::to_string,
         );
         let placed: Vec<String> = PLACED
             .lock()
@@ -3644,6 +3656,29 @@ done
             Err(NotTyped::Gone(name.clone())),
             "and a message to it is refused as a session that ended"
         );
+    }
+
+    /// Consult F1: where no socket was resolved, tmux goes to its default one,
+    /// and the line names the path tmux said rather than no path at all.
+    #[test]
+    fn the_missing_socket_line_names_the_socket_tmux_tried() {
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let said = logged_while_missing(
+            "error connecting to /tmp/tmux-1000/default (No such file or directory)\n",
+        );
+        assert!(
+            said.contains("/tmp/tmux-1000/default"),
+            "the socket tmux tried is named: {said}"
+        );
+    }
+
+    /// What `missing_socket::say` logs for `said`, from a fresh episode.
+    fn logged_while_missing(said: &str) -> String {
+        missing_socket::answered(socket_path());
+        let logged =
+            crate::log_capture::logged_while(|| missing_socket::say("forge-test-named", said));
+        missing_socket::answered(socket_path());
+        logged
     }
 
     /// ISS-1265 round 4, the master's ruling of 2026-10-19: tmux says the same
