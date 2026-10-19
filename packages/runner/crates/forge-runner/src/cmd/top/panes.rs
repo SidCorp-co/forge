@@ -96,14 +96,6 @@ mod tests {
 
     #[test]
     fn a_server_that_is_not_running_holds_no_session() {
-        let got = parse(
-            "t",
-            false,
-            "",
-            "error connecting to /x/tmux.sock (No such file or directory)",
-        )
-        .unwrap();
-        assert!(got.is_empty());
         assert!(parse(
             "t",
             false,
@@ -112,6 +104,24 @@ mod tests {
         )
         .unwrap()
         .is_empty());
+    }
+
+    /// ISS-1265 round 4, the master's ruling of 2026-10-19: tmux says this of
+    /// a socket file moved from under a server still running every master it
+    /// ran, so the box is unread rather than empty.
+    #[test]
+    fn a_socket_file_that_is_not_there_is_unreadable_never_an_empty_box() {
+        let e = parse(
+            "t",
+            false,
+            "",
+            "error connecting to /x/tmux.sock (No such file or directory)",
+        )
+        .unwrap_err();
+        assert!(
+            e.reason.contains("/x/tmux.sock") && e.reason.contains("not there"),
+            "it names the socket and says its file is missing: {e}"
+        );
     }
 
     /// Criterion 22.

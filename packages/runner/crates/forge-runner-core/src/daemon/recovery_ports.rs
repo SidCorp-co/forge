@@ -287,6 +287,75 @@ mod tests {
         );
     }
 
+    /// ISS-1265 round 4, judge-51's finding: a registered master keeps
+    /// running after its server's socket file is moved, so recovery cannot
+    /// have seen it end. The middle reading comes from `pane_pid`, recovery's
+    /// own first question, so the second episode is said again without
+    /// `has_session` ever answering in between (consult F1).
+    #[cfg(unix)]
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_registered_master_whose_socket_file_was_moved_is_unanswered() {
+        let _serialised = terminal::testing::ONE_AT_A_TIME.lock().await;
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let iso = terminal::testing::IsolatedServer::new("portmoved");
+        if !terminal::available() {
+            terminal::testing::cannot_run(
+                "tmux is not installed here — the read this rests on cannot run",
+            );
+            return;
+        }
+        if !iso.took() {
+            terminal::testing::cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not moving its socket");
+            return;
+        }
+        let name = terminal::session_name(terminal::MASTER_PREFIX, "portmoved");
+        let dir = crate::test_scratch::Scratch::new("port-moved");
+        terminal::ensure(
+            &name,
+            &dir,
+            &["sleep".to_string(), "60".to_string()],
+            &[],
+            None,
+        )
+        .await
+        .expect("the master pane must start");
+        let registry = Registry::new();
+        registry.remember_for_test("proj-1", "sess-1", &name);
+        let port = PaneMasters { masters: &registry };
+        assert_eq!(port.state("sess-1").await, MasterPresence::Alive);
+
+        let (said, _logs) = crate::log_capture::capturing();
+        let moved = terminal::testing::MovedSocket::aside();
+        let socket = moved.socket().display().to_string();
+        let episodes = |log: &str| log.lines().filter(|l| l.contains(&socket)).count();
+        assert_eq!(
+            port.state("sess-1").await,
+            MasterPresence::Unanswered,
+            "the master runs on; its server's socket file is not there"
+        );
+        assert_eq!(port.state("sess-1").await, MasterPresence::Unanswered);
+        assert_eq!(
+            episodes(&said.said()),
+            1,
+            "said once while the file stays missing: {}",
+            said.said()
+        );
+
+        moved.put_back();
+        assert_eq!(port.state("sess-1").await, MasterPresence::Alive);
+        moved.again();
+        assert_eq!(port.state("sess-1").await, MasterPresence::Unanswered);
+        assert_eq!(
+            episodes(&said.said()),
+            2,
+            "a socket that goes missing again after it answered is said again: {}",
+            said.said()
+        );
+    }
+
     /// ISS-1139 — the whole close loop over a key core resolves to no project.
     ///
     /// A ledger run carrying the prefixed key the pool handed the box, a core

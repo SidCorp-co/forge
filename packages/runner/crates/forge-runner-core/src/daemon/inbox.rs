@@ -441,14 +441,20 @@ mod tests {
         async fn a_tmux_call_that_fails_while_typing_is_never_acked_gone() {
             let _serialised = ONE_AT_A_TIME.lock().await;
             let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            // Every verb is driven before anything is asserted, so a mapping
+            // that acks only one of them names that one (judge-51's gap: a loop
+            // stopping at the first red never showed the later two red alone).
+            let mut acked = Vec::new();
             for verb in ["load-buffer", "paste-buffer", "send-keys"] {
                 let sent = send_one(Asked::Present, &composer(""), Some(verb)).await;
-                assert!(
-                    sent.acks.is_empty(),
-                    "tmux broke at {verb} after the pane answered alive, which says nothing about the session having ended: {:?}",
-                    sent.acks
-                );
+                if !sent.acks.is_empty() {
+                    acked.push((verb, sent.outcomes()));
+                }
             }
+            assert!(
+                acked.is_empty(),
+                "tmux broke while typing after the pane answered alive, which says nothing about the session having ended, and these were acked: {acked:?}"
+            );
         }
 
         #[allow(clippy::await_holding_lock)]
@@ -477,27 +483,136 @@ mod tests {
             );
         }
 
-        /// ISS-1265 round 3, F3: tmux's two sentences for a socket nothing
-        /// listens on are absence, since a server that is not running holds no
-        /// session.
+        /// ISS-1265 round 3, F3: a socket file whose server has exited is
+        /// absence, since a server that is not running holds no session.
         #[allow(clippy::await_holding_lock)]
         #[tokio::test]
         async fn a_socket_with_no_server_behind_it_is_acked_gone() {
             let _serialised = ONE_AT_A_TIME.lock().await;
             let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-            for asked in [Asked::NoServer, Asked::NeverServed] {
-                let sent = send_one(asked, &composer(""), None).await;
-                assert_eq!(
-                    sent.outcomes(),
-                    vec![r#"{"outcome":"gone"}"#.to_string()],
-                    "tmux said no server runs on the runner's socket ({asked:?})"
+            let sent = send_one(Asked::NoServer, &composer(""), None).await;
+            assert_eq!(
+                sent.outcomes(),
+                vec![r#"{"outcome":"gone"}"#.to_string()],
+                "tmux said no server runs on the runner's socket"
+            );
+            assert!(
+                !sent.log.contains("WARN"),
+                "a socket with no server is an answer, not an alarm: {}",
+                sent.log
+            );
+        }
+
+        /// ISS-1265 round 4, the master's ruling of 2026-10-19: a socket file
+        /// that is not there is a server nobody could ask, not one that ended.
+        #[allow(clippy::await_holding_lock)]
+        #[tokio::test]
+        async fn a_socket_file_that_is_not_there_is_never_acked_gone() {
+            let _serialised = ONE_AT_A_TIME.lock().await;
+            let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let sent = send_one(Asked::NoSocket, &composer(""), None).await;
+            assert!(
+                sent.acks.is_empty(),
+                "tmux says the same words for a socket moved from under a running server: {:?}",
+                sent.acks
+            );
+        }
+
+        /// The isolated server's socket, for a line that must name it.
+        fn socket_shown() -> String {
+            terminal::socket_path()
+                .expect("a socket of the test's own")
+                .display()
+                .to_string()
+        }
+
+        /// ISS-1265 round 4, judge-51's finding end to end: a master this
+        /// daemon placed keeps running after its server's socket file is moved,
+        /// and a message to it is not answered `gone`.
+        #[allow(clippy::await_holding_lock)]
+        #[tokio::test]
+        async fn a_running_master_whose_socket_file_was_moved_is_not_acked() {
+            let _serialised = ONE_AT_A_TIME.lock().await;
+            let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let iso = crate::daemon::terminal::testing::IsolatedServer::new("inboxmoved");
+            if !terminal::available() {
+                crate::daemon::terminal::testing::cannot_run(
+                    "tmux is not installed here — the read this rests on cannot run",
                 );
-                assert!(
-                    !sent.log.contains("WARN"),
-                    "a socket with no server is an answer, not an alarm: {}",
-                    sent.log
-                );
+                return;
             }
+            if !iso.took() {
+                crate::daemon::terminal::testing::cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not moving its socket");
+                return;
+            }
+            let dir = crate::test_scratch::Scratch::new("inbox-moved");
+            terminal::ensure(
+                PANE,
+                &dir,
+                &["sleep".to_string(), "60".to_string()],
+                &[],
+                None,
+            )
+            .await
+            .expect("the master pane must start");
+            let moved = crate::daemon::terminal::testing::MovedSocket::aside();
+            let (acks, log) = send_frame().await;
+            assert!(
+                acks.is_empty(),
+                "the master is running; nobody could ask its server: {acks:?}"
+            );
+            let socket = moved.socket().display().to_string();
+            let said = log
+                .lines()
+                .find(|l| l.contains("ERROR") && l.contains(&socket))
+                .unwrap_or_else(|| panic!("an error-level line names the missing socket: {log}"));
+            assert!(
+                said.contains(PANE),
+                "and names the pane this daemon placed on it: {said}"
+            );
+        }
+
+        /// ISS-1265 round 4: a socket file never made reads as the same
+        /// anomaly, said at warning level where this daemon placed no pane on
+        /// it, and said once however many times it is asked.
+        #[allow(clippy::await_holding_lock)]
+        #[tokio::test]
+        async fn a_socket_file_never_made_is_said_once_and_never_acked() {
+            let _serialised = ONE_AT_A_TIME.lock().await;
+            let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let iso = crate::daemon::terminal::testing::IsolatedServer::new("inboxnever");
+            if !terminal::available() {
+                crate::daemon::terminal::testing::cannot_run(
+                    "tmux is not installed here — the read this rests on cannot run",
+                );
+                return;
+            }
+            if !iso.took() {
+                crate::daemon::terminal::testing::cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not asking it");
+                return;
+            }
+            let socket = socket_shown();
+            let (first, log_first) = send_frame().await;
+            let (second, log_second) = send_frame().await;
+            assert!(
+                first.is_empty() && second.is_empty(),
+                "a socket file that is not there establishes no ending: {first:?} {second:?}"
+            );
+            let lines: Vec<&str> = log_first
+                .lines()
+                .chain(log_second.lines())
+                .filter(|l| l.contains(&socket))
+                .collect();
+            assert_eq!(
+                lines.len(),
+                1,
+                "said once while the file stays missing: {lines:?}"
+            );
+            assert!(
+                lines[0].contains("WARN") && lines[0].contains("placed no pane"),
+                "at warning level, saying this daemon placed nothing there: {}",
+                lines[0]
+            );
         }
 
         /// ISS-1265 round 3, F4: the silent arm said `the pane was read` for
